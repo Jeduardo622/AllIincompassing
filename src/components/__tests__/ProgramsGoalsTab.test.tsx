@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
+import { QueryClient } from "@tanstack/react-query";
+import { fireEvent, renderWithProviders, screen, userEvent, waitFor, within } from "../../test/utils";
 import { ProgramsGoalsTab } from "../ClientDetails/ProgramsGoalsTab";
 import { generateProgramGoalDraft } from "../../lib/ai";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
@@ -1285,7 +1286,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(saveDraftPayload).not.toHaveProperty("program");
   });
 
-  it("uploads IEHP assessment with selected template type", async () => {
+  it("disables IEHP upload in the CalOptima-only promotion workflow", async () => {
     const baseCallApiImpl = vi.mocked(callApi).getMockImplementation();
     if (!baseCallApiImpl) {
       throw new Error("Missing base API mock implementation.");
@@ -1294,6 +1295,22 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "POST" && path === "/api/assessment-documents") {
         await new Promise((resolve) => setTimeout(resolve, 250));
+        return new Response(
+          JSON.stringify({
+            id: ASSESSMENT_ID,
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            template_type: "caloptima_fba",
+            file_name: "caloptima-fba.docx",
+            mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            file_size: 1000,
+            bucket_id: "client-documents",
+            object_path: "clients/client-1/assessments/caloptima-fba.docx",
+            status: "uploaded",
+            created_at: "2026-02-11T00:00:00.000Z",
+          }),
+          { status: 201 },
+        );
       }
       return baseCallApiImpl(path, init);
     });
@@ -1309,14 +1326,19 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    await screen.findByText(/FBA Upload \+ AI Workflow/i);
-    await user.selectOptions(screen.getByRole("combobox", { name: /FBA template/i }), "iehp_fba");
+    await screen.findByText(/CalOptima FBA Upload \+ AI Workflow/i);
+    expect(
+      screen.getByText("CalOptima FBA is the only upload supported in this promotion workflow. IEHP upload is disabled here."),
+    ).toBeInTheDocument();
+    const templateSelect = screen.getByRole("combobox", { name: /FBA template/i });
+    expect(within(templateSelect).getByRole("option", { name: "CalOptima FBA" })).toBeInTheDocument();
+    expect(within(templateSelect).queryByRole("option", { name: "IEHP FBA" })).not.toBeInTheDocument();
     const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
-    const file = new File(["mock iehp content"], "iehp-fba.docx", {
+    const file = new File(["mock caloptima content"], "caloptima-fba.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
     await user.upload(uploadInput, file);
-    await user.click(screen.getByRole("button", { name: /Upload IEHP FBA/i }));
+    await user.click(screen.getByRole("button", { name: /Upload CalOptima FBA/i }));
     await screen.findByText(/Uploading and processing your FBA/i);
     expect(screen.getByRole("button", { name: /Uploading and processing/i })).toBeDisabled();
 
@@ -1325,12 +1347,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         "/api/assessment-documents",
         expect.objectContaining({
           method: "POST",
-          body: expect.stringContaining("\"template_type\":\"iehp_fba\""),
+          body: expect.stringContaining("\"template_type\":\"caloptima_fba\""),
         }),
       );
     });
     await waitFor(() => {
-      expect(showSuccess).toHaveBeenCalledWith("IEHP FBA uploaded and checklist initialized.");
+      expect(showSuccess).toHaveBeenCalledWith("CalOptima FBA uploaded and checklist initialized.");
     });
   });
 
@@ -2292,6 +2314,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
   });
 
   it("shows plural publish success counts from the live-promotion response", async () => {
+    const invalidateQueriesSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -2358,6 +2381,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         "Published to live records. Created 2 production programs and 26 goals.",
       );
     });
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
+      queryKey: ["client-goals", "client-1", ORG_ID],
+    });
+    invalidateQueriesSpy.mockRestore();
     confirmSpy.mockRestore();
   });
 
@@ -2517,6 +2544,63 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     expect(await screen.findByText("All changes published.")).toBeInTheDocument();
     expect(screen.getByText("Publishing makes accepted drafts live in Programs and Goals.")).toBeInTheDocument();
+  });
+
+  it("shows retained-draft messaging and blocks republish after approval", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "approved-fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/approved-fba.pdf",
+              status: "approved",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: buildAcceptedDraftGoals(),
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("approved-fba.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Drafts retained after publication.")).toBeInTheDocument();
+    expect(
+      screen.getByText("This assessment has already been approved and published."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i })).toBeDisabled();
+    expect(await screen.findAllByText("Draft retained for audit after approval. Live records are already published.")).not.toHaveLength(0);
+    expect(screen.queryByText("Saves to draft only. Not visible in live records until published.")).not.toBeInTheDocument();
   });
 
   it("saves a program draft and shows draft-only messaging", async () => {
@@ -3017,7 +3101,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     await screen.findByText("fba.pdf");
     const publishButton = await screen.findByRole("button", { name: /Publish to Live Programs \+ Goals/i });
-    expect(publishButton).toBeEnabled();
+    await waitFor(() => expect(publishButton).toBeEnabled());
     expect(screen.getByText("Accepted draft goals: 2 child / 1 parent")).toBeInTheDocument();
   });
 

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { chromium, type Page } from "playwright";
 
 import { cleanupAssessmentImportArtifacts } from "./lib/assessment-import-cleanup";
@@ -117,8 +118,8 @@ type LiveGoal = {
 
 const DEFAULT_BASE_URL = "https://app.allincompassing.ai";
 const EXTRACTION_TIMEOUT_MS = 180_000;
-const EXPECTED_CHILD_GOALS = 21;
-const EXPECTED_PARENT_GOALS = 7;
+export const EXPECTED_CHILD_GOALS = 21;
+export const EXPECTED_PARENT_GOALS = 7;
 const GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
   "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
@@ -148,7 +149,7 @@ const resolveMimeType = (filePath: string): string => {
   return "application/octet-stream";
 };
 
-const buildSyntheticAssessmentPdf = async (): Promise<Buffer> => {
+export const buildSyntheticAssessmentFixtureText = (): string => {
   const lines: string[] = [
     "Synthetic CalOptima FBA smoke fixture",
     "Service Initiation Date: 07/21/2025",
@@ -185,6 +186,12 @@ const buildSyntheticAssessmentPdf = async (): Promise<Buffer> => {
     lines.push(`Measurement Type: Percent opportunities`);
     lines.push(`Target Criteria: 90% across 4 consecutive weeks.`);
   }
+
+  return lines.join("\n");
+};
+
+const buildSyntheticAssessmentPdf = async (): Promise<Buffer> => {
+  const lines = buildSyntheticAssessmentFixtureText().split("\n");
 
   const browser = await chromium.launch({ headless: true });
   try {
@@ -876,7 +883,11 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error("Playwright assessment upload promote smoke failed", error);
-  process.exit(1);
-});
+const isDirectRun = process.argv[1] ? import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href : false;
+
+if (isDirectRun) {
+  run().catch((error) => {
+    console.error("Playwright assessment upload promote smoke failed", error);
+    process.exit(1);
+  });
+}

@@ -174,4 +174,8 @@ export const handleGoals = async (req: Request) => {
   return json(req, { error: "Method not allowed" }, 405);
 };
 
-export default createProtectedRoute((req) => handleGoals(req), RouteOptions.therapist);
+const handler = createProtectedRoute((req) => handleGoals(req), RouteOptions.therapist);
+
+Deno.serve(handler);
+
+export default handler;

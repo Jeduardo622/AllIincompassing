@@ -88,4 +88,8 @@ export const handleProgramNotes = async (req: Request) => {
   return json(req, { error: "Method not allowed" }, 405);
 };
 
-export default createProtectedRoute((req) => handleProgramNotes(req), RouteOptions.therapist);
+const handler = createProtectedRoute((req) => handleProgramNotes(req), RouteOptions.therapist);
+
+Deno.serve(handler);
+
+export default handler;

@@ -9,9 +9,6 @@ import {
   resolveOrgAndRole,
 } from "./shared";
 
-const MIN_CHILD_GOALS = 20;
-const MIN_PARENT_GOALS = 6;
-
 const promoteSchema = z.object({
   assessment_document_id: z.string().uuid(),
 });
@@ -155,19 +152,6 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   if (acceptedGoals.length === 0) {
     return json({ error: "At least one accepted draft goal is required before promotion." }, 409);
   }
-  const acceptedChildGoalCount = acceptedGoals.filter((goal) => goal.goal_type === "child").length;
-  const acceptedParentGoalCount = acceptedGoals.filter((goal) => goal.goal_type === "parent").length;
-  if (acceptedChildGoalCount < MIN_CHILD_GOALS || acceptedParentGoalCount < MIN_PARENT_GOALS) {
-    return json(
-      {
-        error: `Promotion requires at least ${MIN_CHILD_GOALS} accepted child goals and ${MIN_PARENT_GOALS} accepted parent goals.`,
-        accepted_child_goal_count: acceptedChildGoalCount,
-        accepted_parent_goal_count: acceptedParentGoalCount,
-      },
-      409,
-    );
-  }
-
   const lowQualityGoals = acceptedGoals.filter((goal) => !isMinGoalQuality(goal));
   if (lowQualityGoals.length > 0) {
     return json(

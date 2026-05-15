@@ -9,9 +9,6 @@ import {
   resolveOrgAndRole,
 } from "./shared";
 
-const MIN_CHILD_GOALS = 20;
-const MIN_PARENT_GOALS = 6;
-
 const evidenceRefSchema = z.object({
   section_key: z.string().trim().min(1),
   source_span: z.string().trim().min(1),
@@ -61,7 +58,7 @@ const draftCreateSchema = z.object({
     .min(1),
   summary_rationale: z.string().trim().min(1),
   confidence: z.enum(["low", "medium", "high"]),
-  goals: z.array(draftGoalSchema).min(MIN_CHILD_GOALS + MIN_PARENT_GOALS),
+  goals: z.array(draftGoalSchema).min(1),
 });
 
 const draftAutoGenerateSchema = z.object({
@@ -321,17 +318,6 @@ const buildDeterministicDraftPayload = (
     summary_rationale: "Drafts were created from approved CalOptima structured sections without AI generation.",
     confidence: "high",
   };
-};
-
-const validateGoalMinimums = (
-  goals: Array<{ goal_type: "child" | "parent" }>,
-): { valid: true } | { valid: false; childCount: number; parentCount: number } => {
-  const childCount = goals.filter((goal) => goal.goal_type === "child").length;
-  const parentCount = goals.filter((goal) => goal.goal_type === "parent").length;
-  if (childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS) {
-    return { valid: false, childCount, parentCount };
-  }
-  return { valid: true };
 };
 
 const getAssessmentDocument = async (
@@ -602,17 +588,6 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
 
     const actorId = getAccessTokenSubject(accessToken);
     if (parsedManual.success) {
-      const minimumValidation = validateGoalMinimums(parsedManual.data.goals);
-      if (!minimumValidation.valid) {
-        return json(
-          {
-            error: `Draft must include at least ${MIN_CHILD_GOALS} child goals and ${MIN_PARENT_GOALS} parent goals.`,
-            child_goal_count: minimumValidation.childCount,
-            parent_goal_count: minimumValidation.parentCount,
-          },
-          409,
-        );
-      }
       const result = await persistDraftRows({
         supabaseUrl,
         headers,
@@ -661,17 +636,6 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     const generatedPayload = buildDeterministicDraftPayload(structuredResult.data ?? []);
     if (!generatedPayload) {
       return json({ error: "No approved structured CalOptima goal sections are available for deterministic draft generation." }, 409);
-    }
-    const minimumValidation = validateGoalMinimums(generatedPayload.goals);
-    if (!minimumValidation.valid) {
-      return json(
-        {
-          error: `Deterministic draft must include at least ${MIN_CHILD_GOALS} child goals and ${MIN_PARENT_GOALS} parent goals.`,
-          child_goal_count: minimumValidation.childCount,
-          parent_goal_count: minimumValidation.parentCount,
-        },
-        409,
-      );
     }
 
     const persisted = await persistDraftRows({

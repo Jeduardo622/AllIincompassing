@@ -117,8 +117,8 @@ type LiveGoal = {
 
 const DEFAULT_BASE_URL = "https://app.allincompassing.ai";
 const EXTRACTION_TIMEOUT_MS = 180_000;
-const MIN_CHILD_GOALS = 20;
-const MIN_PARENT_GOALS = 6;
+const EXPECTED_CHILD_GOALS = 21;
+const EXPECTED_PARENT_GOALS = 7;
 const GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
   "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
@@ -166,7 +166,7 @@ const buildSyntheticAssessmentPdf = async (): Promise<Buffer> => {
     lines.push(`Target Criteria: 80% across 4 consecutive weeks.`);
   }
   lines.push("XV. SKILL ACQUISITION GOALS");
-  for (let index = 1; index <= 10; index += 1) {
+  for (let index = 1; index <= 11; index += 1) {
     lines.push(
       `Skill Acquisition Goal ${index}: By August 2026, the client will complete synthetic adaptive skill ${index} in 80% of opportunities across people and settings.`,
     );
@@ -176,7 +176,7 @@ const buildSyntheticAssessmentPdf = async (): Promise<Buffer> => {
     lines.push(`Target Criteria: 80% across 4 consecutive weeks.`);
   }
   lines.push("XVI. PARENT/CAREGIVER GOALS");
-  for (let index = 1; index <= 6; index += 1) {
+  for (let index = 1; index <= 7; index += 1) {
     lines.push(
       `Parent/Caregiver Goal ${index}: By August 2026, the caregiver will implement synthetic parent training strategy ${index} in 90% of opportunities across 4 consecutive weeks.`,
     );
@@ -367,9 +367,9 @@ const approveChecklistAndStructuredSections = async (args: {
   const parentGoalStructuredSectionCount = goalSections.filter((section) =>
     section.field_key === "CALOPTIMA_FBA_PARENT_GOALS" || section.payload?.goal_type === "parent"
   ).length;
-  if (childGoalStructuredSectionCount < MIN_CHILD_GOALS || parentGoalStructuredSectionCount < MIN_PARENT_GOALS) {
+  if (childGoalStructuredSectionCount < EXPECTED_CHILD_GOALS || parentGoalStructuredSectionCount < EXPECTED_PARENT_GOALS) {
     throw new Error(
-      `Structured goal extraction produced ${childGoalStructuredSectionCount}/${MIN_CHILD_GOALS} child goals and ${parentGoalStructuredSectionCount}/${MIN_PARENT_GOALS} parent goals.`,
+      `Structured goal extraction produced ${childGoalStructuredSectionCount}/${EXPECTED_CHILD_GOALS} child goals and ${parentGoalStructuredSectionCount}/${EXPECTED_PARENT_GOALS} parent goals.`,
     );
   }
 
@@ -431,7 +431,7 @@ const acceptDrafts = async (baseUrl: string, accessToken: string, drafts: DraftR
   if (drafts.programs.length === 0) {
     throw new Error("Deterministic draft generation did not create any draft programs.");
   }
-  if (childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS) {
+  if (childCount < EXPECTED_CHILD_GOALS || parentCount < EXPECTED_PARENT_GOALS) {
     throw new Error(
       `Fixture produced insufficient draft goals for promotion: ${childCount} child / ${parentCount} parent.`,
     );
@@ -739,7 +739,7 @@ async function run() {
     const acceptedParentGoalCount = acceptedDrafts.goals.filter(
       (goal) => goal.accept_state === "accepted" && goal.goal_type === "parent",
     ).length;
-    if (acceptedChildGoalCount < MIN_CHILD_GOALS || acceptedParentGoalCount < MIN_PARENT_GOALS) {
+    if (acceptedChildGoalCount < EXPECTED_CHILD_GOALS || acceptedParentGoalCount < EXPECTED_PARENT_GOALS) {
       throw new Error(
         `Accepted draft goal counts are insufficient: ${acceptedChildGoalCount} child / ${acceptedParentGoalCount} parent.`,
       );
@@ -747,7 +747,7 @@ async function run() {
 
     const promotion = await promoteAssessment(baseUrl, accessToken, createdAssessment.id);
     promotedProgramIds = promotion.created_program_ids;
-    if (promotion.created_program_count < 1 || promotion.created_goal_count < MIN_CHILD_GOALS + MIN_PARENT_GOALS) {
+    if (promotion.created_program_count < 1 || promotion.created_goal_count < EXPECTED_CHILD_GOALS + EXPECTED_PARENT_GOALS) {
       throw new Error(
         `Promotion created insufficient live records: ${promotion.created_program_count} programs / ${promotion.created_goal_count} goals.`,
       );
@@ -764,8 +764,8 @@ async function run() {
     if (liveRecords.programs.length !== promotedProgramIds.length) {
       throw new Error(`Expected ${promotedProgramIds.length} live programs, found ${liveRecords.programs.length}.`);
     }
-    if (liveRecords.goals.length < MIN_CHILD_GOALS + MIN_PARENT_GOALS) {
-      throw new Error(`Expected at least ${MIN_CHILD_GOALS + MIN_PARENT_GOALS} live goals, found ${liveRecords.goals.length}.`);
+    if (liveRecords.goals.length < EXPECTED_CHILD_GOALS + EXPECTED_PARENT_GOALS) {
+      throw new Error(`Expected at least ${EXPECTED_CHILD_GOALS + EXPECTED_PARENT_GOALS} live goals, found ${liveRecords.goals.length}.`);
     }
     promotedGoalIds = liveRecords.goals.map((goal) => goal.id);
     const visiblePair = selectVisibleProgramGoalPair(liveRecords);

@@ -18,8 +18,6 @@ import {
   EMPTY_ASSESSMENT_DRAFTS,
   EMPTY_CHECKLIST_RESPONSE,
   ENABLE_CHECKLIST_MAPPING_UI,
-  MIN_CHILD_GOALS,
-  MIN_PARENT_GOALS,
   formatGoalTimelineCriteria,
   parseApiErrorMessage,
   parseGoalTimelineCriteria,
@@ -544,24 +542,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const extractedChecklistValueCount = checklistItems.filter((item) => item.value_text?.trim()).length;
   const structuredChildGoalCount = structuredSections.filter(isStructuredChildGoalSection).length;
   const structuredParentGoalCount = structuredSections.filter(isStructuredParentGoalSection).length;
-  const approvedStructuredChildGoalCount = structuredSections.filter(
-    (section) => section.status === "approved" && isStructuredChildGoalSection(section),
-  ).length;
-  const approvedStructuredParentGoalCount = structuredSections.filter(
-    (section) => section.status === "approved" && isStructuredParentGoalSection(section),
-  ).length;
-  const hasExtractedStructuredGoalMinimums =
-    structuredChildGoalCount >= MIN_CHILD_GOALS && structuredParentGoalCount >= MIN_PARENT_GOALS;
-  const hasApprovedStructuredGoalMinimums =
-    approvedStructuredChildGoalCount >= MIN_CHILD_GOALS && approvedStructuredParentGoalCount >= MIN_PARENT_GOALS;
-  const acceptedDraftChildGoalCount = (assessmentDrafts?.goals ?? []).filter(
-    (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "child",
-  ).length;
-  const acceptedDraftParentGoalCount = (assessmentDrafts?.goals ?? []).filter(
-    (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "parent",
-  ).length;
-  const hasRequiredAcceptedGoalMix =
-    acceptedDraftChildGoalCount >= MIN_CHILD_GOALS && acceptedDraftParentGoalCount >= MIN_PARENT_GOALS;
   const hasStagedDraftChanges = hasExistingDrafts;
   const hasDraftsButNoLivePrograms = hasExistingDrafts && livePrograms.length === 0;
   const selectedAssessmentReadyForAiGeneration = selectedAssessmentDocument
@@ -574,19 +554,23 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       section.status === "approved" &&
       STRUCTURED_GOAL_FIELD_KEYS.has(section.field_key),
   );
+  const acceptedDraftChildGoalCount = (assessmentDrafts?.goals ?? []).filter(
+    (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "child",
+  ).length;
+  const acceptedDraftParentGoalCount = (assessmentDrafts?.goals ?? []).filter(
+    (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "parent",
+  ).length;
   const canGenerateUploadedAssessmentDraft =
     canQuerySelectedAssessment &&
     selectedAssessmentReadyForAiGeneration &&
     selectedFailedExtractionHasChecklistEvidence &&
     hasApprovedStructuredGoalSections &&
-    hasApprovedStructuredGoalMinimums &&
     !hasExistingDrafts;
   const canPromoteAssessment =
     canQuerySelectedAssessment &&
     !hasPendingRequiredChecklistItems &&
     hasAcceptedDraftProgram &&
-    hasAcceptedDraftGoal &&
-    hasRequiredAcceptedGoalMix;
+    hasAcceptedDraftGoal;
   const unresolvedRequiredCount = ENABLE_CHECKLIST_MAPPING_UI
     ? checklistItems.filter((item) => item.required && item.status !== "approved").length +
       structuredSections.filter((section) => section.required && section.status !== "approved").length
@@ -601,8 +585,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         ? "Accept or edit at least one draft program before publishing."
         : !hasAcceptedDraftGoal
           ? "Accept or edit at least one draft goal before publishing."
-          : !hasRequiredAcceptedGoalMix
-            ? `Accepted draft goals must include at least ${MIN_CHILD_GOALS} child and ${MIN_PARENT_GOALS} parent goals before publishing.`
           : null;
   const uploadedAssessmentGenerateDisabledReason = !canQuerySelectedAssessment
     ? "Select a valid uploaded assessment before creating deterministic drafts."
@@ -614,12 +596,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       ? "Extraction failed for this assessment. Retry deterministic draft generation using the extracted checklist evidence, or replace the source document if it needs correction."
     : !selectedAssessmentReadyForAiGeneration
       ? "Wait for extraction to complete before generating drafts."
-    : !hasExtractedStructuredGoalMinimums
-      ? `Adobe extraction found ${structuredChildGoalCount}/${MIN_CHILD_GOALS} child goals and ${structuredParentGoalCount}/${MIN_PARENT_GOALS} parent goals. Upload a richer source document or improve extraction before generating drafts.`
     : !hasApprovedStructuredGoalSections
       ? "Approve at least one structured CalOptima goal section before generating drafts."
-    : !hasApprovedStructuredGoalMinimums
-      ? `Approve at least ${MIN_CHILD_GOALS} child goals and ${MIN_PARENT_GOALS} parent goals before generating drafts.`
       : null;
 
   useEffect(() => {
@@ -1828,10 +1806,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       Checklist values: <span className="font-semibold">{extractedChecklistValueCount}/{checklistItems.length}</span>
                     </div>
                     <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                      Child goals: <span className="font-semibold">{structuredChildGoalCount}/{MIN_CHILD_GOALS}</span>
+                      Child goals: <span className="font-semibold">{structuredChildGoalCount}</span>
                     </div>
                     <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                      Parent goals: <span className="font-semibold">{structuredParentGoalCount}/{MIN_PARENT_GOALS}</span>
+                      Parent goals: <span className="font-semibold">{structuredParentGoalCount}</span>
                     </div>
                   </div>
                 </div>

@@ -70,6 +70,8 @@ const normalizeGoalDataPoint = (point: Record<string, unknown> | string): Record
   typeof point === "string" ? { label: point, raw_text: point } : point;
 
 const PROMOTED_ASSESSMENT_STATUSES = new Set(["approved", "promoted"]);
+const PROMOTION_READY_STATUS = "drafted";
+const PROMOTION_LOCK_STATUS = "extracted";
 
 export async function assessmentPromoteHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
@@ -121,6 +123,9 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   }
   if (PROMOTED_ASSESSMENT_STATUSES.has(document.status)) {
     return json({ error: "Assessment has already been approved and promoted to live records." }, 409);
+  }
+  if (document.status !== PROMOTION_READY_STATUS) {
+    return json({ error: "Assessment drafts must be ready before promotion. Refresh and retry after draft generation completes." }, 409);
   }
 
   const [draftProgramsResult, draftGoalsResult] = await Promise.all([
@@ -207,13 +212,15 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   const actorId = getAccessTokenSubject(accessToken);
   const now = new Date().toISOString();
   const promotionLockResult = await fetchJson<AssessmentDocumentRow[]>(
-    `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}&status=not.in.(approved,promoted)`,
+    `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}&status=eq.${encodeURIComponent(
+      document.status,
+    )}`,
     {
       method: "PATCH",
       headers: { ...headers, Prefer: "return=representation" },
       body: JSON.stringify({
-        status: "approved",
-        approved_at: now,
+        status: PROMOTION_LOCK_STATUS,
+        approved_at: null,
         updated_at: now,
       }),
     },
@@ -223,7 +230,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     return json({ error: "Failed to lock assessment for promotion." }, promotionLockResult.status || 500);
   }
   if (!lockedDocument) {
-    return json({ error: "Assessment has already been approved and promoted to live records." }, 409);
+    return json({ error: "Assessment is already being promoted or has been approved. Refresh before trying again." }, 409);
   }
 
   const rollbackLivePromotion = async (args: { createdProgramIds: string[]; restoreDocumentStatus: boolean }) => {

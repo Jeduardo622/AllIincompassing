@@ -41,6 +41,7 @@ type ChecklistResponse = {
     required: boolean;
     status: ChecklistItemStatus;
     value_text: string | null;
+    value_json?: unknown | null;
   }>;
   structured_sections: Array<{
     id: string;
@@ -94,6 +95,16 @@ const EXTRACTION_TIMEOUT_MS = 180_000;
 
 const pause = async (ms: number): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+const hasMeaningfulValue = (value: unknown): boolean => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.some((entry) => hasMeaningfulValue(entry));
+  if (typeof value === "object") return Object.values(value).some((entry) => hasMeaningfulValue(entry));
+  return false;
 };
 
 const resolveMimeType = (filePath: string): string => {
@@ -180,6 +191,12 @@ export const evaluatePdfSmokeAssessmentReadiness = (args: {
   const pendingChecklist = args.checklist.items.filter((item) => item.required && item.status !== "approved");
   if (pendingChecklist.length > 0) {
     reasons.push("required_checklist_pending");
+  }
+  const approvedRequiredChecklistWithoutValues = args.checklist.items.filter(
+    (item) => item.required && item.status === "approved" && !hasMeaningfulValue(item.value_text ?? item.value_json),
+  );
+  if (approvedRequiredChecklistWithoutValues.length > 0) {
+    reasons.push("required_checklist_value_missing");
   }
   const pendingStructuredSections = args.checklist.structured_sections.filter(
     (section) => section.required && section.status !== "approved",

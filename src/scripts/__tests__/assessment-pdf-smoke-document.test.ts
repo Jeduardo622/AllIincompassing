@@ -23,6 +23,7 @@ describe("assessment pdf smoke document readiness", () => {
               required: true,
               status: "approved",
               value_text: "Redacted Client",
+              value_json: null,
             },
           ],
           structured_sections: [
@@ -77,6 +78,7 @@ describe("assessment pdf smoke document readiness", () => {
               required: true,
               status: "drafted",
               value_text: "Redacted Client",
+              value_json: null,
             },
           ],
           structured_sections: [
@@ -149,6 +151,96 @@ describe("assessment pdf smoke document readiness", () => {
     ).toEqual({
       ready: false,
       reasons: ["template_type_not_caloptima"],
+    });
+  });
+
+  it("rejects approved required checklist rows when text and json values are empty", () => {
+    expect(
+      evaluatePdfSmokeAssessmentReadiness({
+        document: {
+          id: "doc-1",
+          client_id: "client-1",
+          file_name: "fixture.pdf",
+          object_path: "clients/client-1/assessments/fixture.pdf",
+          status: "extracted",
+          template_type: "caloptima_fba",
+        },
+        checklist: {
+          items: [
+            {
+              id: "item-1",
+              label: "Chief Complaint",
+              placeholder_key: "CALOPTIMA_FBA_CHIEF_COMPLAINT",
+              required: true,
+              status: "approved",
+              value_text: "   ",
+              value_json: {},
+            },
+          ],
+          structured_sections: [],
+        },
+        drafts: {
+          programs: [{ id: "program-1", name: "Program", description: null, accept_state: "accepted" }],
+          goals: [
+            {
+              id: "goal-1",
+              title: "Goal",
+              description: "Goal description",
+              original_text: "Goal description",
+              goal_type: "child",
+              accept_state: "accepted",
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      ready: false,
+      reasons: ["required_checklist_value_missing"],
+    });
+  });
+
+  it("accepts approved required checklist rows backed by structured json values", () => {
+    expect(
+      evaluatePdfSmokeAssessmentReadiness({
+        document: {
+          id: "doc-1",
+          client_id: "client-1",
+          file_name: "fixture.pdf",
+          object_path: "clients/client-1/assessments/fixture.pdf",
+          status: "extracted",
+          template_type: "caloptima_fba",
+        },
+        checklist: {
+          items: [
+            {
+              id: "item-1",
+              label: "Prior ABA",
+              placeholder_key: "CALOPTIMA_FBA_PRIOR_ABA_AGENCIES",
+              required: true,
+              status: "approved",
+              value_text: null,
+              value_json: { provider: "Prior provider" },
+            },
+          ],
+          structured_sections: [],
+        },
+        drafts: {
+          programs: [{ id: "program-1", name: "Program", description: null, accept_state: "accepted" }],
+          goals: [
+            {
+              id: "goal-1",
+              title: "Goal",
+              description: "Goal description",
+              original_text: "Goal description",
+              goal_type: "child",
+              accept_state: "accepted",
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      ready: true,
+      reasons: [],
     });
   });
 });

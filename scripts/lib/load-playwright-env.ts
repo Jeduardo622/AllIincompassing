@@ -2,6 +2,8 @@ import { config as loadEnv } from 'dotenv';
 import fs from 'node:fs';
 import path from 'node:path';
 
+export const DEFAULT_PLAYWRIGHT_BASE_URL = 'https://app.allincompassing.ai';
+
 export const loadPlaywrightEnv = (): void => {
   const explicitEnvFile = process.env.PLAYWRIGHT_ENV_FILE?.trim();
   const candidates = explicitEnvFile
@@ -31,3 +33,6 @@ export const loadPlaywrightEnv = (): void => {
     }
   }
 };
+
+export const resolvePlaywrightBaseUrl = (): string =>
+  process.env.PW_BASE_URL?.trim() || DEFAULT_PLAYWRIGHT_BASE_URL;

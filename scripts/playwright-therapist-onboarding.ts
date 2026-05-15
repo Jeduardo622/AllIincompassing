@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { loadPlaywrightEnv } from './lib/load-playwright-env';
+import { loadPlaywrightEnv, resolvePlaywrightBaseUrl } from './lib/load-playwright-env';
 import {
   assertRouteAccessible,
   captureFailureScreenshot,
@@ -33,7 +33,7 @@ async function run(): Promise<void> {
   ensureDir(latestDir);
 
   const headless = process.env.HEADLESS !== 'false';
-  const baseUrl = process.env.PW_BASE_URL ?? 'https://app.allincompassing.ai';
+  const baseUrl = resolvePlaywrightBaseUrl();
   const credentialCandidates = [
     {
       email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
@@ -222,5 +222,4 @@ run().catch((error) => {
   );
   process.exit(1);
 });
-
 

@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 
-import { loadPlaywrightEnv } from './lib/load-playwright-env';
+import { loadPlaywrightEnv, resolvePlaywrightBaseUrl } from './lib/load-playwright-env';
 import {
   assertRouteAccessible,
   captureFailureScreenshot,
@@ -15,7 +15,7 @@ async function run() {
   const context = await browser.newContext();
   const page = await context.newPage();
 
-  const base = process.env.PW_BASE_URL ?? 'https://app.allincompassing.ai';
+  const base = resolvePlaywrightBaseUrl();
   const credentials = preflightCredentials([
     {
       email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,

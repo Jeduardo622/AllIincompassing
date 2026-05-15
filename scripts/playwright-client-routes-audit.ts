@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { chromium, type Page } from 'playwright';
 
-import { loadPlaywrightEnv } from './lib/load-playwright-env';
+import { loadPlaywrightEnv, resolvePlaywrightBaseUrl } from './lib/load-playwright-env';
 
 type RouteStatus = 'passed' | 'failed' | 'skipped' | 'blocked';
 
@@ -321,7 +321,7 @@ const runRouteChecks = async (
 async function run(): Promise<void> {
   loadPlaywrightEnv();
 
-  const baseUrl = process.env.PW_BASE_URL ?? 'https://app.allincompassing.ai';
+  const baseUrl = resolvePlaywrightBaseUrl();
   const { email, password } = resolveAuthEnv();
   const timestamp = new Date().toISOString();
   const safeTimestamp = timestamp.replace(/[:.]/g, '-');

@@ -1670,13 +1670,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(
       await screen.findByText((_content, node) => node?.textContent === "Checklist values: 1/1"),
     ).toBeInTheDocument();
-    expect(screen.getByText((_content, node) => node?.textContent === "Child goals: 0/20")).toBeInTheDocument();
-    expect(screen.getByText((_content, node) => node?.textContent === "Parent goals: 0/6")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Adobe extraction found 0/20 child goals and 0/6 parent goals. Upload a richer source document or improve extraction before generating drafts.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText((_content, node) => node?.textContent === "Child goals: 0")).toBeInTheDocument();
+    expect(screen.getByText((_content, node) => node?.textContent === "Parent goals: 0")).toBeInTheDocument();
+    expect(screen.getByText("Approve at least one structured CalOptima goal section before generating drafts.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).toBeDisabled();
   });
 
@@ -2922,6 +2918,107 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Checklist review must load before publishing.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i })).toBeDisabled();
+  });
+
+  it("allows publish with smaller accepted draft sets once checklist review is complete", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "checklist-item-1",
+                section_key: "assessment_summary",
+                label: "Assessment summary",
+                placeholder_key: "summary",
+                required: true,
+                mode: "ASSISTED",
+                status: "approved",
+                review_notes: null,
+                value_text: "Synthetic assessment summary",
+              },
+            ],
+            structured_sections: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: [
+              {
+                id: "child-1",
+                title: "Child Goal 1",
+                description: "Child goal description 1",
+                original_text: "Child goal original text 1",
+                goal_type: "child",
+                accept_state: "accepted",
+                review_notes: null,
+              },
+              {
+                id: "child-2",
+                title: "Child Goal 2",
+                description: "Child goal description 2",
+                original_text: "Child goal original text 2",
+                goal_type: "child",
+                accept_state: "accepted",
+                review_notes: null,
+              },
+              {
+                id: "parent-1",
+                title: "Parent Goal 1",
+                description: "Parent goal description 1",
+                original_text: "Parent goal original text 1",
+                goal_type: "parent",
+                accept_state: "accepted",
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("fba.pdf");
+    const publishButton = await screen.findByRole("button", { name: /Publish to Live Programs \+ Goals/i });
+    expect(publishButton).toBeEnabled();
+    expect(screen.getByText("Accepted draft goals: 2 child / 1 parent")).toBeInTheDocument();
   });
 
   it("shows add-goal prerequisites when create goal is disabled", async () => {

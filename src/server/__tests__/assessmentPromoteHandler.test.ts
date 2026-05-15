@@ -15,8 +15,10 @@ vi.mock("../api/shared", async () => {
 
 import { fetchJson, getAccessToken, getAccessTokenSubject, getSupabaseConfig, resolveOrgAndRole } from "../api/shared";
 
-const buildAcceptedGoals = (): Array<Record<string, unknown>> => [
-  ...Array.from({ length: 20 }, (_, index) => ({
+const buildAcceptedGoals = (
+  counts: { childCount?: number; parentCount?: number } = {},
+): Array<Record<string, unknown>> => [
+  ...Array.from({ length: counts.childCount ?? 20 }, (_, index) => ({
     id: `child-goal-${index + 1}`,
     title: `Child Goal ${index + 1}`,
     description: `Child goal description ${index + 1} with enough detail.`,
@@ -27,7 +29,7 @@ const buildAcceptedGoals = (): Array<Record<string, unknown>> => [
       : [],
     accept_state: "accepted",
   })),
-  ...Array.from({ length: 6 }, (_, index) => ({
+  ...Array.from({ length: counts.parentCount ?? 6 }, (_, index) => ({
     id: `parent-goal-${index + 1}`,
     title: `Parent Goal ${index + 1}`,
     description: `Parent goal description ${index + 1} with enough detail.`,
@@ -267,8 +269,9 @@ describe("assessmentPromoteHandler", () => {
     expect(body.error).toContain("minimally complete");
   });
 
-  it("blocks promotion when accepted parent/child minimums are not met", async () => {
+  it("promotes smaller accepted goal sets when draft content is otherwise valid", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
@@ -279,29 +282,42 @@ describe("assessmentPromoteHandler", () => {
       supabaseUrl: "https://example.supabase.co",
       anonKey: "anon",
     });
-    vi.mocked(fetchJson)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "drafted" }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: [{ id: "program-1", name: "Draft Program", description: "x", accept_state: "accepted" }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: Array.from({ length: 26 }, (_, index) => ({
-          id: `child-goal-${index + 1}`,
-          title: `Child Goal ${index + 1}`,
-          description: `Child goal description ${index + 1} with enough detail.`,
-          original_text: `Child goal original text ${index + 1} with enough detail for validation.`,
-          goal_type: "child",
-          accept_state: "accepted",
-        })),
-      });
+    const acceptedGoals = buildAcceptedGoals({ childCount: 2, parentCount: 1 }).map((goal) => ({
+      ...goal,
+      draft_program_id: "program-1",
+    }));
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status")) {
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "drafted" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?")) {
+        return { ok: true, status: 200, data: [{ id: "program-1", name: "Draft Program", description: "x", accept_state: "accepted" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?")) {
+        return { ok: true, status: 200, data: acceptedGoals };
+      }
+      if (method === "POST" && url.includes("/rest/v1/programs")) {
+        return { ok: true, status: 201, data: [{ id: "prod-program-1" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/goals")) {
+        return {
+          ok: true,
+          status: 201,
+          data: acceptedGoals.map((goal, index) => ({ id: `prod-goal-${index + 1}`, title: goal.title })),
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/goal_data_points")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
 
     const response = await assessmentPromoteHandler(
       new Request("http://localhost/api/assessment-promote", {
@@ -311,9 +327,12 @@ describe("assessmentPromoteHandler", () => {
       }),
     );
 
-    const body = await response.json();
-    expect(response.status).toBe(409);
-    expect(body.error).toContain("Promotion requires at least");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      created_program_count: 1,
+      created_goal_count: 3,
+      promoted_goal_count: 3,
+    });
   });
 
   it("rolls back created programs when production goal creation fails", async () => {

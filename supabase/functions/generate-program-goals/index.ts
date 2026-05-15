@@ -9,11 +9,11 @@ const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
 });
 
-const MIN_CHILD_GOALS = 20;
-const MIN_PARENT_GOALS = 6;
 const MAX_GENERATION_ATTEMPTS = 2;
 const OPENAI_ATTEMPT_TIMEOUT_MS = 20000;
 const MAX_TEXT_CHARS = 12000;
+const MAX_GENERATED_PROGRAMS = 50;
+const MAX_GENERATED_GOALS = 500;
 
 const REVIEW_FLAGS = [
   "missing_baseline",
@@ -140,7 +140,7 @@ const responseSchema = z
           .strict(),
       )
       .min(1)
-      .max(5),
+      .max(MAX_GENERATED_PROGRAMS),
     goals: z
       .array(
         z
@@ -165,7 +165,7 @@ const responseSchema = z
           .strict(),
       )
       .min(1)
-      .max(80),
+      .max(MAX_GENERATED_GOALS),
     summary_rationale: z.string().trim().min(10).max(2500),
     confidence: z.enum(["low", "medium", "high"]),
   })
@@ -184,8 +184,7 @@ type AttemptFailureReason =
   | "duplicate_goal_titles"
   | "missing_program_match"
   | "missing_evidence_refs"
-  | "weak_evidence_missing_flags"
-  | "goal_mix_mismatch";
+  | "weak_evidence_missing_flags";
 
 const normalizeTitle = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -262,11 +261,6 @@ const hasMissingEvidenceRefs = (payload: ResponsePayload): boolean => {
   return payload.goals.some((goal) => goal.evidence_refs.length === 0);
 };
 
-const hasGoalMixMismatch = (payload: ResponsePayload): boolean => {
-  const { childCount, parentCount } = countGoalsByType(payload.goals);
-  return childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS;
-};
-
 const trim = (value: string, max: number): string => {
   if (value.length <= max) {
     return value;
@@ -302,9 +296,10 @@ SOURCE_EVIDENCE_SNIPPETS:
 ${evidenceJson}
 
 Generation requirements:
-- Generate 1 to 5 programs only if clearly supported by the assessment.
+- Generate the full set of distinct programs clearly supported by the assessment evidence.
 - Generate both child and parent goals when the evidence supports them.
-- Prefer quality and evidence alignment over high goal volume.
+- Prefer quality and evidence alignment over arbitrary count limits.
+- Keep the result within ${MAX_GENERATED_PROGRAMS} programs and ${MAX_GENERATED_GOALS} goals by merging near-duplicates if necessary.
 - Do not create goals unsupported by the uploaded FBA.
 - Make each goal clinically specific, measurable, and implementation-ready.
 - Avoid duplicate goals across programs.
@@ -354,11 +349,14 @@ const buildFallbackResponse = (payload: RequestPayload, reason: string): Respons
     },
   ];
 
-  const goals: DraftGoal[] = [];
-  for (let index = 1; index <= MIN_CHILD_GOALS; index += 1) {
-    goals.push({
+  const evidenceText =
+    `${payload.assessment_summary}\n${payload.source_evidence_snippets.map((entry) => entry.snippet).join("\n")}`
+      .toLowerCase();
+  const shouldIncludeParentGoal = /\b(parent|caregiver|family|guardian)\b/.test(evidenceText);
+  const goals: DraftGoal[] = [
+    {
       program_name: programName,
-      title: `Child Goal ${index}: Functional Skill Target`,
+      title: "Child Goal: Functional Skill Target",
       description:
         `${learnerName} will demonstrate an observable replacement skill from assessment findings with clinician-confirmed criteria.`,
       original_text: `Fallback child goal based on source snippet: ${snippet}`,
@@ -377,12 +375,12 @@ const buildFallbackResponse = (payload: RequestPayload, reason: string): Respons
       rationale: "Conservative fallback target created to preserve draft workflow continuity.",
       evidence_refs: [{ section_key: sectionKey, source_span: snippet }],
       review_flags: ["clinician_confirmation_needed", "evidence_gap"],
-    });
-  }
-  for (let index = 1; index <= MIN_PARENT_GOALS; index += 1) {
+    },
+  ];
+  if (shouldIncludeParentGoal) {
     goals.push({
       program_name: programName,
-      title: `Parent Goal ${index}: Caregiver Implementation Fidelity`,
+      title: "Parent Goal: Caregiver Implementation Fidelity",
       description:
         "Caregiver will participate in implementation coaching and demonstrate procedural steps with BCBA-confirmed thresholds.",
       original_text: `Fallback parent goal based on source snippet: ${snippet}`,
@@ -443,10 +441,6 @@ const parseAndValidateCandidate = (
   if (hasWeakEvidenceWithoutFlags(payload)) {
     return { ok: false, reason: "weak_evidence_missing_flags" };
   }
-  if (hasGoalMixMismatch(payload)) {
-    return { ok: false, reason: "goal_mix_mismatch" };
-  }
-
   return { ok: true, payload };
 };
 
@@ -470,8 +464,6 @@ const buildRetryHint = (reason: AttemptFailureReason): string => {
       return "Every program and goal must include non-empty evidence_refs.";
     case "weak_evidence_missing_flags":
       return "Weakly supported items must include evidence_gap or clinician_confirmation_needed in review_flags.";
-    case "goal_mix_mismatch":
-      return `Ensure at least ${MIN_CHILD_GOALS} child goals and ${MIN_PARENT_GOALS} parent goals.`;
   }
 };
 
@@ -533,6 +525,14 @@ export async function handleGenerateProgramGoals(req: Request): Promise<Response
         continue;
       }
 
+      if (!("choices" in completion)) {
+        const reason: AttemptFailureReason = "empty_content";
+        attemptFailures.push(reason);
+        lastFailureReason = `attempt ${attempt} returned an unsupported streaming response`;
+        retryHint = buildRetryHint(reason);
+        continue;
+      }
+
       const rawContent = completion.choices[0]?.message?.content;
       if (!rawContent) {
         const reason: AttemptFailureReason = "empty_content";
@@ -583,4 +583,6 @@ export const __TESTING__ = {
   REVIEW_FLAGS,
 };
 
-Deno.serve(handleGenerateProgramGoals);
+if (import.meta.main) {
+  Deno.serve(handleGenerateProgramGoals);
+}

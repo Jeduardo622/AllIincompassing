@@ -21,9 +21,11 @@ import {
   resolveOrgAndRole,
 } from "../api/shared";
 
-const buildTypedGoals = (): Array<Record<string, unknown>> => [
-  ...Array.from({ length: 20 }, (_, index) => ({
-    program_name: "Communication Program",
+const buildTypedGoals = (
+  counts: { childCount?: number; parentCount?: number; programName?: string } = {},
+): Array<Record<string, unknown>> => [
+  ...Array.from({ length: counts.childCount ?? 20 }, (_, index) => ({
+    program_name: counts.programName ?? "Communication Program",
     title: `Child Goal ${index + 1}`,
     description: `Child goal description ${index + 1}`,
     original_text: `Child goal original text ${index + 1}`,
@@ -40,8 +42,8 @@ const buildTypedGoals = (): Array<Record<string, unknown>> => [
     evidence_refs: [{ section_key: "assessment_summary", source_span: "Child evidence snippet" }],
     review_flags: [],
   })),
-  ...Array.from({ length: 6 }, (_, index) => ({
-    program_name: "Communication Program",
+  ...Array.from({ length: counts.parentCount ?? 6 }, (_, index) => ({
+    program_name: counts.programName ?? "Communication Program",
     title: `Parent Goal ${index + 1}`,
     description: `Parent goal description ${index + 1}`,
     original_text: `Parent goal original text ${index + 1}`,
@@ -214,6 +216,55 @@ describe("assessmentDraftsHandler", () => {
     expect(programPayload[0]?.confidence).toBe("medium");
   });
 
+  it("accepts smaller manual draft goal sets without legacy minimum enforcement", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
+      })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: [{ id: "draft-program-1", name: "Communication Program" }] })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: null })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          programs: [
+            {
+              name: "Communication Program",
+              description: "Program description",
+              rationale: "Program rationale",
+              evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence snippet" }],
+              review_flags: [],
+            },
+          ],
+          summary_rationale: "Summary rationale",
+          confidence: "medium",
+          goals: buildTypedGoals({ childCount: 2, parentCount: 1 }),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+  });
+
   it("deterministically creates staged drafts from approved structured sections", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
@@ -335,6 +386,117 @@ describe("assessmentDraftsHandler", () => {
       .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/goals"));
     expect(liveProgramWrite).toBeUndefined();
     expect(liveGoalWrite).toBeUndefined();
+  });
+
+  it("deterministically persists every approved structured program and goal beyond the legacy caps", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const programNames = Array.from({ length: 7 }, (_, index) => `Program ${index + 1}`);
+    const structuredGoals = [
+      ...Array.from({ length: 21 }, (_, index) => ({
+        id: `structured-child-${index + 1}`,
+        section_key: "goals_treatment_planning",
+        field_key: index % 2 === 0 ? "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS" : "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+        section_index: index,
+        payload: {
+          ...buildTypedGoals({ childCount: 1, parentCount: 0, programName: programNames[index % programNames.length] })[0],
+          title: `Child Goal ${index + 1}`,
+          objective_data_points: [{ metric_name: "Point A", metric_value: 1 }],
+        },
+        status: "approved",
+        required: true,
+      })),
+      ...Array.from({ length: 7 }, (_, index) => ({
+        id: `structured-parent-${index + 1}`,
+        section_key: "goals_treatment_planning",
+        field_key: "CALOPTIMA_FBA_PARENT_GOALS",
+        section_index: 100 + index,
+        payload: {
+          ...buildTypedGoals({ childCount: 0, parentCount: 1, programName: programNames[index] })[0],
+          title: `Parent Goal ${index + 1}`,
+          goal_type: "parent",
+          objective_data_points: [{ metric_name: "Point A", metric_value: 1 }],
+        },
+        status: "approved",
+        required: true,
+      })),
+    ];
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?")) {
+        return { ok: true, status: 200, data: structuredGoals };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
+        const body = JSON.parse(String(init?.body)) as Array<{ name: string }>;
+        return {
+          ok: true,
+          status: 201,
+          data: body.map((program, index) => ({ id: `draft-program-${index + 1}`, name: program.name })),
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_goals")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          auto_generate: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const programCreateCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.includes("/rest/v1/assessment_draft_programs") &&
+          (init?.method ?? "").toUpperCase() === "POST",
+      );
+    const goalCreateCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.includes("/rest/v1/assessment_draft_goals") &&
+          (init?.method ?? "").toUpperCase() === "POST",
+      );
+    const programPayload = JSON.parse((programCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
+    const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
+    expect(programPayload).toHaveLength(7);
+    expect(goalPayload).toHaveLength(28);
   });
 
   it("rolls back inserted draft programs when goal insert fails", async () => {

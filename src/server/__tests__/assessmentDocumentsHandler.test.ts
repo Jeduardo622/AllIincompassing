@@ -34,6 +34,7 @@ describe("assessmentDocumentsHandler", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     if (typeof ORIGINAL_SUPABASE_SERVICE_ROLE_KEY === "string") {
       process.env.SUPABASE_SERVICE_ROLE_KEY = ORIGINAL_SUPABASE_SERVICE_ROLE_KEY;
     } else {
@@ -281,7 +282,7 @@ describe("assessmentDocumentsHandler", () => {
     });
   });
 
-  it("creates assessment document with IEHP template rows", async () => {
+  it("blocks IEHP document extraction until the workflow is implemented", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -294,20 +295,6 @@ describe("assessmentDocumentsHandler", () => {
       anonKey: "anon",
     });
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
-    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([
-      {
-        section: "identification_admin",
-        label: "IEHP Member ID#",
-        placeholder_key: "IEHP_FBA_MEMBER_ID",
-        mode: "AUTO",
-        source: "authorizations.member_id",
-        required: true,
-        extraction_method: "database_prefill",
-        validation_rule: "non_empty_identifier",
-        status: "not_started",
-      },
-    ]);
-
     mockUploadFlowResponses("doc-2");
 
     const response = await assessmentDocumentsHandler(
@@ -325,8 +312,11 @@ describe("assessmentDocumentsHandler", () => {
       }),
     );
 
-    expect(response.status).toBe(201);
-    expect(loadChecklistTemplateRows).toHaveBeenCalledWith("iehp_fba");
+    expect(response.status).toBe(501);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("IEHP FBA upload extraction is not currently supported"),
+    });
+    expect(loadChecklistTemplateRows).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported template_type", async () => {
@@ -914,7 +904,7 @@ describe("assessmentDocumentsHandler", () => {
     ) as Record<string, unknown>;
     expectExtractionFailedStatusWriteInvariants(
       extractionFailedDocumentPatchPayload,
-      "Adobe PDF extraction failed. Review checklist manually.",
+      "Field extraction failed. Review checklist manually.",
     );
     const extractionFailedReviewEventCalls = vi
       .mocked(fetchJson)
@@ -948,9 +938,12 @@ describe("assessmentDocumentsHandler", () => {
       from_status: "extracting",
       to_status: "extraction_failed",
       actor_id: "user-1",
+      event_payload: {
+        reason_code: "edge_extraction_failed",
+        status: 502,
+      },
     });
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("notes");
-    expect(extractionFailedReviewEventPayload).not.toHaveProperty("event_payload");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("extracted_count");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_count");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_keys");
@@ -1234,9 +1227,12 @@ describe("assessmentDocumentsHandler", () => {
       from_status: "extracting",
       to_status: "extraction_failed",
       actor_id: "user-1",
+      event_payload: {
+        reason_code: "extraction_workflow_failed",
+        status: null,
+      },
     });
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("notes");
-    expect(extractionFailedReviewEventPayload).not.toHaveProperty("event_payload");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("extracted_count");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_count");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_keys");
@@ -1273,6 +1269,87 @@ describe("assessmentDocumentsHandler", () => {
       return url.includes("/rest/v1/assessment_draft_programs") || url.includes("/rest/v1/assessment_draft_goals");
     });
     expect(draftWriteCalls).toHaveLength(0);
+  });
+
+  it("aborts bounded extraction on timeout and does not later mark the document extracted", async () => {
+    vi.useFakeTimers();
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [{ id: "doc-timeout", organization_id: "org-1", client_id: "11111111-1111-1111-1111-111111111111" }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        });
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-timeout")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const responsePromise = assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+      }),
+    );
+
+    await vi.advanceTimersByTimeAsync(55_000);
+    const response = await responsePromise;
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "extraction_failed",
+      extraction_error: "Extraction timed out before completion.",
+    });
+    const documentStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-timeout"))
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(true);
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extracted\""))).toBe(false);
   });
 
   it("keeps the document extracted and does not run legacy draft generation on extraction completion", async () => {

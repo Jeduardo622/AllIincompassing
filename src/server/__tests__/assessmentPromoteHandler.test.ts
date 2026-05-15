@@ -105,7 +105,7 @@ describe("assessmentPromoteHandler", () => {
         return { ok: true, status: 201, data: null };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
-        return { ok: true, status: 200, data: null };
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "approved" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
         return { ok: true, status: 201, data: null };
@@ -218,6 +218,103 @@ describe("assessmentPromoteHandler", () => {
     expect(body.error).toContain("Duplicate accepted goal titles");
   });
 
+  it("blocks re-promotion of an already approved assessment before live rows are created", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "approved" }],
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    const body = await response.json();
+    expect(response.status).toBe(409);
+    expect(body.error).toContain("already been approved and promoted");
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/programs"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/goals"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("blocks promotion when the conditional promotion lock finds the assessment already promoted", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status")) {
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "drafted" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?")) {
+        return { ok: true, status: 200, data: [{ id: "draft-program-1", name: "Draft Program", description: "x", accept_state: "accepted" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: buildAcceptedGoals({ childCount: 1, parentCount: 0 }).map((goal) => ({ ...goal, draft_program_id: "draft-program-1" })),
+        };
+      }
+      if (
+        method === "PATCH" &&
+        url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=not.in.(approved,promoted)")
+      ) {
+        return { ok: true, status: 200, data: [] };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    const body = await response.json();
+    expect(response.status).toBe(409);
+    expect(body.error).toContain("already been approved and promoted");
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/programs"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/goals"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("blocks promotion when accepted goals are missing minimum content", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -311,7 +408,7 @@ describe("assessmentPromoteHandler", () => {
         return { ok: true, status: 201, data: null };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
-        return { ok: true, status: 200, data: null };
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "approved" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
         return { ok: true, status: 201, data: null };
@@ -367,6 +464,9 @@ describe("assessmentPromoteHandler", () => {
       }
       if (method === "POST" && url.includes("/rest/v1/goals")) {
         return { ok: false, status: 500, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "approved" }] };
       }
       if (
         method === "DELETE" &&
@@ -445,7 +545,7 @@ describe("assessmentPromoteHandler", () => {
         return { ok: true, status: 201, data: null };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
-        return { ok: true, status: 200, data: null };
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "approved" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
         return { ok: true, status: 201, data: null };
@@ -531,6 +631,9 @@ describe("assessmentPromoteHandler", () => {
       }
       if (method === "DELETE" && url.includes("/rest/v1/programs?id=in.(prod-program-1)&organization_id=eq.org-1&client_id=eq.client-1")) {
         return { ok: true, status: 200, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "approved" }] };
       }
       return { ok: false, status: 500, data: null };
     });
@@ -681,7 +784,7 @@ describe("assessmentPromoteHandler", () => {
         return { ok: true, status: 201, data: null };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1")) {
-        return { ok: true, status: 200, data: null };
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "approved" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
         return { ok: false, status: 500, data: null };
@@ -757,7 +860,7 @@ describe("assessmentPromoteHandler", () => {
         return { ok: true, status: 201, data: null };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1")) {
-        return { ok: true, status: 200, data: null };
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "approved" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
         return { ok: false, status: 500, data: null };
@@ -783,5 +886,14 @@ describe("assessmentPromoteHandler", () => {
     expect(response.status).toBe(500);
     expect(body.error).toContain("rollback did not complete cleanly");
     expect(body.rollback_failed_steps).toEqual(["delete_programs"]);
+    const documentPatchBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        return typeof url === "string" && method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1");
+      })
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentPatchBodies.some((bodyText) => bodyText.includes('"status":"approved"'))).toBe(true);
+    expect(documentPatchBodies.some((bodyText) => bodyText.includes('"status":"drafted"'))).toBe(false);
   });
 });

@@ -69,6 +69,8 @@ const toStringOrNull = (value: unknown): string | null =>
 const normalizeGoalDataPoint = (point: Record<string, unknown> | string): Record<string, unknown> =>
   typeof point === "string" ? { label: point, raw_text: point } : point;
 
+const PROMOTED_ASSESSMENT_STATUSES = new Set(["approved", "promoted"]);
+
 export async function assessmentPromoteHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
@@ -116,6 +118,9 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   const document = Array.isArray(docLookup.data) ? docLookup.data[0] : null;
   if (!docLookup.ok || !document) {
     return json({ error: "assessment_document_id is not in scope for this organization" }, 403);
+  }
+  if (PROMOTED_ASSESSMENT_STATUSES.has(document.status)) {
+    return json({ error: "Assessment has already been approved and promoted to live records." }, 409);
   }
 
   const [draftProgramsResult, draftGoalsResult] = await Promise.all([
@@ -199,6 +204,28 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     return json({ error: "Accepted goals must keep their draft program link when promoting multiple programs." }, 409);
   }
 
+  const actorId = getAccessTokenSubject(accessToken);
+  const now = new Date().toISOString();
+  const promotionLockResult = await fetchJson<AssessmentDocumentRow[]>(
+    `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}&status=not.in.(approved,promoted)`,
+    {
+      method: "PATCH",
+      headers: { ...headers, Prefer: "return=representation" },
+      body: JSON.stringify({
+        status: "approved",
+        approved_at: now,
+        updated_at: now,
+      }),
+    },
+  );
+  const lockedDocument = Array.isArray(promotionLockResult.data) ? promotionLockResult.data[0] : null;
+  if (!promotionLockResult.ok) {
+    return json({ error: "Failed to lock assessment for promotion." }, promotionLockResult.status || 500);
+  }
+  if (!lockedDocument) {
+    return json({ error: "Assessment has already been approved and promoted to live records." }, 409);
+  }
+
   const rollbackLivePromotion = async (args: { createdProgramIds: string[]; restoreDocumentStatus: boolean }) => {
     const { createdProgramIds, restoreDocumentStatus } = args;
     const failedSteps: string[] = [];
@@ -226,7 +253,8 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       }
     }
 
-    if (restoreDocumentStatus) {
+    const liveRollbackFailed = failedSteps.includes("delete_goals") || failedSteps.includes("delete_programs");
+    if (restoreDocumentStatus && !liveRollbackFailed) {
       const restoreDocumentResult = await fetchJson(
         `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`,
         {
@@ -262,7 +290,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       }),
     });
     if (!createProgramResult.ok || !Array.isArray(createProgramResult.data) || !createProgramResult.data[0]?.id) {
-      const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+      const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: true });
       return json(
         {
           error: rollback.ok
@@ -301,7 +329,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   }));
 
   if (createGoalsPayload.some((goal) => !goal.program_id)) {
-    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: true });
     return json(
       {
         error: rollback.ok
@@ -320,7 +348,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   });
 
   if (!createGoalsResult.ok) {
-    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: true });
     return json(
       {
         error: rollback.ok
@@ -332,13 +360,11 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     );
   }
 
-  const actorId = getAccessTokenSubject(accessToken);
-  const now = new Date().toISOString();
   const createdGoals = Array.isArray(createGoalsResult.data) ? createGoalsResult.data : [];
   const createdGoalByTitle = new Map(createdGoals.map((goal) => [normalizeTitle(goal.title), goal]));
   const missingCreatedGoal = acceptedGoals.find((goal) => !createdGoalByTitle.has(normalizeTitle(goal.title)));
   if (missingCreatedGoal) {
-    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: true });
     return json(
       {
         error: rollback.ok
@@ -383,7 +409,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       body: JSON.stringify(goalDataPointPayload),
     });
     if (!createGoalDataPointsResult.ok) {
-      const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+      const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: true });
       return json(
         {
           error: rollback.ok
@@ -405,7 +431,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     }),
   });
   if (!updateDocumentResult.ok) {
-    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: true });
     return json(
       {
         error: rollback.ok

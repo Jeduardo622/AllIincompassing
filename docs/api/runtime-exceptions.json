@@ -40,21 +40,21 @@
       "publicApiPath": "/api/book",
       "reason": "Route now delegates to edge authority (`sessions-book`) but remains a transport adapter until full legacy fallback removal.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-05-15"
+      "expiresAt": "2026-06-30"
     },
     {
       "functionFile": "dashboard.ts",
       "publicApiPath": "/api/dashboard",
       "reason": "Route now delegates to `get-dashboard-data` edge authority; adapter retained for contract stability and rollback.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-05-15"
+      "expiresAt": "2026-06-30"
     },
     {
       "functionFile": "sessions-start.ts",
       "publicApiPath": "/api/sessions-start",
       "reason": "Route now delegates to edge `sessions-start`; adapter retained temporarily for controlled cutover.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-05-15"
+      "expiresAt": "2026-06-30"
     }
   ]
 }

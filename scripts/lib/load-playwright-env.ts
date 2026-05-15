@@ -5,8 +5,8 @@ import path from 'node:path';
 export const loadPlaywrightEnv = (): void => {
   const explicitEnvFile = process.env.PLAYWRIGHT_ENV_FILE?.trim();
   const candidates = explicitEnvFile
-    ? [explicitEnvFile, '.env', '.env.local', '.env.codex']
-    : ['.env', '.env.local', '.env.codex'];
+    ? [explicitEnvFile, '.env.local', '.env.codex', '.env']
+    : ['.env.local', '.env.codex', '.env'];
 
   const loaded = new Set<string>();
   for (const candidate of candidates) {

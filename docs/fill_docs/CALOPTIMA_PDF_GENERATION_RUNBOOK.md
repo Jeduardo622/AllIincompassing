@@ -97,7 +97,7 @@ npx vitest run \
 npm run playwright:assessment-pdf-smoke
 ```
 
-`npm run playwright:assessment-pdf-smoke` requires `PW_ADMIN_EMAIL`, `PW_ADMIN_PASSWORD`, Supabase URL/key env, and `PW_ASSESSMENT_DOCUMENT_ID` pointing to an approved CalOptima assessment with accepted program/goals. The smoke generates through `POST /api/assessment-plan-pdf`, downloads the signed PDF, renders mapped pages to screenshots, and fails if generated pixels appear outside allowed boxes or the renderer reports overflow.
+`npm run playwright:assessment-pdf-smoke` requires `PW_ADMIN_EMAIL`, `PW_ADMIN_PASSWORD`, and Supabase URL/key env. `PW_ASSESSMENT_DOCUMENT_ID` remains available as an override, but the smoke now prefers to discover its own ready CalOptima assessment automatically and can provision a temporary fixture when `PW_ASSESSMENT_CLIENT_ID` is set to a dedicated smoke client. The smoke generates through `POST /api/assessment-plan-pdf`, downloads the signed PDF, renders mapped pages to screenshots, and fails if generated pixels appear outside allowed boxes or the renderer reports overflow.
 
 ## Audit and traceability
 

@@ -99,7 +99,7 @@ This covers:
 - overlay warning propagation for `Generate Completed CalOptima PDF`
 - visual placement smoke for generated CalOptima PDF pages with mapped fields
 
-`npm run playwright:assessment-pdf-smoke` requires authenticated Playwright/Supabase env plus `PW_ASSESSMENT_DOCUMENT_ID` for an approved CalOptima assessment with accepted program/goals.
+`npm run playwright:assessment-pdf-smoke` requires authenticated Playwright/Supabase env. It now reuses `PW_ASSESSMENT_DOCUMENT_ID` only as an override; otherwise it first discovers a ready CalOptima assessment and, when `PW_ASSESSMENT_CLIENT_ID` points to a dedicated smoke client, can provision a temporary assessment fixture automatically.
 
 ## Agent eval smoke (edge functions)
 

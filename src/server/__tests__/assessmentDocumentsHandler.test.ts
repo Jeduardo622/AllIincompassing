@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { assessmentDocumentsHandler } from "../api/assessment-documents";
+import { assessmentDocumentsExtractionBackgroundHandler, assessmentDocumentsHandler } from "../api/assessment-documents";
+import { handler as assessmentDocumentsNetlifyHandler } from "../../../netlify/functions/assessment-documents";
 
 vi.mock("../api/shared", async () => {
   const actual = await vi.importActual<typeof import("../api/shared")>("../api/shared");
@@ -27,6 +28,7 @@ import {
 import { loadChecklistTemplateRows } from "../assessmentChecklistTemplate";
 
 const ORIGINAL_SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ORIGINAL_FETCH = globalThis.fetch;
 
 describe("assessmentDocumentsHandler", () => {
   beforeEach(() => {
@@ -40,6 +42,7 @@ describe("assessmentDocumentsHandler", () => {
     } else {
       delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     }
+    globalThis.fetch = ORIGINAL_FETCH;
   });
 
   const roleMatrix = [
@@ -249,6 +252,11 @@ describe("assessmentDocumentsHandler", () => {
     );
 
     expect(response.status).toBe(201);
+    await expect(response.clone().json()).resolves.toMatchObject({
+      id: "doc-1",
+      status: "extracting",
+      extraction_error: null,
+    });
     expect(fetchJson).toHaveBeenCalledWith(
       expect.stringContaining("/assessment_checklist_items"),
       expect.objectContaining({ method: "POST" }),
@@ -257,19 +265,16 @@ describe("assessmentDocumentsHandler", () => {
       expect.stringContaining("/assessment_extractions"),
       expect.objectContaining({ method: "POST" }),
     );
-    expect(fetchJson).toHaveBeenCalledWith(
-      expect.stringContaining("/functions/v1/extract-assessment-fields"),
-      expect.objectContaining({ method: "POST" }),
-    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const extractionCall = vi
       .mocked(fetchJson)
       .mock.calls.find(([url]) => typeof url === "string" && url.includes("/functions/v1/extract-assessment-fields"));
+    expect(extractionCall).toBeDefined();
     const extractionPayload = JSON.parse(String((extractionCall?.[1] as RequestInit | undefined)?.body ?? "{}")) as {
       checklist_rows?: Array<{ extraction_aliases?: string[] }>;
     };
     expect(extractionPayload.checklist_rows?.[0]?.extraction_aliases).toEqual(["Member full legal name"]);
     expect(loadChecklistTemplateRows).toHaveBeenCalledWith("caloptima_fba");
-    await new Promise((resolve) => setTimeout(resolve, 0));
     const completedEventCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
       const body = String((init as RequestInit | undefined)?.body ?? "");
       return typeof url === "string" && url.includes("/assessment_review_events") && body.includes("extraction_completed");
@@ -280,6 +285,993 @@ describe("assessmentDocumentsHandler", () => {
       adobe_element_count: 42,
       adobe_table_count: 3,
     });
+  });
+
+  it("returns upload response before starting the scheduled CalOptima extraction workflow", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockUploadFlowResponses("doc-scheduled");
+
+    const scheduled: string[] = [];
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+      }),
+      {
+        scheduleCaloptimaExtraction: async ({ createdDocumentId }) => {
+          scheduled.push(createdDocumentId);
+          return { ok: true, status: 202 };
+        },
+      },
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      id: "doc-scheduled",
+      status: "extracting",
+      extraction_error: null,
+    });
+    expect(scheduled).toEqual(["doc-scheduled"]);
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("fails closed when scheduling CalOptima extraction throws after marking the document extracting", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockUploadFlowResponses("doc-schedule-throw");
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+      }),
+      {
+        scheduleCaloptimaExtraction: async () => {
+          throw new Error("trigger failed");
+        },
+      },
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Unable to start extraction. Retry the upload or contact support.",
+    });
+    const documentStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-schedule-throw"))
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extracting\""))).toBe(true);
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(true);
+  });
+
+  it("Netlify upload wrapper schedules extraction with waitUntil without awaiting the background fetch", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockUploadFlowResponses("doc-netlify-wrapper");
+    const waitUntil = vi.fn();
+    globalThis.fetch = vi.fn(() => new Promise<Response>(() => undefined)) as typeof fetch;
+
+    const response = await assessmentDocumentsNetlifyHandler(
+      {
+        httpMethod: "POST",
+        headers: {
+          host: "app.example.com",
+          authorization: "Bearer token",
+        },
+        path: "/api/assessment-documents",
+        rawUrl: "https://app.example.com/api/assessment-documents",
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+        isBase64Encoded: false,
+      } as never,
+      { waitUntil } as never,
+      undefined as never,
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect(JSON.parse(response.body)).toMatchObject({
+      id: "doc-netlify-wrapper",
+      status: "extracting",
+    });
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://app.example.com/.netlify/functions/assessment-documents-extract-background",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer token" }),
+        body: JSON.stringify({
+          assessment_document_id: "doc-netlify-wrapper",
+          client_id: "11111111-1111-1111-1111-111111111111",
+        }),
+      }),
+    );
+  });
+
+  it("Netlify upload wrapper fails closed when waitUntil is unavailable", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockUploadFlowResponses("doc-netlify-no-waituntil");
+    globalThis.fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 202 }))) as typeof fetch;
+
+    const response = await assessmentDocumentsNetlifyHandler(
+      {
+        httpMethod: "POST",
+        headers: {
+          host: "app.example.com",
+          authorization: "Bearer token",
+        },
+        path: "/api/assessment-documents",
+        rawUrl: "https://app.example.com/api/assessment-documents",
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+        isBase64Encoded: false,
+      } as never,
+      {} as never,
+      undefined as never,
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    const documentStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-netlify-no-waituntil"))
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extracting\""))).toBe(true);
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(true);
+  });
+
+  it("Netlify upload wrapper marks extraction failed when the background trigger rejects", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockUploadFlowResponses("doc-netlify-trigger-fail");
+    const waitUntilPromises: Promise<unknown>[] = [];
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error("network down"))) as typeof fetch;
+
+    const response = await assessmentDocumentsNetlifyHandler(
+      {
+        httpMethod: "POST",
+        headers: {
+          host: "app.example.com",
+          authorization: "Bearer token",
+        },
+        path: "/api/assessment-documents",
+        rawUrl: "https://app.example.com/api/assessment-documents",
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+        isBase64Encoded: false,
+      } as never,
+      {
+        waitUntil: (promise: Promise<unknown>) => {
+          waitUntilPromises.push(promise);
+        },
+      } as never,
+      undefined as never,
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect(waitUntilPromises).toHaveLength(1);
+    await waitUntilPromises[0];
+    const documentStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-netlify-trigger-fail"))
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extracting\""))).toBe(true);
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(true);
+  });
+
+  it("Netlify upload wrapper does not overwrite worker-handled failures from background responses", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockUploadFlowResponses("doc-netlify-worker-terminal-failure");
+    const waitUntilPromises: Promise<unknown>[] = [];
+    globalThis.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ accepted: true }), { status: 202 }))) as typeof fetch;
+
+    const response = await assessmentDocumentsNetlifyHandler(
+      {
+        httpMethod: "POST",
+        headers: {
+          host: "app.example.com",
+          authorization: "Bearer token",
+        },
+        path: "/api/assessment-documents",
+        rawUrl: "https://app.example.com/api/assessment-documents",
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+        isBase64Encoded: false,
+      } as never,
+      {
+        waitUntil: (promise: Promise<unknown>) => {
+          waitUntilPromises.push(promise);
+        },
+      } as never,
+      undefined as never,
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect(waitUntilPromises).toHaveLength(1);
+    await waitUntilPromises[0];
+    const documentStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-netlify-worker-terminal-failure"))
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extracting\""))).toBe(true);
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(false);
+  });
+
+  it("runs CalOptima extraction from the background worker only for scoped extracting documents", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([
+      {
+        section: "identification_admin",
+        label: "Member Name",
+        placeholder_key: "CALOPTIMA_FBA_MEMBER_NAME",
+        mode: "AUTO",
+        source: "clients.full_name",
+        required: true,
+        extraction_method: "database_prefill",
+        validation_rule: "non_empty_text",
+        status: "not_started",
+      },
+    ]);
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extracting",
+              template_type: "caloptima_fba",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
+              updated_at: "2026-05-15T20:00:00.000Z",
+            },
+          ],
+        };
+      }
+      if (
+        method === "PATCH" &&
+        url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111") &&
+        url.includes("status=eq.extracting")
+      ) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extraction_running",
+              template_type: "caloptima_fba",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
+              updated_at: "2026-05-15T20:00:01.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [
+              {
+                placeholder_key: "CALOPTIMA_FBA_MEMBER_NAME",
+                value_text: "Client One",
+                value_json: null,
+                confidence: 0.99,
+                mode: "AUTO",
+                status: "drafted",
+                source_span: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [],
+            unresolved_keys: [],
+            extracted_count: 1,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("status=eq.extracting"),
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining("\"status\":\"extraction_running\""),
+      }),
+    );
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111"),
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining("\"status\":\"extracted\""),
+      }),
+    );
+  });
+
+  it("skips background extraction when the atomic claim returns no document", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extracting",
+              template_type: "caloptima_fba",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
+              updated_at: "2026-05-15T20:00:00.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "PATCH" && url.includes("status=eq.extracting")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({ skipped: true, status: "extracting" });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.anything(),
+    );
+  });
+
+  it("skips fresh extraction_running documents but reclaims stale extraction_running documents", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    let documentLoadCount = 0;
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+        documentLoadCount += 1;
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extraction_running",
+              template_type: "caloptima_fba",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
+              updated_at: documentLoadCount === 1 ? new Date().toISOString() : "2020-01-01T00:00:00.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "PATCH" && url.includes("status=eq.extraction_running")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extraction_running",
+              template_type: "caloptima_fba",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
+              updated_at: "2026-05-15T20:00:01.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [],
+            structured_sections: [],
+            unresolved_keys: [],
+            extracted_count: 0,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const freshResponse = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+    expect(freshResponse.status).toBe(202);
+    await expect(freshResponse.json()).resolves.toMatchObject({ skipped: true, status: "extraction_running" });
+
+    const staleResponse = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+    expect(staleResponse.status).toBe(202);
+    const extractionCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/functions/v1/extract-assessment-fields"));
+    expect(extractionCalls).toHaveLength(1);
+  });
+
+  it("marks extraction failed when the background worker cannot load the document after enqueue", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+        return { ok: false, status: 503, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-4111-8111-111111111111",
+          client_id: "22222222-2222-4222-8222-222222222222",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111"),
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining("\"status\":\"extraction_failed\""),
+      }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.anything(),
+    );
+  });
+
+  it("marks extraction failed when the background worker cannot claim the document", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const body = String(init?.body ?? "");
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extracting",
+              template_type: "caloptima_fba",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
+              updated_at: "2026-05-15T20:00:00.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "PATCH" && url.includes("status=eq.extracting")) {
+        return { ok: false, status: 503, data: null };
+      }
+      if (
+        method === "PATCH" &&
+        url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111") &&
+        body.includes("\"status\":\"extraction_failed\"")
+      ) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.anything(),
+    );
+    const failedEvent = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
+      const body = String((init as RequestInit | undefined)?.body ?? "");
+      return typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && body.includes("extraction_claim_failed");
+    });
+    expect(failedEvent).toBeDefined();
+  });
+
+  it("runs extraction once when duplicate background workers race for the same document", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    let claimAttempts = 0;
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extracting",
+              template_type: "caloptima_fba",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
+              updated_at: "2026-05-15T20:00:00.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "PATCH" && url.includes("status=eq.extracting")) {
+        claimAttempts += 1;
+        return claimAttempts === 1
+          ? {
+              ok: true,
+              status: 200,
+              data: [
+                {
+                  id: "11111111-1111-4111-8111-111111111111",
+                  organization_id: "org-1",
+                  client_id: "22222222-2222-4222-8222-222222222222",
+                  status: "extraction_running",
+                  template_type: "caloptima_fba",
+                  bucket_id: "client-documents",
+                  object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
+                  updated_at: "2026-05-15T20:00:01.000Z",
+                },
+              ],
+            }
+          : { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [],
+            structured_sections: [],
+            unresolved_keys: [],
+            extracted_count: 0,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const requests = Array.from({ length: 2 }, () =>
+      assessmentDocumentsExtractionBackgroundHandler(
+        new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+          method: "POST",
+          headers: { Authorization: "Bearer token" },
+          body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+        }),
+      ),
+    );
+    const responses = await Promise.all(requests);
+
+    expect(responses.map((response) => response.status)).toEqual([202, 202]);
+    expect(claimAttempts).toBe(2);
+    const extractionCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/functions/v1/extract-assessment-fields"));
+    expect(extractionCalls).toHaveLength(1);
+    const completedEvents = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
+      const body = String((init as RequestInit | undefined)?.body ?? "");
+      return typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && body.includes("extraction_completed");
+    });
+    expect(completedEvents).toHaveLength(1);
+  });
+
+  it("rejects unauthenticated background extraction requests", async () => {
+    const response = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("rejects out-of-org background extraction documents", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValueOnce({ ok: true, status: 200, data: [] });
+
+    const response = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("organization_id=eq.org-1"),
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("marks unsupported templates failed in the background extraction worker", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extracting",
+              template_type: "iehp_fba",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.docx",
+              updated_at: "2026-05-15T20:00:00.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.anything(),
+    );
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111"),
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining("\"status\":\"extraction_failed\""),
+      }),
+    );
+  });
+
+  it("skips background extraction for documents no longer in extracting status", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          organization_id: "org-1",
+          client_id: "22222222-2222-4222-8222-222222222222",
+          status: "extracted",
+          template_type: "caloptima_fba",
+          bucket_id: "client-documents",
+          object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
+        },
+      ],
+    });
+
+    const response = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({ skipped: true, status: "extracted" });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.anything(),
+    );
   });
 
   it("blocks IEHP document extraction until the workflow is implemented", async () => {
@@ -1336,14 +2328,15 @@ describe("assessmentDocumentsHandler", () => {
       }),
     );
 
-    await vi.advanceTimersByTimeAsync(55_000);
     const response = await responsePromise;
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
-      status: "extraction_failed",
-      extraction_error: "Extraction timed out before completion.",
+      status: "extracting",
+      extraction_error: null,
     });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(55_000);
     const documentStatusBodies = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-timeout"))

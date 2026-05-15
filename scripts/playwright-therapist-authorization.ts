@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { loadPlaywrightEnv } from './lib/load-playwright-env';
+import { loadPlaywrightEnv, resolvePlaywrightBaseUrl } from './lib/load-playwright-env';
 import {
   assertUuid,
   captureFailureScreenshot,
@@ -89,7 +89,7 @@ async function run(): Promise<void> {
   ensureDir(latestDir);
 
   const headless = process.env.HEADLESS !== 'false';
-  const baseUrl = process.env.PW_BASE_URL ?? 'https://app.allincompassing.ai';
+  const baseUrl = resolvePlaywrightBaseUrl();
   const credentials = preflightCredentials([
     {
       email: process.env.PW_THERAPIST_EMAIL ?? process.env.PLAYWRIGHT_THERAPIST_EMAIL,

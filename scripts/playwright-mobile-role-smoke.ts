@@ -1,6 +1,6 @@
 import { chromium, devices } from 'playwright';
 
-import { loadPlaywrightEnv } from './lib/load-playwright-env';
+import { loadPlaywrightEnv, resolvePlaywrightBaseUrl } from './lib/load-playwright-env';
 
 const login = async (page: import('playwright').Page, baseUrl: string, email: string, password: string) => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
@@ -17,7 +17,7 @@ const login = async (page: import('playwright').Page, baseUrl: string, email: st
 async function run(): Promise<void> {
   loadPlaywrightEnv();
 
-  const baseUrl = process.env.PW_BASE_URL ?? 'https://app.allincompassing.ai';
+  const baseUrl = resolvePlaywrightBaseUrl();
   const adminEmail = process.env.PW_ADMIN_EMAIL ?? process.env.PW_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL;
   const adminPassword =
     process.env.PW_ADMIN_PASSWORD ?? process.env.PW_PASSWORD ?? process.env.PLAYWRIGHT_ADMIN_PASSWORD;

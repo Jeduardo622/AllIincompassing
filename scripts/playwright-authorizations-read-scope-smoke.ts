@@ -6,7 +6,7 @@
  */
 import { chromium } from "playwright";
 
-import { loadPlaywrightEnv } from "./lib/load-playwright-env";
+import { loadPlaywrightEnv, resolvePlaywrightBaseUrl } from "./lib/load-playwright-env";
 import { loginAndAssertSession, preflightCredentials } from "./lib/playwright-smoke";
 
 type CountPayload = { persona: string; url: string; authorizationsRows: number; restStatus?: number };
@@ -58,7 +58,7 @@ const countAuthorizationsFromPage = async (
 async function run(): Promise<void> {
   loadPlaywrightEnv();
   const headless = process.env.HEADLESS !== "false";
-  const baseUrl = process.env.PW_BASE_URL ?? "https://app.allincompassing.ai";
+  const baseUrl = resolvePlaywrightBaseUrl();
 
   const therapistCreds = preflightCredentials([
     {

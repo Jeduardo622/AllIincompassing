@@ -188,15 +188,22 @@ describe('SessionNotesTab — goal notes display', () => {
 
     renderWithProviders(<SessionNotesTab client={CLIENT} />, AUTH_OPTS);
 
-    // Goal labels should be rendered as interactive buttons.
-    await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /eye contact goal/i }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole('button', { name: /following instructions/i }),
-      ).toBeInTheDocument();
-    });
+    // Under the full coverage run, this render can settle later than the default
+    // waitFor budget even though the final UI is correct.
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: /eye contact goal/i },
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: /following instructions/i },
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
 
     // Note text must be hidden in the collapsed state.
     expect(

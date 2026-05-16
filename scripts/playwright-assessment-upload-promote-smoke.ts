@@ -297,7 +297,7 @@ const fetchAssessmentDocuments = async (
     `/api/assessment-documents?client_id=${encodeURIComponent(clientId)}`,
   );
 
-const waitForExtractedAssessment = async (args: {
+const waitForExtractedOrDraftedAssessment = async (args: {
   baseUrl: string;
   accessToken: string;
   clientId: string;
@@ -317,7 +317,7 @@ const waitForExtractedAssessment = async (args: {
   if (!latest) {
     throw new Error(`Uploaded assessment document ${args.uploadFileName} was not found in the queue.`);
   }
-  if (latest.status !== "extracted") {
+  if (latest.status !== "extracted" && latest.status !== "drafted") {
     throw new AssessmentExtractionStatusError(latest);
   }
   return latest;
@@ -703,7 +703,7 @@ async function run() {
     await page.getByRole("button", { name: /Upload CalOptima FBA/i }).click();
     await page.getByText("Uploading and processing your FBA. This can take a moment.").waitFor({ timeout: 20_000 });
 
-    createdAssessment = await waitForExtractedAssessment({
+    createdAssessment = await waitForExtractedOrDraftedAssessment({
       baseUrl,
       accessToken,
       clientId,
@@ -730,14 +730,27 @@ async function run() {
       throw new Error("Extraction did not persist checklist and extraction rows.");
     }
 
+    let drafts = await loadDrafts(baseUrl, accessToken, createdAssessment.id);
+    if (createdAssessment.status === "drafted") {
+      const pendingProgramCount = drafts.programs.filter((program) => program.accept_state === "pending").length;
+      const pendingGoalCount = drafts.goals.filter((goal) => goal.accept_state === "pending").length;
+      if (pendingProgramCount === 0 || pendingGoalCount < EXPECTED_CHILD_GOALS + EXPECTED_PARENT_GOALS) {
+        throw new Error(
+          `Drafted assessment did not expose pending auto-generated drafts: ${pendingProgramCount} programs / ${pendingGoalCount} goals.`,
+        );
+      }
+    }
+
     const approvalSummary = await approveChecklistAndStructuredSections({
       baseUrl,
       accessToken,
       checklist,
     });
 
-    await generateDrafts(baseUrl, accessToken, createdAssessment.id);
-    const drafts = await loadDrafts(baseUrl, accessToken, createdAssessment.id);
+    if (drafts.programs.length === 0 && drafts.goals.length === 0) {
+      await generateDrafts(baseUrl, accessToken, createdAssessment.id);
+      drafts = await loadDrafts(baseUrl, accessToken, createdAssessment.id);
+    }
     await acceptDrafts(baseUrl, accessToken, drafts);
     const acceptedDrafts = await loadDrafts(baseUrl, accessToken, createdAssessment.id);
     const acceptedChildGoalCount = acceptedDrafts.goals.filter(

@@ -2387,6 +2387,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       );
     });
     expect(invalidateQueriesSpy).toHaveBeenCalledWith({
+      queryKey: ["assessment-drafts", ASSESSMENT_ID, ORG_ID],
+    });
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
+      queryKey: ["assessment-checklist", ASSESSMENT_ID, ORG_ID],
+    });
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
       queryKey: ["client-goals", "client-1", ORG_ID],
     });
     invalidateQueriesSpy.mockRestore();

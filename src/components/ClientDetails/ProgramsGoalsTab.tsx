@@ -527,6 +527,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const selectedAssessmentTemplateLabel = selectedAssessmentDocument
     ? TEMPLATE_LABELS[selectedAssessmentDocument.template_type]
     : TEMPLATE_LABELS[assessmentTemplateType];
+  useEffect(() => {
+    if (!selectedAssessmentId || selectedAssessmentDocument?.status !== "drafted") {
+      return;
+    }
+    queryClient.invalidateQueries({
+      queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+    });
+  }, [organizationId, queryClient, selectedAssessmentDocument?.status, selectedAssessmentId]);
   const selectedAssessmentAlreadyPublished = selectedAssessmentDocument
     ? selectedAssessmentDocument.status === "approved" || String(selectedAssessmentDocument.status) === "promoted"
     : false;

@@ -117,7 +117,7 @@ interface AssessmentDraftGoalRow {
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
 
-interface GeneratedDraftPayload {
+export interface GeneratedDraftPayload {
   programs: Array<{
     name: string;
     description: string;
@@ -249,12 +249,13 @@ const ensureUniqueGoalTitle = (title: string, seenTitles: Map<string, number>): 
   return candidateTitle;
 };
 
-const buildDeterministicDraftPayload = (
+export const buildDeterministicDraftPayload = (
   structuredSections: AssessmentStructuredSectionRow[],
+  eligibleStatuses: ReadonlySet<AssessmentStructuredSectionRow["status"]> = new Set(["approved"]),
 ): GeneratedDraftPayload | null => {
   const approvedGoalSections = structuredSections.filter(
     (section) =>
-      section.status === "approved" &&
+      eligibleStatuses.has(section.status) &&
       section.payload &&
       [
         "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
@@ -363,7 +364,7 @@ const draftsAlreadyExistForDocument = async (args: {
   return hasPrograms || hasGoals;
 };
 
-const persistDraftRows = async (args: {
+export const persistDraftRows = async (args: {
   supabaseUrl: string;
   headers: Record<string, string>;
   organizationId: string;
@@ -447,36 +448,57 @@ const persistDraftRows = async (args: {
     accept_state: "pending",
   }));
 
+  const insertedProgramIds = createProgramResult.data.map((row) => row.id).filter(Boolean);
+  const rollbackInsertedDraftRows = async (): Promise<void> => {
+    if (insertedProgramIds.length === 0) {
+      return;
+    }
+    const encodedProgramIds = insertedProgramIds.map((id) => encodeURIComponent(id)).join(",");
+    await fetchJson(
+      `${supabaseUrl}/rest/v1/assessment_draft_goals?draft_program_id=in.(${encodedProgramIds})&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}`,
+      { method: "DELETE", headers },
+    );
+    await fetchJson(
+      `${supabaseUrl}/rest/v1/assessment_draft_programs?id=in.(${encodedProgramIds})&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}`,
+      { method: "DELETE", headers },
+    );
+  };
+
   const createGoalsResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_draft_goals`, {
     method: "POST",
-    headers,
+    headers: { ...headers, Prefer: "return=representation" },
     body: JSON.stringify(createGoalsPayload),
   });
 
   if (!createGoalsResult.ok) {
-    const insertedProgramIds = createProgramResult.data.map((row) => row.id);
-    if (insertedProgramIds.length > 0) {
-      await fetchJson(
-        `${supabaseUrl}/rest/v1/assessment_draft_programs?id=in.(${insertedProgramIds.join(",")})&organization_id=eq.${encodeURIComponent(
-          organizationId,
-        )}`,
-        { method: "DELETE", headers },
-      );
-    }
+    await rollbackInsertedDraftRows();
     return { ok: false as const, status: createGoalsResult.status || 500, error: "Failed to create draft goals" };
   }
 
-  await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`, {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify({
-      status: "drafted",
-      extraction_error: null,
-      updated_at: new Date().toISOString(),
-    }),
-  });
+  const documentDraftedResult = await fetchJson(
+    `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}&organization_id=eq.${encodeURIComponent(
+      organizationId,
+    )}`,
+    {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        status: "drafted",
+        extraction_error: null,
+        updated_at: new Date().toISOString(),
+      }),
+    },
+  );
+  if (!documentDraftedResult.ok) {
+    await rollbackInsertedDraftRows();
+    return { ok: false as const, status: documentDraftedResult.status || 500, error: "Failed to mark assessment document drafted" };
+  }
 
-  await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+  const reviewEventResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -491,6 +513,23 @@ const persistDraftRows = async (args: {
       actor_id: actorId,
     }),
   });
+  if (!reviewEventResult.ok) {
+    await rollbackInsertedDraftRows();
+    await fetchJson(
+      `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          status: document.status,
+          updated_at: new Date().toISOString(),
+        }),
+      },
+    );
+    return { ok: false as const, status: reviewEventResult.status || 500, error: "Failed to record draft generation event" };
+  }
 
   return { ok: true as const, draftProgramId: createProgramResult.data[0].id };
 };

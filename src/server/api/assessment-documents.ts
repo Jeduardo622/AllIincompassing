@@ -13,6 +13,7 @@ import {
   type AssessmentChecklistSeedRow,
   type AssessmentTemplateType,
 } from "../assessmentChecklistTemplate";
+import { buildDeterministicDraftPayload, persistDraftRows } from "./assessment-drafts";
 import { getRequiredServerEnv } from "../env";
 import { serverLogger } from "../../lib/logger/server";
 
@@ -21,6 +22,7 @@ const ASSESSMENT_DOCUMENT_BUCKET_ID = "client-documents";
 const EXTRACTION_WORKFLOW_TIMEOUT_MS = 55_000;
 const EXTRACTION_RUNNING_STATUS = "extraction_running";
 const EXTRACTION_RUNNING_STALE_MS = EXTRACTION_WORKFLOW_TIMEOUT_MS * 2;
+const AUTO_DRAFT_STRUCTURED_SECTION_STATUSES = new Set(["drafted", "approved"] as const);
 
 const templateTypeSchema = z.enum(SUPPORTED_TEMPLATE_TYPES);
 
@@ -484,19 +486,55 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
         assertFetchOk(structuredInsertResult, "structured_section_persistence_failed");
       }
 
-      const documentExtractedResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocumentId)}`, {
-        method: "PATCH",
-        headers,
-        signal,
-        body: JSON.stringify({
-          status: "extracted",
-          extracted_at: new Date().toISOString(),
-          extraction_error: null,
-          updated_at: new Date().toISOString(),
-        }),
-      });
-      assertExtractionNotAborted(signal);
-      assertFetchOk(documentExtractedResult, "assessment_status_update_failed");
+      const deterministicDraftPayload = buildDeterministicDraftPayload(
+        structuredSections.map((section) => ({
+          id: `${createdDocumentId}:${section.field_key}:${section.section_index}`,
+          section_key: section.section_key,
+          field_key: section.field_key,
+          section_index: section.section_index,
+          payload: section.payload,
+          status: section.status,
+          required: section.required,
+        })),
+        AUTO_DRAFT_STRUCTURED_SECTION_STATUSES,
+      );
+      let finalStatus: "extracted" | "drafted" = "extracted";
+
+      if (deterministicDraftPayload) {
+        const draftResult = await persistDraftRows({
+          supabaseUrl,
+          headers,
+          organizationId,
+          actorId,
+          document: { id: createdDocumentId, organization_id: organizationId, client_id: clientId, status: fromStatus },
+          assessmentDocumentId: createdDocumentId,
+          payload: deterministicDraftPayload,
+        });
+        assertExtractionNotAborted(signal);
+        if (!draftResult.ok) {
+          throw new ExtractionWorkflowError(
+            "draft_persistence_failed",
+            draftResult.error,
+            draftResult.status,
+            "Extraction completed, but draft Programs and Goals could not be persisted.",
+          );
+        }
+        finalStatus = "drafted";
+      } else {
+        const documentExtractedResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocumentId)}`, {
+          method: "PATCH",
+          headers,
+          signal,
+          body: JSON.stringify({
+            status: "extracted",
+            extracted_at: new Date().toISOString(),
+            extraction_error: null,
+            updated_at: new Date().toISOString(),
+          }),
+        });
+        assertExtractionNotAborted(signal);
+        assertFetchOk(documentExtractedResult, "assessment_status_update_failed");
+      }
 
       const reviewEventResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
         method: "POST",
@@ -510,7 +548,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
           item_id: createdDocumentId,
           action: "extraction_completed",
           from_status: fromStatus,
-          to_status: "extracted",
+          to_status: finalStatus,
           actor_id: actorId,
           event_payload: {
             extracted_count: extractionData.extracted_count,
@@ -525,7 +563,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
       });
       assertExtractionNotAborted(signal);
       assertFetchOk(reviewEventResult, "review_event_persistence_failed");
-      return { status: "extracted", extractionError: null };
+      return { status: finalStatus, extractionError: null };
     }
 
     const edgeError =

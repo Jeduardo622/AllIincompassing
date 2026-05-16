@@ -161,7 +161,7 @@ const extractionFunctionResponseSchema: z.ZodType<ExtractionFunctionResponse> = 
 });
 
 type ExtractionWorkflowResult = {
-  status: "extracted" | "extraction_failed";
+  status: "extracted" | "drafted" | "extraction_failed";
   extractionError: string | null;
 };
 
@@ -509,6 +509,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
           document: { id: createdDocumentId, organization_id: organizationId, client_id: clientId, status: fromStatus },
           assessmentDocumentId: createdDocumentId,
           payload: deterministicDraftPayload,
+          signal,
         });
         assertExtractionNotAborted(signal);
         if (!draftResult.ok) {
@@ -536,7 +537,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
         assertFetchOk(documentExtractedResult, "assessment_status_update_failed");
       }
 
-      const reviewEventResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+      const extractionCompletedEventInit: RequestInit = {
         method: "POST",
         headers,
         signal,
@@ -560,9 +561,30 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
             adobe_table_count: extractionData.adobe_table_count ?? null,
           },
         }),
-      });
-      assertExtractionNotAborted(signal);
-      assertFetchOk(reviewEventResult, "review_event_persistence_failed");
+      };
+      try {
+        const reviewEventResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, extractionCompletedEventInit);
+        assertExtractionNotAborted(signal);
+        if (!reviewEventResult.ok && finalStatus === "drafted") {
+          serverLogger.error("assessment-documents extraction completion event failed after draft persistence", {
+            reasonCode: "review_event_persistence_failed",
+            status: reviewEventResult.status ?? null,
+            assessmentDocumentId: createdDocumentId,
+          });
+          return { status: finalStatus, extractionError: null };
+        }
+        assertFetchOk(reviewEventResult, "review_event_persistence_failed");
+      } catch (eventError) {
+        if (finalStatus === "drafted") {
+          serverLogger.error("assessment-documents extraction completion event failed after draft persistence", {
+            reasonCode: "review_event_persistence_failed",
+            status: eventError instanceof ExtractionWorkflowError ? eventError.status ?? null : null,
+            assessmentDocumentId: createdDocumentId,
+          });
+          return { status: finalStatus, extractionError: null };
+        }
+        throw eventError;
+      }
       return { status: finalStatus, extractionError: null };
     }
 

@@ -372,8 +372,9 @@ export const persistDraftRows = async (args: {
   document: AssessmentDocumentScopeRow;
   assessmentDocumentId: string;
   payload: GeneratedDraftPayload;
+  signal?: AbortSignal;
 }) => {
-  const { supabaseUrl, headers, organizationId, actorId, document, assessmentDocumentId, payload } = args;
+  const { supabaseUrl, headers, organizationId, actorId, document, assessmentDocumentId, payload, signal } = args;
   const createProgramPayload = payload.programs.map((program) => ({
     assessment_document_id: assessmentDocumentId,
     organization_id: organizationId,
@@ -393,6 +394,7 @@ export const persistDraftRows = async (args: {
     {
       method: "POST",
       headers: { ...headers, Prefer: "return=representation" },
+      signal,
       body: JSON.stringify(createProgramPayload),
     },
   );
@@ -414,7 +416,7 @@ export const persistDraftRows = async (args: {
         `${supabaseUrl}/rest/v1/assessment_draft_programs?id=in.(${insertedProgramIds.join(",")})&organization_id=eq.${encodeURIComponent(
           organizationId,
         )}`,
-        { method: "DELETE", headers },
+        { method: "DELETE", headers, signal },
       );
     }
     return {
@@ -458,19 +460,20 @@ export const persistDraftRows = async (args: {
       `${supabaseUrl}/rest/v1/assessment_draft_goals?draft_program_id=in.(${encodedProgramIds})&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}`,
-      { method: "DELETE", headers },
+      { method: "DELETE", headers, signal },
     );
     await fetchJson(
       `${supabaseUrl}/rest/v1/assessment_draft_programs?id=in.(${encodedProgramIds})&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}`,
-      { method: "DELETE", headers },
+      { method: "DELETE", headers, signal },
     );
   };
 
   const createGoalsResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_draft_goals`, {
     method: "POST",
     headers: { ...headers, Prefer: "return=representation" },
+    signal,
     body: JSON.stringify(createGoalsPayload),
   });
 
@@ -486,6 +489,7 @@ export const persistDraftRows = async (args: {
     {
       method: "PATCH",
       headers,
+      signal,
       body: JSON.stringify({
         status: "drafted",
         extraction_error: null,
@@ -501,6 +505,7 @@ export const persistDraftRows = async (args: {
   const reviewEventResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
     method: "POST",
     headers,
+    signal,
     body: JSON.stringify({
       assessment_document_id: document.id,
       organization_id: organizationId,
@@ -522,6 +527,7 @@ export const persistDraftRows = async (args: {
       {
         method: "PATCH",
         headers,
+        signal,
         body: JSON.stringify({
           status: document.status,
           updated_at: new Date().toISOString(),

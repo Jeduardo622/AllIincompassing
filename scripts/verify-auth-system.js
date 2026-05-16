@@ -341,7 +341,7 @@ function verifyTestFiles() {
   title('Verifying Test Files');
   
   const requiredTests = [
-    'cypress/e2e/auth-roles.cy.ts'
+    'cypress/e2e/routes_auth.cy.ts'
   ];
   
   let allTestsExist = true;

@@ -313,6 +313,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -320,16 +322,30 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Select tier-0 browser scope
+        id: browser_scope
+        env:
+          BASE_SHA: ${{ needs.change_scope.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.change_scope.outputs.head_sha }}
+        run: node scripts/ci/select-browser-checks.mjs --format github-output
+
+      - name: Skip tier-0 browser gate
+        if: steps.browser_scope.outputs.tier0_required != 'true'
+        run: echo "No route, auth, or session browser surface changed; tier0-browser required check passes without Cypress."
+
       - name: Install dependencies
+        if: steps.browser_scope.outputs.tier0_required == 'true'
         run: npm ci
 
       - name: Download dist artifact
+        if: steps.browser_scope.outputs.tier0_required == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist
           path: artifact-dist
 
       - name: Normalize dist artifact path
+        if: steps.browser_scope.outputs.tier0_required == 'true'
         run: |
           rm -rf dist
           if [ -f "artifact-dist/index.html" ]; then
@@ -349,7 +365,8 @@ jobs:
           test -f "dist/index.html"
 
       - name: Tier-0 browser regression gate
-        run: npm run test:routes:tier0
+        if: steps.browser_scope.outputs.tier0_required == 'true'
+        run: npm run test:routes:tier0 -- --spec "${{ steps.browser_scope.outputs.tier0_specs }}"
         env:
           PREVIEW_OUTPUT_DIR: dist
 
@@ -376,6 +393,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -383,11 +402,23 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Select auth browser scope
+        id: browser_scope
+        env:
+          BASE_SHA: ${{ needs.change_scope.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.change_scope.outputs.head_sha }}
+        run: node scripts/ci/select-browser-checks.mjs --format github-output
+
+      - name: Skip auth browser smoke gate
+        if: steps.browser_scope.outputs.auth_smoke_required != 'true'
+        run: echo "No auth or session browser surface changed; auth-browser-smoke required check passes without Playwright."
+
       - name: Install dependencies
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
         run: npm ci
 
       - name: Deploy required session edge functions (push only)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.browser_scope.outputs.auth_smoke_required == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -395,6 +426,7 @@ jobs:
         run: npm run ci:deploy:session-edge-bundle
 
       - name: Auth browser smoke gate
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
         env:
           PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}

@@ -1,0 +1,151 @@
+/// <reference types="cypress" />
+
+export type AppRole = "client" | "therapist" | "admin" | "super_admin";
+export type RouteScenario = {
+  path: string;
+  roles: readonly (AppRole | "public")[];
+};
+
+export const password = "password123";
+
+export const roleEmail = (role: AppRole): string => (
+  role === "super_admin" ? "superadmin@test.com" : `${role}@test.com`
+);
+
+export const roles: readonly AppRole[] = ["client", "therapist", "admin", "super_admin"];
+
+export const routeGroups = {
+  public: [
+    { path: "/login", roles: ["public"] },
+    { path: "/signup", roles: ["public"] },
+    { path: "/unauthorized", roles: ["public"] },
+  ],
+  client: [
+    { path: "/", roles: ["client", "therapist", "admin", "super_admin"] },
+    { path: "/clients", roles: ["therapist", "admin", "super_admin"] },
+    { path: "/clients/client-1", roles: ["therapist", "admin", "super_admin"] },
+    { path: "/documentation", roles: ["client", "therapist", "admin", "super_admin"] },
+    { path: "/authorizations", roles: ["therapist", "admin", "super_admin"] },
+    { path: "/family", roles: [] },
+  ],
+  schedule: [
+    { path: "/schedule", roles: ["therapist", "admin", "super_admin"] },
+  ],
+  admin: [
+    { path: "/therapists", roles: ["admin", "super_admin"] },
+    { path: "/therapists/therapist-1", roles: ["therapist", "admin", "super_admin"] },
+    { path: "/therapists/new", roles: ["admin", "super_admin"] },
+    { path: "/billing", roles: ["admin", "super_admin"] },
+    { path: "/monitoring", roles: ["admin", "super_admin"] },
+    { path: "/reports", roles: ["admin", "super_admin"] },
+    { path: "/settings", roles: ["admin", "super_admin"] },
+  ],
+} satisfies Record<string, readonly RouteScenario[]>;
+
+const stubClients = [
+  {
+    id: "client-1",
+    full_name: "Test Client",
+    email: "client@example.com",
+    one_to_one_units: 5,
+    supervision_units: 2,
+    parent_consult_units: 1,
+  },
+];
+
+const stubTherapists = [
+  {
+    id: "therapist-1",
+    full_name: "Therapist Example",
+    email: "therapist@example.com",
+    specialties: ["cbt"],
+  },
+];
+
+export const installRouteDataStubs = (): void => {
+  cy.intercept("GET", "**/api/runtime-config").as("runtimeConfig");
+
+  cy.intercept("GET", "**/__supabase/rest/v1/clients**", (req) => {
+    const idQuery = req.query.id as string | undefined;
+    const clientId = idQuery?.split("eq.")[1];
+    if (clientId) {
+      const match = stubClients.find((client) => client.id === clientId);
+      req.reply({
+        statusCode: 200,
+        body: match ? [match] : [],
+        headers: { "content-type": "application/json" },
+      });
+      return;
+    }
+
+    req.reply({
+      statusCode: 200,
+      body: stubClients,
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  cy.intercept("GET", "**/__supabase/rest/v1/therapists**", (req) => {
+    const idQuery = req.query.id as string | undefined;
+    const therapistId = idQuery?.split("eq.")[1];
+    if (therapistId) {
+      const match = stubTherapists.find((therapist) => therapist.id === therapistId);
+      req.reply({
+        statusCode: 200,
+        body: match ? [match] : [],
+        headers: { "content-type": "application/json" },
+      });
+      return;
+    }
+
+    req.reply({
+      statusCode: 200,
+      body: stubTherapists,
+      headers: { "content-type": "application/json" },
+    });
+  });
+};
+
+export const assertVisibleRoute = (path: string): void => {
+  cy.visit(path);
+  cy.wait("@runtimeConfig");
+  cy.get("body").should("be.visible");
+  cy.get('[data-testid="error-boundary"]').should("not.exist");
+  cy.url().should("not.include", "/login");
+  cy.url().should("not.include", "/unauthorized");
+};
+
+export const assertBlockedRoute = (path: string): void => {
+  cy.visit(path);
+  cy.wait("@runtimeConfig");
+  cy.url().should((current) => {
+    expect(
+      current.includes("/unauthorized")
+      || current.includes("/login")
+      || current === `${Cypress.config("baseUrl")}/`,
+    ).to.be.true;
+  });
+};
+
+export const runRoleMatrix = (title: string, scenarios: readonly RouteScenario[]): void => {
+  describe(title, () => {
+    roles.forEach((role) => {
+      describe(`${role} deep-link coverage`, () => {
+        beforeEach(() => {
+          cy.login(roleEmail(role), password);
+        });
+
+        scenarios.forEach(({ path, roles: allowed }) => {
+          const shouldAllow = allowed.includes(role);
+          it(`${shouldAllow ? "allows" : "blocks"} ${path}`, () => {
+            if (shouldAllow) {
+              assertVisibleRoute(path);
+            } else {
+              assertBlockedRoute(path);
+            }
+          });
+        });
+      });
+    });
+  });
+};

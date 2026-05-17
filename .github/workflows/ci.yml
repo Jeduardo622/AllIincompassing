@@ -421,6 +421,10 @@ jobs:
         if: steps.browser_scope.outputs.auth_smoke_required == 'true'
         run: npm ci
 
+      - name: Install Playwright browser
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
+        run: npx playwright install --with-deps chromium
+
       - name: Deploy required session edge functions (push only)
         if: github.event_name == 'push' && steps.browser_scope.outputs.auth_smoke_required == 'true'
         env:

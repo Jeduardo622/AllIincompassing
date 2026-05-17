@@ -737,7 +737,9 @@ async function markTerminalViaScheduleModal(
     void dialog.accept();
   });
   try {
-    const terminalActionButton = editDialog.getByRole("button", { name: /^(Update Session|Close Session)$/i });
+    const terminalActionButton = terminalStatus === "completed"
+      ? editDialog.getByRole("button", { name: /^Close Session$/i })
+      : editDialog.getByRole("button", { name: /^(Save progress|Update Session)$/i });
     const [completeResponse] = await Promise.all([
       page.waitForResponse(
         (res) => res.url().includes("sessions-complete") && res.request().method() === "POST",

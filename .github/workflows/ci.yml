@@ -219,7 +219,7 @@ jobs:
           CI_EDGE_ROUTE_PARITY_REQUIRED: "true"
           SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,program-notes"
           CI_RLS_OVERLAP_REQUIRED: ${{ secrets.SUPABASE_DB_URL != '' && 'true' || 'false' }}
-          CI_REQUIRED_CHECKS: "policy,lint-typecheck,unit-tests,build,tier0-browser,auth-browser-smoke"
+          CI_REQUIRED_CHECKS: "ci-gate"
           API_AUTHORITY_MODE: "edge"
           RATE_LIMIT_MODE: "memory"
 
@@ -308,7 +308,9 @@ jobs:
   tier0_browser:
     name: tier0-browser
     runs-on: ubuntu-latest
-    needs: build
+    needs:
+      - build
+      - change_scope
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -388,7 +390,9 @@ jobs:
   auth_browser_smoke:
     name: auth-browser-smoke
     runs-on: ubuntu-latest
-    needs: policy
+    needs:
+      - policy
+      - change_scope
     timeout-minutes: 25
     steps:
       - name: Checkout

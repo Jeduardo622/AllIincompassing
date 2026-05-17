@@ -26,9 +26,9 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - [ ] Branch protection is enabled on `main` with required check `ci-gate`, and mirrored to `develop` when that branch is active
 - [ ] `docs-guard` is not configured as an independent required branch-protection check (it is enforced by `ci-gate` for docs-only changes)
 - [ ] Merge queue (`merge_group`) behavior is documented as full-chain CI before `ci-gate` (docs-only fast path applies to PR/push, not queue runs)
-- [ ] Legacy required-check set (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) is treated as transitional and removed once `ci-gate` migration is complete
-- [ ] Current-state note is understood: CI policy validation still enforces the legacy `CI_REQUIRED_CHECKS` set until the explicit migration step updates it to `ci-gate`
-- [ ] `ci-gate` is added to branch protection before CI policy expectations are updated to `CI_REQUIRED_CHECKS=ci-gate`
+- [ ] Legacy required-check set (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) is treated as transitional and removed after the `CI_REQUIRED_CHECKS=ci-gate` migration PR merges green
+- [ ] Current-state note is understood: CI policy validation enforces `CI_REQUIRED_CHECKS=ci-gate`
+- [ ] `ci-gate` remains in branch protection while CI policy expectations use `CI_REQUIRED_CHECKS=ci-gate`
 - [ ] Migration is validated with a non-doc test PR before legacy required checks are removed
 - [ ] `npm run test:routes:tier0` passes (browser route/role gate)
 - [ ] `npm run ci:playwright` passes (or, for focused parity, at minimum `npm run playwright:auth && npm run playwright:session-lifecycle && npm run playwright:session-complete && npm run playwright:schedule-blocked-close`)

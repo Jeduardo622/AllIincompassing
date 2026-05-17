@@ -70,7 +70,8 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
 - `ci-gate` is the final required status gate for branch protection.
 - Current transition state:
   - branch protection should require `ci-gate`
-  - `policy` still validates `CI_REQUIRED_CHECKS` against the legacy set (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) until that migration is explicitly completed
+  - `policy` validates `CI_REQUIRED_CHECKS=ci-gate`
+  - keep the legacy required checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) only until the migration PR has merged and `main` is green
 
 ### `supabase-preview.yml`
 

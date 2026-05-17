@@ -4,7 +4,7 @@ Use this document to distinguish the current live merge contract on `main` from 
 
 ## Current Live `main` Contract
 
-As of 2026-03-29, the live branch-protection contract on `main` is:
+As of 2026-05-16, the live branch-protection contract on `main` is in the supervised `ci-gate` migration window:
 
 - required status checks:
   - `policy`
@@ -13,6 +13,7 @@ As of 2026-03-29, the live branch-protection contract on `main` is:
   - `build`
   - `tier0-browser`
   - `auth-browser-smoke`
+  - `ci-gate`
 - branch-up-to-date requirement: enabled (`strict=true`)
 - required pull-request approvals configured in GitHub: `1`
 
@@ -47,15 +48,15 @@ The fast path applies only to markdown/governance documentation paths (for examp
 
 ## Required Checks Guidance
 
-Today, GitHub branch protection on `main` is enforced through the six global checks listed above. Treat those six checks as the merge-blocking source of truth until a separate supervised policy change intentionally replaces them.
+The intended steady-state branch-protection target is `ci-gate` as the single required CI check. During the supervised migration window, keep the six legacy checks and `ci-gate` required until the CI policy PR that sets `CI_REQUIRED_CHECKS=ci-gate` has merged and `main` is green.
 
 Internal workflow behavior still matters:
 
 - `docs-guard` is the docs-only fast-path validator.
-- `ci-gate` summarizes CI lane outcomes and remains useful operator signal.
-- docs-only PRs currently satisfy the six required checks by resolving them to `SKIPPED`, while `docs-guard` and `ci-gate` pass.
+- `ci-gate` summarizes CI lane outcomes and is the required-check target after migration.
+- docs-only PRs satisfy the browser/code-quality jobs by resolving them to `SKIPPED`, while `docs-guard` and `ci-gate` pass.
 
-Do not describe `ci-gate` as the current required branch-protection target unless live GitHub settings and CI policy have been updated together in the same rollout.
+Do not remove the six legacy required checks until the non-doc migration PR proves `ci-gate` is gating the full policy, lint/typecheck, unit, build, tier-0 browser, and auth browser smoke chain.
 
 ## Merge Queue Compatibility
 

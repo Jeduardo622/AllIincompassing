@@ -141,6 +141,7 @@ const classifyFile = (file) => {
     /^cypress\/e2e\/routes_admin\.cy\.ts$/,
     /^src\/pages\/(Therapists|Billing|Monitoring|Reports|Settings|SuperAdmin)/,
     /^src\/components\/(Therapist|Billing|Monitoring|Reports|Settings|SuperAdmin)/,
+    /^src\/components\/(therapists?|billing|monitoring|reports|settings|super-?admin)\//,
     /^src\/lib\/(therapists|billing|reports|settings|featureFlags)/,
   ])) {
     return { specs: ["admin"], authSmoke: false, reason: "admin/back-office route" };

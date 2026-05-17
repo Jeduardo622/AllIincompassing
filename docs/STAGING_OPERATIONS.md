@@ -60,7 +60,7 @@ Merge queue note:
 - `auth-browser-smoke` can soft-skip for missing secrets on `pull_request`, but missing secrets fail the job on `merge_group`/`push`
 
 Legacy required checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) are transitional only while repositories migrate branch protection to `ci-gate`.
-Current-state note: policy validation still expects the legacy `CI_REQUIRED_CHECKS` set until a coordinated migration updates CI policy expectations to `ci-gate`.
+Current-state note: policy validation expects `CI_REQUIRED_CHECKS=ci-gate`; keep legacy required checks only until the migration PR merges and `main` is green.
 
 Migration order requirement:
 

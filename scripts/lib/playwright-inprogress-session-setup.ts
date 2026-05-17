@@ -345,6 +345,14 @@ const toDatetimeLocal = (date: Date): string => {
   return local.toISOString().slice(0, 16);
 };
 
+const buildBookingBaseStart = (): Date => {
+  const runSeed = Number(process.env.GITHUB_RUN_ID ?? Date.now());
+  const offsetHours = Number.isFinite(runSeed) ? Math.abs(Math.trunc(runSeed)) % 12 : 0;
+  const start = new Date();
+  start.setHours(start.getHours() + 4 + offsetHours, 0, 0, 0);
+  return start;
+};
+
 async function openSessionModal(page: Page) {
   await page.evaluate(() => {
     const browserGlobal = globalThis as unknown as {
@@ -449,15 +457,14 @@ export async function bookSession(
 
   const selected = await chooseSessionTargets(page, { allowedTherapistIds });
 
-  const start = new Date();
-  start.setHours(start.getHours() + 4, 0, 0, 0);
+  const start = buildBookingBaseStart();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   let finalStartIso = "";
   let finalEndIso = "";
   let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
   let payloadBody: { success?: boolean; data?: { session?: { id?: string } } } | null = null;
 
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  for (let attempt = 0; attempt < 48; attempt += 1) {
     const attemptStart = new Date(start.getTime() + attempt * 2 * 60 * 60 * 1000);
     const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
     const startIso = attemptStart.toISOString();

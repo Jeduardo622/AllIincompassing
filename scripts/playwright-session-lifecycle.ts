@@ -330,6 +330,14 @@ const toDatetimeLocal = (date: Date): string => {
   return local.toISOString().slice(0, 16);
 };
 
+const buildBookingBaseStart = (): Date => {
+  const runSeed = Number(process.env.GITHUB_RUN_ID ?? Date.now());
+  const offsetHours = Number.isFinite(runSeed) ? Math.abs(Math.trunc(runSeed)) % 12 : 0;
+  const start = new Date();
+  start.setHours(start.getHours() + 4 + offsetHours, 0, 0, 0);
+  return start;
+};
+
 const buildScheduleEditSessionUrl = (scheduleUrl: string, sessionId: string): string => {
   const url = new URL(scheduleUrl);
   const expiresAtMs = Date.now() + SCHEDULE_MODAL_URL_TTL_MS;
@@ -434,14 +442,13 @@ async function bookSession(page: Page, _token: string, strictMode: boolean): Pro
 
   const selected = await chooseSessionTargets(page);
 
-  const start = new Date();
-  start.setHours(start.getHours() + 4, 0, 0, 0);
+  const start = buildBookingBaseStart();
   let finalStartIso = "";
   let finalEndIso = "";
   let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
   let payloadBody: { success?: boolean; data?: { session?: { id?: string } }; code?: string } | null = null;
 
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  for (let attempt = 0; attempt < 48; attempt += 1) {
     const attemptStart = new Date(start.getTime() + attempt * 2 * 60 * 60 * 1000);
     const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
     const startIso = attemptStart.toISOString();
@@ -453,7 +460,7 @@ async function bookSession(page: Page, _token: string, strictMode: boolean): Pro
     await page.locator("#end-time-input").fill(toDatetimeLocal(attemptEnd));
 
     page.once("dialog", (dialog) => {
-      void dialog.accept();
+      void dialog.accept().catch(() => undefined);
     });
     const responsePromise = page.waitForResponse(
       (res) => res.url().includes("/api/book") && res.request().method() === "POST",
@@ -734,7 +741,7 @@ async function markTerminalViaScheduleModal(
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
   await page.locator("#status-select").selectOption(terminalStatus);
   page.once("dialog", (dialog) => {
-    void dialog.accept();
+    void dialog.accept().catch(() => undefined);
   });
   try {
     const terminalActionButton = terminalStatus === "completed"

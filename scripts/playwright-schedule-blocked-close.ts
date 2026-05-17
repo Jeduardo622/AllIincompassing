@@ -45,11 +45,16 @@ const getEnv = (key: string, fallback?: string): string => {
 const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(value ?? "");
 
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "120000");
+const BOOK_SESSION_STEP_TIMEOUT_MS = Number(process.env.PW_BOOK_SESSION_STEP_TIMEOUT_MS ?? "240000");
 
-const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
+const withStepTimeout = async <T>(
+  label: string,
+  operation: () => Promise<T>,
+  timeoutMs = STEP_TIMEOUT_MS,
+): Promise<T> => {
   console.log(`[blocked-close] start ${label}`);
   const timeout = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`Step timed out: ${label} (${STEP_TIMEOUT_MS}ms)`)), STEP_TIMEOUT_MS);
+    setTimeout(() => reject(new Error(`Step timed out: ${label} (${timeoutMs}ms)`)), timeoutMs);
   });
   const result = await Promise.race([operation(), timeout]);
   console.log(`[blocked-close] ok ${label}`);
@@ -137,6 +142,85 @@ async function waitForSessionStatus(sessionId: string, status: string, timeoutMs
     await new Promise((r) => setTimeout(r, 1000));
   }
   throw new Error(`Timed out waiting for session ${sessionId} status=${status} in DB`);
+}
+
+async function waitForBrowserVisibleSession({
+  page,
+  sessionId,
+  organizationId,
+  supabaseUrl,
+  anonKey,
+  accessToken,
+  timeoutMs = 120_000,
+}: {
+  page: Page;
+  sessionId: string;
+  organizationId: string;
+  supabaseUrl: string;
+  anonKey: string;
+  accessToken: string;
+  timeoutMs?: number;
+}): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus: string | null = null;
+  let lastError: string | null = null;
+
+  while (Date.now() < deadline) {
+    const result = await page.evaluate(
+      async ({
+        sessionId,
+        organizationId,
+        supabaseUrl,
+        anonKey,
+        accessToken,
+      }: {
+        sessionId: string;
+        organizationId: string;
+        supabaseUrl: string;
+        anonKey: string;
+        accessToken: string;
+      }) => {
+        const params = new URLSearchParams({
+          id: `eq.${sessionId}`,
+          organization_id: `eq.${organizationId}`,
+          select: "id,status",
+        });
+        const res = await fetch(`${supabaseUrl}/rest/v1/sessions?${params.toString()}`, {
+          headers: {
+            apikey: anonKey,
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        if (!res.ok) {
+          return { visible: false, status: null, error: `${res.status} ${await res.text()}` };
+        }
+        const rows = (await res.json()) as Array<{ id?: string; status?: string }>;
+        return {
+          visible: rows.some((row) => row.id === sessionId),
+          status: rows.find((row) => row.id === sessionId)?.status ?? null,
+          error: null,
+        };
+      },
+      {
+        sessionId,
+        organizationId,
+        supabaseUrl,
+        anonKey,
+        accessToken,
+      },
+    );
+
+    lastStatus = result.status;
+    lastError = result.error;
+    if (result.visible) {
+      return;
+    }
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error(
+    `Timed out waiting for browser-visible session row ${sessionId}; lastStatus=${lastStatus ?? "missing"} lastError=${lastError ?? "none"}`,
+  );
 }
 
 async function getSessionOrganizationId(sessionId: string): Promise<string> {
@@ -240,13 +324,13 @@ async function run(): Promise<void> {
     let booked: LifecycleIds;
     try {
       booked = await withStepTimeout("book-session", () =>
-        bookSession(activePage, token, strictParityMode, bookOpts));
+        bookSession(activePage, token, strictParityMode, bookOpts), BOOK_SESSION_STEP_TIMEOUT_MS);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (strictParityMode && message.includes("Organization context required") && authenticatedCredential) {
         token = await fetchAccessTokenForCredentials(authenticatedCredential.email, authenticatedCredential.password);
         booked = await withStepTimeout("book-session retry", () =>
-          bookSession(activePage, token, strictParityMode, bookOpts));
+          bookSession(activePage, token, strictParityMode, bookOpts), BOOK_SESSION_STEP_TIMEOUT_MS);
       } else {
         throw error;
       }
@@ -317,20 +401,53 @@ async function run(): Promise<void> {
       );
     }
 
-    const expiresAt = Date.now() + 30 * 60 * 1000;
-    const editUrl = `${base}/schedule?scheduleModal=edit&scheduleSessionId=${encodeURIComponent(
-      booked.sessionId,
-    )}&scheduleExp=${expiresAt}`;
+    await withStepTimeout("wait-browser-visible-session", () =>
+      waitForBrowserVisibleSession({
+        page: activePage,
+        sessionId: booked.sessionId,
+        organizationId: userOrgId,
+        supabaseUrl: getEnv("VITE_SUPABASE_URL"),
+        anonKey: getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY),
+        accessToken: token,
+      }));
 
     await withStepTimeout("open-edit-modal-via-url", async () => {
-      await activePage.goto(editUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
-      await activePage.waitForLoadState("networkidle").catch(() => undefined);
-      await activePage
-        .getByRole("dialog", { name: /edit session|live session/i })
-        .waitFor({ state: "visible", timeout: 60_000 });
-      await activePage
-        .locator('[role="dialog"][data-session-status="in_progress"]')
-        .waitFor({ state: "visible", timeout: 90_000 });
+      let lastUrl = activePage.url();
+      let lastBodyText = "";
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const expiresAt = Date.now() + 30 * 60 * 1000;
+        const editUrl = `${base}/schedule?scheduleModal=edit&scheduleSessionId=${encodeURIComponent(
+          booked.sessionId,
+        )}&scheduleExp=${expiresAt}`;
+
+        await activePage.goto(editUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
+        await activePage.waitForLoadState("networkidle").catch(() => undefined);
+
+        const dialog = activePage.getByRole("dialog", { name: /edit session|live session/i });
+        const dialogVisible = await dialog.waitFor({ state: "visible", timeout: 30_000 })
+          .then(() => true)
+          .catch(() => false);
+        lastUrl = activePage.url();
+        lastBodyText = await activePage.evaluate(() => document.body.innerText.slice(0, 1000)).catch(() => "");
+
+        if (!dialogVisible) {
+          console.warn(
+            `[blocked-close] edit modal did not open on attempt ${attempt}; url=${lastUrl}`,
+          );
+          await activePage.waitForTimeout(1000);
+          continue;
+        }
+
+        await activePage
+          .locator('[role="dialog"][data-session-status="in_progress"]')
+          .waitFor({ state: "visible", timeout: 90_000 });
+        return;
+      }
+
+      throw new Error(
+        `Edit modal did not open for browser-visible in-progress session ${booked.sessionId}; url=${lastUrl}; body=${JSON.stringify(lastBodyText)}`,
+      );
     });
 
     await withStepTimeout("assert-api-session-in-progress", async () => {

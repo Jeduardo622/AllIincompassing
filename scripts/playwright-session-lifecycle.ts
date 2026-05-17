@@ -737,12 +737,15 @@ async function markTerminalViaScheduleModal(
     void dialog.accept();
   });
   try {
+    const terminalActionButton = terminalStatus === "completed"
+      ? editDialog.getByRole("button", { name: /^Close Session$/i })
+      : editDialog.getByRole("button", { name: /^(Save progress|Update Session)$/i });
     const [completeResponse] = await Promise.all([
       page.waitForResponse(
         (res) => res.url().includes("sessions-complete") && res.request().method() === "POST",
         { timeout: 90_000 },
       ),
-      page.getByRole("button", { name: /Update Session/i }).click(),
+      terminalActionButton.click(),
     ]);
     const completeBody = await completeResponse.text();
     if (!completeResponse.ok()) {
@@ -889,8 +892,8 @@ export async function run() {
     const scheduleUrl = `${base}/schedule`;
     await withStepTimeout("start-session-modal", () =>
       startSessionViaScheduleModal(activePage, scheduleUrl, booked, token, strictParityMode));
-    if (terminalStatus === "no-show") {
-      await withStepTimeout("clear-session-goals-for-no-show", () =>
+    if (terminalStatus === "no-show" || terminalStatus === "completed") {
+      await withStepTimeout(`clear-session-goals-for-${terminalStatus}`, () =>
         clearSessionGoalsViaServiceRole(booked.sessionId));
     }
     await withStepTimeout(`${terminalStatus}-session-modal`, () =>

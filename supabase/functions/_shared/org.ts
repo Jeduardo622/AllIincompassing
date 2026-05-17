@@ -131,7 +131,31 @@ export function orgScopedQuery(
   table: string,
   orgId: string,
 ) {
-  return (db.from(table) as unknown as {
-    eq: (column: string, value: string) => unknown;
-  }).eq("organization_id", orgId);
+  const scoped = <T extends { eq: (column: string, value: string) => T }>(query: T): T =>
+    query.eq("organization_id", orgId);
+
+  const withOrg = <T extends Record<string, unknown>>(value: T): T => ({
+    ...value,
+    organization_id: orgId,
+  });
+
+  return {
+    select: (...args: Parameters<ReturnType<SupabaseClient["from"]>["select"]>) =>
+      scoped(db.from(table).select(...args)),
+    update: (...args: Parameters<ReturnType<SupabaseClient["from"]>["update"]>) =>
+      scoped(db.from(table).update(...args)),
+    delete: (...args: Parameters<ReturnType<SupabaseClient["from"]>["delete"]>) =>
+      scoped(db.from(table).delete(...args)),
+    insert: (
+      values:
+        | Record<string, unknown>
+        | Array<Record<string, unknown>>,
+      ...args: Parameters<ReturnType<SupabaseClient["from"]>["insert"]> extends [unknown, ...infer Rest] ? Rest : never
+    ) => {
+      const scopedValues = Array.isArray(values)
+        ? values.map(withOrg)
+        : withOrg(values);
+      return db.from(table).insert(scopedValues, ...args);
+    },
+  };
 }

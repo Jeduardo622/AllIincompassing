@@ -14,6 +14,8 @@ export interface LifecycleIds {
   clientId: string;
   programId: string;
   goalId: string;
+  startIso?: string;
+  endIso?: string;
   noteId?: string;
 }
 
@@ -554,6 +556,8 @@ export async function bookSession(
         clientId: selected.clientId,
         programId: selected.programId,
         goalId: selected.goalId,
+        startIso: finalStartIso,
+        endIso: finalEndIso,
       };
     }
     throw new Error(
@@ -567,6 +571,8 @@ export async function bookSession(
     clientId: selected.clientId,
     programId: selected.programId,
     goalId: selected.goalId,
+    startIso: finalStartIso,
+    endIso: finalEndIso,
   };
 }
 

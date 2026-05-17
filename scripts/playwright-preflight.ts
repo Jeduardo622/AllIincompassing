@@ -1,5 +1,5 @@
 import { loadPlaywrightEnv } from './lib/load-playwright-env';
-import { assertUuid } from './lib/playwright-smoke';
+import { assertUuid, preflightCredentials } from './lib/playwright-smoke';
 import { assertNonAiSessionsEnvContract } from './lib/playwright-nonai-sessions-contract';
 
 const REDACTED_PLACEHOLDER = '****';
@@ -38,19 +38,29 @@ const run = (): void => {
   loadPlaywrightEnv();
 
   const baseUrl = assertUrl('PW_BASE_URL');
-  const adminEmail = assertPresent('PW_ADMIN_EMAIL', ['PLAYWRIGHT_ADMIN_EMAIL']);
-  const adminPassword = assertPresent('PW_ADMIN_PASSWORD', ['PLAYWRIGHT_ADMIN_PASSWORD']);
+  const adminCredentials = preflightCredentials([
+    {
+      email: process.env.PW_SUPERADMIN_EMAIL,
+      password: process.env.PW_SUPERADMIN_PASSWORD,
+      label: 'PW_SUPERADMIN_EMAIL + PW_SUPERADMIN_PASSWORD',
+    },
+    {
+      email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
+      password: process.env.PW_ADMIN_PASSWORD ?? process.env.PLAYWRIGHT_ADMIN_PASSWORD,
+      label: 'PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD',
+    },
+  ]);
   const therapistEmail = assertPresent('PW_THERAPIST_EMAIL', ['PLAYWRIGHT_THERAPIST_EMAIL']);
   const therapistPassword = assertPresent('PW_THERAPIST_PASSWORD', ['PLAYWRIGHT_THERAPIST_PASSWORD']);
   const foreignClientId = assertUuid(assertPresent('PW_FOREIGN_CLIENT_ID'), 'PW_FOREIGN_CLIENT_ID');
   const foreignTherapistId = assertUuid(assertPresent('PW_FOREIGN_THERAPIST_ID'), 'PW_FOREIGN_THERAPIST_ID');
 
-  if (adminEmail.toLowerCase() === therapistEmail.toLowerCase()) {
-    throw new Error('PW_ADMIN_EMAIL and PW_THERAPIST_EMAIL must reference different personas.');
+  if (adminCredentials.email.toLowerCase() === therapistEmail.toLowerCase()) {
+    throw new Error(`${adminCredentials.label} and PW_THERAPIST_EMAIL must reference different personas.`);
   }
-  if (adminPassword === therapistPassword) {
+  if (adminCredentials.password === therapistPassword) {
     console.warn(
-      'Warning: PW_ADMIN_PASSWORD and PW_THERAPIST_PASSWORD are identical. Consider distinct secrets per persona.',
+      `Warning: ${adminCredentials.label} password and PW_THERAPIST_PASSWORD are identical. Consider distinct secrets per persona.`,
     );
   }
   if (foreignClientId === foreignTherapistId) {
@@ -72,7 +82,8 @@ const run = (): void => {
       ok: true,
       baseUrl,
       personas: {
-        adminEmail,
+        adminEmail: adminCredentials.email,
+        adminCredential: adminCredentials.label,
         therapistEmail,
       },
       entities: {

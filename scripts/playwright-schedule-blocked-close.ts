@@ -45,11 +45,16 @@ const getEnv = (key: string, fallback?: string): string => {
 const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(value ?? "");
 
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "120000");
+const BOOK_SESSION_STEP_TIMEOUT_MS = Number(process.env.PW_BOOK_SESSION_STEP_TIMEOUT_MS ?? "240000");
 
-const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
+const withStepTimeout = async <T>(
+  label: string,
+  operation: () => Promise<T>,
+  timeoutMs = STEP_TIMEOUT_MS,
+): Promise<T> => {
   console.log(`[blocked-close] start ${label}`);
   const timeout = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`Step timed out: ${label} (${STEP_TIMEOUT_MS}ms)`)), STEP_TIMEOUT_MS);
+    setTimeout(() => reject(new Error(`Step timed out: ${label} (${timeoutMs}ms)`)), timeoutMs);
   });
   const result = await Promise.race([operation(), timeout]);
   console.log(`[blocked-close] ok ${label}`);
@@ -319,13 +324,13 @@ async function run(): Promise<void> {
     let booked: LifecycleIds;
     try {
       booked = await withStepTimeout("book-session", () =>
-        bookSession(activePage, token, strictParityMode, bookOpts));
+        bookSession(activePage, token, strictParityMode, bookOpts), BOOK_SESSION_STEP_TIMEOUT_MS);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (strictParityMode && message.includes("Organization context required") && authenticatedCredential) {
         token = await fetchAccessTokenForCredentials(authenticatedCredential.email, authenticatedCredential.password);
         booked = await withStepTimeout("book-session retry", () =>
-          bookSession(activePage, token, strictParityMode, bookOpts));
+          bookSession(activePage, token, strictParityMode, bookOpts), BOOK_SESSION_STEP_TIMEOUT_MS);
       } else {
         throw error;
       }

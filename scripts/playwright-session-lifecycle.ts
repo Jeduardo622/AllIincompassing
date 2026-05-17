@@ -737,12 +737,13 @@ async function markTerminalViaScheduleModal(
     void dialog.accept();
   });
   try {
+    const terminalActionButton = page.getByRole("button", { name: /Update Session|Close Session/i });
     const [completeResponse] = await Promise.all([
       page.waitForResponse(
         (res) => res.url().includes("sessions-complete") && res.request().method() === "POST",
         { timeout: 90_000 },
       ),
-      page.getByRole("button", { name: /Update Session/i }).click(),
+      terminalActionButton.click(),
     ]);
     const completeBody = await completeResponse.text();
     if (!completeResponse.ok()) {

@@ -147,13 +147,16 @@ npm run test:routes:tier0
 
 What it runs:
 
-- `cypress/e2e/routes_integrity.cy.ts`
-- `cypress/e2e/role_access.cy.ts`
+- `cypress/e2e/routes_public.cy.ts`
+- `cypress/e2e/routes_client.cy.ts`
+- `cypress/e2e/routes_schedule.cy.ts`
+- `cypress/e2e/routes_admin.cy.ts`
+- `cypress/e2e/routes_auth.cy.ts`
 
 Local notes:
 
 - The script spins up a preview server from build artifacts; set `PREVIEW_OUTPUT_DIR=dist` when reusing `npm run build` output.
-- By default, `npm run test:routes` also runs these two specs unless you override `--spec`.
+- By default, `npm run test:routes` also runs these tier-0 specs unless you override `--spec`.
 
 ## Test Reliability SLO Policy
 

@@ -5,8 +5,14 @@ const ROOT = process.cwd();
 const POLICY_PATH = path.join(ROOT, "tests", "reliability", "policy.json");
 const CYPRESS_CONFIG_PATH = path.join(ROOT, "cypress.config.cjs");
 const PACKAGE_JSON_PATH = path.join(ROOT, "package.json");
-const ROUTES_INTEGRITY_PATH = path.join(ROOT, "cypress", "e2e", "routes_integrity.cy.ts");
-const ROLE_ACCESS_PATH = path.join(ROOT, "cypress", "e2e", "role_access.cy.ts");
+const ROUTE_SCENARIOS_PATH = path.join(ROOT, "cypress", "support", "routeScenarios.ts");
+const ROUTE_SPEC_PATHS = [
+  path.join(ROOT, "cypress", "e2e", "routes_public.cy.ts"),
+  path.join(ROOT, "cypress", "e2e", "routes_client.cy.ts"),
+  path.join(ROOT, "cypress", "e2e", "routes_schedule.cy.ts"),
+  path.join(ROOT, "cypress", "e2e", "routes_admin.cy.ts"),
+  path.join(ROOT, "cypress", "e2e", "routes_auth.cy.ts"),
+];
 const CYPRESS_COMMANDS_PATH = path.join(ROOT, "cypress", "support", "commands.ts");
 const CI_WORKFLOW_PATH = path.join(ROOT, ".github", "workflows", "ci.yml");
 const SUPABASE_PREVIEW_WORKFLOW_PATH = path.join(ROOT, ".github", "workflows", "supabase-preview.yml");
@@ -31,8 +37,9 @@ const run = async () => {
   const policy = await readJson(POLICY_PATH);
   const packageJson = await readJson(PACKAGE_JSON_PATH);
   const cypressConfig = await readFile(CYPRESS_CONFIG_PATH, "utf8");
-  const routesIntegrity = await readFile(ROUTES_INTEGRITY_PATH, "utf8");
-  const roleAccess = await readFile(ROLE_ACCESS_PATH, "utf8");
+  const routeScenarios = await readFile(ROUTE_SCENARIOS_PATH, "utf8");
+  const routeSpecs = await Promise.all(ROUTE_SPEC_PATHS.map((specPath) => readFile(specPath, "utf8")));
+  const combinedRouteSpecs = routeSpecs.join("\n");
   const cypressCommands = await readFile(CYPRESS_COMMANDS_PATH, "utf8");
   const ciWorkflow = await readFile(CI_WORKFLOW_PATH, "utf8");
   const supabasePreviewWorkflow = await readFile(SUPABASE_PREVIEW_WORKFLOW_PATH, "utf8");
@@ -105,25 +112,19 @@ const run = async () => {
     }
   }
 
-  const scheduleRoleContract = "roles: ['therapist', 'admin', 'super_admin']";
-  if (!routesIntegrity.includes(scheduleRoleContract)) {
-    errors.push("cypress/e2e/routes_integrity.cy.ts must align /schedule role coverage to therapist/admin/super_admin.");
+  const scheduleRoleContract = 'roles: ["therapist", "admin", "super_admin"]';
+  if (!routeScenarios.includes(scheduleRoleContract)) {
+    errors.push("cypress/support/routeScenarios.ts must align /schedule role coverage to therapist/admin/super_admin.");
   }
-  if (!roleAccess.includes(scheduleRoleContract)) {
-    errors.push("cypress/e2e/role_access.cy.ts must align /schedule role coverage to therapist/admin/super_admin.");
+  if (!combinedRouteSpecs.includes("runRoleMatrix")) {
+    errors.push("split Cypress route specs must use runRoleMatrix for deterministic role coverage.");
   }
 
-  if (!roleAccess.includes("cy.intercept('GET', '**/api/runtime-config').as('runtimeConfig');")) {
-    errors.push("cypress/e2e/role_access.cy.ts must alias /api/runtime-config for deterministic deep-link checks.");
+  if (!routeScenarios.includes('cy.intercept("GET", "**/api/runtime-config").as("runtimeConfig");')) {
+    errors.push("cypress/support/routeScenarios.ts must alias /api/runtime-config for deterministic route checks.");
   }
-  if (!roleAccess.includes("cy.wait('@runtimeConfig');")) {
-    errors.push("cypress/e2e/role_access.cy.ts must wait for runtime config before allowed-route assertions.");
-  }
-  if (!routesIntegrity.includes("cy.intercept('GET', '**/api/runtime-config').as('runtimeConfig');")) {
-    errors.push("cypress/e2e/routes_integrity.cy.ts must alias /api/runtime-config for deterministic route bootstrap.");
-  }
-  if (!routesIntegrity.includes("cy.wait('@runtimeConfig');")) {
-    errors.push("cypress/e2e/routes_integrity.cy.ts must wait for runtime config before route assertions.");
+  if (!routeScenarios.includes('cy.wait("@runtimeConfig");')) {
+    errors.push("cypress/support/routeScenarios.ts must wait for runtime config before route assertions.");
   }
   if (!cypressCommands.includes("cy.intercept('GET', '**/api/runtime-config').as('runtimeConfigBootstrap');")) {
     errors.push("cypress/support/commands.ts must alias /api/runtime-config during login bootstrap.");
@@ -171,11 +172,8 @@ const run = async () => {
     errors.push(".github/workflows/rollback-drill.yml must execute rollback drill checks and publish evidence.");
   }
 
-  if (routesIntegrity.includes("interceptedRequests")) {
-    errors.push("cypress/e2e/routes_integrity.cy.ts should avoid shared interceptedRequests buffers in tier-0 gate.");
-  }
-  if (roleAccess.includes("interceptedRequests")) {
-    errors.push("cypress/e2e/role_access.cy.ts should avoid shared interceptedRequests buffers in tier-0 gate.");
+  if (routeScenarios.includes("interceptedRequests") || combinedRouteSpecs.includes("interceptedRequests")) {
+    errors.push("split Cypress route specs should avoid shared interceptedRequests buffers in tier-0 gate.");
   }
 
   if (warnings.length > 0) {

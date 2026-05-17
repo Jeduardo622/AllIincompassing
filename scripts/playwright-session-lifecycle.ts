@@ -892,8 +892,8 @@ export async function run() {
     const scheduleUrl = `${base}/schedule`;
     await withStepTimeout("start-session-modal", () =>
       startSessionViaScheduleModal(activePage, scheduleUrl, booked, token, strictParityMode));
-    if (terminalStatus === "no-show") {
-      await withStepTimeout("clear-session-goals-for-no-show", () =>
+    if (terminalStatus === "no-show" || terminalStatus === "completed") {
+      await withStepTimeout(`clear-session-goals-for-${terminalStatus}`, () =>
         clearSessionGoalsViaServiceRole(booked.sessionId));
     }
     await withStepTimeout(`${terminalStatus}-session-modal`, () =>

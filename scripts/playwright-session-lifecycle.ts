@@ -460,7 +460,7 @@ async function bookSession(page: Page, _token: string, strictMode: boolean): Pro
     await page.locator("#end-time-input").fill(toDatetimeLocal(attemptEnd));
 
     page.once("dialog", (dialog) => {
-      void dialog.accept();
+      void dialog.accept().catch(() => undefined);
     });
     const responsePromise = page.waitForResponse(
       (res) => res.url().includes("/api/book") && res.request().method() === "POST",
@@ -741,7 +741,7 @@ async function markTerminalViaScheduleModal(
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
   await page.locator("#status-select").selectOption(terminalStatus);
   page.once("dialog", (dialog) => {
-    void dialog.accept();
+    void dialog.accept().catch(() => undefined);
   });
   try {
     const terminalActionButton = terminalStatus === "completed"

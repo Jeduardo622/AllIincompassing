@@ -439,8 +439,12 @@ jobs:
           PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
+          PW_SUPERADMIN_EMAIL: ${{ secrets.PW_SUPERADMIN_EMAIL }}
+          PW_SUPERADMIN_PASSWORD: ${{ secrets.PW_SUPERADMIN_PASSWORD }}
           PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
           PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
+          PW_SCHEDULE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
+          PW_SCHEDULE_PASSWORD: ${{ secrets.PW_SCHEDULE_PASSWORD }}
           PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
           PW_FOREIGN_THERAPIST_ID: ${{ secrets.PW_FOREIGN_THERAPIST_ID }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -449,8 +453,6 @@ jobs:
         run: |
           required=(
             PW_BASE_URL
-            PW_ADMIN_EMAIL
-            PW_ADMIN_PASSWORD
             PW_THERAPIST_EMAIL
             PW_THERAPIST_PASSWORD
             PW_FOREIGN_CLIENT_ID

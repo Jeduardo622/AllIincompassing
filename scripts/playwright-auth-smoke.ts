@@ -18,14 +18,14 @@ async function run() {
   const base = resolvePlaywrightBaseUrl();
   const credentials = preflightCredentials([
     {
-      email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
-      password: process.env.PW_ADMIN_PASSWORD ?? process.env.PLAYWRIGHT_ADMIN_PASSWORD,
-      label: 'PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD',
-    },
-    {
       email: process.env.PW_SUPERADMIN_EMAIL,
       password: process.env.PW_SUPERADMIN_PASSWORD,
       label: 'PW_SUPERADMIN_EMAIL + PW_SUPERADMIN_PASSWORD',
+    },
+    {
+      email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
+      password: process.env.PW_ADMIN_PASSWORD ?? process.env.PLAYWRIGHT_ADMIN_PASSWORD,
+      label: 'PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD',
     },
   ]);
 

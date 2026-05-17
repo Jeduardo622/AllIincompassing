@@ -240,6 +240,38 @@ async function getSessionOrganizationId(sessionId: string): Promise<string> {
   return data.organization_id;
 }
 
+async function openRenderedSessionCard(page: Page, sessionId: string): Promise<boolean> {
+  const card = page.locator(`[data-session-id="${sessionId}"]`).first();
+  const openCard = async (): Promise<boolean> => {
+    const visible = await card.isVisible().catch(() => false);
+    if (!visible) {
+      return false;
+    }
+    await card.click();
+    const dialog = page.getByRole("dialog", { name: /edit session|live session/i });
+    return dialog.waitFor({ state: "visible", timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false);
+  };
+
+  await page.getByRole("button", { name: /Week view/i }).click().catch(() => undefined);
+  await page.waitForLoadState("networkidle").catch(() => undefined);
+  if (await openCard()) {
+    return true;
+  }
+
+  for (let step = 0; step < 8; step += 1) {
+    await page.getByRole("button", { name: /Next period/i }).click();
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+    await page.waitForTimeout(500);
+    if (await openCard()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function run(): Promise<void> {
   loadPlaywrightEnv();
   const base = getEnv("PW_BASE_URL", "https://app.allincompassing.ai");
@@ -411,7 +443,15 @@ async function run(): Promise<void> {
         accessToken: token,
       }));
 
-    await withStepTimeout("open-edit-modal-via-url", async () => {
+    await withStepTimeout("open-edit-modal", async () => {
+      const openedFromRenderedCard = await openRenderedSessionCard(activePage, booked.sessionId);
+      if (openedFromRenderedCard) {
+        await activePage
+          .locator('[role="dialog"][data-session-status="in_progress"]')
+          .waitFor({ state: "visible", timeout: 90_000 });
+        return;
+      }
+
       let lastUrl = activePage.url();
       let lastBodyText = "";
 

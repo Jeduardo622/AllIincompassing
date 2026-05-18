@@ -467,6 +467,7 @@ const splitIeHpGoalSubsections = (
 const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
   const compact = compactDocumentText(text);
   const sectionIndexByFieldKey = new Map<string, number>();
+  let parentEducationCoveredByTreatmentGoalSpan = false;
 
   const specs = [
     {
@@ -606,6 +607,11 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
         return { ...section, section_index };
       });
     }
+    if (spec.field_key === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS") {
+      parentEducationCoveredByTreatmentGoalSpan = sectionRows.some((section) =>
+        typeof section.payload.raw_text === "string" && matchNormalized(section.payload.raw_text, "Parent Education")
+      );
+    }
     return sectionRows.flatMap((section) =>
       splitIeHpGoalSubsections(
         String(section.payload.raw_text ?? ""),
@@ -627,7 +633,7 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
     goalSectionPayload.review_notes = "Deterministic IEHP goal section found from School Goals anchoring.";
   }
 
-  if (extractIeHpLabelSummary(
+  if (!parentEducationCoveredByTreatmentGoalSpan && extractIeHpLabelSummary(
     compact,
     /Parent Education/i,
     [/Safety Procedure/i, /\bCoordination of Care\b/i],

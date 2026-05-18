@@ -11,7 +11,7 @@
 
 ## Scope
 
-- task intent: enable IEHP FBA parity across Programs & Goals upload, background extraction, structured section generation, and deterministic draft creation
+- task intent: enable IEHP FBA parity across Programs & Goals upload, background extraction, structured section generation, and deterministic draft creation; follow-up fixes harden extraction failure persistence when lifecycle probing throws and prevent duplicated IEHP Parent Education goal sections
 - files touched:
   - `deno.lock`
   - `src/components/ClientDetails/ProgramsGoalsTab.tsx`
@@ -49,6 +49,8 @@
   - `npm run validate:tenant`
   - `npm run build`
   - `npm run verify:local`
+  - `npm test -- src/server/__tests__/assessmentDocumentsHandler.test.ts`
+  - `deno test --allow-env=WS_NO_BUFFER_UTIL --allow-net=0.0.0.0:8000 supabase/functions/extract-assessment-fields/index.test.ts`
 - executed checks:
   - `npm run ci:check-focused`: pass
   - `npm run lint`: pass
@@ -57,6 +59,8 @@
   - `npm run validate:tenant`: pass
   - `npm run build`: pass
   - `npm run verify:local`: pass
+  - `npm test -- src/server/__tests__/assessmentDocumentsHandler.test.ts`: pass
+  - `deno test --allow-env=WS_NO_BUFFER_UTIL --allow-net=0.0.0.0:8000 supabase/functions/extract-assessment-fields/index.test.ts`: pass
 - blocked checks:
   - `none`
 - result: pass
@@ -86,4 +90,4 @@
 
 ## Handoff Summary
 
-This slice enables IEHP FBA upload and extraction parity in the Programs & Goals workflow by removing the CalOptima-only upload gate, passing the chosen template type through the server workflow, extracting IEHP structured sections in the edge function, and allowing deterministic draft generation from approved IEHP goal sections. Local verification passed across policy, lint, typecheck, test, tenant-safety, build, and `verify:local` gates. The remaining blocker is policy, not code quality: these protected-path changes still require human review before merge.
+This slice enables IEHP FBA upload and extraction parity in the Programs & Goals workflow by removing the CalOptima-only upload gate, passing the chosen template type through the server workflow, extracting IEHP structured sections in the edge function, and allowing deterministic draft generation from approved IEHP goal sections. Follow-up review fixes now keep schedule-failure persistence fail-closed even when lifecycle status probing throws and avoid re-appending Parent Education goals already captured in the treatment-goals span. Local verification passed across policy, lint, typecheck, focused regression tests, full test, tenant-safety, build, and `verify:local` gates. The remaining blocker is policy, not code quality: these protected-path changes still require human review before merge.

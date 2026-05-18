@@ -323,12 +323,22 @@ const persistExtractionFailure = async (args: {
   const { supabaseUrl, headers, organizationId, actorId, createdDocumentId, clientId, error, fromStatus = "extracting" } = args;
   const extractionError = error.publicMessage;
   const updatedAt = new Date().toISOString();
-  const currentStatus = await getAssessmentDocumentStatus({
-    supabaseUrl,
-    headers,
-    organizationId,
-    createdDocumentId,
-  });
+  let currentStatus: string | null;
+  try {
+    currentStatus = await getAssessmentDocumentStatus({
+      supabaseUrl,
+      headers,
+      organizationId,
+      createdDocumentId,
+    });
+  } catch (statusProbeError) {
+    serverLogger.warn("assessment-documents continuing extraction failure persistence after lifecycle status probe failed", {
+      assessmentDocumentId: createdDocumentId,
+      fromStatus,
+      error: statusProbeError instanceof Error ? statusProbeError.message : String(statusProbeError),
+    });
+    currentStatus = fromStatus;
+  }
   if (currentStatus === null) {
     serverLogger.warn("assessment-documents skipped extraction failure persistence due unreadable lifecycle status", {
       assessmentDocumentId: createdDocumentId,

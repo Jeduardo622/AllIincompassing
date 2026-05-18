@@ -37,7 +37,6 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SUPPORTED_ASSESSMENT_FILE_EXTENSIONS = [".pdf", ".docx"] as const;
-const SUPPORTED_ASSESSMENT_WORKFLOW_TEMPLATE: AssessmentTemplateType = "caloptima_fba";
 const PROGRAMS_REQUEST_TIMEOUT_MS = 12_000;
 const GOALS_REQUEST_TIMEOUT_MS = 12_000;
 const PROGRAM_NOTES_REQUEST_TIMEOUT_MS = 12_000;
@@ -60,6 +59,8 @@ const STRUCTURED_GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
   "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
   "CALOPTIMA_FBA_PARENT_GOALS",
+  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
 ]);
 
 const isStructuredChildGoalSection = (section: AssessmentStructuredSection): boolean =>
@@ -619,7 +620,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     : !selectedAssessmentReadyForAiGeneration
       ? "Wait for extraction to complete before generating drafts."
     : !hasApprovedStructuredGoalSections
-      ? "Approve at least one structured CalOptima goal section before generating drafts."
+      ? "Approve at least one structured goal section before generating drafts."
       : null;
 
   useEffect(() => {
@@ -728,9 +729,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     mutationFn: async () => {
       if (!assessmentFile) {
         throw new Error("Select a file before uploading.");
-      }
-      if (assessmentTemplateType !== SUPPORTED_ASSESSMENT_WORKFLOW_TEMPLATE) {
-        throw new Error("Only CalOptima FBA upload is supported in this workflow. IEHP upload is disabled here.");
       }
       if (!isSupportedAssessmentFile(assessmentFile)) {
         throw new Error("Unsupported file type. Upload a .pdf or .docx assessment.");
@@ -1493,9 +1491,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
               >
                 <option value="caloptima_fba">CalOptima FBA</option>
+                <option value="iehp_fba">IEHP FBA</option>
               </select>
               <p className="text-xs text-gray-500 dark:text-gray-300">
-                CalOptima FBA is the only upload supported in this promotion workflow. IEHP upload is disabled here.
+                Select the assessment template that matches the uploaded source document.
               </p>
               <label htmlFor="programs-goals-fba-file-upload" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
                 FBA file (PDF or DOCX)
@@ -1512,7 +1511,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 onClick={() => {
                   void handleUploadAssessment();
                 }}
-                disabled={!assessmentFile || assessmentTemplateType !== SUPPORTED_ASSESSMENT_WORKFLOW_TEMPLATE || isUploadProcessing}
+                disabled={!assessmentFile || isUploadProcessing}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
                 {isUploadProcessing ? (

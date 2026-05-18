@@ -71,3 +71,15 @@ Deno.test("summarizeStructuredGoalSections counts child and parent sections", ()
     parentGoalCount: 1,
   });
 });
+
+Deno.test("summarizeStructuredGoalSections counts IEHP goal sections", () => {
+  const sections = [
+    { field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS", payload: {} },
+    { field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", payload: {} },
+  ];
+
+  expect(summarizeStructuredGoalSections(sections)).toEqual({
+    childGoalCount: 0,
+    parentGoalCount: 2,
+  });
+});

@@ -1291,7 +1291,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(saveDraftPayload).not.toHaveProperty("program");
   });
 
-  it("disables IEHP upload in the CalOptima-only promotion workflow", async () => {
+  it("supports both CalOptima and IEHP upload templates", async () => {
     const baseCallApiImpl = vi.mocked(callApi).getMockImplementation();
     if (!baseCallApiImpl) {
       throw new Error("Missing base API mock implementation.");
@@ -1332,12 +1332,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     );
 
     await screen.findByText(/CalOptima FBA Upload \+ AI Workflow/i);
-    expect(
-      screen.getByText("CalOptima FBA is the only upload supported in this promotion workflow. IEHP upload is disabled here."),
-    ).toBeInTheDocument();
     const templateSelect = screen.getByRole("combobox", { name: /FBA template/i });
     expect(within(templateSelect).getByRole("option", { name: "CalOptima FBA" })).toBeInTheDocument();
-    expect(within(templateSelect).queryByRole("option", { name: "IEHP FBA" })).not.toBeInTheDocument();
+    expect(within(templateSelect).getByRole("option", { name: "IEHP FBA" })).toBeInTheDocument();
     const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
     const file = new File(["mock caloptima content"], "caloptima-fba.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1358,6 +1355,69 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
     await waitFor(() => {
       expect(showSuccess).toHaveBeenCalledWith("CalOptima FBA uploaded and checklist initialized.");
+    });
+  });
+
+  it("uploads an IEHP assessment when IEHP template is selected", async () => {
+    const baseCallApiImpl = vi.mocked(callApi).getMockImplementation();
+    if (!baseCallApiImpl) {
+      throw new Error("Missing base API mock implementation.");
+    }
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "POST" && path === "/api/assessment-documents") {
+        return new Response(
+          JSON.stringify({
+            id: ASSESSMENT_ID,
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            template_type: "iehp_fba",
+            file_name: "iehp-fba.docx",
+            mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            file_size: 1000,
+            bucket_id: "client-documents",
+            object_path: "clients/client-1/assessments/iehp-fba.docx",
+            status: "uploaded",
+            created_at: "2026-02-11T00:00:00.000Z",
+          }),
+          { status: 201 },
+        );
+      }
+      return baseCallApiImpl(path, init);
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab client={buildClient()} />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText(/CalOptima FBA Upload \+ AI Workflow/i);
+    const templateSelect = screen.getByRole("combobox", { name: /FBA template/i });
+    await user.selectOptions(templateSelect, "iehp_fba");
+    const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
+    const file = new File(["mock iehp content"], "iehp-fba.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    await user.upload(uploadInput, file);
+    await user.click(screen.getByRole("button", { name: /Upload IEHP FBA/i }));
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-documents",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("\"template_type\":\"iehp_fba\""),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith("IEHP FBA uploaded and checklist initialized.");
     });
   });
 
@@ -1699,7 +1759,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toBeInTheDocument();
     expect(screen.getByText((_content, node) => node?.textContent === "Child goals: 0")).toBeInTheDocument();
     expect(screen.getByText((_content, node) => node?.textContent === "Parent goals: 0")).toBeInTheDocument();
-    expect(screen.getByText("Approve at least one structured CalOptima goal section before generating drafts.")).toBeInTheDocument();
+    expect(screen.getByText("Approve at least one structured goal section before generating drafts.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).toBeDisabled();
   });
 
@@ -1881,7 +1941,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     await waitFor(() => {
       expect(generateButton).toBeDisabled();
     });
-    expect(await screen.findByText("Approve at least one structured CalOptima goal section before generating drafts.")).toBeInTheDocument();
+    expect(await screen.findByText("Approve at least one structured goal section before generating drafts.")).toBeInTheDocument();
   });
 
   it("shows existing-draft guidance for drafted uploaded assessments", async () => {

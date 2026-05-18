@@ -388,6 +388,111 @@ describe("assessmentDraftsHandler", () => {
     expect(liveGoalWrite).toBeUndefined();
   });
 
+  it("auto-generates deterministic drafts from IEHP structured goal sections", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const structuredGoals = [
+      {
+        id: "iehp-structured-child-1",
+        section_key: "treatment_goals",
+        field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+        section_index: 0,
+        payload: {
+          title: "IEHP Target behavior",
+          raw_text: "IEHP intervention block with measurable criteria.",
+          program_name: "Behavior Treatment",
+        },
+        status: "approved" as const,
+        required: true,
+      },
+      {
+        id: "iehp-structured-child-2",
+        section_key: "treatment_goals",
+        field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+        section_index: 1,
+        payload: {
+          title: "IEHP Skill goal",
+          raw_text: "IEHP school/skill block with measurable criteria.",
+          program_name: "Skill Acquisition",
+        },
+        status: "approved" as const,
+        required: true,
+      },
+    ];
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?")) {
+        return { ok: true, status: 200, data: structuredGoals };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
+        const body = JSON.parse(String(init?.body)) as Array<{ name: string }>;
+        return {
+          ok: true,
+          status: 201,
+          data: body.map((goal) => ({ id: `draft-program-${goal.name}`, name: goal.name })),
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_goals")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111", auto_generate: true }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const goalCreateCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(
+        ([path, init]) =>
+          typeof path === "string" &&
+          path.includes("/rest/v1/assessment_draft_goals") &&
+          (init?.method ?? "").toUpperCase() === "POST",
+      );
+    expect(goalCreateCall).toBeTruthy();
+    const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
+    expect(goalPayload).toHaveLength(2);
+    expect(goalPayload.every((goal) => goal.goal_type === "parent")).toBe(true);
+    expect(goalPayload.map((goal) => goal.program_name)).toEqual(["Behavior Treatment", "Skill Acquisition"]);
+  });
+
   it("deterministically persists every approved structured program and goal beyond the legacy caps", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
@@ -843,7 +948,7 @@ describe("assessmentDraftsHandler", () => {
 
     expect(response.status).toBe(409);
     const payload = (await response.json()) as { error?: string };
-    expect(payload.error).toContain("No approved structured CalOptima goal sections");
+    expect(payload.error).toContain("No approved structured goal sections");
     expect(fetchJson).not.toHaveBeenCalledWith(
       expect.stringContaining("/rest/v1/assessment_draft_programs"),
       expect.objectContaining({ method: "POST" }),

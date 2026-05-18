@@ -100,6 +100,28 @@ interface AssessmentDocumentScopeRow {
 }
 
 const AUTO_GENERATE_READY_DOCUMENT_STATUSES = new Set(["extracted", "extraction_failed"]);
+const DRAFT_GOAL_FIELD_KEYS = new Set([
+  "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+  "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+  "CALOPTIMA_FBA_PARENT_GOALS",
+  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+]);
+const DRAFT_PARENT_GOAL_FIELD_KEYS = new Set([
+  "CALOPTIMA_FBA_PARENT_GOALS",
+  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+]);
+
+const resolveProgramNameFromGoalSection = (fieldKey: string, payload: Record<string, unknown>, isParentGoal: boolean): string => {
+  if (fieldKey === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS") {
+    return getPayloadString(payload, ["program_name", "program", "domain"], "Skill Acquisition");
+  }
+  if (fieldKey === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS") {
+    return getPayloadString(payload, ["program_name", "program", "domain"], "Behavior Treatment");
+  }
+  return getPayloadString(payload, ["program_name", "program", "domain"], isParentGoal ? "Parent Training" : "Behavior Treatment");
+};
 
 interface AssessmentDraftProgramRow {
   id: string;
@@ -257,11 +279,7 @@ export const buildDeterministicDraftPayload = (
     (section) =>
       eligibleStatuses.has(section.status) &&
       section.payload &&
-      [
-        "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
-        "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-        "CALOPTIMA_FBA_PARENT_GOALS",
-      ].includes(section.field_key),
+      DRAFT_GOAL_FIELD_KEYS.has(section.field_key),
   );
   if (approvedGoalSections.length === 0) {
     return null;
@@ -272,9 +290,9 @@ export const buildDeterministicDraftPayload = (
   const goals = approvedGoalSections.map((section, index) => {
     const payload = section.payload ?? {};
     const isParentGoal =
-      section.field_key === "CALOPTIMA_FBA_PARENT_GOALS" ||
+      DRAFT_PARENT_GOAL_FIELD_KEYS.has(section.field_key) ||
       getPayloadString(payload, ["goal_type"]).toLowerCase() === "parent";
-    const programName = getPayloadString(payload, ["program_name", "program", "domain"], isParentGoal ? "Parent Training" : "Behavior Treatment");
+    const programName = resolveProgramNameFromGoalSection(section.field_key, payload, isParentGoal);
     programNames.add(programName);
     const title = ensureUniqueGoalTitle(
       getPayloadString(payload, ["title", "goal", "goal_title"], `${isParentGoal ? "Parent" : "Child"} Goal ${index + 1}`),
@@ -310,13 +328,13 @@ export const buildDeterministicDraftPayload = (
   return {
     programs: Array.from(programNames).map((name) => ({
       name,
-      description: `Program derived from approved CalOptima structured goal sections for ${name}.`,
-      rationale: "Deterministic conversion from staff-approved CalOptima FBA sections.",
-      evidence_refs: [{ section_key: "caloptima_structured_sections", source_span: name }],
+      description: `Program derived from approved structured goal sections for ${name}.`,
+      rationale: "Deterministic conversion from staff-approved structured FBA goal sections.",
+      evidence_refs: [{ section_key: "structured_sections", source_span: name }],
       review_flags: [],
     })),
     goals,
-    summary_rationale: "Drafts were created from approved CalOptima structured sections without AI generation.",
+    summary_rationale: "Drafts were created from approved structured sections without AI generation.",
     confidence: "high",
   };
 };
@@ -679,9 +697,9 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       return json({ error: "Failed to load structured assessment sections for deterministic draft generation." }, structuredResult.status || 500);
     }
     const generatedPayload = buildDeterministicDraftPayload(structuredResult.data ?? []);
-    if (!generatedPayload) {
-      return json({ error: "No approved structured CalOptima goal sections are available for deterministic draft generation." }, 409);
-    }
+  if (!generatedPayload) {
+    return json({ error: "No approved structured goal sections are available for deterministic draft generation." }, 409);
+  }
 
     const persisted = await persistDraftRows({
       supabaseUrl,

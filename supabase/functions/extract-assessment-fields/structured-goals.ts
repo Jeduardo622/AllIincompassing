@@ -12,6 +12,18 @@ export interface StructuredGoalSectionResult {
 const GOAL_HEADING_PATTERN =
   /(?:^|\s)(?:[A-Z]\.\s*)?(?:\d+\.\s*)?((?:replacement\s+behavior|target(?:\s+and\s+replacement)?(?:\s+behavior)?|skill\s+acquisition|parent\/caregiver|parent|caregiver)\s+goal)\s*(\d+|[A-Z])?\s*(?:\([^)]*\))?\s*(?::|[-–—])\s*/gi;
 
+const CALOPTIMA_CHILD_GOAL_FIELD_KEYS = new Set([
+  "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+  "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+]);
+const CALOPTIMA_PARENT_GOAL_FIELD_KEYS = new Set(["CALOPTIMA_FBA_PARENT_GOALS"]);
+const IEHP_PARENT_GOAL_FIELD_KEYS = new Set([
+  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+]);
+const CHILD_GOAL_FIELD_KEYS = new Set([...CALOPTIMA_CHILD_GOAL_FIELD_KEYS]);
+const PARENT_GOAL_FIELD_KEYS = new Set([...CALOPTIMA_PARENT_GOAL_FIELD_KEYS, ...IEHP_PARENT_GOAL_FIELD_KEYS]);
+
 const FIELD_PATTERN =
   /\b(program|description|target behavior|behavior|skill|measurement type|measure|baseline(?: data)?(?: and date| with dates)?|target criteria|criteria|mastery criteria|maintenance criteria|generalization criteria|rationale|objective data points?)\s*:\s*(.+?)(?=\s+\b(?:program|description|target behavior|behavior|skill|measurement type|measure|baseline(?: data)?(?: and date| with dates)?|target criteria|criteria|mastery criteria|maintenance criteria|generalization criteria|rationale|objective data points?)\s*:|$)/gi;
 
@@ -188,12 +200,11 @@ export const extractStructuredGoalSections = (text: string): StructuredGoalSecti
 
 export const summarizeStructuredGoalSections = (sections: Array<{ field_key: string; payload: Record<string, unknown> }>) => {
   const childGoalCount = sections.filter((section) =>
-    section.field_key === "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS" ||
-    section.field_key === "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS" ||
+    CHILD_GOAL_FIELD_KEYS.has(section.field_key) ||
     section.payload.goal_type === "child"
   ).length;
   const parentGoalCount = sections.filter((section) =>
-    section.field_key === "CALOPTIMA_FBA_PARENT_GOALS" || section.payload.goal_type === "parent"
+    PARENT_GOAL_FIELD_KEYS.has(section.field_key) || section.payload.goal_type === "parent"
   ).length;
   return { childGoalCount, parentGoalCount };
 };

@@ -127,6 +127,22 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
         return { ok: true, status: 200, data: [{ id: "client-1" }] };
       }
+      if (
+        method === "GET" &&
+        url.includes(
+          `/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(
+            documentId,
+          )}&organization_id=eq.org-1&limit=1`,
+        )
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes(`/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(documentId)}`)
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         return {
           ok: true,
@@ -206,6 +222,29 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
         return { ok: true, status: 200, data: [{ id: "client-1" }] };
       }
+      if (
+        method === "GET" &&
+        url.includes(
+          `/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(documentId)}&organization_id=eq.org-1&limit=1`,
+        )
+      ) {
+        if (mode === "lookup-fails") {
+          return { ok: true, status: 200, data: [{ status: "extraction_failed" }] };
+        }
+        if (mode === "lookup-status-throws") {
+          throw new Error("temporary status lookup failure");
+        }
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (method === "GET" && url.includes(`/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(documentId)}`)) {
+        if (mode === "lookup-fails") {
+          return { ok: true, status: 200, data: [{ status: "extraction_failed" }] };
+        }
+        if (mode === "lookup-status-throws") {
+          throw new Error("temporary status lookup failure");
+        }
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         return {
           ok: true,
@@ -230,15 +269,6 @@ describe("assessmentDocumentsHandler", () => {
           return { ok: true, status: 200, data: [] };
         }
         return { ok: true, status: 200, data: [backgroundDocument] };
-      }
-      if (method === "GET" && url.includes(`/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(documentId)}`)) {
-        if (mode === "lookup-fails") {
-          return { ok: true, status: 200, data: [{ status: "extraction_failed" }] };
-        }
-        if (mode === "lookup-status-throws") {
-          throw new Error("temporary status lookup failure");
-        }
-        return { ok: true, status: 200, data: [{ status: "extracting" }] };
       }
       if (
         method === "PATCH" &&
@@ -699,6 +729,59 @@ describe("assessmentDocumentsHandler", () => {
     expect(failureEventCall).toBeUndefined();
   });
 
+  it("Netlify upload wrapper persists schedule failure when lifecycle status probe throws", async () => {
+    const documentId = "73333333-3333-4333-8333-333333333335";
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockNetlifyWrapperFlowResponses(documentId, "lookup-status-throws");
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ error: "enqueue failed" }), { status: 500 })) as typeof fetch;
+
+    const response = await assessmentDocumentsNetlifyHandler(
+      {
+        httpMethod: "POST",
+        headers: {
+          host: "app.example.com",
+          authorization: "Bearer token",
+        },
+        path: "/api/assessment-documents",
+        rawUrl: "https://app.example.com/api/assessment-documents",
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+        isBase64Encoded: false,
+      } as never,
+      {} as never,
+      undefined as never,
+    );
+
+    expect(response.statusCode).toBe(500);
+    const documentStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes(`/rest/v1/assessment_documents?id=eq.${documentId}`))
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(true);
+    const failureEventCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
+      const body = String((init as RequestInit | undefined)?.body ?? "");
+      return typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && body.includes(documentId) && body.includes("extraction_background_schedule_failed");
+    });
+    expect(failureEventCall).toBeDefined();
+  });
+
   it("Netlify upload wrapper persists extraction_background_schedule_failed when enqueue throws", async () => {
     const documentId = "73444444-4444-4344-8344-444444444444";
     vi.mocked(getAccessToken).mockReturnValue("token");
@@ -1068,6 +1151,20 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
         return { ok: false, status: 503, data: null };
       }
+      if (
+        method === "GET" &&
+        url.includes(
+          "/rest/v1/assessment_documents?select=status&id=eq.11111111-1111-4111-8111-111111111111&organization_id=eq.org-1&limit=1",
+        )
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.11111111-1111-4111-8111-111111111111")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111")) {
         return { ok: true, status: 200, data: null };
       }
@@ -1135,6 +1232,20 @@ describe("assessmentDocumentsHandler", () => {
             },
           ],
         };
+      }
+      if (
+        method === "GET" &&
+        url.includes(
+          "/rest/v1/assessment_documents?select=status&id=eq.11111111-1111-4111-8111-111111111111&organization_id=eq.org-1&limit=1",
+        )
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.11111111-1111-4111-8111-111111111111")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
       }
       if (method === "PATCH" && url.includes("status=eq.extracting")) {
         return { ok: false, status: 503, data: null };
@@ -1318,7 +1429,7 @@ describe("assessmentDocumentsHandler", () => {
     );
   });
 
-  it("marks unsupported templates failed in the background extraction worker", async () => {
+  it("processes IEHP template documents in the background extraction worker", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -1331,6 +1442,7 @@ describe("assessmentDocumentsHandler", () => {
       anonKey: "anon",
     });
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
@@ -1351,7 +1463,62 @@ describe("assessmentDocumentsHandler", () => {
           ],
         };
       }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ full_name: "Client One", date_of_birth: "2017-05-01" }],
+        };
+      }
+      if (
+        method === "GET" &&
+        url.includes(
+          "/rest/v1/assessment_documents?select=status&id=eq.11111111-1111-4111-8111-111111111111&organization_id=eq.org-1&limit=1",
+        )
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.11111111-1111-4111-8111-111111111111")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extracting",
+              template_type: "iehp_fba",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.docx",
+              updated_at: "2026-05-15T20:00:00.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return { ok: true, status: 200, data: {
+          assessment_document_id: "11111111-1111-4111-8111-111111111111",
+          template_type: "iehp_fba",
+          fields: [],
+          unresolved_keys: [],
+          extracted_count: 0,
+          unresolved_count: 0,
+          extraction_provider: "local_docx",
+          structured_section_count: 0,
+          structured_child_goal_count: 0,
+          structured_parent_goal_count: 0,
+          adobe_element_count: null,
+          adobe_table_count: null,
+        } };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_structured_sections")) {
         return { ok: true, status: 200, data: null };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
@@ -1369,17 +1536,11 @@ describe("assessmentDocumentsHandler", () => {
     );
 
     expect(response.status).toBe(202);
-    expect(fetchJson).not.toHaveBeenCalledWith(
-      expect.stringContaining("/functions/v1/extract-assessment-fields"),
-      expect.anything(),
-    );
     expect(fetchJson).toHaveBeenCalledWith(
-      expect.stringContaining("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111"),
-      expect.objectContaining({
-        method: "PATCH",
-        body: expect.stringContaining("\"status\":\"extraction_failed\""),
-      }),
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.objectContaining({ method: "POST" }),
     );
+    await expect(response.json()).resolves.toMatchObject({ accepted: true });
   });
 
   it("skips background extraction for documents no longer in extracting status", async () => {
@@ -1426,7 +1587,7 @@ describe("assessmentDocumentsHandler", () => {
     );
   });
 
-  it("blocks IEHP document extraction until the workflow is implemented", async () => {
+  it("allows IEHP document uploads to enter extraction flow", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -1439,6 +1600,7 @@ describe("assessmentDocumentsHandler", () => {
       anonKey: "anon",
     });
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
     mockUploadFlowResponses("doc-2");
 
     const response = await assessmentDocumentsHandler(
@@ -1456,11 +1618,14 @@ describe("assessmentDocumentsHandler", () => {
       }),
     );
 
-    expect(response.status).toBe(501);
-    await expect(response.json()).resolves.toMatchObject({
-      error: expect.stringContaining("IEHP FBA upload extraction is not currently supported"),
+    expect(response.status).toBe(201);
+    const json = await response.json();
+    expect(json).toMatchObject({
+      id: "doc-2",
+      status: "extracting",
     });
-    expect(loadChecklistTemplateRows).not.toHaveBeenCalled();
+    expect(json.extraction_error).toBeNull();
+    expect(loadChecklistTemplateRows).toHaveBeenCalledWith("iehp_fba");
   });
 
   it("rejects unsupported template_type", async () => {
@@ -1755,6 +1920,12 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
         return { ok: true, status: 200, data: [{ id: "client-1" }] };
       }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-extract-throw")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         return {
           ok: true,
@@ -1977,6 +2148,15 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
         return { ok: true, status: 200, data: [{ id: "client-1" }] };
       }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-extract-non-ok&organization_id=eq.org-1&limit=1")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-extract-non-ok")) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         return {
           ok: true,
@@ -2161,6 +2341,18 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
         return { ok: true, status: 200, data: [{ id: "client-1" }] };
       }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-structured-fail&organization_id=eq.org-1&limit=1")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-structured-fail")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         return {
           ok: true,
@@ -2269,6 +2461,15 @@ describe("assessmentDocumentsHandler", () => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
         return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-extract-throw&organization_id=eq.org-1&limit=1")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-extract-throw")) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         return {
@@ -2435,6 +2636,15 @@ describe("assessmentDocumentsHandler", () => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
         return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-timeout&organization_id=eq.org-1&limit=1")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-timeout")) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         return {
@@ -2847,6 +3057,18 @@ describe("assessmentDocumentsHandler", () => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
         return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-draft-fail&organization_id=eq.org-1&limit=1")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-draft-fail")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
       }
       if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
         return { ok: true, status: 200, data: [] };

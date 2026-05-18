@@ -740,7 +740,21 @@ describe("assessmentDocumentsHandler", () => {
     });
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
-    mockNetlifyWrapperFlowResponses(documentId, "lookup-status-throws");
+    mockNetlifyWrapperFlowResponses(documentId, "lookup-empty");
+    const baseImpl = vi.mocked(fetchJson).getMockImplementation();
+    if (!baseImpl) {
+      throw new Error("Missing Netlify wrapper fetchJson mock implementation.");
+    }
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      if (
+        (init?.method ?? "GET").toUpperCase() === "GET" &&
+        typeof url === "string" &&
+        url.includes(`/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(documentId)}`)
+      ) {
+        throw new Error("temporary status lookup failure");
+      }
+      return baseImpl(url, init);
+    });
     const waitUntilPromises: Promise<unknown>[] = [];
     globalThis.fetch = vi.fn() as typeof fetch;
 

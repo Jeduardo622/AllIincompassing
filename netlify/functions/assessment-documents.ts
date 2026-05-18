@@ -1,8 +1,14 @@
 import { Handler, HandlerContext } from "@netlify/functions";
+import { fetchJson } from "../../src/server/api/shared";
 import {
+  assessmentDocumentsExtractionBackgroundHandler,
   assessmentDocumentsHandler,
   persistCaloptimaExtractionScheduleFailure,
 } from "../../src/server/api/assessment-documents";
+
+type BackgroundScheduleArgs = Parameters<
+  NonNullable<Parameters<typeof assessmentDocumentsHandler>[1]["scheduleCaloptimaExtraction"]>
+>[0];
 
 const toNetlifyResponse = async (response: Response) => {
   const headers: Record<string, string> = {};
@@ -18,39 +24,79 @@ const toNetlifyResponse = async (response: Response) => {
   };
 };
 
+const shouldPersistScheduleFailure = async (args: BackgroundScheduleArgs): Promise<boolean> => {
+  const documentResult = await fetchJson<Array<{ status?: string | null }>>(
+    `${args.supabaseUrl}/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(
+      args.createdDocumentId,
+    )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
+    {
+      method: "GET",
+      headers: args.headers,
+    },
+  );
+
+  const documentStatus =
+    documentResult.ok && Array.isArray(documentResult.data) && documentResult.data[0]
+      ? documentResult.data[0].status
+      : null;
+
+  return documentStatus === "extracting" || documentStatus === "extraction_running";
+};
+
+const persistScheduleFailureIfPending = async (args: BackgroundScheduleArgs): Promise<void> => {
+  if (!(await shouldPersistScheduleFailure(args))) {
+    return;
+  }
+
+  await persistCaloptimaExtractionScheduleFailure({
+    supabaseUrl: args.supabaseUrl,
+    headers: args.headers,
+    organizationId: args.organizationId,
+    actorId: args.actorId,
+    createdDocumentId: args.createdDocumentId,
+    clientId: args.clientId,
+  });
+};
+
 const scheduleBackgroundExtraction = (
   context: HandlerContext,
   request: Request,
-  args: Parameters<NonNullable<Parameters<typeof assessmentDocumentsHandler>[1]["scheduleCaloptimaExtraction"]>>[0],
+  args: BackgroundScheduleArgs,
 ): boolean => {
   if (typeof context.waitUntil !== "function") {
     return false;
   }
 
   const origin = new URL(request.url).origin;
-  const trigger = fetch(`${origin}/.netlify/functions/assessment-documents-extract-background`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.accessToken}`,
-    },
-    body: JSON.stringify({ assessment_document_id: args.createdDocumentId, client_id: args.clientId }),
-  }).then((response) => {
-    if (!response.ok) {
-      throw new Error("background extraction enqueue failed");
+  const backgroundHeaders = new Headers({
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${args.accessToken}`,
+  });
+  const requestOrigin = request.headers.get("origin");
+  if (requestOrigin) {
+    backgroundHeaders.set("origin", requestOrigin);
+  }
+
+  const trigger = (async () => {
+    try {
+      const response = await assessmentDocumentsExtractionBackgroundHandler(
+        new Request(`${origin}/.netlify/functions/assessment-documents-extract-background`, {
+          method: "POST",
+          headers: backgroundHeaders,
+          body: JSON.stringify({
+            assessment_document_id: args.createdDocumentId,
+            client_id: args.clientId,
+          }),
+        }),
+      );
+
+      if (!response.ok) {
+        throw new Error("background extraction enqueue failed");
+      }
+    } catch {
+      await persistScheduleFailureIfPending(args);
     }
-  }).catch(() =>
-    // The -background endpoint response only proves enqueue/transport status.
-    // Worker-handled document failures persist their own terminal reason.
-    persistCaloptimaExtractionScheduleFailure({
-      supabaseUrl: args.supabaseUrl,
-      headers: args.headers,
-      organizationId: args.organizationId,
-      actorId: args.actorId,
-      createdDocumentId: args.createdDocumentId,
-      clientId: args.clientId,
-    }),
-  );
+  })();
 
   context.waitUntil(trigger);
   return true;

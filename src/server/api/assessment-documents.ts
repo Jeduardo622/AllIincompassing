@@ -777,19 +777,34 @@ export async function assessmentDocumentsExtractionBackgroundHandler(request: Re
     return jsonForRequest(request, { accepted: true, error: failure.publicMessage }, 202);
   }
 
-  const checklistRows = await loadChecklistTemplateRows(claimedDocument.template_type);
-  await runBoundedCaloptimaExtractionWorkflow({
-    supabaseUrl,
-    headers,
-    organizationId,
-    actorId,
-    createdDocumentId: claimedDocument.id,
-    clientId: claimedDocument.client_id,
-    checklistRows,
-    bucketId: claimedDocument.bucket_id,
-    objectPath: claimedDocument.object_path,
-    fromStatus: EXTRACTION_RUNNING_STATUS,
-  });
+  try {
+    const checklistRows = await loadChecklistTemplateRows(claimedDocument.template_type);
+    await runBoundedCaloptimaExtractionWorkflow({
+      supabaseUrl,
+      headers,
+      organizationId,
+      actorId,
+      createdDocumentId: claimedDocument.id,
+      clientId: claimedDocument.client_id,
+      checklistRows,
+      bucketId: claimedDocument.bucket_id,
+      objectPath: claimedDocument.object_path,
+      fromStatus: EXTRACTION_RUNNING_STATUS,
+    });
+  } catch (error) {
+    const workflowError = asExtractionWorkflowError(error);
+    await persistExtractionFailure({
+      supabaseUrl,
+      headers,
+      organizationId,
+      actorId,
+      createdDocumentId: claimedDocument.id,
+      clientId: claimedDocument.client_id,
+      error: workflowError,
+      fromStatus: EXTRACTION_RUNNING_STATUS,
+    });
+    return jsonForRequest(request, { accepted: true, error: workflowError.publicMessage }, 202);
+  }
 
   return jsonForRequest(request, { accepted: true }, 202);
 }

@@ -1,10 +1,8 @@
-import { Handler, HandlerContext } from "@netlify/functions";
-import { fetchJson } from "../../src/server/api/shared";
+import { Handler } from "@netlify/functions";
 import {
-  assessmentDocumentsExtractionBackgroundHandler,
   assessmentDocumentsHandler,
-  persistCaloptimaExtractionScheduleFailure,
 } from "../../src/server/api/assessment-documents";
+import { fetchJson } from "../../src/server/api/shared";
 
 type BackgroundScheduleArgs = Parameters<
   NonNullable<Parameters<typeof assessmentDocumentsHandler>[1]["scheduleCaloptimaExtraction"]>
@@ -24,57 +22,10 @@ const toNetlifyResponse = async (response: Response) => {
   };
 };
 
-const shouldPersistScheduleFailure = async (args: BackgroundScheduleArgs): Promise<boolean> => {
-  try {
-    const documentResult = await fetchJson<Array<{ status?: string | null }>>(
-      `${args.supabaseUrl}/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(
-        args.createdDocumentId,
-      )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
-      {
-        method: "GET",
-        headers: args.headers,
-      },
-    );
-
-    const documentStatus =
-      documentResult.ok && Array.isArray(documentResult.data) && documentResult.data[0]
-        ? documentResult.data[0].status
-        : null;
-
-    if (!documentResult.ok) {
-      return true;
-    }
-
-    return documentStatus === "extracting" || documentStatus === "extraction_running";
-  } catch {
-    return true;
-  }
-};
-
-const persistScheduleFailureIfPending = async (args: BackgroundScheduleArgs): Promise<void> => {
-  if (!(await shouldPersistScheduleFailure(args))) {
-    return;
-  }
-
-  await persistCaloptimaExtractionScheduleFailure({
-    supabaseUrl: args.supabaseUrl,
-    headers: args.headers,
-    organizationId: args.organizationId,
-    actorId: args.actorId,
-    createdDocumentId: args.createdDocumentId,
-    clientId: args.clientId,
-  });
-};
-
-const scheduleBackgroundExtraction = (
-  context: HandlerContext,
+const scheduleBackgroundExtraction = async (
   request: Request,
   args: BackgroundScheduleArgs,
-): boolean => {
-  if (typeof context.waitUntil !== "function") {
-    return false;
-  }
-
+): Promise<boolean> => {
   const origin = new URL(request.url).origin;
   const backgroundHeaders = new Headers({
     "Content-Type": "application/json",
@@ -85,32 +36,35 @@ const scheduleBackgroundExtraction = (
     backgroundHeaders.set("origin", requestOrigin);
   }
 
-  const trigger = (async () => {
-    try {
-      const response = await assessmentDocumentsExtractionBackgroundHandler(
-        new Request(`${origin}/.netlify/functions/assessment-documents-extract-background`, {
-          method: "POST",
-          headers: backgroundHeaders,
-          body: JSON.stringify({
-            assessment_document_id: args.createdDocumentId,
-            client_id: args.clientId,
-          }),
-        }),
-      );
-
-      if (!response.ok) {
-        throw new Error("background extraction enqueue failed");
-      }
-    } catch {
-      await persistScheduleFailureIfPending(args);
+  try {
+    const response = await fetch(`${origin}/.netlify/functions/assessment-documents-extract-background`, {
+      method: "POST",
+      headers: backgroundHeaders,
+      body: JSON.stringify({
+        assessment_document_id: args.createdDocumentId,
+        client_id: args.clientId,
+      }),
+    });
+    if (response.ok) {
+      return true;
     }
-  })();
+  } catch {
+    // Fall through to a status probe so we do not overwrite a job that was accepted despite a transport error.
+  }
 
-  context.waitUntil(trigger);
-  return true;
+  const statusProbe = await fetchJson<Array<{ status?: string | null }>>(
+    `${args.supabaseUrl}/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(args.createdDocumentId)}&limit=1`,
+    {
+      method: "GET",
+      headers: args.headers,
+    },
+  );
+  const latestStatus =
+    statusProbe.ok && Array.isArray(statusProbe.data) ? statusProbe.data[0]?.status?.trim() ?? null : null;
+  return latestStatus !== null && latestStatus !== "extracting";
 };
 
-export const handler: Handler = async (event, context) => {
+export const handler: Handler = async (event) => {
   try {
     const bodyNeeded = event.httpMethod !== "GET" && event.httpMethod !== "HEAD";
     const body =
@@ -128,7 +82,7 @@ export const handler: Handler = async (event, context) => {
 
     const response = await assessmentDocumentsHandler(request, {
       scheduleCaloptimaExtraction: async (args) => {
-        const scheduled = scheduleBackgroundExtraction(context, request, args);
+        const scheduled = await scheduleBackgroundExtraction(request, args);
         return { ok: scheduled, status: scheduled ? 202 : 500 };
       },
     });

@@ -187,7 +187,7 @@ describe("assessmentDocumentsHandler", () => {
 
   const mockNetlifyWrapperFlowResponses = (
     documentId: string,
-    mode: "success" | "lookup-empty" | "lookup-fails" = "success",
+    mode: "success" | "lookup-empty" | "lookup-fails" | "lookup-status-throws" = "success",
   ) => {
     const clientId = "11111111-1111-1111-1111-111111111111";
     const backgroundDocument = {
@@ -234,6 +234,9 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes(`/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(documentId)}`)) {
         if (mode === "lookup-fails") {
           return { ok: true, status: 200, data: [{ status: "extraction_failed" }] };
+        }
+        if (mode === "lookup-status-throws") {
+          throw new Error("temporary status lookup failure");
         }
         return { ok: true, status: 200, data: [{ status: "extracting" }] };
       }
@@ -720,6 +723,78 @@ describe("assessmentDocumentsHandler", () => {
       return typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && body.includes(documentId) && body.includes("extraction_background_schedule_failed");
     });
     expect(failureEventCall).toBeDefined();
+  });
+
+  it("Netlify upload wrapper persists extraction_background_schedule_failed when status lookup throws", async () => {
+    const documentId = "73444444-4444-4344-8344-444444444444";
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockNetlifyWrapperFlowResponses(documentId, "lookup-status-throws");
+    const waitUntilPromises: Promise<unknown>[] = [];
+    globalThis.fetch = vi.fn() as typeof fetch;
+
+    const response = await assessmentDocumentsNetlifyHandler(
+      {
+        httpMethod: "POST",
+        headers: {
+          host: "app.example.com",
+          authorization: "Bearer token",
+        },
+        path: "/api/assessment-documents",
+        rawUrl: "https://app.example.com/api/assessment-documents",
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+        isBase64Encoded: false,
+      } as never,
+      {
+        waitUntil: (promise: Promise<unknown>) => {
+          waitUntilPromises.push(promise);
+        },
+      } as never,
+      undefined as never,
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect(waitUntilPromises).toHaveLength(1);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    await waitUntilPromises[0];
+    const failedStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url, init]) => {
+        const body = String((init as RequestInit | undefined)?.body ?? "");
+        return (
+          typeof url === "string" &&
+          url.includes(`/rest/v1/assessment_documents?id=eq.${documentId}`) &&
+          body.includes("\"status\":\"extraction_failed\"")
+        );
+      });
+    expect(failedStatusBodies).toHaveLength(1);
+    const failureEventCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
+      const body = String((init as RequestInit | undefined)?.body ?? "");
+      return (
+        typeof url === "string" &&
+        url.includes("/rest/v1/assessment_review_events") &&
+        body.includes(documentId) &&
+        body.includes("extraction_background_schedule_failed")
+      );
+    });
+    expect(failureEventCalls).toHaveLength(1);
   });
 
   it("Netlify upload wrapper does not duplicate persistence when the background worker already handles terminal failure", async () => {

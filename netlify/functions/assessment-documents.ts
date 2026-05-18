@@ -25,22 +25,30 @@ const toNetlifyResponse = async (response: Response) => {
 };
 
 const shouldPersistScheduleFailure = async (args: BackgroundScheduleArgs): Promise<boolean> => {
-  const documentResult = await fetchJson<Array<{ status?: string | null }>>(
-    `${args.supabaseUrl}/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(
-      args.createdDocumentId,
-    )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
-    {
-      method: "GET",
-      headers: args.headers,
-    },
-  );
+  try {
+    const documentResult = await fetchJson<Array<{ status?: string | null }>>(
+      `${args.supabaseUrl}/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(
+        args.createdDocumentId,
+      )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
+      {
+        method: "GET",
+        headers: args.headers,
+      },
+    );
 
-  const documentStatus =
-    documentResult.ok && Array.isArray(documentResult.data) && documentResult.data[0]
-      ? documentResult.data[0].status
-      : null;
+    const documentStatus =
+      documentResult.ok && Array.isArray(documentResult.data) && documentResult.data[0]
+        ? documentResult.data[0].status
+        : null;
 
-  return documentStatus === "extracting" || documentStatus === "extraction_running";
+    if (!documentResult.ok) {
+      return true;
+    }
+
+    return documentStatus === "extracting" || documentStatus === "extraction_running";
+  } catch {
+    return true;
+  }
 };
 
 const persistScheduleFailureIfPending = async (args: BackgroundScheduleArgs): Promise<void> => {

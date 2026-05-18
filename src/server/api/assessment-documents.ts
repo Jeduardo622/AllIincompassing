@@ -14,7 +14,6 @@ import {
   type AssessmentTemplateType,
 } from "../assessmentChecklistTemplate";
 import { buildDeterministicDraftPayload, persistDraftRows } from "./assessment-drafts";
-import { getRequiredServerEnv } from "../env";
 import { serverLogger } from "../../lib/logger/server";
 
 const SUPPORTED_TEMPLATE_TYPES = ["caloptima_fba", "iehp_fba"] as const;
@@ -456,15 +455,9 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
       });
       const structuredSections = extractionData.structured_sections ?? [];
       if (structuredSections.length > 0) {
-        const serviceRoleKey = getRequiredServerEnv("SUPABASE_SERVICE_ROLE_KEY");
-        const serviceHeaders = {
-          "Content-Type": "application/json",
-          apikey: serviceRoleKey,
-          Authorization: `Bearer ${serviceRoleKey}`,
-        };
         const structuredInsertResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_structured_sections`, {
           method: "POST",
-          headers: serviceHeaders,
+          headers,
           signal,
           body: JSON.stringify(
             structuredSections.map((section) => ({

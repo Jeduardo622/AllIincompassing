@@ -8,7 +8,6 @@ import {
   json,
   resolveOrgAndRole,
 } from "./shared";
-import { getRequiredServerEnv } from "../env";
 
 const reviewStatusSchema = z.enum(["not_started", "drafted", "verified", "approved", "rejected"]);
 
@@ -127,16 +126,10 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
     }
 
     if (parsed.data.structured_section_id) {
-      const serviceRoleKey = getRequiredServerEnv("SUPABASE_SERVICE_ROLE_KEY");
-      const serviceHeaders = {
-        "Content-Type": "application/json",
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-      };
       const lookupUrl = `${supabaseUrl}/rest/v1/assessment_structured_sections?select=id,assessment_document_id,organization_id,client_id,status&id=eq.${encodeURIComponent(
         parsed.data.structured_section_id,
       )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`;
-      const lookup = await fetchJson<ChecklistRow[]>(lookupUrl, { method: "GET", headers: serviceHeaders });
+      const lookup = await fetchJson<ChecklistRow[]>(lookupUrl, { method: "GET", headers });
       const existing = Array.isArray(lookup.data) ? lookup.data[0] : null;
       if (!lookup.ok || !existing) {
         return json({ error: "Structured section not found in organization scope" }, 404);
@@ -182,7 +175,7 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
       )}&organization_id=eq.${encodeURIComponent(organizationId)}`;
       const updateResult = await fetchJson<Array<Record<string, unknown>>>(updateUrl, {
         method: "PATCH",
-        headers: { ...serviceHeaders, Prefer: "return=representation" },
+        headers: { ...headers, Prefer: "return=representation" },
         body: JSON.stringify(updatePayload),
       });
 
@@ -192,7 +185,7 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
 
       await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
         method: "POST",
-        headers: serviceHeaders,
+        headers,
         body: JSON.stringify({
           assessment_document_id: existing.assessment_document_id,
           organization_id: organizationId,

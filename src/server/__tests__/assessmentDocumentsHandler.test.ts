@@ -484,7 +484,7 @@ describe("assessmentDocumentsHandler", () => {
     expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(true);
   });
 
-  it("Netlify upload wrapper schedules extraction with waitUntil without using an outbound fetch hop", async () => {
+  it("Netlify upload wrapper enqueues the background extraction endpoint over fetch", async () => {
     const documentId = "71111111-1111-4111-8111-111111111111";
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -500,8 +500,7 @@ describe("assessmentDocumentsHandler", () => {
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
     mockNetlifyWrapperFlowResponses(documentId);
-    const waitUntilPromises: Promise<unknown>[] = [];
-    globalThis.fetch = vi.fn() as typeof fetch;
+    globalThis.fetch = vi.fn(async () => new Response(null, { status: 202 })) as typeof fetch;
 
     const response = await assessmentDocumentsNetlifyHandler(
       {
@@ -521,11 +520,7 @@ describe("assessmentDocumentsHandler", () => {
         }),
         isBase64Encoded: false,
       } as never,
-      {
-        waitUntil: (promise: Promise<unknown>) => {
-          waitUntilPromises.push(promise);
-        },
-      } as never,
+      {} as never,
       undefined as never,
     );
 
@@ -534,21 +529,24 @@ describe("assessmentDocumentsHandler", () => {
       id: documentId,
       status: "extracting",
     });
-    expect(waitUntilPromises).toHaveLength(1);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    await waitUntilPromises[0];
-    expect(fetchJson).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path,updated_at&id=eq.${encodeURIComponent(
-          documentId,
-        )}`,
-      ),
-      expect.objectContaining({ method: "GET" }),
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://app.example.com/.netlify/functions/assessment-documents-extract-background",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.any(Headers),
+      }),
     );
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] ?? [];
+    const headers = init?.headers instanceof Headers ? init.headers : new Headers(init?.headers);
+    expect(headers.get("authorization")).toBe("Bearer token");
+    expect(JSON.parse(String(init?.body ?? "{}"))).toMatchObject({
+      assessment_document_id: documentId,
+      client_id: "11111111-1111-1111-1111-111111111111",
+    });
   });
 
-  it("Netlify upload wrapper fails closed when waitUntil is unavailable", async () => {
-    globalThis.fetch = vi.fn() as typeof fetch;
+  it("Netlify upload wrapper no longer depends on waitUntil being available", async () => {
+    const documentId = "75555555-5555-4555-8555-555555555555";
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -562,7 +560,61 @@ describe("assessmentDocumentsHandler", () => {
     });
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
-    mockNetlifyWrapperFlowResponses("75555555-5555-4555-8555-555555555555");
+    mockNetlifyWrapperFlowResponses(documentId);
+    globalThis.fetch = vi.fn(async () => new Response(null, { status: 202 })) as typeof fetch;
+
+    const response = await assessmentDocumentsNetlifyHandler(
+      {
+        httpMethod: "POST",
+        headers: {
+          host: "app.example.com",
+          authorization: "Bearer token",
+        },
+        path: "/api/assessment-documents",
+        rawUrl: "https://app.example.com/api/assessment-documents",
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+        isBase64Encoded: false,
+      } as never,
+      {} as never,
+      undefined as never,
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const documentStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(
+        ([url]) => typeof url === "string" && url.includes(`/rest/v1/assessment_documents?id=eq.${documentId}`),
+      )
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extracting\""))).toBe(true);
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(false);
+  });
+
+  it("Netlify upload wrapper persists extraction_background_schedule_failed when enqueue returns non-ok", async () => {
+    const documentId = "73333333-3333-4333-8333-333333333333";
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockNetlifyWrapperFlowResponses(documentId);
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ error: "enqueue failed" }), { status: 500 })) as typeof fetch;
+
     const response = await assessmentDocumentsNetlifyHandler(
       {
         httpMethod: "POST",
@@ -586,132 +638,6 @@ describe("assessmentDocumentsHandler", () => {
     );
 
     expect(response.statusCode).toBe(500);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    const documentStatusBodies = vi
-      .mocked(fetchJson)
-      .mock.calls.filter(
-        ([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.75555555-5555-4555-8555-555555555555"),
-      )
-      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
-    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extracting\""))).toBe(true);
-    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(true);
-  });
-
-  it("Netlify upload wrapper preserves extraction_running when a post-claim background error is handled in-worker", async () => {
-    const documentId = "72222222-2222-4222-8222-222222222222";
-    vi.mocked(getAccessToken).mockReturnValue("token");
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
-      organizationId: "org-1",
-      isTherapist: true,
-      isAdmin: false,
-      isSuperAdmin: false,
-    });
-    vi.mocked(getSupabaseConfig).mockReturnValue({
-      supabaseUrl: "https://example.supabase.co",
-      anonKey: "anon",
-    });
-    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
-    vi.mocked(loadChecklistTemplateRows)
-      .mockResolvedValueOnce([])
-      .mockRejectedValueOnce(new Error("background load failed"));
-    const waitUntilPromises: Promise<unknown>[] = [];
-    mockNetlifyWrapperFlowResponses(documentId);
-    globalThis.fetch = vi.fn() as typeof fetch;
-
-    const response = await assessmentDocumentsNetlifyHandler(
-      {
-        httpMethod: "POST",
-        headers: {
-          host: "app.example.com",
-          authorization: "Bearer token",
-        },
-        path: "/api/assessment-documents",
-        rawUrl: "https://app.example.com/api/assessment-documents",
-        body: JSON.stringify({
-          client_id: "11111111-1111-1111-1111-111111111111",
-          file_name: "fba.pdf",
-          mime_type: "application/pdf",
-          file_size: 1234,
-          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
-        }),
-        isBase64Encoded: false,
-      } as never,
-      {
-        waitUntil: (promise: Promise<unknown>) => {
-          waitUntilPromises.push(promise);
-        },
-      } as never,
-      undefined as never,
-    );
-
-    expect(response.statusCode).toBe(201);
-    expect(waitUntilPromises).toHaveLength(1);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    await waitUntilPromises[0];
-    const documentStatusBodies = vi
-      .mocked(fetchJson)
-      .mock.calls.filter(([url]) => typeof url === "string" && url.includes(`/rest/v1/assessment_documents?id=eq.${documentId}`))
-      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
-    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extracting\""))).toBe(true);
-    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(true);
-    const failureEventBodies = vi
-      .mocked(fetchJson)
-      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_review_events"))
-      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""))
-      .filter((body) => body.includes(documentId) && body.includes("\"action\":\"extraction_failed\""));
-    expect(failureEventBodies).toHaveLength(1);
-    expect(failureEventBodies[0]).toContain("\"from_status\":\"extraction_running\"");
-  });
-
-  it("Netlify upload wrapper persists extraction_background_schedule_failed when the direct background handler returns non-ok", async () => {
-    const documentId = "73333333-3333-4333-8333-333333333333";
-    vi.mocked(getAccessToken).mockReturnValue("token");
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
-      organizationId: "org-1",
-      isTherapist: true,
-      isAdmin: false,
-      isSuperAdmin: false,
-    });
-    vi.mocked(getSupabaseConfig).mockReturnValue({
-      supabaseUrl: "https://example.supabase.co",
-      anonKey: "anon",
-    });
-    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
-    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
-    mockNetlifyWrapperFlowResponses(documentId, "lookup-empty");
-    const waitUntilPromises: Promise<unknown>[] = [];
-    globalThis.fetch = vi.fn() as typeof fetch;
-
-    const response = await assessmentDocumentsNetlifyHandler(
-      {
-        httpMethod: "POST",
-        headers: {
-          host: "app.example.com",
-          authorization: "Bearer token",
-        },
-        path: "/api/assessment-documents",
-        rawUrl: "https://app.example.com/api/assessment-documents",
-        body: JSON.stringify({
-          client_id: "11111111-1111-1111-1111-111111111111",
-          file_name: "fba.pdf",
-          mime_type: "application/pdf",
-          file_size: 1234,
-          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
-        }),
-        isBase64Encoded: false,
-      } as never,
-      {
-        waitUntil: (promise: Promise<unknown>) => {
-          waitUntilPromises.push(promise);
-        },
-      } as never,
-      undefined as never,
-    );
-
-    expect(response.statusCode).toBe(201);
-    expect(waitUntilPromises).toHaveLength(1);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    await waitUntilPromises[0];
     const documentStatusBodies = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url]) => typeof url === "string" && url.includes(`/rest/v1/assessment_documents?id=eq.${documentId}`))
@@ -725,7 +651,7 @@ describe("assessmentDocumentsHandler", () => {
     expect(failureEventCall).toBeDefined();
   });
 
-  it("Netlify upload wrapper persists extraction_background_schedule_failed when status lookup throws", async () => {
+  it("Netlify upload wrapper persists extraction_background_schedule_failed when enqueue throws", async () => {
     const documentId = "73444444-4444-4344-8344-444444444444";
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -740,184 +666,10 @@ describe("assessmentDocumentsHandler", () => {
     });
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
-    mockNetlifyWrapperFlowResponses(documentId, "lookup-empty");
-    const baseImpl = vi.mocked(fetchJson).getMockImplementation();
-    if (!baseImpl) {
-      throw new Error("Missing Netlify wrapper fetchJson mock implementation.");
-    }
-    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
-      if (
-        (init?.method ?? "GET").toUpperCase() === "GET" &&
-        typeof url === "string" &&
-        url.includes(`/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(documentId)}`)
-      ) {
-        throw new Error("temporary status lookup failure");
-      }
-      return baseImpl(url, init);
-    });
-    const waitUntilPromises: Promise<unknown>[] = [];
-    globalThis.fetch = vi.fn() as typeof fetch;
-
-    const response = await assessmentDocumentsNetlifyHandler(
-      {
-        httpMethod: "POST",
-        headers: {
-          host: "app.example.com",
-          authorization: "Bearer token",
-        },
-        path: "/api/assessment-documents",
-        rawUrl: "https://app.example.com/api/assessment-documents",
-        body: JSON.stringify({
-          client_id: "11111111-1111-1111-1111-111111111111",
-          file_name: "fba.pdf",
-          mime_type: "application/pdf",
-          file_size: 1234,
-          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
-        }),
-        isBase64Encoded: false,
-      } as never,
-      {
-        waitUntil: (promise: Promise<unknown>) => {
-          waitUntilPromises.push(promise);
-        },
-      } as never,
-      undefined as never,
-    );
-
-    expect(response.statusCode).toBe(201);
-    expect(waitUntilPromises).toHaveLength(1);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    await waitUntilPromises[0];
-    const failedStatusBodies = vi
-      .mocked(fetchJson)
-      .mock.calls.filter(([url, init]) => {
-        const body = String((init as RequestInit | undefined)?.body ?? "");
-        return (
-          typeof url === "string" &&
-          url.includes(`/rest/v1/assessment_documents?id=eq.${documentId}`) &&
-          body.includes("\"status\":\"extraction_failed\"")
-        );
-      });
-    expect(failedStatusBodies).toHaveLength(1);
-    const failureEventCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
-      const body = String((init as RequestInit | undefined)?.body ?? "");
-      return (
-        typeof url === "string" &&
-        url.includes("/rest/v1/assessment_review_events") &&
-        body.includes(documentId) &&
-        body.includes("extraction_background_schedule_failed")
-      );
-    });
-    expect(failureEventCalls).toHaveLength(1);
-  });
-
-  it("Netlify upload wrapper does not duplicate persistence when the background worker already handles terminal failure", async () => {
-    const documentId = "74444444-4444-4444-8444-444444444444";
-    vi.mocked(getAccessToken).mockReturnValue("token");
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
-      organizationId: "org-1",
-      isTherapist: true,
-      isAdmin: false,
-      isSuperAdmin: false,
-    });
-    vi.mocked(getSupabaseConfig).mockReturnValue({
-      supabaseUrl: "https://example.supabase.co",
-      anonKey: "anon",
-    });
-    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
-    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
-    mockNetlifyWrapperFlowResponses(documentId, "lookup-fails");
-    const waitUntilPromises: Promise<unknown>[] = [];
-    globalThis.fetch = vi.fn() as typeof fetch;
-
-    const response = await assessmentDocumentsNetlifyHandler(
-      {
-        httpMethod: "POST",
-        headers: {
-          host: "app.example.com",
-          authorization: "Bearer token",
-        },
-        path: "/api/assessment-documents",
-        rawUrl: "https://app.example.com/api/assessment-documents",
-        body: JSON.stringify({
-          client_id: "11111111-1111-1111-1111-111111111111",
-          file_name: "fba.pdf",
-          mime_type: "application/pdf",
-          file_size: 1234,
-          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
-        }),
-        isBase64Encoded: false,
-      } as never,
-      {
-        waitUntil: (promise: Promise<unknown>) => {
-          waitUntilPromises.push(promise);
-        },
-      } as never,
-      undefined as never,
-    );
-
-    expect(response.statusCode).toBe(201);
-    expect(waitUntilPromises).toHaveLength(1);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    await waitUntilPromises[0];
-    const failedStatusBodies = vi
-      .mocked(fetchJson)
-      .mock.calls.filter(([url, init]) => {
-        const body = String((init as RequestInit | undefined)?.body ?? "");
-        return (
-          typeof url === "string" &&
-          url.includes(`/rest/v1/assessment_documents?id=eq.${documentId}`) &&
-          body.includes("\"status\":\"extraction_failed\"")
-        );
-      });
-    expect(failedStatusBodies).toHaveLength(1);
-    const failureEventCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
-      const body = String((init as RequestInit | undefined)?.body ?? "");
-      return (
-        typeof url === "string" &&
-        url.includes("/rest/v1/assessment_review_events") &&
-        body.includes(documentId) &&
-        body.includes("extraction_background_schedule_failed")
-      );
-    });
-    expect(failureEventCalls).toHaveLength(1);
-  });
-
-  it("Netlify upload wrapper does not overwrite terminal failure state when worker review-event persistence throws", async () => {
-    const documentId = "76666666-6666-4666-8666-666666666666";
-    vi.mocked(getAccessToken).mockReturnValue("token");
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
-      organizationId: "org-1",
-      isTherapist: true,
-      isAdmin: false,
-      isSuperAdmin: false,
-    });
-    vi.mocked(getSupabaseConfig).mockReturnValue({
-      supabaseUrl: "https://example.supabase.co",
-      anonKey: "anon",
-    });
-    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
-    vi.mocked(loadChecklistTemplateRows)
-      .mockResolvedValueOnce([])
-      .mockRejectedValueOnce(new Error("background load failed"));
     mockNetlifyWrapperFlowResponses(documentId);
-    const baseImpl = vi.mocked(fetchJson).getMockImplementation();
-    if (!baseImpl) {
-      throw new Error("Missing Netlify wrapper fetchJson mock implementation.");
-    }
-    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
-      const method = (init?.method ?? "GET").toUpperCase();
-      const body = String((init as RequestInit | undefined)?.body ?? "");
-      if (method === "POST" && url.includes("/rest/v1/assessment_review_events") && body.includes(documentId) && body.includes("\"action\":\"extraction_failed\"")) {
-        return { ok: false, status: 500, data: null };
-      }
-      if (method === "GET" && url.includes(`/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(documentId)}`)) {
-        return { ok: true, status: 200, data: [{ status: "extraction_failed" }] };
-      }
-      return baseImpl(url, init);
-    });
-    const waitUntilPromises: Promise<unknown>[] = [];
-    globalThis.fetch = vi.fn() as typeof fetch;
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("network enqueue failure");
+    }) as typeof fetch;
 
     const response = await assessmentDocumentsNetlifyHandler(
       {
@@ -937,22 +689,21 @@ describe("assessmentDocumentsHandler", () => {
         }),
         isBase64Encoded: false,
       } as never,
-      {
-        waitUntil: (promise: Promise<unknown>) => {
-          waitUntilPromises.push(promise);
-        },
-      } as never,
+      {} as never,
       undefined as never,
     );
 
-    expect(response.statusCode).toBe(201);
-    expect(waitUntilPromises).toHaveLength(1);
-    await waitUntilPromises[0];
-    const failedStatusWrites = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
+    expect(response.statusCode).toBe(500);
+    const failureEventCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
       const body = String((init as RequestInit | undefined)?.body ?? "");
-      return typeof url === "string" && url.includes(`/rest/v1/assessment_documents?id=eq.${documentId}`) && body.includes("\"status\":\"extraction_failed\"");
+      return (
+        typeof url === "string" &&
+        url.includes("/rest/v1/assessment_review_events") &&
+        body.includes(documentId) &&
+        body.includes("extraction_background_schedule_failed")
+      );
     });
-    expect(failedStatusWrites).toHaveLength(1);
+    expect(failureEventCalls).toHaveLength(1);
   });
 
   it("runs CalOptima extraction from the background worker only for scoped extracting documents", async () => {
@@ -2441,8 +2192,8 @@ describe("assessmentDocumentsHandler", () => {
       init?.method === "POST"
     );
     expect(structuredInsert?.[1]?.headers).toMatchObject({
-      apikey: "service-role",
-      Authorization: "Bearer service-role",
+      apikey: "anon",
+      Authorization: "Bearer token",
     });
     const successEvent = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
       const body = typeof init?.body === "string" ? init.body : "";

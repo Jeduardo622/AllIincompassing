@@ -305,10 +305,11 @@ const waitForExtractedOrDraftedAssessment = async (args: {
 }): Promise<AssessmentDocumentRecord> => {
   const deadline = Date.now() + EXTRACTION_TIMEOUT_MS;
   let latest: AssessmentDocumentRecord | null = null;
+  const inProgressStatuses = new Set(["uploaded", "extracting", "extraction_running"]);
   while (Date.now() < deadline) {
     const documents = await fetchAssessmentDocuments(args.baseUrl, args.accessToken, args.clientId);
     latest = documents.find((document) => document.file_name === args.uploadFileName) ?? null;
-    if (latest && !["uploaded", "extracting"].includes(latest.status)) {
+    if (latest && !inProgressStatuses.has(latest.status)) {
       break;
     }
     await pause(2_000);

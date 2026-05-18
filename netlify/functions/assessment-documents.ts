@@ -2,6 +2,7 @@ import { Handler } from "@netlify/functions";
 import {
   assessmentDocumentsHandler,
 } from "../../src/server/api/assessment-documents";
+import { fetchJson } from "../../src/server/api/shared";
 
 type BackgroundScheduleArgs = Parameters<
   NonNullable<Parameters<typeof assessmentDocumentsHandler>[1]["scheduleCaloptimaExtraction"]>
@@ -35,16 +36,32 @@ const scheduleBackgroundExtraction = async (
     backgroundHeaders.set("origin", requestOrigin);
   }
 
-  const response = await fetch(`${origin}/.netlify/functions/assessment-documents-extract-background`, {
-    method: "POST",
-    headers: backgroundHeaders,
-    body: JSON.stringify({
-      assessment_document_id: args.createdDocumentId,
-      client_id: args.clientId,
-    }),
-  });
+  try {
+    const response = await fetch(`${origin}/.netlify/functions/assessment-documents-extract-background`, {
+      method: "POST",
+      headers: backgroundHeaders,
+      body: JSON.stringify({
+        assessment_document_id: args.createdDocumentId,
+        client_id: args.clientId,
+      }),
+    });
+    if (response.ok) {
+      return true;
+    }
+  } catch {
+    // Fall through to a status probe so we do not overwrite a job that was accepted despite a transport error.
+  }
 
-  return response.ok;
+  const statusProbe = await fetchJson<Array<{ status?: string | null }>>(
+    `${args.supabaseUrl}/rest/v1/assessment_documents?select=status&id=eq.${encodeURIComponent(args.createdDocumentId)}&limit=1`,
+    {
+      method: "GET",
+      headers: args.headers,
+    },
+  );
+  const latestStatus =
+    statusProbe.ok && Array.isArray(statusProbe.data) ? statusProbe.data[0]?.status?.trim() ?? null : null;
+  return latestStatus !== null && latestStatus !== "extracting";
 };
 
 export const handler: Handler = async (event) => {

@@ -213,6 +213,13 @@ const buildSyntheticAssessmentPdf = async (): Promise<Buffer> => {
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const shouldRetryAppTimeout = (url: string, status: number): boolean =>
+  status === 504 &&
+  (
+    url.includes("/api/assessment-checklist") ||
+    url.includes("/api/assessment-drafts")
+  );
+
 const assertOk = async (response: Response, message: string): Promise<void> => {
   if (response.ok) return;
   const body = await response.text().catch(() => "");
@@ -224,7 +231,7 @@ const fetchJson = async <T>(
   init: RequestInit & { accessToken?: string; anonKey?: string } = {},
 ): Promise<T> => {
   const { accessToken, anonKey, headers, ...rest } = init;
-  const response = await fetch(url, {
+  const requestInit: RequestInit = {
     ...rest,
     headers: {
       ...(anonKey ? { apikey: anonKey } : {}),
@@ -232,10 +239,22 @@ const fetchJson = async <T>(
       ...(rest.body ? { "Content-Type": "application/json" } : {}),
       ...headers,
     },
-  });
-  await assertOk(response, `Request failed for ${url}`);
-  const text = await response.text();
-  return text ? (JSON.parse(text) as T) : ([] as T);
+  };
+  let lastResponse: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(url, requestInit);
+    if (response.ok) {
+      const text = await response.text();
+      return text ? (JSON.parse(text) as T) : ([] as T);
+    }
+    lastResponse = response;
+    if (!shouldRetryAppTimeout(url, response.status) || attempt === 2) {
+      break;
+    }
+    await pause(1_000 * (attempt + 1));
+  }
+  await assertOk(lastResponse ?? new Response(null, { status: 599 }), `Request failed for ${url}`);
+  return [] as T;
 };
 
 const callAppJson = async <T>(

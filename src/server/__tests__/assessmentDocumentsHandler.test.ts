@@ -651,6 +651,54 @@ describe("assessmentDocumentsHandler", () => {
     expect(failureEventCall).toBeDefined();
   });
 
+  it("Netlify upload wrapper preserves in-flight extraction when enqueue transport fails after the worker already advanced status", async () => {
+    const documentId = "73333333-3333-4333-8333-333333333334";
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    mockNetlifyWrapperFlowResponses(documentId, "lookup-fails");
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ error: "enqueue failed" }), { status: 500 })) as typeof fetch;
+
+    const response = await assessmentDocumentsNetlifyHandler(
+      {
+        httpMethod: "POST",
+        headers: {
+          host: "app.example.com",
+          authorization: "Bearer token",
+        },
+        path: "/api/assessment-documents",
+        rawUrl: "https://app.example.com/api/assessment-documents",
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+        isBase64Encoded: false,
+      } as never,
+      {} as never,
+      undefined as never,
+    );
+
+    expect(response.statusCode).toBe(201);
+    const failureEventCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
+      const body = String((init as RequestInit | undefined)?.body ?? "");
+      return typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && body.includes(documentId) && body.includes("extraction_background_schedule_failed");
+    });
+    expect(failureEventCall).toBeUndefined();
+  });
+
   it("Netlify upload wrapper persists extraction_background_schedule_failed when enqueue throws", async () => {
     const documentId = "73444444-4444-4344-8344-444444444444";
     vi.mocked(getAccessToken).mockReturnValue("token");

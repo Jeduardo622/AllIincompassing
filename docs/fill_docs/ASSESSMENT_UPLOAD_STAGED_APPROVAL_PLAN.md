@@ -67,6 +67,8 @@ Implement a staged workflow where uploaded payer assessments (PDF/DOCX) produce 
 - Extraction behavior:
   - uploaded PDF assessments use Adobe PDF Extract API only
   - uploaded DOCX assessments continue to use the local DOCX text decoder
+  - CalOptima FBA extraction maps filled PDF text into checklist rows plus structured-section payloads for background narratives, records reviewed, schedules, IEP/service tables, coordination/adaptive testing, diagnostic/behavior-analysis sections, goals, transition/exit criteria, crisis plan, recommendations/HCPCS rows, telehealth/parent involvement, and signatures
+  - CalOptima manual and assisted rows may receive deterministic draft values, but remain clinician-review-required and are not promoted to confident `AUTO` values
   - Adobe is not used for completed-PDF generation, signing, embedded viewing, or overlay rendering
   - missing Adobe credentials or Adobe API failures mark the document `extraction_failed` with a redacted operator-facing error
 

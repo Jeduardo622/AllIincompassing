@@ -304,16 +304,22 @@ const makeAutoField = (
   sourceSpan: Record<string, unknown>,
   text: string,
 ): ExtractedFieldResult => {
-  const confidence = calibrateDeterministicConfidence(row.label, valueText, text);
+  const mode = row.mode ?? "AUTO";
+  const calibratedConfidence = calibrateDeterministicConfidence(row.label, valueText, text);
+  const confidence = mode === "AUTO"
+    ? calibratedConfidence
+    : Math.min(calibratedConfidence, mode === "ASSISTED" ? 0.74 : 0.55);
   return {
     placeholder_key: row.placeholder_key,
     value_text: valueText,
     value_json: null,
     confidence,
-    mode: "AUTO",
+    mode,
     status: "drafted",
     source_span: sourceSpan,
-    review_notes: `Deterministic extraction from document text. (Calibrated confidence ${confidence.toFixed(2)})`,
+    review_notes: mode === "AUTO"
+      ? `Deterministic extraction from document text. (Calibrated confidence ${confidence.toFixed(2)})`
+      : `Deterministic extraction from document text; ${mode.toLowerCase()} clinician review remains required. (Capped confidence ${confidence.toFixed(2)})`,
   };
 };
 
@@ -1381,16 +1387,82 @@ const extractHcpcsRowsFromNarrative = (text: string): StructuredSectionResult[] 
 const extractNarrativeStructuredSections = (text: string): StructuredSectionResult[] => {
   const specs = [
     {
+      field_key: "CALOPTIMA_FBA_RECORDS_REVIEWED",
+      section_key: "records_reviewed",
+      start: [/Records\s+Reviewed\s+\(e\.g\.,\s+Individualized\s+Education\s+Plan\s+\(IEP\),\s+therapy\s+plans\)/i, /Records\s+Reviewed/i],
+      end: [/Interviews\s+Conducted/i],
+    },
+    {
       field_key: "CALOPTIMA_FBA_COORDINATION_OF_CARE",
       section_key: "coordination_of_care",
       start: [/IV\.\s+COORDINATION\s+OF\s+CARE/i],
       end: [/VII\.\s+ADAPTIVE\s+TESTING/i, /Vineland\s+Adaptive/i],
     },
     {
+      field_key: "CALOPTIMA_FBA_IEP_SERVICES_TABLE",
+      section_key: "background_school_history",
+      start: [/Individualized\s+Educational\s+Plan\s+\(IEP\/equivalent\)\s+Information/i],
+      end: [/PREVIOUS\s+INTERVENTIONS/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_PREVIOUS_INTERVENTIONS",
+      section_key: "background_school_history",
+      start: [/PREVIOUS\s+INTERVENTIONS/i],
+      end: [/IV\.\s+COORDINATION\s+OF\s+CARE/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_LIVING_ARRANGEMENTS",
+      section_key: "background_school_history",
+      start: [/Individual\s+Description\/Living\s+Arrangements/i],
+      end: [/Significant\s+Medical\s+History/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_SIGNIFICANT_MEDICAL_HISTORY",
+      section_key: "background_school_history",
+      start: [/Significant\s+Medical\s+History/i],
+      end: [/Functional\s+Communication\s+Skills/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_FUNCTIONAL_COMMUNICATION_SKILLS",
+      section_key: "background_school_history",
+      start: [/Functional\s+Communication\s+Skills/i],
+      end: [/Self-Care\s+and\s+Activities\s+of\s+Daily\s+Living\s+Skills/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_SELF_CARE_ADL_SKILLS",
+      section_key: "background_school_history",
+      start: [/Self-Care\s+and\s+Activities\s+of\s+Daily\s+Living\s+Skills/i],
+      end: [/Social\s+and\s+Play\s+Skills/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_SOCIAL_PLAY_SKILLS",
+      section_key: "background_school_history",
+      start: [/Social\s+and\s+Play\s+Skills/i],
+      end: [/Mobility\s+Functioning\s+and\s+Restrictions/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_MOBILITY_FUNCTIONING_RESTRICTIONS",
+      section_key: "background_school_history",
+      start: [/Mobility\s+Functioning\s+and\s+Restrictions/i],
+      end: [/Daily\s+schedule\s+of\s+all\s+activities/i, /IV\.\s+SCHOOL\s+INFORMATION/i],
+    },
+    {
       field_key: "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES",
       section_key: "assessment_results",
       start: [/Vineland\s+Adaptive\s+Behavior\s+Scales/i, /Domain\s+Raw\s+Score\s+Standard\s+Score/i],
       end: [/IX\.\s+DIAGNOSTIC\s+INFORMATION/i, /X\.\s+FUNCTIONAL\s+ASSESSMENT/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_COGNITIVE_ASSESSMENT_SUMMARY",
+      section_key: "assessment_results",
+      start: [/COGNITIVE\s+ASSESSMENT/i],
+      end: [/IX\.\s+DIAGNOSTIC\s+INFORMATION/i, /X\.\s+FUNCTIONAL\s+ASSESSMENT/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES",
+      section_key: "diagnostic_behavior_analysis",
+      start: [/IX\.\s+DIAGNOSTIC\s+INFORMATION/i],
+      end: [/X\.\s+FUNCTIONAL\s+ASSESSMENT/i],
     },
     {
       field_key: "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
@@ -1408,6 +1480,45 @@ const extractNarrativeStructuredSections = (text: string): StructuredSectionResu
         /XIV\.\s+TARGET\s+AND\s+REPLACEMENT\s+BEHAVIOR\s+GOALS/i,
         /XV\.\s+SKILL\s+ACQUISITION/i,
       ],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_MEDIATOR_ANALYSIS",
+      section_key: "diagnostic_behavior_analysis",
+      start: [/XII\.\s+MEDIATOR\s+ANALYSIS/i, /\bMEDIATOR\s+ANALYSIS\b/i],
+      end: [/XIII\.\s+REINFORCER\s+ASSESSMENT/i, /\bREINFORCER\s+ASSESSMENT\b/i, /XIV\.\s+TARGET\s+AND\s+REPLACEMENT/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_REINFORCER_ASSESSMENT",
+      section_key: "diagnostic_behavior_analysis",
+      start: [/XIII\.\s+REINFORCER\s+ASSESSMENT/i, /\bREINFORCER\s+ASSESSMENT\b/i],
+      end: [/XIV\.\s+TARGET\s+AND\s+REPLACEMENT/i, /XV\.\s+SKILL\s+ACQUISITION/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN",
+      section_key: "goals_treatment_planning",
+      start: [
+        /XVII\.\s+PLAN\s+FOR\s+GENERALIZATION\s+\(INCLUDING\s+TRANSITION\s+TO\s+NATURAL\s+MEDIATORS\)\s+AND\s+MAINTENANCE/i,
+        /PLAN\s+FOR\s+GENERALIZATION\s+\(INCLUDING\s+TRANSITION\s+TO\s+NATURAL\s+MEDIATORS\)\s+AND\s+MAINTENANCE/i,
+      ],
+      end: [/XVIII\.\s+CRISIS\s+PLAN/i, /\bCRISIS\s+PLAN\b/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_TRANSITION_PLAN",
+      section_key: "goals_treatment_planning",
+      start: [/Complete\s+1-4\s+below\s+that\s+describe\s+the\s+engagement\s+with\s+family\/caregivers/i, /Please\s+list\s+exit\s+plan\/criteria/i],
+      end: [/XVIII\.\s+CRISIS\s+PLAN/i, /\bCRISIS\s+PLAN\b/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_CRISIS_PLAN",
+      section_key: "diagnostic_behavior_analysis",
+      start: [/XVIII\.\s+CRISIS\s+PLAN/i, /\bCRISIS\s+PLAN\b/i],
+      end: [/XX\.\s+SUMMARY\s+AND\s+RECOMMENDATIONS/i, /\bSUMMARY\s+AND\s+RECOMMENDATIONS\b/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_SUMMARY_RECOMMENDATIONS",
+      section_key: "summary_recommendations_signatures",
+      start: [/XX\.\s+SUMMARY\s+AND\s+RECOMMENDATIONS/i, /\bSUMMARY\s+AND\s+RECOMMENDATIONS\b/i],
+      end: [/HCPCS\s+Code\s+and\s+Modifiers\s+Description/i, /Telehealth\s+Consent\s+Confirmation/i],
     },
     {
       field_key: "CALOPTIMA_FBA_SIGNATURES",

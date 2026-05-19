@@ -59,6 +59,84 @@ const isStructuredChildGoalSection = (section: AssessmentStructuredSection): boo
 const isStructuredParentGoalSection = (section: AssessmentStructuredSection): boolean =>
   section.field_key === "CALOPTIMA_FBA_PARENT_GOALS" || section.payload?.goal_type === "parent";
 
+const STRUCTURED_SECTION_LABELS: Record<string, string> = {
+  CALOPTIMA_FBA_LIVING_ARRANGEMENTS: "Living arrangements",
+  CALOPTIMA_FBA_SIGNIFICANT_MEDICAL_HISTORY: "Significant medical history",
+  CALOPTIMA_FBA_FUNCTIONAL_COMMUNICATION_SKILLS: "Functional communication skills",
+  CALOPTIMA_FBA_SELF_CARE_ADL_SKILLS: "Self-care and daily living skills",
+  CALOPTIMA_FBA_SOCIAL_PLAY_SKILLS: "Social and play skills",
+  CALOPTIMA_FBA_MOBILITY_FUNCTIONING_RESTRICTIONS: "Mobility functioning and restrictions",
+  CALOPTIMA_FBA_IEP_SERVICES_TABLE: "IEP/equivalent services",
+  CALOPTIMA_FBA_MEDIATOR_ANALYSIS: "Mediator analysis",
+  CALOPTIMA_FBA_REINFORCER_ASSESSMENT: "Reinforcer assessment",
+  CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN: "Generalization and maintenance plan",
+  CALOPTIMA_FBA_TRANSITION_PLAN: "Transition and exit criteria",
+  CALOPTIMA_FBA_CRISIS_PLAN: "Crisis plan",
+  CALOPTIMA_FBA_SUMMARY_RECOMMENDATIONS: "Summary and recommendations",
+  CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS: "HCPCS recommendation rows",
+  CALOPTIMA_FBA_SIGNATURES: "Signatures",
+  IEHP_FBA_SIGNATURE_BLOCK: "Signature block",
+};
+
+const humanizeStructuredSectionLabel = (section: AssessmentStructuredSection): string =>
+  STRUCTURED_SECTION_LABELS[section.field_key] ??
+  section.field_key
+    .replace(/^(CALOPTIMA|IEHP)_FBA_/, "")
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const formatPayloadValue = (value: unknown): string => {
+  if (value == null) {
+    return "";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const buildStructuredPayloadPreview = (payload: Record<string, unknown>): string[] => {
+  const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  if (rows.length > 0) {
+    return rows.slice(0, 4).map((row, index) => {
+      const rowRecord = row && typeof row === "object" ? row as Record<string, unknown> : { value: row };
+      const rowText = typeof rowRecord.raw_text === "string"
+        ? rowRecord.raw_text
+        : Object.entries(rowRecord)
+            .map(([key, value]) => `${key}: ${formatPayloadValue(value)}`)
+            .join("; ");
+      return `Row ${index + 1}: ${rowText}`;
+    });
+  }
+
+  const orderedKeys = [
+    "title",
+    "program_name",
+    "goal_type",
+    "raw_text",
+    "original_text",
+    "written_by",
+    "reviewed_by",
+    "report_completed_date",
+  ];
+  const preview = orderedKeys
+    .filter((key) => payload[key] != null && formatPayloadValue(payload[key]).trim().length > 0)
+    .map((key) => `${key.replace(/_/g, " ")}: ${formatPayloadValue(payload[key])}`);
+
+  if (preview.length > 0) {
+    return preview.slice(0, 5);
+  }
+
+  return Object.entries(payload)
+    .slice(0, 5)
+    .map(([key, value]) => `${key.replace(/_/g, " ")}: ${formatPayloadValue(value)}`);
+};
+
 const withTimeout = async <T,>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -1647,16 +1725,30 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 reviewNotes: row.review_notes ?? "",
                                 payload: formatStructuredSectionPayload(row.payload),
                               };
+                              const previewLines = buildStructuredPayloadPreview(row.payload ?? {});
                               const isApprovedStatusLocked = row.status === "approved";
                               return (
                                 <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
                                   <div className="text-xs font-medium text-gray-800 dark:text-gray-200">
-                                    {row.field_key} #{row.section_index + 1}
+                                    {humanizeStructuredSectionLabel(row)} #{row.section_index + 1}
                                   </div>
+                                  <div className="text-[11px] text-gray-500 dark:text-gray-300">{row.field_key}</div>
                                   <div className="text-[11px] text-gray-500 mb-2">
                                     required: {String(row.required)}
                                     {row.review_notes ? ` • ${row.review_notes}` : ""}
                                   </div>
+                                  {previewLines.length > 0 && (
+                                    <div className="mb-2 rounded bg-gray-50 p-2 text-xs text-gray-700 dark:bg-gray-800/60 dark:text-gray-200">
+                                      <div className="mb-1 font-semibold">Extracted preview</div>
+                                      <ul className="space-y-1">
+                                        {previewLines.map((line, index) => (
+                                          <li key={`${row.id}-preview-${index}`} className="break-words">
+                                            {line}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
                                   <div className="grid grid-cols-1 gap-2">
                                     <select
                                       value={edit.status}

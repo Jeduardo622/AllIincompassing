@@ -1475,6 +1475,95 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(screen.queryByText("Structured CalOptima Sections")).not.toBeInTheDocument();
   });
 
+  it("renders readable CalOptima structured section previews before JSON editing", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "caloptima-redacted.pdf",
+              mime_type: "application/pdf",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/caloptima-redacted.pdf",
+              status: "extracted",
+              extraction_error: null,
+              created_at: "2026-05-19T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [],
+            structured_sections: [
+              {
+                id: "structured-crisis",
+                section_key: "diagnostic_behavior_analysis",
+                field_key: "CALOPTIMA_FBA_CRISIS_PLAN",
+                section_index: 0,
+                payload: {
+                  raw_text: "Caregivers will call emergency services for immediate danger and notify the BCBA.",
+                },
+                status: "drafted",
+                required: true,
+                review_notes: "Clinician review required.",
+              },
+              {
+                id: "structured-hcpcs",
+                section_key: "summary_recommendations_signatures",
+                field_key: "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
+                section_index: 0,
+                payload: {
+                  rows: [
+                    { hcpcs_code: "H2019", raw_text: "H2019 Therapeutic Behavioral Services 160 units" },
+                    { hcpcs_code: "S5110", raw_text: "S5110 Home Care Training, Family 24 units" },
+                  ],
+                },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("caloptima-redacted.pdf")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: /caloptima-redacted\.pdf/i })[0]);
+
+    expect(await screen.findByRole("heading", { name: "Structured CalOptima FBA Sections" })).toBeInTheDocument();
+    expect(screen.getByText("Crisis plan #1")).toBeInTheDocument();
+    expect(screen.getByText(/raw text: Caregivers will call emergency services/i)).toBeInTheDocument();
+    expect(screen.getByText("HCPCS recommendation rows #1")).toBeInTheDocument();
+    expect(screen.getByText(/Row 1: H2019 Therapeutic Behavioral Services 160 units/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Extracted preview").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("limits accepted upload types to pdf and docx", async () => {
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {

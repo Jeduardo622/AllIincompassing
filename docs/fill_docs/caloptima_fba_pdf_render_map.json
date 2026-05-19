@@ -885,6 +885,203 @@
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_LIVING_ARRANGEMENTS",
+      "form_field_candidates": [
+        "Individual Description/Living Arrangements",
+        "Living Arrangements"
+      ],
+      "fallback": {
+        "page": 3,
+        "x": 64,
+        "y": 520,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_SIGNIFICANT_MEDICAL_HISTORY",
+      "form_field_candidates": [
+        "Significant Medical History"
+      ],
+      "fallback": {
+        "page": 3,
+        "x": 64,
+        "y": 450,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_FUNCTIONAL_COMMUNICATION_SKILLS",
+      "form_field_candidates": [
+        "Functional Communication Skills"
+      ],
+      "fallback": {
+        "page": 3,
+        "x": 64,
+        "y": 386,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_SELF_CARE_ADL_SKILLS",
+      "form_field_candidates": [
+        "Self-Care and Activities of Daily Living Skills",
+        "Activities of Daily Living Skills"
+      ],
+      "fallback": {
+        "page": 3,
+        "x": 64,
+        "y": 315,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_SOCIAL_PLAY_SKILLS",
+      "form_field_candidates": [
+        "Social and Play Skills"
+      ],
+      "fallback": {
+        "page": 3,
+        "x": 64,
+        "y": 230,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_MOBILITY_FUNCTIONING_RESTRICTIONS",
+      "form_field_candidates": [
+        "Mobility Functioning and Restrictions"
+      ],
+      "fallback": {
+        "page": 3,
+        "x": 64,
+        "y": 150,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_IEP_SERVICES_TABLE",
+      "form_field_candidates": [
+        "Individualized Educational Plan (IEP/equivalent) Information",
+        "IEP services"
+      ],
+      "fallback": {
+        "page": 4,
+        "x": 64,
+        "y": 250,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_COGNITIVE_ASSESSMENT_SUMMARY",
+      "form_field_candidates": [
+        "COGNITIVE ASSESSMENT",
+        "DAYC-2 Cognitive Subtest",
+        "BSID-III Cognitive Subtest",
+        "WASI-II",
+        "KBIT-2"
+      ],
+      "fallback": {
+        "page": 7,
+        "x": 64,
+        "y": 520,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_MEDIATOR_ANALYSIS",
+      "form_field_candidates": [
+        "MEDIATOR ANALYSIS"
+      ],
+      "fallback": {
+        "page": 10,
+        "x": 64,
+        "y": 250,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_REINFORCER_ASSESSMENT",
+      "form_field_candidates": [
+        "REINFORCER ASSESSMENT"
+      ],
+      "fallback": {
+        "page": 10,
+        "x": 64,
+        "y": 155,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 56,
+        "max_lines": 7,
+        "line_height": 8,
+        "field_kind": "structured_section"
+      },
+      "target": "caloptima_fba_pdf_overlay",
+      "not_exported": false
     }
   ]
 }

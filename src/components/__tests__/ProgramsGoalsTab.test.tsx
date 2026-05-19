@@ -80,6 +80,33 @@ const buildStructuredGoalSections = (status: "approved" | "verified" | "drafted"
   })),
 ];
 
+const buildIehpStructuredSections = () => [
+  {
+    id: "iehp-structured-1",
+    section_key: "iehp_summary_review",
+    field_key: "IEHP_FBA_SUMMARY",
+    section_index: 0,
+    payload: null,
+    status: "approved" as const,
+    required: true,
+    review_notes: null,
+  },
+  {
+    id: "iehp-structured-2",
+    section_key: "iehp_summary_review",
+    field_key: "IEHP_FBA_BEHAVIOR_SUPPORTS",
+    section_index: 1,
+    payload: {
+      summary: "x".repeat(4096),
+      goal_type: "child",
+      notes: "IEHP structured payload remains renderable even when it is long.",
+    },
+    status: "drafted" as const,
+    required: false,
+    review_notes: "Long payload kept intact",
+  },
+];
+
 vi.mock("../../lib/ai", async () => {
   const actual = await vi.importActual<typeof import("../../lib/ai")>("../../lib/ai");
   return {
@@ -1324,6 +1351,27 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
           { status: 201 },
         );
       }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "iehp-checklist-1",
+                section_key: "iehp_summary_review",
+                label: "IEHP Summary",
+                placeholder_key: "iehp_summary",
+                required: true,
+                mode: "ASSISTED",
+                status: "approved",
+                review_notes: null,
+                value_text: "IEHP summary text",
+              },
+            ],
+            structured_sections: buildIehpStructuredSections(),
+          }),
+          { status: 200 },
+        );
+      }
       return baseCallApiImpl(path, init);
     });
 
@@ -1341,6 +1389,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     await screen.findByText(/CalOptima FBA Upload Workflow/i);
     const templateSelect = screen.getByRole("combobox", { name: /FBA template/i });
     await user.selectOptions(templateSelect, "iehp_fba");
+    expect(await screen.findByText(/IEHP FBA Upload Workflow/i)).toBeInTheDocument();
     const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
     const file = new File(["mock iehp content"], "iehp-fba.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1360,6 +1409,70 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     await waitFor(() => {
       expect(showSuccess).toHaveBeenCalledWith("IEHP FBA uploaded and checklist initialized.");
     });
+  });
+
+  it("renders IEHP-specific review labels for a selected uploaded assessment", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "iehp-review.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/iehp-review.docx",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [],
+            structured_sections: buildIehpStructuredSections(),
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab client={buildClient()} />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    expect(await screen.findByText("iehp-review.docx")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: /iehp-review\.docx/i })[0]);
+    expect(await screen.findByRole("heading", { name: "IEHP FBA Checklist Review" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Structured IEHP FBA Sections" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /IEHP PDF export not available/i })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: /Optional: Export Completed CalOptima FBA PDF/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Optional: Export Completed IEHP FBA PDF/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Structured CalOptima Sections")).not.toBeInTheDocument();
   });
 
   it("limits accepted upload types to pdf and docx", async () => {
@@ -1956,7 +2069,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     );
 
     await screen.findByText("fba.pdf");
-    const exportPdfButton = screen.getByRole("button", { name: /Optional: Export Completed CalOptima PDF/i });
+    const exportPdfButton = screen.getByRole("button", { name: /Optional: Export Completed CalOptima FBA PDF/i });
     await waitFor(() => {
       expect(exportPdfButton).not.toBeDisabled();
     });
@@ -2041,7 +2154,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    const exportPdfButton = screen.getByRole("button", { name: /Optional: Export Completed CalOptima PDF/i });
+    const exportPdfButton = screen.getByRole("button", { name: /Optional: Export Completed CalOptima FBA PDF/i });
     await waitFor(() => {
       expect(exportPdfButton).not.toBeDisabled();
     });

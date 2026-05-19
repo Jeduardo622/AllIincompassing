@@ -74,12 +74,13 @@ Deno.test("summarizeStructuredGoalSections counts child and parent sections", ()
 
 Deno.test("summarizeStructuredGoalSections counts IEHP goal sections", () => {
   const sections = [
-    { field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS", payload: {} },
-    { field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", payload: {} },
+    { field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS", payload: { goal_type: "child" } },
+    { field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", payload: { goal_type: "child" } },
+    { field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", payload: { goal_type: "parent" } },
   ];
 
   expect(summarizeStructuredGoalSections(sections)).toEqual({
-    childGoalCount: 0,
-    parentGoalCount: 2,
+    childGoalCount: 2,
+    parentGoalCount: 1,
   });
 });

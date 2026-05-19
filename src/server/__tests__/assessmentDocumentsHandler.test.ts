@@ -2128,6 +2128,143 @@ describe("assessmentDocumentsHandler", () => {
     expect(liveGoalWrite).toBeUndefined();
   });
 
+  it("passes checklist modes and expanded client snapshot into IEHP extraction workflow", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([
+      {
+        section: "behavior_background_services",
+        label: "BHT Availability Grid",
+        placeholder_key: "IEHP_FBA_BHT_AVAILABILITY_GRID",
+        mode: "ASSISTED",
+        source: "uploaded_assessment_document",
+        required: true,
+        extraction_method: "deterministic_extract",
+        validation_rule: "structured_payload_required",
+        status: "not_started",
+      },
+    ]);
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name,first_name,last_name")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            full_name: "Synthetic Member",
+            first_name: "Synthetic",
+            last_name: "Member",
+            date_of_birth: "2011-04-19",
+            preferred_language: "Vietnamese",
+            address_line1: "100 Test Ave",
+            city: "Riverside",
+            state: "CA",
+            zip_code: "92503",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [{ id: "doc-iehp-modes", organization_id: "org-1", client_id: "11111111-1111-1111-1111-111111111111" }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) return { ok: true, status: 201, data: null };
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) return { ok: true, status: 201, data: null };
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [{
+              placeholder_key: "IEHP_FBA_BHT_AVAILABILITY_GRID",
+              value_text: "1 structured section extracted",
+              value_json: { rows: [{ day: "Monday", availability: "After 3:30 PM" }] },
+              confidence: 0.74,
+              mode: "ASSISTED",
+              status: "drafted",
+              source_span: { method: "deterministic_structured_section_summary" },
+              review_notes: "Structured content requires clinician review.",
+            }],
+            structured_sections: [],
+            unresolved_keys: [],
+            extracted_count: 1,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_checklist_items")) return { ok: true, status: 200, data: null };
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_extractions")) return { ok: true, status: 200, data: null };
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) return { ok: true, status: 200, data: null };
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) return { ok: true, status: 201, data: null };
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "iehp-fba.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/iehp-fba.docx",
+          template_type: "iehp_fba",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const extractionCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/functions/v1/extract-assessment-fields") &&
+      (init?.method ?? "").toUpperCase() === "POST" &&
+      typeof init?.body === "string" &&
+      init.body.includes("checklist_rows")
+    );
+    expect(extractionCall).toBeDefined();
+    const payload = JSON.parse((extractionCall?.[1] as RequestInit).body as string) as {
+      checklist_rows: Array<{ mode?: string }>;
+      client_snapshot?: Record<string, unknown>;
+      template_type?: string;
+    };
+    expect(payload.template_type).toBe("iehp_fba");
+    expect(payload.checklist_rows[0]?.mode).toBe("ASSISTED");
+    expect(payload.client_snapshot).toMatchObject({
+      preferred_language: "Vietnamese",
+      address_line1: "100 Test Ave",
+      city: "Riverside",
+    });
+    expect(payload.client_snapshot).not.toHaveProperty("insurance_info");
+    expect(payload.client_snapshot).not.toHaveProperty("availability_hours");
+    expect(payload.client_snapshot).not.toHaveProperty("parent2_first_name");
+
+    const extractionPatch = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/rest/v1/assessment_extractions") &&
+      (init?.method ?? "").toUpperCase() === "PATCH"
+    );
+    expect(String((extractionPatch?.[1] as RequestInit).body)).toContain('"mode":"ASSISTED"');
+  });
+
   it("records extraction_failed audit event when extraction API returns non-ok", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

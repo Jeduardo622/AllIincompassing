@@ -109,8 +109,6 @@ const DRAFT_GOAL_FIELD_KEYS = new Set([
 ]);
 const DRAFT_PARENT_GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_PARENT_GOALS",
-  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
-  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
 ]);
 
 const resolveProgramNameFromGoalSection = (fieldKey: string, payload: Record<string, unknown>, isParentGoal: boolean): string => {

@@ -388,7 +388,7 @@ describe("assessmentDraftsHandler", () => {
     expect(liveGoalWrite).toBeUndefined();
   });
 
-  it("auto-generates deterministic drafts from IEHP structured goal sections", async () => {
+  it("auto-generates deterministic drafts from IEHP structured goal sections with child semantics", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -411,6 +411,7 @@ describe("assessmentDraftsHandler", () => {
         payload: {
           title: "IEHP Target behavior",
           raw_text: "IEHP intervention block with measurable criteria.",
+          goal_type: "child",
           program_name: "Behavior Treatment",
         },
         status: "approved" as const,
@@ -424,6 +425,7 @@ describe("assessmentDraftsHandler", () => {
         payload: {
           title: "IEHP Skill goal",
           raw_text: "IEHP school/skill block with measurable criteria.",
+          goal_type: "child",
           program_name: "Skill Acquisition",
         },
         status: "approved" as const,
@@ -489,7 +491,7 @@ describe("assessmentDraftsHandler", () => {
     expect(goalCreateCall).toBeTruthy();
     const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
     expect(goalPayload).toHaveLength(2);
-    expect(goalPayload.every((goal) => goal.goal_type === "parent")).toBe(true);
+    expect(goalPayload.every((goal) => goal.goal_type === "child")).toBe(true);
     expect(goalPayload.map((goal) => goal.program_name)).toEqual(["Behavior Treatment", "Skill Acquisition"]);
   });
 

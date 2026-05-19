@@ -621,6 +621,7 @@ const splitIeHpGoalSubsections = (
   sectionKey: string,
   fieldKey: string,
   sectionIndexByFieldKey: Map<string, number>,
+  sectionGoalType?: "child" | "parent",
 ): StructuredSectionResult[] => {
   const headerPattern = /(?:^|[^\w])((?:short\s*(?:[-–—]?\s*)term)|(?:intermediate)|(?:progress))\s*:\s*/gim;
   const matches = [...sectionText.matchAll(headerPattern)];
@@ -631,7 +632,7 @@ const splitIeHpGoalSubsections = (
     if (!normalizedText) {
       return [];
     }
-    const goalType = /\b(?:parent|caregiver)\b/i.test(normalizedText) ? "parent" : "child";
+    const goalType = sectionGoalType ?? (/\b(?:parent|caregiver)\b/i.test(normalizedText) ? "parent" : "child");
     return [{
       section_key: sectionKey,
       field_key: fieldKey,
@@ -663,7 +664,7 @@ const splitIeHpGoalSubsections = (
     if (!bodyContent) {
       return;
     }
-    const goalType = /\b(?:parent|caregiver)\b/i.test(bodyContent) ? "parent" : "child";
+    const goalType = sectionGoalType ?? (/\b(?:parent|caregiver)\b/i.test(bodyContent) ? "parent" : "child");
     const section_index = sectionIndexByFieldKey.get(fieldKey) ?? 0;
     sectionIndexByFieldKey.set(fieldKey, section_index + 1);
     const title = `${subsectionType.charAt(0).toUpperCase() + subsectionType.slice(1)} Goal`;
@@ -887,6 +888,7 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
         "treatment_goals",
         "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
         sectionIndexByFieldKey,
+        "parent",
       ),
     );
   }

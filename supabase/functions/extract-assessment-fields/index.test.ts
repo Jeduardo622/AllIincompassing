@@ -116,6 +116,37 @@ Deno.test("extractStructuredSections does not duplicate Parent Education goals a
   expect(parentEducationSections.every((section) => section.payload.program_name === "Parent Education")).toBe(true);
 });
 
+Deno.test("extractStructuredSections preserves parent goal type for Parent Education fallback subsections", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      BEHAVIOR INTERVENTION PLAN
+      Short term: reduce elopement from five episodes to one episode.
+      Intermediate: use a break card across settings.
+      Progress: maintain reduced elopement for four weeks.
+      Safety Procedure
+      Parent Education
+      Short term: identify prevention steps with 80% accuracy.
+      Intermediate: model replacement prompting across three routines.
+      Progress: generalize the plan at home for four consecutive weeks.
+      Coordination of Care
+    `,
+  );
+
+  const parentEducationSections = sections.filter((section) =>
+    section.field_key === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS" &&
+    section.payload.program_name === "Parent Education"
+  );
+
+  expect(parentEducationSections).toHaveLength(3);
+  expect(parentEducationSections.map((section) => section.payload.subsection)).toEqual([
+    "short",
+    "intermediate",
+    "progress",
+  ]);
+  expect(parentEducationSections.every((section) => section.payload.goal_type === "parent")).toBe(true);
+});
+
 Deno.test("extractStructuredSections maps LE-style IEHP headings into normalized structured payloads", () => {
   const sections = asSections(
     "iehp_fba",

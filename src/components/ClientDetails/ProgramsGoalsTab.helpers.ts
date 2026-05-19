@@ -83,6 +83,7 @@ export const EMPTY_CHECKLIST_RESPONSE: AssessmentChecklistResponse = {
 };
 export const EMPTY_ASSESSMENT_DRAFTS: AssessmentDraftResponse = { programs: [], goals: [] };
 export const ENABLE_CHECKLIST_MAPPING_UI = true;
+export const ENABLE_PROGRAMS_GOALS_AI_PROPOSALS = false;
 
 export const TEMPLATE_LABELS: Record<AssessmentTemplateType, string> = {
   caloptima_fba: "CalOptima FBA",
@@ -97,7 +98,10 @@ export const statusToneByAssessment: Record<
   extracting: { label: "extracting", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" },
   extraction_running: { label: "extracting", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" },
   extracted: { label: "extracted", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200" },
-  drafted: { label: "ai proposal ready", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200" },
+  drafted: {
+    label: ENABLE_PROGRAMS_GOALS_AI_PROPOSALS ? "ai proposal ready" : "structured review ready",
+    className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200",
+  },
   approved: { label: "approved", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" },
   rejected: { label: "rejected", className: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" },
   extraction_failed: {

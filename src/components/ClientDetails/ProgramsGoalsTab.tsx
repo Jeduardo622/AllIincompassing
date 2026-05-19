@@ -5,7 +5,6 @@ import type { Client, Goal, Program, ProgramNote } from "../../types";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { useActiveOrganizationId } from "../../lib/organization";
-import { generateProgramGoalDraft, type ProgramGoalDraftResponse } from "../../lib/ai";
 import { useAuth } from "../../lib/authContext";
 import {
   registerAssessmentDocument,
@@ -18,6 +17,7 @@ import {
   EMPTY_ASSESSMENT_DRAFTS,
   EMPTY_CHECKLIST_RESPONSE,
   ENABLE_CHECKLIST_MAPPING_UI,
+  ENABLE_PROGRAMS_GOALS_AI_PROPOSALS,
   formatGoalTimelineCriteria,
   parseApiErrorMessage,
   parseGoalTimelineCriteria,
@@ -49,18 +49,6 @@ const ACTIVE_ASSESSMENT_POLL_STATUSES: ReadonlySet<AssessmentDocumentRecord["sta
   "uploaded",
   "extracting",
   "extraction_running",
-]);
-const AI_GENERATION_READY_STATUSES: ReadonlySet<AssessmentDocumentRecord["status"]> = new Set([
-  "extracted",
-  "extraction_failed",
-]);
-const MIN_ASSESSMENT_TEXT_CHARS_FOR_AI_GENERATION = 20;
-const STRUCTURED_GOAL_FIELD_KEYS = new Set([
-  "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
-  "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-  "CALOPTIMA_FBA_PARENT_GOALS",
-  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
-  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
 ]);
 
 const isStructuredChildGoalSection = (section: AssessmentStructuredSection): boolean =>
@@ -172,19 +160,10 @@ const callEdgeWithSupabaseFallback = async (params: {
   }
 };
 
-const hasSufficientChecklistTextForAiGeneration = (items: AssessmentChecklistItem[]): boolean =>
-  items
-    .map((item) => item.value_text?.trim() ?? "")
-    .filter(Boolean)
-    .join("\n").length >= MIN_ASSESSMENT_TEXT_CHARS_FOR_AI_GENERATION;
-
 const isSupportedAssessmentFile = (file: File): boolean => {
   const lowerFileName = file.name.trim().toLowerCase();
   return SUPPORTED_ASSESSMENT_FILE_EXTENSIONS.some((extension) => lowerFileName.endsWith(extension));
 };
-
-const formatCountLabel = (count: number, singular: string, plural: string): string =>
-  `${count} ${count === 1 ? singular : plural}`;
 
 interface ProgramsGoalsTabProps {
   client: Client;
@@ -215,8 +194,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [goalMaintenanceCriteria, setGoalMaintenanceCriteria] = useState("");
   const [goalGeneralizationCriteria, setGoalGeneralizationCriteria] = useState("");
   const [goalObjectiveDataPoints, setGoalObjectiveDataPoints] = useState("[]");
-  const [assessmentInput, setAssessmentInput] = useState("");
-  const [draftPlan, setDraftPlan] = useState<ProgramGoalDraftResponse | null>(null);
   const [checklistEdits, setChecklistEdits] = useState<
     Record<string, { status: AssessmentChecklistItem["status"]; reviewNotes: string; valueText: string }>
   >({});
@@ -255,22 +232,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [archivingGoalId, setArchivingGoalId] = useState<string | null>(null);
   const [isUploadProcessing, setIsUploadProcessing] = useState(false);
   const [assessmentDocumentsNeedsRetry, setAssessmentDocumentsNeedsRetry] = useState(false);
-
-  const applyDraftGoal = (goal: ProgramGoalDraftResponse["goals"][number]) => {
-    const parsedTargetCriteria = parseGoalTimelineCriteria(goal.target_criteria);
-    setGoalTitle(goal.title);
-    setGoalDescription(goal.description);
-    setGoalOriginalText(goal.original_text);
-    setGoalMeasurementType(goal.measurement_type ?? "");
-    setGoalBaselineData(goal.baseline_data ?? "");
-    setGoalShortTermGoal(parsedTargetCriteria.shortTermGoal);
-    setGoalIntermediateGoal(parsedTargetCriteria.intermediateGoal);
-    setGoalLongTermGoal(parsedTargetCriteria.longTermGoal);
-    setGoalMasteryCriteria(goal.mastery_criteria ?? "");
-    setGoalMaintenanceCriteria(goal.maintenance_criteria ?? "");
-    setGoalGeneralizationCriteria(goal.generalization_criteria ?? "");
-    setGoalObjectiveDataPoints(JSON.stringify(goal.objective_data_points ?? [], null, 2));
-  };
 
   const {
     data: programs = [],
@@ -549,12 +510,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     (checklistReviewUnavailable ||
       checklistItems.some((item) => item.required && item.status !== "approved") ||
       structuredSections.some((section) => section.required && section.status !== "approved"));
-  const hasAcceptedDraftProgram = (assessmentDrafts?.programs ?? []).some(
-    (program) => program.accept_state === "accepted" || program.accept_state === "edited",
-  );
-  const hasAcceptedDraftGoal = (assessmentDrafts?.goals ?? []).some(
-    (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
-  );
   const hasExistingDrafts = (assessmentDrafts?.programs?.length ?? 0) > 0 || (assessmentDrafts?.goals?.length ?? 0) > 0;
   const extractedChecklistValueCount = checklistItems.filter((item) => item.value_text?.trim()).length;
   const structuredChildGoalCount = structuredSections.filter(isStructuredChildGoalSection).length;
@@ -564,64 +519,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const draftSaveHelperText = selectedAssessmentAlreadyPublished
     ? "Draft retained for audit after approval. Live records are already published."
     : "Saves to draft only. Not visible in live records until published.";
-  const selectedAssessmentReadyForAiGeneration = selectedAssessmentDocument
-    ? AI_GENERATION_READY_STATUSES.has(selectedAssessmentDocument.status)
-    : false;
-  const selectedFailedExtractionHasChecklistEvidence =
-    selectedAssessmentDocument?.status !== "extraction_failed" || hasSufficientChecklistTextForAiGeneration(checklistItems);
-  const hasApprovedStructuredGoalSections = structuredSections.some(
-    (section) =>
-      section.status === "approved" &&
-      STRUCTURED_GOAL_FIELD_KEYS.has(section.field_key),
-  );
-  const acceptedDraftChildGoalCount = (assessmentDrafts?.goals ?? []).filter(
-    (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "child",
-  ).length;
-  const acceptedDraftParentGoalCount = (assessmentDrafts?.goals ?? []).filter(
-    (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "parent",
-  ).length;
-  const canGenerateUploadedAssessmentDraft =
-    canQuerySelectedAssessment &&
-    selectedAssessmentReadyForAiGeneration &&
-    selectedFailedExtractionHasChecklistEvidence &&
-    hasApprovedStructuredGoalSections &&
-    !hasExistingDrafts;
-  const canPromoteAssessment =
-    canQuerySelectedAssessment &&
-    !selectedAssessmentAlreadyPublished &&
-    !hasPendingRequiredChecklistItems &&
-    hasAcceptedDraftProgram &&
-    hasAcceptedDraftGoal;
   const unresolvedRequiredCount = ENABLE_CHECKLIST_MAPPING_UI
     ? checklistItems.filter((item) => item.required && item.status !== "approved").length +
       structuredSections.filter((section) => section.required && section.status !== "approved").length
     : 0;
-  const promoteDisabledReason = !canQuerySelectedAssessment
-    ? "Select a valid assessment first."
-    : selectedAssessmentAlreadyPublished
-      ? "This assessment has already been approved and published."
-    : checklistReviewUnavailable
-      ? "Checklist review must load before publishing."
-    : hasPendingRequiredChecklistItems
-      ? `${unresolvedRequiredCount} required checklist row${unresolvedRequiredCount === 1 ? "" : "s"} must be approved before publishing.`
-    : !hasAcceptedDraftProgram
-        ? "Accept or edit at least one draft program before publishing."
-        : !hasAcceptedDraftGoal
-          ? "Accept or edit at least one draft goal before publishing."
-          : null;
-  const uploadedAssessmentGenerateDisabledReason = !canQuerySelectedAssessment
-    ? "Select a valid uploaded assessment before creating deterministic drafts."
-    : hasExistingDrafts
-      ? "Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."
-    : selectedAssessmentDocument?.status === "extraction_failed" && !selectedFailedExtractionHasChecklistEvidence
-      ? "Extraction failed for this assessment, but no extracted checklist evidence is available for draft generation. Replace the source document or add checklist evidence before retrying."
-    : selectedAssessmentDocument?.status === "extraction_failed"
-      ? "Extraction failed for this assessment. Retry deterministic draft generation using the extracted checklist evidence, or replace the source document if it needs correction."
-    : !selectedAssessmentReadyForAiGeneration
-      ? "Wait for extraction to complete before generating drafts."
-    : !hasApprovedStructuredGoalSections
-      ? "Approve at least one structured goal section before generating drafts."
-      : null;
 
   useEffect(() => {
     const firstAssessmentId = assessmentDocuments[0]?.id ?? null;
@@ -890,68 +791,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
   });
 
-  const persistAssessmentDrafts = useMutation({
-    mutationFn: async () => {
-      if (!draftPlan) {
-        throw new Error("Generate drafts first.");
-      }
-      if (!selectedAssessmentId) {
-        throw new Error("Select an uploaded assessment before saving drafts.");
-      }
-      const response = await callApi("/api/assessment-drafts", {
-        method: "POST",
-        body: JSON.stringify({
-          assessment_document_id: selectedAssessmentId,
-          programs: draftPlan.programs,
-          goals: draftPlan.goals,
-          summary_rationale: draftPlan.summary_rationale,
-          confidence: draftPlan.confidence,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error("Failed to save draft program and goals to staged review.");
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
-      });
-      showSuccess("AI proposal saved to assessment queue for review.");
-    },
-    onError: showError,
-  });
-
-  const generateDraftsFromUploadedAssessment = useMutation({
-    mutationFn: async () => {
-      if (!selectedAssessmentId) {
-        throw new Error("Select an uploaded assessment first.");
-      }
-      const response = await callApi("/api/assessment-drafts", {
-        method: "POST",
-        body: JSON.stringify({
-          assessment_document_id: selectedAssessmentId,
-          auto_generate: true,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(await parseApiErrorMessage(response, "Failed to generate drafts from uploaded assessment."));
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
-      });
-      showSuccess("Draft program and goals generated from reviewed structured FBA data.");
-    },
-    onError: showError,
-  });
-
   const updateDraftProgram = useMutation({
     mutationFn: async (programId: string) => {
       const edit = draftProgramEdits[programId];
@@ -1026,67 +865,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     onError: showError,
   });
-
-  const promoteAssessment = useMutation({
-    mutationFn: async () => {
-      if (!selectedAssessmentId) {
-        throw new Error("Select an assessment first.");
-      }
-      const response = await callApi("/api/assessment-promote", {
-        method: "POST",
-        body: JSON.stringify({ assessment_document_id: selectedAssessmentId }),
-      });
-      if (!response.ok) {
-        throw new Error(await parseApiErrorMessage(response, "Assessment cannot be promoted yet."));
-      }
-      return parseJson<{
-        created_program_count: number;
-        created_goal_count: number;
-        promoted_program_count?: number;
-        promoted_goal_count?: number;
-      }>(response);
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({
-        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["client-goals", client.id, organizationId ?? "MISSING_ORG"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
-      });
-      const publishedProgramCount = result.promoted_program_count ?? result.created_program_count;
-      const publishedGoalCount = result.promoted_goal_count ?? result.created_goal_count;
-      showSuccess(
-        `Published to live records. Created ${formatCountLabel(publishedProgramCount, "production program", "production programs")} and ${formatCountLabel(publishedGoalCount, "goal", "goals")}.`,
-      );
-    },
-    onError: showError,
-  });
-
-  const handlePublishApprovedRecords = () => {
-    const acceptedProgramCount = (assessmentDrafts?.programs ?? []).filter(
-      (program) => program.accept_state === "accepted" || program.accept_state === "edited",
-    ).length;
-    const acceptedGoalCount = (assessmentDrafts?.goals ?? []).filter(
-      (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
-    ).length;
-    const selectedAssessmentLabel = selectedAssessmentDocument?.file_name ?? "selected assessment";
-    const confirmationMessage = `Publish accepted drafts from ${selectedAssessmentLabel} to live Programs & Goals?\n\nThis will make ${acceptedProgramCount} program(s) and ${acceptedGoalCount} goal(s) visible in the live care plan.`;
-
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm(confirmationMessage);
-      if (!confirmed) {
-        return;
-      }
-    }
-
-    promoteAssessment.mutate();
-  };
 
   const generateAssessmentPlanPdf = useMutation({
     mutationFn: async () => {
@@ -1412,35 +1190,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
   });
 
-  const generateDraftPlan = useMutation({
-    mutationFn: async () => {
-      if (!session?.access_token) {
-        throw new Error("An active login session is required to generate drafts.");
-      }
-      return generateProgramGoalDraft(
-        assessmentInput,
-        { accessToken: session.access_token },
-        {
-          clientName: client.full_name,
-          clientId: client.id,
-          organizationId: organizationId ?? undefined,
-          assessmentDocumentId: selectedAssessmentId ?? undefined,
-        },
-      );
-    },
-    onSuccess: (draft) => {
-      setDraftPlan(draft);
-      const primaryProgram = draft.programs[0];
-      setProgramName(primaryProgram?.name ?? "");
-      setProgramDescription(primaryProgram?.description ?? "");
-      if (draft.goals[0]) {
-        applyDraftGoal(draft.goals[0]);
-      }
-      showSuccess("Draft program and goals generated. Review and create when ready.");
-    },
-    onError: showError,
-  });
-
   if (!organizationId) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
@@ -1457,7 +1206,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             Live care plan: <span className="font-semibold">{livePrograms.length}</span> program(s) and{" "}
             <span className="font-semibold">{liveGoals.length}</span> active goal(s) in the selected program.
           </p>
-          {hasDraftsButNoLivePrograms && (
+          {ENABLE_PROGRAMS_GOALS_AI_PROPOSALS && hasDraftsButNoLivePrograms && (
             <button
               type="button"
               onClick={() => publishSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
@@ -1467,7 +1216,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             </button>
           )}
         </div>
-        {hasDraftsButNoLivePrograms && (
+        {ENABLE_PROGRAMS_GOALS_AI_PROPOSALS && hasDraftsButNoLivePrograms && (
           <p className="mt-2 text-xs text-sky-800/90 dark:text-sky-100/90">
             Uploaded assessments and draft proposals stay in review until you publish them to live Programs & Goals.
           </p>
@@ -1478,7 +1227,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           <div ref={publishSectionRef} className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
               <UploadCloud className="w-4 h-4" />
-              CalOptima FBA Upload + AI Workflow
+              CalOptima FBA Upload Workflow
             </h3>
             <div className="space-y-3">
               <label htmlFor="programs-goals-fba-template" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
@@ -1606,42 +1355,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               </div>
               <button
                 type="button"
-                onClick={handlePublishApprovedRecords}
-                disabled={!canPromoteAssessment || promoteAssessment.isLoading}
-                title={promoteDisabledReason ?? undefined}
-                className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {promoteAssessment.isLoading ? "Publishing..." : "Publish to Live Programs + Goals"}
-              </button>
-              <p className="text-xs text-gray-500 dark:text-gray-300">
-                Publishing makes accepted drafts live in Programs and Goals.
-              </p>
-              {promoteDisabledReason && !promoteAssessment.isLoading && (
-                <p className="text-xs text-amber-700 dark:text-amber-300">{promoteDisabledReason}</p>
-              )}
-              {!promoteAssessment.isLoading && (
-                <p className="text-xs text-gray-500 dark:text-gray-300">
-                  Accepted draft goals: {acceptedDraftChildGoalCount} child / {acceptedDraftParentGoalCount} parent
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={() => generateDraftsFromUploadedAssessment.mutate()}
-                disabled={!canGenerateUploadedAssessmentDraft || generateDraftsFromUploadedAssessment.isLoading}
-                title={uploadedAssessmentGenerateDisabledReason ?? undefined}
-                className="w-full px-3 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700 disabled:opacity-50"
-              >
-                {generateDraftsFromUploadedAssessment.isLoading
-                  ? "Generating Drafts..."
-                  : "Generate Drafts from Uploaded FBA"}
-              </button>
-              {uploadedAssessmentGenerateDisabledReason && !generateDraftsFromUploadedAssessment.isLoading && (
-                <p className="text-xs text-gray-500 dark:text-gray-300">
-                  {uploadedAssessmentGenerateDisabledReason}
-                </p>
-              )}
-              <button
-                type="button"
                 onClick={() => generateAssessmentPlanPdf.mutate()}
                 disabled={!canQuerySelectedAssessment || hasPendingRequiredChecklistItems || generateAssessmentPlanPdf.isLoading}
                 title={hasPendingRequiredChecklistItems ? "Approve all required checklist and structured fields before export." : undefined}
@@ -1653,65 +1366,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           </div>
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
-              Generate with AI from Manual Notes (Optional Fallback)
-            </h3>
-            <div className="space-y-3">
-              <textarea
-                value={assessmentInput}
-                onChange={(event) => setAssessmentInput(event.target.value)}
-                placeholder="Paste assessment summary or White Bible-aligned notes to draft a program and measurable goals."
-                rows={6}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => generateDraftPlan.mutate()}
-                disabled={assessmentInput.trim().length < 20 || generateDraftPlan.isLoading}
-                className="w-full px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {generateDraftPlan.isLoading ? "Generating..." : "Generate AI Proposal Program + Goals"}
-              </button>
-            </div>
-
-            {draftPlan && (
-              <div className="mt-4 space-y-3 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-100">
-                <p className="font-semibold">
-                  Draft programs: {draftPlan.programs.map((program) => program.name).join(", ")}
-                </p>
-                <p>
-                  {draftPlan.summary_rationale}
-                </p>
-                <div className="space-y-2">
-                  {draftPlan.goals.map((goal, index) => (
-                    <div key={`${goal.title}-${index}`} className="rounded border border-indigo-200 bg-white px-2 py-2 dark:border-indigo-700 dark:bg-dark-lighter">
-                      <p className="font-medium">{goal.title}</p>
-                      <button
-                        type="button"
-                        onClick={() => applyDraftGoal(goal)}
-                        className="mt-1 text-indigo-700 underline hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100"
-                      >
-                        Load into goal form
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => persistAssessmentDrafts.mutate()}
-                  disabled={!canQuerySelectedAssessment || persistAssessmentDrafts.isLoading}
-                  className="w-full px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  {persistAssessmentDrafts.isLoading ? "Saving..." : "Save AI Proposal to Selected Assessment"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Programs</h3>
             <p className="mb-3 text-xs text-gray-500 dark:text-gray-300">
-              Live records only. Uploaded assessment drafts appear here after you publish.
+              Live records only. Uploaded assessments stay in structured review until you add live programs manually.
             </p>
             <div className="space-y-2">
               {programsLoading && (
@@ -2032,7 +1689,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                   </button>
                                   {isApprovedStatusLocked && (
                                     <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
-                                      Approved structured sections are locked because they can feed drafts and PDF export.
+                                      Approved structured sections are locked to preserve reviewed document data for export.
                                     </p>
                                   )}
                                 </div>
@@ -2048,7 +1705,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             </div>
           )}
 
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          {ENABLE_PROGRAMS_GOALS_AI_PROPOSALS && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
               Draft Review (Approve / Reject / Edit)
             </h3>
@@ -2398,7 +2056,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 )}
               </div>
             )}
-          </div>
+            </div>
+          )}
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">

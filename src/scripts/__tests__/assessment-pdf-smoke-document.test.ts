@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluatePdfSmokeAssessmentReadiness } from "../../../scripts/lib/assessment-pdf-smoke-document";
+import {
+  evaluatePdfSmokeAssessmentReadiness,
+  isCompletedPdfSmokeExtractionStatus,
+  isDraftAlreadyExistsResponse,
+  isPendingPdfSmokeExtractionStatus,
+} from "../../../scripts/lib/assessment-pdf-smoke-document";
 
 describe("assessment pdf smoke document readiness", () => {
   it("accepts an extracted CalOptima assessment with approved required rows and accepted drafts", () => {
@@ -117,6 +122,28 @@ describe("assessment pdf smoke document readiness", () => {
         "accepted_goal_missing",
       ],
     });
+  });
+
+  it("treats extraction_running as an in-progress smoke extraction status", () => {
+    expect(isPendingPdfSmokeExtractionStatus("uploaded")).toBe(true);
+    expect(isPendingPdfSmokeExtractionStatus("extracting")).toBe(true);
+    expect(isPendingPdfSmokeExtractionStatus("extraction_running")).toBe(true);
+    expect(isPendingPdfSmokeExtractionStatus("drafted")).toBe(false);
+    expect(isPendingPdfSmokeExtractionStatus("extraction_failed")).toBe(false);
+  });
+
+  it("treats drafted as a completed smoke extraction status", () => {
+    expect(isCompletedPdfSmokeExtractionStatus("extracted")).toBe(true);
+    expect(isCompletedPdfSmokeExtractionStatus("drafted")).toBe(true);
+    expect(isCompletedPdfSmokeExtractionStatus("approved")).toBe(true);
+    expect(isCompletedPdfSmokeExtractionStatus("extraction_running")).toBe(false);
+    expect(isCompletedPdfSmokeExtractionStatus("extraction_failed")).toBe(false);
+  });
+
+  it("recognizes the existing-drafts response as safe to continue", () => {
+    expect(isDraftAlreadyExistsResponse(409, '{"error":"Drafts already exist for this assessment. Review existing drafts instead of regenerating."}')).toBe(true);
+    expect(isDraftAlreadyExistsResponse(409, '{"error":"Accepted draft program and goals are required"}')).toBe(false);
+    expect(isDraftAlreadyExistsResponse(500, '{"error":"Drafts already exist for this assessment."}')).toBe(false);
   });
 
   it("rejects non-CalOptima templates even when the rest of the fixture looks ready", () => {

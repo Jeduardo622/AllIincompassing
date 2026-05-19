@@ -239,6 +239,61 @@ Deno.test("extractStructuredSections maps LE-style IEHP headings into normalized
   expect(skillAndParentGoals.filter((section) => section.payload.goal_type === "parent")).toHaveLength(1);
 });
 
+Deno.test("extractStructuredSections recognizes blank-template IEHP heading aliases", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      Intervention History -
+      Prior services narrative.
+      Availability for BHT Services -
+      BHT Availability
+      M Tu W Th F Sat Sun Total
+      Session Time (e.g. 10am-12pm): After 3:30 PM After 3:30 PM After 3:30 PM Starting 9:00 AM
+      MEMBER’S ENVIRONMENTAL ANALYSIS:
+      Availability and a ccess to reinforcers: FORMCHECKBOX Yes FORMCHECKBOX No
+      Availability of visual schedules/timers: FORMCHECKBOX Yes FORMCHECKBOX No
+      Environment c onducive to QASP p olicy on c leanliness? FORMCHECKBOX Yes FORMCHECKBOX No
+      Level of noise/ e nvironmental d istractions: FORMCHECKBOX None FORMCHECKBOX Fair FORMCHECKBOX High
+      DESCRIPTION OF ASSESSMENT PROCEDURES:
+      Procedures: Date and Location: Person involved (indicate credentials):
+      Record s Reviewed: 01/02/2026 Telehealth BCBA
+      1 st Member Observation: 01/03/2026 Home BCBA
+      Brief Functional Analysis: 01/04/2026 Clinic BCBA
+      Records reviewed included:
+      Template-only record title (01/05/2026)
+      Preference Assessment-
+      Preference Areas: Potential Reinforcers:
+      Social praise
+      ASSESSMENT MEAURES:
+      Assessment Summary: Template adaptive summary.
+      Target Behaviors
+      Safety Procedure/Crisis Plan-
+      Template safety narrative.
+      Coordination of Care:
+      Template coordination narrative.
+      Discharge, Transition and Exit Plans:
+      Exit Plan (formerly Discharge/Graduation)
+      Discharge criteria narrative.
+      Transition Planning:
+      Transition planning narrative.
+      Recommendations:
+      Clinical Recommendations
+      CPT Description Units Requested
+      H2019 Therapeutic Behavioral Services, per 15 minutes 10 units
+      Report completed by:
+      Template BCBA Date:
+    `,
+  );
+
+  const byKey = new Map(sections.map((section) => [section.field_key, section]));
+  expect(byKey.has("IEHP_FBA_BHT_AVAILABILITY_GRID")).toBe(true);
+  expect((byKey.get("IEHP_FBA_ENVIRONMENTAL_ANALYSIS")?.payload.rows as unknown[]).length).toBeGreaterThanOrEqual(4);
+  expect((byKey.get("IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE")?.payload.rows as unknown[]).length).toBeGreaterThanOrEqual(3);
+  expect(byKey.get("IEHP_FBA_CRISIS_PLAN")?.payload.raw_text).toContain("Safety Procedure");
+  expect(byKey.get("IEHP_FBA_DISCHARGE_TRANSITION_EXIT_PLAN")?.payload.raw_text).toContain("Transition Planning");
+  expect((byKey.get("IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS")?.payload.rows as unknown[]).length).toBe(1);
+});
+
 Deno.test("deterministicValueForRow keeps manual and assisted IEHP rows honest when text is extracted", () => {
   const assisted = __TESTING__.deterministicValueForRow(
     {

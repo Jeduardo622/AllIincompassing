@@ -31,7 +31,7 @@ Runtime extraction paths:
 - Assessment procedures are table-oriented with date/location/person rows.
 - HCPCS recommendation rows are explicitly listed in-template (`H2019`, `H0032`, `H0032-HO`, `H0032-HP`, `S5111`, `H2014`).
 - IEHP target behavior and skill-acquisition goals are child goals; parent education goals remain parent goals even when they are stored under the IEHP skill/school structured field destination.
-- LE-style filled document aliases are supported for BHT availability, safety/crisis, discharge, transition, recommendations, clinical recommendations, report-completed signatures, assessment procedures, records reviewed, environmental analysis, and adaptive/functional measure summaries.
+- LE-style filled document aliases are supported for BHT availability, safety/crisis, discharge, transition, recommendations, clinical recommendations, report-completed signatures, assessment procedures, records reviewed, environmental analysis, and adaptive/functional measure summaries. The blank `Updated FBA -IEHP` template aliases are also covered where they differ, including `Availability for BHT Services`, `Safety Procedure/Crisis Plan`, `Discharge, Transition and Exit Plans`, spaced labels such as `Record s Reviewed` / `1 st Member Observation`, and `FORMCHECKBOX` environmental prompts.
 
 ## Mapping quality gates
 

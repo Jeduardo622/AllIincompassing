@@ -515,7 +515,22 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
     };
   }
   if (fieldKey === "IEHP_FBA_ENVIRONMENTAL_ANALYSIS") {
-    const questionPattern = /(Availability and Access to reinforcers|Availability of developmental toys\/materials|Availability of visual schedules\/ time|Opportunities for activities throughout the day|Opportunities for social interaction|Will parent’s schedule allow for treatment involvement\?|Appropriate space available for conducting sessions\?|Environment Conducive to QASP Policy on Cleanliness\?|Level of noise\/Environmental Distractions):?\s*(.*?)(?=(?:Availability and Access to reinforcers|Availability of developmental toys\/materials|Availability of visual schedules\/ time|Opportunities for activities throughout the day|Opportunities for social interaction|Will parent’s schedule allow for treatment involvement\?|Appropriate space available for conducting sessions\?|Environment Conducive to QASP Policy on Cleanliness\?|Level of noise\/Environmental Distractions):|$)/gi;
+    const environmentalPrompts = [
+      "Availability and\\s+a?\\s*ccess to reinforcers",
+      "Availability of developmental toys\\/materials",
+      "Availability of visual schedules\\/?\\s*(?:timers|time)",
+      "Opportunities for activities throughout the day",
+      "Opportunities for social interaction",
+      "Will parent(?:’s|'s)?\\s*schedule allow for treatment involvement\\?",
+      "Appropriate space available for conducting sessions\\?",
+      "Environment\\s+c?\\s*onducive to QASP\\s+p?\\s*olicy on\\s+c?\\s*leanliness\\?",
+      "Level of noise\\/?\\s*e?\\s*nvironmental\\s+d?\\s*istractions",
+    ];
+    const environmentalPromptPattern = environmentalPrompts.join("|");
+    const questionPattern = new RegExp(
+      `(${environmentalPromptPattern}):?\\s*(.*?)(?=(?:${environmentalPromptPattern})(?::|\\s+FORMCHECKBOX)|$)`,
+      "gi",
+    );
     const rows = [...compact.matchAll(questionPattern)].map((match) => ({
       prompt: normalizeExtractedValue(match[1] ?? ""),
       options_seen: [...(match[2] ?? "").matchAll(/\b(Yes|No|None|Fair|High)\b/gi)].map((option) => option[1]),
@@ -525,7 +540,7 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
     return { raw_text: compact, rows };
   }
   if (fieldKey === "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE") {
-    const procedurePattern = /(Records Reviewed|Clinical Interview|1st Member Observation|2nd\s*Member Observation|Stimulus Preference Assessments|Assessment Measures Administered|Indirect Functional Analysis Tools Used):?\s+(.+?)(?=(?:Records Reviewed|Clinical Interview|1st Member Observation|2nd\s*Member Observation|Stimulus Preference Assessments|Assessment Measures Administered|Indirect Functional Analysis Tools Used):|$)/gi;
+    const procedurePattern = /(Record\s*s\s*Reviewed|Records Reviewed|Clinical Interview|1\s*st\s*Member Observation|2\s*nd\s*Member Observation|Brief Functional Analysis|Stimulus Preference Assessments|Assessment Measures Administered|Indirect Functional Analysis Tools Used):?\s+(.+?)(?=(?:Record\s*s\s*Reviewed|Records Reviewed|Clinical Interview|1\s*st\s*Member Observation|2\s*nd\s*Member Observation|Brief Functional Analysis|Stimulus Preference Assessments|Assessment Measures Administered|Indirect Functional Analysis Tools Used):|$)/gi;
     return {
       raw_text: compact,
       rows: [...compact.matchAll(procedurePattern)].map((match) => ({
@@ -722,12 +737,12 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
       field_key: "IEHP_FBA_INTERVENTION_HISTORY",
       section_key: "behavior_background_services",
       start: [/\bIntervention History\b/i],
-      end: [/\bBHT Availability\b/i, /\bAvailability for Behavior Health Treatment Services\b/i],
+      end: [/\bBHT Availability\b/i, /\bAvailability for BHT Services\b/i, /\bAvailability for Behavior Health Treatment Services\b/i],
     },
     {
       field_key: "IEHP_FBA_BHT_AVAILABILITY_GRID",
       section_key: "behavior_background_services",
-      start: [/\bBHT Availability\b/i, /\bAvailability for Behavior Health Treatment Services\b/i],
+      start: [/\bBHT Availability\b/i, /\bAvailability for BHT Services\b/i, /\bAvailability for Behavior Health Treatment Services\b/i],
       end: [/MEMBER’S ENVIRONMENTAL ANALYSIS/i],
     },
     {
@@ -775,7 +790,7 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
     {
       field_key: "IEHP_FBA_DISCHARGE_TRANSITION_EXIT_PLAN",
       section_key: "coordination",
-      start: [/Discharge,?\s*Transition and Exit/i, /Discharge Criteria\s*:/i],
+      start: [/Discharge,?\s*Transition and Exit Plans?/i, /Discharge Criteria\s*:/i],
       end: [/Recommendations and HCPCS/i, /Recommendations\s*:/i],
     },
     {

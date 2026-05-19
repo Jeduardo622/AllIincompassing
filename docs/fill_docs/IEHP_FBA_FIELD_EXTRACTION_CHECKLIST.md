@@ -5,7 +5,7 @@ Template: `Inland Empire Health Plan Functional Behavioral Assessment Report`
 Source mapping: `docs/fill_docs/iehp_fba_template_field_map.json`  
 Source document reviewed: `Updated FBA -IEHP (2).docx`
 
-Implementation note: IEHP DOCX uploads use local Word XML decoding, not Adobe. IEHP PDFs use Adobe PDF Extract before the same deterministic IEHP mapping runs. The LE-style filled document headings now covered include `Availability for Behavior Health Treatment Services`, `Safety/Crisis Procedure`, `Discharge Criteria`, `Transition of Care`, `Recommendations`, `Clinical Recommendations`, `Report completed by`, `DESCRIPTION OF ASSESSMENT PROCEDURES`, `Records reviewed included`, and adaptive/functional measure headings such as `ASSESSMENT MEAURES`.
+Implementation note: IEHP DOCX uploads use local Word XML decoding, not Adobe. IEHP PDFs use Adobe PDF Extract before the same deterministic IEHP mapping runs. The LE-style filled document headings now covered include `Availability for Behavior Health Treatment Services`, `Safety/Crisis Procedure`, `Discharge Criteria`, `Transition of Care`, `Recommendations`, `Clinical Recommendations`, `Report completed by`, `DESCRIPTION OF ASSESSMENT PROCEDURES`, `Records reviewed included`, and adaptive/functional measure headings such as `ASSESSMENT MEAURES`. The blank IEHP template aliases are also covered where they differ, including `Availability for BHT Services`, `Safety Procedure/Crisis Plan`, `Discharge, Transition and Exit Plans`, `Record s Reviewed`, `1 st Member Observation`, and checkbox prompt text containing `FORMCHECKBOX`.
 
 ## Checklist schema and workflow rules
 

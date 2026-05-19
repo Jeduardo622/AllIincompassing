@@ -1070,7 +1070,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toBeInTheDocument();
   });
 
-  it("generates program/goals proposal and saves it for review", async () => {
+  it("hides the manual AI proposal workflow", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -1117,35 +1117,13 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    const assessmentInput = await screen.findByPlaceholderText(
-      /Paste assessment summary or White Bible-aligned notes/i,
-    );
-    fireEvent.change(assessmentInput, {
-      target: {
-        value: "Assessment shows deficits in functional communication and WH-question responding with moderate prompt dependence.",
-      },
-    });
-    await user.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
-
-    await waitFor(() => {
-      expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
-    });
-    expect(screen.getByPlaceholderText("Program name")).toHaveValue("Communication Program");
-    expect(screen.getByText(/Requesting preferred items with 2-word phrase/i)).toBeInTheDocument();
-
-    expect(screen.queryByRole("button", { name: /Legacy Quick Create/i })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Save AI Proposal to Selected Assessment/i }));
-
-    await waitFor(() => {
-      expect(callApi).toHaveBeenCalledWith(
-        "/api/assessment-drafts",
-        expect.objectContaining({ method: "POST" }),
-      );
-    });
-    expect(showSuccess).toHaveBeenCalledWith("AI proposal saved to assessment queue for review.");
+    expect(screen.queryByPlaceholderText(/Paste assessment summary or White Bible-aligned notes/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Generate AI Proposal Program \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save AI Proposal to Selected Assessment/i })).not.toBeInTheDocument();
+    expect(generateProgramGoalDraft).not.toHaveBeenCalled();
   });
 
-  it("uses canonical programs array values when generating a draft proposal", async () => {
+  it("does not render manual AI proposal results", async () => {
     vi.mocked(generateProgramGoalDraft).mockResolvedValueOnce({
       programs: [
         {
@@ -1195,21 +1173,13 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    const assessmentInput = await screen.findByPlaceholderText(/Paste assessment summary or White Bible-aligned notes/i);
-    await user.type(assessmentInput, "Assessment evidence supports one focused communication program and one child goal.");
-    await user.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
-
-    await waitFor(() => {
-      expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
-    });
-    expect(screen.getByPlaceholderText("Program name")).toHaveValue("Primary Program");
-    expect(screen.getByText(/Draft programs: Primary Program/i)).toBeInTheDocument();
-    expect(screen.getByText("Primary rationale")).toBeInTheDocument();
-    expect(screen.queryByText(/Legacy Program/i)).not.toBeInTheDocument();
-    expect(screen.queryByText("Legacy rationale")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Paste assessment summary or White Bible-aligned notes/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Draft programs:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Primary rationale")).not.toBeInTheDocument();
+    expect(generateProgramGoalDraft).not.toHaveBeenCalled();
   });
 
-  it("saves only canonical programs array payloads for generated drafts", async () => {
+  it("does not expose manual AI draft persistence controls", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -1253,42 +1223,13 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    const assessmentInput = await screen.findByPlaceholderText(/Paste assessment summary or White Bible-aligned notes/i);
-    await user.type(
-      assessmentInput,
-      "Assessment evidence supports one focused communication program and one child goal.",
-    );
-    await user.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
-
-    await waitFor(() => {
-      expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
-    });
-
-    await user.click(screen.getByRole("button", { name: /Save AI Proposal to Selected Assessment/i }));
-
-    await waitFor(() => {
-      expect(callApi).toHaveBeenCalledWith("/api/assessment-drafts", expect.objectContaining({ method: "POST" }));
-    });
-
-    const saveDraftCall = vi
-      .mocked(callApi)
-      .mock.calls.find(([path, init]) => path === "/api/assessment-drafts" && init?.method === "POST");
-    expect(saveDraftCall).toBeDefined();
-    const saveDraftPayload = JSON.parse(String(saveDraftCall?.[1]?.body));
-    expect(saveDraftPayload.assessment_document_id).toBe(ASSESSMENT_ID);
-    expect(saveDraftPayload.programs).toEqual([
-      {
-        name: "Communication Program",
-        description: "Build requesting and social communication skills.",
-        rationale: "Communication deficits and prompt dependence from the source assessment.",
-        evidence_refs: [{ section_key: "summary", source_span: "communication deficits with prompt dependence" }],
-        review_flags: [],
-      },
-    ]);
-    expect(saveDraftPayload.summary_rationale).toBe("Derived from assessment deficits and ABA measurement guidelines.");
-    expect(saveDraftPayload.confidence).toBe("medium");
-    expect(Array.isArray(saveDraftPayload.goals)).toBe(true);
-    expect(saveDraftPayload).not.toHaveProperty("program");
+    expect(screen.queryByRole("button", { name: /Save AI Proposal to Selected Assessment/i })).not.toBeInTheDocument();
+    expect(
+      vi.mocked(callApi).mock.calls.some(
+        ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
+      ),
+    ).toBe(false);
+    expect(generateProgramGoalDraft).not.toHaveBeenCalled();
   });
 
   it("supports both CalOptima and IEHP upload templates", async () => {
@@ -1331,7 +1272,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    await screen.findByText(/CalOptima FBA Upload \+ AI Workflow/i);
+    await screen.findByText(/CalOptima FBA Upload Workflow/i);
     const templateSelect = screen.getByRole("combobox", { name: /FBA template/i });
     expect(within(templateSelect).getByRole("option", { name: "CalOptima FBA" })).toBeInTheDocument();
     expect(within(templateSelect).getByRole("option", { name: "IEHP FBA" })).toBeInTheDocument();
@@ -1397,7 +1338,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    await screen.findByText(/CalOptima FBA Upload \+ AI Workflow/i);
+    await screen.findByText(/CalOptima FBA Upload Workflow/i);
     const templateSelect = screen.getByRole("combobox", { name: /FBA template/i });
     await user.selectOptions(templateSelect, "iehp_fba");
     const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
@@ -1430,12 +1371,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    await screen.findByText(/FBA Upload \+ AI Workflow/i);
+    await screen.findByText(/FBA Upload Workflow/i);
     const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
     expect(uploadInput.getAttribute("accept")).toBe(".pdf,.docx");
   });
 
-  it("generates staged drafts from selected uploaded assessment", async () => {
+  it("hides uploaded-assessment AI draft generation controls", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) {
@@ -1499,27 +1440,15 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     await screen.findByText("fba.docx");
     expect(await screen.findByText("Previous extraction warning should not block generation.")).toBeInTheDocument();
-    const generateButton = await screen.findByRole("button", { name: /(Generate|Retry).*Uploaded FBA/i });
-    await waitFor(() => {
-      expect(generateButton).not.toBeDisabled();
-    });
-    await user.click(generateButton);
-
-    await waitFor(() => {
-      expect(
-        vi.mocked(callApi).mock.calls.some(
-          ([path, init]) =>
-            path === "/api/assessment-drafts" &&
-            init?.method === "POST" &&
-            JSON.parse(String(init.body)).assessment_document_id === ASSESSMENT_ID &&
-            JSON.parse(String(init.body)).auto_generate === true,
-        ),
-      ).toBe(true);
-    });
-    expect(showSuccess).toHaveBeenCalledWith("Draft program and goals generated from reviewed structured FBA data.");
+    expect(screen.queryByRole("button", { name: /(Generate|Retry).*Uploaded FBA/i })).not.toBeInTheDocument();
+    expect(
+      vi.mocked(callApi).mock.calls.some(
+        ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
+      ),
+    ).toBe(false);
   });
 
-  it("allows retry generation after extraction failure and shows retry guidance", async () => {
+  it("does not expose retry generation after extraction failure", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -1591,30 +1520,15 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(
       await screen.findByText("Extraction failed. Review the checklist manually or upload a cleaner FBA."),
     ).toBeInTheDocument();
-    expect(
-      await screen.findByText(
-        "Extraction failed for this assessment. Retry deterministic draft generation using the extracted checklist evidence, or replace the source document if it needs correction.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/Retry deterministic draft generation/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Wait for extraction to complete before generating drafts.")).not.toBeInTheDocument();
 
-    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
-    await waitFor(() => {
-      expect(generateButton).not.toBeDisabled();
-    });
-    await user.click(generateButton);
-    await waitFor(() => {
-      expect(
-        vi.mocked(callApi).mock.calls.some(
-          ([path, init]) =>
-            path === "/api/assessment-drafts" &&
-            (init?.method ?? "").toUpperCase() === "POST" &&
-            JSON.parse(String(init?.body)).assessment_document_id === ASSESSMENT_ID &&
-            JSON.parse(String(init?.body)).auto_generate === true,
-        ),
-      ).toBe(true);
-    });
-    expect(showSuccess).toHaveBeenCalledWith("Draft program and goals generated from reviewed structured FBA data.");
+    expect(screen.queryByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).not.toBeInTheDocument();
+    expect(
+      vi.mocked(callApi).mock.calls.some(
+        ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
+      ),
+    ).toBe(false);
   });
 
   it("keeps extraction failure retry disabled when no checklist evidence is available", async () => {
@@ -1680,20 +1594,14 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     );
 
     await screen.findByText("empty-failed-fba.pdf");
-    expect(
-      await screen.findByText(
-        "Extraction failed for this assessment, but no extracted checklist evidence is available for draft generation. Replace the source document or add checklist evidence before retrying.",
-      ),
-    ).toBeInTheDocument();
-
-    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
-    expect(generateButton).toBeDisabled();
+    expect(screen.queryByText(/draft generation/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).not.toBeInTheDocument();
     expect(
       vi.mocked(callApi).mock.calls.some(([path, init]) => path === "/api/assessment-drafts" && init?.method === "POST"),
     ).toBe(false);
   });
 
-  it("shows structured goal readiness counts and blocks draft generation below minimums", async () => {
+  it("shows structured goal readiness counts without AI draft controls", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -1759,8 +1667,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toBeInTheDocument();
     expect(screen.getByText((_content, node) => node?.textContent === "Child goals: 0")).toBeInTheDocument();
     expect(screen.getByText((_content, node) => node?.textContent === "Parent goals: 0")).toBeInTheDocument();
-    expect(screen.getByText("Approve at least one structured goal section before generating drafts.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).toBeDisabled();
+    expect(screen.queryByText("Approve at least one structured goal section before generating drafts.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).not.toBeInTheDocument();
   });
 
   it("shows extraction-failed guidance instead of generic waiting copy for uploaded assessments", async () => {
@@ -1815,11 +1723,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       await screen.findByText("Extraction failed. Review the checklist manually or upload a cleaner FBA."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Wait for extraction to complete before generating AI proposals.")).not.toBeInTheDocument();
-
-    const generateButton = await screen.findByRole("button", { name: /(Generate|Retry).*Uploaded FBA/i });
-    await waitFor(() => {
-      expect(generateButton).toBeDisabled();
-    });
+    expect(screen.queryByRole("button", { name: /(Generate|Retry).*Uploaded FBA/i })).not.toBeInTheDocument();
     expect(
       vi.mocked(callApi).mock.calls.some(
         ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
@@ -1827,7 +1731,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toBe(false);
   });
 
-  it("waits for extraction before generating staged drafts from an uploaded assessment", async () => {
+  it("keeps AI draft generation absent while extraction is still running", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -1873,14 +1777,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
-    await waitFor(() => {
-      expect(generateButton).toBeDisabled();
-    });
-    expect(await screen.findByText("Wait for extraction to complete before generating drafts.")).toBeInTheDocument();
-
-    await user.click(generateButton);
-
+    expect(screen.queryByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Wait for extraction to complete before generating drafts.")).not.toBeInTheDocument();
     expect(
       vi.mocked(callApi).mock.calls.some(
         ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
@@ -1888,7 +1786,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toBe(false);
   });
 
-  it("keeps draft generation disabled until a structured goal section is approved", async () => {
+  it("keeps AI draft generation absent even when structured goals are only verified", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -1937,14 +1835,11 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
-    await waitFor(() => {
-      expect(generateButton).toBeDisabled();
-    });
-    expect(await screen.findByText("Approve at least one structured goal section before generating drafts.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Approve at least one structured goal section before generating drafts.")).not.toBeInTheDocument();
   });
 
-  it("shows existing-draft guidance for drafted uploaded assessments", async () => {
+  it("shows drafted uploads as structured review ready without AI guidance", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -1996,13 +1891,11 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
-    await waitFor(() => {
-      expect(generateButton).toBeDisabled();
-    });
+    expect(await screen.findByText("structured review ready")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).not.toBeInTheDocument();
     expect(
-      await screen.findByText("Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."),
-    ).toBeInTheDocument();
+      screen.queryByText("Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Wait for extraction to complete before generating drafts.")).not.toBeInTheDocument();
   });
 
@@ -2362,19 +2255,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     );
 
     await screen.findByText("fba.pdf");
-    const publishButton = screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i });
-    await waitFor(() => {
-      expect(publishButton).not.toBeDisabled();
-    });
-    await user.click(publishButton);
-
-    await waitFor(() => {
-      expect(showError).toHaveBeenCalled();
-    });
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("to live Programs & Goals"));
-    const firstErrorArg = vi.mocked(showError).mock.calls[0]?.[0];
-    expect(firstErrorArg).toBeInstanceOf(Error);
-    expect((firstErrorArg as Error).message).toBe("Required checklist items must be approved before promotion.");
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(showError).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 
@@ -2435,26 +2318,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    const publishButton = screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i });
-    await waitFor(() => {
-      expect(publishButton).not.toBeDisabled();
-    });
-    await user.click(publishButton);
-
-    await waitFor(() => {
-      expect(showSuccess).toHaveBeenCalledWith(
-        "Published to live records. Created 2 production programs and 26 goals.",
-      );
-    });
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
-      queryKey: ["assessment-drafts", ASSESSMENT_ID, ORG_ID],
-    });
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
-      queryKey: ["assessment-checklist", ASSESSMENT_ID, ORG_ID],
-    });
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
-      queryKey: ["client-goals", "client-1", ORG_ID],
-    });
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(showSuccess).not.toHaveBeenCalledWith(
+      "Published to live records. Created 2 production programs and 26 goals.",
+    );
     invalidateQueriesSpy.mockRestore();
     confirmSpy.mockRestore();
   });
@@ -2512,17 +2379,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    const publishButton = screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i });
-    await waitFor(() => {
-      expect(publishButton).not.toBeDisabled();
-    });
-    await user.click(publishButton);
-
-    await waitFor(() => {
-      expect(showSuccess).toHaveBeenCalledWith(
-        "Published to live records. Created 1 production program and 26 goals.",
-      );
-    });
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(showSuccess).not.toHaveBeenCalledWith(
+      "Published to live records. Created 1 production program and 26 goals.",
+    );
     confirmSpy.mockRestore();
   });
 
@@ -2587,17 +2447,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    const publishButton = screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i });
-    await waitFor(() => {
-      expect(publishButton).not.toBeDisabled();
-    });
-    await user.click(publishButton);
-
-    await waitFor(() => {
-      expect(showSuccess).toHaveBeenCalledWith(
-        "Published to live records. Created 1 production program and 26 goals.",
-      );
-    });
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(showSuccess).not.toHaveBeenCalledWith(
+      "Published to live records. Created 1 production program and 26 goals.",
+    );
     confirmSpy.mockRestore();
   });
 
@@ -2613,8 +2466,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    expect(await screen.findByText("All changes published.")).toBeInTheDocument();
-    expect(screen.getByText("Publishing makes accepted drafts live in Programs and Goals.")).toBeInTheDocument();
+    expect(screen.queryByText("All changes published.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Publishing makes accepted drafts live in Programs and Goals.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Draft Review/i)).not.toBeInTheDocument();
   });
 
   it("shows retained-draft messaging and blocks republish after approval", async () => {
@@ -2665,13 +2519,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     expect(await screen.findByText("approved-fba.pdf")).toBeInTheDocument();
-    expect(screen.getByText("Drafts retained after publication.")).toBeInTheDocument();
-    expect(
-      screen.getByText("This assessment has already been approved and published."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i })).toBeDisabled();
-    expect(await screen.findAllByText("Draft retained for audit after approval. Live records are already published.")).not.toHaveLength(0);
-    expect(screen.queryByText("Saves to draft only. Not visible in live records until published.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Drafts retained after publication.")).not.toBeInTheDocument();
+    expect(screen.queryByText("This assessment has already been approved and published.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Draft retained for audit after approval. Live records are already published.")).not.toBeInTheDocument();
   });
 
   it("saves a program draft and shows draft-only messaging", async () => {
@@ -2738,20 +2589,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    await screen.findByText("Draft changes pending publication.");
-    await user.click(await screen.findByRole("button", { name: /Save Program Draft/i }));
-
-    await waitFor(() => {
-      expect(callApi).toHaveBeenCalledWith(
-        "/api/assessment-drafts",
-        expect.objectContaining({
-          method: "PATCH",
-          body: expect.stringContaining("\"draft_type\":\"program\""),
-        }),
-      );
-    });
-    expect(showSuccess).toHaveBeenCalledWith("Program draft saved. Not published yet.");
-    expect(screen.getByText("Saves to draft only. Not visible in live records until published.")).toBeInTheDocument();
+    expect(screen.queryByText("Draft changes pending publication.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save Program Draft/i })).not.toBeInTheDocument();
   });
 
   it("hydrates legacy target criteria into the short-term goal field and saves all three goals back into target_criteria", async () => {
@@ -2832,44 +2671,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    const shortTermField = await screen.findByDisplayValue("Legacy target criteria text");
-    expect(shortTermField).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Intermediate goal")).toHaveValue("");
-    expect(screen.getByPlaceholderText("Long-term goal")).toHaveValue("");
-
-    fireEvent.change(screen.getByPlaceholderText("Intermediate goal"), {
-      target: { value: "Intermediate draft goal" },
-    });
-    fireEvent.change(screen.getByPlaceholderText("Long-term goal"), {
-      target: { value: "Long-term draft goal" },
-    });
-
-    await user.click(screen.getByRole("button", { name: /Save Goal Draft/i }));
-
-    await waitFor(() => {
-      expect(callApi).toHaveBeenCalledWith(
-        "/api/assessment-drafts",
-        expect.objectContaining({
-          method: "PATCH",
-          body: expect.stringContaining("\"draft_type\":\"goal\""),
-        }),
-      );
-    });
-
-    const saveGoalDraftCall = vi
-      .mocked(callApi)
-      .mock.calls.find(
-        ([path, requestInit]) => path === "/api/assessment-drafts" && requestInit?.method === "PATCH",
-      );
-
-    expect(saveGoalDraftCall).toBeTruthy();
-    const [, requestInit] = saveGoalDraftCall!;
-    const body = JSON.parse(String(requestInit?.body)) as { target_criteria?: string };
-    expect(body.target_criteria).toBe(
-      "Short-term: Legacy target criteria text\n" +
-        "Intermediate: Intermediate draft goal\n" +
-        "Long-term: Long-term draft goal",
-    );
+    expect(screen.queryByRole("button", { name: /Save Goal Draft/i })).not.toBeInTheDocument();
   });
 
   it("shows inline helper when promote is disabled", async () => {
@@ -2884,7 +2686,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    expect(await screen.findByText("Select a valid assessment first.")).toBeInTheDocument();
+    expect(screen.queryByText("Select a valid assessment first.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
   });
 
   it("blocks publish with explicit checklist guidance when required rows are unresolved", async () => {
@@ -2951,8 +2754,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    expect(await screen.findByText("1 required checklist row must be approved before publishing.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i })).toBeDisabled();
+    expect(screen.queryByText("1 required checklist row must be approved before publishing.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
   });
 
   it("shows approved checklist rows as locked from status downgrades", async () => {
@@ -3071,8 +2874,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(
       await screen.findByText("Checklist review failed to load. Publishing stays blocked until checklist rows can be reviewed."),
     ).toBeInTheDocument();
-    expect(screen.getByText("Checklist review must load before publishing.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i })).toBeDisabled();
+    expect(screen.queryByText("Checklist review must load before publishing.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
   });
 
   it("allows publish with smaller accepted draft sets once checklist review is complete", async () => {
@@ -3171,9 +2974,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    const publishButton = await screen.findByRole("button", { name: /Publish to Live Programs \+ Goals/i });
-    await waitFor(() => expect(publishButton).toBeEnabled());
-    expect(screen.getByText("Accepted draft goals: 2 child / 1 parent")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Accepted draft goals: 2 child / 1 parent")).not.toBeInTheDocument();
   });
 
   it("shows add-goal prerequisites when create goal is disabled", async () => {

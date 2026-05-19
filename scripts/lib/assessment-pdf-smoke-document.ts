@@ -11,6 +11,7 @@ import { assertSmokeClientMarker, requireSmokeClientId } from "./assessment-uplo
 type AssessmentStatus =
   | "uploaded"
   | "extracting"
+  | "extraction_running"
   | "extracted"
   | "drafted"
   | "approved"
@@ -92,6 +93,21 @@ const DEFAULT_SAMPLE_FILE = path.resolve(
 );
 const DEFAULT_BUCKET_ID = "client-documents";
 const EXTRACTION_TIMEOUT_MS = 180_000;
+const PENDING_PDF_SMOKE_EXTRACTION_STATUSES = new Set<AssessmentStatus>([
+  "uploaded",
+  "extracting",
+  "extraction_running",
+]);
+const COMPLETED_PDF_SMOKE_EXTRACTION_STATUSES = new Set<AssessmentStatus>([
+  "extracted",
+  "drafted",
+  "approved",
+]);
+
+export const isPendingPdfSmokeExtractionStatus = (status: AssessmentStatus): boolean =>
+  PENDING_PDF_SMOKE_EXTRACTION_STATUSES.has(status);
+export const isCompletedPdfSmokeExtractionStatus = (status: AssessmentStatus): boolean =>
+  COMPLETED_PDF_SMOKE_EXTRACTION_STATUSES.has(status);
 
 const pause = async (ms: number): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -123,6 +139,9 @@ const assertOk = async (response: Response, message: string): Promise<void> => {
   const body = await escapeBody(response);
   throw new Error(`${message}: ${response.status}${body ? ` ${body}` : ""}`);
 };
+
+export const isDraftAlreadyExistsResponse = (status: number, body: string): boolean =>
+  status === 409 && /Drafts already exist for this assessment/i.test(body);
 
 const fetchJson = async <T>(
   url: string,
@@ -369,7 +388,7 @@ const waitForExtractedAssessment = async (args: {
   let latest: AssessmentDocumentRecord | null = null;
   while (Date.now() < deadline) {
     latest = await fetchAssessmentDocument(args);
-    if (!["uploaded", "extracting"].includes(latest.status)) {
+    if (!isPendingPdfSmokeExtractionStatus(latest.status)) {
       break;
     }
     await pause(2_000);
@@ -377,7 +396,7 @@ const waitForExtractedAssessment = async (args: {
   if (!latest) {
     throw new Error(`Provisioned assessment document ${args.assessmentDocumentId} was not found.`);
   }
-  if (latest.status !== "extracted") {
+  if (!isCompletedPdfSmokeExtractionStatus(latest.status)) {
     throw new Error(
       `Provisioned assessment document ${latest.id} ended with ${latest.status}.`,
     );
@@ -421,13 +440,25 @@ const approveChecklistAndStructuredSections = async (args: {
 };
 
 const generateDrafts = async (baseUrl: string, accessToken: string, assessmentDocumentId: string): Promise<void> => {
-  await callAppJson(baseUrl, accessToken, "/api/assessment-drafts", {
+  const response = await fetch(`${baseUrl}/api/assessment-drafts`, {
     method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
       assessment_document_id: assessmentDocumentId,
       auto_generate: true,
     }),
   });
+  if (response.ok) {
+    return;
+  }
+  const body = await escapeBody(response);
+  if (isDraftAlreadyExistsResponse(response.status, body)) {
+    return;
+  }
+  throw new Error(`Request failed for ${baseUrl}/api/assessment-drafts: ${response.status}${body ? ` ${body}` : ""}`);
 };
 
 const acceptDrafts = async (baseUrl: string, accessToken: string, drafts: DraftResponse): Promise<void> => {

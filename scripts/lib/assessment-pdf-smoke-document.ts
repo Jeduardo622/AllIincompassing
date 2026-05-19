@@ -11,6 +11,7 @@ import { assertSmokeClientMarker, requireSmokeClientId } from "./assessment-uplo
 type AssessmentStatus =
   | "uploaded"
   | "extracting"
+  | "extraction_running"
   | "extracted"
   | "drafted"
   | "approved"

@@ -162,7 +162,7 @@ describe("CalOptima PDF render map", () => {
     const extractorSource = await readFile(extractorPath, "utf8");
 
     expect(extractorSource).not.toContain("isTargetBehaviorBlock");
-    expect(extractorSource).not.toContain('field_key: "CALOPTIMA_FBA_TRANSITION_PLAN"');
+    expect(extractorSource).toContain('field_key: "CALOPTIMA_FBA_TRANSITION_PLAN"');
     expect(extractorSource).toContain('/XII\\.\\s+/i');
     expect(extractorSource).toContain('/\\*\\*\\s+By\\s+signing/i');
     expect(extractorSource).toContain('"CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS"');

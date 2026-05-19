@@ -556,18 +556,19 @@
         "mode": "MANUAL",
         "source": "N/A",
         "notes": "Includes procedural reliability, reinforcement thinning, family training.",
-        "input_type": "multiline_text",
-        "destination": "assessment_checklist.value_text",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
         "pdf_render": {
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_manual_entry_required",
+        "review_behavior": "structured_clinical_review_required",
         "extraction_aliases": [
           "PLAN FOR GENERALIZATION",
           "Generalization and Maintenance Plan",
           "Transition to Natural Mediators"
-        ]
+        ],
+        "structured_section": "generalization_maintenance_plan"
       },
       {
         "label": "Transition plan and exit criteria",
@@ -575,18 +576,19 @@
         "mode": "MANUAL",
         "source": "N/A",
         "notes": "Checkboxes + required prompts.",
-        "input_type": "multiline_text",
-        "destination": "assessment_checklist.value_text",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
         "pdf_render": {
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_manual_entry_required",
+        "review_behavior": "structured_clinical_review_required",
         "extraction_aliases": [
           "XIII. TRANSITION PLAN",
           "Please list exit plan/criteria",
           "Final treatment report"
-        ]
+        ],
+        "structured_section": "transition_plan"
       },
       {
         "label": "Crisis plan",
@@ -594,13 +596,14 @@
         "mode": "MANUAL",
         "source": "N/A",
         "notes": "Preventative, response, and post-crisis protocol narrative.",
-        "input_type": "multiline_text",
-        "destination": "assessment_checklist.value_text",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
         "pdf_render": {
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_manual_entry_required"
+        "review_behavior": "structured_clinical_review_required",
+        "structured_section": "crisis_plan"
       },
       {
         "label": "Summary and recommendations",
@@ -608,13 +611,14 @@
         "mode": "MANUAL",
         "source": "N/A",
         "notes": "Clinical rationale for requested hours.",
-        "input_type": "multiline_text",
-        "destination": "assessment_checklist.value_text",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
         "pdf_render": {
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_manual_entry_required"
+        "review_behavior": "structured_clinical_review_required",
+        "structured_section": "summary_recommendations"
       },
       {
         "label": "HCPCS recommendation rows",
@@ -732,6 +736,193 @@
           "Signature:",
           "Date of Report Completed"
         ]
+      },
+      {
+        "label": "Individual Description/Living Arrangements",
+        "placeholder_key": "CALOPTIMA_FBA_LIVING_ARRANGEMENTS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "living_arrangements",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Individual Description/Living Arrangements",
+          "Living Arrangements"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
+      },
+      {
+        "label": "Significant Medical History",
+        "placeholder_key": "CALOPTIMA_FBA_SIGNIFICANT_MEDICAL_HISTORY",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "significant_medical_history",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Significant Medical History"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
+      },
+      {
+        "label": "Functional Communication Skills",
+        "placeholder_key": "CALOPTIMA_FBA_FUNCTIONAL_COMMUNICATION_SKILLS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "functional_communication_skills",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Functional Communication Skills"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
+      },
+      {
+        "label": "Self-Care and Activities of Daily Living Skills",
+        "placeholder_key": "CALOPTIMA_FBA_SELF_CARE_ADL_SKILLS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "self_care_adl_skills",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Self-Care and Activities of Daily Living Skills",
+          "Activities of Daily Living Skills"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
+      },
+      {
+        "label": "Social and Play Skills",
+        "placeholder_key": "CALOPTIMA_FBA_SOCIAL_PLAY_SKILLS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "social_play_skills",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Social and Play Skills"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
+      },
+      {
+        "label": "Mobility Functioning and Restrictions",
+        "placeholder_key": "CALOPTIMA_FBA_MOBILITY_FUNCTIONING_RESTRICTIONS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "mobility_functioning_restrictions",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Mobility Functioning and Restrictions"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
+      },
+      {
+        "label": "IEP/equivalent services table",
+        "placeholder_key": "CALOPTIMA_FBA_IEP_SERVICES_TABLE",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "iep_services_table",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Individualized Educational Plan (IEP/equivalent) Information",
+          "IEP services"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
+      },
+      {
+        "label": "Cognitive assessment summary",
+        "placeholder_key": "CALOPTIMA_FBA_COGNITIVE_ASSESSMENT_SUMMARY",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "cognitive_assessment_summary",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "COGNITIVE ASSESSMENT",
+          "DAYC-2 Cognitive Subtest",
+          "BSID-III Cognitive Subtest",
+          "WASI-II",
+          "KBIT-2"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
+      },
+      {
+        "label": "Mediator analysis",
+        "placeholder_key": "CALOPTIMA_FBA_MEDIATOR_ANALYSIS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "mediator_analysis",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "MEDIATOR ANALYSIS"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
+      },
+      {
+        "label": "Reinforcer assessment",
+        "placeholder_key": "CALOPTIMA_FBA_REINFORCER_ASSESSMENT",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "reinforcer_assessment",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "REINFORCER ASSESSMENT"
+        ],
+        "notes": "Anchored narrative/table section extracted for clinician review."
       }
     ],
     "existing_placeholders": []

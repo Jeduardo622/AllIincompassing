@@ -2913,6 +2913,36 @@ describe("assessmentDocumentsHandler", () => {
         required: true,
         review_notes: null,
       })),
+      {
+        section_key: "background_school_history",
+        field_key: "CALOPTIMA_FBA_LIVING_ARRANGEMENTS",
+        section_index: 0,
+        payload: { raw_text: "Client lives with caregivers and siblings." },
+        source_span: { method: "deterministic_section_anchor" },
+        status: "drafted",
+        required: true,
+        review_notes: "Deterministic anchored section extracted from CalOptima document text.",
+      },
+      {
+        section_key: "diagnostic_behavior_analysis",
+        field_key: "CALOPTIMA_FBA_CRISIS_PLAN",
+        section_index: 0,
+        payload: { raw_text: "Caregivers will call emergency services for immediate danger." },
+        source_span: { method: "deterministic_section_anchor" },
+        status: "drafted",
+        required: true,
+        review_notes: "Deterministic anchored section extracted from CalOptima document text.",
+      },
+      {
+        section_key: "summary_recommendations_signatures",
+        field_key: "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
+        section_index: 0,
+        payload: { rows: [{ hcpcs_code: "H2019", raw_text: "H2019 Therapeutic Behavioral Services 160 units" }] },
+        source_span: { method: "deterministic_hcpcs_section", row_count: 1 },
+        status: "drafted",
+        required: true,
+        review_notes: "Deterministic HCPCS recommendation section extracted from CalOptima document text.",
+      },
     ];
 
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
@@ -3004,11 +3034,26 @@ describe("assessmentDocumentsHandler", () => {
     );
     expect(programCreateCall).toBeDefined();
     expect(goalCreateCall).toBeDefined();
+    const structuredSectionCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/rest/v1/assessment_structured_sections") &&
+      (init?.method ?? "").toUpperCase() === "POST"
+    );
+    expect(structuredSectionCall).toBeDefined();
 
     const programPayload = JSON.parse((programCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
     const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
+    const structuredPayload = JSON.parse((structuredSectionCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
     expect(programPayload).toHaveLength(7);
     expect(goalPayload).toHaveLength(28);
+    expect(structuredPayload.map((section) => section.field_key)).toEqual(expect.arrayContaining([
+      "CALOPTIMA_FBA_LIVING_ARRANGEMENTS",
+      "CALOPTIMA_FBA_CRISIS_PLAN",
+      "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
+    ]));
+    expect(structuredPayload.find((section) => section.field_key === "CALOPTIMA_FBA_CRISIS_PLAN")?.payload).toEqual({
+      raw_text: "Caregivers will call emergency services for immediate danger.",
+    });
     expect(programPayload.every((program) => program.accept_state === "pending")).toBe(true);
     expect(goalPayload.every((goal) => goal.accept_state === "pending")).toBe(true);
     expect(goalPayload.filter((goal) => goal.goal_type === "child")).toHaveLength(21);

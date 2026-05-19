@@ -44,6 +44,7 @@ docs/ai/*.zip
 
 # Large local reference documents
 WHITE BIBLE.pdf
+/Le, Ki IEHP FBA December 2025 (1).docx
 
 # Generated local analysis/security artifacts (may include sensitive output)
 .reports/*.json

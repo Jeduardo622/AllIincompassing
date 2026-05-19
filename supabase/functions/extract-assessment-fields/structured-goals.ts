@@ -17,12 +17,8 @@ const CALOPTIMA_CHILD_GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
 ]);
 const CALOPTIMA_PARENT_GOAL_FIELD_KEYS = new Set(["CALOPTIMA_FBA_PARENT_GOALS"]);
-const IEHP_PARENT_GOAL_FIELD_KEYS = new Set([
-  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
-  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
-]);
 const CHILD_GOAL_FIELD_KEYS = new Set([...CALOPTIMA_CHILD_GOAL_FIELD_KEYS]);
-const PARENT_GOAL_FIELD_KEYS = new Set([...CALOPTIMA_PARENT_GOAL_FIELD_KEYS, ...IEHP_PARENT_GOAL_FIELD_KEYS]);
+const PARENT_GOAL_FIELD_KEYS = new Set([...CALOPTIMA_PARENT_GOAL_FIELD_KEYS]);
 
 const FIELD_PATTERN =
   /\b(program|description|target behavior|behavior|skill|measurement type|measure|baseline(?: data)?(?: and date| with dates)?|target criteria|criteria|mastery criteria|maintenance criteria|generalization criteria|rationale|objective data points?)\s*:\s*(.+?)(?=\s+\b(?:program|description|target behavior|behavior|skill|measurement type|measure|baseline(?: data)?(?: and date| with dates)?|target criteria|criteria|mastery criteria|maintenance criteria|generalization criteria|rationale|objective data points?)\s*:|$)/gi;

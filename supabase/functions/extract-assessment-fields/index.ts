@@ -20,6 +20,7 @@ const checklistRowSchema = z.object({
   label: z.string().min(1),
   placeholder_key: z.string().min(1),
   required: z.boolean(),
+  mode: z.enum(["AUTO", "ASSISTED", "MANUAL"]).optional(),
   extraction_aliases: z.array(z.string().min(1)).optional(),
 });
 
@@ -45,6 +46,13 @@ const requestSchema = z.object({
       parent1_phone: z.string().nullish(),
       parent1_first_name: z.string().nullish(),
       parent1_last_name: z.string().nullish(),
+      parent1_relationship: z.string().nullish(),
+      preferred_language: z.string().nullish(),
+      address_line1: z.string().nullish(),
+      address_line2: z.string().nullish(),
+      city: z.string().nullish(),
+      state: z.string().nullish(),
+      zip_code: z.string().nullish(),
     })
     .optional(),
 });
@@ -98,6 +106,8 @@ const json = (req: Request, payload: unknown, status = 200): Response =>
 
 const stripXmlTags = (xml: string): string =>
   xml
+    .replace(/<w:tab\/>/g, "\t")
+    .replace(/<\/w:tc>/g, "\t")
     .replace(/<w:p[^>]*>/g, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&")
@@ -270,7 +280,7 @@ const findAnchor = (text: string, anchors: RegExp[]): RegExpMatchArray | null =>
 };
 
 const extractSectionText = (text: string, startAnchors: RegExp[], endAnchors: RegExp[]): string | null => {
-  const normalized = compactDocumentText(text);
+  const normalized = normalizeInlineText(text);
   const start = findAnchor(normalized, startAnchors);
   if (!start || start.index === undefined) {
     return null;
@@ -365,12 +375,209 @@ const buildIeHpSectionRows = (
     section_key: sectionKey,
     field_key: fieldKey,
     section_index: 0,
-    payload: { raw_text: sectionText },
+    payload: normalizeIeHpSectionPayload(fieldKey, sectionText),
     source_span: { method: "iehp_section_anchor", anchor_count: startAnchors.length },
     status: "drafted",
     required: true,
     review_notes: "Deterministic IEHP section extraction for structured payload review.",
   }];
+};
+
+const splitListText = (value: string): string[] =>
+  value
+    .split(/\s*(?:\n+|;|•|\u2022)\s*/g)
+    .map((entry) => normalizeExtractedValue(entry))
+    .filter((entry) => entry.length > 0);
+
+const parseRowsFromProgramBlocks = (
+  sectionText: string,
+  fieldKey: string,
+  defaultGoalType: "child" | "parent",
+  defaultProgramName: string,
+  sectionIndexByFieldKey: Map<string, number>,
+): StructuredSectionResult[] => {
+  const normalized = compactDocumentText(sectionText);
+  const matches = [...normalized.matchAll(/\bProgram\s+Name\s*:\s*([^:]+?)(?=\s+Instrumental\s+Goal\s*:)/gi)];
+  return matches.flatMap((match, index) => {
+    const bodyStart = match.index ?? 0;
+    const bodyEnd = matches[index + 1]?.index ?? normalized.length;
+    const block = normalized.slice(bodyStart, bodyEnd).trim();
+    const programName = normalizeExtractedValue(match[1] ?? "") || defaultProgramName;
+    const instrumentalGoal = block.match(/Instrumental\s+Goal\s*:\s*(.+?)(?=\s+Data\s+Collection\s*:|\s+Mastery\s+Criteria\s*:|\s+Generalization\s+Criteria\s*:|\s+Baseline\s*:|$)/i)?.[1];
+    const dataCollection = block.match(/Data\s+Collection\s*:\s*(.+?)(?=\s+Mastery\s+Criteria\s*:|\s+Generalization\s+Criteria\s*:|\s+Baseline\s*:|$)/i)?.[1];
+    const mastery = block.match(/Mastery\s+Criteria\s*:\s*(.+?)(?=\s+Generalization\s+Criteria\s*:|\s+Baseline\s*:|$)/i)?.[1];
+    const generalization = block.match(/Generalization\s+Criteria\s*:\s*(.+?)(?=\s+Baseline\s*:|$)/i)?.[1];
+    const baseline = block.match(/Baseline\s*:\s*(.+)$/i)?.[1];
+    const description = normalizeExtractedValue(instrumentalGoal ?? block);
+    if (description.length < 10) {
+      return [];
+    }
+    const section_index = sectionIndexByFieldKey.get(fieldKey) ?? 0;
+    sectionIndexByFieldKey.set(fieldKey, section_index + 1);
+    return [{
+      section_key: "treatment_goals",
+      field_key: fieldKey,
+      section_index,
+      payload: {
+        section_type: "goal",
+        title: programName,
+        goal_type: defaultGoalType,
+        program_name: programName,
+        description,
+        original_text: block,
+        target_behavior: programName,
+        measurement_type: normalizeExtractedValue(dataCollection ?? "") || "clinician review required",
+        baseline_data: normalizeExtractedValue(baseline ?? "") || "Baseline pending staff review",
+        target_criteria: description,
+        mastery_criteria: normalizeExtractedValue(mastery ?? "") || "Mastery criteria pending staff review",
+        generalization_criteria: normalizeExtractedValue(generalization ?? "") || "Generalization criteria pending staff review",
+        raw_text: block,
+      },
+      source_span: { method: "iehp_program_name_goal_block", start_offset: bodyStart, end_offset: bodyEnd },
+      status: "drafted" as const,
+      required: true,
+      review_notes: `Deterministic IEHP ${defaultGoalType} goal block extracted from Program Name/Instrumental Goal structure.`,
+    }];
+  });
+};
+
+const extractIeHpProgramGoalSections = (
+  text: string,
+  sectionIndexByFieldKey: Map<string, number>,
+): StructuredSectionResult[] => {
+  const specs = [
+    {
+      field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+      goal_type: "child" as const,
+      program_name: "Behavior Reduction",
+      start: [/TARGET\s+BEHAVIORS\s*:/i],
+      end: [/REPLACEMENT\s+BEHAVIORS\s*:/i],
+    },
+    {
+      field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+      goal_type: "child" as const,
+      program_name: "Skill Acquisition",
+      start: [/REPLACEMENT\s+BEHAVIORS\s*:/i, /COMMUNICATION\s+GOALS\s*:/i],
+      end: [/Behavior\s+Intervention\s+Plan/i, /Safety\/Crisis\s+Procedure/i],
+    },
+    {
+      field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+      goal_type: "parent" as const,
+      program_name: "Parent Education",
+      start: [/PARENT\s+EDUCATION\s*:/i],
+      end: [/Location\s+of\s+Service\s*:/i, /\bCoordination\s+of\s+Care\s*:/i],
+    },
+  ] as const;
+  return specs.flatMap((spec) => {
+    const sectionText = extractIeHpSection(text, [...spec.start], [...spec.end]);
+    if (!sectionText) {
+      return [];
+    }
+    return parseRowsFromProgramBlocks(
+      sectionText,
+      spec.field_key,
+      spec.goal_type,
+      spec.program_name,
+      sectionIndexByFieldKey,
+    );
+  });
+};
+
+const parseIeHpRecommendations = (rawText: string): Array<Record<string, string>> => {
+  const compact = compactDocumentText(rawText);
+  const rows: Array<Record<string, string>> = [];
+  const codePattern = /\b(H2019|H0032-HO|H0032-HP|H0032|S5111|H2014)\b\s+(.+?)\s+((?:\d+\s+units)|N\/A)\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = codePattern.exec(compact)) !== null) {
+    rows.push({
+      hcpcs_code: match[1] ?? "",
+      description: normalizeExtractedValue(match[2] ?? ""),
+      units_requested: normalizeExtractedValue(match[3] ?? ""),
+    });
+  }
+  return rows;
+};
+
+const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<string, unknown> => {
+  const compact = compactDocumentText(rawText);
+  if (fieldKey === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
+    const inline = normalizeInlineText(rawText);
+    const withoutHeading = inline.replace(/^(?:BEHAVIORS\s*:?\s*)?(?:The behaviors and functional skills to be addressed are\s*:?)?/i, "");
+    return { raw_text: compact, targets: splitListText(withoutHeading) };
+  }
+  if (fieldKey === "IEHP_FBA_BHT_AVAILABILITY_GRID") {
+    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const seenDays = days.filter((day) => new RegExp(`\\b${day}\\b`, "i").test(compact));
+    const timeMatches = [...compact.matchAll(/\b(?:After|Starting)\s+\d{1,2}:\d{2}\s*(?:AM|PM)\b/gi)].map((match) => match[0]);
+    return {
+      raw_text: compact,
+      rows: seenDays.map((day, index) => ({ day, availability: timeMatches[index] ?? null })),
+    };
+  }
+  if (fieldKey === "IEHP_FBA_ENVIRONMENTAL_ANALYSIS") {
+    const questionPattern = /(Availability and Access to reinforcers|Availability of developmental toys\/materials|Availability of visual schedules\/ time|Opportunities for activities throughout the day|Opportunities for social interaction|Will parent’s schedule allow for treatment involvement\?|Appropriate space available for conducting sessions\?|Environment Conducive to QASP Policy on Cleanliness\?|Level of noise\/Environmental Distractions):?\s*(.*?)(?=(?:Availability and Access to reinforcers|Availability of developmental toys\/materials|Availability of visual schedules\/ time|Opportunities for activities throughout the day|Opportunities for social interaction|Will parent’s schedule allow for treatment involvement\?|Appropriate space available for conducting sessions\?|Environment Conducive to QASP Policy on Cleanliness\?|Level of noise\/Environmental Distractions):|$)/gi;
+    const rows = [...compact.matchAll(questionPattern)].map((match) => ({
+      prompt: normalizeExtractedValue(match[1] ?? ""),
+      options_seen: [...(match[2] ?? "").matchAll(/\b(Yes|No|None|Fair|High)\b/gi)].map((option) => option[1]),
+      selected: extractSelectedYesNo(match[2] ?? ""),
+      needs_review: true,
+    }));
+    return { raw_text: compact, rows };
+  }
+  if (fieldKey === "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE") {
+    const procedurePattern = /(Records Reviewed|Clinical Interview|1st Member Observation|2nd\s*Member Observation|Stimulus Preference Assessments|Assessment Measures Administered|Indirect Functional Analysis Tools Used):?\s+(.+?)(?=(?:Records Reviewed|Clinical Interview|1st Member Observation|2nd\s*Member Observation|Stimulus Preference Assessments|Assessment Measures Administered|Indirect Functional Analysis Tools Used):|$)/gi;
+    return {
+      raw_text: compact,
+      rows: [...compact.matchAll(procedurePattern)].map((match) => ({
+        procedure: normalizeExtractedValue(match[1] ?? ""),
+        raw_text: normalizeExtractedValue(match[2] ?? ""),
+      })),
+    };
+  }
+  if (fieldKey === "IEHP_FBA_RECORDS_REVIEWED_TABLE") {
+    const rows = [...compact.matchAll(/([^.;]+?\([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4}\))/g)].map((match) => ({
+      raw_text: normalizeExtractedValue(match[1] ?? ""),
+    }));
+    return { raw_text: compact, rows };
+  }
+  if (fieldKey === "IEHP_FBA_PREFERENCE_ASSESSMENT_SUMMARY") {
+    const preferenceRows = [...compact.matchAll(/\b(Social|Sensory|Toys or Activities|Food)\s+([^:]+?)(?=\b(?:Social|Sensory|Toys or Activities|Food|Limited Reinforcer)\b|$)/gi)].map((match) => ({
+      area: normalizeExtractedValue(match[1] ?? ""),
+      potential_reinforcers: normalizeExtractedValue(match[2] ?? ""),
+    }));
+    return { raw_text: compact, preference_rows: preferenceRows };
+  }
+  if (fieldKey === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES") {
+    return {
+      raw_text: compact,
+      measure_name: compact.match(/(Vineland Adaptive Behavior Scales,\s*3rd Edition)/i)?.[1] ?? null,
+      date_administered: compact.match(/Date Administered\s*:?\s*([0-9/]+)/i)?.[1] ?? null,
+      interviewer: normalizeExtractedValue(compact.match(/Name of Interviewer\s*:?\s*(.+?)(?=Name of Respondent|Assessment Summary|$)/i)?.[1] ?? ""),
+      respondent: normalizeExtractedValue(compact.match(/Name of Respondent\s*:?\s*(.+?)(?=Assessment Summary|$)/i)?.[1] ?? ""),
+      assessment_summary: normalizeExtractedValue(compact.match(/Assessment Summary\s*:?\s*(.+)$/i)?.[1] ?? ""),
+    };
+  }
+  if (fieldKey === "IEHP_FBA_DISCHARGE_TRANSITION_EXIT_PLAN") {
+    return {
+      raw_text: compact,
+      discharge_criteria: normalizeExtractedValue(compact.match(/Discharge Criteria\s*:?\s*(.+?)(?=Transition of Care\s*:|$)/i)?.[1] ?? ""),
+      transition_of_care: normalizeExtractedValue(compact.match(/Transition of Care\s*:?\s*(.+)$/i)?.[1] ?? ""),
+    };
+  }
+  if (fieldKey === "IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS") {
+    return { raw_text: compact, rows: parseIeHpRecommendations(compact) };
+  }
+  if (fieldKey === "IEHP_FBA_SIGNATURE_BLOCK") {
+    const dateMatch = compact.match(/\b([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})\b/);
+    return {
+      raw_text: compact,
+      report_completed_date: dateMatch?.[1] ?? null,
+      completed_by: normalizeExtractedValue(compact.match(/Report completed by\s*:?\s*(?:_+\s*)?(?:[0-9/]+\s*)?(.+?)(?=Date\s*:|Board Certified|West Coast|$)/i)?.[1] ?? ""),
+      credentials: normalizeExtractedValue(compact.match(/(Board Certified Behavior Analyst[^,]*,\s*[^ ]+)/i)?.[1] ?? ""),
+      agency: normalizeExtractedValue(compact.match(/\b(West Coast ABA)\b/i)?.[1] ?? ""),
+    };
+  }
+  return { raw_text: compact };
 };
 
 const normalizeIeHpGoalSubsection = (value: string): "short" | "intermediate" | "progress" | null => {
@@ -387,8 +594,12 @@ const normalizeIeHpGoalSubsection = (value: string): "short" | "intermediate" | 
   return null;
 };
 
-const resolveIehpGoalProgramName = (fieldKey: string): string =>
-  fieldKey === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS" ? "Skill Acquisition" : "Behavior Treatment";
+const resolveIehpGoalProgramName = (fieldKey: string, goalType: "child" | "parent" = "child"): string => {
+  if (goalType === "parent") {
+    return "Parent Education";
+  }
+  return fieldKey === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS" ? "Skill Acquisition" : "Behavior Treatment";
+};
 
 const splitIeHpGoalSubsections = (
   sectionText: string,
@@ -405,14 +616,15 @@ const splitIeHpGoalSubsections = (
     if (!normalizedText) {
       return [];
     }
+    const goalType = /\b(?:parent|caregiver)\b/i.test(normalizedText) ? "parent" : "child";
     return [{
       section_key: sectionKey,
       field_key: fieldKey,
       section_index,
       payload: {
         title: "IEHP Goal Block",
-        goal_type: "parent",
-        program_name: resolveIehpGoalProgramName(fieldKey),
+        goal_type: goalType,
+        program_name: resolveIehpGoalProgramName(fieldKey, goalType),
         raw_text: normalizedText,
         original_text: normalizedText,
       },
@@ -436,6 +648,7 @@ const splitIeHpGoalSubsections = (
     if (!bodyContent) {
       return;
     }
+    const goalType = /\b(?:parent|caregiver)\b/i.test(bodyContent) ? "parent" : "child";
     const section_index = sectionIndexByFieldKey.get(fieldKey) ?? 0;
     sectionIndexByFieldKey.set(fieldKey, section_index + 1);
     const title = `${subsectionType.charAt(0).toUpperCase() + subsectionType.slice(1)} Goal`;
@@ -445,9 +658,9 @@ const splitIeHpGoalSubsections = (
       section_index,
       payload: {
         title,
-        goal_type: "parent",
+        goal_type: goalType,
         subsection: subsectionType,
-        program_name: resolveIehpGoalProgramName(fieldKey),
+        program_name: resolveIehpGoalProgramName(fieldKey, goalType),
         raw_text: bodyContent,
         original_text: bodyContent,
       },
@@ -458,7 +671,7 @@ const splitIeHpGoalSubsections = (
       },
       status: "drafted",
       required: true,
-      review_notes: `Deterministic IEHP ${subsectionType} goal subsection extracted for parent-goal modeling.`,
+      review_notes: `Deterministic IEHP ${subsectionType} goal subsection extracted for child-goal modeling.`,
     });
   });
   return sections;
@@ -467,7 +680,6 @@ const splitIeHpGoalSubsections = (
 const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
   const compact = compactDocumentText(text);
   const sectionIndexByFieldKey = new Map<string, number>();
-  let parentEducationCoveredByTreatmentGoalSpan = false;
 
   const specs = [
     {
@@ -479,7 +691,7 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
     {
       field_key: "IEHP_FBA_HOUSEHOLD_MEMBERS",
       section_key: "behavior_background_services",
-      start: [/Persons\s+in\s+Household/i],
+      start: [/Persons\s+in\s+Household/i, /\bLiving Situation\b/i],
       end: [/\bSchool Information\b/i],
     },
     {
@@ -510,12 +722,12 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
       field_key: "IEHP_FBA_INTERVENTION_HISTORY",
       section_key: "behavior_background_services",
       start: [/\bIntervention History\b/i],
-      end: [/\bBHT Availability\b/i],
+      end: [/\bBHT Availability\b/i, /\bAvailability for Behavior Health Treatment Services\b/i],
     },
     {
       field_key: "IEHP_FBA_BHT_AVAILABILITY_GRID",
       section_key: "behavior_background_services",
-      start: [/\bBHT Availability\b/i],
+      start: [/\bBHT Availability\b/i, /\bAvailability for Behavior Health Treatment Services\b/i],
       end: [/MEMBER’S ENVIRONMENTAL ANALYSIS/i],
     },
     {
@@ -545,25 +757,13 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
     {
       field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
       section_key: "assessment_procedures",
-      start: [/Adaptive and Functional Measure Summaries/i, /Adaptive and Functional measure Summaries/i],
-      end: [/BEHAVIOR INTERVENTION PLAN/i, /Target behavior/i],
-    },
-    {
-      field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
-      section_key: "treatment_goals",
-      start: [/BEHAVIOR INTERVENTION PLAN/i, /Target behavior and intervention/i],
-      end: [/PARENT GOAL/i, /Safety Procedure/i, /\bCoordination of Care\b/i],
-    },
-    {
-      field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
-      section_key: "treatment_goals",
-      start: [/School Goals/i, /Skill and School Goal/i],
-      end: [/Safety Procedure/i, /\bCoordination of Care\b/i],
+      start: [/Adaptive and Functional Measure Summaries/i, /Adaptive and Functional measure Summaries/i, /ASSESSMENT MEAURES/i, /ASSESSMENT MEASURES/i],
+      end: [/Target Behaviors/i, /BEHAVIOR INTERVENTION PLAN/i],
     },
     {
       field_key: "IEHP_FBA_CRISIS_PLAN",
       section_key: "treatment_safety",
-      start: [/Safety Procedure\s*\/\s*Crisis Plan/i],
+      start: [/Safety\s*\/\s*Crisis Procedure/i, /Safety Procedure\s*\/\s*Crisis Plan/i],
       end: [/\bCoordination of Care\b/i],
     },
     {
@@ -575,13 +775,13 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
     {
       field_key: "IEHP_FBA_DISCHARGE_TRANSITION_EXIT_PLAN",
       section_key: "coordination",
-      start: [/Discharge,?\s*Transition and Exit/i],
-      end: [/Recommendations and HCPCS/i],
+      start: [/Discharge,?\s*Transition and Exit/i, /Discharge Criteria\s*:/i],
+      end: [/Recommendations and HCPCS/i, /Recommendations\s*:/i],
     },
     {
       field_key: "IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS",
       section_key: "recommendations",
-      start: [/Recommendations and HCPCS/i],
+      start: [/Recommendations and HCPCS/i, /Recommendations\s*:/i, /Clinical Recommendations/i],
       end: [/Report completed by:/i, /Name and Credentials/i],
     },
     {
@@ -600,54 +800,77 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
       [...spec.start],
       [...spec.end],
     );
-    if (!spec.field_key.includes("IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS") && !spec.field_key.includes("IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS")) {
-      return sectionRows.map((section) => {
-        const section_index = sectionIndexByFieldKey.get(section.field_key) ?? 0;
-        sectionIndexByFieldKey.set(section.field_key, section_index + 1);
-        return { ...section, section_index };
-      });
-    }
-    if (spec.field_key === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS") {
-      parentEducationCoveredByTreatmentGoalSpan = sectionRows.some((section) =>
-        typeof section.payload.raw_text === "string" && matchNormalized(section.payload.raw_text, "Parent Education")
-      );
-    }
-    return sectionRows.flatMap((section) =>
-      splitIeHpGoalSubsections(
-        String(section.payload.raw_text ?? ""),
-        spec.section_key,
-        spec.field_key,
-        sectionIndexByFieldKey,
-      )
-    );
+    return sectionRows.map((section) => {
+      const section_index = sectionIndexByFieldKey.get(section.field_key) ?? 0;
+      sectionIndexByFieldKey.set(section.field_key, section_index + 1);
+      return { ...section, section_index };
+    });
   });
+  sections.push(...extractIeHpProgramGoalSections(text, sectionIndexByFieldKey));
+
+  const legacyTreatmentGoalSpan = extractIeHpSection(
+    text,
+    [/BEHAVIOR INTERVENTION PLAN/i, /Target behavior and intervention/i],
+    [/PARENT GOAL/i, /Safety Procedure/i, /Safety\s*\/\s*Crisis Procedure/i, /\bCoordination of Care\b/i],
+  );
+  if (legacyTreatmentGoalSpan) {
+    sections.push(
+      ...splitIeHpGoalSubsections(
+        legacyTreatmentGoalSpan,
+        "treatment_goals",
+        "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+        sectionIndexByFieldKey,
+      ),
+    );
+  }
+  const legacySchoolGoalSpan = extractIeHpSection(
+    text,
+    [/School Goals/i, /Skill and School Goal/i],
+    [/Safety Procedure/i, /Safety\s*\/\s*Crisis Procedure/i, /\bCoordination of Care\b/i],
+  );
+  if (legacySchoolGoalSpan) {
+    sections.push(
+      ...splitIeHpGoalSubsections(
+        legacySchoolGoalSpan,
+        "treatment_goals",
+        "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+        sectionIndexByFieldKey,
+      ),
+    );
+  }
+
   const goalSectionPayload = sections.find((section) => section.field_key === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS");
   const goalSectionPayloadRawText =
     typeof goalSectionPayload?.payload?.raw_text === "string" ? goalSectionPayload.payload.raw_text : "";
   const hasSchoolGoalsSection = extractIeHpLabelSummary(
     compact,
     /School Goals/i,
-    [/Safety Procedure/i],
+    [/Safety Procedure/i, /Safety\s*\/\s*Crisis Procedure/i],
   ) !== null;
   if (goalSectionPayload && !matchNormalized(goalSectionPayloadRawText, "Parent Education") && hasSchoolGoalsSection) {
     goalSectionPayload.review_notes = "Deterministic IEHP goal section found from School Goals anchoring.";
   }
 
-  if (!parentEducationCoveredByTreatmentGoalSpan && extractIeHpLabelSummary(
+  const hasParentEducationGoal = sections.some((section) =>
+    section.field_key === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS" &&
+    typeof section.payload?.goal_type === "string" &&
+    section.payload.goal_type === "parent"
+  );
+  if (!hasParentEducationGoal && extractIeHpLabelSummary(
     compact,
     /Parent Education/i,
-    [/Safety Procedure/i, /\bCoordination of Care\b/i],
+    [/Safety Procedure/i, /Safety\s*\/\s*Crisis Procedure/i, /\bCoordination of Care\b/i],
   )) {
     const parentEducationRawText = extractIeHpLabelSummary(
       compact,
       /Parent Education/i,
-      [/Safety Procedure/i, /\bCoordination of Care\b/i],
+      [/Safety Procedure/i, /Safety\s*\/\s*Crisis Procedure/i, /\bCoordination of Care\b/i],
     ) ?? "";
     sections.push(
       ...splitIeHpGoalSubsections(
         parentEducationRawText,
         "treatment_goals",
-        "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+        "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
         sectionIndexByFieldKey,
       ),
     );
@@ -839,7 +1062,7 @@ const deterministicValueForRow = (
       value_text: null,
       value_json: null,
       confidence: null,
-      mode: "MANUAL",
+      mode: row.mode ?? "MANUAL",
       status: "not_started",
       source_span: null,
       review_notes: null,
@@ -853,8 +1076,8 @@ const deterministicValueForRow = (
       placeholder_key: key,
       value_text: fromLabel.value,
       value_json: null,
-      confidence,
-      mode: "AUTO",
+      confidence: row.mode === "AUTO" || !row.mode ? confidence : Math.min(confidence, row.mode === "ASSISTED" ? 0.74 : 0.55),
+      mode: row.mode ?? "AUTO",
       status: "drafted",
       source_span: { method: "label_regex", label: fromLabel.label },
       review_notes: `Deterministic extraction from document label match. (Calibrated confidence ${confidence.toFixed(2)})`,
@@ -871,6 +1094,30 @@ const deterministicValueForRow = (
       mode: "AUTO",
       status: "drafted",
       source_span: { method: "client_snapshot", field: "full_name" },
+      review_notes: "Auto-filled from client snapshot.",
+    };
+  }
+  if (/FIRST_NAME/u.test(key) && client.first_name) {
+    return {
+      placeholder_key: key,
+      value_text: client.first_name,
+      value_json: null,
+      confidence: 0.98,
+      mode: row.mode ?? "AUTO",
+      status: "drafted",
+      source_span: { method: "client_snapshot", field: "first_name" },
+      review_notes: "Auto-filled from client snapshot.",
+    };
+  }
+  if (/LAST_NAME/u.test(key) && client.last_name) {
+    return {
+      placeholder_key: key,
+      value_text: client.last_name,
+      value_json: null,
+      confidence: 0.98,
+      mode: row.mode ?? "AUTO",
+      status: "drafted",
+      source_span: { method: "client_snapshot", field: "last_name" },
       review_notes: "Auto-filled from client snapshot.",
     };
   }
@@ -898,12 +1145,71 @@ const deterministicValueForRow = (
       review_notes: "Auto-filled from client snapshot.",
     };
   }
+  if (/PRESENT_ADDRESS/u.test(key)) {
+    const address = [client.address_line1, client.address_line2, client.city, client.state, client.zip_code]
+      .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+      .join(", ");
+    if (address) {
+      return {
+        placeholder_key: key,
+        value_text: address,
+        value_json: null,
+        confidence: 0.93,
+        mode: row.mode ?? "AUTO",
+        status: "drafted",
+        source_span: { method: "client_snapshot", field: "address" },
+        review_notes: "Auto-filled from client address snapshot.",
+      };
+    }
+  }
+  if (/PARENT_GUARDIAN/u.test(key)) {
+    const guardian = [client.parent1_first_name, client.parent1_last_name]
+      .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+      .join(" ");
+    const relationship = typeof client.parent1_relationship === "string" ? client.parent1_relationship.trim() : "";
+    if (guardian) {
+      return {
+        placeholder_key: key,
+        value_text: relationship ? `${guardian} (${relationship})` : guardian,
+        value_json: null,
+        confidence: 0.93,
+        mode: row.mode ?? "AUTO",
+        status: "drafted",
+        source_span: { method: "client_snapshot", field: "parent1" },
+        review_notes: "Auto-filled from guardian snapshot.",
+      };
+    }
+  }
+  if (/CONTACT_PHONE|PHONE/u.test(key) && (client.parent1_phone || client.phone)) {
+    return {
+      placeholder_key: key,
+      value_text: client.parent1_phone ?? client.phone ?? null,
+      value_json: null,
+      confidence: 0.93,
+      mode: row.mode ?? "AUTO",
+      status: "drafted",
+      source_span: { method: "client_snapshot", field: client.parent1_phone ? "parent1_phone" : "phone" },
+      review_notes: "Auto-filled from client contact snapshot.",
+    };
+  }
+  if (/LANGUAGE/u.test(key) && client.preferred_language) {
+    return {
+      placeholder_key: key,
+      value_text: client.preferred_language,
+      value_json: null,
+      confidence: 0.86,
+      mode: row.mode ?? "ASSISTED",
+      status: "drafted",
+      source_span: { method: "client_snapshot", field: "preferred_language" },
+      review_notes: "Assisted fill from preferred language snapshot; clinician review required.",
+    };
+  }
   return {
     placeholder_key: key,
     value_text: null,
     value_json: null,
     confidence: null,
-    mode: "MANUAL",
+    mode: row.mode ?? "MANUAL",
     status: "not_started",
     source_span: null,
     review_notes: null,
@@ -1253,11 +1559,13 @@ Deno.serve(async (req) => {
         ...field,
         value_text: `${structuredSummary.count} structured section${structuredSummary.count === 1 ? "" : "s"} extracted`,
         value_json: structuredSummary.firstPayload,
-        confidence: 0.9,
-        mode: "AUTO" as const,
+        confidence: field.mode === "AUTO" ? 0.9 : field.mode === "ASSISTED" ? 0.74 : 0.55,
+        mode: field.mode,
         status: "drafted" as const,
         source_span: { method: "deterministic_structured_section_summary" },
-        review_notes: "Deterministic structured extraction summary. Review full structured section payloads before approval.",
+        review_notes: field.mode === "AUTO"
+          ? "Deterministic structured extraction summary. Review full structured section payloads before approval."
+          : "Structured content was extracted, but this checklist row remains manual/assisted and requires clinician review before approval.",
       }, extractionProvider);
     });
 

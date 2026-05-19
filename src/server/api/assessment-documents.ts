@@ -83,6 +83,13 @@ interface ClientSnapshotRow {
   parent1_phone?: string | null;
   parent1_first_name?: string | null;
   parent1_last_name?: string | null;
+  parent1_relationship?: string | null;
+  preferred_language?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip_code?: string | null;
 }
 
 const compactNullableRecord = <T extends Record<string, unknown>>(value: T): Partial<T> =>
@@ -425,7 +432,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
   try {
     assertExtractionNotAborted(signal);
     const clientSnapshotResult = await fetchJson<ClientSnapshotRow[]>(
-      `${supabaseUrl}/rest/v1/clients?select=full_name,first_name,last_name,date_of_birth,cin_number,client_id,phone,parent1_phone,parent1_first_name,parent1_last_name&id=eq.${encodeURIComponent(
+      `${supabaseUrl}/rest/v1/clients?select=full_name,first_name,last_name,date_of_birth,cin_number,client_id,phone,parent1_phone,parent1_first_name,parent1_last_name,parent1_relationship,preferred_language,address_line1,address_line2,city,state,zip_code&id=eq.${encodeURIComponent(
         clientId,
       )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
       { method: "GET", headers, signal },
@@ -452,6 +459,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
           label: row.label,
           placeholder_key: row.placeholder_key,
           required: row.required,
+          mode: row.mode,
           extraction_aliases: row.extraction_aliases ?? [],
         })),
         client_snapshot: clientSnapshot,
@@ -1095,6 +1103,7 @@ export async function assessmentDocumentsHandler(
         actorId,
         createdDocumentId: createdDocument.id,
         clientId: parsed.data.client_id,
+        templateType,
         checklistRows,
         bucketId: createPayload.bucket_id,
         objectPath: createPayload.object_path,

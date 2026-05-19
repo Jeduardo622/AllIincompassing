@@ -10,6 +10,12 @@ This mapping follows the same extraction strategy used for CalOptima:
 - `ASSISTED`: prefilled where possible, always clinician-reviewed
 - `MANUAL`: clinician-authored in structured workflow fields
 
+Runtime extraction paths:
+
+- DOCX uploads use local Word XML decoding and deterministic IEHP aliases/normalizers.
+- PDF uploads use Adobe PDF Extract first, then the same deterministic IEHP aliases/normalizers.
+- Structured IEHP sections are stored in `assessment_structured_sections` and summarized back to checklist/extraction rows without changing manual/assisted rows into confident `AUTO` rows.
+
 ## Core sections mapped
 
 - `identification_admin`: member demographics, referral metadata, assessor credentials.
@@ -24,9 +30,12 @@ This mapping follows the same extraction strategy used for CalOptima:
 - Environmental analysis includes yes/no checks and noise-level rating.
 - Assessment procedures are table-oriented with date/location/person rows.
 - HCPCS recommendation rows are explicitly listed in-template (`H2019`, `H0032`, `H0032-HO`, `H0032-HP`, `S5111`, `H2014`).
+- IEHP target behavior and skill-acquisition goals are child goals; parent education goals remain parent goals even when they are stored under the IEHP skill/school structured field destination.
+- LE-style filled document aliases are supported for BHT availability, safety/crisis, discharge, transition, recommendations, clinical recommendations, report-completed signatures, assessment procedures, records reviewed, environmental analysis, and adaptive/functional measure summaries.
 
 ## Mapping quality gates
 
 - Every `placeholder_key` in `iehp_fba_template_field_map.json` must appear exactly once in the IEHP checklist JSON.
 - All `MANUAL` and `ASSISTED` rows default to required unless explicitly documented optional.
 - Payer/template type must be persisted on each upload as `template_type = iehp_fba`.
+- DB-prefill claims must match the client snapshot actually sent to extraction; fields not present in that snapshot or in the uploaded document must stay assisted/manual.

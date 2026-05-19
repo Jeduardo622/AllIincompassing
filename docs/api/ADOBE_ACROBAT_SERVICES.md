@@ -75,4 +75,6 @@ Adobe's `uploadUri` and result `downloadUri` may point at Adobe-managed cloud st
 - `dcplatformstorageservice-prod-us-east-1.s3-accelerate.amazonaws.com`
 - `dcplatformstorageservice-prod-eu-west-1.s3.amazonaws.com`
 
-DOCX assessment uploads are still decoded locally. PDF uploads must use Adobe; missing credentials or Adobe failures produce `extraction_failed` with a redacted operator-facing error rather than falling back to legacy PDF parsing.
+DOCX assessment uploads are still decoded locally through Word XML text/table decoding (`extraction_provider = local_docx`). PDF uploads must use Adobe (`extraction_provider = adobe_pdf_extract`); missing credentials or Adobe failures produce `extraction_failed` with a redacted operator-facing error rather than falling back to legacy PDF parsing.
+
+For IEHP FBA, this means LE-style DOCX files are not sent to Adobe. Their field coverage depends on deterministic IEHP heading aliases and structured-section parsing in `supabase/functions/extract-assessment-fields/index.ts`; Adobe coverage applies only when the uploaded IEHP/assessment source is a PDF.

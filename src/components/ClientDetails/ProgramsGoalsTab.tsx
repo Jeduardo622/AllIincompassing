@@ -165,6 +165,23 @@ const isSupportedAssessmentFile = (file: File): boolean => {
   return SUPPORTED_ASSESSMENT_FILE_EXTENSIONS.some((extension) => lowerFileName.endsWith(extension));
 };
 
+const formatStructuredSectionPayload = (payload: unknown): string => {
+  if (payload == null) {
+    return "{}";
+  }
+
+  if (typeof payload === "string") {
+    return payload.trim() ? payload : "{}";
+  }
+
+  try {
+    const serialized = JSON.stringify(payload, null, 2);
+    return serialized && serialized.trim().length > 0 ? serialized : "{}";
+  } catch {
+    return "{}";
+  }
+};
+
 interface ProgramsGoalsTabProps {
   client: Client;
 }
@@ -489,6 +506,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const selectedAssessmentTemplateLabel = selectedAssessmentDocument
     ? TEMPLATE_LABELS[selectedAssessmentDocument.template_type]
     : TEMPLATE_LABELS[assessmentTemplateType];
+  const uploadAssessmentTemplateLabel = TEMPLATE_LABELS[assessmentTemplateType];
+  const selectedAssessmentIsIehp = selectedAssessmentDocument?.template_type === "iehp_fba";
+  const exportAssessmentPdfLabel = selectedAssessmentIsIehp
+    ? "IEHP PDF export not available"
+    : `Optional: Export Completed ${selectedAssessmentTemplateLabel} PDF`;
   useEffect(() => {
     if (!selectedAssessmentId || selectedAssessmentDocument?.status !== "drafted") {
       return;
@@ -562,7 +584,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       next[section.id] = {
         status: section.status,
         reviewNotes: section.review_notes ?? "",
-        payload: JSON.stringify(section.payload ?? {}, null, 2),
+        payload: formatStructuredSectionPayload(section.payload),
       };
     });
     setStructuredSectionEdits(next);
@@ -1227,7 +1249,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           <div ref={publishSectionRef} className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
               <UploadCloud className="w-4 h-4" />
-              CalOptima FBA Upload Workflow
+              {uploadAssessmentTemplateLabel} Upload Workflow
             </h3>
             <div className="space-y-3">
               <label htmlFor="programs-goals-fba-template" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
@@ -1269,7 +1291,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                     Uploading and processing...
                   </span>
                 ) : (
-                  `Upload ${TEMPLATE_LABELS[assessmentTemplateType]}`
+                  `Upload ${uploadAssessmentTemplateLabel}`
                 )}
               </button>
               {isUploadProcessing && (
@@ -1356,14 +1378,20 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => generateAssessmentPlanPdf.mutate()}
-                disabled={!canQuerySelectedAssessment || hasPendingRequiredChecklistItems || generateAssessmentPlanPdf.isLoading}
-                title={hasPendingRequiredChecklistItems ? "Approve all required checklist and structured fields before export." : undefined}
+                disabled={!canQuerySelectedAssessment || selectedAssessmentIsIehp || hasPendingRequiredChecklistItems || generateAssessmentPlanPdf.isLoading}
+                title={
+                  selectedAssessmentIsIehp
+                    ? "Completed PDF export is currently supported only for CalOptima FBA documents."
+                    : hasPendingRequiredChecklistItems
+                      ? "Approve all required checklist and structured fields before export."
+                      : undefined
+                }
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-violet-600 rounded-md hover:bg-violet-700 disabled:opacity-50"
               >
-                {generateAssessmentPlanPdf.isLoading ? "Generating..." : "Optional: Export Completed CalOptima PDF"}
+                {generateAssessmentPlanPdf.isLoading ? "Generating..." : exportAssessmentPdfLabel}
               </button>
+              </div>
             </div>
-          </div>
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Programs</h3>
@@ -1508,7 +1536,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 <p className="text-sm text-rose-600 dark:text-rose-300">
                   Checklist review failed to load. Publishing stays blocked until checklist rows can be reviewed.
                 </p>
-              ) : checklistBySection.length === 0 ? (
+              ) : checklistBySection.length === 0 && structuredSectionsBySection.length === 0 ? (
                 <p className="text-sm text-gray-500">Checklist not available yet for this assessment.</p>
               ) : (
                 <div className="space-y-4">
@@ -1600,12 +1628,14 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       </div>
                     </div>
                   ))}
-                  {structuredSectionsBySection.length > 0 && (
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
-                        Structured CalOptima Sections
-                      </h4>
-                      {structuredSectionsBySection.map(([section, rows]) => (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                      Structured {selectedAssessmentTemplateLabel} Sections
+                    </h4>
+                    {structuredSectionsBySection.length === 0 ? (
+                      <p className="text-sm text-gray-500">No structured sections available yet for this assessment.</p>
+                    ) : (
+                      structuredSectionsBySection.map(([section, rows]) => (
                         <div key={section} className="rounded-md border border-cyan-200 dark:border-cyan-900/60 p-3">
                           <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">
                             {section.replace(/_/g, " ")}
@@ -1615,7 +1645,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                               const edit = structuredSectionEdits[row.id] ?? {
                                 status: row.status,
                                 reviewNotes: row.review_notes ?? "",
-                                payload: JSON.stringify(row.payload ?? {}, null, 2),
+                                payload: formatStructuredSectionPayload(row.payload),
                               };
                               const isApprovedStatusLocked = row.status === "approved";
                               return (
@@ -1697,9 +1727,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                             })}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
             </div>

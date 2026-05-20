@@ -8,6 +8,13 @@
       "expiresAt": "2026-06-30"
     },
     {
+      "functionFile": "assessment-template-layout.ts",
+      "publicApiPath": "/api/assessment-template-layout",
+      "reason": "IEHP template layout metadata is read through a server API shim while assessment upload/review APIs remain on the legacy assessment workflow.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-06-30"
+    },
+    {
       "functionFile": "assessment-documents.ts",
       "publicApiPath": "/api/assessment-documents",
       "reason": "Document registration/extraction orchestration still runs through server API handler.",

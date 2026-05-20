@@ -323,6 +323,43 @@ const makeAutoField = (
   };
 };
 
+const IEHP_FIELD_PAGE_BY_KEY: Record<string, number> = {
+  IEHP_FBA_FIRST_NAME: 1,
+  IEHP_FBA_LAST_NAME: 1,
+  IEHP_FBA_BIRTH_DATE: 1,
+  IEHP_FBA_MEMBER_ID: 1,
+  IEHP_FBA_PRESENT_ADDRESS: 1,
+  IEHP_FBA_PARENT_GUARDIAN: 1,
+  IEHP_FBA_CONTACT_PHONE: 1,
+  IEHP_FBA_LANGUAGE: 1,
+  IEHP_FBA_REFERRAL_DATE: 1,
+  IEHP_FBA_REPORT_DATE: 1,
+  IEHP_FBA_ASSESSOR_CERTIFICATION: 1,
+  IEHP_FBA_ASSESSOR_PHONE: 1,
+  IEHP_FBA_REFERRING_PROVIDER: 2,
+  IEHP_FBA_REASON_FOR_REFERRAL: 2,
+  IEHP_FBA_BEHAVIOR_SKILL_TARGETS: 2,
+  IEHP_FBA_HOUSEHOLD_MEMBERS: 3,
+  IEHP_FBA_SCHOOL_INFORMATION_BLOCK: 3,
+  IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX: 4,
+  IEHP_FBA_HEALTH_MEDICAL_SUMMARY: 4,
+  IEHP_FBA_CURRENT_SERVICES_ACTIVITIES: 5,
+  IEHP_FBA_INTERVENTION_HISTORY: 5,
+  IEHP_FBA_BHT_AVAILABILITY_GRID: 6,
+  IEHP_FBA_ENVIRONMENTAL_ANALYSIS: 7,
+  IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE: 8,
+  IEHP_FBA_RECORDS_REVIEWED_TABLE: 9,
+  IEHP_FBA_PREFERENCE_ASSESSMENT_SUMMARY: 9,
+  IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES: 10,
+  IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS: 11,
+  IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS: 15,
+  IEHP_FBA_CRISIS_PLAN: 18,
+  IEHP_FBA_COORDINATION_OF_CARE: 19,
+  IEHP_FBA_DISCHARGE_TRANSITION_EXIT_PLAN: 20,
+  IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS: 23,
+  IEHP_FBA_SIGNATURE_BLOCK: 30,
+};
+
 const extractSelectedYesNo = (afterQuestion: string): "Yes" | "No" | null => {
   const normalized = afterQuestion.replace(/\s+/g, " ");
   const markerPattern = "(☒|â˜’|þ|\\[x\\]|x|☐|â˜|□|\\[\\s\\])";
@@ -720,12 +757,12 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
       field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
       section_key: "behavior_background_services",
       start: [/\bSchool Information\b/i],
-      end: [/\bHealth and Medical\b/i],
+      end: [/BHT\s*\(?School Hours\)?/i, /\bHealth and Medical\b/i],
     },
     {
       field_key: "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX",
       section_key: "behavior_background_services",
-      start: [/BHT\s*\(?School Hours\)?\s+M\s+Tu\s+W\s+Th\s+F/i],
+      start: [/BHT\s*\(?School Hours\)?/i, /School\s+Hours\s+M\s+Tu\s+W\s+Th\s+F/i],
       end: [/\bHealth and Medical\b/i],
     },
     {
@@ -755,7 +792,7 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
     {
       field_key: "IEHP_FBA_ENVIRONMENTAL_ANALYSIS",
       section_key: "behavior_background_services",
-      start: [/MEMBER’S ENVIRONMENTAL ANALYSIS/i],
+      start: [/MEMBER(?:’|'|`)?S?\s+ENVIRONMENTAL ANALYSIS/i, /Environmental Analysis/i],
       end: [/\bDESCRIPTION OF ASSESSMENT PROCEDURES\b/i],
     },
     {
@@ -797,7 +834,7 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
     {
       field_key: "IEHP_FBA_DISCHARGE_TRANSITION_EXIT_PLAN",
       section_key: "coordination",
-      start: [/Discharge,?\s*Transition and Exit Plans?/i, /Discharge Criteria\s*:/i],
+      start: [/Discharge,?\s*Transition and Exit Plans?/i, /Discharge Criteria\s*:/i, /Discharge Criteria/i],
       end: [/Recommendations and HCPCS/i, /Recommendations\s*:/i],
     },
     {
@@ -981,6 +1018,23 @@ const extractScalarSectionByKey = (key: string, text: string): string | null => 
 };
 
 const extractSignatureScalarByKey = (key: string, text: string): string | null => {
+  if (key === "IEHP_FBA_ASSESSOR_CERTIFICATION") {
+    const signatureBlock = extractSectionText(
+      text,
+      [/Report completed by:/i, /Report\s+completed\s+by/i],
+      [/end of document/i],
+    );
+    if (signatureBlock) {
+      const payload = normalizeIeHpSectionPayload("IEHP_FBA_SIGNATURE_BLOCK", signatureBlock);
+      const completedBy = typeof payload.completed_by === "string" ? payload.completed_by.trim() : "";
+      const credentials = typeof payload.credentials === "string" ? payload.credentials.trim() : "";
+      const combined = [completedBy, credentials].filter(Boolean).join(", ");
+      if (combined.length >= 3) {
+        return combined;
+      }
+    }
+  }
+
   const sectionText = extractSectionText(
     text,
     [/XVIII\.\s+SIGNATURES/i],
@@ -1579,13 +1633,22 @@ const extractStructuredSections = (text: string, templateType: AssessmentTemplat
 const withExtractionProviderSource = <T extends { source_span: Record<string, unknown> | null }>(
   item: T,
   extractionProvider: string,
-): T => ({
-  ...item,
-  source_span: {
-    ...(item.source_span ?? {}),
-    extraction_provider: extractionProvider,
-  },
-});
+): T => {
+  const fieldKey = "placeholder_key" in item && typeof item.placeholder_key === "string"
+    ? item.placeholder_key
+    : "field_key" in item && typeof item.field_key === "string"
+      ? item.field_key
+      : null;
+  const iehpPage = fieldKey ? IEHP_FIELD_PAGE_BY_KEY[fieldKey] ?? null : null;
+  return {
+    ...item,
+    source_span: {
+      ...(item.source_span ?? {}),
+      extraction_provider: extractionProvider,
+      ...(iehpPage ? { page_number: iehpPage, template_version_key: "iehp_fba_updated_fba_11_2026_05" } : {}),
+    },
+  };
+};
 
 export const __TESTING__ = {
   deterministicValueForRow,

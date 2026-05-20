@@ -43,6 +43,14 @@
       "authoritativeTarget": "extract-assessment-fields"
     },
     {
+      "publicApiPath": "/api/assessment-template-layout",
+      "functionFile": "assessment-template-layout.ts",
+      "status": "legacy_shim",
+      "owner": "Backend Platform",
+      "wave": "A",
+      "authoritativeTarget": "assessment_template_versions"
+    },
+    {
       "publicApiPath": "/api/assessment-documents",
       "functionFile": "assessment-documents.ts",
       "status": "migrating",

@@ -6,6 +6,7 @@
   ],
   "legacyCompatibilityFunctions": [
     "assessment-checklist.ts",
+    "assessment-template-layout.ts",
     "assessment-documents.ts",
     "assessment-drafts.ts",
     "assessment-plan-pdf.ts",

@@ -127,6 +127,9 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
         return { ok: true, status: 200, data: [{ id: "client-1" }] };
       }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
+      }
       if (
         method === "GET" &&
         url.includes(
@@ -465,6 +468,97 @@ describe("assessmentDocumentsHandler", () => {
       expect.stringContaining("/functions/v1/extract-assessment-fields"),
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("links IEHP uploads to the active template layout version before extraction", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([
+      {
+        section: "identification_admin",
+        label: "First Name",
+        placeholder_key: "IEHP_FBA_FIRST_NAME",
+        mode: "AUTO",
+        source: "clients.first_name",
+        required: true,
+        extraction_method: "database_prefill",
+        validation_rule: "non_empty_text",
+        status: "not_started",
+      },
+    ]);
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        expect(body).toMatchObject({
+          template_type: "iehp_fba",
+          template_version_id: "template-version-1",
+        });
+        return {
+          ok: true,
+          status: 201,
+          data: [{
+            id: "doc-iehp-template",
+            organization_id: "org-1",
+            client_id: "11111111-1111-1111-1111-111111111111",
+            template_version_id: "template-version-1",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) return { ok: true, status: 201, data: null };
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) return { ok: true, status: 201, data: null };
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) return { ok: true, status: 201, data: null };
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) return { ok: true, status: 200, data: null };
+      return { ok: false, status: 500, data: null };
+    });
+
+    const scheduled: string[] = [];
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "iehp.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/iehp.docx",
+          template_type: "iehp_fba",
+        }),
+      }),
+      {
+        scheduleCaloptimaExtraction: async ({ createdDocumentId }) => {
+          scheduled.push(createdDocumentId);
+          return { ok: true, status: 202 };
+        },
+      },
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      id: "doc-iehp-template",
+      status: "extracting",
+      template_version_id: "template-version-1",
+    });
+    expect(scheduled).toEqual(["doc-iehp-template"]);
+    expect(loadChecklistTemplateRows).toHaveBeenCalledWith("iehp_fba");
   });
 
   it("fails closed when scheduling CalOptima extraction throws after marking the document extracting", async () => {
@@ -2176,6 +2270,9 @@ describe("assessmentDocumentsHandler", () => {
             zip_code: "92503",
           }],
         };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         return {

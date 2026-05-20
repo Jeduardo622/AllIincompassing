@@ -65,6 +65,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/assessment-template-layout"
+  to = "/.netlify/functions/assessment-template-layout"
+  status = 200
+
+[[redirects]]
   from = "/api/assessment-drafts"
   to = "/.netlify/functions/assessment-drafts"
   status = 200

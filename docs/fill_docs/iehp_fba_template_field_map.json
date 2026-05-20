@@ -125,9 +125,9 @@
       {
         "label": "BHT School Hours Matrix",
         "placeholder_key": "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX",
-        "mode": "MANUAL",
-        "source": "N/A",
-        "notes": "M/Tu/W/Th/F + total and session time."
+        "mode": "ASSISTED",
+        "source": "uploaded_assessment_document or clinician_manual_entry",
+        "notes": "M/Tu/W/Th/F + total and session time; infer reviewable rows from School Information narrative when the table is absent."
       },
       {
         "label": "Health and Medical Summary",

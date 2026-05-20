@@ -461,6 +461,40 @@ Deno.test("extractStructuredSections recognizes blank-template IEHP heading alia
   expect((byKey.get("IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS")?.payload.rows as unknown[]).length).toBe(1);
 });
 
+Deno.test("extractStructuredSections handles LE-style DOCX run-split IEHP headings and school-hours fallback", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      BACKGROUND INFORMATION:
+      Living Situation
+      Member lives with caregivers.
+      School Information
+      Member attends Arlington High School. Her daily schedule runs from 8:30 AM to 3:00 PM,
+      with an early release time of 2:00 PM on Wednesdays.
+      Health and Medica l
+      Member takes prescribed medications and wears corrective glasses.
+      Current Services and Activitie s
+      School-based services only; no community-based therapies are currently reported.
+      Intervention Histor y
+      Prior ABA services ended in 2020 and briefly resumed in 2023.
+      Availability for Behavior Health Treatment Services
+      Monday Tuesday Wednesday Thursday Friday Saturday
+      After 3:30 PM After 3:30 PM After 3:30 PM After 3:30 PM After 3:30 PM Starting 9:00 AM
+      MEMBER’S ENVIRONMENTAL ANALYSIS:
+    `,
+  );
+
+  const byKey = new Map(sections.map((section) => [section.field_key, section]));
+  expect(byKey.get("IEHP_FBA_HEALTH_MEDICAL_SUMMARY")?.payload.raw_text).toContain("prescribed medications");
+  expect(byKey.get("IEHP_FBA_CURRENT_SERVICES_ACTIVITIES")?.payload.raw_text).toContain("School-based services");
+  expect(byKey.get("IEHP_FBA_INTERVENTION_HISTORY")?.payload.raw_text).toContain("briefly resumed in 2023");
+
+  const schoolHours = byKey.get("IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX")?.payload.rows as Array<Record<string, string>>;
+  expect(schoolHours).toHaveLength(5);
+  expect(schoolHours.find((row) => row.day === "Monday")?.end_time).toBe("3:00 PM");
+  expect(schoolHours.find((row) => row.day === "Wednesday")?.end_time).toBe("2:00 PM");
+});
+
 Deno.test("extractStructuredSections maps filled CalOptima redacted-report sections", () => {
   const sections = asSections("caloptima_fba", calOptimaRedactedStyleExcerpt);
   const byKey = new Map(sections.map((section) => [section.field_key, section]));
@@ -583,9 +617,23 @@ Deno.test("deterministicValueForRow keeps manual and assisted IEHP rows honest w
     },
     "Reason for Referral:\nCaregiver requested ABA assessment.\nBEHAVIORS",
   );
+  const assessorPhone = __TESTING__.deterministicValueForRow(
+    {
+      section: "identification_admin",
+      label: "Assessor's phone number",
+      placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+      required: true,
+      mode: "ASSISTED",
+    },
+    "Phone: (951) 224-7934",
+    { parent1_phone: "(951) 224-7934" },
+  );
 
   expect(assisted.mode).toBe("ASSISTED");
   expect(assisted.confidence ?? 1).toBeLessThan(0.8);
   expect(manual.mode).toBe("MANUAL");
   expect(manual.confidence ?? 1).toBeLessThan(0.6);
+  expect(assessorPhone.value_text).toBeNull();
+  expect(assessorPhone.status).toBe("not_started");
+  expect(assessorPhone.review_notes).toContain("reliable provider or organization source");
 });

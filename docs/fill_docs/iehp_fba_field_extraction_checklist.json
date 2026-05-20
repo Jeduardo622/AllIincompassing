@@ -256,15 +256,15 @@
       "section": "behavior_background_services",
       "label": "BHT School Hours Matrix",
       "placeholder_key": "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX",
-      "mode": "MANUAL",
-      "source": "N/A",
+      "mode": "ASSISTED",
+      "source": "uploaded_assessment_document or clinician_manual_entry",
       "required": true,
-      "extraction_method": "clinician_manual_entry",
+      "extraction_method": "deterministic_docx_or_pdf_structured_extract",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "M-F school-session matrix."
+      "review_notes": "Extract from BHT school-hours table when present; otherwise infer reviewable school hours from School Information narrative."
     },
     {
       "section": "behavior_background_services",

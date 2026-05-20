@@ -396,6 +396,16 @@ const extractIeHpLabelSummary = (text: string, start: RegExp, end: RegExp[]): st
   return normalizeExtractedValue(sectionText);
 };
 
+const IEHP_HEALTH_AND_MEDICAL_HEADING = /\bHealth\s+and\s+Medica\s*l\b/i;
+const IEHP_CURRENT_SERVICES_HEADING = /\bCurrent\s+Services\s+and\s+Activitie\s*s\b/i;
+const IEHP_INTERVENTION_HISTORY_HEADING = /\bIntervention\s+Histor\s*y\b/i;
+const IEHP_BHT_SCHOOL_HOURS_HEADING = /\bBHT\s*\(?School\s+Hours\)?\b/i;
+const IEHP_SCHOOL_HOURS_TABLE_HEADING = /\bSchool\s+Hours\s+M\s+Tu\s+W\s+Th\s+F\b/i;
+const IEHP_BHT_AVAILABILITY_HEADING = /\bBHT\s+Availability\b/i;
+const IEHP_BHT_SERVICES_AVAILABILITY_HEADING = /\bAvailability\s+for\s+BHT\s+Services\b/i;
+const IEHP_BEHAVIOR_HEALTH_TREATMENT_AVAILABILITY_HEADING =
+  /\bAvailability\s+for\s+Behavior\s+Health\s+Treatment\s+Services\b/i;
+
 const extractIeHpSection = (
   text: string,
   startAnchors: RegExp[],
@@ -541,6 +551,35 @@ const parseIeHpRecommendations = (rawText: string): Array<Record<string, string>
   return rows;
 };
 
+const parseIeHpSchoolHoursRows = (rawText: string): Array<Record<string, string | null>> => {
+  const compact = compactDocumentText(rawText);
+  const schoolDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  const timeRange = compact.match(/\b(?:runs?\s+)?from\s+(\d{1,2}:\d{2}\s*(?:AM|PM))\s+to\s+(\d{1,2}:\d{2}\s*(?:AM|PM))\b/i);
+  const earlyRelease = compact.match(/\bearly\s+release(?:\s+time)?\s+of\s+(\d{1,2}:\d{2}\s*(?:AM|PM))\s+on\s+Wednesdays?\b/i);
+  if (timeRange?.[1] && timeRange?.[2]) {
+    return schoolDays.map((day) => ({
+      day,
+      start_time: normalizeExtractedValue(timeRange[1] ?? ""),
+      end_time: day === "Wednesday" && earlyRelease?.[1]
+        ? normalizeExtractedValue(earlyRelease[1])
+        : normalizeExtractedValue(timeRange[2] ?? ""),
+      source: "school_information_narrative",
+    }));
+  }
+
+  const compactDays = ["M", "Tu", "W", "Th", "F"];
+  const timeMatches = [...compact.matchAll(/\b\d{1,2}:\d{2}\s*(?:AM|PM)\b/gi)].map((match) => normalizeExtractedValue(match[0]));
+  if (timeMatches.length >= 5 && /\bM\s+Tu\s+W\s+Th\s+F\b/i.test(compact)) {
+    return compactDays.map((day, index) => ({
+      day,
+      time: timeMatches[index] ?? null,
+      source: "school_hours_table",
+    }));
+  }
+
+  return [];
+};
+
 const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<string, unknown> => {
   const compact = compactDocumentText(rawText);
   if (fieldKey === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
@@ -556,6 +595,9 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
       raw_text: compact,
       rows: seenDays.map((day, index) => ({ day, availability: timeMatches[index] ?? null })),
     };
+  }
+  if (fieldKey === "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX") {
+    return { raw_text: compact, rows: parseIeHpSchoolHoursRows(compact) };
   }
   if (fieldKey === "IEHP_FBA_ENVIRONMENTAL_ANALYSIS") {
     const environmentalPrompts = [
@@ -757,36 +799,44 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
       field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
       section_key: "behavior_background_services",
       start: [/\bSchool Information\b/i],
-      end: [/BHT\s*\(?School Hours\)?/i, /\bHealth and Medical\b/i],
+      end: [IEHP_BHT_SCHOOL_HOURS_HEADING, IEHP_HEALTH_AND_MEDICAL_HEADING],
     },
     {
       field_key: "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX",
       section_key: "behavior_background_services",
-      start: [/BHT\s*\(?School Hours\)?/i, /School\s+Hours\s+M\s+Tu\s+W\s+Th\s+F/i],
-      end: [/\bHealth and Medical\b/i],
+      start: [IEHP_BHT_SCHOOL_HOURS_HEADING, IEHP_SCHOOL_HOURS_TABLE_HEADING],
+      end: [IEHP_HEALTH_AND_MEDICAL_HEADING],
     },
     {
       field_key: "IEHP_FBA_HEALTH_MEDICAL_SUMMARY",
       section_key: "behavior_background_services",
-      start: [/\bHealth and Medical\b/i],
-      end: [/\bCurrent Services and Activities\b/i],
+      start: [IEHP_HEALTH_AND_MEDICAL_HEADING],
+      end: [IEHP_CURRENT_SERVICES_HEADING],
     },
     {
       field_key: "IEHP_FBA_CURRENT_SERVICES_ACTIVITIES",
       section_key: "behavior_background_services",
-      start: [/\bCurrent Services and Activities\b/i],
-      end: [/\bIntervention History\b/i],
+      start: [IEHP_CURRENT_SERVICES_HEADING],
+      end: [IEHP_INTERVENTION_HISTORY_HEADING],
     },
     {
       field_key: "IEHP_FBA_INTERVENTION_HISTORY",
       section_key: "behavior_background_services",
-      start: [/\bIntervention History\b/i],
-      end: [/\bBHT Availability\b/i, /\bAvailability for BHT Services\b/i, /\bAvailability for Behavior Health Treatment Services\b/i],
+      start: [IEHP_INTERVENTION_HISTORY_HEADING],
+      end: [
+        IEHP_BHT_AVAILABILITY_HEADING,
+        IEHP_BHT_SERVICES_AVAILABILITY_HEADING,
+        IEHP_BEHAVIOR_HEALTH_TREATMENT_AVAILABILITY_HEADING,
+      ],
     },
     {
       field_key: "IEHP_FBA_BHT_AVAILABILITY_GRID",
       section_key: "behavior_background_services",
-      start: [/\bBHT Availability\b/i, /\bAvailability for BHT Services\b/i, /\bAvailability for Behavior Health Treatment Services\b/i],
+      start: [
+        IEHP_BHT_AVAILABILITY_HEADING,
+        IEHP_BHT_SERVICES_AVAILABILITY_HEADING,
+        IEHP_BEHAVIOR_HEALTH_TREATMENT_AVAILABILITY_HEADING,
+      ],
       end: [/MEMBER’S ENVIRONMENTAL ANALYSIS/i],
     },
     {
@@ -865,6 +915,28 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
       return { ...section, section_index };
     });
   });
+  const hasSchoolHoursSection = sections.some((section) => section.field_key === "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX");
+  const schoolInformationSection = sections.find((section) => section.field_key === "IEHP_FBA_SCHOOL_INFORMATION_BLOCK");
+  const schoolInformationText =
+    typeof schoolInformationSection?.payload.raw_text === "string" ? schoolInformationSection.payload.raw_text : "";
+  const schoolHoursRows = hasSchoolHoursSection ? [] : parseIeHpSchoolHoursRows(schoolInformationText);
+  if (schoolHoursRows.length > 0) {
+    const section_index = sectionIndexByFieldKey.get("IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX") ?? 0;
+    sectionIndexByFieldKey.set("IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX", section_index + 1);
+    sections.push({
+      section_key: "behavior_background_services",
+      field_key: "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX",
+      section_index,
+      payload: {
+        raw_text: schoolInformationText,
+        rows: schoolHoursRows,
+      },
+      source_span: { method: "iehp_school_information_hours_fallback" },
+      status: "drafted",
+      required: true,
+      review_notes: "Deterministic IEHP school-hours fallback extracted from School Information narrative.",
+    });
+  }
   sections.push(...extractIeHpProgramGoalSections(text, sectionIndexByFieldKey));
 
   const legacyTreatmentGoalSpan = extractIeHpSection(
@@ -1256,6 +1328,18 @@ const deterministicValueForRow = (
         review_notes: "Auto-filled from guardian snapshot.",
       };
     }
+  }
+  if (/ASSESSOR_PHONE/u.test(key)) {
+    return {
+      placeholder_key: key,
+      value_text: null,
+      value_json: null,
+      confidence: null,
+      mode: row.mode ?? "ASSISTED",
+      status: "not_started",
+      source_span: null,
+      review_notes: "Assessor phone requires a reliable provider or organization source.",
+    };
   }
   if (/CONTACT_PHONE|PHONE/u.test(key) && (client.parent1_phone || client.phone)) {
     return {

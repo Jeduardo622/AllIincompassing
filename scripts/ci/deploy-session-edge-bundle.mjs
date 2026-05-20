@@ -15,6 +15,7 @@ const REQUIRED_FUNCTIONS = [
   "goals",
   "program-notes",
   "emails",
+  "extract-assessment-fields",
 ];
 
 const EXPECT_VERIFY_JWT = String(process.env.CI_EXPECT_VERIFY_JWT ?? "true").toLowerCase() !== "false";

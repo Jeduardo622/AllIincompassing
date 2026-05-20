@@ -203,7 +203,7 @@ export const fetchTherapistIdsForUser = async (
     .map((row) => row.therapist_id)
     .filter((id): id is string => typeof id === 'string' && id.length > 0);
 
-  return Array.from(new Set(linkedIds));
+  return Array.from(new Set([...linkedIds, userId]));
 };
 
 export const fetchClients = async (

@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders, userEvent } from '../../test/utils';
 import { ClientDetails } from '../ClientDetails';
 import { supabase } from '../../lib/supabase';
-import { fetchClientById } from '../../lib/clients/fetchers';
+import { fetchClientByIdForViewer } from '../../lib/clients/fetchers';
 
 let mockLocationSearch = '';
 
@@ -24,7 +24,7 @@ vi.mock('react-router-dom', async () => {
 });
 
 vi.mock('../../lib/clients/fetchers', () => ({
-  fetchClientById: vi.fn(async () => ({
+  fetchClientByIdForViewer: vi.fn(async () => ({
     id: 'client-1',
     full_name: 'Alyana Perez',
     therapist_id: 'admin-user-id',
@@ -77,7 +77,7 @@ describe('ClientDetails page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLocationSearch = '';
-    vi.mocked(fetchClientById).mockResolvedValue({
+    vi.mocked(fetchClientByIdForViewer).mockResolvedValue({
       id: 'client-1',
       full_name: 'Alyana Perez',
       therapist_id: 'admin-user-id',
@@ -134,12 +134,7 @@ describe('ClientDetails page', () => {
 
   it('does not render Programs & Goals or summary queries for an unassigned therapist deeplink', async () => {
     mockLocationSearch = '?tab=programs-goals';
-    vi.mocked(fetchClientById).mockResolvedValue({
-      id: 'client-1',
-      full_name: 'Alyana Perez',
-      therapist_id: 'different-therapist-id',
-      authorized_hours_per_month: 12,
-    });
+    vi.mocked(fetchClientByIdForViewer).mockResolvedValue(null);
 
     renderWithProviders(<ClientDetails />, {
       auth: { role: 'therapist', userId: 'therapist-user-id' },
@@ -149,6 +144,37 @@ describe('ClientDetails page', () => {
 
     expect(screen.queryByText('ProgramsGoalsTabContent')).not.toBeInTheDocument();
     expect(supabase.from).not.toHaveBeenCalled();
+    expect(fetchClientByIdForViewer).toHaveBeenCalledWith({
+      clientId: 'client-1',
+      organizationId: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+      viewerRole: 'therapist',
+      userId: 'therapist-user-id',
+    });
+  });
+
+  it('allows a therapist whose auth user maps to a separate therapist row id', async () => {
+    mockLocationSearch = '?tab=programs-goals';
+    vi.mocked(fetchClientByIdForViewer).mockResolvedValue({
+      id: 'client-1',
+      full_name: 'Alyana Perez',
+      therapist_id: 'therapist-row-id',
+      authorized_hours_per_month: 12,
+    });
+
+    renderWithProviders(<ClientDetails />, {
+      auth: { role: 'therapist', userId: 'therapist-user-id' },
+    });
+
+    await waitFor(() => expect(screen.getByText('ProgramsGoalsTabContent')).toBeInTheDocument());
+
+    expect(fetchClientByIdForViewer).toHaveBeenCalledWith({
+      clientId: 'client-1',
+      organizationId: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+      viewerRole: 'therapist',
+      userId: 'therapist-user-id',
+    });
+    expect(supabase.from).toHaveBeenCalledWith('sessions');
+    expect(supabase.from).toHaveBeenCalledWith('client_issues');
   });
 
   it('does not render Programs & Goals or summary queries for a client viewing another record', async () => {

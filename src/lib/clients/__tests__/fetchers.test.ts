@@ -5,10 +5,12 @@ import { CLIENT_DETAIL_SELECT, CLIENT_LIST_SELECT } from '../select';
 import type { ClientsSupabaseClient } from '../fetchers';
 import {
   fetchClientById,
+  fetchClientByIdForViewer,
   fetchClientNotes,
   fetchClients,
   fetchGuardianClientById,
   fetchGuardianClients,
+  fetchTherapistIdsForUser,
 } from '../fetchers';
 
 describe('clients fetchers', () => {
@@ -117,6 +119,146 @@ describe('clients fetchers', () => {
     expect(firstEq).toHaveBeenCalledWith('organization_id', 'org-1');
     expect(secondEq).toHaveBeenCalledWith('id', 'client-123');
     expect(single).toHaveBeenCalled();
+  });
+
+  it('resolves therapist row ids from user therapist links', async () => {
+    const eq = vi.fn().mockResolvedValue({
+      data: [
+        { therapist_id: 'therapist-row-id' },
+        { therapist_id: 'therapist-row-id' },
+      ],
+      error: null,
+    });
+    const select = vi.fn().mockReturnValue({ eq });
+    const from = vi.fn().mockReturnValue({ select });
+
+    const result = await fetchTherapistIdsForUser('auth-user-id', { from } as any);
+
+    expect(from).toHaveBeenCalledWith('user_therapist_links');
+    expect(select).toHaveBeenCalledWith('therapist_id');
+    expect(eq).toHaveBeenCalledWith('user_id', 'auth-user-id');
+    expect(result).toEqual(['therapist-row-id']);
+  });
+
+  it('scopes therapist client-detail access to primary therapist row assignment', async () => {
+    const clientRow = {
+      id: 'client-1',
+      full_name: 'Primary Client',
+      organization_id: 'org-1',
+      therapist_id: 'therapist-row-id',
+    } as Client;
+
+    const userLinkEq = vi.fn().mockResolvedValue({
+      data: [{ therapist_id: 'therapist-row-id' }],
+      error: null,
+    });
+    const linkClientEq = vi.fn().mockResolvedValue({ data: [], error: null });
+    const maybeSingle = vi.fn().mockResolvedValue({ data: clientRow, error: null });
+    const therapistIn = vi.fn().mockReturnValue({ maybeSingle });
+    const idEq = vi.fn().mockReturnValue({ in: therapistIn });
+    const orgEq = vi.fn().mockReturnValue({ eq: idEq });
+    const clientsSelect = vi.fn().mockReturnValue({ eq: orgEq });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'user_therapist_links') {
+        return { select: vi.fn().mockReturnValue({ eq: userLinkEq }) };
+      }
+      if (table === 'client_therapist_links') {
+        return { select: vi.fn().mockReturnValue({ eq: linkClientEq }) };
+      }
+      return { select: clientsSelect };
+    });
+
+    const result = await fetchClientByIdForViewer({
+      clientId: 'client-1',
+      organizationId: 'org-1',
+      viewerRole: 'therapist',
+      userId: 'auth-user-id',
+      client: { from } as any,
+    });
+
+    expect(result).toBe(clientRow);
+    expect(from).toHaveBeenCalledWith('user_therapist_links');
+    expect(from).toHaveBeenCalledWith('client_therapist_links');
+    expect(from).toHaveBeenCalledWith('clients');
+    expect(therapistIn).toHaveBeenCalledWith('therapist_id', ['therapist-row-id']);
+  });
+
+  it('returns null for therapist client-detail access when not primary-assigned or linked', async () => {
+    const userLinkEq = vi.fn().mockResolvedValue({
+      data: [{ therapist_id: 'therapist-row-id' }],
+      error: null,
+    });
+    const linkClientEq = vi.fn().mockResolvedValue({ data: [], error: null });
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const therapistIn = vi.fn().mockReturnValue({ maybeSingle });
+    const idEq = vi.fn().mockReturnValue({ in: therapistIn });
+    const orgEq = vi.fn().mockReturnValue({ eq: idEq });
+    const clientsSelect = vi.fn().mockReturnValue({ eq: orgEq });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'user_therapist_links') {
+        return { select: vi.fn().mockReturnValue({ eq: userLinkEq }) };
+      }
+      if (table === 'client_therapist_links') {
+        return { select: vi.fn().mockReturnValue({ eq: linkClientEq }) };
+      }
+      return { select: clientsSelect };
+    });
+
+    const result = await fetchClientByIdForViewer({
+      clientId: 'client-foreign',
+      organizationId: 'org-1',
+      viewerRole: 'therapist',
+      userId: 'auth-user-id',
+      client: { from } as any,
+    });
+
+    expect(result).toBeNull();
+    expect(therapistIn).toHaveBeenCalledWith('therapist_id', ['therapist-row-id']);
+  });
+
+  it('allows therapist client-detail access through client therapist links', async () => {
+    const clientRow = {
+      id: 'client-linked',
+      full_name: 'Linked Client',
+      organization_id: 'org-1',
+      therapist_id: null,
+    } as Client;
+
+    const userLinkEq = vi.fn().mockResolvedValue({
+      data: [{ therapist_id: 'therapist-row-id' }],
+      error: null,
+    });
+    const linkClientEq = vi.fn().mockResolvedValue({
+      data: [{ client_id: 'client-linked' }],
+      error: null,
+    });
+    const maybeSingle = vi.fn().mockResolvedValue({ data: clientRow, error: null });
+    const idEq = vi.fn().mockReturnValue({ maybeSingle });
+    const orgEq = vi.fn().mockReturnValue({ eq: idEq });
+    const clientsSelect = vi.fn().mockReturnValue({ eq: orgEq });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'user_therapist_links') {
+        return { select: vi.fn().mockReturnValue({ eq: userLinkEq }) };
+      }
+      if (table === 'client_therapist_links') {
+        return { select: vi.fn().mockReturnValue({ eq: linkClientEq }) };
+      }
+      return { select: clientsSelect };
+    });
+
+    const result = await fetchClientByIdForViewer({
+      clientId: 'client-linked',
+      organizationId: 'org-1',
+      viewerRole: 'therapist',
+      userId: 'auth-user-id',
+      client: { from } as any,
+    });
+
+    expect(result).toBe(clientRow);
+    expect(idEq).toHaveBeenCalledWith('id', 'client-linked');
   });
 
   it('retrieves guardian portal clients via RPC', async () => {

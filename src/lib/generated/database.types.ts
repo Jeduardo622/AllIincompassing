@@ -2332,6 +2332,121 @@ export type Database = {
         }
         Relationships: []
       }
+      message_thread_participants: {
+        Row: {
+          archived_at: string | null
+          joined_at: string
+          last_read_at: string | null
+          muted_at: string | null
+          organization_id: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          joined_at?: string
+          last_read_at?: string | null
+          muted_at?: string | null
+          organization_id: string
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          joined_at?: string
+          last_read_at?: string | null
+          muted_at?: string | null
+          organization_id?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_thread_participants_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_thread_participants_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "message_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_threads: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          organization_id: string
+          subject: string | null
+          thread_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          organization_id: string
+          subject?: string | null
+          thread_type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          organization_id?: string
+          subject?: string | null
+          thread_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_threads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          sender_id: string
+          thread_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          sender_id: string
+          thread_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          sender_id?: string
+          thread_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "message_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversations: {
         Row: {
           created_at: string | null
@@ -5916,6 +6031,14 @@ export type Database = {
       assign_admin_role: {
         Args: { organization_id: string; reason?: string; user_email: string }
         Returns: undefined
+      }
+      create_staff_message_thread: {
+        Args: {
+          p_participant_user_ids: string[]
+          p_subject?: string
+          p_thread_type: string
+        }
+        Returns: string
       }
       assign_therapist_role:
         | { Args: { p_email: string; p_user_id: string }; Returns: undefined }

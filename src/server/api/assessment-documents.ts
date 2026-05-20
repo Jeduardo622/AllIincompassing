@@ -317,6 +317,31 @@ const templateTypeToDisplayLabel = (templateType: AssessmentTemplateType): strin
   return "CalOptima FBA";
 };
 
+const resolveActiveTemplateVersionId = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  templateType: AssessmentTemplateType;
+}): Promise<string | null> => {
+  if (args.templateType !== "iehp_fba") {
+    return null;
+  }
+
+  const result = await fetchJson<Array<{ id: string }>>(
+    `${args.supabaseUrl}/rest/v1/assessment_template_versions?select=id&template_type=eq.iehp_fba&status=eq.active&order=created_at.desc&limit=1`,
+    { method: "GET", headers: args.headers },
+  );
+  if (!result.ok) {
+    throw new ExtractionWorkflowError(
+      "template_version_load_failed",
+      "template_version_load_failed",
+      result.status,
+      "Unable to load the active IEHP template layout version.",
+    );
+  }
+  const row = Array.isArray(result.data) ? result.data[0] ?? null : null;
+  return typeof row?.id === "string" ? row.id : null;
+};
+
 const persistExtractionFailure = async (args: {
   supabaseUrl: string;
   headers: Record<string, string>;
@@ -968,11 +993,24 @@ export async function assessmentDocumentsHandler(
 
     const actorId = getAccessTokenSubject(accessToken);
     const templateType = parsed.data.template_type ?? "caloptima_fba";
+    let templateVersionId: string | null;
+    try {
+      templateVersionId = await resolveActiveTemplateVersionId({ supabaseUrl, headers, templateType });
+    } catch (error) {
+      const message = error instanceof ExtractionWorkflowError
+        ? error.publicMessage
+        : "Unable to load the active assessment template version.";
+      return jsonForRequest(request, { error: message }, error instanceof ExtractionWorkflowError ? error.status || 500 : 500);
+    }
+    if (templateType === "iehp_fba" && !templateVersionId) {
+      return jsonForRequest(request, { error: "Active IEHP FBA template layout version is not configured." }, 500);
+    }
     const createPayload = {
       organization_id: organizationId,
       client_id: parsed.data.client_id,
       uploaded_by: actorId,
       template_type: templateType,
+      template_version_id: templateVersionId,
       file_name: parsed.data.file_name,
       mime_type: parsed.data.mime_type,
       file_size: parsed.data.file_size,

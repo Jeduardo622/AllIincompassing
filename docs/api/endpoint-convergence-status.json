@@ -12,6 +12,14 @@
       "owner": "Backend Platform"
     },
     {
+      "functionFile": "assessment-template-layout.ts",
+      "publicApiPath": "/api/assessment-template-layout",
+      "edgeTarget": "assessment_template_versions",
+      "wave": "A",
+      "status": "legacy_shim",
+      "owner": "Backend Platform"
+    },
+    {
       "functionFile": "assessment-documents.ts",
       "publicApiPath": "/api/assessment-documents",
       "edgeTarget": "extract-assessment-fields",

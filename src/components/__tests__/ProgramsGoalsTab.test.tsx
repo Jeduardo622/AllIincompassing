@@ -1446,6 +1446,54 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
           { status: 200 },
         );
       }
+      if (method === "GET" && path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(
+          JSON.stringify({
+            template_version: {
+              version_key: "iehp_fba_updated_fba_11_2026_05",
+              source_document_name: "Updated FBA -IEHP (11).docx",
+              page_count: 30,
+            },
+            pages: [
+              { page_number: 1, title: "General Information", layout_json: {} },
+              { page_number: 30, title: "Signature Block", layout_json: {} },
+            ],
+            fields: [
+              {
+                page_number: 1,
+                section_key: "identification_admin",
+                field_key: "IEHP_FBA_FIRST_NAME",
+                label: "First Name",
+                field_type: "text",
+                mode: "AUTO",
+                required: true,
+                source: "clients.first_name",
+                layout_json: {},
+              },
+            ],
+            values: {
+              checklist_items: [
+                {
+                  id: "item-1",
+                  placeholder_key: "IEHP_FBA_FIRST_NAME",
+                  section_key: "identification_admin",
+                  label: "First Name",
+                  mode: "AUTO",
+                  required: true,
+                  status: "drafted",
+                  value_text: "Synthetic",
+                  value_json: null,
+                  review_notes: null,
+                },
+              ],
+              structured_sections: buildIehpStructuredSections(),
+            },
+            unresolved_required_count: 1,
+            extracted_value_count: 1,
+          }),
+          { status: 200 },
+        );
+      }
       if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
         return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
       }
@@ -1466,7 +1514,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(await screen.findByText("iehp-review.docx")).toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: /iehp-review\.docx/i })[0]);
     expect(await screen.findByRole("heading", { name: "IEHP FBA Checklist Review" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Structured IEHP FBA Sections" })).toBeInTheDocument();
+    expect(await screen.findByText("IEHP FBA document-style review")).toBeInTheDocument();
+    expect(await screen.findByText("Page 1: General Information")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /IEHP PDF export not available/i })).toBeDisabled();
     expect(
       screen.queryByRole("button", { name: /Optional: Export Completed CalOptima FBA PDF/i }),

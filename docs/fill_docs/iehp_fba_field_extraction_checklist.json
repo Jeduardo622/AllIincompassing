@@ -158,15 +158,15 @@
       "section": "identification_admin",
       "label": "Assessor/Certification",
       "placeholder_key": "IEHP_FBA_ASSESSOR_CERTIFICATION",
-      "mode": "AUTO",
-      "source": "therapists.full_name + therapists.title + license",
+      "mode": "ASSISTED",
+      "source": "uploaded_assessment_document or clinician_manual_entry",
       "required": true,
-      "extraction_method": "database_prefill",
+      "extraction_method": "deterministic_docx_or_pdf_structured_extract",
       "validation_rule": "non_empty_text",
       "status": "not_started",
-      "extraction_owner": "IntakeCoordinator",
-      "review_owner": "ClinicalReviewer",
-      "review_notes": "Match payer credential format."
+      "extraction_owner": "ClinicalAuthor",
+      "review_owner": "BCBAReviewer",
+      "review_notes": "Match payer credential format; do not auto-promote when provider credentials are unavailable."
     },
     {
       "section": "identification_admin",

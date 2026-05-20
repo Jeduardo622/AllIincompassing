@@ -286,6 +286,9 @@ Deno.test("extractStructuredSections maps LE-style IEHP headings into normalized
       Member lives with two caregivers and needs supervision.
       School Information
       Member attends a local high school.
+      BHT School Hours
+      M Tu W Th F Total
+      3:30 PM 3:30 PM 3:30 PM 3:30 PM 3:30 PM 10 hours
       Health and Medical
       Medical summary narrative.
       Current Services and Activities
@@ -366,6 +369,10 @@ Deno.test("extractStructuredSections maps LE-style IEHP headings into normalized
   const byKey = new Map(sections.map((section) => [section.field_key, section]));
   [
     "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+    "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX",
+    "IEHP_FBA_HEALTH_MEDICAL_SUMMARY",
+    "IEHP_FBA_CURRENT_SERVICES_ACTIVITIES",
+    "IEHP_FBA_INTERVENTION_HISTORY",
     "IEHP_FBA_BHT_AVAILABILITY_GRID",
     "IEHP_FBA_ENVIRONMENTAL_ANALYSIS",
     "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE",
@@ -380,6 +387,9 @@ Deno.test("extractStructuredSections maps LE-style IEHP headings into normalized
   ].forEach((fieldKey) => expect(byKey.has(fieldKey)).toBe(true));
 
   expect((byKey.get("IEHP_FBA_BHT_AVAILABILITY_GRID")?.payload.rows as unknown[]).length).toBeGreaterThan(4);
+  expect(byKey.get("IEHP_FBA_HEALTH_MEDICAL_SUMMARY")?.payload.raw_text).toContain("Medical summary narrative");
+  expect(byKey.get("IEHP_FBA_CURRENT_SERVICES_ACTIVITIES")?.payload.raw_text).toContain("School-based services");
+  expect(byKey.get("IEHP_FBA_INTERVENTION_HISTORY")?.payload.raw_text).toContain("Prior ABA ended last year");
   expect(byKey.get("IEHP_FBA_BEHAVIOR_SKILL_TARGETS")?.payload.targets).toEqual([
     "Physical Aggression",
     "Functional Communication",

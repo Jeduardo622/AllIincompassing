@@ -12,6 +12,7 @@ import {
   type AssessmentTemplateType,
 } from "../../lib/assessment-documents";
 import { supabase } from "../../lib/supabase";
+import { IehpFbaLayoutReview } from "./IehpFbaLayoutReview";
 import {
   EMPTY_ASSESSMENT_DOCUMENTS,
   EMPTY_ASSESSMENT_DRAFTS,
@@ -1614,6 +1615,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 <p className="text-sm text-rose-600 dark:text-rose-300">
                   Checklist review failed to load. Publishing stays blocked until checklist rows can be reviewed.
                 </p>
+              ) : selectedAssessmentIsIehp && selectedAssessmentDocument ? (
+                <IehpFbaLayoutReview
+                  assessmentDocument={selectedAssessmentDocument}
+                  organizationId={organizationId}
+                />
               ) : checklistBySection.length === 0 && structuredSectionsBySection.length === 0 ? (
                 <p className="text-sm text-gray-500">Checklist not available yet for this assessment.</p>
               ) : (

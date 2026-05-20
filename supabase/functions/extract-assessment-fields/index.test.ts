@@ -495,6 +495,110 @@ Deno.test("extractStructuredSections handles LE-style DOCX run-split IEHP headin
   expect(schoolHours.find((row) => row.day === "Wednesday")?.end_time).toBe("2:00 PM");
 });
 
+Deno.test("extractStructuredSections maps next-slice IEHP narratives, checkboxes, reinforcers, and page-aware goals", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      BHT (School Hours)
+      M Tu W Th F Total
+      8:00 AM 8:00 AM 8:00 AM 8:00 AM 8:00 AM
+      Member's last visit to the Primary Care Provider (PCP):
+      02/01/2026 with Sample PCP.
+      If the visit was more than one year ago, would the Member like assistance from IEHP in accessing care to their PCP?
+      ☒ Yes ☐ No
+      Health and Medical
+      Medical narrative.
+      Current Services and Activities
+      Services narrative.
+      Intervention History
+      Intervention narrative.
+      Availability for Behavior Health Treatment Services
+      Monday After 3:30 PM
+      MEMBER'S ENVIRONMENTAL ANALYSIS:
+      Availability and access to reinforcers: ☒ Yes ☐ No Available in home.
+      Availability of developmental toys/materials: ☐ Yes ☒ No Limited materials.
+      Appropriate space available for conducting sessions? FORMCHECKBOX Yes FORMCHECKBOX No
+      DESCRIPTION OF ASSESSMENT PROCEDURES:
+      Procedures: Date and Location: Person involved (indicate credentials):
+      Clinical Interview: 01/01/2026 home guardian interview.
+      1st Member Observation: 01/02/2026 home observation narrative.
+      2nd Member Observation: 01/03/2026 school observation narrative.
+      Records reviewed included:
+      Diagnostic Report (01/01/2026)
+      Preference Assessment
+      Caregiver reported interests and reinforcers.
+      Preference Areas
+      Social: praise, high fives
+      Sensory: rubber bands
+      Toys or Activities: music
+      Food: preferred snacks
+      Adaptive and Functional Measure Summaries
+      Assessment Summary: Adaptive summary.
+      Skill / Data Collected / Baseline / Location
+      Functional Communication Data Collected/Baseline: 20% independent at home
+      BEHAVIOR INTERVENTION PLAN
+      behavior intervention plan. All
+      School Goals:
+      Short term: Member will participate in class routines with prompting.
+      Parent Education:
+      Short term: Caregiver will identify ABC data.
+      Safety/Crisis Procedure
+      Safety narrative.
+      Coordination of Care:
+      Coordination narrative.
+      Discharge Criteria:
+      Discharge narrative.
+      Transition of Care:
+      Transition narrative.
+      Teaching Intervention Strategies
+      Use modeling, prompting, and reinforcement.
+      Family Involvement
+      Caregiver will participate during sessions.
+      Clinical Recommendations
+      CPT Description Units Requested
+      H2019 Therapeutic Behavioral Services, per 15 minutes 10 units
+      Report completed by:
+      Sample BCBA Date:
+    `,
+  );
+
+  const byKey = new Map(sections.map((section) => [section.field_key, section]));
+  expect(byKey.get("IEHP_FBA_PCP_VISIT_SUMMARY")?.payload.raw_text).toContain("Sample PCP");
+  expect(byKey.get("IEHP_FBA_PCP_VISIT_SUMMARY")?.required).toBe(false);
+  expect(byKey.get("IEHP_FBA_PCP_ASSISTANCE_REQUEST")?.payload.selected).toBe("yes");
+  expect(byKey.get("IEHP_FBA_PCP_ASSISTANCE_REQUEST")?.required).toBe(false);
+  expect(byKey.get("IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE")?.payload.raw_text).toContain("guardian interview");
+  expect(byKey.get("IEHP_FBA_FIRST_MEMBER_OBSERVATION")?.payload.raw_text).toContain("home observation");
+  expect(byKey.get("IEHP_FBA_SECOND_MEMBER_OBSERVATION")?.payload.raw_text).toContain("school observation");
+  expect((byKey.get("IEHP_FBA_PREFERENCE_REINFORCERS_TABLE")?.payload.rows as unknown[])).toHaveLength(4);
+  expect(byKey.get("IEHP_FBA_SKILL_BASELINE_LOCATION_TABLE")?.required).toBe(false);
+  expect(byKey.get("IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES")?.payload.raw_text).toContain("modeling");
+  expect(byKey.get("IEHP_FBA_FAMILY_INVOLVEMENT")?.payload.raw_text).toContain("Caregiver");
+
+  const environmentalRows = byKey.get("IEHP_FBA_ENVIRONMENTAL_ANALYSIS")?.payload.rows as Array<Record<string, unknown>>;
+  expect(environmentalRows.some((row) => row.selected === "yes")).toBe(true);
+  expect(environmentalRows.some((row) => row.selected === "no")).toBe(true);
+  expect(environmentalRows.some((row) => row.selected === "unknown")).toBe(true);
+
+  expect(
+    sections.some((section) =>
+      section.field_key === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS" &&
+      String(section.payload.raw_text ?? "").includes("behavior intervention plan. All")
+    ),
+  ).toBe(false);
+
+  const schoolGoal = sections.find((section) =>
+    section.field_key === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS" &&
+    String(section.payload.raw_text ?? "").includes("class routines")
+  );
+  const parentGoal = sections.find((section) =>
+    section.field_key === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS" &&
+    section.payload.goal_type === "parent"
+  );
+  expect(schoolGoal?.source_span?.page_number).toBe(16);
+  expect(parentGoal?.source_span?.page_number).toBe(17);
+});
+
 Deno.test("extractStructuredSections maps filled CalOptima redacted-report sections", () => {
   const sections = asSections("caloptima_fba", calOptimaRedactedStyleExcerpt);
   const byKey = new Map(sections.map((section) => [section.field_key, section]));

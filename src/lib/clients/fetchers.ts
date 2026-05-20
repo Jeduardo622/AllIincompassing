@@ -176,6 +176,36 @@ interface FetchClientsOptions {
   allowAll?: boolean;
 }
 
+type ClientRecordViewerRole = 'client' | 'therapist' | 'admin' | 'super_admin';
+
+interface FetchClientByIdForViewerOptions {
+  readonly clientId: string;
+  readonly organizationId: string;
+  readonly viewerRole: ClientRecordViewerRole;
+  readonly userId?: string | null;
+  readonly client?: ClientsSupabaseClient;
+}
+
+export const fetchTherapistIdsForUser = async (
+  userId: string,
+  client: ClientsSupabaseClient = supabase,
+): Promise<string[]> => {
+  const { data, error } = await client
+    .from('user_therapist_links')
+    .select('therapist_id')
+    .eq('user_id', userId);
+
+  if (error) {
+    throw error;
+  }
+
+  const linkedIds = (data ?? [])
+    .map((row) => row.therapist_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+  return Array.from(new Set(linkedIds));
+};
+
 export const fetchClients = async (
   options: FetchClientsOptions
 ): Promise<Client[]> => {
@@ -267,6 +297,57 @@ export const fetchClientById = async (
     .eq('organization_id', organizationId)
     .eq('id', clientId)
     .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? null) as Client | null;
+};
+
+export const fetchClientByIdForViewer = async ({
+  clientId,
+  organizationId,
+  viewerRole,
+  userId,
+  client: overrideClient,
+}: FetchClientByIdForViewerOptions): Promise<Client | null> => {
+  if (!organizationId) {
+    throw new Error('organizationId is required to fetch a client record');
+  }
+
+  const clientRef = overrideClient ?? supabase;
+
+  if (viewerRole !== 'therapist') {
+    return fetchClientById(clientId, organizationId, clientRef);
+  }
+
+  if (!userId) {
+    return null;
+  }
+
+  const therapistIds = await fetchTherapistIdsForUser(userId, clientRef);
+  if (therapistIds.length === 0) {
+    return null;
+  }
+
+  const linkedClientIdsByTherapist = await Promise.all(
+    therapistIds.map((therapistId) => fetchLinkedClientIdsForTherapist(clientRef, therapistId)),
+  );
+  const linkedClientIds = new Set(linkedClientIdsByTherapist.flat());
+  const isLinkedClient = linkedClientIds.has(clientId);
+
+  let query = clientRef
+    .from('clients')
+    .select(CLIENT_DETAIL_SELECT)
+    .eq('organization_id', organizationId)
+    .eq('id', clientId);
+
+  if (!isLinkedClient) {
+    query = query.in('therapist_id', therapistIds);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     throw error;

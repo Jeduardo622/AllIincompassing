@@ -3,7 +3,7 @@ import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { User, FileText, ClipboardCheck, Contact as FileContract, ArrowLeft, Calendar, AlertCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { fetchClientById } from '../lib/clients/fetchers';
+import { fetchClientByIdForViewer } from '../lib/clients/fetchers';
 import { ProfileTab } from '../components/ClientDetails/ProfileTab';
 import { SessionNotesTab } from '../components/ClientDetails/SessionNotesTab';
 import { PreAuthTab } from '../components/ClientDetails/PreAuthTab';
@@ -40,12 +40,17 @@ export function ClientDetails() {
   }, [initialTab]);
 
   const { data: client, isLoading, error: clientError } = useQuery({
-    queryKey: ['client', clientId, activeOrganizationId ?? 'MISSING_ORG'],
+    queryKey: ['client', clientId, activeOrganizationId ?? 'MISSING_ORG', effectiveRole, profile?.id ?? 'anonymous'],
     queryFn: async () => {
       if (!clientId) throw new Error('Client ID is required');
       if (!activeOrganizationId) throw new Error('Organization context is required to view client details');
 
-      return fetchClientById(clientId, activeOrganizationId);
+      return fetchClientByIdForViewer({
+        clientId,
+        organizationId: activeOrganizationId,
+        viewerRole: effectiveRole,
+        userId: profile?.id ?? null,
+      });
     },
     enabled: Boolean(clientId && activeOrganizationId),
   });
@@ -53,10 +58,8 @@ export function ClientDetails() {
   const isTherapistViewer = effectiveRole === 'therapist';
   const isClientViewer = effectiveRole === 'client';
   const viewingOwnClientRecord = Boolean(isClientViewer && client?.id === profile?.id);
-  const therapistOwnsClient = Boolean(isTherapistViewer && client?.therapist_id === profile?.id);
   const canViewClientRecord = Boolean(
     client &&
-      (!isTherapistViewer || therapistOwnsClient) &&
       (!isClientViewer || viewingOwnClientRecord),
   );
 
@@ -186,25 +189,7 @@ export function ClientDetails() {
     );
   }
 
-  if (!client) {
-    return (
-      <div className="bg-white dark:bg-dark-lighter rounded-lg shadow p-8 text-center">
-        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Client Not Found</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-6">
-          The client you're looking for doesn't exist or you don't have permission to view it.
-        </p>
-        <button
-          onClick={() => navigate('/clients')}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          Return to Clients
-        </button>
-      </div>
-    );
-  }
-
-  if (isTherapistViewer && !therapistOwnsClient) {
+  if (!client && isTherapistViewer) {
     return (
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg shadow p-8 text-red-700 dark:text-red-200">
         <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
@@ -219,6 +204,24 @@ export function ClientDetails() {
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Back to Clients
+        </button>
+      </div>
+    );
+  }
+
+  if (!client) {
+    return (
+      <div className="bg-white dark:bg-dark-lighter rounded-lg shadow p-8 text-center">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Client Not Found</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          The client you're looking for doesn't exist or you don't have permission to view it.
+        </p>
+        <button
+          onClick={() => navigate('/clients')}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Return to Clients
         </button>
       </div>
     );

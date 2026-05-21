@@ -59,6 +59,7 @@ interface AssessmentDocumentExtractionRow {
   client_id: string;
   status: string;
   template_type: AssessmentTemplateType;
+  template_version_id?: string | null;
   bucket_id: string | null;
   object_path: string | null;
   updated_at: string | null;
@@ -90,6 +91,16 @@ interface ClientSnapshotRow {
   city?: string | null;
   state?: string | null;
   zip_code?: string | null;
+}
+
+interface AssessmentTemplateFieldRow {
+  section_key?: string | null;
+  field_key?: string | null;
+  label?: string | null;
+  field_type?: string | null;
+  mode?: string | null;
+  required?: boolean | null;
+  source?: string | null;
 }
 
 const compactNullableRecord = <T extends Record<string, unknown>>(value: T): Partial<T> =>
@@ -340,6 +351,141 @@ const resolveActiveTemplateVersionId = async (args: {
   }
   const row = Array.isArray(result.data) ? result.data[0] ?? null : null;
   return typeof row?.id === "string" ? row.id : null;
+};
+
+const normalizeTemplateFieldMode = (mode: string | null | undefined): AssessmentChecklistSeedRow["mode"] => {
+  if (mode === "AUTO" || mode === "ASSISTED" || mode === "MANUAL") {
+    return mode;
+  }
+  return "ASSISTED";
+};
+
+const extractionMethodForTemplateField = (
+  mode: AssessmentChecklistSeedRow["mode"],
+  source: string,
+): string => {
+  const normalizedSource = source.toLowerCase();
+  if (normalizedSource.includes("uploaded_assessment_document")) {
+    return "deterministic_docx_or_pdf_structured_extract";
+  }
+  if (mode === "MANUAL" || normalizedSource.includes("clinician_manual_entry")) {
+    return "clinician_manual_entry";
+  }
+  if (
+    normalizedSource.includes("clients.") ||
+    normalizedSource.includes("therapists.") ||
+    normalizedSource.includes("company_settings") ||
+    normalizedSource.includes("today")
+  ) {
+    return "database_prefill";
+  }
+  if (mode === "ASSISTED") {
+    return "assisted_draft_plus_review";
+  }
+  return "database_prefill";
+};
+
+const validationRuleForTemplateField = (fieldType: string, required: boolean, fieldKey: string, label: string): string => {
+  const normalizedFieldType = fieldType.toLowerCase();
+  const normalizedFieldKey = fieldKey.toLowerCase();
+  const normalizedLabel = label.toLowerCase();
+  if (
+    normalizedFieldType.includes("signature") ||
+    normalizedFieldKey.includes("signature") ||
+    normalizedLabel.includes("signature")
+  ) {
+    return "signature_and_date_present";
+  }
+  if (normalizedFieldType.includes("table") || normalizedFieldType.includes("grid")) {
+    return required ? "structured_payload_required" : "optional_structured_payload";
+  }
+  if (normalizedFieldType.includes("date")) {
+    return required ? "date_mm_dd_yyyy_or_na" : "optional_date";
+  }
+  if (normalizedFieldType.includes("phone")) {
+    return required ? "phone_us_or_e164_or_na" : "optional_phone";
+  }
+  return required ? "non_empty_text" : "optional_text";
+};
+
+const normalizeTemplateFieldRow = (row: AssessmentTemplateFieldRow): AssessmentChecklistSeedRow | null => {
+  if (
+    typeof row.section_key !== "string" ||
+    row.section_key.trim().length === 0 ||
+    typeof row.field_key !== "string" ||
+    row.field_key.trim().length === 0 ||
+    typeof row.label !== "string" ||
+    row.label.trim().length === 0
+  ) {
+    return null;
+  }
+  const mode = normalizeTemplateFieldMode(row.mode);
+  const source = typeof row.source === "string" && row.source.trim().length > 0 ? row.source : "uploaded_assessment_document";
+  const fieldType = typeof row.field_type === "string" && row.field_type.trim().length > 0 ? row.field_type : "text";
+  const required = row.required === true;
+  return {
+    section: row.section_key,
+    label: row.label,
+    placeholder_key: row.field_key,
+    mode,
+    source,
+    required,
+    extraction_method: extractionMethodForTemplateField(mode, source),
+    validation_rule: validationRuleForTemplateField(fieldType, required, row.field_key, row.label),
+    status: "not_started",
+    extraction_owner: mode === "AUTO" ? "IntakeCoordinator" : "ClinicalAuthor",
+    review_owner: mode === "AUTO" ? "ClinicalReviewer" : "BCBAReviewer",
+  };
+};
+
+const loadIeHpChecklistTemplateRowsFromMetadata = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  templateVersionId: string;
+}): Promise<AssessmentChecklistSeedRow[]> => {
+  const result = await fetchJson<AssessmentTemplateFieldRow[]>(
+    `${args.supabaseUrl}/rest/v1/assessment_template_fields?select=section_key,field_key,label,field_type,mode,required,source&template_version_id=eq.${encodeURIComponent(
+      args.templateVersionId,
+    )}&order=page_number.asc,section_key.asc,field_key.asc`,
+    { method: "GET", headers: args.headers },
+  );
+  if (!result.ok) {
+    throw new ExtractionWorkflowError(
+      "iehp_template_fields_load_failed",
+      "iehp_template_fields_load_failed",
+      result.status,
+      "Unable to load IEHP template field metadata.",
+    );
+  }
+  const rows = Array.isArray(result.data) ? result.data.map(normalizeTemplateFieldRow).filter(Boolean) : [];
+  if (rows.length === 0) {
+    throw new ExtractionWorkflowError(
+      "iehp_template_fields_missing",
+      "iehp_template_fields_missing",
+      409,
+      "IEHP template field metadata is missing.",
+    );
+  }
+  return rows;
+};
+
+const loadChecklistRowsForAssessmentUpload = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  templateType: AssessmentTemplateType;
+  templateVersionId: string | null;
+}): Promise<AssessmentChecklistSeedRow[]> => {
+  if (args.templateType !== "iehp_fba") {
+    return loadChecklistTemplateRows(args.templateType);
+  }
+  if (!args.templateVersionId) {
+    return loadChecklistTemplateRows(args.templateType);
+  }
+  return loadIeHpChecklistTemplateRowsFromMetadata({
+    supabaseUrl: args.supabaseUrl,
+    headers: args.headers,
+    templateVersionId: args.templateVersionId,
+  });
 };
 
 const persistExtractionFailure = async (args: {
@@ -781,7 +927,7 @@ export async function assessmentDocumentsExtractionBackgroundHandler(request: Re
   };
 
   const documentResult = await fetchJson<AssessmentDocumentExtractionRow[]>(
-    `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path,updated_at&id=eq.${encodeURIComponent(
+    `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path,updated_at&id=eq.${encodeURIComponent(
       parsed.data.assessment_document_id,
     )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
     { method: "GET", headers },
@@ -857,7 +1003,12 @@ export async function assessmentDocumentsExtractionBackgroundHandler(request: Re
   }
 
   try {
-    const checklistRows = await loadChecklistTemplateRows(claimedDocument.template_type);
+    const checklistRows = await loadChecklistRowsForAssessmentUpload({
+      supabaseUrl,
+      headers,
+      templateType: claimedDocument.template_type,
+      templateVersionId: claimedDocument.template_version_id ?? null,
+    });
     await runBoundedCaloptimaExtractionWorkflow({
       supabaseUrl,
       headers,
@@ -1005,6 +1156,23 @@ export async function assessmentDocumentsHandler(
     if (templateType === "iehp_fba" && !templateVersionId) {
       return jsonForRequest(request, { error: "Active IEHP FBA template layout version is not configured." }, 500);
     }
+
+    let checklistRows: AssessmentChecklistSeedRow[];
+    try {
+      checklistRows = await loadChecklistRowsForAssessmentUpload({
+        supabaseUrl,
+        headers,
+        templateType,
+        templateVersionId,
+      });
+    } catch (error) {
+      if (error instanceof ExtractionWorkflowError) {
+        return jsonForRequest(request, { error: error.publicMessage }, error.status || 500);
+      }
+      const message = error instanceof Error ? error.message : "Unable to load checklist template rows.";
+      return jsonForRequest(request, { error: message }, 500);
+    }
+
     const createPayload = {
       organization_id: organizationId,
       client_id: parsed.data.client_id,
@@ -1034,13 +1202,6 @@ export async function assessmentDocumentsHandler(
 
     const createdDocument = createResult.data[0];
 
-    let checklistRows: AssessmentChecklistSeedRow[];
-    try {
-      checklistRows = await loadChecklistTemplateRows(templateType);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to load checklist template rows.";
-      return jsonForRequest(request, { error: message }, 500);
-    }
     const checklistInsertPayload = checklistRows.map((row) => ({
       assessment_document_id: createdDocument.id,
       organization_id: organizationId,

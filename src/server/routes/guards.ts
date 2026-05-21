@@ -93,6 +93,28 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
     supabasePolicies: ['public.authorizations: authorizations_org_read'],
   }),
   createGuard({
+    path: '/messages',
+    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['public.message_threads: participant_scoped_select'],
+  }),
+  // Static segment must precede `/messages/:threadId` or `new` is treated as a thread id.
+  createGuard({
+    path: '/messages/new',
+    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['public.message_threads: participant_scoped_insert'],
+  }),
+  createGuard({
+    path: '/messages/:threadId',
+    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: [
+      'public.message_threads: participant_scoped_select',
+      'public.messages: participant_scoped_select',
+    ],
+  }),
+  createGuard({
     path: '/billing',
     allowedRoles: ['admin', 'super_admin'],
     requiredPermissions: [],

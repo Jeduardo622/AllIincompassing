@@ -62,6 +62,15 @@ const Reports = React.lazy(() => import('./pages/Reports').then(module => ({ def
 const FamilyDashboard = React.lazy(() =>
   import('./pages/FamilyDashboard').then(module => ({ default: module.FamilyDashboard })),
 );
+const MessagesInbox = React.lazy(() =>
+  import('./pages/messages/MessagesInbox').then((module) => ({ default: module.MessagesInbox })),
+);
+const MessagesNew = React.lazy(() =>
+  import('./pages/messages/MessagesNew').then((module) => ({ default: module.MessagesNew })),
+);
+const MessageThread = React.lazy(() =>
+  import('./pages/messages/MessageThread').then((module) => ({ default: module.MessageThread })),
+);
 
 // Loading component
 const LoadingSpinner = () => (
@@ -230,6 +239,32 @@ function App() {
                         <Authorizations />
                       </RoleGuard>
                     } />
+
+                    {/* Staff messaging - therapists and above */}
+                    <Route
+                      path="messages"
+                      element={(
+                        <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                          <MessagesInbox />
+                        </RoleGuard>
+                      )}
+                    />
+                    <Route
+                      path="messages/new"
+                      element={(
+                        <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                          <MessagesNew />
+                        </RoleGuard>
+                      )}
+                    />
+                    <Route
+                      path="messages/:threadId"
+                      element={(
+                        <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                          <MessageThread />
+                        </RoleGuard>
+                      )}
+                    />
 
                     {/* Billing - admin and super_admin only */}
                     <Route path="billing" element={

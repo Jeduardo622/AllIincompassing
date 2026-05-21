@@ -108,6 +108,7 @@ describe("Sidebar navigation active styling", () => {
     expect(screen.queryByRole("link", { name: /documentation/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /fill docs/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /schedule/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /messages/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /clients/i })).toBeInTheDocument();
   });
 
@@ -175,6 +176,7 @@ describe("Sidebar navigation active styling", () => {
 
     expect(screen.queryByRole("button", { name: /chat assistant/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId("chatbot-mock")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /messages/i })).not.toBeInTheDocument();
   });
 
   it("lazily loads the chat assistant only when opened", async () => {
@@ -216,6 +218,18 @@ describe("Sidebar navigation active styling", () => {
     fireEvent.focus(screen.getByRole("link", { name: /schedule/i }));
 
     expect(mockPreloadRouteModule).toHaveBeenCalledWith("/schedule");
+  });
+
+  it("prefetches messages route module on hover intent", async () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    await userEvent.hover(screen.getByRole("link", { name: /messages/i }));
+
+    expect(mockPreloadRouteModule).toHaveBeenCalledWith("/messages");
   });
 
   it("hides family navigation for non-guardian clients", () => {

@@ -58,14 +58,17 @@ export function StaffRecipientPicker({
           </p>
         ) : (
           <ul className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-            {recipients.map((recipient) => (
+            {recipients.map((recipient) => {
+              const isDirect = threadType === 'direct';
+              return (
               <li key={recipient.id}>
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <input
-                    type="checkbox"
+                    type={isDirect ? 'radio' : 'checkbox'}
+                    name={isDirect ? 'staff-direct-recipient' : undefined}
                     checked={selectedIds.includes(recipient.id)}
                     onChange={() => onToggle(recipient.id)}
-                    disabled={disabled || (threadType === 'direct' && selectedIds.length >= 1 && !selectedIds.includes(recipient.id))}
+                    disabled={disabled}
                     data-testid={`staff-recipient-${recipient.id}`}
                   />
                   <span>
@@ -74,7 +77,8 @@ export function StaffRecipientPicker({
                   </span>
                 </label>
               </li>
-            ))}
+            );
+            })}
           </ul>
         )}
       </div>

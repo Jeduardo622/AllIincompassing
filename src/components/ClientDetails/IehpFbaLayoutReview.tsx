@@ -45,6 +45,7 @@ interface StructuredValue {
   field_key: string;
   section_index: number;
   payload: Record<string, unknown>;
+  source_span?: Record<string, unknown> | null;
   status: StructuredReviewStatus;
   required: boolean;
   review_notes: string | null;
@@ -113,6 +114,11 @@ const getFieldInputRows = (fieldType: string): number => {
   return 2;
 };
 
+const getStructuredSectionPageNumber = (section: StructuredValue): number | null => {
+  const pageNumber = section.source_span?.page_number;
+  return typeof pageNumber === "number" ? pageNumber : null;
+};
+
 export function IehpFbaLayoutReview({
   assessmentDocument,
   organizationId,
@@ -166,6 +172,15 @@ export function IehpFbaLayoutReview({
 
   const activePageFields = fieldsByPage.get(activePage) ?? [];
   const activePageMeta = data.pages.find((page) => page.page_number === activePage);
+  const activePageFieldKeys = useMemo(() => new Set(activePageFields.map((field) => field.field_key)), [activePageFields]);
+  const activePageLooseStructuredSections = useMemo(
+    () =>
+      data.values.structured_sections.filter((section) => {
+        const pageNumber = getStructuredSectionPageNumber(section);
+        return pageNumber === activePage && !activePageFieldKeys.has(section.field_key);
+      }),
+    [activePage, activePageFieldKeys, data.values.structured_sections],
+  );
 
   const saveField = useMutation({
     mutationFn: async (field: TemplateField) => {
@@ -276,7 +291,12 @@ export function IehpFbaLayoutReview({
         <nav aria-label="IEHP FBA page navigation" className="max-h-[44rem] space-y-1 overflow-auto rounded-md border border-gray-200 p-2 dark:border-gray-700">
           {data.pages.map((page) => {
             const pageFields = fieldsByPage.get(page.page_number) ?? [];
+            const pageStructured = data.values.structured_sections.filter(
+              (section) => getStructuredSectionPageNumber(section) === page.page_number,
+            );
             const approved = pageFields.filter((field) => checklistByKey.get(field.field_key)?.status === "approved").length;
+            const approvedStructured = pageStructured.filter((section) => section.status === "approved").length;
+            const totalRows = pageFields.length + pageStructured.length;
             return (
               <button
                 key={page.page_number}
@@ -291,7 +311,7 @@ export function IehpFbaLayoutReview({
                 <span className="block font-semibold">Page {page.page_number}</span>
                 <span className="block truncate">{page.title}</span>
                 <span className="block text-[11px] opacity-80">
-                  {approved}/{pageFields.length} approved
+                  {approved + approvedStructured}/{totalRows} approved
                 </span>
               </button>
             );
@@ -309,7 +329,7 @@ export function IehpFbaLayoutReview({
               </h4>
             </div>
 
-            {activePageFields.length === 0 ? (
+            {activePageFields.length === 0 && activePageLooseStructuredSections.length === 0 ? (
               <div className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
                 This template page is represented for layout parity. No mapped checklist field lands on this page yet.
               </div>
@@ -322,7 +342,10 @@ export function IehpFbaLayoutReview({
                     reviewNotes: item?.review_notes ?? "",
                     status: item?.status ?? "not_started",
                   };
-                  const structuredSections = structuredByKey.get(field.field_key) ?? [];
+                  const structuredSections = (structuredByKey.get(field.field_key) ?? []).filter((section) => {
+                    const pageNumber = getStructuredSectionPageNumber(section);
+                    return pageNumber === null || pageNumber === activePage;
+                  });
                   const locked = item?.status === "approved";
                   return (
                     <div key={field.field_key} className="rounded-md border border-slate-300 p-3">
@@ -502,6 +525,101 @@ export function IehpFbaLayoutReview({
                     </div>
                   );
                 })}
+                {activePageLooseStructuredSections.length > 0 && (
+                  <div className="rounded-md border border-slate-300 p-3">
+                    <div className="mb-2">
+                      <p className="text-sm font-semibold text-slate-900">Page-specific structured sections</p>
+                      <p className="text-[11px] text-slate-500">
+                        Extracted content placed on this IEHP page by document source metadata.
+                      </p>
+                    </div>
+                    <div className="space-y-2 rounded bg-slate-50 p-2 text-xs text-slate-700">
+                      {activePageLooseStructuredSections.map((section) => {
+                        const structuredEdit = structuredEdits[section.id] ?? {
+                          payloadText: formatPayloadPreview(section.payload),
+                          reviewNotes: section.review_notes ?? "",
+                          status: section.status,
+                        };
+                        const structuredLocked = section.status === "approved";
+                        return (
+                          <div key={section.id} className="rounded border border-slate-200 bg-white p-2">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <span className="font-semibold">
+                                {section.field_key} section {section.section_index + 1} • {section.status}
+                              </span>
+                              {structuredLocked && (
+                                <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">locked after approval</span>
+                              )}
+                            </div>
+                            <textarea
+                              value={structuredEdit.payloadText}
+                              rows={4}
+                              disabled={structuredLocked}
+                              onChange={(event) =>
+                                setStructuredEdits((current) => ({
+                                  ...current,
+                                  [section.id]: {
+                                    ...structuredEdit,
+                                    payloadText: event.target.value,
+                                  },
+                                }))
+                              }
+                              className="w-full rounded border border-slate-300 bg-white p-2 font-mono text-xs text-slate-950 disabled:bg-slate-100"
+                              aria-label={`${section.field_key} structured section ${section.section_index + 1} payload`}
+                            />
+                            <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
+                              <select
+                                value={structuredEdit.status}
+                                disabled={structuredLocked}
+                                onChange={(event) =>
+                                  setStructuredEdits((current) => ({
+                                    ...current,
+                                    [section.id]: {
+                                      ...structuredEdit,
+                                      status: event.target.value as StructuredReviewStatus,
+                                    },
+                                  }))
+                                }
+                                className="rounded border border-slate-300 bg-white p-2 text-sm disabled:bg-slate-100"
+                                aria-label={`${section.field_key} structured section ${section.section_index + 1} status`}
+                              >
+                                {STRUCTURED_STATUS_OPTIONS.map((status) => (
+                                  <option key={status} value={status}>
+                                    {status}
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                value={structuredEdit.reviewNotes}
+                                disabled={structuredLocked}
+                                onChange={(event) =>
+                                  setStructuredEdits((current) => ({
+                                    ...current,
+                                    [section.id]: {
+                                      ...structuredEdit,
+                                      reviewNotes: event.target.value,
+                                    },
+                                  }))
+                                }
+                                className="rounded border border-slate-300 bg-white p-2 text-sm disabled:bg-slate-100"
+                                placeholder="Structured section review notes"
+                                aria-label={`${section.field_key} structured section ${section.section_index + 1} review notes`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => saveStructuredSection.mutate(section)}
+                                disabled={saveStructuredSection.isLoading || structuredLocked}
+                                className="rounded bg-slate-800 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+                              >
+                                Save section
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

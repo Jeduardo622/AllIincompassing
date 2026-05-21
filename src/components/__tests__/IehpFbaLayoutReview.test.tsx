@@ -227,4 +227,220 @@ describe("IehpFbaLayoutReview", () => {
       );
     });
   });
+
+  it("renders next-slice IEHP fields and page-aware structured goals on expected pages", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [
+            { page_number: 16, title: "School Goals", layout_json: {} },
+            { page_number: 17, title: "Parent Education Goals", layout_json: {} },
+            { page_number: 24, title: "Recommendation Notes", layout_json: {} },
+            { page_number: 25, title: "Caregiver Participation", layout_json: {} },
+            { page_number: 26, title: "Treatment Plan Review", layout_json: {} },
+            { page_number: 27, title: "Additional Notes", layout_json: {} },
+            { page_number: 28, title: "Appendix and Supporting Information", layout_json: {} },
+          ],
+          fields: [
+            {
+              page_number: 24,
+              section_key: "treatment_coordination_recommendations",
+              field_key: "IEHP_FBA_RECOMMENDATION_NOTES",
+              label: "Recommendation Notes",
+              field_type: "textarea",
+              mode: "MANUAL",
+              required: false,
+              source: "clinician_manual_entry when template page is used",
+              layout_json: {},
+            },
+            {
+              page_number: 25,
+              section_key: "treatment_coordination_recommendations",
+              field_key: "IEHP_FBA_CAREGIVER_PARTICIPATION",
+              label: "Caregiver Participation",
+              field_type: "textarea",
+              mode: "MANUAL",
+              required: false,
+              source: "clinician_manual_entry when template page is used",
+              layout_json: {},
+            },
+            {
+              page_number: 26,
+              section_key: "treatment_coordination_recommendations",
+              field_key: "IEHP_FBA_TREATMENT_PLAN_REVIEW",
+              label: "Treatment Plan Review",
+              field_type: "textarea",
+              mode: "MANUAL",
+              required: false,
+              source: "clinician_manual_entry when template page is used",
+              layout_json: {},
+            },
+            {
+              page_number: 27,
+              section_key: "treatment_coordination_recommendations",
+              field_key: "IEHP_FBA_ADDITIONAL_NOTES",
+              label: "Additional Notes",
+              field_type: "textarea",
+              mode: "MANUAL",
+              required: false,
+              source: "clinician_manual_entry when template page is used",
+              layout_json: {},
+            },
+            {
+              page_number: 28,
+              section_key: "treatment_coordination_recommendations",
+              field_key: "IEHP_FBA_APPENDIX_SUPPORTING_INFORMATION",
+              label: "Appendix and Supporting Information",
+              field_type: "textarea",
+              mode: "MANUAL",
+              required: false,
+              source: "clinician_manual_entry when template page is used",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-24",
+                placeholder_key: "IEHP_FBA_RECOMMENDATION_NOTES",
+                section_key: "treatment_coordination_recommendations",
+                label: "Recommendation Notes",
+                mode: "MANUAL",
+                required: false,
+                status: "not_started",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+              {
+                id: "item-25",
+                placeholder_key: "IEHP_FBA_CAREGIVER_PARTICIPATION",
+                section_key: "treatment_coordination_recommendations",
+                label: "Caregiver Participation",
+                mode: "MANUAL",
+                required: false,
+                status: "not_started",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+              {
+                id: "item-26",
+                placeholder_key: "IEHP_FBA_TREATMENT_PLAN_REVIEW",
+                section_key: "treatment_coordination_recommendations",
+                label: "Treatment Plan Review",
+                mode: "MANUAL",
+                required: false,
+                status: "not_started",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+              {
+                id: "item-27",
+                placeholder_key: "IEHP_FBA_ADDITIONAL_NOTES",
+                section_key: "treatment_coordination_recommendations",
+                label: "Additional Notes",
+                mode: "MANUAL",
+                required: false,
+                status: "not_started",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+              {
+                id: "item-28",
+                placeholder_key: "IEHP_FBA_APPENDIX_SUPPORTING_INFORMATION",
+                section_key: "treatment_coordination_recommendations",
+                label: "Appendix and Supporting Information",
+                mode: "MANUAL",
+                required: false,
+                status: "not_started",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "33333333-3333-4333-8333-333333333333",
+                field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+                section_index: 0,
+                payload: { raw_text: "School goal narrative" },
+                source_span: { page_number: 16 },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+              {
+                id: "44444444-4444-4444-8444-444444444444",
+                field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+                section_index: 1,
+                payload: { raw_text: "Parent education goal narrative" },
+                source_span: { page_number: 17 },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          },
+          unresolved_required_count: 2,
+          extracted_value_count: 0,
+        }), { status: 200 });
+      }
+      if (path === "/api/assessment-checklist" && (init?.method ?? "").toUpperCase() === "PATCH") {
+        return new Response(JSON.stringify({ id: "33333333-3333-4333-8333-333333333333", status: "verified" }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 16/i }));
+    expect(await screen.findByText("Page 16: School Goals")).toBeInTheDocument();
+    expect(screen.getByText(/School goal narrative/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS structured section 1 status"), {
+      target: { value: "verified" },
+    });
+    screen.getByRole("button", { name: "Save section" }).click();
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-checklist",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining("\"structured_section_id\":\"33333333-3333-4333-8333-333333333333\""),
+        }),
+      );
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-checklist",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining("\"status\":\"verified\""),
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Page 17/i }));
+    expect(await screen.findByText("Page 17: Parent Education Goals")).toBeInTheDocument();
+    expect(screen.getByText(/Parent education goal narrative/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Page 24/i }));
+    expect(await screen.findByLabelText("Recommendation Notes")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Page 25/i }));
+    expect(await screen.findByLabelText("Caregiver Participation")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Page 26/i }));
+    expect(await screen.findByLabelText("Treatment Plan Review")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Page 27/i }));
+    expect(await screen.findByLabelText("Additional Notes")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Page 28/i }));
+    expect(await screen.findByLabelText("Appendix and Supporting Information")).toBeInTheDocument();
+    expect(screen.queryByText(/CalOptima/i)).not.toBeInTheDocument();
+  });
 });

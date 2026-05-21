@@ -1,7 +1,7 @@
 {
   "FBA": {
     "template": "Inland Empire Health Plan Functional Behavioral Assessment Report",
-    "source_document": "Updated FBA -IEHP (2).docx",
+    "source_document": "Updated FBA -IEHP (11).docx",
     "labels": [
       {
         "label": "First Name",
@@ -130,6 +130,20 @@
         "notes": "M/Tu/W/Th/F + total and session time; infer reviewable rows from School Information narrative when the table is absent."
       },
       {
+        "label": "Primary Care Provider Visit Summary",
+        "placeholder_key": "IEHP_FBA_PCP_VISIT_SUMMARY",
+        "mode": "MANUAL",
+        "source": "uploaded_assessment_document when present; otherwise clinician_manual_entry",
+        "notes": "Optional PCP last-visit row."
+      },
+      {
+        "label": "IEHP Assistance Accessing PCP",
+        "placeholder_key": "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
+        "mode": "MANUAL",
+        "source": "uploaded_assessment_document when present; otherwise clinician_manual_entry",
+        "notes": "Optional yes/no PCP assistance request."
+      },
+      {
         "label": "Health and Medical Summary",
         "placeholder_key": "IEHP_FBA_HEALTH_MEDICAL_SUMMARY",
         "mode": "MANUAL",
@@ -172,6 +186,27 @@
         "notes": "Procedure, date/location, people/credentials."
       },
       {
+        "label": "Clinical Interview Narrative",
+        "placeholder_key": "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
+        "mode": "ASSISTED",
+        "source": "uploaded_assessment_document",
+        "notes": "Clinical interview narrative."
+      },
+      {
+        "label": "First Member Observation Narrative",
+        "placeholder_key": "IEHP_FBA_FIRST_MEMBER_OBSERVATION",
+        "mode": "ASSISTED",
+        "source": "uploaded_assessment_document",
+        "notes": "First observation narrative."
+      },
+      {
+        "label": "Second Member Observation Narrative",
+        "placeholder_key": "IEHP_FBA_SECOND_MEMBER_OBSERVATION",
+        "mode": "ASSISTED",
+        "source": "uploaded_assessment_document",
+        "notes": "Second observation narrative."
+      },
+      {
         "label": "Records Reviewed Table",
         "placeholder_key": "IEHP_FBA_RECORDS_REVIEWED_TABLE",
         "mode": "MANUAL",
@@ -186,11 +221,25 @@
         "notes": "Preference areas and potential reinforcers."
       },
       {
+        "label": "Preference Areas and Potential Reinforcers",
+        "placeholder_key": "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
+        "mode": "ASSISTED",
+        "source": "uploaded_assessment_document",
+        "notes": "Structured preference area/reinforcer rows."
+      },
+      {
         "label": "Adaptive and Functional Measure Summaries",
         "placeholder_key": "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
         "mode": "MANUAL",
         "source": "N/A",
         "notes": "VB-MAPP, Vineland, ABAS-3, AFLS summary data."
+      },
+      {
+        "label": "Skill / Data Collected / Baseline / Location",
+        "placeholder_key": "IEHP_FBA_SKILL_BASELINE_LOCATION_TABLE",
+        "mode": "ASSISTED",
+        "source": "uploaded_assessment_document when present; otherwise clinician_manual_entry",
+        "notes": "Optional skill/data/baseline/location table."
       },
       {
         "label": "Target Behavior and Intervention Blocks",
@@ -228,11 +277,60 @@
         "notes": "Graduation criteria, timeline, documentation expectations."
       },
       {
+        "label": "Teaching Intervention Strategies",
+        "placeholder_key": "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES",
+        "mode": "ASSISTED",
+        "source": "uploaded_assessment_document",
+        "notes": "Teaching intervention strategies narrative."
+      },
+      {
+        "label": "Family Involvement",
+        "placeholder_key": "IEHP_FBA_FAMILY_INVOLVEMENT",
+        "mode": "ASSISTED",
+        "source": "uploaded_assessment_document",
+        "notes": "Family involvement narrative."
+      },
+      {
         "label": "Recommendations and HCPCS Rows",
         "placeholder_key": "IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS",
         "mode": "ASSISTED",
         "source": "authorization/planning payload",
         "notes": "H2019/H0032/H0032-HO/H0032-HP/S5111/H2014 rows."
+      },
+      {
+        "label": "Recommendation Notes",
+        "placeholder_key": "IEHP_FBA_RECOMMENDATION_NOTES",
+        "mode": "MANUAL",
+        "source": "clinician_manual_entry when template page is used",
+        "notes": "Page 24 continuation bucket."
+      },
+      {
+        "label": "Caregiver Participation",
+        "placeholder_key": "IEHP_FBA_CAREGIVER_PARTICIPATION",
+        "mode": "MANUAL",
+        "source": "clinician_manual_entry when template page is used",
+        "notes": "Page 25 continuation bucket."
+      },
+      {
+        "label": "Treatment Plan Review",
+        "placeholder_key": "IEHP_FBA_TREATMENT_PLAN_REVIEW",
+        "mode": "MANUAL",
+        "source": "clinician_manual_entry when template page is used",
+        "notes": "Page 26 continuation bucket."
+      },
+      {
+        "label": "Additional Notes",
+        "placeholder_key": "IEHP_FBA_ADDITIONAL_NOTES",
+        "mode": "MANUAL",
+        "source": "clinician_manual_entry when template page is used",
+        "notes": "Page 27 continuation bucket."
+      },
+      {
+        "label": "Appendix and Supporting Information",
+        "placeholder_key": "IEHP_FBA_APPENDIX_SUPPORTING_INFORMATION",
+        "mode": "MANUAL",
+        "source": "clinician_manual_entry when template page is used",
+        "notes": "Page 28 continuation bucket."
       },
       {
         "label": "Signature Block",

@@ -130,6 +130,21 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
         return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
       }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_fields?select=")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            section_key: "behavior_background_services",
+            field_key: "IEHP_FBA_BHT_AVAILABILITY_GRID",
+            label: "BHT Availability Grid",
+            field_type: "checkbox_grid",
+            mode: "ASSISTED",
+            required: true,
+            source: "uploaded_assessment_document",
+          }],
+        };
+      }
       if (
         method === "GET" &&
         url.includes(
@@ -263,7 +278,7 @@ describe("assessmentDocumentsHandler", () => {
       }
       if (
         method === "GET" &&
-        url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path,updated_at")
+        url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path,updated_at")
       ) {
         if (mode === "lookup-fails") {
           return { ok: false, status: 500, data: null };
@@ -483,19 +498,7 @@ describe("assessmentDocumentsHandler", () => {
       anonKey: "anon",
     });
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
-    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([
-      {
-        section: "identification_admin",
-        label: "First Name",
-        placeholder_key: "IEHP_FBA_FIRST_NAME",
-        mode: "AUTO",
-        source: "clients.first_name",
-        required: true,
-        extraction_method: "database_prefill",
-        validation_rule: "non_empty_text",
-        status: "not_started",
-      },
-    ]);
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
 
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
@@ -504,6 +507,59 @@ describe("assessmentDocumentsHandler", () => {
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
         return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_fields?select=")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              section_key: "identification_admin",
+              field_key: "IEHP_FBA_FIRST_NAME",
+              label: "First Name",
+              field_type: "text",
+              mode: "AUTO",
+              required: true,
+              source: "clients.first_name",
+            },
+            {
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
+              label: "IEHP Assistance Accessing PCP",
+              field_type: "checkbox_grid",
+              mode: "MANUAL",
+              required: false,
+              source: "uploaded_assessment_document when present; otherwise clinician_manual_entry",
+            },
+            {
+              section_key: "assessment_observations",
+              field_key: "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
+              label: "Clinical Interview Narrative",
+              field_type: "textarea",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+            },
+            {
+              section_key: "preference_assessment",
+              field_key: "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
+              label: "Preference Reinforcers Table",
+              field_type: "repeatable_table",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+            },
+            {
+              section_key: "signature_block",
+              field_key: "IEHP_FBA_SIGNATURE_BLOCK",
+              label: "Report completed by / signature and date",
+              field_type: "signature_block",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+            },
+          ],
+        };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -522,14 +578,57 @@ describe("assessmentDocumentsHandler", () => {
           }],
         };
       }
-      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) return { ok: true, status: 201, data: null };
-      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) return { ok: true, status: 201, data: null };
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) {
+        const body = JSON.parse(String(init?.body ?? "[]")) as Array<Record<string, unknown>>;
+        expect(body.map((row) => row.placeholder_key)).toEqual([
+          "IEHP_FBA_FIRST_NAME",
+          "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
+          "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
+          "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
+          "IEHP_FBA_SIGNATURE_BLOCK",
+        ]);
+        expect(body.find((row) => row.placeholder_key === "IEHP_FBA_FIRST_NAME")).toMatchObject({
+          mode: "AUTO",
+          extraction_owner: "IntakeCoordinator",
+          review_owner: "ClinicalReviewer",
+        });
+        expect(body.find((row) => row.placeholder_key === "IEHP_FBA_PCP_ASSISTANCE_REQUEST")).toMatchObject({
+          mode: "MANUAL",
+          validation_rule: "optional_yes_no",
+        });
+        expect(body.find((row) => row.placeholder_key === "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE")).toMatchObject({
+          mode: "ASSISTED",
+          extraction_method: "deterministic_docx_or_pdf_structured_extract",
+          validation_rule: "non_empty_text",
+        });
+        expect(body.find((row) => row.placeholder_key === "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE")).toMatchObject({
+          mode: "ASSISTED",
+          validation_rule: "structured_payload_required",
+        });
+        expect(body.find((row) => row.placeholder_key === "IEHP_FBA_SIGNATURE_BLOCK")).toMatchObject({
+          mode: "ASSISTED",
+          validation_rule: "signature_and_date_present",
+        });
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) {
+        const body = JSON.parse(String(init?.body ?? "[]")) as Array<Record<string, unknown>>;
+        expect(body.map((row) => row.field_key)).toEqual([
+          "IEHP_FBA_FIRST_NAME",
+          "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
+          "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
+          "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
+          "IEHP_FBA_SIGNATURE_BLOCK",
+        ]);
+        return { ok: true, status: 201, data: null };
+      }
       if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) return { ok: true, status: 201, data: null };
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) return { ok: true, status: 200, data: null };
       return { ok: false, status: 500, data: null };
     });
 
     const scheduled: string[] = [];
+    const scheduledChecklistFieldKeys: string[] = [];
     const response = await assessmentDocumentsHandler(
       new Request("http://localhost/api/assessment-documents", {
         method: "POST",
@@ -544,8 +643,9 @@ describe("assessmentDocumentsHandler", () => {
         }),
       }),
       {
-        scheduleCaloptimaExtraction: async ({ createdDocumentId }) => {
+        scheduleCaloptimaExtraction: async ({ createdDocumentId, checklistRows }) => {
           scheduled.push(createdDocumentId);
+          scheduledChecklistFieldKeys.push(...checklistRows.map((row) => row.placeholder_key));
           return { ok: true, status: 202 };
         },
       },
@@ -558,7 +658,66 @@ describe("assessmentDocumentsHandler", () => {
       template_version_id: "template-version-1",
     });
     expect(scheduled).toEqual(["doc-iehp-template"]);
-    expect(loadChecklistTemplateRows).toHaveBeenCalledWith("iehp_fba");
+    expect(scheduledChecklistFieldKeys).toEqual([
+      "IEHP_FBA_FIRST_NAME",
+      "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
+      "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
+      "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
+      "IEHP_FBA_SIGNATURE_BLOCK",
+    ]);
+    expect(loadChecklistTemplateRows).not.toHaveBeenCalled();
+  });
+
+  it("fails IEHP upload before document creation when template field metadata cannot be loaded", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_fields?select=")) {
+        return { ok: false, status: 503, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        throw new Error("assessment document should not be created when IEHP template metadata fails");
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "iehp.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/iehp.docx",
+          template_type: "iehp_fba",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "Unable to load IEHP template field metadata." });
+    expect(loadChecklistTemplateRows).not.toHaveBeenCalled();
   });
 
   it("fails closed when scheduling CalOptima extraction throws after marking the document extracting", async () => {
@@ -959,7 +1118,7 @@ describe("assessmentDocumentsHandler", () => {
     ]);
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path")) {
         return {
           ok: true,
           status: 200,
@@ -1084,7 +1243,7 @@ describe("assessmentDocumentsHandler", () => {
     });
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path")) {
         return {
           ok: true,
           status: 200,
@@ -1141,7 +1300,7 @@ describe("assessmentDocumentsHandler", () => {
     let documentLoadCount = 0;
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path")) {
         documentLoadCount += 1;
         return {
           ok: true,
@@ -1242,7 +1401,7 @@ describe("assessmentDocumentsHandler", () => {
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path")) {
         return { ok: false, status: 503, data: null };
       }
       if (
@@ -1309,7 +1468,7 @@ describe("assessmentDocumentsHandler", () => {
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       const body = String(init?.body ?? "");
-      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path")) {
         return {
           ok: true,
           status: 200,
@@ -1394,7 +1553,7 @@ describe("assessmentDocumentsHandler", () => {
     let claimAttempts = 0;
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path")) {
         return {
           ok: true,
           status: 200,
@@ -1539,7 +1698,7 @@ describe("assessmentDocumentsHandler", () => {
     vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path")) {
         return {
           ok: true,
           status: 200,
@@ -1719,7 +1878,7 @@ describe("assessmentDocumentsHandler", () => {
       status: "extracting",
     });
     expect(json.extraction_error).toBeNull();
-    expect(loadChecklistTemplateRows).toHaveBeenCalledWith("iehp_fba");
+    expect(loadChecklistTemplateRows).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported template_type", async () => {
@@ -2235,19 +2394,7 @@ describe("assessmentDocumentsHandler", () => {
       anonKey: "anon",
     });
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
-    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([
-      {
-        section: "behavior_background_services",
-        label: "BHT Availability Grid",
-        placeholder_key: "IEHP_FBA_BHT_AVAILABILITY_GRID",
-        mode: "ASSISTED",
-        source: "uploaded_assessment_document",
-        required: true,
-        extraction_method: "deterministic_extract",
-        validation_rule: "structured_payload_required",
-        status: "not_started",
-      },
-    ]);
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
 
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
@@ -2273,6 +2420,21 @@ describe("assessmentDocumentsHandler", () => {
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
         return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_fields?select=")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            section_key: "behavior_background_services",
+            field_key: "IEHP_FBA_BHT_AVAILABILITY_GRID",
+            label: "BHT Availability Grid",
+            field_type: "checkbox_grid",
+            mode: "ASSISTED",
+            required: true,
+            source: "uploaded_assessment_document",
+          }],
+        };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
         return {

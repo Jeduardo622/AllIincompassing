@@ -1,12 +1,12 @@
 import { supabase } from '../supabase';
+import { fetchStaffRecipients } from './fetchStaffRecipients';
 import { isMessagingSchemaUnavailable } from './errors';
 import type {
   Message,
   MessageThreadListItem,
-  StaffRecipient,
 } from './types';
 
-const STAFF_ROLES = new Set(['therapist', 'admin', 'super_admin']);
+export { fetchStaffRecipients };
 
 export const fetchMessageThreads = async (
   organizationId: string,
@@ -134,28 +134,3 @@ export const fetchMessageThread = async (threadId: string) => {
   return data;
 };
 
-export const fetchStaffRecipients = async (
-  organizationId: string,
-  currentUserId: string,
-): Promise<StaffRecipient[]> => {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, full_name, email, role')
-    .eq('organization_id', organizationId)
-    .eq('is_active', true)
-    .neq('id', currentUserId)
-    .order('full_name', { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? [])
-    .filter((row) => STAFF_ROLES.has(String(row.role ?? '').toLowerCase()))
-    .map((row) => ({
-      id: row.id,
-      full_name: row.full_name ?? row.email ?? 'Staff member',
-      email: row.email ?? '',
-      role: String(row.role ?? ''),
-    }));
-};

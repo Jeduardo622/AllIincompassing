@@ -18,7 +18,7 @@ vi.mock('../../../lib/organization', () => ({
   useActiveOrganizationId: () => 'org-1',
 }));
 
-vi.mock('../../../lib/messages/fetchers', () => ({
+vi.mock('../../../lib/messages/fetchStaffRecipients', () => ({
   fetchStaffRecipients: vi.fn(async () => [
     { id: 'staff-2', full_name: 'Alex Admin', email: 'alex@test.com', role: 'admin' },
   ]),

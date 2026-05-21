@@ -6,7 +6,7 @@ import { PhiNoticeBanner } from '../../components/messages/PhiNoticeBanner';
 import { StaffRecipientPicker } from '../../components/messages/StaffRecipientPicker';
 import { useAuth } from '../../lib/authContext';
 import { MESSAGES_QUERY_KEY } from '../../lib/messages/constants';
-import { fetchStaffRecipients } from '../../lib/messages/fetchers';
+import { fetchStaffRecipients } from '../../lib/messages/fetchStaffRecipients';
 import { createMessageThread } from '../../lib/messages/mutations';
 import type { MessageThreadType } from '../../lib/messages/types';
 import { useActiveOrganizationId } from '../../lib/organization';

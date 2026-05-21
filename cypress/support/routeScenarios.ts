@@ -120,6 +120,18 @@ export const installRouteDataStubs = (): void => {
     body: "thread-1",
     headers: { "content-type": "application/json" },
   });
+  cy.intercept("POST", "**/__supabase/rest/v1/rpc/list_eligible_staff_for_messaging**", {
+    statusCode: 200,
+    body: [
+      {
+        user_id: "staff-2",
+        full_name: "Staff Two",
+        email: "staff2@test.com",
+        role: "admin",
+      },
+    ],
+    headers: { "content-type": "application/json" },
+  });
 };
 
 export const assertVisibleRoute = (path: string): void => {

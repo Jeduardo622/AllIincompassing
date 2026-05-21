@@ -172,9 +172,9 @@ create index if not exists messages_thread_created_idx
 -- ---------------------------------------------------------------------------
 
 create or replace function public.create_staff_message_thread(
-  p_subject text default null,
   p_thread_type text,
-  p_participant_user_ids uuid[]
+  p_participant_user_ids uuid[],
+  p_subject text default null
 )
 returns uuid
 language plpgsql
@@ -255,8 +255,8 @@ begin
 end;
 $$;
 
-revoke all on function public.create_staff_message_thread(text, text, uuid[]) from public;
-grant execute on function public.create_staff_message_thread(text, text, uuid[]) to authenticated, service_role;
+revoke all on function public.create_staff_message_thread(text, uuid[], text) from public;
+grant execute on function public.create_staff_message_thread(text, uuid[], text) to authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- RLS

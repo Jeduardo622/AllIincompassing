@@ -496,7 +496,7 @@ const parseRowsFromProgramBlocks = (
     }
     const pageNumber = defaultGoalType === "parent"
       ? 17
-      : /school/i.test(defaultProgramName)
+      : /school/i.test(programName)
         ? 16
         : IEHP_FIELD_PAGE_BY_KEY[fieldKey] ?? null;
     const section_index = sectionIndexByFieldKey.get(fieldKey) ?? 0;

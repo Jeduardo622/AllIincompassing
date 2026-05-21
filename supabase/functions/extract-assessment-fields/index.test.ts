@@ -599,6 +599,28 @@ Deno.test("extractStructuredSections maps next-slice IEHP narratives, checkboxes
   expect(parentGoal?.source_span?.page_number).toBe(17);
 });
 
+Deno.test("extractStructuredSections routes school Program Name goals to the IEHP school page", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      REPLACEMENT BEHAVIORS:
+      Program Name: School Participation
+      Instrumental Goal: Member will participate in school routines with one verbal prompt.
+      Data Collection: Percent independent
+      Mastery Criteria: 80% across three sessions.
+      Generalization Criteria: Across classroom routines.
+      Baseline: 20% independent.
+      Behavior Intervention Plan
+    `,
+  );
+
+  const schoolGoal = sections.find((section) =>
+    section.field_key === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS" &&
+    section.payload.program_name === "School Participation"
+  );
+  expect(schoolGoal?.source_span?.page_number).toBe(16);
+});
+
 Deno.test("extractStructuredSections maps filled CalOptima redacted-report sections", () => {
   const sections = asSections("caloptima_fba", calOptimaRedactedStyleExcerpt);
   const byKey = new Map(sections.map((section) => [section.field_key, section]));

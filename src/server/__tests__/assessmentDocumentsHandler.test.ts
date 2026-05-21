@@ -523,6 +523,15 @@ describe("assessmentDocumentsHandler", () => {
               source: "clients.first_name",
             },
             {
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
+              label: "IEHP Assistance Accessing PCP",
+              field_type: "checkbox_grid",
+              mode: "MANUAL",
+              required: false,
+              source: "uploaded_assessment_document when present; otherwise clinician_manual_entry",
+            },
+            {
               section_key: "assessment_observations",
               field_key: "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
               label: "Clinical Interview Narrative",
@@ -573,6 +582,7 @@ describe("assessmentDocumentsHandler", () => {
         const body = JSON.parse(String(init?.body ?? "[]")) as Array<Record<string, unknown>>;
         expect(body.map((row) => row.placeholder_key)).toEqual([
           "IEHP_FBA_FIRST_NAME",
+          "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
           "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
           "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
           "IEHP_FBA_SIGNATURE_BLOCK",
@@ -581,6 +591,10 @@ describe("assessmentDocumentsHandler", () => {
           mode: "AUTO",
           extraction_owner: "IntakeCoordinator",
           review_owner: "ClinicalReviewer",
+        });
+        expect(body.find((row) => row.placeholder_key === "IEHP_FBA_PCP_ASSISTANCE_REQUEST")).toMatchObject({
+          mode: "MANUAL",
+          validation_rule: "optional_yes_no",
         });
         expect(body.find((row) => row.placeholder_key === "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE")).toMatchObject({
           mode: "ASSISTED",
@@ -601,6 +615,7 @@ describe("assessmentDocumentsHandler", () => {
         const body = JSON.parse(String(init?.body ?? "[]")) as Array<Record<string, unknown>>;
         expect(body.map((row) => row.field_key)).toEqual([
           "IEHP_FBA_FIRST_NAME",
+          "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
           "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
           "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
           "IEHP_FBA_SIGNATURE_BLOCK",
@@ -645,6 +660,7 @@ describe("assessmentDocumentsHandler", () => {
     expect(scheduled).toEqual(["doc-iehp-template"]);
     expect(scheduledChecklistFieldKeys).toEqual([
       "IEHP_FBA_FIRST_NAME",
+      "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
       "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
       "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
       "IEHP_FBA_SIGNATURE_BLOCK",

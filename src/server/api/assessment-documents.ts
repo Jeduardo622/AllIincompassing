@@ -385,10 +385,15 @@ const extractionMethodForTemplateField = (
   return "database_prefill";
 };
 
+const YES_NO_TEMPLATE_FIELD_KEYS = new Set(["IEHP_FBA_PCP_ASSISTANCE_REQUEST"]);
+
 const validationRuleForTemplateField = (fieldType: string, required: boolean, fieldKey: string, label: string): string => {
   const normalizedFieldType = fieldType.toLowerCase();
   const normalizedFieldKey = fieldKey.toLowerCase();
   const normalizedLabel = label.toLowerCase();
+  if (YES_NO_TEMPLATE_FIELD_KEYS.has(fieldKey)) {
+    return required ? "required_yes_no" : "optional_yes_no";
+  }
   if (
     normalizedFieldType.includes("signature") ||
     normalizedFieldKey.includes("signature") ||

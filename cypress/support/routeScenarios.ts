@@ -115,7 +115,7 @@ export const installRouteDataStubs = (): void => {
   cy.intercept("GET", "**/__supabase/rest/v1/message_threads**", emptyJson);
   cy.intercept("GET", "**/__supabase/rest/v1/message_thread_participants**", emptyJson);
   cy.intercept("GET", "**/__supabase/rest/v1/messages**", emptyJson);
-  cy.intercept("POST", "**/__supabase/rest/v1/rpc/create_message_thread**", {
+  cy.intercept("POST", "**/__supabase/rest/v1/rpc/create_staff_message_thread**", {
     statusCode: 200,
     body: "thread-1",
     headers: { "content-type": "application/json" },

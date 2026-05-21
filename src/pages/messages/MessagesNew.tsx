@@ -68,10 +68,15 @@ export function MessagesNew() {
       showError(validationMessage);
       return;
     }
+    if (!profile?.id) {
+      showError('You must be signed in to start a conversation.');
+      return;
+    }
+    const participantUserIds = Array.from(new Set([profile.id, ...selectedIds]));
     createMutation.mutate({
       subject,
       threadType: effectiveThreadType,
-      participantUserIds: selectedIds,
+      participantUserIds,
     });
   };
 

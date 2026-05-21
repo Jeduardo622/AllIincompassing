@@ -47,7 +47,7 @@ export const sendThreadMessage = async (threadId: string, body: string, senderId
 };
 
 export const createMessageThread = async (input: CreateThreadInput): Promise<string> => {
-  const { data, error } = await supabase.rpc('create_message_thread', {
+  const { data, error } = await supabase.rpc('create_staff_message_thread', {
     p_subject: input.subject?.trim() || null,
     p_thread_type: input.threadType,
     p_participant_user_ids: input.participantUserIds,

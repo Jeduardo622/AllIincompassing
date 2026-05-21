@@ -31,6 +31,11 @@ export const routeGroups = {
   schedule: [
     { path: "/schedule", roles: ["therapist", "admin", "super_admin"] },
   ],
+  messages: [
+    { path: "/messages", roles: ["therapist", "admin", "super_admin"] },
+    { path: "/messages/new", roles: ["therapist", "admin", "super_admin"] },
+    { path: "/messages/thread-1", roles: ["therapist", "admin", "super_admin"] },
+  ],
   admin: [
     { path: "/therapists", roles: ["admin", "super_admin"] },
     { path: "/therapists/therapist-1", roles: ["therapist", "admin", "super_admin"] },
@@ -103,6 +108,17 @@ export const installRouteDataStubs = (): void => {
       body: stubTherapists,
       headers: { "content-type": "application/json" },
     });
+  });
+
+  const emptyJson = { statusCode: 200, body: [], headers: { "content-type": "application/json" } };
+
+  cy.intercept("GET", "**/__supabase/rest/v1/message_threads**", emptyJson);
+  cy.intercept("GET", "**/__supabase/rest/v1/message_thread_participants**", emptyJson);
+  cy.intercept("GET", "**/__supabase/rest/v1/messages**", emptyJson);
+  cy.intercept("POST", "**/__supabase/rest/v1/rpc/create_message_thread**", {
+    statusCode: 200,
+    body: "thread-1",
+    headers: { "content-type": "application/json" },
   });
 };
 

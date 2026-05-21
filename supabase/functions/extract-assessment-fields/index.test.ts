@@ -722,6 +722,26 @@ Deno.test("deterministicValueForRow extracts CalOptima filled-report scalars wit
   expect(byKey.get("CALOPTIMA_FBA_REPORT_COMPLETED_DATE")?.value_text).toBe("7/21/2025");
 });
 
+Deno.test("deterministicValueForRow preserves title-case parent involvement answer when agreement question is missing", () => {
+  const value = __TESTING__.deterministicValueForRow(
+    {
+      section: "summary_recommendations_signatures",
+      label: "Parent/guardian involvement",
+      placeholder_key: "CALOPTIMA_FBA_PARENT_INVOLVEMENT",
+      required: true,
+      mode: "MANUAL" as const,
+    },
+    `
+      XXI. PARENT/CAREGIVER OR LEGAL GUARDIAN INVOLVEMENT
+      Was the Parent/guardian involved in the development of the treatment plan? ☒ Yes ☐ No
+      XVIII. SIGNATURES
+    `,
+  );
+
+  expect(value?.value_text).toBe("development: Yes");
+  expect(value?.value_text).not.toContain("development: yes");
+});
+
 Deno.test("deterministicValueForRow keeps manual and assisted IEHP rows honest when text is extracted", () => {
   const assisted = __TESTING__.deterministicValueForRow(
     {

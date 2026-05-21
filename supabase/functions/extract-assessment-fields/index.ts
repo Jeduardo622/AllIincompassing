@@ -1191,14 +1191,14 @@ const extractCheckboxScalarByKey = (key: string, text: string): string | null =>
   if (primary === "unknown") {
     return null;
   }
+  const primaryLabel = primary === "yes" ? "Yes" : "No";
   if (!("followUpQuestion" in spec)) {
-    return primary === "yes" ? "Yes" : "No";
+    return primaryLabel;
   }
   const followUpMatch = bounded.match(spec.followUpQuestion);
   if (!followUpMatch || followUpMatch.index === undefined) {
-    return `development: ${primary}`;
+    return `development: ${primaryLabel}`;
   }
-  const primaryLabel = primary === "yes" ? "Yes" : "No";
   const secondary = extractSelectedYesNo(bounded.slice(followUpMatch.index + followUpMatch[0].length));
   const secondaryLabel = secondary === "unknown" ? null : secondary === "yes" ? "Yes" : "No";
   return secondaryLabel ? `development: ${primaryLabel}; agreement: ${secondaryLabel}` : `development: ${primaryLabel}`;

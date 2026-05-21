@@ -385,8 +385,17 @@ const extractionMethodForTemplateField = (
   return "database_prefill";
 };
 
-const validationRuleForTemplateField = (fieldType: string, required: boolean): string => {
+const validationRuleForTemplateField = (fieldType: string, required: boolean, fieldKey: string, label: string): string => {
   const normalizedFieldType = fieldType.toLowerCase();
+  const normalizedFieldKey = fieldKey.toLowerCase();
+  const normalizedLabel = label.toLowerCase();
+  if (
+    normalizedFieldType.includes("signature") ||
+    normalizedFieldKey.includes("signature") ||
+    normalizedLabel.includes("signature")
+  ) {
+    return "signature_and_date_present";
+  }
   if (normalizedFieldType.includes("table") || normalizedFieldType.includes("grid")) {
     return required ? "structured_payload_required" : "optional_structured_payload";
   }
@@ -422,7 +431,7 @@ const normalizeTemplateFieldRow = (row: AssessmentTemplateFieldRow): AssessmentC
     source,
     required,
     extraction_method: extractionMethodForTemplateField(mode, source),
-    validation_rule: validationRuleForTemplateField(fieldType, required),
+    validation_rule: validationRuleForTemplateField(fieldType, required, row.field_key, row.label),
     status: "not_started",
     extraction_owner: mode === "AUTO" ? "IntakeCoordinator" : "ClinicalAuthor",
     review_owner: mode === "AUTO" ? "ClinicalReviewer" : "BCBAReviewer",

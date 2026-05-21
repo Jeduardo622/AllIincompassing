@@ -25,6 +25,9 @@ with iehp_template_fields as (
       else 'database_prefill'
     end as extraction_method,
     case
+      when lower(fields.field_type) like '%signature%'
+        or lower(fields.field_key) like '%signature%'
+        or lower(fields.label) like '%signature%' then 'signature_and_date_present'
       when lower(fields.field_type) like '%table%' or lower(fields.field_type) like '%grid%' then
         case when fields.required then 'structured_payload_required' else 'optional_structured_payload' end
       when lower(fields.field_type) like '%date%' then
@@ -33,7 +36,9 @@ with iehp_template_fields as (
         case when fields.required then 'phone_us_or_e164_or_na' else 'optional_phone' end
       else
         case when fields.required then 'non_empty_text' else 'optional_text' end
-    end as validation_rule
+    end as validation_rule,
+    case when fields.mode = 'AUTO' then 'IntakeCoordinator' else 'ClinicalAuthor' end as extraction_owner,
+    case when fields.mode = 'AUTO' then 'ClinicalReviewer' else 'BCBAReviewer' end as review_owner
   from public.assessment_template_versions versions
   join public.assessment_template_fields fields
     on fields.template_version_id = versions.id
@@ -81,8 +86,8 @@ select
   fields.extraction_method,
   fields.validation_rule,
   'not_started',
-  'ClinicalAuthor',
-  'BCBAReviewer',
+  fields.extraction_owner,
+  fields.review_owner,
   'Backfilled empty IEHP review row from active template metadata.'
 from iehp_documents documents
 join iehp_template_fields fields

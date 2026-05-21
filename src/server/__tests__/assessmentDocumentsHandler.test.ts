@@ -540,6 +540,15 @@ describe("assessmentDocumentsHandler", () => {
               required: true,
               source: "uploaded_assessment_document",
             },
+            {
+              section_key: "signature_block",
+              field_key: "IEHP_FBA_SIGNATURE_BLOCK",
+              label: "Report completed by / signature and date",
+              field_type: "signature_block",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+            },
           ],
         };
       }
@@ -566,7 +575,13 @@ describe("assessmentDocumentsHandler", () => {
           "IEHP_FBA_FIRST_NAME",
           "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
           "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
+          "IEHP_FBA_SIGNATURE_BLOCK",
         ]);
+        expect(body.find((row) => row.placeholder_key === "IEHP_FBA_FIRST_NAME")).toMatchObject({
+          mode: "AUTO",
+          extraction_owner: "IntakeCoordinator",
+          review_owner: "ClinicalReviewer",
+        });
         expect(body.find((row) => row.placeholder_key === "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE")).toMatchObject({
           mode: "ASSISTED",
           extraction_method: "deterministic_docx_or_pdf_structured_extract",
@@ -576,6 +591,10 @@ describe("assessmentDocumentsHandler", () => {
           mode: "ASSISTED",
           validation_rule: "structured_payload_required",
         });
+        expect(body.find((row) => row.placeholder_key === "IEHP_FBA_SIGNATURE_BLOCK")).toMatchObject({
+          mode: "ASSISTED",
+          validation_rule: "signature_and_date_present",
+        });
         return { ok: true, status: 201, data: null };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) {
@@ -584,6 +603,7 @@ describe("assessmentDocumentsHandler", () => {
           "IEHP_FBA_FIRST_NAME",
           "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
           "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
+          "IEHP_FBA_SIGNATURE_BLOCK",
         ]);
         return { ok: true, status: 201, data: null };
       }
@@ -627,6 +647,7 @@ describe("assessmentDocumentsHandler", () => {
       "IEHP_FBA_FIRST_NAME",
       "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",
       "IEHP_FBA_PREFERENCE_REINFORCERS_TABLE",
+      "IEHP_FBA_SIGNATURE_BLOCK",
     ]);
     expect(loadChecklistTemplateRows).not.toHaveBeenCalled();
   });

@@ -5,6 +5,10 @@
 begin;
 
 set local search_path = public, app, auth;
+-- Helper functions below reference tables that are created later in this same
+-- migration. Disable body validation only for this transaction so preview
+-- branch replay can create the forward-referenced SQL functions safely.
+set local check_function_bodies = off;
 
 -- ---------------------------------------------------------------------------
 -- Helpers (participant-only; do not grant org-wide message body read)

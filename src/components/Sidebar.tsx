@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { 
   Calendar, Users, FileText, CreditCard, LayoutDashboard,
-  UserCog, LogOut, Settings, MessageSquare, Sun, Moon,
+  UserCog, LogOut, Settings, MessageSquare, Mail, Sun, Moon,
   FileCheck, Menu, X, RefreshCw, User, BarChart, Activity,
   UserCircle2
 } from 'lucide-react';
@@ -112,6 +112,13 @@ export function Sidebar() {
       icon: Calendar, 
       label: 'Schedule', 
       path: '/schedule',
+      roles: ['therapist', 'admin', 'super_admin'],
+      requiresGuardian: false,
+    },
+    {
+      icon: Mail,
+      label: 'Messages',
+      path: '/messages',
       roles: ['therapist', 'admin', 'super_admin'],
       requiresGuardian: false,
     },

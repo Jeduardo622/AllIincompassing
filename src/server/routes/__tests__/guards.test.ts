@@ -20,6 +20,9 @@ const expectedPaths = [
   '/documentation',
   '/fill-docs',
   '/authorizations',
+  '/messages',
+  '/messages/new',
+  '/messages/:threadId',
   '/billing',
   '/monitoring',
   '/reports',
@@ -59,6 +62,15 @@ describe('route guard matchers', () => {
 
   it('route guard matcher resolves client onboarding before dynamic client id', () => {
     expect(findGuardForPath('/clients/new')?.path).toBe('/clients/new');
+  });
+
+  it('route guard matcher resolves message compose before dynamic thread id', () => {
+    expect(findGuardForPath('/messages/new')?.path).toBe('/messages/new');
+  });
+
+  it('route guard matcher resolves message thread detail paths', () => {
+    const match = findGuardForPath('/messages/9fda133f-8a57-4ab9-a33e-958c1b2f1d3b');
+    expect(match?.path).toBe('/messages/:threadId');
   });
 });
 

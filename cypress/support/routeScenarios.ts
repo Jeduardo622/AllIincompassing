@@ -132,6 +132,13 @@ export const installRouteDataStubs = (): void => {
     ],
     headers: { "content-type": "application/json" },
   });
+  cy.intercept("POST", "**/__supabase/rest/v1/rpc/list_staff_message_thread_participant_names**", {
+    statusCode: 200,
+    body: [
+      { user_id: "staff-2", full_name: "Staff Two" },
+    ],
+    headers: { "content-type": "application/json" },
+  });
 };
 
 export const assertVisibleRoute = (path: string): void => {

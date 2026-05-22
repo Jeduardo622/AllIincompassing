@@ -267,6 +267,62 @@ describe("RLS staff messaging (live Supabase)", () => {
     createdThreadIds.push(data as string);
   });
 
+  it("allows participants to resolve thread participant display names via RPC", async () => {
+    if (!harness.enabled) {
+      if (harness.required) {
+        throw new Error(harness.skipReason);
+      }
+      return;
+    }
+
+    const therapistClient = await harness.signInTherapistA();
+    const threadId = await createDirectThread(therapistClient, [
+      harness.orgATherapistUserId,
+      harness.orgAAdminUserId,
+    ]);
+
+    const therapistNames = await therapistClient.rpc("list_staff_message_thread_participant_names", {
+      p_thread_id: threadId,
+    });
+    expect(therapistNames.error).toBeNull();
+    const therapistRows = therapistNames.data ?? [];
+    expect(therapistRows.length).toBeGreaterThanOrEqual(2);
+    expect(therapistRows.some((row) => row.user_id === harness.orgATherapistUserId)).toBe(true);
+    expect(therapistRows.some((row) => row.user_id === harness.orgAAdminUserId)).toBe(true);
+    expect(therapistRows.every((row) => typeof row.full_name === "string" && row.full_name.length > 0)).toBe(
+      true,
+    );
+
+    if (!orgAObserverAdmin) {
+      return;
+    }
+
+    const env = await resolveSupabaseTestEnv({
+      isCiEnvironment: Boolean(process.env.CI),
+      runDatabaseIntegrationTests: true,
+    });
+    if (!env.shouldRun || !env.supabaseAnonKey) {
+      throw new Error(computeEnvironmentGuidance(env.missing));
+    }
+
+    const observerClient = createClient<Database>(env.supabaseUrl as string, env.supabaseAnonKey as string, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const signIn = await observerClient.auth.signInWithPassword({
+      email: orgAObserverAdmin.email,
+      password: orgAObserverAdmin.password,
+    });
+    expect(signIn.error).toBeNull();
+
+    const deniedNames = await observerClient.rpc("list_staff_message_thread_participant_names", {
+      p_thread_id: threadId,
+    });
+    expect(deniedNames.error).not.toBeNull();
+    expect((deniedNames.error?.message ?? "").toLowerCase()).toMatch(
+      /not a participant|permission|42501|28000/,
+    );
+  });
+
   it("limits participant-local archive updates to the owning participant", async () => {
     if (!harness.enabled) {
       if (harness.required) {

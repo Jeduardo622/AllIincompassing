@@ -6040,6 +6040,13 @@ export type Database = {
         }
         Returns: string
       }
+      list_staff_message_thread_participant_names: {
+        Args: { p_thread_id: string }
+        Returns: {
+          full_name: string
+          user_id: string
+        }[]
+      }
       assign_therapist_role:
         | { Args: { p_email: string; p_user_id: string }; Returns: undefined }
         | { Args: { p_therapist_id: string }; Returns: undefined }

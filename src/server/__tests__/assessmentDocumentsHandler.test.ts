@@ -2526,6 +2526,7 @@ describe("assessmentDocumentsHandler", () => {
   });
 
   it("passes client primary therapist phone into IEHP extraction snapshot for assessor phone prefill", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -2590,6 +2591,10 @@ describe("assessmentDocumentsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/therapists?select=phone")) {
         expect(url).toContain("id=eq.primary-therapist-1");
         expect(url).toContain("organization_id=eq.org-1");
+        expect(init?.headers).toMatchObject({
+          apikey: "service-role",
+          Authorization: "Bearer service-role",
+        });
         return { ok: true, status: 200, data: [{ phone: "(951) 555-0101" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {

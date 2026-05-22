@@ -8,6 +8,7 @@ import {
   jsonForRequest,
   resolveOrgAndRole,
 } from "./shared";
+import { getOptionalServerEnv } from "../env";
 import {
   loadChecklistTemplateRows,
   type AssessmentChecklistSeedRow,
@@ -110,7 +111,6 @@ const compactNullableRecord = <T extends Record<string, unknown>>(value: T): Par
 
 const loadPrimaryTherapistPhone = async (args: {
   supabaseUrl: string;
-  headers: Record<string, string>;
   organizationId: string;
   therapistId: string | null | undefined;
   signal?: AbortSignal;
@@ -119,12 +119,24 @@ const loadPrimaryTherapistPhone = async (args: {
   if (!therapistId) {
     return null;
   }
+  const serviceRoleKey = getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  if (!serviceRoleKey) {
+    return null;
+  }
 
   const result = await fetchJson<Array<{ phone?: string | null }>>(
     `${args.supabaseUrl}/rest/v1/therapists?select=phone&id=eq.${encodeURIComponent(
       therapistId,
     )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
-    { method: "GET", headers: args.headers, signal: args.signal },
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      signal: args.signal,
+    },
   );
   if (!result.ok || !Array.isArray(result.data)) {
     return null;
@@ -657,7 +669,6 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
     const primaryTherapistPhone = clientSnapshotRow && templateType === "iehp_fba"
       ? await loadPrimaryTherapistPhone({
         supabaseUrl,
-        headers,
         organizationId,
         therapistId: clientSnapshotRow.therapist_id,
         signal,

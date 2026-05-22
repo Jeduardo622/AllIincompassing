@@ -8,6 +8,7 @@ import {
   jsonForRequest,
   resolveOrgAndRole,
 } from "./shared";
+import { getOptionalServerEnv } from "../env";
 import {
   loadChecklistTemplateRows,
   type AssessmentChecklistSeedRow,
@@ -91,6 +92,8 @@ interface ClientSnapshotRow {
   city?: string | null;
   state?: string | null;
   zip_code?: string | null;
+  therapist_id?: string | null;
+  primary_therapist_phone?: string | null;
 }
 
 interface AssessmentTemplateFieldRow {
@@ -105,6 +108,42 @@ interface AssessmentTemplateFieldRow {
 
 const compactNullableRecord = <T extends Record<string, unknown>>(value: T): Partial<T> =>
   Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== null && entry !== undefined)) as Partial<T>;
+
+const loadPrimaryTherapistPhone = async (args: {
+  supabaseUrl: string;
+  organizationId: string;
+  therapistId: string | null | undefined;
+  signal?: AbortSignal;
+}): Promise<string | null> => {
+  const therapistId = typeof args.therapistId === "string" ? args.therapistId.trim() : "";
+  if (!therapistId) {
+    return null;
+  }
+  const serviceRoleKey = getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  if (!serviceRoleKey) {
+    return null;
+  }
+
+  const result = await fetchJson<Array<{ phone?: string | null }>>(
+    `${args.supabaseUrl}/rest/v1/therapists?select=phone&id=eq.${encodeURIComponent(
+      therapistId,
+    )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      signal: args.signal,
+    },
+  );
+  if (!result.ok || !Array.isArray(result.data)) {
+    return null;
+  }
+  const phone = result.data[0]?.phone;
+  return typeof phone === "string" && phone.trim().length > 0 ? phone.trim() : null;
+};
 
 const isExtractionFailurePendingStatus = (status: string): boolean =>
   PENDING_EXTRACTION_STATUSES.has(status as AssessmentDocumentExtractionRow["status"]);
@@ -616,7 +655,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
   try {
     assertExtractionNotAborted(signal);
     const clientSnapshotResult = await fetchJson<ClientSnapshotRow[]>(
-      `${supabaseUrl}/rest/v1/clients?select=full_name,first_name,last_name,date_of_birth,cin_number,client_id,phone,parent1_phone,parent1_first_name,parent1_last_name,parent1_relationship,preferred_language,address_line1,address_line2,city,state,zip_code&id=eq.${encodeURIComponent(
+      `${supabaseUrl}/rest/v1/clients?select=full_name,first_name,last_name,date_of_birth,cin_number,client_id,phone,parent1_phone,parent1_first_name,parent1_last_name,parent1_relationship,preferred_language,address_line1,address_line2,city,state,zip_code,therapist_id&id=eq.${encodeURIComponent(
         clientId,
       )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
       { method: "GET", headers, signal },
@@ -627,7 +666,22 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
       clientSnapshotResult.ok && Array.isArray(clientSnapshotResult.data) && clientSnapshotResult.data[0]
         ? clientSnapshotResult.data[0]
         : null;
-    const clientSnapshot = clientSnapshotRow ? compactNullableRecord(clientSnapshotRow) : undefined;
+    const primaryTherapistPhone = clientSnapshotRow && templateType === "iehp_fba"
+      ? await loadPrimaryTherapistPhone({
+        supabaseUrl,
+        organizationId,
+        therapistId: clientSnapshotRow.therapist_id,
+        signal,
+      })
+      : null;
+    assertExtractionNotAborted(signal);
+    const clientSnapshot = clientSnapshotRow
+      ? compactNullableRecord({
+        ...clientSnapshotRow,
+        therapist_id: undefined,
+        primary_therapist_phone: primaryTherapistPhone,
+      })
+      : undefined;
 
     const extractionResult = await fetchJson<ExtractionFunctionResponse>(`${supabaseUrl}/functions/v1/extract-assessment-fields`, {
         method: "POST",

@@ -783,3 +783,27 @@ Deno.test("deterministicValueForRow keeps manual and assisted IEHP rows honest w
   expect(assessorPhone.status).toBe("not_started");
   expect(assessorPhone.review_notes).toContain("reliable provider or organization source");
 });
+
+Deno.test("deterministicValueForRow prefills IEHP assessor phone from primary therapist snapshot", () => {
+  const assessorPhone = __TESTING__.deterministicValueForRow(
+    {
+      section: "identification_admin",
+      label: "Assessor's phone number",
+      placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+      required: true,
+      mode: "ASSISTED",
+    },
+    "",
+    { primary_therapist_phone: "(951) 555-0101" },
+  );
+
+  expect(assessorPhone.value_text).toBe("(951) 555-0101");
+  expect(assessorPhone.mode).toBe("ASSISTED");
+  expect(assessorPhone.status).toBe("drafted");
+  expect(assessorPhone.confidence).toBeLessThan(0.8);
+  expect(assessorPhone.source_span).toMatchObject({
+    method: "client_snapshot",
+    field: "primary_therapist_phone",
+  });
+  expect(assessorPhone.review_notes).toContain("primary therapist");
+});

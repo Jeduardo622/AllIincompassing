@@ -70,6 +70,38 @@ describe('fetchThreadMessages', () => {
     ]);
   });
 
+  it('still loads messages when participant names RPC is unavailable (PGRST202)', async () => {
+    const orderMock = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'msg-1',
+          thread_id: 'thread-1',
+          sender_id: 'user-b',
+          body: 'Hello',
+          created_at: '2026-05-22T12:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+    const eqMock = vi.fn().mockReturnValue({ order: orderMock });
+    const selectMock = vi.fn().mockReturnValue({ eq: eqMock });
+    fromMock.mockReturnValue({ select: selectMock });
+
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: {
+        code: 'PGRST202',
+        message: 'Could not find the function public.list_staff_message_thread_participant_names',
+      },
+    });
+
+    const messages = await fetchThreadMessages('thread-1');
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.body).toBe('Hello');
+    expect(messages[0]?.sender_name).toBe('Staff member');
+  });
+
   it('falls back to Staff member when sender is missing from RPC map', async () => {
     const orderMock = vi.fn().mockResolvedValue({
       data: [

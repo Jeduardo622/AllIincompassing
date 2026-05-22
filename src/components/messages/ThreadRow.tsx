@@ -8,7 +8,13 @@ type ThreadRowProps = {
 };
 
 export function ThreadRow({ thread }: ThreadRowProps) {
-  const label = thread.subject?.trim() || (thread.thread_type === 'group' ? 'Group conversation' : 'Direct message');
+  const participantLabel = thread.participant_names?.join(', ').trim();
+  const label = thread.subject?.trim()
+    || (thread.thread_type === 'direct' && participantLabel
+      ? participantLabel
+      : thread.thread_type === 'group'
+        ? 'Group conversation'
+        : 'Direct message');
   const preview = thread.last_message_preview?.trim() || 'No messages yet';
   const timestamp = thread.last_message_at ?? thread.updated_at;
 

@@ -18,8 +18,8 @@ export function MessageThread() {
 
   const { data: thread, isLoading: threadLoading } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'thread', threadId],
-    queryFn: () => fetchMessageThread(threadId!),
-    enabled: Boolean(threadId),
+    queryFn: () => fetchMessageThread(threadId!, profile!.id),
+    enabled: Boolean(threadId && profile?.id),
   });
 
   const { data: messages = [], isLoading: messagesLoading, refetch } = useQuery({
@@ -51,7 +51,13 @@ export function MessageThread() {
     return null;
   }
 
-  const title = thread?.subject?.trim() || (thread?.thread_type === 'group' ? 'Group conversation' : 'Conversation');
+  const participantLabel = thread?.participant_names?.join(', ').trim();
+  const title = thread?.subject?.trim()
+    || (thread?.thread_type === 'direct' && participantLabel
+      ? participantLabel
+      : thread?.thread_type === 'group'
+        ? 'Group conversation'
+        : 'Conversation');
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col p-4 md:p-6" data-testid="messages-thread-page">

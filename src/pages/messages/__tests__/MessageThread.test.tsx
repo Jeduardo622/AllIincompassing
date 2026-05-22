@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import { PHI_COMPOSER_PLACEHOLDER, PHI_POLICY_BANNER } from '../../../lib/messages/constants';
+import { fetchMessageThread } from '../../../lib/messages/fetchers';
 import { MessageThread } from '../MessageThread';
 
 vi.mock('../../../lib/authContext', () => ({
@@ -77,5 +78,23 @@ describe('MessageThread', () => {
 
     expect(await screen.findByTestId('message-sender-message-1')).toHaveTextContent('Alex Admin');
     expect(screen.getByTestId('message-sender-message-2')).toHaveTextContent('Taylor Therapist');
+  });
+
+  it('uses participant names for direct-message thread titles when no subject is set', async () => {
+    vi.mocked(fetchMessageThread).mockResolvedValueOnce({
+      id: 'thread-1',
+      organization_id: 'org-1',
+      created_by: 'user-1',
+      subject: null,
+      thread_type: 'direct',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      participant_names: ['Alex Admin'],
+    });
+
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'Alex Admin' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Conversation' })).not.toBeInTheDocument();
   });
 });

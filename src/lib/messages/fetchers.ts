@@ -9,6 +9,23 @@ import type {
 
 export { fetchStaffRecipients };
 
+const fetchParticipantNamesByThread = async (
+  threadIds: string[],
+  currentUserId: string,
+): Promise<Map<string, string[]>> => {
+  const participantNames = await Promise.all(threadIds.map(async (threadId) => {
+    const names = await fetchThreadParticipantNames(threadId);
+    return [
+      threadId,
+      Array.from(names.entries())
+        .filter(([userId]) => userId !== currentUserId)
+        .map(([, name]) => name),
+    ] as const;
+  }));
+
+  return new Map(participantNames);
+};
+
 export const fetchMessageThreads = async (
   organizationId: string,
   userId: string,
@@ -71,11 +88,26 @@ export const fetchMessageThreads = async (
       }
     }
 
+    const threadIdsNeedingParticipantNames = (threads ?? [])
+      .filter((thread) => thread.thread_type === 'direct' && !(thread.subject ?? '').trim())
+      .map((thread) => thread.id);
+
+    const participantNamesByThread = await fetchParticipantNamesByThread(
+      threadIdsNeedingParticipantNames,
+      userId,
+    ).catch((nameError) => {
+      if (isMessagingSchemaUnavailable(nameError)) {
+        return new Map<string, string[]>();
+      }
+      throw nameError;
+    });
+
     const list: MessageThreadListItem[] = (threads ?? []).map((thread) => {
       const participant = participantByThread.get(thread.id);
       const latest = latestByThread.get(thread.id);
       return {
         ...thread,
+        participant_names: participantNamesByThread.get(thread.id) ?? [],
         participant: participant
           ? {
               thread_id: thread.id,
@@ -131,7 +163,7 @@ export const fetchThreadMessages = async (threadId: string): Promise<Message[]> 
   }));
 };
 
-export const fetchMessageThread = async (threadId: string) => {
+export const fetchMessageThread = async (threadId: string, currentUserId: string) => {
   const { data, error } = await supabase
     .from('message_threads')
     .select('*')
@@ -145,6 +177,22 @@ export const fetchMessageThread = async (threadId: string) => {
     throw error;
   }
 
-  return data;
+  if (!data) {
+    return null;
+  }
+
+  const participantNames = await fetchThreadParticipantNames(threadId).catch((nameError) => {
+    if (isMessagingSchemaUnavailable(nameError)) {
+      return new Map<string, string>();
+    }
+    throw nameError;
+  });
+
+  return {
+    ...data,
+    participant_names: Array.from(participantNames.entries())
+      .filter(([userId]) => userId !== currentUserId)
+      .map(([, name]) => name),
+  };
 };
 

@@ -30,7 +30,12 @@ export function MessagesInbox() {
     return threads.filter((thread) => {
       const subject = (thread.subject ?? '').toLowerCase();
       const preview = (thread.last_message_preview ?? '').toLowerCase();
-      return subject.includes(query) || preview.includes(query);
+      const participantNames = (thread.participant_names ?? []).join(' ').toLowerCase();
+      return (
+        subject.includes(query)
+        || preview.includes(query)
+        || participantNames.includes(query)
+      );
     });
   }, [data?.threads, searchQuery]);
 

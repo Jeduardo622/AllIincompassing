@@ -108,6 +108,7 @@ describe("assessmentDocumentsHandler", () => {
     expect(payload).toMatchObject({
       status: "extraction_failed",
       extraction_error: expectedError,
+      extracted_at: null,
     });
     expect(payload.updated_at).toEqual(expect.any(String));
   };
@@ -3324,6 +3325,13 @@ describe("assessmentDocumentsHandler", () => {
       return typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-full-workflow") && body.includes('"status":"drafted"');
     });
     expect(draftedStatusPatchCall).toBeDefined();
+    const draftedStatusPatchPayload = JSON.parse(String((draftedStatusPatchCall?.[1] as RequestInit).body)) as Record<string, unknown>;
+    expect(draftedStatusPatchPayload).toMatchObject({
+      status: "drafted",
+      extraction_error: null,
+    });
+    expect(draftedStatusPatchPayload.extracted_at).toEqual(expect.any(String));
+    expect(Date.parse(String(draftedStatusPatchPayload.extracted_at))).not.toBeNaN();
 
     const draftGeneratedEventCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
       const body = typeof init?.body === "string" ? init.body : "";
@@ -3430,6 +3438,20 @@ describe("assessmentDocumentsHandler", () => {
       .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-event-fail"))
       .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
     expect(documentStatusBodies.some((body) => body.includes('"status":"drafted"'))).toBe(true);
+    const draftedStatusPayload = documentStatusBodies
+      .map((body) => {
+        try {
+          return JSON.parse(body) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })
+      .find((payload) => payload?.status === "drafted");
+    expect(draftedStatusPayload).toMatchObject({
+      status: "drafted",
+      extraction_error: null,
+    });
+    expect(draftedStatusPayload?.extracted_at).toEqual(expect.any(String));
     expect(documentStatusBodies.some((body) => body.includes('"status":"extraction_failed"'))).toBe(false);
 
     const extractionCompletedEventCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {

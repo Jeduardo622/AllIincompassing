@@ -388,9 +388,10 @@ export const persistDraftRows = async (args: {
   document: AssessmentDocumentScopeRow;
   assessmentDocumentId: string;
   payload: GeneratedDraftPayload;
+  extractedAt?: string;
   signal?: AbortSignal;
 }) => {
-  const { supabaseUrl, headers, organizationId, actorId, document, assessmentDocumentId, payload, signal } = args;
+  const { supabaseUrl, headers, organizationId, actorId, document, assessmentDocumentId, payload, extractedAt, signal } = args;
   const createProgramPayload = payload.programs.map((program) => ({
     assessment_document_id: assessmentDocumentId,
     organization_id: organizationId,
@@ -508,8 +509,9 @@ export const persistDraftRows = async (args: {
       signal,
       body: JSON.stringify({
         status: "drafted",
+        ...(extractedAt ? { extracted_at: extractedAt } : {}),
         extraction_error: null,
-        updated_at: new Date().toISOString(),
+        updated_at: extractedAt ?? new Date().toISOString(),
       }),
     },
   );
@@ -546,6 +548,7 @@ export const persistDraftRows = async (args: {
         signal,
         body: JSON.stringify({
           status: document.status,
+          ...(extractedAt ? { extracted_at: null } : {}),
           updated_at: new Date().toISOString(),
         }),
       },

@@ -443,4 +443,132 @@ describe("IehpFbaLayoutReview", () => {
     expect(await screen.findByLabelText("Appendix and Supporting Information")).toBeInTheDocument();
     expect(screen.queryByText(/CalOptima/i)).not.toBeInTheDocument();
   });
+
+  it("renders a school-goals empty state on page 16 when no school goal sections were extracted", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 16, title: "School Goals", layout_json: {} }],
+          fields: [],
+          values: {
+            checklist_items: [],
+            structured_sections: [],
+          },
+          unresolved_required_count: 0,
+          extracted_value_count: 0,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 16/i }));
+    expect(await screen.findByText("Page 16: School Goals")).toBeInTheDocument();
+    expect(screen.getByText("No school-specific goals were extracted for this IEHP document.")).toBeInTheDocument();
+    expect(screen.queryByText(/CalOptima/i)).not.toBeInTheDocument();
+  });
+
+  it("labels unresolved required manual IEHP rows as manual-required review items", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 2, title: "Referral Information", layout_json: {} }],
+          fields: [
+            {
+              page_number: 2,
+              section_key: "identification_admin",
+              field_key: "IEHP_FBA_REFERRING_PROVIDER",
+              label: "Name of Referring Provider, Credentials",
+              field_type: "textarea",
+              mode: "MANUAL",
+              required: true,
+              source: "clinician_manual_entry unless present in uploaded document",
+              layout_json: {},
+            },
+            {
+              page_number: 2,
+              section_key: "identification_admin",
+              field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+              label: "Reason for Referral",
+              field_type: "textarea",
+              mode: "MANUAL",
+              required: true,
+              source: "clinician_manual_entry unless present in uploaded document",
+              layout_json: {},
+            },
+            {
+              page_number: 2,
+              section_key: "identification_admin",
+              field_key: "IEHP_FBA_MISSING_MANUAL_FIELD",
+              label: "Missing Manual Field",
+              field_type: "textarea",
+              mode: "MANUAL",
+              required: true,
+              source: "clinician_manual_entry",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-referring-provider",
+                placeholder_key: "IEHP_FBA_REFERRING_PROVIDER",
+                section_key: "identification_admin",
+                label: "Name of Referring Provider, Credentials",
+                mode: "MANUAL",
+                required: true,
+                status: "not_started",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+              {
+                id: "item-reason",
+                placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+                section_key: "identification_admin",
+                label: "Reason for Referral",
+                mode: "MANUAL",
+                required: true,
+                status: "verified",
+                value_text: "Reviewed referral reason",
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [],
+          },
+          unresolved_required_count: 1,
+          extracted_value_count: 0,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 2/i }));
+    expect(await screen.findByLabelText("Name of Referring Provider, Credentials")).toBeInTheDocument();
+    expect(screen.getByText("manual required")).toBeInTheDocument();
+    expect(screen.getByText(/This required IEHP field is intentionally manual/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Reason for Referral")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Reviewed referral reason")).toBeInTheDocument();
+    expect(screen.getByLabelText("Missing Manual Field")).toBeDisabled();
+    expect(screen.getByText("missing row")).toBeInTheDocument();
+    expect(screen.getAllByText("manual required")).toHaveLength(1);
+  });
 });

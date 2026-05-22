@@ -119,6 +119,16 @@ const getStructuredSectionPageNumber = (section: StructuredValue): number | null
   return typeof pageNumber === "number" ? pageNumber : null;
 };
 
+const emptyPageMessage = (pageNumber: number, title: string | undefined): string => {
+  if (pageNumber === 16 || /school goals/i.test(title ?? "")) {
+    return "No school-specific goals were extracted for this IEHP document.";
+  }
+  return "This template page is represented for layout parity. No mapped checklist field lands on this page yet.";
+};
+
+const isManualRequiredReviewItem = (field: TemplateField, item: ChecklistValue | undefined): boolean =>
+  Boolean(item) && field.required && field.mode === "MANUAL" && item?.status === "not_started";
+
 export function IehpFbaLayoutReview({
   assessmentDocument,
   organizationId,
@@ -331,7 +341,7 @@ export function IehpFbaLayoutReview({
 
             {activePageFields.length === 0 && activePageLooseStructuredSections.length === 0 ? (
               <div className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-                This template page is represented for layout parity. No mapped checklist field lands on this page yet.
+                {emptyPageMessage(activePage, activePageMeta?.title)}
               </div>
             ) : (
               <div className="space-y-4">
@@ -347,6 +357,7 @@ export function IehpFbaLayoutReview({
                     return pageNumber === null || pageNumber === activePage;
                   });
                   const locked = item?.status === "approved";
+                  const manualRequired = isManualRequiredReviewItem(field, item);
                   return (
                     <div key={field.field_key} className="rounded-md border border-slate-300 p-3">
                       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
@@ -359,9 +370,15 @@ export function IehpFbaLayoutReview({
                           </p>
                         </div>
                         <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                          {item?.status ?? "missing row"}
+                          {manualRequired ? "manual required" : item?.status ?? "missing row"}
                         </span>
                       </div>
+
+                      {manualRequired && (
+                        <p className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                          This required IEHP field is intentionally manual unless reliable document evidence is present.
+                        </p>
+                      )}
 
                       <textarea
                         id={`iehp-${field.field_key}`}

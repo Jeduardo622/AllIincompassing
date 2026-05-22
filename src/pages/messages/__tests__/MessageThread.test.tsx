@@ -23,7 +23,24 @@ vi.mock('../../../lib/messages/fetchers', () => ({
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   })),
-  fetchThreadMessages: vi.fn(async () => []),
+  fetchThreadMessages: vi.fn(async () => ([
+    {
+      id: 'message-1',
+      thread_id: 'thread-1',
+      sender_id: 'user-2',
+      sender_name: 'Alex Admin',
+      body: 'Hello from Alex',
+      created_at: '2026-05-22T12:00:00.000Z',
+    },
+    {
+      id: 'message-2',
+      thread_id: 'thread-1',
+      sender_id: 'user-1',
+      sender_name: 'Taylor Therapist',
+      body: 'Reply from Taylor',
+      created_at: '2026-05-22T12:01:00.000Z',
+    },
+  ])),
 }));
 
 vi.mock('../../../lib/messages/mutations', () => ({
@@ -53,5 +70,12 @@ describe('MessageThread', () => {
     renderPage();
     expect(await screen.findByText(PHI_POLICY_BANNER)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(PHI_COMPOSER_PLACEHOLDER)).toBeInTheDocument();
+  });
+
+  it('shows sender names for both incoming and outgoing messages', async () => {
+    renderPage();
+
+    expect(await screen.findByTestId('message-sender-message-1')).toHaveTextContent('Alex Admin');
+    expect(screen.getByTestId('message-sender-message-2')).toHaveTextContent('Taylor Therapist');
   });
 });

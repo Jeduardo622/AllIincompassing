@@ -26,6 +26,7 @@ export type Message = {
   sender_id: string;
   body: string;
   created_at: string;
+  sender_name?: string;
 };
 
 export type MessageThreadListItem = MessageThread & {

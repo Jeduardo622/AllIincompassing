@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { fetchStaffRecipients } from './fetchStaffRecipients';
+import { fetchThreadParticipantNames } from './fetchThreadParticipantNames';
 import { isMessagingSchemaUnavailable } from './errors';
 import type {
   Message,
@@ -101,11 +102,21 @@ export const fetchMessageThreads = async (
 };
 
 export const fetchThreadMessages = async (threadId: string): Promise<Message[]> => {
-  const { data, error } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('thread_id', threadId)
-    .order('created_at', { ascending: true });
+  const [messagesResult, participantNames] = await Promise.all([
+    supabase
+      .from('messages')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true }),
+    fetchThreadParticipantNames(threadId).catch((nameError) => {
+      if (isMessagingSchemaUnavailable(nameError)) {
+        return new Map<string, string>();
+      }
+      throw nameError;
+    }),
+  ]);
+
+  const { data, error } = messagesResult;
 
   if (error) {
     if (isMessagingSchemaUnavailable(error)) {
@@ -114,7 +125,10 @@ export const fetchThreadMessages = async (threadId: string): Promise<Message[]> 
     throw error;
   }
 
-  return (data ?? []) as Message[];
+  return ((data ?? []) as Message[]).map((message) => ({
+    ...message,
+    sender_name: participantNames.get(message.sender_id) ?? 'Staff member',
+  }));
 };
 
 export const fetchMessageThread = async (threadId: string) => {

@@ -53,6 +53,7 @@ const requestSchema = z.object({
       city: z.string().nullish(),
       state: z.string().nullish(),
       zip_code: z.string().nullish(),
+      primary_therapist_phone: z.string().nullish(),
     })
     .optional(),
 });
@@ -1477,6 +1478,18 @@ const deterministicValueForRow = (
     }
   }
   if (/ASSESSOR_PHONE/u.test(key)) {
+    if (client.primary_therapist_phone) {
+      return {
+        placeholder_key: key,
+        value_text: client.primary_therapist_phone,
+        value_json: null,
+        confidence: 0.74,
+        mode: row.mode ?? "ASSISTED",
+        status: "drafted",
+        source_span: { method: "client_snapshot", field: "primary_therapist_phone" },
+        review_notes: "Assisted fill from client primary therapist phone; clinician review required.",
+      };
+    }
     return {
       placeholder_key: key,
       value_text: null,

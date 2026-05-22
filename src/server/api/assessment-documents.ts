@@ -264,6 +264,13 @@ const asExtractionWorkflowError = (error: unknown, signal?: AbortSignal): Extrac
   return new ExtractionWorkflowError("extraction_workflow_failed", "Field extraction failed. Review checklist manually.");
 };
 
+const buildExtractionSuccessDocumentPatch = (status: "extracted" | "drafted", timestamp = new Date().toISOString()) => ({
+  status,
+  extracted_at: timestamp,
+  extraction_error: null,
+  updated_at: timestamp,
+});
+
 const assertFetchOk = (result: { ok: boolean; status?: number }, reasonCode: string): void => {
   if (!result.ok) {
     throw new ExtractionWorkflowError(reasonCode, reasonCode, result.status);
@@ -545,6 +552,7 @@ const persistExtractionFailure = async (args: {
       headers,
       body: JSON.stringify({
         status: "extraction_failed",
+        extracted_at: null,
         extraction_error: extractionError,
         updated_at: updatedAt,
       }),
@@ -750,6 +758,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
         AUTO_DRAFT_STRUCTURED_SECTION_STATUSES,
       );
       let finalStatus: "extracted" | "drafted" = "extracted";
+      const extractionCompletedAt = new Date().toISOString();
 
       if (deterministicDraftPayload) {
         const draftResult = await persistDraftRows({
@@ -760,6 +769,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
           document: { id: createdDocumentId, organization_id: organizationId, client_id: clientId, status: fromStatus },
           assessmentDocumentId: createdDocumentId,
           payload: deterministicDraftPayload,
+          extractedAt: extractionCompletedAt,
           signal,
         });
         assertExtractionNotAborted(signal);
@@ -777,12 +787,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
           method: "PATCH",
           headers,
           signal,
-          body: JSON.stringify({
-            status: "extracted",
-            extracted_at: new Date().toISOString(),
-            extraction_error: null,
-            updated_at: new Date().toISOString(),
-          }),
+          body: JSON.stringify(buildExtractionSuccessDocumentPatch("extracted", extractionCompletedAt)),
         });
         assertExtractionNotAborted(signal);
         assertFetchOk(documentExtractedResult, "assessment_status_update_failed");

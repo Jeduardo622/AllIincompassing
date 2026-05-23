@@ -8,6 +8,7 @@ export type MessageThread = {
   thread_type: MessageThreadType;
   created_at: string;
   updated_at: string;
+  participant_names?: string[];
 };
 
 export type MessageThreadParticipant = {

@@ -80,6 +80,36 @@ interface StructuredSectionResult {
   review_notes: string | null;
 }
 
+interface DecodedDocxTableCell {
+  text: string;
+  row_span?: number;
+  col_span?: number;
+}
+
+interface DecodedDocxTable {
+  table_index: number;
+  rows: DecodedDocxTableCell[][];
+}
+
+interface DecodedDocxStructure {
+  text: string;
+  tables: DecodedDocxTable[];
+  headers_footers: Array<{ path: string; text: string }>;
+  visual_assets: Array<{ path: string; asset_type: "image" | "placeholder"; nearby_context: string | null }>;
+}
+
+interface StructuredExtractionCoverageReport {
+  template_type: AssessmentTemplateType;
+  found_major_sections: string[];
+  missing_major_sections: string[];
+  table_count: number;
+  checkbox_group_count: number;
+  target_behavior_block_count: number;
+  program_goal_block_count: number;
+  visual_placeholder_count: number;
+  unmapped_ambiguous_count: number;
+}
+
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 const ASSESSMENT_DOCUMENT_BUCKET_ID = "client-documents";
 
@@ -126,13 +156,89 @@ const normalizeText = (value: string): string =>
     .trim();
 
 const decodeDocxText = async (bytes: Uint8Array): Promise<string> => {
+  const decoded = await decodeDocxStructured(bytes);
+  return decoded.text;
+};
+
+const extractDocxPartText = (xml: string): string => normalizeText(stripXmlTags(xml));
+
+const extractDocxTables = (documentXml: string): DecodedDocxTable[] => {
+  const tableMatches = [...documentXml.matchAll(/<w:tbl[\s\S]*?<\/w:tbl>/g)];
+  return tableMatches.map((tableMatch, tableIndex) => {
+    const tableXml = tableMatch[0];
+    const rowMatches = [...tableXml.matchAll(/<w:tr[\s\S]*?<\/w:tr>/g)];
+    const rows = rowMatches.map((rowMatch) => {
+      const cellMatches = [...rowMatch[0].matchAll(/<w:tc[\s\S]*?<\/w:tc>/g)];
+      return cellMatches.map((cellMatch) => {
+        const cellXml = cellMatch[0];
+        const gridSpanMatch = cellXml.match(/<w:gridSpan[^>]*w:val="(\d+)"/);
+        const vMergeContinuation = /<w:vMerge\b(?![^>]*w:val="restart")/i.test(cellXml);
+        const cell: DecodedDocxTableCell = {
+          text: extractDocxPartText(cellXml),
+        };
+        if (gridSpanMatch?.[1]) {
+          cell.col_span = Number.parseInt(gridSpanMatch[1], 10);
+        }
+        if (vMergeContinuation) {
+          cell.row_span = 0;
+        }
+        return cell;
+      });
+    });
+    return { table_index: tableIndex, rows };
+  });
+};
+
+const extractDocxHeadersFooters = async (
+  zip: { files: Record<string, { name: string; async: (type: "string") => Promise<string> }> },
+): Promise<Array<{ path: string; text: string }>> => {
+  const entries = Object.values(zip.files).filter((file) =>
+    /^word\/(?:header|footer)\d+\.xml$/i.test(file.name)
+  );
+  const parts: Array<{ path: string; text: string }> = [];
+  for (const entry of entries) {
+    const xml = await entry.async("string");
+    const text = extractDocxPartText(xml);
+    if (text) {
+      parts.push({ path: entry.name, text });
+    }
+  }
+  return parts;
+};
+
+const extractDocxVisualAssets = (
+  zipFiles: Record<string, { name: string }>,
+  documentText: string,
+): Array<{ path: string; asset_type: "image" | "placeholder"; nearby_context: string | null }> => {
+  const mediaAssets = Object.values(zipFiles)
+    .filter((file) => /^word\/media\//i.test(file.name))
+    .map((file) => ({
+      path: file.name,
+      asset_type: "image" as const,
+      nearby_context: null,
+    }));
+  const placeholderAssets = [...documentText.matchAll(/\[(?:GRAPH|IMAGE|VISUAL)[^\]]*\]/gi)].map((match) => ({
+    path: `document.xml#offset-${match.index ?? 0}`,
+    asset_type: "placeholder" as const,
+    nearby_context: normalizeExtractedValue(match[0] ?? ""),
+  }));
+  return [...mediaAssets, ...placeholderAssets];
+};
+
+const decodeDocxStructured = async (bytes: Uint8Array): Promise<DecodedDocxStructure> => {
   const { default: JSZip } = await import("npm:jszip@3.10.1");
   const zip = await JSZip.loadAsync(bytes);
   const documentXml = await zip.file("word/document.xml")?.async("string");
   if (!documentXml) {
-    return "";
+    return { text: "", tables: [], headers_footers: [], visual_assets: [] };
   }
-  return normalizeText(stripXmlTags(documentXml));
+  const text = extractDocxPartText(documentXml);
+  return {
+    text,
+    tables: extractDocxTables(documentXml),
+    headers_footers: await extractDocxHeadersFooters(zip),
+    visual_assets: extractDocxVisualAssets(zip.files, text),
+  };
 };
 
 const summarizeTextQuality = (text: string): "high" | "medium" | "low" => {
@@ -534,6 +640,172 @@ const parseRowsFromProgramBlocks = (
   });
 };
 
+const extractFillablePlaceholders = (rawText: string): Array<Record<string, unknown>> => {
+  const matches = [...rawText.matchAll(/\b(?:MM\/DD\/YYYY|X{4,}|Insert\s+[A-Za-z ]+?Name)\b/gi)];
+  return matches.map((match) => ({
+    kind: "fillable_placeholder",
+    value: match[0],
+    source_span: { method: "placeholder_pattern", start_offset: match.index ?? null },
+  }));
+};
+
+const withTemplateStructurePayload = (payload: Record<string, unknown>, rawText: string): Record<string, unknown> => {
+  const fields = extractFillablePlaceholders(rawText);
+  return fields.length > 0 ? { ...payload, fields, placeholders: fields.map((field) => field.value) } : payload;
+};
+
+const extractIeHpMajorSections = (text: string): string[] => {
+  const romanOrder = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV"];
+  const found = new Set<string>();
+  for (const match of text.matchAll(/\b([IVX]{1,5})\.\s+[A-Z][A-Za-z /()-]{2,}/g)) {
+    const roman = match[1] ?? "";
+    if (romanOrder.includes(roman)) {
+      found.add(roman);
+    }
+  }
+  const aliasChecks: Array<[string, RegExp[]]> = [
+    ["I", [/GENERAL\s+INFORMATION/i, /IDENTIFICATION/i]],
+    ["II", [/REASON\s+FOR\s+REFERRAL/i, /BEHAVIORS\s*:/i]],
+    ["III", [/BACKGROUND\s+INFORMATION/i]],
+    ["IV", [/School\s+Information/i, /BHT\s*\(?School\s+Hours\)?/i, /Health\s+and\s+Medica\s*l/i]],
+    ["V", [/BHT\s+Availability/i, /Availability\s+for\s+BHT\s+Services/i]],
+    ["VI", [/ENVIRONMENTAL\s+ANALYSIS/i]],
+    ["VII", [/DESCRIPTION\s+OF\s+ASSESSMENT\s+PROCEDURES/i]],
+    ["VIII", [/ASSESSMENT\s+MEA?SURES/i, /Adaptive\s+and\s+Functional\s+Measure/i]],
+    ["IX", [/Target\s+Behaviors/i]],
+    ["X", [/Behavior\s+Intervention\s+Plan/i]],
+    ["XI", [/Parent\s+Education/i, /Safety\s*\/\s*Crisis/i]],
+    ["XII", [/Location\s+of\s+Service/i, /Coordination\s+of\s+Care/i]],
+    ["XIII", [/Discharge/i, /Transition\s+of\s+Care/i]],
+    ["XIV", [/Recommendations/i, /Clinical\s+Recommendations/i]],
+  ];
+  for (const [roman, patterns] of aliasChecks) {
+    if (patterns.some((pattern) => pattern.test(text))) {
+      found.add(roman);
+    }
+  }
+  return romanOrder.filter((roman) => found.has(roman));
+};
+
+const extractIeHpVisualAssetSections = (text: string): StructuredSectionResult[] => {
+  const assets = [...text.matchAll(/\[(?:GRAPH|IMAGE|VISUAL)[^\]]*\]/gi)].map((match) => ({
+    asset_type: "placeholder",
+    document_path: `document_text#offset-${match.index ?? 0}`,
+    nearby_context: normalizeExtractedValue(match[0] ?? ""),
+    source_span: { method: "visual_placeholder_pattern", start_offset: match.index ?? null },
+  }));
+  if (assets.length === 0) {
+    return [];
+  }
+  return [{
+    section_key: "visual_assets",
+    field_key: "IEHP_FBA_VISUAL_ASSETS",
+    section_index: 0,
+    payload: { assets },
+    source_span: { method: "visual_placeholder_pattern", asset_count: assets.length },
+    status: "drafted",
+    required: false,
+    review_notes: "Deterministic visual placeholder extraction with nearby document context.",
+  }];
+};
+
+const extractIeHpTemplateMetaSections = (text: string): StructuredSectionResult[] => {
+  const majorSections = extractIeHpMajorSections(text);
+  const metadata = {
+    report_date_placeholder: text.match(/\bReport Date\s*:?\s*(MM\/DD\/YYYY|[0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/i)?.[1] ?? null,
+    iehp_member_id_placeholder: text.match(/\bIEHP Member ID#?\s*:?\s*(X{4,}|[A-Z0-9-]{5,})/i)?.[1] ?? null,
+    page_numbers: [...text.matchAll(/\bPage\s+\d+\s+of\s+\d+\b/gi)].map((match) => match[0]),
+    header_footer_candidates: [...text.matchAll(/\b(?:Header|Footer)\s*:\s*([^\n]+)/gi)].map((match) =>
+      normalizeExtractedValue(match[1] ?? "")
+    ),
+    major_sections: majorSections,
+    fields: extractFillablePlaceholders(text),
+  };
+  return [{
+    section_key: "template_metadata",
+    field_key: "IEHP_FBA_TEMPLATE_METADATA",
+    section_index: 0,
+    payload: metadata,
+    source_span: { method: "iehp_template_metadata", document_path: "document_text" },
+    status: "drafted",
+    required: false,
+    review_notes: "Template metadata extracted separately from clinical fields to avoid header/footer pollution.",
+  }];
+};
+
+const buildIeHpDocxStructurePayload = (docxStructure: DecodedDocxStructure): Record<string, unknown> => ({
+  tables: docxStructure.tables.map((table) => ({
+    table_index: table.table_index,
+    row_count: table.rows.length,
+    rows: table.rows,
+  })),
+  headers_footers: docxStructure.headers_footers,
+  visual_assets: docxStructure.visual_assets,
+});
+
+const extractIeHpDocxStructureSections = (
+  docxStructure?: DecodedDocxStructure | null,
+): StructuredSectionResult[] => {
+  if (!docxStructure) {
+    return [];
+  }
+  return [{
+    section_key: "docx_structure",
+    field_key: "IEHP_FBA_DOCX_STRUCTURE",
+    section_index: 0,
+    payload: buildIeHpDocxStructurePayload(docxStructure),
+    source_span: {
+      method: "docx_openxml_structure",
+      document_path: "word/document.xml",
+      table_count: docxStructure.tables.length,
+      header_footer_count: docxStructure.headers_footers.length,
+      visual_asset_count: docxStructure.visual_assets.length,
+    },
+    status: "drafted",
+    required: false,
+    review_notes: "OpenXML table, header/footer, and visual asset structure preserved separately from clinical fields.",
+  }];
+};
+
+const isClinicalIeHpSection = (section: StructuredSectionResult): boolean =>
+  ![
+    "IEHP_FBA_TEMPLATE_METADATA",
+    "IEHP_FBA_VISUAL_ASSETS",
+    "IEHP_FBA_UNMAPPED_ITEMS",
+    "IEHP_FBA_DOCX_STRUCTURE",
+  ].includes(section.field_key);
+
+const extractIeHpUnmappedSections = (text: string, sections: StructuredSectionResult[]): StructuredSectionResult[] => {
+  const ambiguous: Record<string, unknown>[] = [];
+  for (const match of text.matchAll(/\bTemplate instruction\s*:\s*(.+?)(?=\n|$)/gi)) {
+    ambiguous.push({
+      item_type: "template_instruction",
+      raw_text: normalizeExtractedValue(match[1] ?? ""),
+      source_span: { method: "template_instruction_pattern", start_offset: match.index ?? null },
+    });
+  }
+  if (!sections.some(isClinicalIeHpSection) && text.trim()) {
+    ambiguous.push({
+      item_type: "unmapped_document_text",
+      raw_text: normalizeExtractedValue(text).slice(0, 500),
+      source_span: { method: "fallback_unmapped_document_text" },
+    });
+  }
+  if (ambiguous.length === 0) {
+    return [];
+  }
+  return [{
+    section_key: "unmapped_items",
+    field_key: "IEHP_FBA_UNMAPPED_ITEMS",
+    section_index: 0,
+    payload: { items: ambiguous },
+    source_span: { method: "iehp_unmapped_item_collection", item_count: ambiguous.length },
+    status: "drafted",
+    required: false,
+    review_notes: "Unknown or instruction-only regions preserved for reviewer mapping instead of being dropped.",
+  }];
+};
+
 const extractIeHpProgramGoalSections = (
   text: string,
   sectionIndexByFieldKey: Map<string, number>,
@@ -583,9 +855,10 @@ const parseIeHpRecommendations = (rawText: string): Array<Record<string, string>
   let match: RegExpExecArray | null;
   while ((match = codePattern.exec(compact)) !== null) {
     rows.push({
+      cpt: match[1] ?? "",
       hcpcs_code: match[1] ?? "",
       description: normalizeExtractedValue(match[2] ?? ""),
-      units_requested: normalizeExtractedValue(match[3] ?? ""),
+      units_requested: normalizeExtractedValue(match[3] ?? "").replace(/\s+units$/i, ""),
     });
   }
   return rows;
@@ -625,7 +898,7 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
   if (fieldKey === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
     const inline = normalizeInlineText(rawText);
     const withoutHeading = inline.replace(/^(?:BEHAVIORS\s*:?\s*)?(?:The behaviors and functional skills to be addressed are\s*:?)?/i, "");
-    return { raw_text: compact, targets: splitListText(withoutHeading) };
+    return withTemplateStructurePayload({ raw_text: compact, targets: splitListText(withoutHeading) }, rawText);
   }
   if (fieldKey === "IEHP_FBA_BHT_AVAILABILITY_GRID") {
     const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -668,12 +941,21 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
       `(${environmentalPromptPattern}):?\\s*(.*?)(?=(?:${environmentalPromptPattern})(?::|\\s+FORMCHECKBOX)|$)`,
       "gi",
     );
-    const rows = [...compact.matchAll(questionPattern)].map((match) => ({
-      prompt: normalizeExtractedValue(match[1] ?? ""),
-      options_seen: [...(match[2] ?? "").matchAll(/\b(Yes|No|None|Fair|High)\b/gi)].map((option) => option[1]),
-      selected: extractSelectedYesNo(match[2] ?? ""),
-      needs_review: extractSelectedYesNo(match[2] ?? "") === "unknown",
-    }));
+    const rows = [...compact.matchAll(questionPattern)].map((match) => {
+      const options = [...(match[2] ?? "").matchAll(/\b(Yes|No|None|Fair|High)\b/gi)].map((option) => ({
+        label: option[1],
+        selected: /(?:^|\s)(?:☒|þ|\[x\]|x)\s*$/i.test((match[2] ?? "").slice(Math.max(0, (option.index ?? 0) - 8), option.index ?? 0)),
+      }));
+      const selectedOption = options.find((option) => option.selected)?.label?.toLowerCase();
+      const selected = selectedOption ?? extractSelectedYesNo(match[2] ?? "");
+      return {
+        prompt: normalizeExtractedValue(match[1] ?? ""),
+        options,
+        options_seen: options.map((option) => option.label),
+        selected,
+        needs_review: selected === "unknown",
+      };
+    });
     return { raw_text: compact, rows };
   }
   if (fieldKey === "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE") {
@@ -709,6 +991,12 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
   if (fieldKey === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES") {
     return {
       raw_text: compact,
+      assessment_blocks: [
+        { assessment_type: "VB-MAPP", raw_text: compact.match(/VB-MAPP[\s\S]*?(?=Vineland|AFLS|ABAS-3|$)/i)?.[0] ?? null },
+        { assessment_type: "Vineland", raw_text: compact.match(/Vineland[\s\S]*?(?=VB-MAPP|AFLS|ABAS-3|$)/i)?.[0] ?? null },
+        { assessment_type: "AFLS", raw_text: compact.match(/AFLS[\s\S]*?(?=VB-MAPP|Vineland|ABAS-3|$)/i)?.[0] ?? null },
+        { assessment_type: "ABAS-3", raw_text: compact.match(/ABAS-3[\s\S]*?(?=VB-MAPP|Vineland|AFLS|$)/i)?.[0] ?? null },
+      ].filter((block) => block.raw_text),
       measure_name: compact.match(/(Vineland Adaptive Behavior Scales,\s*3rd Edition)/i)?.[1] ?? null,
       date_administered: compact.match(/Date Administered\s*:?\s*([0-9/]+)/i)?.[1] ?? null,
       interviewer: normalizeExtractedValue(compact.match(/Name of Interviewer\s*:?\s*(.+?)(?=Name of Respondent|Assessment Summary|$)/i)?.[1] ?? ""),
@@ -735,15 +1023,15 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
   }
   if (fieldKey === "IEHP_FBA_SIGNATURE_BLOCK") {
     const dateMatch = compact.match(/\b([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})\b/);
-    return {
+    return withTemplateStructurePayload({
       raw_text: compact,
       report_completed_date: dateMatch?.[1] ?? null,
       completed_by: normalizeExtractedValue(compact.match(/Report completed by\s*:?\s*(?:_+\s*)?(?:[0-9/]+\s*)?(.+?)(?=Date\s*:|Board Certified|West Coast|$)/i)?.[1] ?? ""),
       credentials: normalizeExtractedValue(compact.match(/(Board Certified Behavior Analyst[^,]*,\s*[^ ]+)/i)?.[1] ?? ""),
       agency: normalizeExtractedValue(compact.match(/\b(West Coast ABA)\b/i)?.[1] ?? ""),
-    };
+    }, rawText);
   }
-  return { raw_text: compact };
+  return withTemplateStructurePayload({ raw_text: compact }, rawText);
 };
 
 const normalizeIeHpGoalSubsection = (value: string): "short" | "intermediate" | "progress" | null => {
@@ -864,10 +1152,60 @@ const splitIeHpGoalSubsections = (
       review_notes: `Deterministic IEHP ${subsectionType} goal subsection extracted for child-goal modeling.`,
     });
   });
+
   return sections;
 };
 
-const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
+const buildStructuredExtractionCoverageReport = (
+  sections: StructuredSectionResult[],
+  templateType: AssessmentTemplateType,
+): StructuredExtractionCoverageReport => {
+  const romanOrder = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV"];
+  const metadata = sections.find((section) => section.field_key === "IEHP_FBA_TEMPLATE_METADATA")?.payload ?? {};
+  const foundMajorSections = Array.isArray(metadata.major_sections)
+    ? romanOrder.filter((roman) => (metadata.major_sections as unknown[]).includes(roman))
+    : [];
+  const countRows = (fieldKeyPattern?: RegExp): number =>
+    sections
+      .filter((section) => !fieldKeyPattern || fieldKeyPattern.test(section.field_key))
+      .reduce((count, section) => count + (Array.isArray(section.payload.rows) ? section.payload.rows.length : 0), 0);
+  const checkboxGroupCount = sections.reduce((count, section) => {
+    const rows = Array.isArray(section.payload.rows) ? section.payload.rows : [];
+    return count + rows.filter((row) =>
+      row && typeof row === "object" && Array.isArray((row as Record<string, unknown>).options)
+    ).length;
+  }, 0);
+  const visualAssets = sections.find((section) => section.field_key === "IEHP_FBA_VISUAL_ASSETS")?.payload.assets;
+  const unmappedItems = sections.find((section) => section.field_key === "IEHP_FBA_UNMAPPED_ITEMS")?.payload.items;
+
+  return {
+    template_type: templateType,
+    found_major_sections: foundMajorSections,
+    missing_major_sections: templateType === "iehp_fba"
+      ? romanOrder.filter((roman) => !foundMajorSections.includes(roman))
+      : [],
+    table_count: countRows(/(?:TABLE|GRID|MATRIX|ROWS|MEMBERS|SERVICES|HISTORY|RECOMMENDATIONS|ENVIRONMENTAL)/),
+    checkbox_group_count: checkboxGroupCount,
+    target_behavior_block_count: sections.filter((section) =>
+      section.field_key === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS" ||
+      section.field_key === "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS" ||
+      section.field_key === "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS"
+    ).length,
+    program_goal_block_count: sections.filter((section) =>
+      section.payload.section_type === "goal" ||
+      section.field_key === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS" ||
+      section.field_key === "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS" ||
+      section.field_key === "CALOPTIMA_FBA_PARENT_GOALS"
+    ).length,
+    visual_placeholder_count: Array.isArray(visualAssets) ? visualAssets.length : 0,
+    unmapped_ambiguous_count: Array.isArray(unmappedItems) ? unmappedItems.length : 0,
+  };
+};
+
+const extractIeHpGoalSections = (
+  text: string,
+  docxStructure?: DecodedDocxStructure | null,
+): StructuredSectionResult[] => {
   const compact = compactDocumentText(text);
   const sectionIndexByFieldKey = new Map<string, number>();
 
@@ -1153,6 +1491,11 @@ const extractIeHpGoalSections = (text: string): StructuredSectionResult[] => {
       ),
     );
   }
+
+  sections.push(...extractIeHpTemplateMetaSections(text));
+  sections.push(...extractIeHpVisualAssetSections(text));
+  sections.push(...extractIeHpDocxStructureSections(docxStructure));
+  sections.push(...extractIeHpUnmappedSections(text, sections));
 
   return sections;
 };
@@ -1871,8 +2214,12 @@ const extractCaloptimaStructuredSections = (text: string): StructuredSectionResu
     return deduped;
   }, []);
 
-const extractStructuredSections = (text: string, templateType: AssessmentTemplateType): StructuredSectionResult[] =>
-  templateType === "iehp_fba" ? extractIeHpGoalSections(text) : extractCaloptimaStructuredSections(text);
+const extractStructuredSections = (
+  text: string,
+  templateType: AssessmentTemplateType,
+  docxStructure?: DecodedDocxStructure | null,
+): StructuredSectionResult[] =>
+  templateType === "iehp_fba" ? extractIeHpGoalSections(text, docxStructure) : extractCaloptimaStructuredSections(text);
 
 const withExtractionProviderSource = <T extends { source_span: Record<string, unknown> | null }>(
   item: T,
@@ -1898,12 +2245,14 @@ const withExtractionProviderSource = <T extends { source_span: Record<string, un
 };
 
 export const __TESTING__ = {
+  buildStructuredExtractionCoverageReport,
+  decodeDocxStructured,
   deterministicValueForRow,
   extractStructuredSections,
   isAllowedAssessmentDocumentStorageTarget,
 };
 
-Deno.serve(async (req) => {
+const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req) });
   }
@@ -1967,8 +2316,9 @@ Deno.serve(async (req) => {
 
     const fileBytes = new Uint8Array(await download.data.arrayBuffer());
     let adobeExtraction: NormalizedAdobePdfExtract | null = null;
+    let docxStructure: DecodedDocxStructure | null = null;
     const documentText = objectPathLower.endsWith(".docx")
-      ? await decodeDocxText(fileBytes)
+      ? (docxStructure = await decodeDocxStructured(fileBytes)).text
       : (adobeExtraction = await extractPdfWithAdobe(fileBytes)).text;
     const extractionProvider = adobeExtraction ? "adobe_pdf_extract" : "local_docx";
     const textQuality = summarizeTextQuality(documentText);
@@ -1976,10 +2326,11 @@ Deno.serve(async (req) => {
     const deterministic = data.checklist_rows.map((row) =>
       deterministicValueForRow(row, documentText, data.client_snapshot, data.checklist_rows)
     );
-    const structuredSections = extractStructuredSections(documentText, data.template_type).map((section) =>
+    const structuredSections = extractStructuredSections(documentText, data.template_type, docxStructure).map((section) =>
       withExtractionProviderSource(section, extractionProvider)
     );
     const structuredGoalSummary = summarizeStructuredGoalSections(structuredSections);
+    const coverageReport = buildStructuredExtractionCoverageReport(structuredSections, data.template_type);
     const structuredSummaryByKey = new Map<string, { count: number; firstPayload: Record<string, unknown> }>();
     structuredSections.forEach((section) => {
       const current = structuredSummaryByKey.get(section.field_key);
@@ -2013,9 +2364,13 @@ Deno.serve(async (req) => {
       extraction_provider: extractionProvider,
       adobe_element_count: adobeExtraction?.element_count ?? null,
       adobe_table_count: adobeExtraction?.table_count ?? null,
+      docx_table_count: docxStructure?.tables.length ?? null,
+      docx_header_footer_count: docxStructure?.headers_footers.length ?? null,
+      docx_visual_asset_count: docxStructure?.visual_assets.length ?? null,
       structured_section_count: structuredSections.length,
       structured_child_goal_count: structuredGoalSummary.childGoalCount,
       structured_parent_goal_count: structuredGoalSummary.parentGoalCount,
+      coverage_report: coverageReport,
       fields: merged,
       structured_sections: structuredSections,
       unresolved_keys: merged.filter((field) => !field.value_text).map((field) => field.placeholder_key),
@@ -2036,4 +2391,8 @@ Deno.serve(async (req) => {
     console.error("extract-assessment-fields error", error);
     return json(req, { error: "Failed to extract assessment fields." }, 500);
   }
-});
+};
+
+if (import.meta.main) {
+  Deno.serve(handler);
+}

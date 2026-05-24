@@ -5,6 +5,9 @@ import { __TESTING__ } from "./index.ts";
 const asSections = (template: "iehp_fba" | "caloptima_fba", text: string) =>
   __TESTING__.extractStructuredSections(text, template);
 
+const asIeHpCoverageReport = (text: string) =>
+  __TESTING__.buildStructuredExtractionCoverageReport(asSections("iehp_fba", text), "iehp_fba");
+
 const calOptimaRedactedStyleExcerpt = `
   CalOptima Health Functional Behavior Assessment / Initial Treatment Plan
   I. IDENTIFICATION
@@ -130,6 +133,241 @@ const calOptimaRedactedStyleExcerpt = `
   Signature: Date: 7/22/2025
   ** By signing, I attest that I have read, reviewed, and approved this proposed treatment plan.
 `;
+
+const iehpCompleteTemplateStyleExcerpt = `
+  Header: Inland Empire Health Plan Functional Behavioral Assessment Report
+  Page 1 of 30
+  Report Date: MM/DD/YYYY
+  IEHP Member ID#: XXXXXXXXXXXX
+  I. IDENTIFICATION
+  First Name: XXXXXXXXXXXX Last Name: XXXXXXXXXXXX Birth Date: MM/DD/YYYY
+  II. BEHAVIORS
+  The behaviors and functional skills to be addressed are:
+  ☐ Aggression ☒ Functional Communication ☐ Self-injury
+  Fillable target label: XXXXXXXXXXXX
+  III. BACKGROUND INFORMATION
+  Persons in Household and Relationship to IEHP Member
+  Name Relationship
+  XXXXXXXXXXXX Parent
+  School Information
+  School: XXXXXXXXXXXX
+  IV. BHT School Hours
+  M Tu W Th F Total
+  8:00 AM 8:00 AM 8:00 AM 8:00 AM 8:00 AM 10 hours
+  Member's last visit to the Primary Care Provider (PCP): MM/DD/YYYY
+  If the visit was more than one year ago, would the Member like assistance from IEHP in accessing care to their PCP?
+  ☒ Yes ☐ No
+  Health and Medical
+  Template instruction: summarize relevant medical history without inventing clinical data.
+  Current Services and Activities
+  Service Schedule
+  Speech Weekly
+  Intervention History
+  Provider Dates Outcome
+  XXXXXXXXXXXX MM/DD/YYYY Unknown
+  V. BHT Availability
+  Monday Tuesday Wednesday Thursday Friday Saturday Sunday
+  After 3:30 PM After 3:30 PM After 3:30 PM After 3:30 PM After 3:30 PM Starting 9:00 AM Starting 9:00 AM
+  VI. MEMBER'S ENVIRONMENTAL ANALYSIS:
+  Availability and access to reinforcers: ☒ Yes ☐ No
+  Level of noise/Environmental Distractions: ☐ None ☒ Fair ☐ High
+  VII. DESCRIPTION OF ASSESSMENT PROCEDURES:
+  Procedures: Date and Location: Person involved (indicate credentials):
+  Records Reviewed: MM/DD/YYYY Telehealth BCBA
+  Clinical Interview: MM/DD/YYYY Home BCBA
+  Records reviewed included:
+  Diagnostic Report (MM/DD/YYYY)
+  Clinical Interview narrative placeholder.
+  First Member Observation narrative placeholder.
+  Second Member Observation narrative placeholder.
+  Preference Assessment
+  Preference Areas
+  Social: praise
+  Sensory: fidgets
+  VIII. Adaptive and Functional Measure Summaries
+  VB-MAPP Assessment Summary: Preserve as assessment block.
+  Vineland Adaptive Behavior Scales, 3rd Edition Date Administered: MM/DD/YYYY Name of Interviewer: XXXXXXXXXXXX Name of Respondent: XXXXXXXXXXXX Assessment Summary: Placeholder summary.
+  AFLS Assessment Summary: Preserve as assessment block.
+  ABAS-3 Assessment Summary: Preserve as assessment block.
+  Skill / Data Collected / Baseline / Location
+  Insert Behavior Name Data Collected/Baseline: placeholder baseline at Home
+  IX. Target Behaviors
+  TARGET BEHAVIORS:
+  Program Name: Insert Behavior Name
+  Instrumental Goal: Placeholder target-behavior goal.
+  Data Collection: Frequency
+  Mastery Criteria: placeholder mastery
+  Baseline: placeholder baseline
+  REPLACEMENT BEHAVIORS:
+  Program Name: Functional Communication
+  Instrumental Goal: Placeholder replacement goal.
+  Data Collection: Percent opportunities
+  Mastery Criteria: placeholder mastery
+  Baseline: placeholder baseline
+  X. Behavior Intervention Plan
+  Behavior Intervention Plan
+  Antecedent Strategies: visual schedule.
+  Replacement Behavior: request break.
+  Consequence Strategies: differential reinforcement.
+  Safety/Crisis Procedure
+  Crisis plan placeholder.
+  XI. Parent Education
+  Program Name: Parent Coaching
+  Instrumental Goal: Placeholder parent-education goal.
+  Data Collection: Percent opportunities
+  Mastery Criteria: placeholder mastery
+  Baseline: placeholder baseline
+  XII. Location of Service
+  Home, school, community.
+  Coordination of Care:
+  Coordinate with parent, school, PCP, and service providers.
+  XIII. Discharge Criteria:
+  Exit plan criteria placeholder.
+  Transition of Care:
+  Transition plan placeholder.
+  XIV. Recommendations:
+  Clinical Recommendations
+  CPT Description Units Requested
+  H2019 Therapeutic Behavioral Services, per 15 minutes 10 units
+  H0032 Mental Health Service Plan Development by Non-Physician, per 15 minutes 4 units
+  Report completed by:
+  _________________________________ MM/DD/YYYY
+  XXXXXXXXXXXX Date:
+  [GRAPH PLACEHOLDER: Behavior graph near target behavior block]
+  Footer: Inland Empire Health Plan Functional Behavioral Assessment Report
+`;
+
+Deno.test("extractStructuredSections preserves IEHP complete DOCX template structure and coverage metadata", () => {
+  const sections = asSections("iehp_fba", iehpCompleteTemplateStyleExcerpt);
+  const byKey = new Map(sections.map((section) => [section.field_key, section]));
+  const report = asIeHpCoverageReport(iehpCompleteTemplateStyleExcerpt);
+
+  expect(report.found_major_sections).toEqual([
+    "I",
+    "II",
+    "III",
+    "IV",
+    "V",
+    "VI",
+    "VII",
+    "VIII",
+    "IX",
+    "X",
+    "XI",
+    "XII",
+    "XIII",
+    "XIV",
+  ]);
+  expect(report.missing_major_sections).toEqual([]);
+  expect(report.table_count).toBeGreaterThanOrEqual(5);
+  expect(report.checkbox_group_count).toBeGreaterThanOrEqual(2);
+  expect(report.target_behavior_block_count).toBeGreaterThanOrEqual(1);
+  expect(report.program_goal_block_count).toBeGreaterThanOrEqual(2);
+  expect(report.visual_placeholder_count).toBeGreaterThanOrEqual(1);
+  expect(report.unmapped_ambiguous_count).toBeGreaterThanOrEqual(1);
+
+  const environmental = byKey.get("IEHP_FBA_ENVIRONMENTAL_ANALYSIS")?.payload.rows as Array<Record<string, unknown>>;
+  expect(environmental.some((row) => Array.isArray(row.options))).toBe(true);
+  expect(environmental.some((row) => row.selected === "yes")).toBe(true);
+  expect(environmental.some((row) => row.selected === "fair")).toBe(true);
+
+  const recommendations = byKey.get("IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS")?.payload.rows as Array<Record<string, unknown>>;
+  expect(recommendations).toEqual([
+    expect.objectContaining({ cpt: "H2019", units_requested: "10" }),
+    expect.objectContaining({ cpt: "H0032", units_requested: "4" }),
+  ]);
+
+  expect(byKey.get("IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES")?.payload.assessment_blocks).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ assessment_type: "VB-MAPP" }),
+      expect.objectContaining({ assessment_type: "Vineland" }),
+      expect.objectContaining({ assessment_type: "AFLS" }),
+      expect.objectContaining({ assessment_type: "ABAS-3" }),
+    ]),
+  );
+  expect(byKey.get("IEHP_FBA_SIGNATURE_BLOCK")?.payload.placeholders).toContain("MM/DD/YYYY");
+  expect(byKey.get("IEHP_FBA_BEHAVIOR_SKILL_TARGETS")?.payload.fields).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "fillable_placeholder",
+        value: "XXXXXXXXXXXX",
+      }),
+    ]),
+  );
+  expect(byKey.get("IEHP_FBA_VISUAL_ASSETS")?.payload.assets).toEqual([
+    expect.objectContaining({
+      asset_type: "placeholder",
+      nearby_context: expect.stringContaining("Behavior graph"),
+    }),
+  ]);
+});
+
+Deno.test("decodeDocxStructured parses the committed IEHP FBA DOCX fixture without dropping structural metadata", async () => {
+  const bytes = await Deno.readFile("docs/fill_docs/Updated FBA - IEHP.docx");
+  const decoded = await __TESTING__.decodeDocxStructured(bytes);
+  const sections = __TESTING__.extractStructuredSections(decoded.text, "iehp_fba", decoded);
+  const report = __TESTING__.buildStructuredExtractionCoverageReport(sections, "iehp_fba");
+  const docxStructure = sections.find((section) => section.field_key === "IEHP_FBA_DOCX_STRUCTURE");
+
+  expect(decoded.text.length).toBeGreaterThan(500);
+  expect(decoded.tables.length).toBeGreaterThan(10);
+  expect(decoded.headers_footers.length).toBeGreaterThan(0);
+  expect(decoded.visual_assets.length).toBeGreaterThanOrEqual(0);
+  expect(report.found_major_sections.length).toBeGreaterThanOrEqual(10);
+  expect(report.table_count).toBeGreaterThanOrEqual(10);
+  expect(docxStructure?.payload.headers_footers).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ path: expect.stringContaining("word/header") }),
+    ]),
+  );
+  expect(docxStructure?.payload.tables).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        table_index: 0,
+        rows: expect.any(Array),
+      }),
+    ]),
+  );
+  expect(docxStructure?.source_span).toMatchObject({
+    method: "docx_openxml_structure",
+    document_path: "word/document.xml",
+    table_count: decoded.tables.length,
+    header_footer_count: decoded.headers_footers.length,
+  });
+});
+
+Deno.test("extractStructuredSections preserves unrecognized IEHP text as unmapped items even when metadata is present", () => {
+  const sections = asSections(
+    "iehp_fba",
+    "Header: Inland Empire Health Plan Functional Behavioral Assessment Report\nUnrecognized clinical narrative requiring manual review.",
+  );
+  const unmapped = sections.find((section) => section.field_key === "IEHP_FBA_UNMAPPED_ITEMS");
+
+  expect(sections.some((section) => section.field_key === "IEHP_FBA_TEMPLATE_METADATA")).toBe(true);
+  expect(unmapped?.payload.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        item_type: "unmapped_document_text",
+        raw_text: expect.stringContaining("Unrecognized clinical narrative"),
+      }),
+    ]),
+  );
+});
+
+Deno.test("decodeDocxStructured handles minimal DOCX archives without document.xml safely", async () => {
+  const { default: JSZip } = await import("npm:jszip@3.10.1");
+  const zip = new JSZip();
+  zip.file("word/header1.xml", "<w:hdr><w:p><w:r><w:t>Header only</w:t></w:r></w:p></w:hdr>");
+  const bytes = new Uint8Array(await zip.generateAsync({ type: "uint8array" }));
+  const decoded = await __TESTING__.decodeDocxStructured(bytes);
+
+  expect(decoded).toEqual({
+    text: "",
+    tables: [],
+    headers_footers: [],
+    visual_assets: [],
+  });
+});
 
 Deno.test("extractStructuredSections parses IEHP target and skill goal subsections as child goals", () => {
   const sections = asSections(

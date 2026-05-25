@@ -1175,3 +1175,72 @@ Deno.test("hasExistingDeterministicValue treats JSON payloads as real extracted 
     review_notes: null,
   })).toBe(false);
 });
+
+Deno.test("mergeDeterministicFieldWithStructuredSummary preserves deterministic JSON when placeholder trace is attached", () => {
+  const merged = __TESTING__.mergeDeterministicFieldWithStructuredSummary(
+    {
+      placeholder_key: "IEHP_FBA_JSON_FIELD",
+      value_text: "real extracted value",
+      value_json: { structured_value: "real" },
+      confidence: 0.74,
+      mode: "ASSISTED",
+      status: "drafted",
+      source_span: { method: "deterministic_json" },
+      review_notes: "Synthetic deterministic JSON value.",
+    },
+    {
+      count: 1,
+      firstPayload: {
+        template_placeholder: true,
+        entered_value_present: false,
+        clinical_value: null,
+      },
+    },
+  );
+
+  expect(merged.value_text).toBe("real extracted value");
+  expect(merged.value_json).toEqual({ structured_value: "real" });
+  expect(merged.source_span).toMatchObject({
+    placeholder_trace: {
+      template_placeholder: true,
+      entered_value_present: false,
+    },
+  });
+});
+
+Deno.test("mergeDeterministicFieldWithStructuredSummary keeps empty-only placeholders unresolved", () => {
+  const merged = __TESTING__.mergeDeterministicFieldWithStructuredSummary(
+    {
+      placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      value_text: null,
+      value_json: null,
+      confidence: null,
+      mode: "MANUAL",
+      status: "not_started",
+      source_span: null,
+      review_notes: null,
+    },
+    {
+      count: 1,
+      firstPayload: {
+        template_placeholder: true,
+        entered_value_present: false,
+        clinical_value: null,
+        field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      },
+    },
+  );
+
+  expect(merged.value_text).toBeNull();
+  expect(merged.value_json).toBeNull();
+  expect(merged.status).toBe("not_started");
+  expect(merged.source_span).toMatchObject({
+    method: "empty_template_placeholder_trace",
+    placeholder_trace: {
+      template_placeholder: true,
+      entered_value_present: false,
+      field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+    },
+  });
+  expect(merged.review_notes).toContain("empty template placeholder");
+});

@@ -2445,12 +2445,59 @@ const isEmptyIeHpTemplatePlaceholderPayload = (payload: Record<string, unknown>)
 const hasExistingDeterministicValue = (field: ExtractedFieldResult): boolean =>
   Boolean(field.value_text) || field.value_json !== null;
 
+const mergeDeterministicFieldWithStructuredSummary = (
+  field: ExtractedFieldResult,
+  structuredSummary: { count: number; firstPayload: Record<string, unknown> },
+): ExtractedFieldResult => {
+  if (isEmptyIeHpTemplatePlaceholderPayload(structuredSummary.firstPayload)) {
+    const placeholderTrace = {
+      ...(field.source_span ?? {}),
+      placeholder_trace: structuredSummary.firstPayload,
+    };
+    if (hasExistingDeterministicValue(field)) {
+      return {
+        ...field,
+        source_span: placeholderTrace,
+        review_notes:
+          `${field.review_notes ?? "Deterministic checklist value retained."} Empty template placeholder is attached for page/layout traceability.`,
+      };
+    }
+    return {
+      ...field,
+      value_text: null,
+      value_json: null,
+      confidence: null,
+      status: "not_started",
+      source_span: {
+        method: "empty_template_placeholder_trace",
+        placeholder_trace: structuredSummary.firstPayload,
+      },
+      review_notes:
+        "Only an empty template placeholder was detected; field remains unresolved and requires clinician entry or review.",
+    };
+  }
+
+  return {
+    ...field,
+    value_text: `${structuredSummary.count} structured section${structuredSummary.count === 1 ? "" : "s"} extracted`,
+    value_json: structuredSummary.firstPayload,
+    confidence: field.mode === "AUTO" ? 0.9 : field.mode === "ASSISTED" ? 0.74 : 0.55,
+    mode: field.mode,
+    status: "drafted" as const,
+    source_span: { method: "deterministic_structured_section_summary" },
+    review_notes: field.mode === "AUTO"
+      ? "Deterministic structured extraction summary. Review full structured section payloads before approval."
+      : "Structured content was extracted, but this checklist row remains manual/assisted and requires clinician review before approval.",
+  };
+};
+
 export const __TESTING__ = {
   buildStructuredExtractionCoverageReport,
   decodeDocxStructured,
   deterministicValueForRow,
   extractStructuredSections,
   hasExistingDeterministicValue,
+  mergeDeterministicFieldWithStructuredSummary,
   isAllowedAssessmentDocumentStorageTarget,
 };
 
@@ -2546,25 +2593,10 @@ const handler = async (req: Request): Promise<Response> => {
       if (!structuredSummary) {
         return withExtractionProviderSource(field, extractionProvider);
       }
-      if (hasExistingDeterministicValue(field) && isEmptyIeHpTemplatePlaceholderPayload(structuredSummary.firstPayload)) {
-        return withExtractionProviderSource({
-          ...field,
-          value_json: structuredSummary.firstPayload,
-          review_notes: `${field.review_notes ?? "Deterministic checklist value retained."} Empty template placeholder is attached for page/layout traceability.`,
-        }, extractionProvider);
-      }
-      return withExtractionProviderSource({
-        ...field,
-        value_text: `${structuredSummary.count} structured section${structuredSummary.count === 1 ? "" : "s"} extracted`,
-        value_json: structuredSummary.firstPayload,
-        confidence: field.mode === "AUTO" ? 0.9 : field.mode === "ASSISTED" ? 0.74 : 0.55,
-        mode: field.mode,
-        status: "drafted" as const,
-        source_span: { method: "deterministic_structured_section_summary" },
-        review_notes: field.mode === "AUTO"
-          ? "Deterministic structured extraction summary. Review full structured section payloads before approval."
-          : "Structured content was extracted, but this checklist row remains manual/assisted and requires clinician review before approval.",
-      }, extractionProvider);
+      return withExtractionProviderSource(
+        mergeDeterministicFieldWithStructuredSummary(field, structuredSummary),
+        extractionProvider,
+      );
     });
 
     return json(req, {

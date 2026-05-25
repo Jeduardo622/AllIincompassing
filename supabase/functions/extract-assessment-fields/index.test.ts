@@ -354,6 +354,29 @@ Deno.test("extractStructuredSections preserves unrecognized IEHP text as unmappe
   );
 });
 
+Deno.test("extractStructuredSections preserves explicit ambiguous IEHP text even when mapped sections exist", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      I. GENERAL INFORMATION
+      BEHAVIORS: Functional communication
+      III. BACKGROUND INFORMATION
+      Unrecognized clinical narrative requiring manual review.
+    `,
+  );
+  const unmapped = sections.find((section) => section.field_key === "IEHP_FBA_UNMAPPED_ITEMS");
+
+  expect(sections.some((section) => section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS")).toBe(true);
+  expect(unmapped?.payload.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        item_type: "ambiguous_document_text",
+        raw_text: expect.stringContaining("Unrecognized clinical narrative"),
+      }),
+    ]),
+  );
+});
+
 Deno.test("decodeDocxStructured handles minimal DOCX archives without document.xml safely", async () => {
   const { default: JSZip } = await import("npm:jszip@3.10.1");
   const zip = new JSZip();
@@ -837,6 +860,89 @@ Deno.test("extractStructuredSections maps next-slice IEHP narratives, checkboxes
   expect(parentGoal?.source_span?.page_number).toBe(17);
 });
 
+Deno.test("extractStructuredSections emits traceable IEHP placeholders for blank required and optional unresolved fields", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      I. GENERAL INFORMATION
+      II. REASON FOR REFERRAL
+      III. BACKGROUND INFORMATION
+      IV. SCHOOL INFORMATION
+      Current Services and Activities
+      Intervention History
+      BHT Availability
+      VI. MEMBER'S ENVIRONMENTAL ANALYSIS
+      VII. DESCRIPTION OF ASSESSMENT PROCEDURES
+      VIII. ASSESSMENT MEASURES
+      IX. Target Behaviors
+      X. Behavior Intervention Plan
+      XI. Parent Education
+      XII. Coordination of Care
+      XIII. Discharge Criteria
+      XIV. Recommendations
+    `,
+  );
+  const byKey = new Map(sections.map((section) => [section.field_key, section]));
+
+  [
+    ["IEHP_FBA_ASSESSOR_PHONE", 1, true],
+    ["IEHP_FBA_REFERRING_PROVIDER", 2, true],
+    ["IEHP_FBA_REASON_FOR_REFERRAL", 2, true],
+    ["IEHP_FBA_PCP_VISIT_SUMMARY", 4, false],
+    ["IEHP_FBA_PCP_ASSISTANCE_REQUEST", 4, false],
+    ["IEHP_FBA_SKILL_BASELINE_LOCATION_TABLE", 10, false],
+    ["IEHP_FBA_RECOMMENDATION_NOTES", 24, false],
+    ["IEHP_FBA_CAREGIVER_PARTICIPATION", 25, false],
+    ["IEHP_FBA_TREATMENT_PLAN_REVIEW", 26, false],
+    ["IEHP_FBA_ADDITIONAL_NOTES", 27, false],
+    ["IEHP_FBA_APPENDIX_SUPPORTING_INFORMATION", 28, false],
+  ].forEach(([fieldKey, pageNumber, required]) => {
+    const section = byKey.get(String(fieldKey));
+    expect(section?.status).toBe("drafted");
+    expect(section?.required).toBe(required);
+    expect(section?.payload).toMatchObject({
+      field_key: fieldKey,
+      entered_value_present: false,
+      clinical_value: null,
+      template_placeholder: true,
+      page_number: pageNumber,
+    });
+    expect(section?.source_span).toMatchObject({
+      method: "iehp_template_layout_placeholder",
+      page_number: pageNumber,
+      field_key: fieldKey,
+    });
+  });
+
+  expect(byKey.get("IEHP_FBA_PCP_ASSISTANCE_REQUEST")?.payload.options).toEqual([
+    { label: "Yes", selected: false },
+    { label: "No", selected: false },
+  ]);
+  expect(byKey.get("IEHP_FBA_SKILL_BASELINE_LOCATION_TABLE")?.payload.rows).toEqual([]);
+});
+
+Deno.test("IEHP coverage metadata recognizes Current Services as major section V", () => {
+  const report = asIeHpCoverageReport(`
+    I. GENERAL INFORMATION
+    II. REASON FOR REFERRAL
+    III. BACKGROUND INFORMATION
+    IV. SCHOOL INFORMATION
+    Current Services and Activities
+    VI. MEMBER'S ENVIRONMENTAL ANALYSIS
+    VII. DESCRIPTION OF ASSESSMENT PROCEDURES
+    VIII. ASSESSMENT MEASURES
+    IX. Target Behaviors
+    X. Behavior Intervention Plan
+    XI. Parent Education
+    XII. Coordination of Care
+    XIII. Discharge Criteria
+    XIV. Recommendations
+  `);
+
+  expect(report.found_major_sections).toContain("V");
+  expect(report.missing_major_sections).not.toContain("V");
+});
+
 Deno.test("extractStructuredSections routes school Program Name goals to the IEHP school page", () => {
   const sections = asSections(
     "iehp_fba",
@@ -1044,4 +1150,97 @@ Deno.test("deterministicValueForRow prefills IEHP assessor phone from primary th
     field: "primary_therapist_phone",
   });
   expect(assessorPhone.review_notes).toContain("primary therapist");
+});
+
+Deno.test("hasExistingDeterministicValue treats JSON payloads as real extracted values", () => {
+  expect(__TESTING__.hasExistingDeterministicValue({
+    placeholder_key: "IEHP_FBA_TEST_JSON_VALUE",
+    value_text: null,
+    value_json: { extracted: true },
+    confidence: 0.7,
+    mode: "ASSISTED",
+    status: "drafted",
+    source_span: { method: "deterministic_json" },
+    review_notes: "Synthetic JSON extraction.",
+  })).toBe(true);
+
+  expect(__TESTING__.hasExistingDeterministicValue({
+    placeholder_key: "IEHP_FBA_TEST_EMPTY",
+    value_text: null,
+    value_json: null,
+    confidence: null,
+    mode: "MANUAL",
+    status: "not_started",
+    source_span: null,
+    review_notes: null,
+  })).toBe(false);
+});
+
+Deno.test("mergeDeterministicFieldWithStructuredSummary preserves deterministic JSON when placeholder trace is attached", () => {
+  const merged = __TESTING__.mergeDeterministicFieldWithStructuredSummary(
+    {
+      placeholder_key: "IEHP_FBA_JSON_FIELD",
+      value_text: "real extracted value",
+      value_json: { structured_value: "real" },
+      confidence: 0.74,
+      mode: "ASSISTED",
+      status: "drafted",
+      source_span: { method: "deterministic_json" },
+      review_notes: "Synthetic deterministic JSON value.",
+    },
+    {
+      count: 1,
+      firstPayload: {
+        template_placeholder: true,
+        entered_value_present: false,
+        clinical_value: null,
+      },
+    },
+  );
+
+  expect(merged.value_text).toBe("real extracted value");
+  expect(merged.value_json).toEqual({ structured_value: "real" });
+  expect(merged.source_span).toMatchObject({
+    placeholder_trace: {
+      template_placeholder: true,
+      entered_value_present: false,
+    },
+  });
+});
+
+Deno.test("mergeDeterministicFieldWithStructuredSummary keeps empty-only placeholders unresolved", () => {
+  const merged = __TESTING__.mergeDeterministicFieldWithStructuredSummary(
+    {
+      placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      value_text: null,
+      value_json: null,
+      confidence: null,
+      mode: "MANUAL",
+      status: "not_started",
+      source_span: null,
+      review_notes: null,
+    },
+    {
+      count: 1,
+      firstPayload: {
+        template_placeholder: true,
+        entered_value_present: false,
+        clinical_value: null,
+        field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      },
+    },
+  );
+
+  expect(merged.value_text).toBeNull();
+  expect(merged.value_json).toBeNull();
+  expect(merged.status).toBe("not_started");
+  expect(merged.source_span).toMatchObject({
+    method: "empty_template_placeholder_trace",
+    placeholder_trace: {
+      template_placeholder: true,
+      entered_value_present: false,
+      field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+    },
+  });
+  expect(merged.review_notes).toContain("empty template placeholder");
 });

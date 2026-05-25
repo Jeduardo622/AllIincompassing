@@ -492,6 +492,128 @@ const IEHP_OPTIONAL_FIELD_KEYS = new Set([
   "IEHP_FBA_APPENDIX_SUPPORTING_INFORMATION",
 ]);
 
+const IEHP_TEMPLATE_PLACEHOLDER_FIELDS: Array<{
+  field_key: string;
+  section_key: string;
+  label: string;
+  field_type: "phone" | "textarea" | "yes_no" | "repeatable_table";
+  mode: "AUTO" | "ASSISTED" | "MANUAL";
+  required: boolean;
+  source: string;
+  layout_json: Record<string, unknown>;
+}> = [
+  {
+    field_key: "IEHP_FBA_ASSESSOR_PHONE",
+    section_key: "identification_admin",
+    label: "Assessor's phone number",
+    field_type: "phone",
+    mode: "ASSISTED",
+    required: true,
+    source: "client_snapshot.primary_therapist_phone when present; otherwise clinician/provider entry",
+    layout_json: { page_hint: "assessor contact block" },
+  },
+  {
+    field_key: "IEHP_FBA_REFERRING_PROVIDER",
+    section_key: "identification_admin",
+    label: "Name of Referring Provider, Credentials",
+    field_type: "textarea",
+    mode: "MANUAL",
+    required: true,
+    source: "clinician_manual_entry unless present in uploaded document",
+    layout_json: { table_index: 1, row: 0, column: 1 },
+  },
+  {
+    field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+    section_key: "identification_admin",
+    label: "Reason for Referral",
+    field_type: "textarea",
+    mode: "MANUAL",
+    required: true,
+    source: "clinician_manual_entry unless present in uploaded document",
+    layout_json: { table_index: 1, row: 1, column: 1 },
+  },
+  {
+    field_key: "IEHP_FBA_PCP_VISIT_SUMMARY",
+    section_key: "behavior_background_services",
+    label: "Member's last visit to the Primary Care Provider (PCP)",
+    field_type: "textarea",
+    mode: "MANUAL",
+    required: false,
+    source: "clinician_manual_entry when not present in uploaded document",
+    layout_json: { docx_page_hint: "PCP visit narrative" },
+  },
+  {
+    field_key: "IEHP_FBA_PCP_ASSISTANCE_REQUEST",
+    section_key: "behavior_background_services",
+    label: "IEHP PCP access assistance request",
+    field_type: "yes_no",
+    mode: "MANUAL",
+    required: false,
+    source: "clinician_manual_entry when not selected in uploaded document",
+    layout_json: { docx_page_hint: "PCP assistance yes/no options" },
+  },
+  {
+    field_key: "IEHP_FBA_SKILL_BASELINE_LOCATION_TABLE",
+    section_key: "assessment_procedures_testing",
+    label: "Skill / Data Collected / Baseline / Location",
+    field_type: "repeatable_table",
+    mode: "ASSISTED",
+    required: false,
+    source: "uploaded_assessment_document when present; otherwise clinician_manual_entry",
+    layout_json: { table_index: 16, columns: ["Skill", "Data Collected/Baseline", "Location"] },
+  },
+  {
+    field_key: "IEHP_FBA_RECOMMENDATION_NOTES",
+    section_key: "treatment_coordination_recommendations",
+    label: "Recommendation Notes",
+    field_type: "textarea",
+    mode: "MANUAL",
+    required: false,
+    source: "clinician_manual_entry when template page is used",
+    layout_json: { docx_page_hint: "Recommendation narrative continuation" },
+  },
+  {
+    field_key: "IEHP_FBA_CAREGIVER_PARTICIPATION",
+    section_key: "treatment_coordination_recommendations",
+    label: "Caregiver Participation",
+    field_type: "textarea",
+    mode: "MANUAL",
+    required: false,
+    source: "clinician_manual_entry when template page is used",
+    layout_json: { docx_page_hint: "Caregiver participation and training narrative" },
+  },
+  {
+    field_key: "IEHP_FBA_TREATMENT_PLAN_REVIEW",
+    section_key: "treatment_coordination_recommendations",
+    label: "Treatment Plan Review",
+    field_type: "textarea",
+    mode: "MANUAL",
+    required: false,
+    source: "clinician_manual_entry when template page is used",
+    layout_json: { docx_page_hint: "Treatment plan review continuation" },
+  },
+  {
+    field_key: "IEHP_FBA_ADDITIONAL_NOTES",
+    section_key: "treatment_coordination_recommendations",
+    label: "Additional Notes",
+    field_type: "textarea",
+    mode: "MANUAL",
+    required: false,
+    source: "clinician_manual_entry when template page is used",
+    layout_json: { docx_page_hint: "Additional notes continuation" },
+  },
+  {
+    field_key: "IEHP_FBA_APPENDIX_SUPPORTING_INFORMATION",
+    section_key: "treatment_coordination_recommendations",
+    label: "Appendix and Supporting Information",
+    field_type: "textarea",
+    mode: "MANUAL",
+    required: false,
+    source: "clinician_manual_entry when template page is used",
+    layout_json: { docx_page_hint: "Appendix/supporting information" },
+  },
+];
+
 const extractSelectedYesNo = (afterQuestion: string): "yes" | "no" | "unknown" => {
   const normalized = afterQuestion.replace(/\s+/g, " ");
   const markerPattern = "(☒|â˜’|þ|\\[x\\]|x|FORMCHECKBOX|☐|â˜|□|\\[\\s\\])";
@@ -570,6 +692,71 @@ const buildIeHpSectionRows = (
     required: !IEHP_OPTIONAL_FIELD_KEYS.has(fieldKey),
     review_notes: "Deterministic IEHP section extraction for structured payload review.",
   }];
+};
+
+const buildIeHpTemplatePlaceholderPayload = (
+  spec: (typeof IEHP_TEMPLATE_PLACEHOLDER_FIELDS)[number],
+): Record<string, unknown> => {
+  const base: Record<string, unknown> = {
+    field_key: spec.field_key,
+    label: spec.label,
+    page_number: IEHP_FIELD_PAGE_BY_KEY[spec.field_key] ?? null,
+    section_key: spec.section_key,
+    field_type: spec.field_type,
+    mode: spec.mode,
+    required: spec.required,
+    source: spec.source,
+    layout_json: spec.layout_json,
+    template_placeholder: true,
+    entered_value_present: false,
+    clinical_value: null,
+    raw_text: "",
+  };
+  if (spec.field_type === "yes_no") {
+    return {
+      ...base,
+      selected: "unknown",
+      options: [
+        { label: "Yes", selected: false },
+        { label: "No", selected: false },
+      ],
+    };
+  }
+  if (spec.field_type === "repeatable_table") {
+    return { ...base, rows: [] };
+  }
+  return base;
+};
+
+const appendMissingIeHpTemplatePlaceholders = (
+  sections: StructuredSectionResult[],
+  sectionIndexByFieldKey: Map<string, number>,
+): void => {
+  const existing = new Set(sections.map((section) => section.field_key));
+  for (const spec of IEHP_TEMPLATE_PLACEHOLDER_FIELDS) {
+    if (existing.has(spec.field_key)) {
+      continue;
+    }
+    const pageNumber = IEHP_FIELD_PAGE_BY_KEY[spec.field_key] ?? null;
+    const section_index = sectionIndexByFieldKey.get(spec.field_key) ?? 0;
+    sectionIndexByFieldKey.set(spec.field_key, section_index + 1);
+    sections.push({
+      section_key: spec.section_key,
+      field_key: spec.field_key,
+      section_index,
+      payload: buildIeHpTemplatePlaceholderPayload(spec),
+      source_span: {
+        method: "iehp_template_layout_placeholder",
+        page_number: pageNumber,
+        field_key: spec.field_key,
+        document_path: "docs/fill_docs/iehp_fba_layout_manifest.json",
+      },
+      status: "drafted",
+      required: spec.required,
+      review_notes:
+        "Template field preserved as an empty placeholder; clinician entry or review remains required before approval.",
+    });
+  }
 };
 
 const splitListText = (value: string): string[] =>
@@ -668,7 +855,7 @@ const extractIeHpMajorSections = (text: string): string[] => {
     ["II", [/REASON\s+FOR\s+REFERRAL/i, /BEHAVIORS\s*:/i]],
     ["III", [/BACKGROUND\s+INFORMATION/i]],
     ["IV", [/School\s+Information/i, /BHT\s*\(?School\s+Hours\)?/i, /Health\s+and\s+Medica\s*l/i]],
-    ["V", [/BHT\s+Availability/i, /Availability\s+for\s+BHT\s+Services/i]],
+    ["V", [/Current\s+Services\s+and\s+Activitie\s*s/i, /Intervention\s+Histor\s*y/i, /BHT\s+Availability/i, /Availability\s+for\s+BHT\s+Services/i]],
     ["VI", [/ENVIRONMENTAL\s+ANALYSIS/i]],
     ["VII", [/DESCRIPTION\s+OF\s+ASSESSMENT\s+PROCEDURES/i]],
     ["VIII", [/ASSESSMENT\s+MEA?SURES/i, /Adaptive\s+and\s+Functional\s+Measure/i]],
@@ -768,7 +955,7 @@ const extractIeHpDocxStructureSections = (
 };
 
 const isClinicalIeHpSection = (section: StructuredSectionResult): boolean =>
-  ![
+  section.payload.template_placeholder !== true && ![
     "IEHP_FBA_TEMPLATE_METADATA",
     "IEHP_FBA_VISUAL_ASSETS",
     "IEHP_FBA_UNMAPPED_ITEMS",
@@ -782,6 +969,13 @@ const extractIeHpUnmappedSections = (text: string, sections: StructuredSectionRe
       item_type: "template_instruction",
       raw_text: normalizeExtractedValue(match[1] ?? ""),
       source_span: { method: "template_instruction_pattern", start_offset: match.index ?? null },
+    });
+  }
+  for (const match of text.matchAll(/\b(?:Unrecognized|Ambiguous)\s+[^.\n]*(?:manual|clinician)\s+review[^.\n]*(?:\.|$)/gi)) {
+    ambiguous.push({
+      item_type: "ambiguous_document_text",
+      raw_text: normalizeExtractedValue(match[0] ?? ""),
+      source_span: { method: "ambiguous_review_text_pattern", start_offset: match.index ?? null },
     });
   }
   if (!sections.some(isClinicalIeHpSection) && text.trim()) {
@@ -1495,6 +1689,7 @@ const extractIeHpGoalSections = (
   sections.push(...extractIeHpTemplateMetaSections(text));
   sections.push(...extractIeHpVisualAssetSections(text));
   sections.push(...extractIeHpDocxStructureSections(docxStructure));
+  appendMissingIeHpTemplatePlaceholders(sections, sectionIndexByFieldKey);
   sections.push(...extractIeHpUnmappedSections(text, sections));
 
   return sections;
@@ -2244,11 +2439,65 @@ const withExtractionProviderSource = <T extends { source_span: Record<string, un
   };
 };
 
+const isEmptyIeHpTemplatePlaceholderPayload = (payload: Record<string, unknown>): boolean =>
+  payload.template_placeholder === true && payload.entered_value_present === false;
+
+const hasExistingDeterministicValue = (field: ExtractedFieldResult): boolean =>
+  Boolean(field.value_text) || field.value_json !== null;
+
+const mergeDeterministicFieldWithStructuredSummary = (
+  field: ExtractedFieldResult,
+  structuredSummary: { count: number; firstPayload: Record<string, unknown> },
+): ExtractedFieldResult => {
+  if (isEmptyIeHpTemplatePlaceholderPayload(structuredSummary.firstPayload)) {
+    const placeholderTrace = {
+      ...(field.source_span ?? {}),
+      placeholder_trace: structuredSummary.firstPayload,
+    };
+    if (hasExistingDeterministicValue(field)) {
+      return {
+        ...field,
+        source_span: placeholderTrace,
+        review_notes:
+          `${field.review_notes ?? "Deterministic checklist value retained."} Empty template placeholder is attached for page/layout traceability.`,
+      };
+    }
+    return {
+      ...field,
+      value_text: null,
+      value_json: null,
+      confidence: null,
+      status: "not_started",
+      source_span: {
+        method: "empty_template_placeholder_trace",
+        placeholder_trace: structuredSummary.firstPayload,
+      },
+      review_notes:
+        "Only an empty template placeholder was detected; field remains unresolved and requires clinician entry or review.",
+    };
+  }
+
+  return {
+    ...field,
+    value_text: `${structuredSummary.count} structured section${structuredSummary.count === 1 ? "" : "s"} extracted`,
+    value_json: structuredSummary.firstPayload,
+    confidence: field.mode === "AUTO" ? 0.9 : field.mode === "ASSISTED" ? 0.74 : 0.55,
+    mode: field.mode,
+    status: "drafted" as const,
+    source_span: { method: "deterministic_structured_section_summary" },
+    review_notes: field.mode === "AUTO"
+      ? "Deterministic structured extraction summary. Review full structured section payloads before approval."
+      : "Structured content was extracted, but this checklist row remains manual/assisted and requires clinician review before approval.",
+  };
+};
+
 export const __TESTING__ = {
   buildStructuredExtractionCoverageReport,
   decodeDocxStructured,
   deterministicValueForRow,
   extractStructuredSections,
+  hasExistingDeterministicValue,
+  mergeDeterministicFieldWithStructuredSummary,
   isAllowedAssessmentDocumentStorageTarget,
 };
 
@@ -2344,18 +2593,10 @@ const handler = async (req: Request): Promise<Response> => {
       if (!structuredSummary) {
         return withExtractionProviderSource(field, extractionProvider);
       }
-      return withExtractionProviderSource({
-        ...field,
-        value_text: `${structuredSummary.count} structured section${structuredSummary.count === 1 ? "" : "s"} extracted`,
-        value_json: structuredSummary.firstPayload,
-        confidence: field.mode === "AUTO" ? 0.9 : field.mode === "ASSISTED" ? 0.74 : 0.55,
-        mode: field.mode,
-        status: "drafted" as const,
-        source_span: { method: "deterministic_structured_section_summary" },
-        review_notes: field.mode === "AUTO"
-          ? "Deterministic structured extraction summary. Review full structured section payloads before approval."
-          : "Structured content was extracted, but this checklist row remains manual/assisted and requires clinician review before approval.",
-      }, extractionProvider);
+      return withExtractionProviderSource(
+        mergeDeterministicFieldWithStructuredSummary(field, structuredSummary),
+        extractionProvider,
+      );
     });
 
     return json(req, {

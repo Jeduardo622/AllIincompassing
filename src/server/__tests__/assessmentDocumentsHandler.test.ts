@@ -2662,6 +2662,273 @@ describe("assessmentDocumentsHandler", () => {
     });
   });
 
+  it("persists reason-for-referral narrative and behavior-only structured payload from IEHP extraction response", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([
+      {
+        section: "identification_admin",
+        label: "Reason for Referral",
+        placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+        required: true,
+        mode: "MANUAL",
+        source: "clinician_manual_entry",
+        extraction_method: "assisted_draft_plus_review",
+        validation_rule: "non_empty_text",
+        extraction_owner: "ClinicalAuthor",
+        review_owner: "BCBAReviewer",
+      },
+      {
+        section: "behavior_background_services",
+        label: "Behaviors and Functional Skills to be Addressed",
+        placeholder_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+        required: true,
+        mode: "ASSISTED",
+        source: "uploaded_assessment_document",
+        extraction_method: "deterministic_docx_or_pdf_structured_extract",
+        validation_rule: "structured_payload_required",
+        extraction_owner: "ClinicalAuthor",
+        review_owner: "BCBAReviewer",
+      },
+      {
+        section: "behavior_background_services",
+        label: "Living Situation",
+        placeholder_key: "IEHP_FBA_HOUSEHOLD_MEMBERS",
+        required: true,
+        mode: "ASSISTED",
+        source: "uploaded_assessment_document",
+        extraction_method: "deterministic_docx_or_pdf_structured_extract",
+        validation_rule: "structured_payload_required",
+        extraction_owner: "ClinicalAuthor",
+        review_owner: "BCBAReviewer",
+      },
+      {
+        section: "behavior_background_services",
+        label: "School Information",
+        placeholder_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+        required: true,
+        mode: "ASSISTED",
+        source: "uploaded_assessment_document",
+        extraction_method: "deterministic_docx_or_pdf_structured_extract",
+        validation_rule: "structured_payload_required",
+        extraction_owner: "ClinicalAuthor",
+        review_owner: "BCBAReviewer",
+      },
+      {
+        section: "behavior_background_services",
+        label: "Health and Medical",
+        placeholder_key: "IEHP_FBA_HEALTH_MEDICAL_SUMMARY",
+        required: true,
+        mode: "ASSISTED",
+        source: "uploaded_assessment_document",
+        extraction_method: "deterministic_docx_or_pdf_structured_extract",
+        validation_rule: "structured_payload_required",
+        extraction_owner: "ClinicalAuthor",
+        review_owner: "BCBAReviewer",
+      },
+    ]);
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "11111111-1111-1111-1111-111111111111" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name,first_name,last_name")) {
+        return { ok: true, status: 200, data: [{ first_name: "Kim", last_name: "Le" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_fields?select=")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              section_key: "identification_admin",
+              field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+              label: "Reason for Referral",
+              field_type: "textarea",
+              mode: "MANUAL",
+              required: true,
+              source: "clinician_manual_entry",
+            },
+            {
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+              label: "Behaviors and Functional Skills to be Addressed",
+              field_type: "checkbox_grid",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+            },
+            {
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_HOUSEHOLD_MEMBERS",
+              label: "Living Situation",
+              field_type: "textarea",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+            },
+            {
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+              label: "School Information",
+              field_type: "textarea",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+            },
+            {
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_HEALTH_MEDICAL_SUMMARY",
+              label: "Health and Medical",
+              field_type: "textarea",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+            },
+          ],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [{ id: "doc-iehp-reason", organization_id: "org-1", client_id: "11111111-1111-1111-1111-111111111111" }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) return { ok: true, status: 201, data: null };
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) return { ok: true, status: 201, data: null };
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [{
+              placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+              value_text: "Kim presents with communication deficits and maladaptive behavior.",
+              value_json: null,
+              confidence: 0.55,
+              mode: "MANUAL",
+              status: "drafted",
+              source_span: { method: "iehp_presenting_concerns_anchor" },
+              review_notes: "Deterministic extraction from presenting concerns section.",
+            }],
+            structured_sections: [{
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+              section_index: 0,
+              payload: {
+                raw_text: "BEHAVIORS The behaviors and functional skills to be addressed are: Physical Aggression",
+                targets: ["Physical Aggression"],
+              },
+              source_span: { method: "iehp_section_anchor", page_number: 2 },
+              status: "drafted",
+              required: true,
+              review_notes: "Deterministic IEHP section extraction.",
+            },
+            {
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_HOUSEHOLD_MEMBERS",
+              section_index: 0,
+              payload: {
+                raw_text: "Kim lives in a single-family home and requires close supervision.",
+              },
+              source_span: { method: "iehp_section_anchor", page_number: 3 },
+              status: "drafted",
+              required: true,
+              review_notes: "Deterministic IEHP section extraction.",
+            },
+            {
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+              section_index: 0,
+              payload: {
+                raw_text: "Kim attends Arlington High School in Riverside.",
+              },
+              source_span: { method: "iehp_section_anchor", page_number: 3 },
+              status: "drafted",
+              required: true,
+              review_notes: "Deterministic IEHP section extraction.",
+            },
+            {
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_HEALTH_MEDICAL_SUMMARY",
+              section_index: 0,
+              payload: {
+                raw_text: "Family reports medical and developmental history concerns.",
+              },
+              source_span: { method: "iehp_section_anchor", page_number: 3 },
+              status: "drafted",
+              required: true,
+              review_notes: "Deterministic IEHP section extraction.",
+            }],
+            unresolved_keys: [],
+            extracted_count: 5,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_checklist_items")) return { ok: true, status: 200, data: null };
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_extractions")) return { ok: true, status: 200, data: null };
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) return { ok: true, status: 200, data: null };
+      if (method === "POST" && url.includes("/rest/v1/assessment_structured_sections")) return { ok: true, status: 201, data: null };
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) return { ok: true, status: 201, data: null };
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "iehp-presenting-concerns.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/iehp-presenting-concerns.docx",
+          template_type: "iehp_fba",
+        }),
+      }),
+    );
+    expect(response.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const extractionPatch = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/rest/v1/assessment_extractions") &&
+      (init?.method ?? "").toUpperCase() === "PATCH"
+    );
+    const extractionPatchBody = String((extractionPatch?.[1] as RequestInit).body ?? "");
+    expect(extractionPatchBody).toContain("Kim presents with communication deficits and maladaptive behavior.");
+
+    const structuredInsert = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/rest/v1/assessment_structured_sections") &&
+      (init?.method ?? "").toUpperCase() === "POST"
+    );
+    const structuredBody = String((structuredInsert?.[1] as RequestInit).body ?? "");
+    expect(structuredBody).toContain("\"IEHP_FBA_BEHAVIOR_SKILL_TARGETS\"");
+    expect(structuredBody).toContain("\"IEHP_FBA_HOUSEHOLD_MEMBERS\"");
+    expect(structuredBody).toContain("\"IEHP_FBA_SCHOOL_INFORMATION_BLOCK\"");
+    expect(structuredBody).toContain("\"IEHP_FBA_HEALTH_MEDICAL_SUMMARY\"");
+    expect(structuredBody).toContain("The behaviors and functional skills to be addressed");
+    expect(structuredBody).toContain("Arlington High School");
+    expect(structuredBody).not.toContain("Kim presents with communication deficits");
+  });
+
   it("records extraction_failed audit event when extraction API returns non-ok", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

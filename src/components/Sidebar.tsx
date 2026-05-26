@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { 
   Calendar, Users, FileText, CreditCard, LayoutDashboard,
@@ -7,6 +8,9 @@ import {
   UserCircle2
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
+import { useActiveOrganizationId } from '../lib/organization';
+import { MESSAGES_QUERY_KEY } from '../lib/messages/constants';
+import { fetchMessageThreads } from '../lib/messages/fetchers';
 import { useTheme } from '../lib/theme';
 import { preloadRouteModule } from '../lib/routeModulePrefetch';
 // Theme is toggled directly via context; no hidden proxy button
@@ -28,6 +32,7 @@ const ChatAssistantFallback = () => (
 
 export function Sidebar() {
   const { signOut, hasRole, hasAnyRole, user, profile, isGuardian, effectiveRole } = useAuth();
+  const organizationId = useActiveOrganizationId();
   const { isDark, toggleTheme } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -210,6 +215,14 @@ export function Sidebar() {
     'admin',
     'super_admin'
   ]);
+  const canAccessMessages = hasAnyRole(['therapist', 'admin', 'super_admin']);
+
+  const { data: unreadMessagesData } = useQuery({
+    queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],
+    queryFn: () => fetchMessageThreads(organizationId!, profile!.id),
+    enabled: canAccessMessages && Boolean(organizationId && profile?.id),
+    refetchInterval: 30_000,
+  });
 
   const openChatAssistant = () => {
     setHasLoadedChatAssistant(true);
@@ -332,7 +345,17 @@ export function Sidebar() {
                         }
                       `}
                     />
-                    {label}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate">{label}</span>
+                      {path === '/messages' && (unreadMessagesData?.unreadThreadCount ?? 0) > 0 ? (
+                        <span
+                          className="inline-flex min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5 text-[11px] font-semibold text-white dark:bg-blue-500"
+                          data-testid="sidebar-messages-unread-badge"
+                        >
+                          {unreadMessagesData?.unreadThreadCount}
+                        </span>
+                      ) : null}
+                    </span>
                   </>
                 )}
               </NavLink>

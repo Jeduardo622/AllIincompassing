@@ -1887,7 +1887,7 @@ const extractIehpPresentingConcernsNarrative = (text: string): string | null => 
   const narrative = extractSectionText(
     text,
     [/\bREASON\s+FOR\s+REFERRAL\s+AND\s+PRESENTING\s+CONCERNS\b/i],
-    [/\bName\s+of\s+Referring\s+Provider\b/i, /\bBEHAVIORS\s*:/i],
+    [/\bName\s+of\s+Referring\s+Provider\b/i, /\bBEHAVIORS\s*:?\b/i],
   );
   if (!narrative) {
     return null;

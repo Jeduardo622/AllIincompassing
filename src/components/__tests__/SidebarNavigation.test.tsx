@@ -2,6 +2,7 @@ import React from "react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sidebar } from "../Sidebar";
@@ -9,6 +10,7 @@ import { Sidebar } from "../Sidebar";
 const mockUseAuth = vi.fn();
 const mockUseTheme = vi.fn();
 const mockPreloadRouteModule = vi.fn();
+const mockFetchMessageThreads = vi.fn();
 
 vi.mock("../../lib/authContext", () => ({
   useAuth: () => mockUseAuth(),
@@ -22,6 +24,14 @@ vi.mock("../../lib/routeModulePrefetch", () => ({
   preloadRouteModule: (...args: unknown[]) => mockPreloadRouteModule(...args),
 }));
 
+vi.mock("../../lib/organization", () => ({
+  useActiveOrganizationId: () => "org-1",
+}));
+
+vi.mock("../../lib/messages/fetchers", () => ({
+  fetchMessageThreads: (...args: unknown[]) => mockFetchMessageThreads(...args),
+}));
+
 vi.mock("../ChatBot", () => ({
   ChatBot: ({ isOpen }: { isOpen?: boolean }) =>
     isOpen ? <div data-testid="chatbot-mock" /> : null,
@@ -32,10 +42,22 @@ vi.mock("../ThemeToggle", () => ({
 }));
 
 describe("Sidebar navigation active styling", () => {
+  const renderSidebar = (initialEntries: string[] = ["/"]) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={initialEntries}>
+          <Sidebar />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+  };
+
   beforeEach(() => {
     mockUseAuth.mockReset();
     mockUseTheme.mockReset();
     mockPreloadRouteModule.mockReset();
+    mockFetchMessageThreads.mockReset();
     mockUseAuth.mockReturnValue({
       signOut: vi.fn(),
       hasRole: vi.fn(() => true),
@@ -46,24 +68,27 @@ describe("Sidebar navigation active styling", () => {
         },
       },
       profile: {
+        id: "user-1",
         role: "therapist",
       },
       isGuardian: false,
       hasAnyRole: vi.fn(() => true),
+      effectiveRole: "therapist",
     });
 
     mockUseTheme.mockReturnValue({
       isDark: false,
       toggleTheme: vi.fn(),
     });
+    mockFetchMessageThreads.mockResolvedValue({
+      threads: [],
+      schemaUnavailable: false,
+      unreadThreadCount: 0,
+    });
   });
 
   it("keeps the clients link icon highlighted for nested routes", () => {
-    render(
-      <MemoryRouter initialEntries={["/clients/123"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    renderSidebar(["/clients/123"]);
 
     const clientsLink = screen.getByRole("link", { name: /clients/i });
     expect(clientsLink).toHaveClass("border-blue-500");
@@ -90,6 +115,7 @@ describe("Sidebar navigation active styling", () => {
         },
       },
       profile: {
+        id: "user-1",
         role: "therapist",
       },
       isGuardian: false,
@@ -98,11 +124,7 @@ describe("Sidebar navigation active styling", () => {
       ),
     });
 
-    render(
-      <MemoryRouter initialEntries={["/schedule"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    renderSidebar(["/schedule"]);
 
     expect(screen.queryByRole("link", { name: /authorizations/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /documentation/i })).not.toBeInTheDocument();
@@ -126,6 +148,7 @@ describe("Sidebar navigation active styling", () => {
         user_metadata: {},
       },
       profile: {
+        id: "user-1",
         role: "super_admin",
       },
       isGuardian: false,
@@ -134,11 +157,7 @@ describe("Sidebar navigation active styling", () => {
       ),
     });
 
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    renderSidebar(["/"]);
 
     expect(screen.getByRole("link", { name: /therapists/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /billing/i })).toBeInTheDocument();
@@ -160,6 +179,7 @@ describe("Sidebar navigation active styling", () => {
         user_metadata: {},
       },
       profile: {
+        id: "user-1",
         role: "client",
       },
       isGuardian: true,
@@ -168,11 +188,7 @@ describe("Sidebar navigation active styling", () => {
       ),
     });
 
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    renderSidebar(["/"]);
 
     expect(screen.queryByRole("button", { name: /chat assistant/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId("chatbot-mock")).not.toBeInTheDocument();
@@ -180,11 +196,7 @@ describe("Sidebar navigation active styling", () => {
   });
 
   it("lazily loads the chat assistant only when opened", async () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    renderSidebar(["/"]);
 
     expect(screen.getByRole("button", { name: /chat assistant/i })).toBeInTheDocument();
     expect(screen.queryByTestId("chatbot-mock")).not.toBeInTheDocument();
@@ -194,11 +206,7 @@ describe("Sidebar navigation active styling", () => {
   });
 
   it("prefetches a route module on hover intent without preloading on initial render", async () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    renderSidebar(["/"]);
 
     expect(mockPreloadRouteModule).not.toHaveBeenCalled();
 
@@ -209,11 +217,7 @@ describe("Sidebar navigation active styling", () => {
   });
 
   it("prefetches a route module on keyboard focus intent", async () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    renderSidebar(["/"]);
 
     fireEvent.focus(screen.getByRole("link", { name: /schedule/i }));
 
@@ -221,11 +225,7 @@ describe("Sidebar navigation active styling", () => {
   });
 
   it("prefetches messages route module on hover intent", async () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    renderSidebar(["/"]);
 
     await userEvent.hover(screen.getByRole("link", { name: /messages/i }));
 
@@ -245,6 +245,7 @@ describe("Sidebar navigation active styling", () => {
         user_metadata: {},
       },
       profile: {
+        id: "user-1",
         role: "client",
       },
       isGuardian: false,
@@ -253,21 +254,13 @@ describe("Sidebar navigation active styling", () => {
       ),
     });
 
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    renderSidebar(["/"]);
 
     expect(screen.queryByRole("link", { name: /family/i })).not.toBeInTheDocument();
   });
 
   it("keeps mobile sidebar sections scrollable so footer actions stay reachable", () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Sidebar />
-      </MemoryRouter>
-    );
+    const { container } = renderSidebar(["/"]);
 
     const sidebar = container.querySelector("#app-sidebar");
     expect(sidebar).not.toBeNull();
@@ -277,5 +270,17 @@ describe("Sidebar navigation active styling", () => {
     expect(nav).not.toBeNull();
     expect(nav).toHaveClass("min-h-0");
     expect(nav).toHaveClass("overflow-y-auto");
+  });
+
+  it("shows an unread badge on the messages nav item when unread threads exist", async () => {
+    mockFetchMessageThreads.mockResolvedValueOnce({
+      threads: [],
+      schemaUnavailable: false,
+      unreadThreadCount: 3,
+    });
+
+    renderSidebar(["/"]);
+
+    expect(await screen.findByTestId("sidebar-messages-unread-badge")).toHaveTextContent("3");
   });
 });

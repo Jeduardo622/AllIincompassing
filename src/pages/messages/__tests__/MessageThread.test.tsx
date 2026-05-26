@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import { PHI_COMPOSER_PLACEHOLDER, PHI_POLICY_BANNER } from '../../../lib/messages/constants';
+import { MESSAGES_QUERY_KEY } from '../../../lib/messages/constants';
 import { fetchMessageThread } from '../../../lib/messages/fetchers';
+import { markThreadRead } from '../../../lib/messages/mutations';
 import { MessageThread } from '../MessageThread';
 
 vi.mock('../../../lib/authContext', () => ({
@@ -51,7 +53,9 @@ vi.mock('../../../lib/messages/mutations', () => ({
 
 const renderPage = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  return {
+    client,
+    ...render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/messages/thread-1']}>
         <Routes>
@@ -59,7 +63,8 @@ const renderPage = () => {
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
-  );
+    ),
+  };
 };
 
 describe('MessageThread', () => {
@@ -96,5 +101,15 @@ describe('MessageThread', () => {
 
     expect(await screen.findByRole('heading', { name: 'Alex Admin' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Conversation' })).not.toBeInTheDocument();
+  });
+
+  it('marks the thread read and invalidates shared messaging queries on open', async () => {
+    const { client } = renderPage();
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+
+    await screen.findByText(PHI_POLICY_BANNER);
+
+    expect(markThreadRead).toHaveBeenCalledWith('thread-1', 'user-1');
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: [MESSAGES_QUERY_KEY] });
   });
 });

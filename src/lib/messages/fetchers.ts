@@ -4,10 +4,26 @@ import { fetchThreadParticipantNames } from './fetchThreadParticipantNames';
 import { isMessagingSchemaUnavailable } from './errors';
 import type {
   Message,
+  MessageThreadParticipant,
   MessageThreadListItem,
 } from './types';
 
 export { fetchStaffRecipients };
+
+const isThreadUnread = (
+  participant: Pick<MessageThreadParticipant, 'last_read_at' | 'muted_at' | 'archived_at'> | undefined,
+  latestMessageAt: string | null | undefined,
+): boolean => {
+  if (!participant || participant.archived_at || participant.muted_at || !latestMessageAt) {
+    return false;
+  }
+
+  if (!participant.last_read_at) {
+    return true;
+  }
+
+  return new Date(latestMessageAt).getTime() > new Date(participant.last_read_at).getTime();
+};
 
 const fetchParticipantNamesByThread = async (
   threadIds: string[],
@@ -29,7 +45,7 @@ const fetchParticipantNamesByThread = async (
 export const fetchMessageThreads = async (
   organizationId: string,
   userId: string,
-): Promise<{ threads: MessageThreadListItem[]; schemaUnavailable: boolean }> => {
+): Promise<{ threads: MessageThreadListItem[]; schemaUnavailable: boolean; unreadThreadCount: number }> => {
   try {
     const { data: participants, error: participantError } = await supabase
       .from('message_thread_participants')
@@ -40,14 +56,14 @@ export const fetchMessageThreads = async (
 
     if (participantError) {
       if (isMessagingSchemaUnavailable(participantError)) {
-        return { threads: [], schemaUnavailable: true };
+        return { threads: [], schemaUnavailable: true, unreadThreadCount: 0 };
       }
       throw participantError;
     }
 
     const threadIds = (participants ?? []).map((row) => row.thread_id);
     if (threadIds.length === 0) {
-      return { threads: [], schemaUnavailable: false };
+      return { threads: [], schemaUnavailable: false, unreadThreadCount: 0 };
     }
 
     const { data: threads, error: threadError } = await supabase
@@ -59,7 +75,7 @@ export const fetchMessageThreads = async (
 
     if (threadError) {
       if (isMessagingSchemaUnavailable(threadError)) {
-        return { threads: [], schemaUnavailable: true };
+        return { threads: [], schemaUnavailable: true, unreadThreadCount: 0 };
       }
       throw threadError;
     }
@@ -105,6 +121,7 @@ export const fetchMessageThreads = async (
     const list: MessageThreadListItem[] = (threads ?? []).map((thread) => {
       const participant = participantByThread.get(thread.id);
       const latest = latestByThread.get(thread.id);
+      const isUnread = isThreadUnread(participant, latest?.created_at ?? null);
       return {
         ...thread,
         participant_names: participantNamesByThread.get(thread.id) ?? [],
@@ -121,13 +138,18 @@ export const fetchMessageThreads = async (
           : undefined,
         last_message_preview: latest?.body ?? null,
         last_message_at: latest?.created_at ?? null,
+        isUnread,
       };
     });
 
-    return { threads: list, schemaUnavailable: false };
+    return {
+      threads: list,
+      schemaUnavailable: false,
+      unreadThreadCount: list.filter((thread) => thread.isUnread).length,
+    };
   } catch (error) {
     if (isMessagingSchemaUnavailable(error)) {
-      return { threads: [], schemaUnavailable: true };
+      return { threads: [], schemaUnavailable: true, unreadThreadCount: 0 };
     }
     throw error;
   }

@@ -31,6 +31,11 @@ const assessmentDocument: AssessmentDocumentRecord = {
 describe("IehpFbaLayoutReview", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    });
   });
 
   it("renders IEHP page layout metadata without CalOptima copy and saves checklist values", async () => {
@@ -405,7 +410,7 @@ describe("IehpFbaLayoutReview", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Page 16/i }));
     expect(await screen.findByText("Page 16: School Goals")).toBeInTheDocument();
-    expect(screen.getByText(/School goal narrative/)).toBeInTheDocument();
+    expect(screen.getAllByText(/School goal narrative/).length).toBeGreaterThan(0);
     fireEvent.change(screen.getByLabelText("IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS structured section 1 status"), {
       target: { value: "verified" },
     });
@@ -429,7 +434,7 @@ describe("IehpFbaLayoutReview", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Page 17/i }));
     expect(await screen.findByText("Page 17: Parent Education Goals")).toBeInTheDocument();
-    expect(screen.getByText(/Parent education goal narrative/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Parent education goal narrative/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: /Page 24/i }));
     expect(await screen.findByLabelText("Recommendation Notes")).toBeInTheDocument();
@@ -570,5 +575,81 @@ describe("IehpFbaLayoutReview", () => {
     expect(screen.getByLabelText("Missing Manual Field")).toBeDisabled();
     expect(screen.getByText("missing row")).toBeInTheDocument();
     expect(screen.getAllByText("manual required")).toHaveLength(1);
+  });
+
+  it("renders behavior target preview and copies extracted checkbox targets", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 3, title: "Behaviors", layout_json: {} }],
+          fields: [
+            {
+              page_number: 3,
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+              label: "Behaviors and Functional Skills to be Addressed",
+              field_type: "checkbox_grid",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-behavior",
+                placeholder_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+                section_key: "behavior_background_services",
+                label: "Behaviors and Functional Skills to be Addressed",
+                mode: "ASSISTED",
+                required: true,
+                status: "drafted",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "behavior-structured-1",
+                field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+                section_index: 0,
+                payload: {
+                  raw_text: "The behaviors and functional skills to be addressed are: Physical Aggression, Self-Injury",
+                  targets: ["Physical Aggression", "Self-Injury"],
+                },
+                source_span: { page_number: 3, method: "iehp_section_anchor" },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          },
+          unresolved_required_count: 1,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 3/i }));
+    expect(await screen.findByText("Selected targets: Physical Aggression, Self-Injury")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "Behaviors and Functional Skills to be Addressed\n- Physical Aggression\n- Self-Injury",
+      );
+    });
   });
 });

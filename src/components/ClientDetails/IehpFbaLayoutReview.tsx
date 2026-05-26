@@ -108,6 +108,33 @@ const formatPayloadPreview = (value: unknown): string => {
   }
 };
 
+const behaviorTargetsFromPayload = (payload: Record<string, unknown> | undefined): string[] => {
+  const targets = payload?.targets;
+  if (!Array.isArray(targets)) return [];
+  return targets
+    .map((target) => (typeof target === "string" ? target.trim() : ""))
+    .filter((target) => target.length > 0);
+};
+
+const formatStructuredPreview = (section: StructuredValue): string => {
+  if (section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
+    const targets = behaviorTargetsFromPayload(section.payload);
+    if (targets.length === 0) return "Selected targets: none";
+    return `Selected targets: ${targets.join(", ")}`;
+  }
+  return formatPayloadPreview(section.payload);
+};
+
+const formatStructuredCopyText = (section: StructuredValue): string => {
+  if (section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
+    const targets = behaviorTargetsFromPayload(section.payload);
+    const heading = "Behaviors and Functional Skills to be Addressed";
+    if (targets.length === 0) return `${heading}\n- none selected`;
+    return `${heading}\n${targets.map((target) => `- ${target}`).join("\n")}`;
+  }
+  return formatPayloadPreview(section.payload);
+};
+
 const getFieldInputRows = (fieldType: string): number => {
   if (fieldType === "textarea" || fieldType === "goal_blocks" || fieldType === "recommendation_table") return 5;
   if (fieldType === "repeatable_table" || fieldType === "schedule_table" || fieldType === "checkbox_grid" || fieldType === "table") return 4;
@@ -272,6 +299,18 @@ export function IehpFbaLayoutReview({
     },
   });
 
+  const copyStructuredSection = async (section: StructuredValue) => {
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error("Clipboard is unavailable in this browser.");
+      }
+      await navigator.clipboard.writeText(formatStructuredCopyText(section));
+      showSuccess("Structured section copied.");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Failed to copy structured section");
+    }
+  };
+
   if (isLoading) {
     return <p className="text-sm text-gray-500">Loading IEHP document-style review...</p>;
   }
@@ -414,10 +453,22 @@ export function IehpFbaLayoutReview({
                                   <span className="font-semibold">
                                     Section {section.section_index + 1} • {section.status} • required: {String(section.required)}
                                   </span>
-                                  {structuredLocked && (
-                                    <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">locked after approval</span>
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void copyStructuredSection(section)}
+                                      className="rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                      Copy extracted
+                                    </button>
+                                    {structuredLocked && (
+                                      <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">locked after approval</span>
+                                    )}
+                                  </div>
                                 </div>
+                                <p className="mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
+                                  {formatStructuredPreview(section)}
+                                </p>
                                 <textarea
                                   value={structuredEdit.payloadText}
                                   rows={4}
@@ -564,10 +615,22 @@ export function IehpFbaLayoutReview({
                               <span className="font-semibold">
                                 {section.field_key} section {section.section_index + 1} • {section.status}
                               </span>
-                              {structuredLocked && (
-                                <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">locked after approval</span>
-                              )}
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void copyStructuredSection(section)}
+                                  className="rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  Copy extracted
+                                </button>
+                                {structuredLocked && (
+                                  <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">locked after approval</span>
+                                )}
+                              </div>
                             </div>
+                            <p className="mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
+                              {formatStructuredPreview(section)}
+                            </p>
                             <textarea
                               value={structuredEdit.payloadText}
                               rows={4}

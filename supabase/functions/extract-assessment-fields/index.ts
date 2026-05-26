@@ -1407,7 +1407,10 @@ const extractIeHpGoalSections = (
     {
       field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
       section_key: "behavior_background_services",
-      start: [/BEHAVIORS\s*:?\s*?/i, /Behaviors\s+and\s+Functional\s+Skills\s+to\s+be\s+Addressed/i],
+      start: [
+        /(?:^|\n)\s*(?:[IVX]+\.\s*)?BEHAVIORS\s*:\s*(?:The\s+behaviors\s+and\s+functional\s+skills\s+to\s+be\s+addressed\b)?/i,
+        /(?:^|\n)\s*The\s+behaviors\s+and\s+functional\s+skills\s+to\s+be\s+addressed\b/i,
+      ],
       end: [/\bBACKGROUND INFORMATION\b/i, /\bPersons\s+in\s+Household\b/i],
     },
     {
@@ -1880,6 +1883,23 @@ const extractLineNearLabels = (
   return null;
 };
 
+const extractIehpPresentingConcernsNarrative = (text: string): string | null => {
+  const narrative = extractSectionText(
+    text,
+    [/\bREASON\s+FOR\s+REFERRAL\s+AND\s+PRESENTING\s+CONCERNS\b/i],
+    [/\bName\s+of\s+Referring\s+Provider\b/i, /\bBEHAVIORS\s*:?\b/i],
+  );
+  if (!narrative) {
+    return null;
+  }
+
+  const compact = compactDocumentText(narrative)
+    .replace(/^\s*REASON\s+FOR\s+REFERRAL\s+AND\s+PRESENTING\s+CONCERNS\s*:?\s*/i, "")
+    .replace(/^Write a brief description[^.]*\.\s*/i, "")
+    .trim();
+  return compact.length > 0 ? compact : null;
+};
+
 const deterministicValueForRow = (
   row: z.infer<typeof checklistRowSchema>,
   text: string,
@@ -1903,6 +1923,21 @@ const deterministicValueForRow = (
       review_notes: null,
     };
   }
+  if (key === "IEHP_FBA_REASON_FOR_REFERRAL") {
+    const presentingConcerns = extractIehpPresentingConcernsNarrative(text);
+    if (presentingConcerns) {
+      return {
+        placeholder_key: key,
+        value_text: presentingConcerns,
+        value_json: null,
+        confidence: 0.55,
+        mode: row.mode ?? "MANUAL",
+        status: "drafted",
+        source_span: { method: "iehp_presenting_concerns_anchor" },
+        review_notes: "Deterministic extraction from IEHP presenting concerns narrative block.",
+      };
+    }
+  }
   const labels = [row.label, ...(row.extraction_aliases ?? [])];
   const fromLabel = extractLineNearLabels(text, labels, collectStopLabels(labels, allRows));
   if (fromLabel) {
@@ -1918,7 +1953,6 @@ const deterministicValueForRow = (
       review_notes: `Deterministic extraction from document label match. (Calibrated confidence ${confidence.toFixed(2)})`,
     };
   }
-
   const client = clientSnapshot ?? {};
   if (/MEMBER_NAME|CLIENT_NAME/u.test(key) && client.full_name) {
     return {

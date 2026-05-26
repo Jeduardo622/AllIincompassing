@@ -630,6 +630,8 @@ Deno.test("extractStructuredSections maps LE-style IEHP headings into normalized
   const byKey = new Map(sections.map((section) => [section.field_key, section]));
   [
     "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+    "IEHP_FBA_HOUSEHOLD_MEMBERS",
+    "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
     "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX",
     "IEHP_FBA_HEALTH_MEDICAL_SUMMARY",
     "IEHP_FBA_CURRENT_SERVICES_ACTIVITIES",
@@ -655,6 +657,10 @@ Deno.test("extractStructuredSections maps LE-style IEHP headings into normalized
     "Physical Aggression",
     "Functional Communication",
   ]);
+  expect(byKey.get("IEHP_FBA_HOUSEHOLD_MEMBERS")?.payload.raw_text).toContain("Member lives with two caregivers");
+  expect(byKey.get("IEHP_FBA_HOUSEHOLD_MEMBERS")?.payload.raw_text).not.toContain("The behaviors and functional skills to be addressed");
+  expect(byKey.get("IEHP_FBA_SCHOOL_INFORMATION_BLOCK")?.payload.raw_text).toContain("Member attends a local high school");
+  expect(byKey.get("IEHP_FBA_SCHOOL_INFORMATION_BLOCK")?.payload.raw_text).not.toContain("Medical summary narrative");
   expect((byKey.get("IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS")?.payload.rows as unknown[]).length).toBeGreaterThan(2);
   expect(byKey.get("IEHP_FBA_SIGNATURE_BLOCK")?.payload.report_completed_date).toBe("12/12/2025");
   expect(byKey.get("IEHP_FBA_DISCHARGE_TRANSITION_EXIT_PLAN")?.payload.transition_of_care).toContain("Transition");
@@ -1126,6 +1132,84 @@ Deno.test("deterministicValueForRow keeps manual and assisted IEHP rows honest w
   expect(assessorPhone.value_text).toBeNull();
   expect(assessorPhone.status).toBe("not_started");
   expect(assessorPhone.review_notes).toContain("reliable provider or organization source");
+});
+
+Deno.test("deterministicValueForRow maps IEHP presenting concerns narrative into reason for referral", () => {
+  const manual = __TESTING__.deterministicValueForRow(
+    {
+      section: "identification_admin",
+      label: "Reason for Referral",
+      placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      required: true,
+      mode: "MANUAL",
+    },
+    `
+      II. REASON FOR REFERRAL AND PRESENTING CONCERNS:
+      Write a brief description regarding the presenting concerns and why the Member is seeking services from your agency.
+      Kim presents with significant communication deficits and frequent maladaptive behaviors that disrupt family routines.
+      Name of Referring Provider, Credentials (if applicable):
+      Date Referred:
+      BEHAVIORS:
+      The behaviors and functional skills to be addressed are:
+      Physical Aggression
+    `,
+  );
+
+  expect(manual.mode).toBe("MANUAL");
+  expect(manual.status).toBe("drafted");
+  expect(manual.source_span).toMatchObject({ method: "iehp_presenting_concerns_anchor" });
+  expect(manual.value_text).toContain("Kim presents with significant communication deficits");
+  expect(manual.value_text).not.toContain("The behaviors and functional skills to be addressed");
+});
+
+Deno.test("deterministicValueForRow stops presenting concerns extraction at colonless BEHAVIORS heading", () => {
+  const manual = __TESTING__.deterministicValueForRow(
+    {
+      section: "identification_admin",
+      label: "Reason for Referral",
+      placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      required: true,
+      mode: "MANUAL",
+    },
+    `
+      II. REASON FOR REFERRAL AND PRESENTING CONCERNS
+      Kim presents with significant communication deficits and frequent maladaptive behaviors that disrupt family routines.
+      BEHAVIORS
+      The behaviors and functional skills to be addressed are:
+      Physical Aggression
+      Functional Communication
+    `,
+  );
+
+  expect(manual.mode).toBe("MANUAL");
+  expect(manual.status).toBe("drafted");
+  expect(manual.value_text).toContain("Kim presents with significant communication deficits");
+  expect(manual.value_text).not.toContain("The behaviors and functional skills to be addressed");
+  expect(manual.value_text).not.toContain("Physical Aggression");
+});
+
+Deno.test("extractStructuredSections keeps presenting concerns out of IEHP behavior skill targets", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      II. REASON FOR REFERRAL AND PRESENTING CONCERNS:
+      Kim presents with significant communication deficits and maladaptive behavior patterns.
+      Name of Referring Provider, Credentials (if applicable):
+      Date Referred:
+      Reason for Referral:
+      III. BEHAVIORS:
+      The behaviors and functional skills to be addressed are:
+      Physical Aggression
+      Functional Communication
+      IV. BACKGROUND INFORMATION:
+    `,
+  );
+  const behaviorSection = sections.find((section) => section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS");
+  const behaviorRawText = String(behaviorSection?.payload.raw_text ?? "");
+
+  expect(behaviorSection).toBeDefined();
+  expect(behaviorRawText).toContain("The behaviors and functional skills to be addressed");
+  expect(behaviorRawText).not.toContain("Kim presents with significant communication deficits");
 });
 
 Deno.test("deterministicValueForRow prefills IEHP assessor phone from primary therapist snapshot", () => {

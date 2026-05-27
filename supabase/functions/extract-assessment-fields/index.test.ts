@@ -722,7 +722,13 @@ Deno.test("extractStructuredSections recognizes blank-template IEHP heading alia
   const byKey = new Map(sections.map((section) => [section.field_key, section]));
   expect(byKey.has("IEHP_FBA_BHT_AVAILABILITY_GRID")).toBe(true);
   expect((byKey.get("IEHP_FBA_ENVIRONMENTAL_ANALYSIS")?.payload.rows as unknown[]).length).toBeGreaterThanOrEqual(4);
-  expect((byKey.get("IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE")?.payload.rows as unknown[]).length).toBeGreaterThanOrEqual(3);
+  const procedures = (byKey.get("IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE")?.payload.rows as Array<Record<string, string>>).map(
+    (row) => row.procedure,
+  );
+  expect(procedures.length).toBeGreaterThanOrEqual(3);
+  expect(procedures).toContain("Record s Reviewed");
+  expect(procedures).toContain("1 st Member Observation");
+  expect(procedures).toContain("Brief Functional Analysis");
   expect(byKey.get("IEHP_FBA_CRISIS_PLAN")?.payload.raw_text).toContain("Safety Procedure");
   expect(byKey.get("IEHP_FBA_DISCHARGE_TRANSITION_EXIT_PLAN")?.payload.raw_text).toContain("Transition Planning");
   expect((byKey.get("IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS")?.payload.rows as unknown[]).length).toBe(1);

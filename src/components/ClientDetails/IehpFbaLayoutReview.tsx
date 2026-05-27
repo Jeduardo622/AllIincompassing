@@ -119,23 +119,120 @@ const behaviorTargetsFromPayload = (payload: Record<string, unknown> | undefined
     .filter((target) => target.length > 0);
 };
 
-const formatStructuredPreview = (section: StructuredValue): string => {
-  if (section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
-    const targets = behaviorTargetsFromPayload(section.payload);
-    if (targets.length === 0) return "Selected targets: none";
-    return `Selected targets: ${targets.join(", ")}`;
-  }
-  return formatPayloadPreview(section.payload);
+const statusChipClass = (status: ReviewStatus | StructuredReviewStatus): string => {
+  if (status === "approved") return "bg-emerald-500/15 text-emerald-300 border border-emerald-400/30";
+  if (status === "verified") return "bg-sky-500/15 text-sky-300 border border-sky-400/30";
+  if (status === "drafted") return "bg-indigo-500/20 text-indigo-200 border border-indigo-400/30";
+  if (status === "rejected") return "bg-rose-500/15 text-rose-300 border border-rose-400/30";
+  return "bg-slate-500/15 text-slate-300 border border-slate-400/30";
 };
 
-const formatStructuredCopyText = (section: StructuredValue): string => {
+const assessmentProcedureRowsFromPayload = (payload: Record<string, unknown> | undefined): Array<{ procedure: string; raw_text: string }> => {
+  const rows = payload?.rows;
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => {
+      if (!row || typeof row !== "object") return { procedure: "", raw_text: "" };
+      const procedure = typeof (row as { procedure?: unknown }).procedure === "string" ? (row as { procedure: string }).procedure.trim() : "";
+      const rawText = typeof (row as { raw_text?: unknown }).raw_text === "string" ? (row as { raw_text: string }).raw_text.trim() : "";
+      return { procedure, raw_text: rawText };
+    })
+    .filter((row) => row.procedure.length > 0 || row.raw_text.length > 0);
+};
+
+const readableNarrativeFromPayload = (payload: Record<string, unknown> | undefined): string => {
+  if (!payload || typeof payload !== "object") return "";
+  const rawText = payload.raw_text;
+  if (typeof rawText === "string" && rawText.trim().length > 0) return rawText.trim();
+  return "";
+};
+
+const formatStructuredReadableText = (section: StructuredValue): string => {
   if (section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
     const targets = behaviorTargetsFromPayload(section.payload);
     const heading = "Behaviors and Functional Skills to be Addressed";
     if (targets.length === 0) return `${heading}\n- none selected`;
     return `${heading}\n${targets.map((target) => `- ${target}`).join("\n")}`;
   }
+  if (section.field_key === "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE") {
+    const rows = assessmentProcedureRowsFromPayload(section.payload);
+    const heading = "Assessment Procedures";
+    if (rows.length === 0) {
+      const narrative = readableNarrativeFromPayload(section.payload);
+      if (narrative.length > 0) return `${heading}\n${narrative}`;
+      return `${heading}\n- none extracted`;
+    }
+    return `${heading}\n${rows.map((row) => `- ${row.procedure}: ${row.raw_text || "not provided"}`).join("\n")}`;
+  }
+  const narrative = readableNarrativeFromPayload(section.payload);
+  if (narrative.length > 0) return narrative;
   return formatPayloadPreview(section.payload);
+};
+
+const formatStructuredCopyText = (section: StructuredValue): string => formatStructuredReadableText(section);
+
+const shouldShowNarrativeRenderer = (fieldKey: string): boolean =>
+  [
+    "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+    "IEHP_FBA_HOUSEHOLD_MEMBERS",
+    "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+    "IEHP_FBA_HEALTH_MEDICAL_SUMMARY",
+  ].includes(fieldKey);
+
+const renderStructuredReadablePreview = (section: StructuredValue): JSX.Element => {
+  if (section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
+    const targets = behaviorTargetsFromPayload(section.payload);
+    return (
+      <div className="space-y-1">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200">Selected Behavior Targets</p>
+        {targets.length === 0 ? (
+          <p className="text-xs text-slate-300">None selected.</p>
+        ) : (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-slate-100">
+            {targets.map((target) => (
+              <li key={target}>{target}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  if (section.field_key === "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE") {
+    const rows = assessmentProcedureRowsFromPayload(section.payload);
+    const narrative = readableNarrativeFromPayload(section.payload);
+    return (
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200">Assessment Procedures</p>
+        {rows.length === 0 ? (
+          <p className="text-xs leading-relaxed text-slate-100 whitespace-pre-wrap">
+            {narrative || "No procedure rows extracted."}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {rows.map((row, index) => (
+              <div key={`${row.procedure}-${index}`} className="rounded border border-slate-600/60 bg-slate-900/50 px-2 py-1">
+                <p className="text-xs font-semibold text-slate-100">{row.procedure}</p>
+                <p className="text-xs text-slate-300">{row.raw_text || "Not provided"}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (shouldShowNarrativeRenderer(section.field_key)) {
+    const narrative = readableNarrativeFromPayload(section.payload);
+    return (
+      <div className="space-y-1">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200">Extracted Narrative</p>
+        <p className="text-xs leading-relaxed text-slate-100 whitespace-pre-wrap">{narrative || "No narrative extracted."}</p>
+      </div>
+    );
+  }
+
+  return <p className="text-xs leading-relaxed text-slate-100 whitespace-pre-wrap">{formatStructuredReadableText(section)}</p>;
 };
 
 const getFieldInputRows = (fieldType: string): number => {
@@ -170,6 +267,7 @@ export function IehpFbaLayoutReview({
   const [activePage, setActivePage] = useState(1);
   const [edits, setEdits] = useState<Record<string, FieldEdit>>({});
   const [structuredEdits, setStructuredEdits] = useState<Record<string, StructuredEdit>>({});
+  const [rawPreviewBySectionId, setRawPreviewBySectionId] = useState<Record<string, boolean>>({});
 
   const queryKey = ["assessment-template-layout", assessmentDocument.id, organizationId ?? "MISSING_ORG"] as const;
   const { data = EMPTY_LAYOUT, isLoading, isError } = useQuery({
@@ -327,8 +425,8 @@ export function IehpFbaLayoutReview({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-md border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-900 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-100">
+    <div className="space-y-4 rounded-xl border border-slate-700 bg-slate-950 p-3 text-slate-100">
+      <div className="rounded-md border border-cyan-700/40 bg-cyan-950/40 p-3 text-xs text-cyan-100">
         <p className="font-semibold">IEHP FBA document-style review</p>
         <p>
           Template: {data.template_version.source_document_name || "IEHP FBA"} • Version:{" "}
@@ -341,7 +439,7 @@ export function IehpFbaLayoutReview({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[13rem_minmax(0,1fr)]">
-        <nav aria-label="IEHP FBA page navigation" className="max-h-[44rem] space-y-1 overflow-auto rounded-md border border-gray-200 p-2 dark:border-gray-700">
+        <nav aria-label="IEHP FBA page navigation" className="max-h-[44rem] space-y-1 overflow-auto rounded-md border border-slate-700 bg-slate-900 p-2">
           {data.pages.map((page) => {
             const pageFields = fieldsByPage.get(page.page_number) ?? [];
             const pageStructured = data.values.structured_sections.filter(
@@ -358,7 +456,7 @@ export function IehpFbaLayoutReview({
                 className={`w-full rounded px-2 py-2 text-left text-xs ${
                   activePage === page.page_number
                     ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                    : "bg-slate-800 text-slate-200 hover:bg-slate-700"
                 }`}
               >
                 <span className="block font-semibold">Page {page.page_number}</span>
@@ -371,10 +469,10 @@ export function IehpFbaLayoutReview({
           })}
         </nav>
 
-        <section className="overflow-auto rounded-lg border border-gray-300 bg-gray-100 p-3 dark:border-gray-700 dark:bg-gray-900/60">
-          <div className="mx-auto min-h-[58rem] max-w-[52rem] bg-white p-8 text-slate-950 shadow-xl">
+        <section className="overflow-auto rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+          <div className="mx-auto min-h-[58rem] max-w-[52rem] bg-slate-900 p-8 text-slate-100 shadow-xl">
             <div className="mb-5 border-b border-slate-300 pb-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 Inland Empire Health Plan Functional Behavioral Assessment Report
               </p>
               <h4 className="mt-1 text-xl font-bold">
@@ -383,7 +481,7 @@ export function IehpFbaLayoutReview({
             </div>
 
             {activePageFields.length === 0 && activePageLooseStructuredSections.length === 0 ? (
-              <div className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+              <div className="rounded border border-dashed border-slate-600 p-4 text-sm text-slate-300">
                 {emptyPageMessage(activePage, activePageMeta?.title)}
               </div>
             ) : (
@@ -402,17 +500,17 @@ export function IehpFbaLayoutReview({
                   const locked = item?.status === "approved";
                   const manualRequired = isManualRequiredReviewItem(field, item);
                   return (
-                    <div key={field.field_key} className="rounded-md border border-slate-300 p-3">
+                    <div key={field.field_key} className="rounded-md border border-slate-600 bg-slate-800/70 p-3">
                       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <label htmlFor={`iehp-${field.field_key}`} className="text-sm font-semibold text-slate-900">
+                          <label htmlFor={`iehp-${field.field_key}`} className="text-sm font-semibold text-slate-100">
                             {field.label}
                           </label>
-                          <p className="text-[11px] text-slate-500">
+                          <p className="text-[11px] text-slate-400">
                             {field.field_key} • {field.mode} • {field.field_type} • required: {String(field.required)}
                           </p>
                         </div>
-                        <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                        <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(manualRequired ? "not_started" : item?.status ?? "not_started")}`}>
                           {manualRequired ? "manual required" : item?.status ?? "missing row"}
                         </span>
                       </div>
@@ -437,12 +535,12 @@ export function IehpFbaLayoutReview({
                             },
                           }))
                         }
-                        className="w-full rounded border border-slate-300 bg-white p-2 text-sm text-slate-950 disabled:bg-slate-100"
+                        className="w-full rounded border border-slate-600 bg-slate-950 p-2 text-sm text-slate-100 disabled:bg-slate-800"
                         placeholder={field.field_type.includes("table") ? "Enter table rows or structured summary for reviewer confirmation." : "Field value"}
                       />
 
                       {structuredSections.length > 0 && (
-                        <div className="mt-2 space-y-2 rounded bg-slate-50 p-2 text-xs text-slate-700">
+                        <div className="mt-2 space-y-2 rounded bg-slate-900/80 p-2 text-xs text-slate-200">
                           <p className="font-semibold">Structured extracted sections</p>
                           {structuredSections.map((section) => {
                             const structuredEdit = structuredEdits[section.id] ?? {
@@ -452,27 +550,48 @@ export function IehpFbaLayoutReview({
                             };
                             const structuredLocked = section.status === "approved";
                             return (
-                              <div key={section.id} className="rounded border border-slate-200 bg-white p-2">
+                              <div key={section.id} className="rounded border border-slate-600 bg-slate-800 p-2">
                                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                  <span className="font-semibold">
-                                    Section {section.section_index + 1} • {section.status} • required: {String(section.required)}
+                                  <span className="font-semibold text-slate-100">
+                                    Section {section.section_index + 1} • required: {String(section.required)}
                                   </span>
                                   <div className="flex items-center gap-2">
+                                    <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{section.status}</span>
                                     <button
                                       type="button"
                                       onClick={() => void copyStructuredSection(section)}
-                                      className="rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                      className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
                                     >
                                       Copy extracted
                                     </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setRawPreviewBySectionId((current) => ({
+                                          ...current,
+                                          [section.id]: !current[section.id],
+                                        }))
+                                      }
+                                      className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
+                                    >
+                                      {rawPreviewBySectionId[section.id] ? "Hide raw JSON" : "View raw JSON"}
+                                    </button>
                                     {structuredLocked && (
-                                      <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">locked after approval</span>
+                                      <span className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200">locked after approval</span>
                                     )}
                                   </div>
                                 </div>
-                                <p className="mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
-                                  {formatStructuredPreview(section)}
-                                </p>
+                                <div className="mb-2 rounded border border-slate-600 bg-slate-900/60 px-2 py-2 text-[11px] text-slate-100">
+                                  {renderStructuredReadablePreview(section)}
+                                </div>
+                                {rawPreviewBySectionId[section.id] && (
+                                  <pre
+                                    data-testid={`raw-json-${section.id}`}
+                                    className="mb-2 overflow-auto rounded border border-slate-600 bg-slate-950 p-2 text-[11px] text-slate-300"
+                                  >
+                                    {formatPayloadPreview(section.payload)}
+                                  </pre>
+                                )}
                                 <textarea
                                   value={structuredEdit.payloadText}
                                   rows={4}
@@ -486,7 +605,7 @@ export function IehpFbaLayoutReview({
                                       },
                                     }))
                                   }
-                                  className="w-full rounded border border-slate-300 bg-white p-2 font-mono text-xs text-slate-950 disabled:bg-slate-100"
+                                  className="w-full rounded border border-slate-600 bg-slate-950 p-2 font-mono text-xs text-slate-100 disabled:bg-slate-800"
                                   aria-label={`${field.label} structured section ${section.section_index + 1} payload`}
                                 />
                                 <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
@@ -502,7 +621,7 @@ export function IehpFbaLayoutReview({
                                         },
                                       }))
                                     }
-                                    className="rounded border border-slate-300 bg-white p-2 text-sm disabled:bg-slate-100"
+                                    className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
                                     aria-label={`${field.label} structured section ${section.section_index + 1} status`}
                                   >
                                     {STRUCTURED_STATUS_OPTIONS.map((status) => (
@@ -523,7 +642,7 @@ export function IehpFbaLayoutReview({
                                         },
                                       }))
                                     }
-                                    className="rounded border border-slate-300 bg-white p-2 text-sm disabled:bg-slate-100"
+                                    className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
                                     placeholder="Structured section review notes"
                                     aria-label={`${field.label} structured section ${section.section_index + 1} review notes`}
                                   />
@@ -531,7 +650,7 @@ export function IehpFbaLayoutReview({
                                     type="button"
                                     onClick={() => saveStructuredSection.mutate(section)}
                                     disabled={saveStructuredSection.isLoading || structuredLocked}
-                                    className="rounded bg-slate-800 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+                                    className="rounded bg-indigo-700 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-600 disabled:opacity-50"
                                   >
                                     Save section
                                   </button>
@@ -555,7 +674,7 @@ export function IehpFbaLayoutReview({
                               },
                             }))
                           }
-                          className="rounded border border-slate-300 bg-white p-2 text-sm disabled:bg-slate-100"
+                          className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
                           aria-label={`${field.label} review status`}
                         >
                           {STATUS_OPTIONS.map((status) => (
@@ -576,7 +695,7 @@ export function IehpFbaLayoutReview({
                               },
                             }))
                           }
-                          className="rounded border border-slate-300 bg-white p-2 text-sm disabled:bg-slate-100"
+                          className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
                           placeholder="Review notes"
                           aria-label={`${field.label} review notes`}
                         />
@@ -584,13 +703,13 @@ export function IehpFbaLayoutReview({
                           type="button"
                           onClick={() => saveField.mutate(field)}
                           disabled={saveField.isLoading || locked || !item}
-                          className="rounded bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+                          className="rounded bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
                         >
                           Save
                         </button>
                       </div>
                       {locked && (
-                        <p className="mt-1 text-[11px] text-slate-500">
+                        <p className="mt-1 text-[11px] text-slate-400">
                           Approved IEHP rows stay locked for clinical review integrity.
                         </p>
                       )}
@@ -598,14 +717,14 @@ export function IehpFbaLayoutReview({
                   );
                 })}
                 {activePageLooseStructuredSections.length > 0 && (
-                  <div className="rounded-md border border-slate-300 p-3">
+                  <div className="rounded-md border border-slate-600 bg-slate-800/70 p-3">
                     <div className="mb-2">
-                      <p className="text-sm font-semibold text-slate-900">Page-specific structured sections</p>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-sm font-semibold text-slate-100">Page-specific structured sections</p>
+                      <p className="text-[11px] text-slate-400">
                         Extracted content placed on this IEHP page by document source metadata.
                       </p>
                     </div>
-                    <div className="space-y-2 rounded bg-slate-50 p-2 text-xs text-slate-700">
+                    <div className="space-y-2 rounded bg-slate-900/80 p-2 text-xs text-slate-200">
                       {activePageLooseStructuredSections.map((section) => {
                         const structuredEdit = structuredEdits[section.id] ?? {
                           payloadText: formatPayloadPreview(section.payload),
@@ -614,27 +733,48 @@ export function IehpFbaLayoutReview({
                         };
                         const structuredLocked = section.status === "approved";
                         return (
-                          <div key={section.id} className="rounded border border-slate-200 bg-white p-2">
+                          <div key={section.id} className="rounded border border-slate-600 bg-slate-800 p-2">
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-semibold">
-                                {section.field_key} section {section.section_index + 1} • {section.status}
+                              <span className="font-semibold text-slate-100">
+                                {section.field_key} section {section.section_index + 1}
                               </span>
                               <div className="flex items-center gap-2">
+                                <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{section.status}</span>
                                 <button
                                   type="button"
                                   onClick={() => void copyStructuredSection(section)}
-                                  className="rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                  className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
                                 >
                                   Copy extracted
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setRawPreviewBySectionId((current) => ({
+                                      ...current,
+                                      [section.id]: !current[section.id],
+                                    }))
+                                  }
+                                  className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
+                                >
+                                  {rawPreviewBySectionId[section.id] ? "Hide raw JSON" : "View raw JSON"}
+                                </button>
                                 {structuredLocked && (
-                                  <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">locked after approval</span>
+                                  <span className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200">locked after approval</span>
                                 )}
                               </div>
                             </div>
-                            <p className="mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
-                              {formatStructuredPreview(section)}
-                            </p>
+                            <div className="mb-2 rounded border border-slate-600 bg-slate-900/60 px-2 py-2 text-[11px] text-slate-100">
+                              {renderStructuredReadablePreview(section)}
+                            </div>
+                            {rawPreviewBySectionId[section.id] && (
+                              <pre
+                                data-testid={`raw-json-${section.id}`}
+                                className="mb-2 overflow-auto rounded border border-slate-600 bg-slate-950 p-2 text-[11px] text-slate-300"
+                              >
+                                {formatPayloadPreview(section.payload)}
+                              </pre>
+                            )}
                             <textarea
                               value={structuredEdit.payloadText}
                               rows={4}
@@ -648,7 +788,7 @@ export function IehpFbaLayoutReview({
                                   },
                                 }))
                               }
-                              className="w-full rounded border border-slate-300 bg-white p-2 font-mono text-xs text-slate-950 disabled:bg-slate-100"
+                              className="w-full rounded border border-slate-600 bg-slate-950 p-2 font-mono text-xs text-slate-100 disabled:bg-slate-800"
                               aria-label={`${section.field_key} structured section ${section.section_index + 1} payload`}
                             />
                             <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
@@ -664,7 +804,7 @@ export function IehpFbaLayoutReview({
                                     },
                                   }))
                                 }
-                                className="rounded border border-slate-300 bg-white p-2 text-sm disabled:bg-slate-100"
+                                className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
                                 aria-label={`${section.field_key} structured section ${section.section_index + 1} status`}
                               >
                                 {STRUCTURED_STATUS_OPTIONS.map((status) => (
@@ -685,7 +825,7 @@ export function IehpFbaLayoutReview({
                                     },
                                   }))
                                 }
-                                className="rounded border border-slate-300 bg-white p-2 text-sm disabled:bg-slate-100"
+                                className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
                                 placeholder="Structured section review notes"
                                 aria-label={`${section.field_key} structured section ${section.section_index + 1} review notes`}
                               />
@@ -693,7 +833,7 @@ export function IehpFbaLayoutReview({
                                 type="button"
                                 onClick={() => saveStructuredSection.mutate(section)}
                                 disabled={saveStructuredSection.isLoading || structuredLocked}
-                                className="rounded bg-slate-800 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+                                className="rounded bg-indigo-700 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-600 disabled:opacity-50"
                               >
                                 Save section
                               </button>

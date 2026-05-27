@@ -97,6 +97,9 @@ const EMPTY_LAYOUT: TemplateLayoutResponse = {
 
 const STATUS_OPTIONS: ReviewStatus[] = ["not_started", "drafted", "verified", "approved"];
 const STRUCTURED_STATUS_OPTIONS: StructuredReviewStatus[] = ["not_started", "drafted", "verified", "approved", "rejected"];
+const PAGE_FIELD_KEY_OVERRIDES: Record<string, number> = {
+  IEHP_FBA_REASON_FOR_REFERRAL: 1,
+};
 
 const formatPayloadPreview = (value: unknown): string => {
   if (value == null) return "";
@@ -201,8 +204,9 @@ export function IehpFbaLayoutReview({
   const fieldsByPage = useMemo(() => {
     const map = new Map<number, TemplateField[]>();
     data.fields.forEach((field) => {
-      const existing = map.get(field.page_number) ?? [];
-      map.set(field.page_number, [...existing, field]);
+      const effectivePageNumber = PAGE_FIELD_KEY_OVERRIDES[field.field_key] ?? field.page_number;
+      const existing = map.get(effectivePageNumber) ?? [];
+      map.set(effectivePageNumber, [...existing, field]);
     });
     return map;
   }, [data.fields]);

@@ -490,7 +490,10 @@ describe("IehpFbaLayoutReview", () => {
             source_document_name: "Updated FBA -IEHP (11).docx",
             page_count: 30,
           },
-          pages: [{ page_number: 2, title: "Referral Information", layout_json: {} }],
+          pages: [
+            { page_number: 1, title: "General Information", layout_json: {} },
+            { page_number: 2, title: "Referral Information", layout_json: {} },
+          ],
           fields: [
             {
               page_number: 2,
@@ -570,8 +573,10 @@ describe("IehpFbaLayoutReview", () => {
     expect(await screen.findByLabelText("Name of Referring Provider, Credentials")).toBeInTheDocument();
     expect(screen.getByText("manual required")).toBeInTheDocument();
     expect(screen.getByText(/This required IEHP field is intentionally manual/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Reason for Referral")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Page 1/i }));
+    expect(await screen.findByLabelText("Reason for Referral")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Reviewed referral reason")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Page 2/i }));
     expect(screen.getByLabelText("Missing Manual Field")).toBeDisabled();
     expect(screen.getByText("missing row")).toBeInTheDocument();
     expect(screen.getAllByText("manual required")).toHaveLength(1);

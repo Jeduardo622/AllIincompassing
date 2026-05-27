@@ -1886,7 +1886,10 @@ const extractLineNearLabels = (
 const extractIehpPresentingConcernsNarrative = (text: string): string | null => {
   const narrative = extractSectionText(
     text,
-    [/\bREASON\s+FOR\s+REFERRAL\s+AND\s+PRESENTING\s+CONCERNS\b/i],
+    [
+      /\bREASON\s+FOR\s+REFERRAL\s+AND\s+PRESENTING\s+CONCERNS\b/i,
+      /\bPRESENTING\s+CONCERNS\b/i,
+    ],
     [/\bName\s+of\s+Referring\s+Provider\b/i, /\bBEHAVIORS\s*:?\b/i],
   );
   if (!narrative) {
@@ -1894,7 +1897,7 @@ const extractIehpPresentingConcernsNarrative = (text: string): string | null => 
   }
 
   const compact = compactDocumentText(narrative)
-    .replace(/^\s*REASON\s+FOR\s+REFERRAL\s+AND\s+PRESENTING\s+CONCERNS\s*:?\s*/i, "")
+    .replace(/^\s*(?:REASON\s+FOR\s+REFERRAL\s+AND\s+PRESENTING\s+CONCERNS|PRESENTING\s+CONCERNS)\s*:?\s*/i, "")
     .replace(/^Write a brief description[^.]*\.\s*/i, "")
     .trim();
   return compact.length > 0 ? compact : null;

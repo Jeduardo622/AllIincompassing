@@ -1888,7 +1888,7 @@ const extractIehpPresentingConcernsNarrative = (text: string): string | null => 
     text,
     [
       /\bREASON\s+FOR\s+REFERRAL\s+AND\s+PRESENTING\s+CONCERNS\b/i,
-      /\bPRESENTING\s+CONCERNS\b/i,
+      /(?:^|\n)\s*(?:[IVX]+[.)]\s*)?PRESENTING\s+CONCERNS\s*:?(?=\s*(?:\n|$))/i,
     ],
     [/\bName\s+of\s+Referring\s+Provider\b/i, /\bBEHAVIORS\s*:?\b/i],
   );

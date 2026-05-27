@@ -1215,6 +1215,34 @@ Deno.test("deterministicValueForRow maps IEHP PRESENTING CONCERNS heading into r
   expect(manual.value_text).not.toContain("Functional Communication");
 });
 
+Deno.test("deterministicValueForRow ignores inline presenting concerns prose before heading", () => {
+  const manual = __TESTING__.deterministicValueForRow(
+    {
+      section: "identification_admin",
+      label: "Reason for Referral",
+      placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      required: true,
+      mode: "MANUAL",
+    },
+    `
+      General instructions mention presenting concerns and background content before section headers.
+      Caregiver stated these presenting concerns should be discussed with the clinician.
+      II. PRESENTING CONCERNS
+      Kim presents with significant communication deficits and requires close supervision in public settings.
+      III. BEHAVIORS
+      The behaviors and functional skills to be addressed are:
+      Tantrums
+      Functional Communication
+    `,
+  );
+
+  expect(manual.mode).toBe("MANUAL");
+  expect(manual.status).toBe("drafted");
+  expect(manual.value_text).toContain("Kim presents with significant communication deficits");
+  expect(manual.value_text).not.toContain("General instructions mention presenting concerns");
+  expect(manual.value_text).not.toContain("The behaviors and functional skills to be addressed");
+});
+
 Deno.test("extractStructuredSections keeps presenting concerns out of IEHP behavior skill targets", () => {
   const sections = asSections(
     "iehp_fba",

@@ -31,9 +31,24 @@ vi.mock('../../../lib/messages/fetchers', () => ({
         last_message_preview: 'Latest note',
         last_message_at: '2026-05-22T12:01:00.000Z',
         participant_names: ['Alex Admin'],
+        isUnread: true,
+      },
+      {
+        id: 'thread-2',
+        organization_id: 'org-1',
+        created_by: 'user-2',
+        subject: 'Read thread',
+        thread_type: 'group',
+        created_at: '2026-05-22T11:00:00.000Z',
+        updated_at: '2026-05-22T11:01:00.000Z',
+        last_message_preview: 'Already read',
+        last_message_at: '2026-05-22T11:01:00.000Z',
+        participant_names: ['Jordan Admin'],
+        isUnread: false,
       },
     ],
     schemaUnavailable: false,
+    unreadThreadCount: 1,
   })),
 }));
 
@@ -72,5 +87,18 @@ describe('MessagesInbox', () => {
     fireEvent.change(search, { target: { value: 'alex' } });
 
     expect(screen.getByTestId('message-thread-row-thread-1')).toBeInTheDocument();
+  });
+
+  it('shows unread row treatment and supports unread-only filtering', async () => {
+    renderPage();
+
+    expect(await screen.findByTestId('message-thread-row-thread-1')).toBeInTheDocument();
+    expect(screen.getByTestId('message-thread-unread-thread-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('message-thread-unread-thread-2')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('messages-unread-filter'));
+
+    expect(screen.getByTestId('message-thread-row-thread-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('message-thread-row-thread-2')).not.toBeInTheDocument();
   });
 });

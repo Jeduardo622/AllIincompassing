@@ -13,6 +13,7 @@ export function MessagesInbox() {
   const { profile } = useAuth();
   const organizationId = useActiveOrganizationId();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
 
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],
@@ -24,10 +25,15 @@ export function MessagesInbox() {
   const filteredThreads = useMemo(() => {
     const threads = data?.threads ?? [];
     const query = searchQuery.trim().toLowerCase();
-    if (!query) {
-      return threads;
-    }
     return threads.filter((thread) => {
+      if (showUnreadOnly && !thread.isUnread) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
       const subject = (thread.subject ?? '').toLowerCase();
       const preview = (thread.last_message_preview ?? '').toLowerCase();
       const participantNames = (thread.participant_names ?? []).join(' ').toLowerCase();
@@ -37,7 +43,7 @@ export function MessagesInbox() {
         || participantNames.includes(query)
       );
     });
-  }, [data?.threads, searchQuery]);
+  }, [data?.threads, searchQuery, showUnreadOnly]);
 
   return (
     <div className="mx-auto max-w-4xl p-4 md:p-6" data-testid="messages-inbox-page">
@@ -92,6 +98,28 @@ export function MessagesInbox() {
           className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm dark:border-gray-600 dark:bg-dark-lighter dark:text-gray-100"
           data-testid="messages-inbox-search"
         />
+      </div>
+
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setShowUnreadOnly((current) => !current)}
+          className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+            showUnreadOnly
+              ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-200'
+              : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800'
+          }`}
+          data-testid="messages-unread-filter"
+        >
+          Unread only
+          {typeof data?.unreadThreadCount === 'number' ? ` (${data.unreadThreadCount})` : ''}
+        </button>
+
+        {showUnreadOnly && filteredThreads.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400" data-testid="messages-unread-empty-state">
+            No unread threads right now.
+          </p>
+        ) : null}
       </div>
 
       <ThreadList threads={filteredThreads} isLoading={isLoading} />

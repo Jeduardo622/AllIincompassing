@@ -34,6 +34,7 @@ export type MessageThreadListItem = MessageThread & {
   participant?: MessageThreadParticipant;
   last_message_preview?: string | null;
   last_message_at?: string | null;
+  isUnread: boolean;
 };
 
 export type StaffRecipient = {

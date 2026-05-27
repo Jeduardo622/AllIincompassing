@@ -33,8 +33,11 @@ export function MessageThread() {
     if (!threadId || !profile?.id) {
       return;
     }
-    void markThreadRead(threadId, profile.id);
-  }, [threadId, profile?.id, messages.length]);
+    void (async () => {
+      await markThreadRead(threadId, profile.id);
+      await queryClient.invalidateQueries({ queryKey: [MESSAGES_QUERY_KEY] });
+    })();
+  }, [threadId, profile?.id, messages.length, queryClient]);
 
   const sendMutation = useMutation({
     mutationFn: (body: string) => sendThreadMessage(threadId!, body, profile!.id),

@@ -24,6 +24,7 @@ const EXTRACTION_RUNNING_STATUS = "extraction_running";
 const EXTRACTION_RUNNING_STALE_MS = EXTRACTION_WORKFLOW_TIMEOUT_MS * 2;
 const AUTO_DRAFT_STRUCTURED_SECTION_STATUSES = new Set(["drafted", "approved"] as const);
 const PENDING_EXTRACTION_STATUSES = new Set(["uploaded", "extracting", "extraction_running"] as const);
+const RETRYABLE_EDGE_EXTRACTION_STATUSES = new Set([502, 503, 504, 522, 524, 546]);
 
 const templateTypeSchema = z.enum(SUPPORTED_TEMPLATE_TYPES);
 
@@ -108,6 +109,9 @@ interface AssessmentTemplateFieldRow {
 
 const compactNullableRecord = <T extends Record<string, unknown>>(value: T): Partial<T> =>
   Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== null && entry !== undefined)) as Partial<T>;
+
+const shouldRetryEdgeExtraction = (status: number | null | undefined): boolean =>
+  typeof status === "number" && RETRYABLE_EDGE_EXTRACTION_STATUSES.has(status);
 
 const loadPrimaryTherapistPhone = async (args: {
   supabaseUrl: string;
@@ -683,7 +687,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
       })
       : undefined;
 
-    const extractionResult = await fetchJson<ExtractionFunctionResponse>(`${supabaseUrl}/functions/v1/extract-assessment-fields`, {
+    const extractionRequest: RequestInit = {
         method: "POST",
       headers,
       signal,
@@ -702,7 +706,18 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
         })),
         client_snapshot: clientSnapshot,
       }),
-    });
+    };
+
+    let extractionResult = await fetchJson<ExtractionFunctionResponse>(
+      `${supabaseUrl}/functions/v1/extract-assessment-fields`,
+      extractionRequest,
+    );
+    if (!extractionResult.ok && shouldRetryEdgeExtraction(extractionResult.status)) {
+      extractionResult = await fetchJson<ExtractionFunctionResponse>(
+        `${supabaseUrl}/functions/v1/extract-assessment-fields`,
+        extractionRequest,
+      );
+    }
     assertExtractionNotAborted(signal);
 
     if (extractionResult.ok && extractionResult.data) {

@@ -157,7 +157,11 @@ const formatStructuredReadableText = (section: StructuredValue): string => {
   if (section.field_key === "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE") {
     const rows = assessmentProcedureRowsFromPayload(section.payload);
     const heading = "Assessment Procedures";
-    if (rows.length === 0) return `${heading}\n- none extracted`;
+    if (rows.length === 0) {
+      const narrative = readableNarrativeFromPayload(section.payload);
+      if (narrative.length > 0) return `${heading}\n${narrative}`;
+      return `${heading}\n- none extracted`;
+    }
     return `${heading}\n${rows.map((row) => `- ${row.procedure}: ${row.raw_text || "not provided"}`).join("\n")}`;
   }
   const narrative = readableNarrativeFromPayload(section.payload);
@@ -196,11 +200,14 @@ const renderStructuredReadablePreview = (section: StructuredValue): JSX.Element 
 
   if (section.field_key === "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE") {
     const rows = assessmentProcedureRowsFromPayload(section.payload);
+    const narrative = readableNarrativeFromPayload(section.payload);
     return (
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200">Assessment Procedures</p>
         {rows.length === 0 ? (
-          <p className="text-xs text-slate-300">No procedure rows extracted.</p>
+          <p className="text-xs leading-relaxed text-slate-100 whitespace-pre-wrap">
+            {narrative || "No procedure rows extracted."}
+          </p>
         ) : (
           <div className="space-y-2">
             {rows.map((row, index) => (

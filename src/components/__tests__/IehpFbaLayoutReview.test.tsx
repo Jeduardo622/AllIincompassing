@@ -745,4 +745,80 @@ describe("IehpFbaLayoutReview", () => {
       );
     });
   });
+
+  it("preserves assessment procedures raw text when rows are not parsed", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 7, title: "Assessment Procedures", layout_json: {} }],
+          fields: [
+            {
+              page_number: 7,
+              section_key: "assessment_procedures",
+              field_key: "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE",
+              label: "Description of Assessment Procedures",
+              field_type: "repeatable_table",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-procedures-raw",
+                placeholder_key: "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE",
+                section_key: "assessment_procedures",
+                label: "Description of Assessment Procedures",
+                mode: "ASSISTED",
+                required: true,
+                status: "drafted",
+                value_text: "1 structured section extracted",
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "procedures-structured-raw-fallback",
+                field_key: "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE",
+                section_index: 0,
+                payload: {
+                  rows: [],
+                  raw_text: "Procedures completed in narrative format without labeled row markers.",
+                },
+                source_span: { page_number: 7, method: "iehp_section_anchor" },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          },
+          unresolved_required_count: 1,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 7/i }));
+    expect(await screen.findByText("Procedures completed in narrative format without labeled row markers.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "Assessment Procedures\nProcedures completed in narrative format without labeled row markers.",
+      );
+    });
+  });
 });

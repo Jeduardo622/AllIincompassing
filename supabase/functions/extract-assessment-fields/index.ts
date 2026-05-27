@@ -1485,7 +1485,7 @@ const extractIeHpGoalSections = (
       field_key: "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE",
       section_key: "assessment_procedures",
       start: [/\bDESCRIPTION OF ASSESSMENT PROCEDURES\b/i],
-      end: [/Records\s+reviewed\s+included/i, /Clinical Interview/i],
+      end: [/Records\s+reviewed\s+included/i],
     },
     {
       field_key: "IEHP_FBA_CLINICAL_INTERVIEW_NARRATIVE",

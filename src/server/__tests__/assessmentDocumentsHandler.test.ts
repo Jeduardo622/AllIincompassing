@@ -3107,6 +3107,107 @@ describe("assessmentDocumentsHandler", () => {
     expect(draftWriteCalls).toHaveLength(0);
   });
 
+  it("retries transient extract-assessment-fields edge failures once before marking extraction_failed", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+
+    let extractionAttempts = 0;
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-extract-retry&organization_id=eq.org-1&limit=1")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=status&id=eq.doc-extract-retry")) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [{ id: "doc-extract-retry", organization_id: "org-1", client_id: "11111111-1111-1111-1111-111111111111" }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        extractionAttempts += 1;
+        if (extractionAttempts === 1) {
+          return { ok: false, status: 546, data: { error: "edge_extraction_failed" } };
+        }
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [],
+            structured_sections: [],
+            unresolved_keys: [],
+            extracted_count: 0,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-extract-retry")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(extractionAttempts).toBe(2);
+    const extractionFailedStatusWrites = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const body = typeof init?.body === "string" ? init.body : "";
+      return typeof url === "string" &&
+        method === "PATCH" &&
+        url.includes("/rest/v1/assessment_documents?id=eq.doc-extract-retry") &&
+        body.includes("\"status\":\"extraction_failed\"");
+    });
+    expect(extractionFailedStatusWrites).toHaveLength(0);
+  });
+
   it("marks extraction failed when structured section persistence fails", async () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
     vi.mocked(getAccessToken).mockReturnValue("token");

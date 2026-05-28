@@ -28,6 +28,11 @@ const assessmentDocument: AssessmentDocumentRecord = {
   created_at: "2026-05-20T00:00:00.000Z",
 };
 
+const assessmentChecklistPatchBodies = () =>
+  vi.mocked(callApi).mock.calls
+    .filter(([path, init]) => path === "/api/assessment-checklist" && ((init as RequestInit | undefined)?.method ?? "").toUpperCase() === "PATCH")
+    .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as Record<string, unknown>);
+
 describe("IehpFbaLayoutReview", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -132,6 +137,9 @@ describe("IehpFbaLayoutReview", () => {
     expect(screen.getByText("Page 1: General Information")).toBeInTheDocument();
     expect(screen.queryByText(/CalOptima/i)).not.toBeInTheDocument();
 
+    await screen.findByText("First Name");
+    expect(screen.queryByLabelText("First Name")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand First Name" }));
     await screen.findByLabelText("First Name");
     screen.getByRole("button", { name: "Save field" }).click();
 
@@ -211,6 +219,7 @@ describe("IehpFbaLayoutReview", () => {
     );
 
     fireEvent.click(await screen.findByRole("button", { name: /Page 30/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand Signature Block" }));
     const status = await screen.findByLabelText("Signature Block structured section 1 status");
     fireEvent.change(status, { target: { value: "approved" } });
     screen.getByRole("button", { name: "Save extracted section" }).click();
@@ -411,6 +420,7 @@ describe("IehpFbaLayoutReview", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Page 16/i }));
     expect(await screen.findByText("Page 16: School Goals")).toBeInTheDocument();
     expect(screen.getAllByText(/School goal narrative/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Expand IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS section 1" }));
     fireEvent.change(screen.getByLabelText("IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS structured section 1 status"), {
       target: { value: "verified" },
     });
@@ -437,15 +447,17 @@ describe("IehpFbaLayoutReview", () => {
     expect(screen.getAllByText(/Parent education goal narrative/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: /Page 24/i }));
+    expect((await screen.findAllByText("Recommendation Notes")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Expand Recommendation Notes" }));
     expect(await screen.findByLabelText("Recommendation Notes")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Page 25/i }));
-    expect(await screen.findByLabelText("Caregiver Participation")).toBeInTheDocument();
+    expect((await screen.findAllByText("Caregiver Participation")).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /Page 26/i }));
-    expect(await screen.findByLabelText("Treatment Plan Review")).toBeInTheDocument();
+    expect((await screen.findAllByText("Treatment Plan Review")).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /Page 27/i }));
-    expect(await screen.findByLabelText("Additional Notes")).toBeInTheDocument();
+    expect((await screen.findAllByText("Additional Notes")).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /Page 28/i }));
-    expect(await screen.findByLabelText("Appendix and Supporting Information")).toBeInTheDocument();
+    expect((await screen.findAllByText("Appendix and Supporting Information")).length).toBeGreaterThan(0);
     expect(screen.queryByText(/CalOptima/i)).not.toBeInTheDocument();
   });
 
@@ -621,16 +633,244 @@ describe("IehpFbaLayoutReview", () => {
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "smooth" }));
     expect(document.activeElement).toBe(attentionTarget);
     expect(attentionTarget).toHaveClass("ring-2");
+    expect(await screen.findByText("Name of Referring Provider, Credentials")).toBeInTheDocument();
+    expect(screen.getAllByText("Manual review required").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/This required IEHP field is intentionally manual/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Approve Name of Referring Provider, Credentials" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review Name of Referring Provider, Credentials" }));
     expect(await screen.findByLabelText("Name of Referring Provider, Credentials")).toBeInTheDocument();
-    expect(screen.getByText("Manual review required")).toBeInTheDocument();
-    expect(screen.getByText(/This required IEHP field is intentionally manual/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Page 1/i }));
+    expect(await screen.findByText("Reason for Referral")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Reason for Referral" }));
     expect(await screen.findByLabelText("Reason for Referral")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Reviewed referral reason")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Page 2/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Missing Manual Field" }));
     expect(screen.getByLabelText("Missing Manual Field")).toBeDisabled();
     expect(screen.getAllByText("Not started").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Manual review required")).toHaveLength(1);
+    expect(screen.getAllByText("Manual review required")).toHaveLength(2);
+  });
+
+  it("renders mapped fields as collapsed triage cards and quick-approves the field with attached structured sections", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 30, title: "Signature Block", layout_json: {} }],
+          fields: [
+            {
+              page_number: 30,
+              section_key: "treatment_coordination_recommendations",
+              field_key: "IEHP_FBA_SIGNATURE_BLOCK",
+              label: "Signature Block",
+              field_type: "signature",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-signature",
+                placeholder_key: "IEHP_FBA_SIGNATURE_BLOCK",
+                section_key: "treatment_coordination_recommendations",
+                label: "Signature Block",
+                mode: "ASSISTED",
+                required: true,
+                status: "drafted",
+                value_text: "Signature summary",
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "signature-structured-1",
+                field_key: "IEHP_FBA_SIGNATURE_BLOCK",
+                section_index: 0,
+                payload: { completed_by: "Jane Clinician" },
+                status: "drafted",
+                required: true,
+                review_notes: "review note",
+              },
+            ],
+          },
+          unresolved_required_count: 1,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      if (path === "/api/assessment-checklist" && (init?.method ?? "").toUpperCase() === "PATCH") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    expect((await screen.findAllByText("Signature Block")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Signature summary")).toBeInTheDocument();
+    expect(screen.getByText("1 extracted section")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Signature Block")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Signature Block structured section 1 payload")).not.toBeInTheDocument();
+    expect(screen.queryByText(/IEHP_FBA_SIGNATURE_BLOCK/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve Signature Block" }));
+
+    await waitFor(() => {
+      const patchBodies = assessmentChecklistPatchBodies();
+      expect(patchBodies).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ item_id: "item-signature", status: "approved", value_text: "Signature summary" }),
+          expect.objectContaining({
+            structured_section_id: "signature-structured-1",
+            status: "approved",
+            review_notes: "review note",
+            payload: { completed_by: "Jane Clinician" },
+          }),
+        ]),
+      );
+    });
+  });
+
+  it("lets reviewers mark extracted fields as needing review from the collapsed triage card", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 5, title: "Current Services", layout_json: {} }],
+          fields: [
+            {
+              page_number: 5,
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_CURRENT_SERVICES_ACTIVITIES",
+              label: "Current Services and Activities",
+              field_type: "repeatable_table",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-current-services",
+                placeholder_key: "IEHP_FBA_CURRENT_SERVICES_ACTIVITIES",
+                section_key: "behavior_background_services",
+                label: "Current Services and Activities",
+                mode: "ASSISTED",
+                required: true,
+                status: "verified",
+                value_text: "Current services extracted wording.",
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [],
+          },
+          unresolved_required_count: 0,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      if (path === "/api/assessment-checklist" && (init?.method ?? "").toUpperCase() === "PATCH") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    expect((await screen.findAllByText("Current Services and Activities")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Needs review Current Services and Activities" }));
+
+    await waitFor(() => {
+      expect(assessmentChecklistPatchBodies()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            item_id: "item-current-services",
+            status: "verified",
+            value_text: "Current services extracted wording.",
+          }),
+        ]),
+      );
+    });
+  });
+
+  it("marks loose structured sections as rejected when reviewers flag them for review", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 5, title: "Current Services", layout_json: {} }],
+          fields: [],
+          values: {
+            checklist_items: [],
+            structured_sections: [
+              {
+                id: "current-services-structured-1",
+                field_key: "IEHP_FBA_CURRENT_SERVICES_ACTIVITIES",
+                section_index: 0,
+                payload: {
+                  label: "Current Services and Activities",
+                  raw_text: "Current services extracted wording.",
+                },
+                source_span: { page_number: 5, method: "iehp_section_anchor" },
+                status: "verified",
+                required: true,
+                review_notes: "keep this note",
+              },
+            ],
+          },
+          unresolved_required_count: 0,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      if (path === "/api/assessment-checklist" && (init?.method ?? "").toUpperCase() === "PATCH") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 5/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Needs review Current Services and Activities" }));
+
+    await waitFor(() => {
+      expect(assessmentChecklistPatchBodies()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            structured_section_id: "current-services-structured-1",
+            status: "rejected",
+            review_notes: "keep this note",
+            payload: {
+              label: "Current Services and Activities",
+              raw_text: "Current services extracted wording.",
+            },
+          }),
+        ]),
+      );
+    });
   });
 
   it("renders behavior target preview and copies extracted checkbox targets", async () => {
@@ -703,6 +943,7 @@ describe("IehpFbaLayoutReview", () => {
     expect(screen.getByText("Physical Aggression")).toBeInTheDocument();
     expect(screen.getByText("Self-Injury")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Expand Behaviors and Functional Skills to be Addressed" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
@@ -786,6 +1027,8 @@ describe("IehpFbaLayoutReview", () => {
 
     expect(screen.queryByTestId("raw-json-procedures-structured-1")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Description of Assessment Procedures structured section 1 payload")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Description of Assessment Procedures" }));
+    expect(screen.queryByTestId("raw-json-procedures-structured-1")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show technical details" }));
     expect(await screen.findByTestId("raw-json-procedures-structured-1")).toBeInTheDocument();
     expect(screen.getByLabelText("Description of Assessment Procedures structured section 1 payload")).toBeInTheDocument();
@@ -849,9 +1092,9 @@ describe("IehpFbaLayoutReview", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Page 2/i }));
     expect(await screen.findByText("Page-specific structured sections")).toBeInTheDocument();
-    expect(screen.getByText(/Reason for Referral/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Reason for Referral/).length).toBeGreaterThan(0);
     expect(screen.getByText(/No extracted field value was found in the source document\./)).toBeInTheDocument();
-    expect(screen.getByText(/Field type: textarea/)).toBeInTheDocument();
+    expect(screen.queryByText(/Field type: textarea/)).not.toBeInTheDocument();
     expect(screen.queryByText(/"mode"/)).not.toBeInTheDocument();
     expect(screen.queryByTestId("raw-json-referral-placeholder-structured")).not.toBeInTheDocument();
   });
@@ -924,6 +1167,7 @@ describe("IehpFbaLayoutReview", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Page 7/i }));
     expect(await screen.findByText("Procedures completed in narrative format without labeled row markers.")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Expand Description of Assessment Procedures" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(

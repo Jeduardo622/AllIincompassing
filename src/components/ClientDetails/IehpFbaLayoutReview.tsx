@@ -339,15 +339,23 @@ export function IehpFbaLayoutReview({
     return map;
   }, [data.values.structured_sections]);
 
+  const fieldPageByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    data.fields.forEach((field) => {
+      map.set(field.field_key, PAGE_FIELD_KEY_OVERRIDES[field.field_key] ?? field.page_number);
+    });
+    return map;
+  }, [data.fields]);
+
   const fieldsByPage = useMemo(() => {
     const map = new Map<number, TemplateField[]>();
     data.fields.forEach((field) => {
-      const effectivePageNumber = PAGE_FIELD_KEY_OVERRIDES[field.field_key] ?? field.page_number;
+      const effectivePageNumber = fieldPageByKey.get(field.field_key) ?? field.page_number;
       const existing = map.get(effectivePageNumber) ?? [];
       map.set(effectivePageNumber, [...existing, field]);
     });
     return map;
-  }, [data.fields]);
+  }, [data.fields, fieldPageByKey]);
 
   const activePageFields = fieldsByPage.get(activePage) ?? [];
   const activePageMeta = data.pages.find((page) => page.page_number === activePage);
@@ -379,13 +387,13 @@ export function IehpFbaLayoutReview({
       addStatusToPageReviewSummary(ensureSummary(pageNumber), status);
     });
     data.values.structured_sections.forEach((section) => {
-      const pageNumber = getStructuredSectionPageNumber(section);
-      if (pageNumber === null) return;
+      const pageNumber = getStructuredSectionPageNumber(section) ?? fieldPageByKey.get(section.field_key);
+      if (pageNumber === undefined) return;
       addStatusToPageReviewSummary(ensureSummary(pageNumber), section.status);
     });
 
     return summaries;
-  }, [checklistByKey, data.fields, data.pages, data.values.structured_sections]);
+  }, [checklistByKey, data.fields, data.pages, data.values.structured_sections, fieldPageByKey]);
 
   const activePageReviewSummary = pageReviewSummaries.get(activePage) ?? emptyPageReviewSummary();
   const nextNeedsAttentionPage = useMemo(() => {

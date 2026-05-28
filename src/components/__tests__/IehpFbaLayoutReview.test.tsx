@@ -528,6 +528,17 @@ describe("IehpFbaLayoutReview", () => {
               source: "clinician_manual_entry",
               layout_json: {},
             },
+            {
+              page_number: 2,
+              section_key: "identification_admin",
+              field_key: "IEHP_FBA_VERIFIED_UNANCHORED_SECTION",
+              label: "Verified Field with Unanchored Section",
+              field_type: "textarea",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
           ],
           values: {
             checklist_items: [
@@ -555,8 +566,30 @@ describe("IehpFbaLayoutReview", () => {
                 value_json: null,
                 review_notes: null,
               },
+              {
+                id: "item-verified-unanchored-section",
+                placeholder_key: "IEHP_FBA_VERIFIED_UNANCHORED_SECTION",
+                section_key: "identification_admin",
+                label: "Verified Field with Unanchored Section",
+                mode: "ASSISTED",
+                required: true,
+                status: "verified",
+                value_text: "Checklist field is reviewed, but structured extraction still needs attention.",
+                value_json: null,
+                review_notes: null,
+              },
             ],
-            structured_sections: [],
+            structured_sections: [
+              {
+                id: "verified-unanchored-structured",
+                field_key: "IEHP_FBA_VERIFIED_UNANCHORED_SECTION",
+                section_index: 0,
+                payload: { raw_text: "Needs staff review from unanchored extraction." },
+                status: "not_started",
+                required: true,
+                review_notes: null,
+              },
+            ],
           },
           unresolved_required_count: 1,
           extracted_value_count: 0,
@@ -581,7 +614,8 @@ describe("IehpFbaLayoutReview", () => {
     const pageSummary = screen.getByText("Page 2 review summary").closest("div")?.parentElement?.parentElement;
     expect(pageSummary).not.toBeNull();
     expect(within(pageSummary as HTMLElement).getByText("Needs attention")).toBeInTheDocument();
-    expect(within(pageSummary as HTMLElement).getByText("2")).toBeInTheDocument();
+    expect(within(pageSummary as HTMLElement).getByText("3")).toBeInTheDocument();
+    expect(within(pageSummary as HTMLElement).getByText(/4 rows on this page/)).toBeInTheDocument();
     expect(within(pageSummary as HTMLElement).getByText("In draft / review")).toBeInTheDocument();
     const attentionTarget = await screen.findByTestId("review-attention-target-field-IEHP_FBA_REFERRING_PROVIDER");
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "smooth" }));

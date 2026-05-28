@@ -175,8 +175,6 @@ const formatGenericStructuredReadableText = (payload: Record<string, unknown> | 
   const label = stringifyReadablePayloadValue(payload.label);
   const rawText = stringifyReadablePayloadValue(payload.raw_text);
   const clinicalValue = stringifyReadablePayloadValue(payload.clinical_value);
-  const source = stringifyReadablePayloadValue(payload.source);
-  const fieldType = stringifyReadablePayloadValue(payload.field_type);
   const enteredValuePresent = payload.entered_value_present;
   const templatePlaceholder = payload.template_placeholder;
 
@@ -188,8 +186,6 @@ const formatGenericStructuredReadableText = (payload: Record<string, unknown> | 
   else if (templatePlaceholder === true) lines.push("Template field placeholder preserved for staff review.");
   else lines.push("No extracted staff-readable content available.");
 
-  if (fieldType) lines.push(`Field type: ${fieldType}`);
-  if (source) lines.push(`Source guidance: ${source}`);
   return lines.join("\n");
 };
 
@@ -292,6 +288,13 @@ const getStructuredSectionPageNumber = (section: StructuredValue): number | null
   return typeof pageNumber === "number" ? pageNumber : null;
 };
 
+const pluralizeExtractedSectionCount = (count: number): string => `${count} extracted section${count === 1 ? "" : "s"}`;
+
+const structuredSectionDisplayTitle = (section: StructuredValue): string => {
+  const label = stringifyReadablePayloadValue(section.payload?.label);
+  return label || `${section.field_key} section ${section.section_index + 1}`;
+};
+
 const emptyPageMessage = (pageNumber: number, title: string | undefined): string => {
   if (pageNumber === 16 || /school goals/i.test(title ?? "")) {
     return "No school-specific goals were extracted for this IEHP document.";
@@ -300,7 +303,7 @@ const emptyPageMessage = (pageNumber: number, title: string | undefined): string
 };
 
 const isManualRequiredReviewItem = (field: TemplateField, item: ChecklistValue | undefined): boolean =>
-  Boolean(item) && field.required && field.mode === "MANUAL" && item?.status === "not_started";
+  field.required && field.mode === "MANUAL" && (!item || item.status === "not_started");
 
 const emptyPageReviewSummary = (): PageReviewSummary => ({
   needsAttention: 0,
@@ -339,6 +342,8 @@ export function IehpFbaLayoutReview({
   const [edits, setEdits] = useState<Record<string, FieldEdit>>({});
   const [structuredEdits, setStructuredEdits] = useState<Record<string, StructuredEdit>>({});
   const [rawPreviewBySectionId, setRawPreviewBySectionId] = useState<Record<string, boolean>>({});
+  const [expandedFieldByKey, setExpandedFieldByKey] = useState<Record<string, boolean>>({});
+  const [expandedStructuredSectionById, setExpandedStructuredSectionById] = useState<Record<string, boolean>>({});
 
   const queryKey = ["assessment-template-layout", assessmentDocument.id, organizationId ?? "MISSING_ORG"] as const;
   const { data = EMPTY_LAYOUT, isLoading, isError } = useQuery({
@@ -458,6 +463,11 @@ export function IehpFbaLayoutReview({
   }, [activePage, activePageFields, activePageLooseStructuredSections, checklistByKey, structuredByKey]);
 
   useEffect(() => {
+    if (data.pages.length === 0 || data.pages.some((page) => page.page_number === activePage)) return;
+    setActivePage(data.pages[0].page_number);
+  }, [activePage, data.pages]);
+
+  useEffect(() => {
     if (pendingAttentionFocusPage !== activePage || !activePageAttentionTargetKey) return;
     const target = attentionTargetRefs.current[activePageAttentionTargetKey];
     if (!target) return;
@@ -543,6 +553,97 @@ export function IehpFbaLayoutReview({
     },
     onError: (error) => {
       showError(error instanceof Error ? error.message : "Failed to save IEHP structured section");
+    },
+  });
+
+  const setFieldDisposition = useMutation({
+    mutationFn: async ({
+      field,
+      status,
+      structuredSections,
+    }: {
+      field: TemplateField;
+      status: ReviewStatus;
+      structuredSections: StructuredValue[];
+    }) => {
+      const item = checklistByKey.get(field.field_key);
+      if (!item) {
+        throw new Error("No checklist row exists for this IEHP field.");
+      }
+      const edit = edits[field.field_key] ?? {
+        valueText: item.value_text ?? "",
+        reviewNotes: item.review_notes ?? "",
+        status: item.status,
+      };
+      const responses = await Promise.all([
+        callApi("/api/assessment-checklist", {
+          method: "PATCH",
+          body: JSON.stringify({
+            item_id: item.id,
+            status,
+            review_notes: edit.reviewNotes,
+            value_text: edit.valueText,
+          }),
+        }),
+        ...(status === "approved"
+          ? structuredSections
+              .filter((section) => section.status !== "approved")
+              .map((section) =>
+                callApi("/api/assessment-checklist", {
+                  method: "PATCH",
+                  body: JSON.stringify({
+                    structured_section_id: section.id,
+                    status: "approved",
+                    review_notes: section.review_notes ?? "",
+                    payload: section.payload,
+                  }),
+                }),
+              )
+          : []),
+      ]);
+      const failedResponse = responses.find((response) => !response.ok);
+      if (failedResponse) {
+        throw new Error(await parseApiErrorMessage(failedResponse, "Failed to update IEHP review status"));
+      }
+      return Promise.all(responses.map((response) => response.json()));
+    },
+    onSuccess: async (_result, { field, status }) => {
+      showSuccess(`${field.label} marked ${formatStatusLabel(status).toLowerCase()}.`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: ["assessment-checklist", assessmentDocument.id, organizationId ?? "MISSING_ORG"] }),
+      ]);
+    },
+    onError: (error) => {
+      showError(error instanceof Error ? error.message : "Failed to update IEHP review status");
+    },
+  });
+
+  const setLooseStructuredSectionDisposition = useMutation({
+    mutationFn: async ({ section, status }: { section: StructuredValue; status: StructuredReviewStatus }) => {
+      const response = await callApi("/api/assessment-checklist", {
+        method: "PATCH",
+        body: JSON.stringify({
+          structured_section_id: section.id,
+          status,
+          review_notes: section.review_notes ?? "",
+          payload: section.payload,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to update IEHP structured section"));
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      showSuccess("IEHP structured section updated.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: ["assessment-checklist", assessmentDocument.id, organizationId ?? "MISSING_ORG"] }),
+      ]);
+    },
+    onError: (error) => {
+      showError(error instanceof Error ? error.message : "Failed to update IEHP structured section");
     },
   });
 
@@ -684,6 +785,9 @@ export function IehpFbaLayoutReview({
                   const fieldAttentionTargetKey = `field-${field.field_key}`;
                   const fieldNeedsAttention = isAttentionReviewStatus(fieldStatus) || structuredSections.some((section) => isAttentionReviewStatus(section.status));
                   const highlightAttentionTarget = activePageAttentionTargetKey === fieldAttentionTargetKey && fieldNeedsAttention;
+                  const expanded = Boolean(expandedFieldByKey[field.field_key]);
+                  const fieldValuePreview = edit.valueText.trim();
+                  const dispositionDisabled = setFieldDisposition.isLoading || locked || !item;
                   return (
                     <div
                       key={field.field_key}
@@ -696,91 +800,401 @@ export function IehpFbaLayoutReview({
                         highlightAttentionTarget ? "border-amber-300 ring-2 ring-amber-300/70" : "border-slate-600"
                       }`}
                     >
-                      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <label htmlFor={`iehp-${field.field_key}`} className="text-sm font-semibold text-slate-100">
+                          <p className="text-sm font-semibold text-slate-100">
                             {field.label}
-                          </label>
-                          <p className="text-[11px] text-slate-400">
-                            {field.field_key} • {field.mode} • {field.field_type} • required: {String(field.required)}
                           </p>
+                          {structuredSections.length > 0 && (
+                            <p className="mt-1 text-[11px] font-semibold text-slate-300">{pluralizeExtractedSectionCount(structuredSections.length)}</p>
+                          )}
                         </div>
-                        <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(manualRequired ? "not_started" : item?.status ?? "not_started")}`}>
-                          {manualRequired ? "Manual review required" : formatStatusLabel(item?.status ?? "not_started")}
-                        </span>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          {field.required && (
+                            <span className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-300">Required</span>
+                          )}
+                          <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(manualRequired ? "not_started" : item?.status ?? "not_started")}`}>
+                            {manualRequired ? "Manual review required" : formatStatusLabel(item?.status ?? "not_started")}
+                          </span>
+                        </div>
                       </div>
 
                       {manualRequired && (
-                        <p className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                        <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
                           This required IEHP field is intentionally manual unless reliable document evidence is present.
                         </p>
                       )}
 
-                      <textarea
-                        id={`iehp-${field.field_key}`}
-                        value={edit.valueText}
-                        rows={getFieldInputRows(field.field_type)}
-                        disabled={locked || !item}
-                        onChange={(event) =>
-                          setEdits((current) => ({
-                            ...current,
-                            [field.field_key]: {
-                              ...edit,
-                              valueText: event.target.value,
-                            },
-                          }))
-                        }
-                        className="w-full rounded border border-slate-600 bg-slate-950 p-2 text-sm text-slate-100 disabled:bg-slate-800"
-                        placeholder={field.field_type.includes("table") ? "Enter table rows or structured summary for reviewer confirmation." : "Field value"}
-                      />
+                      <div className="mt-3 space-y-2 rounded border border-slate-700 bg-slate-900/50 p-2 text-xs text-slate-100">
+                        {fieldValuePreview ? (
+                          <p className="max-h-24 overflow-hidden whitespace-pre-wrap leading-relaxed">{fieldValuePreview}</p>
+                        ) : structuredSections.length === 0 ? (
+                          <p className="text-slate-400">No extracted wording is available yet.</p>
+                        ) : null}
+                        {structuredSections.slice(0, 2).map((section) => (
+                          <div key={`preview-${section.id}`} className="rounded border border-slate-700 bg-slate-950/40 px-2 py-2">
+                            {renderStructuredReadablePreview(section)}
+                          </div>
+                        ))}
+                        {structuredSections.length > 2 && (
+                          <p className="text-[11px] text-slate-400">{structuredSections.length - 2} more extracted sections hidden until expanded.</p>
+                        )}
+                      </div>
 
-                      {structuredSections.length > 0 && (
-                        <div className="mt-2 space-y-2 rounded bg-slate-900/80 p-2 text-xs text-slate-200">
-                          <p className="font-semibold">Structured extracted sections</p>
-                          {structuredSections.map((section) => {
-                            const structuredEdit = structuredEdits[section.id] ?? {
-                              payloadText: formatPayloadPreview(section.payload),
-                              reviewNotes: section.review_notes ?? "",
-                              status: section.status,
-                            };
-                            const structuredLocked = section.status === "approved";
-                            return (
-                              <div key={section.id} className="rounded border border-slate-600 bg-slate-800 p-2">
-                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                  <span className="font-semibold text-slate-100">
-                                    Section {section.section_index + 1} • required: {String(section.required)}
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{formatStatusLabel(section.status)}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => void copyStructuredSection(section)}
-                                      className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
-                                    >
-                                      Copy extracted
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setRawPreviewBySectionId((current) => ({
-                                          ...current,
-                                          [section.id]: !current[section.id],
-                                        }))
-                                      }
-                                      className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
-                                    >
-                                      {rawPreviewBySectionId[section.id] ? "Hide technical details" : "Show technical details"}
-                                    </button>
-                                    {structuredLocked && (
-                                      <span className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200">locked after approval</span>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {!manualRequired && !locked && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setFieldDisposition.mutate({ field, status: "approved", structuredSections })}
+                              disabled={dispositionDisabled}
+                              className="rounded bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                            >
+                              Approve {field.label}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFieldDisposition.mutate({ field, status: item?.status ?? "not_started", structuredSections: [] })}
+                              disabled={dispositionDisabled}
+                              className="rounded border border-amber-400/50 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-500/10 disabled:opacity-50"
+                            >
+                              Needs review {field.label}
+                            </button>
+                          </>
+                        )}
+                        {manualRequired && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedFieldByKey((current) => ({ ...current, [field.field_key]: true }))}
+                            className="rounded border border-amber-400/50 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-500/10"
+                          >
+                            Review {field.label}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedFieldByKey((current) => ({
+                              ...current,
+                              [field.field_key]: !current[field.field_key],
+                            }))
+                          }
+                          className="rounded border border-slate-500 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
+                        >
+                          {expanded ? `Collapse ${field.label}` : `Expand ${field.label}`}
+                        </button>
+                      </div>
+
+                      {expanded && (
+                        <div className="mt-3 space-y-3">
+                          <p className="text-[11px] text-slate-400">
+                            {field.field_key} • {field.mode} • {field.field_type} • required: {String(field.required)}
+                          </p>
+                          <textarea
+                            id={`iehp-${field.field_key}`}
+                            aria-label={field.label}
+                            value={edit.valueText}
+                            rows={getFieldInputRows(field.field_type)}
+                            disabled={locked || !item}
+                            onChange={(event) =>
+                              setEdits((current) => ({
+                                ...current,
+                                [field.field_key]: {
+                                  ...edit,
+                                  valueText: event.target.value,
+                                },
+                              }))
+                            }
+                            className="w-full rounded border border-slate-600 bg-slate-950 p-2 text-sm text-slate-100 disabled:bg-slate-800"
+                            placeholder={field.field_type.includes("table") ? "Enter table rows or structured summary for reviewer confirmation." : "Field value"}
+                          />
+
+                          {structuredSections.length > 0 && (
+                            <div className="mt-2 space-y-2 rounded bg-slate-900/80 p-2 text-xs text-slate-200">
+                              <p className="font-semibold">Structured extracted sections</p>
+                              {structuredSections.map((section) => {
+                                const structuredEdit = structuredEdits[section.id] ?? {
+                                  payloadText: formatPayloadPreview(section.payload),
+                                  reviewNotes: section.review_notes ?? "",
+                                  status: section.status,
+                                };
+                                const structuredLocked = section.status === "approved";
+                                return (
+                                  <div key={section.id} className="rounded border border-slate-600 bg-slate-800 p-2">
+                                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                      <span className="font-semibold text-slate-100">
+                                        Section {section.section_index + 1} • required: {String(section.required)}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{formatStatusLabel(section.status)}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => void copyStructuredSection(section)}
+                                          className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
+                                        >
+                                          Copy extracted
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setRawPreviewBySectionId((current) => ({
+                                              ...current,
+                                              [section.id]: !current[section.id],
+                                            }))
+                                          }
+                                          className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
+                                        >
+                                          {rawPreviewBySectionId[section.id] ? "Hide technical details" : "Show technical details"}
+                                        </button>
+                                        {structuredLocked && (
+                                          <span className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200">locked after approval</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="mb-2 rounded border border-slate-600 bg-slate-900/60 px-2 py-2 text-[11px] text-slate-100">
+                                      {renderStructuredReadablePreview(section)}
+                                    </div>
+                                    {rawPreviewBySectionId[section.id] && (
+                                      <div className="mb-2 space-y-2 rounded border border-slate-600 bg-slate-900/80 p-2">
+                                        <div>
+                                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Technical details</p>
+                                          <p className="text-[11px] text-slate-400">Raw JSON is hidden by default so staff can focus on the readable extracted content above.</p>
+                                        </div>
+                                        <pre
+                                          data-testid={`raw-json-${section.id}`}
+                                          className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-700 bg-slate-950 p-2 text-[11px] text-slate-300"
+                                        >
+                                          {formatPayloadPreview(section.payload)}
+                                        </pre>
+                                        <label className="block text-[11px] font-semibold text-slate-300" htmlFor={`structured-payload-${section.id}`}>
+                                          Editable JSON payload
+                                        </label>
+                                        <textarea
+                                          id={`structured-payload-${section.id}`}
+                                          value={structuredEdit.payloadText}
+                                          rows={4}
+                                          disabled={structuredLocked}
+                                          onChange={(event) =>
+                                            setStructuredEdits((current) => ({
+                                              ...current,
+                                              [section.id]: {
+                                                ...structuredEdit,
+                                                payloadText: event.target.value,
+                                              },
+                                            }))
+                                          }
+                                          className="w-full rounded border border-slate-600 bg-slate-950 p-2 font-mono text-xs text-slate-100 disabled:bg-slate-800"
+                                          aria-label={`${field.label} structured section ${section.section_index + 1} payload`}
+                                        />
+                                      </div>
                                     )}
+                                    <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
+                                      <select
+                                        value={structuredEdit.status}
+                                        disabled={structuredLocked}
+                                        onChange={(event) =>
+                                          setStructuredEdits((current) => ({
+                                            ...current,
+                                            [section.id]: {
+                                              ...structuredEdit,
+                                              status: event.target.value as StructuredReviewStatus,
+                                            },
+                                          }))
+                                        }
+                                        className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
+                                        aria-label={`${field.label} structured section ${section.section_index + 1} status`}
+                                      >
+                                        {STRUCTURED_STATUS_OPTIONS.map((status) => (
+                                          <option key={status} value={status}>
+                                            {formatStatusLabel(status)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        value={structuredEdit.reviewNotes}
+                                        disabled={structuredLocked}
+                                        onChange={(event) =>
+                                          setStructuredEdits((current) => ({
+                                            ...current,
+                                            [section.id]: {
+                                              ...structuredEdit,
+                                              reviewNotes: event.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
+                                        placeholder="Structured section review notes"
+                                        aria-label={`${field.label} structured section ${section.section_index + 1} review notes`}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => saveStructuredSection.mutate(section)}
+                                        disabled={saveStructuredSection.isLoading || structuredLocked}
+                                        className="rounded bg-indigo-700 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-600 disabled:opacity-50"
+                                      >
+                                        Save extracted section
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="mb-2 rounded border border-slate-600 bg-slate-900/60 px-2 py-2 text-[11px] text-slate-100">
-                                  {renderStructuredReadablePreview(section)}
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
+                            <select
+                              value={edit.status}
+                              disabled={locked || !item}
+                              onChange={(event) =>
+                                setEdits((current) => ({
+                                  ...current,
+                                  [field.field_key]: {
+                                    ...edit,
+                                    status: event.target.value as ReviewStatus,
+                                  },
+                                }))
+                              }
+                              className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
+                              aria-label={`${field.label} review status`}
+                            >
+                              {STATUS_OPTIONS.map((status) => (
+                                <option key={status} value={status}>
+                                  {formatStatusLabel(status)}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              value={edit.reviewNotes}
+                              disabled={locked || !item}
+                              onChange={(event) =>
+                                setEdits((current) => ({
+                                  ...current,
+                                  [field.field_key]: {
+                                    ...edit,
+                                    reviewNotes: event.target.value,
+                                  },
+                                }))
+                              }
+                              className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
+                              placeholder="Review notes"
+                              aria-label={`${field.label} review notes`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => saveField.mutate(field)}
+                              disabled={saveField.isLoading || locked || !item}
+                              className="rounded bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
+                            >
+                              Save field
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {locked && <p className="mt-2 text-[11px] text-slate-400">Approved IEHP rows stay locked for clinical review integrity.</p>}
+                    </div>
+                  );
+                })}
+                {activePageLooseStructuredSections.length > 0 && (
+                  <div className="rounded-md border border-slate-600 bg-slate-800/70 p-3">
+                    <div className="mb-2">
+                      <p className="text-sm font-semibold text-slate-100">Page-specific structured sections</p>
+                      <p className="text-[11px] text-slate-400">
+                        Extracted content placed on this IEHP page by document source metadata.
+                      </p>
+                    </div>
+                    <div className="space-y-2 rounded bg-slate-900/80 p-2 text-xs text-slate-200">
+                      {activePageLooseStructuredSections.map((section) => {
+                        const structuredEdit = structuredEdits[section.id] ?? {
+                          payloadText: formatPayloadPreview(section.payload),
+                          reviewNotes: section.review_notes ?? "",
+                          status: section.status,
+                        };
+                        const structuredLocked = section.status === "approved";
+                        const structuredAttentionTargetKey = `structured-${section.id}`;
+                        const highlightAttentionTarget = activePageAttentionTargetKey === structuredAttentionTargetKey && isAttentionReviewStatus(section.status);
+                        const expanded = Boolean(expandedStructuredSectionById[section.id]);
+                        const sectionTitle = structuredSectionDisplayTitle(section);
+                        return (
+                          <div
+                            key={section.id}
+                            ref={(node) => {
+                              attentionTargetRefs.current[structuredAttentionTargetKey] = node;
+                            }}
+                            tabIndex={-1}
+                            data-testid={`review-attention-target-${structuredAttentionTargetKey}`}
+                            className={`rounded border bg-slate-800 p-2 focus:outline-none ${
+                              highlightAttentionTarget ? "border-amber-300 ring-2 ring-amber-300/70" : "border-slate-600"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="font-semibold text-slate-100">{sectionTitle}</span>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{formatStatusLabel(section.status)}</span>
+                                {!structuredLocked && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => setLooseStructuredSectionDisposition.mutate({ section, status: "approved" })}
+                                      disabled={setLooseStructuredSectionDisposition.isLoading}
+                                      className="rounded bg-emerald-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                                    >
+                                      Approve {sectionTitle}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setLooseStructuredSectionDisposition.mutate({ section, status: "rejected" })}
+                                      disabled={setLooseStructuredSectionDisposition.isLoading}
+                                      className="rounded border border-amber-400/50 px-2 py-1 text-[11px] font-semibold text-amber-100 hover:bg-amber-500/10 disabled:opacity-50"
+                                    >
+                                      Needs review {sectionTitle}
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedStructuredSectionById((current) => ({
+                                      ...current,
+                                      [section.id]: !current[section.id],
+                                    }))
+                                  }
+                                  className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
+                                >
+                                  {expanded ? `Collapse ${sectionTitle}` : `Expand ${sectionTitle}`}
+                                </button>
+                                {structuredLocked && (
+                                  <span className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200">locked after approval</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="mt-2 rounded border border-slate-600 bg-slate-900/60 px-2 py-2 text-[11px] text-slate-100">
+                              {renderStructuredReadablePreview(section)}
+                            </div>
+                            {expanded && (
+                              <div className="mt-2 space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => void copyStructuredSection(section)}
+                                    className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
+                                  >
+                                    Copy extracted
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setRawPreviewBySectionId((current) => ({
+                                        ...current,
+                                        [section.id]: !current[section.id],
+                                      }))
+                                    }
+                                    className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
+                                  >
+                                    {rawPreviewBySectionId[section.id] ? "Hide technical details" : "Show technical details"}
+                                  </button>
                                 </div>
                                 {rawPreviewBySectionId[section.id] && (
-                                  <div className="mb-2 space-y-2 rounded border border-slate-600 bg-slate-900/80 p-2">
+                                  <div className="space-y-2 rounded border border-slate-600 bg-slate-900/80 p-2">
                                     <div>
                                       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Technical details</p>
                                       <p className="text-[11px] text-slate-400">Raw JSON is hidden by default so staff can focus on the readable extracted content above.</p>
@@ -809,11 +1223,11 @@ export function IehpFbaLayoutReview({
                                         }))
                                       }
                                       className="w-full rounded border border-slate-600 bg-slate-950 p-2 font-mono text-xs text-slate-100 disabled:bg-slate-800"
-                                      aria-label={`${field.label} structured section ${section.section_index + 1} payload`}
+                                      aria-label={`${section.field_key} structured section ${section.section_index + 1} payload`}
                                     />
                                   </div>
                                 )}
-                                <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
+                                <div className="grid gap-2 md:grid-cols-[10rem_1fr_auto]">
                                   <select
                                     value={structuredEdit.status}
                                     disabled={structuredLocked}
@@ -827,7 +1241,7 @@ export function IehpFbaLayoutReview({
                                       }))
                                     }
                                     className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
-                                    aria-label={`${field.label} structured section ${section.section_index + 1} status`}
+                                    aria-label={`${section.field_key} structured section ${section.section_index + 1} status`}
                                   >
                                     {STRUCTURED_STATUS_OPTIONS.map((status) => (
                                       <option key={status} value={status}>
@@ -849,7 +1263,7 @@ export function IehpFbaLayoutReview({
                                     }
                                     className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
                                     placeholder="Structured section review notes"
-                                    aria-label={`${field.label} structured section ${section.section_index + 1} review notes`}
+                                    aria-label={`${section.field_key} structured section ${section.section_index + 1} review notes`}
                                   />
                                   <button
                                     type="button"
@@ -861,210 +1275,7 @@ export function IehpFbaLayoutReview({
                                   </button>
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
-                        <select
-                          value={edit.status}
-                          disabled={locked || !item}
-                          onChange={(event) =>
-                            setEdits((current) => ({
-                              ...current,
-                              [field.field_key]: {
-                                ...edit,
-                                status: event.target.value as ReviewStatus,
-                              },
-                            }))
-                          }
-                          className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
-                          aria-label={`${field.label} review status`}
-                        >
-                          {STATUS_OPTIONS.map((status) => (
-                            <option key={status} value={status}>
-                              {formatStatusLabel(status)}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          value={edit.reviewNotes}
-                          disabled={locked || !item}
-                          onChange={(event) =>
-                            setEdits((current) => ({
-                              ...current,
-                              [field.field_key]: {
-                                ...edit,
-                                reviewNotes: event.target.value,
-                              },
-                            }))
-                          }
-                          className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
-                          placeholder="Review notes"
-                          aria-label={`${field.label} review notes`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => saveField.mutate(field)}
-                          disabled={saveField.isLoading || locked || !item}
-                          className="rounded bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
-                        >
-                          Save field
-                        </button>
-                      </div>
-                      {locked && (
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          Approved IEHP rows stay locked for clinical review integrity.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-                {activePageLooseStructuredSections.length > 0 && (
-                  <div className="rounded-md border border-slate-600 bg-slate-800/70 p-3">
-                    <div className="mb-2">
-                      <p className="text-sm font-semibold text-slate-100">Page-specific structured sections</p>
-                      <p className="text-[11px] text-slate-400">
-                        Extracted content placed on this IEHP page by document source metadata.
-                      </p>
-                    </div>
-                    <div className="space-y-2 rounded bg-slate-900/80 p-2 text-xs text-slate-200">
-                      {activePageLooseStructuredSections.map((section) => {
-                        const structuredEdit = structuredEdits[section.id] ?? {
-                          payloadText: formatPayloadPreview(section.payload),
-                          reviewNotes: section.review_notes ?? "",
-                          status: section.status,
-                        };
-                        const structuredLocked = section.status === "approved";
-                        const structuredAttentionTargetKey = `structured-${section.id}`;
-                        const highlightAttentionTarget = activePageAttentionTargetKey === structuredAttentionTargetKey && isAttentionReviewStatus(section.status);
-                        return (
-                          <div
-                            key={section.id}
-                            ref={(node) => {
-                              attentionTargetRefs.current[structuredAttentionTargetKey] = node;
-                            }}
-                            tabIndex={-1}
-                            data-testid={`review-attention-target-${structuredAttentionTargetKey}`}
-                            className={`rounded border bg-slate-800 p-2 focus:outline-none ${
-                              highlightAttentionTarget ? "border-amber-300 ring-2 ring-amber-300/70" : "border-slate-600"
-                            }`}
-                          >
-                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-semibold text-slate-100">
-                                {section.field_key} section {section.section_index + 1}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{formatStatusLabel(section.status)}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => void copyStructuredSection(section)}
-                                  className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
-                                >
-                                  Copy extracted
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setRawPreviewBySectionId((current) => ({
-                                      ...current,
-                                      [section.id]: !current[section.id],
-                                    }))
-                                  }
-                                  className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
-                                >
-                                  {rawPreviewBySectionId[section.id] ? "Hide technical details" : "Show technical details"}
-                                </button>
-                                {structuredLocked && (
-                                  <span className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200">locked after approval</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="mb-2 rounded border border-slate-600 bg-slate-900/60 px-2 py-2 text-[11px] text-slate-100">
-                              {renderStructuredReadablePreview(section)}
-                            </div>
-                            {rawPreviewBySectionId[section.id] && (
-                              <div className="mb-2 space-y-2 rounded border border-slate-600 bg-slate-900/80 p-2">
-                                <div>
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Technical details</p>
-                                  <p className="text-[11px] text-slate-400">Raw JSON is hidden by default so staff can focus on the readable extracted content above.</p>
-                                </div>
-                                <pre
-                                  data-testid={`raw-json-${section.id}`}
-                                  className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-700 bg-slate-950 p-2 text-[11px] text-slate-300"
-                                >
-                                  {formatPayloadPreview(section.payload)}
-                                </pre>
-                                <label className="block text-[11px] font-semibold text-slate-300" htmlFor={`structured-payload-${section.id}`}>
-                                  Editable JSON payload
-                                </label>
-                                <textarea
-                                  id={`structured-payload-${section.id}`}
-                                  value={structuredEdit.payloadText}
-                                  rows={4}
-                                  disabled={structuredLocked}
-                                  onChange={(event) =>
-                                    setStructuredEdits((current) => ({
-                                      ...current,
-                                      [section.id]: {
-                                        ...structuredEdit,
-                                        payloadText: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  className="w-full rounded border border-slate-600 bg-slate-950 p-2 font-mono text-xs text-slate-100 disabled:bg-slate-800"
-                                  aria-label={`${section.field_key} structured section ${section.section_index + 1} payload`}
-                                />
-                              </div>
                             )}
-                            <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
-                              <select
-                                value={structuredEdit.status}
-                                disabled={structuredLocked}
-                                onChange={(event) =>
-                                  setStructuredEdits((current) => ({
-                                    ...current,
-                                    [section.id]: {
-                                      ...structuredEdit,
-                                      status: event.target.value as StructuredReviewStatus,
-                                    },
-                                  }))
-                                }
-                                className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
-                                aria-label={`${section.field_key} structured section ${section.section_index + 1} status`}
-                              >
-                                {STRUCTURED_STATUS_OPTIONS.map((status) => (
-                                  <option key={status} value={status}>
-                                    {formatStatusLabel(status)}
-                                  </option>
-                                ))}
-                              </select>
-                              <input
-                                value={structuredEdit.reviewNotes}
-                                disabled={structuredLocked}
-                                onChange={(event) =>
-                                  setStructuredEdits((current) => ({
-                                    ...current,
-                                    [section.id]: {
-                                      ...structuredEdit,
-                                      reviewNotes: event.target.value,
-                                    },
-                                  }))
-                                }
-                                className="rounded border border-slate-600 bg-slate-950 p-2 text-sm disabled:bg-slate-800"
-                                placeholder="Structured section review notes"
-                                aria-label={`${section.field_key} structured section ${section.section_index + 1} review notes`}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => saveStructuredSection.mutate(section)}
-                                disabled={saveStructuredSection.isLoading || structuredLocked}
-                                className="rounded bg-indigo-700 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-600 disabled:opacity-50"
-                              >
-                                Save extracted section
-                              </button>
-                            </div>
                           </div>
                         );
                       })}

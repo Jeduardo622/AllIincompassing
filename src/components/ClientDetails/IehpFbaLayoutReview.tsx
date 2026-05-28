@@ -162,6 +162,37 @@ const readableNarrativeFromPayload = (payload: Record<string, unknown> | undefin
   return "";
 };
 
+const stringifyReadablePayloadValue = (value: unknown): string => {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+};
+
+const formatGenericStructuredReadableText = (payload: Record<string, unknown> | undefined): string => {
+  if (!payload || typeof payload !== "object") return "No extracted staff-readable content available.";
+
+  const label = stringifyReadablePayloadValue(payload.label);
+  const rawText = stringifyReadablePayloadValue(payload.raw_text);
+  const clinicalValue = stringifyReadablePayloadValue(payload.clinical_value);
+  const source = stringifyReadablePayloadValue(payload.source);
+  const fieldType = stringifyReadablePayloadValue(payload.field_type);
+  const enteredValuePresent = payload.entered_value_present;
+  const templatePlaceholder = payload.template_placeholder;
+
+  const lines: string[] = [];
+  if (label) lines.push(label);
+  if (rawText) lines.push(rawText);
+  else if (clinicalValue) lines.push(clinicalValue);
+  else if (enteredValuePresent === false) lines.push("No extracted field value was found in the source document.");
+  else if (templatePlaceholder === true) lines.push("Template field placeholder preserved for staff review.");
+  else lines.push("No extracted staff-readable content available.");
+
+  if (fieldType) lines.push(`Field type: ${fieldType}`);
+  if (source) lines.push(`Source guidance: ${source}`);
+  return lines.join("\n");
+};
+
 const formatStructuredReadableText = (section: StructuredValue): string => {
   if (section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
     const targets = behaviorTargetsFromPayload(section.payload);
@@ -181,7 +212,7 @@ const formatStructuredReadableText = (section: StructuredValue): string => {
   }
   const narrative = readableNarrativeFromPayload(section.payload);
   if (narrative.length > 0) return narrative;
-  return formatPayloadPreview(section.payload);
+  return formatGenericStructuredReadableText(section.payload);
 };
 
 const formatStructuredCopyText = (section: StructuredValue): string => formatStructuredReadableText(section);

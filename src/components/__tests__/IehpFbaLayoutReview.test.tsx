@@ -799,6 +799,63 @@ describe("IehpFbaLayoutReview", () => {
     });
   });
 
+  it("renders generic structured placeholders as staff-readable copy instead of raw JSON", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 2, title: "Referral Information", layout_json: {} }],
+          fields: [],
+          values: {
+            checklist_items: [],
+            structured_sections: [
+              {
+                id: "referral-placeholder-structured",
+                field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+                section_index: 0,
+                payload: {
+                  mode: "MANUAL",
+                  label: "Reason for Referral",
+                  source: "clinician_manual_entry unless present in uploaded document",
+                  raw_text: "",
+                  required: true,
+                  field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+                  field_type: "textarea",
+                  page_number: 2,
+                  template_placeholder: true,
+                  entered_value_present: false,
+                },
+                source_span: { page_number: 2, method: "iehp_section_anchor" },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          },
+          unresolved_required_count: 1,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 2/i }));
+    expect(await screen.findByText("Page-specific structured sections")).toBeInTheDocument();
+    expect(screen.getByText(/Reason for Referral/)).toBeInTheDocument();
+    expect(screen.getByText(/No extracted field value was found in the source document\./)).toBeInTheDocument();
+    expect(screen.getByText(/Field type: textarea/)).toBeInTheDocument();
+    expect(screen.queryByText(/"mode"/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("raw-json-referral-placeholder-structured")).not.toBeInTheDocument();
+  });
+
   it("preserves assessment procedures raw text when rows are not parsed", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string) => {
       if (path.startsWith("/api/assessment-template-layout?")) {

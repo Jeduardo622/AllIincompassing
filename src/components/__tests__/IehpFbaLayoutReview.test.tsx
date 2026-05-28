@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, renderWithProviders, screen, waitFor } from "../../test/utils";
+import { fireEvent, renderWithProviders, screen, waitFor, within } from "../../test/utils";
 import { callApi } from "../../lib/api";
 import { IehpFbaLayoutReview } from "../ClientDetails/IehpFbaLayoutReview";
 import type { AssessmentDocumentRecord } from "../../lib/assessment-documents";
@@ -133,7 +133,7 @@ describe("IehpFbaLayoutReview", () => {
     expect(screen.queryByText(/CalOptima/i)).not.toBeInTheDocument();
 
     await screen.findByLabelText("First Name");
-    screen.getByRole("button", { name: "Save" }).click();
+    screen.getByRole("button", { name: "Save field" }).click();
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
@@ -213,7 +213,7 @@ describe("IehpFbaLayoutReview", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Page 30/i }));
     const status = await screen.findByLabelText("Signature Block structured section 1 status");
     fireEvent.change(status, { target: { value: "approved" } });
-    screen.getByRole("button", { name: "Save section" }).click();
+    screen.getByRole("button", { name: "Save extracted section" }).click();
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
@@ -414,7 +414,7 @@ describe("IehpFbaLayoutReview", () => {
     fireEvent.change(screen.getByLabelText("IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS structured section 1 status"), {
       target: { value: "verified" },
     });
-    screen.getByRole("button", { name: "Save section" }).click();
+    screen.getByRole("button", { name: "Save extracted section" }).click();
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
         "/api/assessment-checklist",
@@ -528,6 +528,17 @@ describe("IehpFbaLayoutReview", () => {
               source: "clinician_manual_entry",
               layout_json: {},
             },
+            {
+              page_number: 2,
+              section_key: "identification_admin",
+              field_key: "IEHP_FBA_VERIFIED_UNANCHORED_SECTION",
+              label: "Verified Field with Unanchored Section",
+              field_type: "textarea",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
           ],
           values: {
             checklist_items: [
@@ -555,8 +566,30 @@ describe("IehpFbaLayoutReview", () => {
                 value_json: null,
                 review_notes: null,
               },
+              {
+                id: "item-verified-unanchored-section",
+                placeholder_key: "IEHP_FBA_VERIFIED_UNANCHORED_SECTION",
+                section_key: "identification_admin",
+                label: "Verified Field with Unanchored Section",
+                mode: "ASSISTED",
+                required: true,
+                status: "verified",
+                value_text: "Checklist field is reviewed, but structured extraction still needs attention.",
+                value_json: null,
+                review_notes: null,
+              },
             ],
-            structured_sections: [],
+            structured_sections: [
+              {
+                id: "verified-unanchored-structured",
+                field_key: "IEHP_FBA_VERIFIED_UNANCHORED_SECTION",
+                section_index: 0,
+                payload: { raw_text: "Needs staff review from unanchored extraction." },
+                status: "not_started",
+                required: true,
+                review_notes: null,
+              },
+            ],
           },
           unresolved_required_count: 1,
           extracted_value_count: 0,
@@ -565,21 +598,39 @@ describe("IehpFbaLayoutReview", () => {
       return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
     });
 
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
     renderWithProviders(
       <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /Page 2/i }));
+    expect(await screen.findByText("Page 1 review summary")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Jump to next page needing attention" }));
+    expect(await screen.findByText("Page 2 review summary")).toBeInTheDocument();
+    const pageSummary = screen.getByText("Page 2 review summary").closest("div")?.parentElement?.parentElement;
+    expect(pageSummary).not.toBeNull();
+    expect(within(pageSummary as HTMLElement).getByText("Needs attention")).toBeInTheDocument();
+    expect(within(pageSummary as HTMLElement).getByText("3")).toBeInTheDocument();
+    expect(within(pageSummary as HTMLElement).getByText(/4 rows on this page/)).toBeInTheDocument();
+    expect(within(pageSummary as HTMLElement).getByText("In draft / review")).toBeInTheDocument();
+    const attentionTarget = await screen.findByTestId("review-attention-target-field-IEHP_FBA_REFERRING_PROVIDER");
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "smooth" }));
+    expect(document.activeElement).toBe(attentionTarget);
+    expect(attentionTarget).toHaveClass("ring-2");
     expect(await screen.findByLabelText("Name of Referring Provider, Credentials")).toBeInTheDocument();
-    expect(screen.getByText("manual required")).toBeInTheDocument();
+    expect(screen.getByText("Manual review required")).toBeInTheDocument();
     expect(screen.getByText(/This required IEHP field is intentionally manual/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Page 1/i }));
     expect(await screen.findByLabelText("Reason for Referral")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Reviewed referral reason")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Page 2/i }));
     expect(screen.getByLabelText("Missing Manual Field")).toBeDisabled();
-    expect(screen.getByText("missing row")).toBeInTheDocument();
-    expect(screen.getAllByText("manual required")).toHaveLength(1);
+    expect(screen.getAllByText("Not started").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Manual review required")).toHaveLength(1);
   });
 
   it("renders behavior target preview and copies extracted checkbox targets", async () => {
@@ -660,7 +711,7 @@ describe("IehpFbaLayoutReview", () => {
     });
   });
 
-  it("renders readable assessment procedures preview with optional raw JSON toggle and readable copy output", async () => {
+  it("renders readable assessment procedures preview with optional technical details toggle and readable copy output", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string) => {
       if (path.startsWith("/api/assessment-template-layout?")) {
         return new Response(JSON.stringify({
@@ -734,9 +785,11 @@ describe("IehpFbaLayoutReview", () => {
     expect(screen.getByText("Clinical Interview")).toBeInTheDocument();
 
     expect(screen.queryByTestId("raw-json-procedures-structured-1")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "View raw JSON" }));
+    expect(screen.queryByLabelText("Description of Assessment Procedures structured section 1 payload")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show technical details" }));
     expect(await screen.findByTestId("raw-json-procedures-structured-1")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Hide raw JSON" }));
+    expect(screen.getByLabelText("Description of Assessment Procedures structured section 1 payload")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide technical details" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
     await waitFor(() => {

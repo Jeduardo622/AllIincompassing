@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { callApi } from "../../lib/api";
 import { showError, showSuccess } from "../../lib/toast";
@@ -79,6 +79,13 @@ interface StructuredEdit {
   status: StructuredReviewStatus;
 }
 
+interface PageReviewSummary {
+  needsAttention: number;
+  inDraft: number;
+  approved: number;
+  total: number;
+}
+
 const EMPTY_LAYOUT: TemplateLayoutResponse = {
   template_version: {
     version_key: "",
@@ -117,6 +124,14 @@ const behaviorTargetsFromPayload = (payload: Record<string, unknown> | undefined
   return targets
     .map((target) => (typeof target === "string" ? target.trim() : ""))
     .filter((target) => target.length > 0);
+};
+
+const formatStatusLabel = (status: ReviewStatus | StructuredReviewStatus): string => {
+  if (status === "not_started") return "Not started";
+  if (status === "drafted") return "In draft";
+  if (status === "verified") return "Verified";
+  if (status === "approved") return "Approved";
+  return "Rejected";
 };
 
 const statusChipClass = (status: ReviewStatus | StructuredReviewStatus): string => {
@@ -256,6 +271,29 @@ const emptyPageMessage = (pageNumber: number, title: string | undefined): string
 const isManualRequiredReviewItem = (field: TemplateField, item: ChecklistValue | undefined): boolean =>
   Boolean(item) && field.required && field.mode === "MANUAL" && item?.status === "not_started";
 
+const emptyPageReviewSummary = (): PageReviewSummary => ({
+  needsAttention: 0,
+  inDraft: 0,
+  approved: 0,
+  total: 0,
+});
+
+const isAttentionReviewStatus = (status: ReviewStatus | StructuredReviewStatus | "missing"): boolean =>
+  status === "missing" || status === "not_started" || status === "rejected";
+
+const addStatusToPageReviewSummary = (summary: PageReviewSummary, status: ReviewStatus | StructuredReviewStatus | "missing"): void => {
+  summary.total += 1;
+  if (isAttentionReviewStatus(status)) {
+    summary.needsAttention += 1;
+    return;
+  }
+  if (status === "approved") {
+    summary.approved += 1;
+    return;
+  }
+  summary.inDraft += 1;
+};
+
 export function IehpFbaLayoutReview({
   assessmentDocument,
   organizationId,
@@ -264,7 +302,9 @@ export function IehpFbaLayoutReview({
   organizationId: string | null | undefined;
 }) {
   const queryClient = useQueryClient();
+  const attentionTargetRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [activePage, setActivePage] = useState(1);
+  const [pendingAttentionFocusPage, setPendingAttentionFocusPage] = useState<number | null>(null);
   const [edits, setEdits] = useState<Record<string, FieldEdit>>({});
   const [structuredEdits, setStructuredEdits] = useState<Record<string, StructuredEdit>>({});
   const [rawPreviewBySectionId, setRawPreviewBySectionId] = useState<Record<string, boolean>>({});
@@ -320,6 +360,72 @@ export function IehpFbaLayoutReview({
       }),
     [activePage, activePageFieldKeys, data.values.structured_sections],
   );
+
+  const pageReviewSummaries = useMemo(() => {
+    const summaries = new Map<number, PageReviewSummary>();
+    const ensureSummary = (pageNumber: number) => {
+      const existing = summaries.get(pageNumber);
+      if (existing) return existing;
+      const next = emptyPageReviewSummary();
+      summaries.set(pageNumber, next);
+      return next;
+    };
+
+    data.pages.forEach((page) => ensureSummary(page.page_number));
+    data.fields.forEach((field) => {
+      const pageNumber = PAGE_FIELD_KEY_OVERRIDES[field.field_key] ?? field.page_number;
+      const item = checklistByKey.get(field.field_key);
+      const status = isManualRequiredReviewItem(field, item) ? "not_started" : item?.status ?? "missing";
+      addStatusToPageReviewSummary(ensureSummary(pageNumber), status);
+    });
+    data.values.structured_sections.forEach((section) => {
+      const pageNumber = getStructuredSectionPageNumber(section);
+      if (pageNumber === null) return;
+      addStatusToPageReviewSummary(ensureSummary(pageNumber), section.status);
+    });
+
+    return summaries;
+  }, [checklistByKey, data.fields, data.pages, data.values.structured_sections]);
+
+  const activePageReviewSummary = pageReviewSummaries.get(activePage) ?? emptyPageReviewSummary();
+  const nextNeedsAttentionPage = useMemo(() => {
+    if (data.pages.length === 0) return null;
+    const pageNumbers = data.pages.map((page) => page.page_number);
+    const activeIndex = Math.max(pageNumbers.indexOf(activePage), 0);
+    for (let offset = 1; offset <= pageNumbers.length; offset += 1) {
+      const pageNumber = pageNumbers[(activeIndex + offset) % pageNumbers.length];
+      if ((pageReviewSummaries.get(pageNumber)?.needsAttention ?? 0) > 0) {
+        return pageNumber;
+      }
+    }
+    return null;
+  }, [activePage, data.pages, pageReviewSummaries]);
+
+  const activePageAttentionTargetKey = useMemo(() => {
+    for (const field of activePageFields) {
+      const item = checklistByKey.get(field.field_key);
+      const fieldStatus = isManualRequiredReviewItem(field, item) ? "not_started" : item?.status ?? "missing";
+      const structuredSections = (structuredByKey.get(field.field_key) ?? []).filter((section) => {
+        const pageNumber = getStructuredSectionPageNumber(section);
+        return pageNumber === null || pageNumber === activePage;
+      });
+      if (isAttentionReviewStatus(fieldStatus) || structuredSections.some((section) => isAttentionReviewStatus(section.status))) {
+        return `field-${field.field_key}`;
+      }
+    }
+
+    const looseSection = activePageLooseStructuredSections.find((section) => isAttentionReviewStatus(section.status));
+    return looseSection ? `structured-${looseSection.id}` : null;
+  }, [activePage, activePageFields, activePageLooseStructuredSections, checklistByKey, structuredByKey]);
+
+  useEffect(() => {
+    if (pendingAttentionFocusPage !== activePage || !activePageAttentionTargetKey) return;
+    const target = attentionTargetRefs.current[activePageAttentionTargetKey];
+    if (!target) return;
+    target.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    target.focus({ preventScroll: true });
+    setPendingAttentionFocusPage(null);
+  }, [activePage, activePageAttentionTargetKey, pendingAttentionFocusPage]);
 
   const saveField = useMutation({
     mutationFn: async (field: TemplateField) => {
@@ -438,6 +544,42 @@ export function IehpFbaLayoutReview({
         </p>
       </div>
 
+      <div className="rounded-md border border-slate-700 bg-slate-900/80 p-3 text-sm text-slate-100">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Page {activePage} review summary</p>
+            <p className="text-xs text-slate-400">{activePageReviewSummary.total} rows on this page. Use this snapshot to find rows that still need staff review.</p>
+          </div>
+          <button
+            type="button"
+            aria-label="Jump to next page needing attention"
+            onClick={() => {
+              if (nextNeedsAttentionPage === null) return;
+              setPendingAttentionFocusPage(nextNeedsAttentionPage);
+              setActivePage(nextNeedsAttentionPage);
+            }}
+            disabled={nextNeedsAttentionPage === null}
+            className="rounded border border-slate-500 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {nextNeedsAttentionPage === null ? "No fields need attention" : `Jump to page ${nextNeedsAttentionPage} needs attention`}
+          </button>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="rounded border border-amber-400/30 bg-amber-500/10 px-3 py-2">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-amber-200">Needs attention</span>
+            <span className="text-lg font-bold text-amber-100">{activePageReviewSummary.needsAttention}</span>
+          </div>
+          <div className="rounded border border-indigo-400/30 bg-indigo-500/10 px-3 py-2">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-indigo-200">In draft / review</span>
+            <span className="text-lg font-bold text-indigo-100">{activePageReviewSummary.inDraft}</span>
+          </div>
+          <div className="rounded border border-emerald-400/30 bg-emerald-500/10 px-3 py-2">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-200">Approved</span>
+            <span className="text-lg font-bold text-emerald-100">{activePageReviewSummary.approved}</span>
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-4 xl:grid-cols-[13rem_minmax(0,1fr)]">
         <nav aria-label="IEHP FBA page navigation" className="max-h-[44rem] space-y-1 overflow-auto rounded-md border border-slate-700 bg-slate-900 p-2">
           {data.pages.map((page) => {
@@ -499,8 +641,22 @@ export function IehpFbaLayoutReview({
                   });
                   const locked = item?.status === "approved";
                   const manualRequired = isManualRequiredReviewItem(field, item);
+                  const fieldStatus = manualRequired ? "not_started" : item?.status ?? "missing";
+                  const fieldAttentionTargetKey = `field-${field.field_key}`;
+                  const fieldNeedsAttention = isAttentionReviewStatus(fieldStatus) || structuredSections.some((section) => isAttentionReviewStatus(section.status));
+                  const highlightAttentionTarget = activePageAttentionTargetKey === fieldAttentionTargetKey && fieldNeedsAttention;
                   return (
-                    <div key={field.field_key} className="rounded-md border border-slate-600 bg-slate-800/70 p-3">
+                    <div
+                      key={field.field_key}
+                      ref={(node) => {
+                        attentionTargetRefs.current[fieldAttentionTargetKey] = node;
+                      }}
+                      tabIndex={-1}
+                      data-testid={`review-attention-target-${fieldAttentionTargetKey}`}
+                      className={`rounded-md border bg-slate-800/70 p-3 focus:outline-none ${
+                        highlightAttentionTarget ? "border-amber-300 ring-2 ring-amber-300/70" : "border-slate-600"
+                      }`}
+                    >
                       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <label htmlFor={`iehp-${field.field_key}`} className="text-sm font-semibold text-slate-100">
@@ -511,7 +667,7 @@ export function IehpFbaLayoutReview({
                           </p>
                         </div>
                         <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(manualRequired ? "not_started" : item?.status ?? "not_started")}`}>
-                          {manualRequired ? "manual required" : item?.status ?? "missing row"}
+                          {manualRequired ? "Manual review required" : formatStatusLabel(item?.status ?? "not_started")}
                         </span>
                       </div>
 
@@ -556,7 +712,7 @@ export function IehpFbaLayoutReview({
                                     Section {section.section_index + 1} • required: {String(section.required)}
                                   </span>
                                   <div className="flex items-center gap-2">
-                                    <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{section.status}</span>
+                                    <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{formatStatusLabel(section.status)}</span>
                                     <button
                                       type="button"
                                       onClick={() => void copyStructuredSection(section)}
@@ -574,7 +730,7 @@ export function IehpFbaLayoutReview({
                                       }
                                       className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
                                     >
-                                      {rawPreviewBySectionId[section.id] ? "Hide raw JSON" : "View raw JSON"}
+                                      {rawPreviewBySectionId[section.id] ? "Hide technical details" : "Show technical details"}
                                     </button>
                                     {structuredLocked && (
                                       <span className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200">locked after approval</span>
@@ -585,29 +741,39 @@ export function IehpFbaLayoutReview({
                                   {renderStructuredReadablePreview(section)}
                                 </div>
                                 {rawPreviewBySectionId[section.id] && (
-                                  <pre
-                                    data-testid={`raw-json-${section.id}`}
-                                    className="mb-2 overflow-auto rounded border border-slate-600 bg-slate-950 p-2 text-[11px] text-slate-300"
-                                  >
-                                    {formatPayloadPreview(section.payload)}
-                                  </pre>
+                                  <div className="mb-2 space-y-2 rounded border border-slate-600 bg-slate-900/80 p-2">
+                                    <div>
+                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Technical details</p>
+                                      <p className="text-[11px] text-slate-400">Raw JSON is hidden by default so staff can focus on the readable extracted content above.</p>
+                                    </div>
+                                    <pre
+                                      data-testid={`raw-json-${section.id}`}
+                                      className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-700 bg-slate-950 p-2 text-[11px] text-slate-300"
+                                    >
+                                      {formatPayloadPreview(section.payload)}
+                                    </pre>
+                                    <label className="block text-[11px] font-semibold text-slate-300" htmlFor={`structured-payload-${section.id}`}>
+                                      Editable JSON payload
+                                    </label>
+                                    <textarea
+                                      id={`structured-payload-${section.id}`}
+                                      value={structuredEdit.payloadText}
+                                      rows={4}
+                                      disabled={structuredLocked}
+                                      onChange={(event) =>
+                                        setStructuredEdits((current) => ({
+                                          ...current,
+                                          [section.id]: {
+                                            ...structuredEdit,
+                                            payloadText: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                      className="w-full rounded border border-slate-600 bg-slate-950 p-2 font-mono text-xs text-slate-100 disabled:bg-slate-800"
+                                      aria-label={`${field.label} structured section ${section.section_index + 1} payload`}
+                                    />
+                                  </div>
                                 )}
-                                <textarea
-                                  value={structuredEdit.payloadText}
-                                  rows={4}
-                                  disabled={structuredLocked}
-                                  onChange={(event) =>
-                                    setStructuredEdits((current) => ({
-                                      ...current,
-                                      [section.id]: {
-                                        ...structuredEdit,
-                                        payloadText: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  className="w-full rounded border border-slate-600 bg-slate-950 p-2 font-mono text-xs text-slate-100 disabled:bg-slate-800"
-                                  aria-label={`${field.label} structured section ${section.section_index + 1} payload`}
-                                />
                                 <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
                                   <select
                                     value={structuredEdit.status}
@@ -626,7 +792,7 @@ export function IehpFbaLayoutReview({
                                   >
                                     {STRUCTURED_STATUS_OPTIONS.map((status) => (
                                       <option key={status} value={status}>
-                                        {status}
+                                        {formatStatusLabel(status)}
                                       </option>
                                     ))}
                                   </select>
@@ -652,7 +818,7 @@ export function IehpFbaLayoutReview({
                                     disabled={saveStructuredSection.isLoading || structuredLocked}
                                     className="rounded bg-indigo-700 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-600 disabled:opacity-50"
                                   >
-                                    Save section
+                                    Save extracted section
                                   </button>
                                 </div>
                               </div>
@@ -679,7 +845,7 @@ export function IehpFbaLayoutReview({
                         >
                           {STATUS_OPTIONS.map((status) => (
                             <option key={status} value={status}>
-                              {status}
+                              {formatStatusLabel(status)}
                             </option>
                           ))}
                         </select>
@@ -705,7 +871,7 @@ export function IehpFbaLayoutReview({
                           disabled={saveField.isLoading || locked || !item}
                           className="rounded bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
                         >
-                          Save
+                          Save field
                         </button>
                       </div>
                       {locked && (
@@ -732,14 +898,26 @@ export function IehpFbaLayoutReview({
                           status: section.status,
                         };
                         const structuredLocked = section.status === "approved";
+                        const structuredAttentionTargetKey = `structured-${section.id}`;
+                        const highlightAttentionTarget = activePageAttentionTargetKey === structuredAttentionTargetKey && isAttentionReviewStatus(section.status);
                         return (
-                          <div key={section.id} className="rounded border border-slate-600 bg-slate-800 p-2">
+                          <div
+                            key={section.id}
+                            ref={(node) => {
+                              attentionTargetRefs.current[structuredAttentionTargetKey] = node;
+                            }}
+                            tabIndex={-1}
+                            data-testid={`review-attention-target-${structuredAttentionTargetKey}`}
+                            className={`rounded border bg-slate-800 p-2 focus:outline-none ${
+                              highlightAttentionTarget ? "border-amber-300 ring-2 ring-amber-300/70" : "border-slate-600"
+                            }`}
+                          >
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <span className="font-semibold text-slate-100">
                                 {section.field_key} section {section.section_index + 1}
                               </span>
                               <div className="flex items-center gap-2">
-                                <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{section.status}</span>
+                                <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{formatStatusLabel(section.status)}</span>
                                 <button
                                   type="button"
                                   onClick={() => void copyStructuredSection(section)}
@@ -757,7 +935,7 @@ export function IehpFbaLayoutReview({
                                   }
                                   className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
                                 >
-                                  {rawPreviewBySectionId[section.id] ? "Hide raw JSON" : "View raw JSON"}
+                                  {rawPreviewBySectionId[section.id] ? "Hide technical details" : "Show technical details"}
                                 </button>
                                 {structuredLocked && (
                                   <span className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200">locked after approval</span>
@@ -768,29 +946,39 @@ export function IehpFbaLayoutReview({
                               {renderStructuredReadablePreview(section)}
                             </div>
                             {rawPreviewBySectionId[section.id] && (
-                              <pre
-                                data-testid={`raw-json-${section.id}`}
-                                className="mb-2 overflow-auto rounded border border-slate-600 bg-slate-950 p-2 text-[11px] text-slate-300"
-                              >
-                                {formatPayloadPreview(section.payload)}
-                              </pre>
+                              <div className="mb-2 space-y-2 rounded border border-slate-600 bg-slate-900/80 p-2">
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Technical details</p>
+                                  <p className="text-[11px] text-slate-400">Raw JSON is hidden by default so staff can focus on the readable extracted content above.</p>
+                                </div>
+                                <pre
+                                  data-testid={`raw-json-${section.id}`}
+                                  className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-700 bg-slate-950 p-2 text-[11px] text-slate-300"
+                                >
+                                  {formatPayloadPreview(section.payload)}
+                                </pre>
+                                <label className="block text-[11px] font-semibold text-slate-300" htmlFor={`structured-payload-${section.id}`}>
+                                  Editable JSON payload
+                                </label>
+                                <textarea
+                                  id={`structured-payload-${section.id}`}
+                                  value={structuredEdit.payloadText}
+                                  rows={4}
+                                  disabled={structuredLocked}
+                                  onChange={(event) =>
+                                    setStructuredEdits((current) => ({
+                                      ...current,
+                                      [section.id]: {
+                                        ...structuredEdit,
+                                        payloadText: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  className="w-full rounded border border-slate-600 bg-slate-950 p-2 font-mono text-xs text-slate-100 disabled:bg-slate-800"
+                                  aria-label={`${section.field_key} structured section ${section.section_index + 1} payload`}
+                                />
+                              </div>
                             )}
-                            <textarea
-                              value={structuredEdit.payloadText}
-                              rows={4}
-                              disabled={structuredLocked}
-                              onChange={(event) =>
-                                setStructuredEdits((current) => ({
-                                  ...current,
-                                  [section.id]: {
-                                    ...structuredEdit,
-                                    payloadText: event.target.value,
-                                  },
-                                }))
-                              }
-                              className="w-full rounded border border-slate-600 bg-slate-950 p-2 font-mono text-xs text-slate-100 disabled:bg-slate-800"
-                              aria-label={`${section.field_key} structured section ${section.section_index + 1} payload`}
-                            />
                             <div className="mt-2 grid gap-2 md:grid-cols-[10rem_1fr_auto]">
                               <select
                                 value={structuredEdit.status}
@@ -809,7 +997,7 @@ export function IehpFbaLayoutReview({
                               >
                                 {STRUCTURED_STATUS_OPTIONS.map((status) => (
                                   <option key={status} value={status}>
-                                    {status}
+                                    {formatStatusLabel(status)}
                                   </option>
                                 ))}
                               </select>
@@ -835,7 +1023,7 @@ export function IehpFbaLayoutReview({
                                 disabled={saveStructuredSection.isLoading || structuredLocked}
                                 className="rounded bg-indigo-700 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-600 disabled:opacity-50"
                               >
-                                Save section
+                                Save extracted section
                               </button>
                             </div>
                           </div>

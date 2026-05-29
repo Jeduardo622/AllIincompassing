@@ -5,6 +5,8 @@ type RpcParticipantNameRow = {
   full_name: string | null;
 };
 
+const inFlightParticipantNameRequests = new Map<string, Promise<Map<string, string>>>();
+
 /**
  * Thread-scoped display names for message senders.
  * Uses SECURITY DEFINER RPC so participants can resolve co-participant names
@@ -16,18 +18,32 @@ type RpcParticipantNameRow = {
 export const fetchThreadParticipantNames = async (
   threadId: string,
 ): Promise<Map<string, string>> => {
-  const { data, error } = await supabase.rpc('list_staff_message_thread_participant_names', {
-    p_thread_id: threadId,
-  });
-
-  if (error) {
-    throw error;
+  const existing = inFlightParticipantNameRequests.get(threadId);
+  if (existing) {
+    return existing;
   }
 
-  const map = new Map<string, string>();
-  for (const row of (data ?? []) as RpcParticipantNameRow[]) {
-    const name = row.full_name?.trim() || 'Staff member';
-    map.set(row.user_id, name);
+  const request = (async () => {
+    const { data, error } = await supabase.rpc('list_staff_message_thread_participant_names', {
+      p_thread_id: threadId,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const map = new Map<string, string>();
+    for (const row of (data ?? []) as RpcParticipantNameRow[]) {
+      const name = row.full_name?.trim() || 'Staff member';
+      map.set(row.user_id, name);
+    }
+    return map;
+  })();
+
+  inFlightParticipantNameRequests.set(threadId, request);
+  try {
+    return await request;
+  } finally {
+    inFlightParticipantNameRequests.delete(threadId);
   }
-  return map;
 };

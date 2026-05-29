@@ -10,6 +10,7 @@ import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { supabase } from "../../lib/supabase";
 import { AuthProvider } from "../../lib/authContext";
 import { STUB_AUTH_STORAGE_KEY } from "../../lib/authStubSession";
+import * as organizationModule from "../../lib/organization";
 
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 const ASSESSMENT_ID = "11111111-1111-4111-8111-111111111111";
@@ -1042,6 +1043,102 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(edgeGetCalls.filter((path) => path.startsWith("programs?"))).toHaveLength(1);
     expect(edgeGetCalls.filter((path) => path.startsWith("goals?"))).toHaveLength(1);
     expect(edgeGetCalls.filter((path) => path.startsWith("program-notes?"))).toHaveLength(1);
+  });
+
+  it("reconnects stale Programs & Goals queries after the tab stale window elapses", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          gcTime: 0,
+          staleTime: 60_000,
+          refetchOnReconnect: "always",
+        },
+        mutations: {
+          retry: false,
+        },
+      },
+    });
+
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              description: "Live program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    const initialNow = Date.parse("2026-05-29T12:57:00.000Z");
+    let now = initialNow;
+    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const activeOrganizationSpy = vi.spyOn(organizationModule, "useActiveOrganizationId").mockReturnValue(ORG_ID);
+    seedStubAuthState();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <AuthProvider>
+            <ProgramsGoalsTab client={buildClient()} />
+          </AuthProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Communication Program");
+
+    const countEdgeGets = () =>
+      vi
+        .mocked(callEdgeFunctionHttp)
+        .mock.calls.filter(([, init]) => (init?.method ?? "GET").toUpperCase() === "GET")
+        .map(([path]) => String(path));
+
+    expect(countEdgeGets().filter((path) => path.startsWith("programs?"))).toHaveLength(1);
+    expect(countEdgeGets().filter((path) => path.startsWith("goals?"))).toHaveLength(1);
+    expect(countEdgeGets().filter((path) => path.startsWith("program-notes?"))).toHaveLength(1);
+
+    now += 30_001;
+
+    onlineManager.setOnline(false);
+    onlineManager.setOnline(true);
+
+    await waitFor(() => {
+      const edgeGetCalls = countEdgeGets();
+      expect(edgeGetCalls.filter((path) => path.startsWith("programs?"))).toHaveLength(2);
+      expect(edgeGetCalls.filter((path) => path.startsWith("goals?"))).toHaveLength(2);
+      expect(edgeGetCalls.filter((path) => path.startsWith("program-notes?"))).toHaveLength(2);
+    });
+
+    activeOrganizationSpy.mockRestore();
+    dateNowSpy.mockRestore();
   });
 
   it("polls assessment documents only while extraction work is active", async () => {

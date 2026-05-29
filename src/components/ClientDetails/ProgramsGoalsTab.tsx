@@ -364,7 +364,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     enabled: Boolean(client.id && organizationId),
     retry: false,
     staleTime: TAB_QUERY_STALE_TIME_MS,
-    refetchOnReconnect: false,
+    refetchOnReconnect: true,
   });
 
   const livePrograms = useMemo(
@@ -439,7 +439,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     enabled: Boolean(resolvedProgramId),
     retry: false,
     staleTime: TAB_QUERY_STALE_TIME_MS,
-    refetchOnReconnect: false,
+    refetchOnReconnect: true,
   });
 
   const liveGoals = useMemo(
@@ -476,7 +476,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     enabled: Boolean(resolvedProgramId),
     retry: false,
     staleTime: TAB_QUERY_STALE_TIME_MS,
-    refetchOnReconnect: false,
+    refetchOnReconnect: true,
   });
 
   const {

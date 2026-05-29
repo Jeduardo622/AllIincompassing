@@ -1,15 +1,52 @@
+import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { QueryClient } from "@tanstack/react-query";
-import { fireEvent, renderWithProviders, screen, userEvent, waitFor, within } from "../../test/utils";
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { fireEvent, render, renderWithProviders, screen, userEvent, waitFor, within } from "../../test/utils";
 import { ProgramsGoalsTab } from "../ClientDetails/ProgramsGoalsTab";
 import { generateProgramGoalDraft } from "../../lib/ai";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { supabase } from "../../lib/supabase";
+import { AuthProvider } from "../../lib/authContext";
+import { STUB_AUTH_STORAGE_KEY } from "../../lib/authStubSession";
 
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 const ASSESSMENT_ID = "11111111-1111-4111-8111-111111111111";
 type ProgramsGoalsTabClient = React.ComponentProps<typeof ProgramsGoalsTab>["client"];
+
+const seedStubAuthState = () => {
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  window.localStorage.setItem(
+    STUB_AUTH_STORAGE_KEY,
+    JSON.stringify({
+      user: {
+        id: "therapist-user-id",
+        email: "therapist@example.com",
+        role: "therapist",
+        full_name: "Test User",
+        first_name: "Test",
+        last_name: "User",
+      },
+      role: "therapist",
+      accessToken: "test-access-token",
+      refreshToken: "test-refresh-token",
+      expiresAt: now.getTime() + 60 * 60 * 1000,
+      profile: {
+        id: "therapist-user-id",
+        email: "therapist@example.com",
+        role: "therapist",
+        organization_id: ORG_ID,
+        full_name: "Test User",
+        is_active: true,
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+    }),
+  );
+};
 
 const buildClient = (overrides: Partial<ProgramsGoalsTabClient> = {}): ProgramsGoalsTabClient => ({
   id: "client-1",
@@ -855,6 +892,156 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         ),
     ).toHaveLength(noteFetchCountBeforeCreate);
     expect(await screen.findByText("Progress note")).toBeInTheDocument();
+  });
+
+  it("does not repeat initial programs, goals, and notes fetches under StrictMode", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              description: "Live program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <React.StrictMode>
+        <ProgramsGoalsTab client={buildClient()} />
+      </React.StrictMode>,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText("Communication Program");
+
+    const getCalls = vi
+      .mocked(callEdgeFunctionHttp)
+      .mock.calls.filter(([, init]) => (init?.method ?? "GET").toUpperCase() === "GET")
+      .map(([path]) => String(path));
+
+    expect(getCalls.filter((path) => path.startsWith("programs?"))).toHaveLength(1);
+    expect(getCalls.filter((path) => path.startsWith("goals?"))).toHaveLength(1);
+    expect(getCalls.filter((path) => path.startsWith("program-notes?"))).toHaveLength(1);
+  });
+
+  it("does not reconnect active Programs & Goals queries while their data is still fresh", async () => {
+    seedStubAuthState();
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          gcTime: 0,
+          staleTime: 60_000,
+          refetchOnReconnect: "always",
+        },
+        mutations: {
+          retry: false,
+        },
+      },
+    });
+
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              description: "Live program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <AuthProvider>
+            <ProgramsGoalsTab client={buildClient()} />
+          </AuthProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Communication Program");
+
+    const countEdgeGets = () =>
+      vi
+        .mocked(callEdgeFunctionHttp)
+        .mock.calls.filter(([, init]) => (init?.method ?? "GET").toUpperCase() === "GET")
+        .map(([path]) => String(path));
+
+    expect(countEdgeGets().filter((path) => path.startsWith("programs?"))).toHaveLength(1);
+    expect(countEdgeGets().filter((path) => path.startsWith("goals?"))).toHaveLength(1);
+    expect(countEdgeGets().filter((path) => path.startsWith("program-notes?"))).toHaveLength(1);
+
+    onlineManager.setOnline(false);
+    onlineManager.setOnline(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const edgeGetCalls = countEdgeGets();
+    expect(edgeGetCalls.filter((path) => path.startsWith("programs?"))).toHaveLength(1);
+    expect(edgeGetCalls.filter((path) => path.startsWith("goals?"))).toHaveLength(1);
+    expect(edgeGetCalls.filter((path) => path.startsWith("program-notes?"))).toHaveLength(1);
   });
 
   it("polls assessment documents only while extraction work is active", async () => {

@@ -86,6 +86,12 @@ interface PageReviewSummary {
   total: number;
 }
 
+interface AdaptiveMeasureBlockPreview {
+  assessment_type: string;
+  raw_text: string;
+  extracted: boolean;
+}
+
 const EMPTY_LAYOUT: TemplateLayoutResponse = {
   template_version: {
     version_key: "",
@@ -107,6 +113,7 @@ const STRUCTURED_STATUS_OPTIONS: StructuredReviewStatus[] = ["not_started", "dra
 const PAGE_FIELD_KEY_OVERRIDES: Record<string, number> = {
   IEHP_FBA_REASON_FOR_REFERRAL: 1,
 };
+const IEHP_ADAPTIVE_MEASURE_TYPES = ["VB-MAPP", "Vineland", "AFLS", "ABAS-3"] as const;
 
 const formatPayloadPreview = (value: unknown): string => {
   if (value == null) return "";
@@ -162,6 +169,37 @@ const readableNarrativeFromPayload = (payload: Record<string, unknown> | undefin
   return "";
 };
 
+const adaptiveMeasureBlocksFromPayload = (payload: Record<string, unknown> | undefined): AdaptiveMeasureBlockPreview[] => {
+  const rawBlocks = payload?.assessment_blocks;
+  const parsedBlocks = Array.isArray(rawBlocks)
+    ? rawBlocks
+        .map((block) => {
+          if (!block || typeof block !== "object") return null;
+          const assessmentType =
+            typeof (block as { assessment_type?: unknown }).assessment_type === "string"
+              ? (block as { assessment_type: string }).assessment_type.trim()
+              : "";
+          const rawText =
+            typeof (block as { raw_text?: unknown }).raw_text === "string" ? (block as { raw_text: string }).raw_text.trim() : "";
+          if (!assessmentType) return null;
+          return {
+            assessment_type: assessmentType,
+            raw_text: rawText,
+            extracted: rawText.length > 0,
+          };
+        })
+        .filter((block): block is AdaptiveMeasureBlockPreview => block !== null)
+    : [];
+
+  const knownTypeSet = new Set(IEHP_ADAPTIVE_MEASURE_TYPES.map((type) => type.toLowerCase()));
+  const orderedKnownBlocks = IEHP_ADAPTIVE_MEASURE_TYPES.map((assessmentType) => {
+    const existing = parsedBlocks.find((block) => block.assessment_type.toLowerCase() === assessmentType.toLowerCase());
+    return existing ?? { assessment_type: assessmentType, raw_text: "", extracted: false };
+  });
+  const extraBlocks = parsedBlocks.filter((block) => !knownTypeSet.has(block.assessment_type.toLowerCase()));
+  return [...orderedKnownBlocks, ...extraBlocks];
+};
+
 const stringifyReadablePayloadValue = (value: unknown): string => {
   if (value == null) return "";
   if (typeof value === "string") return value.trim();
@@ -205,6 +243,12 @@ const formatStructuredReadableText = (section: StructuredValue): string => {
       return `${heading}\n- none extracted`;
     }
     return `${heading}\n${rows.map((row) => `- ${row.procedure}: ${row.raw_text || "not provided"}`).join("\n")}`;
+  }
+  if (section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES") {
+    const blocks = adaptiveMeasureBlocksFromPayload(section.payload);
+    return `Adaptive Measure Summaries\n${blocks
+      .map((block) => `- ${block.assessment_type}: ${block.raw_text || "No extracted block found."}`)
+      .join("\n")}`;
   }
   const narrative = readableNarrativeFromPayload(section.payload);
   if (narrative.length > 0) return narrative;
@@ -260,6 +304,26 @@ const renderStructuredReadablePreview = (section: StructuredValue): JSX.Element 
             ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES") {
+    const blocks = adaptiveMeasureBlocksFromPayload(section.payload);
+    return (
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200">Adaptive Measure Blocks</p>
+        <div className="grid gap-2">
+          {blocks.map((block) => (
+            <div
+              key={block.assessment_type}
+              className={`rounded border px-2 py-2 ${block.extracted ? "border-slate-600/60 bg-slate-900/50" : "border-dashed border-slate-700 bg-slate-900/20"}`}
+            >
+              <p className="text-xs font-semibold text-slate-100">{block.assessment_type}</p>
+              <p className="text-xs leading-relaxed whitespace-pre-wrap text-slate-300">{block.raw_text || "No extracted block found."}</p>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

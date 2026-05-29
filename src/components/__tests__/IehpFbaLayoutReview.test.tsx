@@ -1042,6 +1042,93 @@ describe("IehpFbaLayoutReview", () => {
     });
   });
 
+  it("renders adaptive measure assessment blocks separately and preserves missing block slots", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 10, title: "Adaptive Measures", layout_json: {} }],
+          fields: [
+            {
+              page_number: 10,
+              section_key: "assessment_procedures_testing",
+              field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+              label: "Adaptive and Functional Measure Summaries",
+              field_type: "textarea",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-adaptive-measures",
+                placeholder_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+                section_key: "assessment_procedures_testing",
+                label: "Adaptive and Functional Measure Summaries",
+                mode: "ASSISTED",
+                required: true,
+                status: "drafted",
+                value_text: "1 structured section extracted",
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "adaptive-measures-structured-1",
+                field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+                section_index: 0,
+                payload: {
+                  raw_text: "Combined adaptive measure narrative.",
+                  assessment_blocks: [
+                    { assessment_type: "VB-MAPP", raw_text: "VB-MAPP Assessment Summary: Preserve as assessment block." },
+                    { assessment_type: "Vineland", raw_text: "Vineland Assessment Summary: Preserve as assessment block." },
+                    { assessment_type: "AFLS", raw_text: "AFLS Assessment Summary: Preserve as assessment block." },
+                    { assessment_type: "ABAS-3", raw_text: "" },
+                  ],
+                },
+                source_span: { page_number: 10, method: "iehp_section_anchor" },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          },
+          unresolved_required_count: 1,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 10/i }));
+    expect(await screen.findByText("Adaptive Measure Blocks")).toBeInTheDocument();
+    expect(screen.getByText("VB-MAPP")).toBeInTheDocument();
+    expect(screen.getByText("Vineland")).toBeInTheDocument();
+    expect(screen.getByText("AFLS")).toBeInTheDocument();
+    expect(screen.getByText("ABAS-3")).toBeInTheDocument();
+    expect(screen.getAllByText("No extracted block found.").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand Adaptive and Functional Measure Summaries" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "Adaptive Measure Summaries\n- VB-MAPP: VB-MAPP Assessment Summary: Preserve as assessment block.\n- Vineland: Vineland Assessment Summary: Preserve as assessment block.\n- AFLS: AFLS Assessment Summary: Preserve as assessment block.\n- ABAS-3: No extracted block found.",
+      );
+    });
+  });
+
   it("renders generic structured placeholders as staff-readable copy instead of raw JSON", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string) => {
       if (path.startsWith("/api/assessment-template-layout?")) {

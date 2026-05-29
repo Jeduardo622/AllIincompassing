@@ -29,7 +29,8 @@ const fetchParticipantNamesByThread = async (
   threadIds: string[],
   currentUserId: string,
 ): Promise<Map<string, string[]>> => {
-  const participantNames = await Promise.all(threadIds.map(async (threadId) => {
+  const uniqueThreadIds = Array.from(new Set(threadIds));
+  const participantNames = await Promise.all(uniqueThreadIds.map(async (threadId) => {
     const names = await fetchThreadParticipantNames(threadId);
     return [
       threadId,

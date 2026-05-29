@@ -7,6 +7,13 @@ type RpcParticipantNameRow = {
 
 const inFlightParticipantNameRequests = new Map<string, Promise<Map<string, string>>>();
 
+const auth = supabase.auth;
+if (auth?.onAuthStateChange) {
+  void auth.onAuthStateChange(() => {
+    inFlightParticipantNameRequests.clear();
+  });
+}
+
 /**
  * Thread-scoped display names for message senders.
  * Uses SECURITY DEFINER RPC so participants can resolve co-participant names

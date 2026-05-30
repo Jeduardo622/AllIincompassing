@@ -1091,7 +1091,7 @@ describe("IehpFbaLayoutReview", () => {
                     { assessment_type: "VB-MAPP", raw_text: "VB-MAPP Assessment Summary: Preserve as assessment block." },
                     { assessment_type: "Vineland", raw_text: "Vineland Assessment Summary: Preserve as assessment block." },
                     { assessment_type: "AFLS", raw_text: "AFLS Assessment Summary: Preserve as assessment block." },
-                    { assessment_type: "ABAS-3", raw_text: "" },
+                    { assessment_type: "ABAS-3", raw_text: null },
                   ],
                 },
                 source_span: { page_number: 10, method: "iehp_section_anchor" },
@@ -1118,13 +1118,13 @@ describe("IehpFbaLayoutReview", () => {
     expect(screen.getByText("Vineland")).toBeInTheDocument();
     expect(screen.getByText("AFLS")).toBeInTheDocument();
     expect(screen.getByText("ABAS-3")).toBeInTheDocument();
-    expect(screen.getAllByText("No extracted block found.").length).toBeGreaterThan(0);
+    expect(screen.getByText("ABAS-3 content was not found in the source document text; clinician review is required.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand Adaptive and Functional Measure Summaries" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        "Adaptive Measure Summaries\n- VB-MAPP: VB-MAPP Assessment Summary: Preserve as assessment block.\n- Vineland: Vineland Assessment Summary: Preserve as assessment block.\n- AFLS: AFLS Assessment Summary: Preserve as assessment block.\n- ABAS-3: No extracted block found.",
+        "Adaptive Measure Summaries\n- VB-MAPP: VB-MAPP Assessment Summary: Preserve as assessment block.\n- Vineland: Vineland Assessment Summary: Preserve as assessment block.\n- AFLS: AFLS Assessment Summary: Preserve as assessment block.\n- ABAS-3: ABAS-3 content was not found in the source document text; clinician review is required.",
       );
     });
   });

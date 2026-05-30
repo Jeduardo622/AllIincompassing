@@ -138,6 +138,7 @@ interface GenerateDocxFunctionResponse {
 
 const CALOPTIMA_TEMPLATE_PATH = resolve(process.cwd(), "CalOptima Health FBA Template (2).pdf");
 const IEHP_DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const ASSESSMENT_GENERATION_SECRET_HEADER = "x-assessment-generation-secret";
 
 const deriveFilledPagesFallback = (
   renderMap: Awaited<ReturnType<typeof loadCalOptimaPdfRenderMap>>,
@@ -314,7 +315,7 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     const authorizationResult = await fetchJson<AuthorizationRow[]>(
       `${supabaseUrl}/rest/v1/authorizations?select=member_id,insurance_provider:insurance_providers(name)&organization_id=eq.${encodeURIComponent(
         organizationId,
-      )}&client_id=eq.${encodeURIComponent(assessmentDocument.client_id)}&status=eq.active&order=start_date.desc&limit=1`,
+      )}&client_id=eq.${encodeURIComponent(assessmentDocument.client_id)}&status=eq.active&order=start_date.desc`,
       { method: "GET", headers },
     );
     const activeAuthorizations =
@@ -371,11 +372,19 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     const timestamp = Date.now();
     const filename = `generated-iehp-fba-${assessmentDocument.id}-${timestamp}.docx`;
     const outputObjectPath = `clients/${assessmentDocument.client_id}/assessments/${filename}`;
+    const generationSecret = process.env.ASSESSMENT_GENERATION_SECRET?.trim();
+    if (!generationSecret) {
+      return json({ error: "IEHP DOCX generation credential is not configured." }, 500);
+    }
+
     const functionResult = await fetchJson<GenerateDocxFunctionResponse>(
       `${supabaseUrl}/functions/v1/generate-assessment-plan-docx`,
       {
         method: "POST",
-        headers,
+        headers: {
+          ...headers,
+          [ASSESSMENT_GENERATION_SECRET_HEADER]: generationSecret,
+        },
         body: JSON.stringify({
           assessment_document_id: assessmentDocument.id,
           template_type: "iehp_fba",

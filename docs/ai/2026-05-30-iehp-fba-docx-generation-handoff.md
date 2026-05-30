@@ -5,6 +5,8 @@
 - Implemented final-generation support for synthetic/redacted IEHP FBA reviews through the existing `/api/assessment-plan-pdf` route.
 - Added IEHP preflight behavior for approved checklist rows, approved structured sections, accepted/edited draft programs and goals, required output fields, and unresolved manual-review adaptive summaries.
 - Added a Supabase Edge Function that fills table-coordinate IEHP FBA DOCX fields, appends generated values for non-coordinate narrative fields, and writes the generated artifact under the existing `client-documents` assessment path convention.
+- Hardened the DOCX Edge Function so caller-supplied field values are accepted only from the server generation route using `ASSESSMENT_GENERATION_SECRET`; direct therapist JWT calls cannot upload arbitrary clinical values.
+- IEHP member ID selection now considers all active authorizations and prefers an IEHP/Inland Empire payer member ID before falling back to the newest active member ID.
 
 ## Route Classification
 
@@ -12,6 +14,7 @@
 - lane: critical
 - triggering paths: `src/server/**`, `supabase/functions/**`, storage writes, tenant-scoped assessment data
 - tenant boundary: generation reads only the caller-org assessment review rows and writes only a generated DOCX under that assessment document's client storage prefix.
+- server boundary: the Netlify server route builds/revalidates the approved payload and calls the DOCX Edge Function with `x-assessment-generation-secret`; the same `ASSESSMENT_GENERATION_SECRET` must be configured in Netlify and Supabase Edge Function environments.
 
 ## Verification Card
 
@@ -27,6 +30,7 @@
 - The committed IEHP DOCX template has no literal `{{IEHP_FBA_*}}` tokens. The generator fills table-coordinate fields from template layout metadata and appends non-coordinate values as a generated field-values section so no mapped approved content is silently dropped.
 - Hosted smoke should use a synthetic IEHP assessment only, then verify storage metadata, signed URL creation, and `plan_docx_generated` review event insertion.
 - Manual-review adaptive blocks are treated as blockers unless approved text exists; the generator does not invent missing clinical content.
+- Deployment must configure matching `ASSESSMENT_GENERATION_SECRET` values before IEHP DOCX generation can succeed; the function fails closed when the secret is absent or mismatched.
 
 ## Recommended Next Slice
 

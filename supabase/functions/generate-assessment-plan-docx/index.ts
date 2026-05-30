@@ -12,6 +12,7 @@ const CONTENT_TYPE =
 const BUCKET_ID = "client-documents";
 const TEMPLATE_URL = new URL("./fill_docs/Updated FBA -IEHP.docx", import.meta.url);
 const PLACEHOLDER_PATTERN = /\{\{([A-Z0-9_]+)\}\}/g;
+const ASSESSMENT_GENERATION_SECRET_HEADER = "x-assessment-generation-secret";
 
 const requestSchema = z.object({
   assessment_document_id: z.string().uuid(),
@@ -71,6 +72,7 @@ interface GenerateAssessmentPlanDocxDeps {
   createRequestClient: (req: Request) => AssessmentDocumentQueryBuilder;
   resolveOrgId: (client: AssessmentDocumentQueryBuilder) => Promise<string | null>;
   supabaseAdmin: AssessmentPlanDocxStorageClient;
+  generationSecret: string | null;
   readTemplateBytes: () => Promise<Uint8Array>;
   fillDocx: (
     templateBytes: Uint8Array,
@@ -92,6 +94,19 @@ const escapeXmlText = (value: string): string =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+
+const timingSafeEqual = (left: string, right: string): boolean => {
+  const encoder = new TextEncoder();
+  const leftBytes = encoder.encode(left);
+  const rightBytes = encoder.encode(right);
+  if (leftBytes.length !== rightBytes.length) return false;
+
+  let diff = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    diff |= leftBytes[index] ^ rightBytes[index];
+  }
+  return diff === 0;
+};
 
 export function applyPlaceholdersToXml(
   xml: string,
@@ -254,6 +269,15 @@ export const createGenerateAssessmentPlanDocxHandler =
       return jsonResponse({ error: "Method not allowed" }, 405);
     }
 
+    const configuredSecret = deps.generationSecret?.trim() ?? "";
+    if (!configuredSecret) {
+      return jsonResponse({ error: "DOCX generation credential is not configured." }, 500);
+    }
+    const requestSecret = req.headers.get(ASSESSMENT_GENERATION_SECRET_HEADER)?.trim() ?? "";
+    if (!timingSafeEqual(requestSecret, configuredSecret)) {
+      return jsonResponse({ error: "Forbidden" }, 403);
+    }
+
     let payload: unknown;
     try {
       payload = await req.json();
@@ -345,6 +369,7 @@ export const generateAssessmentPlanDocxHandler =
     createRequestClient: createRequestClient as unknown as (req: Request) => AssessmentDocumentQueryBuilder,
     resolveOrgId: resolveOrgId as unknown as (client: AssessmentDocumentQueryBuilder) => Promise<string | null>,
     supabaseAdmin: supabaseAdmin as unknown as AssessmentPlanDocxStorageClient,
+    generationSecret: Deno.env.get("ASSESSMENT_GENERATION_SECRET") ?? null,
     readTemplateBytes: () => Deno.readFile(TEMPLATE_URL),
     fillDocx: fillDocxTemplate,
   });

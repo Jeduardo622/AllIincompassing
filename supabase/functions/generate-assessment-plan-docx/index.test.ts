@@ -18,13 +18,14 @@ const validPayload = {
     "clients/af87b28a-d0cf-4c73-8bce-8f1889b77c34/assessments/generated-iehp-fba-41df4f57-1a22-4df1-b05f-cf8f3675267c-1778712054626.docx",
 };
 
-const postRequest = (payload: unknown): Request =>
+const postRequest = (payload: unknown, generationSecret = "server-generation-secret"): Request =>
   new Request("https://edge.test/generate-assessment-plan-docx", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer test-token",
       apikey: "anon",
+      "x-assessment-generation-secret": generationSecret,
     },
     body: JSON.stringify(payload),
   });
@@ -69,6 +70,7 @@ const createTestHandler = ({
   organizationId = "org-1",
   documentResult = validDocumentResult,
   templateBytes = new Uint8Array([1, 2, 3]),
+  generationSecret = "server-generation-secret",
   fillDocx = () =>
     Promise.resolve({
       bytes: new Uint8Array([4, 5, 6]),
@@ -81,10 +83,12 @@ const createTestHandler = ({
   organizationId?: string | null;
   documentResult?: typeof validDocumentResult;
   templateBytes?: Uint8Array;
+  generationSecret?: string | null;
   fillDocx?: (templateBytes: Uint8Array, fields: Record<string, string>) => Promise<{
     bytes: Uint8Array;
     unresolved_placeholder_count: number;
     unresolved_placeholders: string[];
+    changed_field_count: number;
   }>;
   admin?: ReturnType<typeof createAdminStorage>;
 } = {}) =>
@@ -92,6 +96,7 @@ const createTestHandler = ({
     createRequestClient: createRequestClientForDocument(documentResult),
     resolveOrgId: () => Promise.resolve(organizationId),
     supabaseAdmin: admin,
+    generationSecret,
     readTemplateBytes: () => Promise.resolve(templateBytes),
     fillDocx,
   });
@@ -122,6 +127,22 @@ Deno.test("isAllowedAssessmentPlanDocxOutputTarget only allows scoped generated 
       assessmentDocumentId,
     }),
   ).toBe(false);
+});
+
+Deno.test("generateAssessmentPlanDocxHandler rejects calls without the server generation credential", async () => {
+  const handler = createTestHandler();
+  const response = await handler(postRequest(validPayload, "wrong-secret"));
+
+  expect(response.status).toBe(403);
+  expect(await response.json()).toEqual({ error: "Forbidden" });
+});
+
+Deno.test("generateAssessmentPlanDocxHandler fails closed when the server generation credential is not configured", async () => {
+  const handler = createTestHandler({ generationSecret: null });
+  const response = await handler(postRequest(validPayload));
+
+  expect(response.status).toBe(500);
+  expect(await response.json()).toEqual({ error: "DOCX generation credential is not configured." });
 });
 
 Deno.test("generateAssessmentPlanDocxHandler rejects invalid storage scope", async () => {

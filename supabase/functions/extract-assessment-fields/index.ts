@@ -1190,7 +1190,7 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
         { assessment_type: "Vineland", raw_text: compact.match(/Vineland[\s\S]*?(?=VB-MAPP|AFLS|ABAS-3|$)/i)?.[0] ?? null },
         { assessment_type: "AFLS", raw_text: compact.match(/AFLS[\s\S]*?(?=VB-MAPP|Vineland|ABAS-3|$)/i)?.[0] ?? null },
         { assessment_type: "ABAS-3", raw_text: compact.match(/ABAS-3[\s\S]*?(?=VB-MAPP|Vineland|AFLS|$)/i)?.[0] ?? null },
-      ].filter((block) => block.raw_text),
+      ],
       measure_name: compact.match(/(Vineland Adaptive Behavior Scales,\s*3rd Edition)/i)?.[1] ?? null,
       date_administered: compact.match(/Date Administered\s*:?\s*([0-9/]+)/i)?.[1] ?? null,
       interviewer: normalizeExtractedValue(compact.match(/Name of Interviewer\s*:?\s*(.+?)(?=Name of Respondent|Assessment Summary|$)/i)?.[1] ?? ""),

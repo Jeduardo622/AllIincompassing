@@ -673,6 +673,44 @@ Deno.test("extractStructuredSections maps LE-style IEHP headings into normalized
   expect(skillAndParentGoals.filter((section) => section.payload.goal_type === "parent")).toHaveLength(1);
 });
 
+Deno.test("extractStructuredSections preserves IEHP adaptive measure block slots when source content is missing", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      DESCRIPTION OF ASSESSMENT PROCEDURES:
+      Procedures: Date and Location: Person involved (indicate credentials):
+      Records Reviewed: 12/05/2025 Telehealth BCBA
+      Preference Assessment
+      Preference Areas: Potential Reinforcers:
+      Social praise
+      ASSESSMENT MEAURES:
+      Vineland Adaptive Behavior Scales, 3rd Edition
+      Date Administered: 12/01/2025
+      Name of Interviewer: Test BCBA
+      Name of Respondent: Caregiver One
+      Assessment Summary: Adaptive functioning summary.
+      Target Behaviors
+      TARGET BEHAVIORS:
+      Program Name: Physical aggression
+      Instrumental Goal: Reduce aggression.
+      Data Collection: Rate.
+      Mastery Criteria: 0x per hour.
+      Baseline: 3x per hour.
+    `,
+  );
+
+  const adaptivePayload = sections.find((section) => section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES")?.payload;
+  expect(adaptivePayload?.assessment_blocks).toEqual([
+    { assessment_type: "VB-MAPP", raw_text: null },
+    expect.objectContaining({
+      assessment_type: "Vineland",
+      raw_text: expect.stringContaining("Vineland Adaptive Behavior Scales"),
+    }),
+    { assessment_type: "AFLS", raw_text: null },
+    { assessment_type: "ABAS-3", raw_text: null },
+  ]);
+});
+
 Deno.test("extractStructuredSections recognizes blank-template IEHP heading aliases", () => {
   const sections = asSections(
     "iehp_fba",

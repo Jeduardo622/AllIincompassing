@@ -11,9 +11,11 @@ import {
   resolveOrgAndRole,
 } from "./shared";
 import { buildCalOptimaTemplatePayload, loadCalOptimaPdfRenderMap } from "../assessmentPlanPdf";
+import { buildIehpDocxPayload } from "../iehpAssessmentDocx";
 
 const requestSchema = z.object({
   assessment_document_id: z.string().uuid(),
+  preflight_only: z.boolean().optional(),
 });
 
 interface AssessmentDocumentRow {
@@ -22,6 +24,7 @@ interface AssessmentDocumentRow {
   client_id: string;
   status: string;
   template_type: string;
+  template_version_id?: string | null;
 }
 
 interface ChecklistItemRow {
@@ -53,6 +56,15 @@ interface DraftGoalRow {
   title: string;
   description: string;
   original_text: string;
+  goal_type?: "child" | "parent" | null;
+  target_behavior?: string | null;
+  measurement_type?: string | null;
+  baseline_data?: string | null;
+  target_criteria?: string | null;
+  mastery_criteria?: string | null;
+  maintenance_criteria?: string | null;
+  generalization_criteria?: string | null;
+  objective_data_points?: Array<Record<string, unknown>> | null;
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
 
@@ -86,6 +98,11 @@ interface TherapistRow {
   phone?: string | null;
 }
 
+interface AuthorizationRow {
+  member_id?: string | null;
+  insurance_provider?: { name?: string | null } | null;
+}
+
 interface GeneratePdfFunctionResponse {
   fill_mode: "acroform" | "overlay" | "mixed";
   bucket_id: string;
@@ -103,7 +120,24 @@ interface GeneratePdfFunctionResponse {
   filled_pages?: number[];
 }
 
+interface TemplateFieldRow {
+  field_key: string;
+  required: boolean;
+  layout_json?: Record<string, unknown> | null;
+}
+
+interface GenerateDocxFunctionResponse {
+  bucket_id: string;
+  object_path: string;
+  signed_url: string;
+  filename: string;
+  content_type: string;
+  unresolved_placeholder_count?: number;
+  unresolved_placeholders?: string[];
+}
+
 const CALOPTIMA_TEMPLATE_PATH = resolve(process.cwd(), "CalOptima Health FBA Template (2).pdf");
+const IEHP_DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 const deriveFilledPagesFallback = (
   renderMap: Awaited<ReturnType<typeof loadCalOptimaPdfRenderMap>>,
@@ -159,7 +193,7 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
   };
 
   const documentResult = await fetchJson<AssessmentDocumentRow[]>(
-    `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type&id=eq.${encodeURIComponent(
+    `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id&id=eq.${encodeURIComponent(
       parsed.data.assessment_document_id,
     )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
     { method: "GET", headers },
@@ -168,8 +202,8 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
   if (!documentResult.ok || !assessmentDocument) {
     return json({ error: "assessment_document_id is not in scope for this organization" }, 403);
   }
-  if (assessmentDocument.template_type !== "caloptima_fba") {
-    return json({ error: "PDF generation is currently supported only for CalOptima template assessments." }, 409);
+  if (assessmentDocument.template_type !== "caloptima_fba" && assessmentDocument.template_type !== "iehp_fba") {
+    return json({ error: "Generation is not supported for this assessment template." }, 409);
   }
 
   const [checklistResult, structuredSectionsResult, draftProgramsResult, draftGoalsResult, clientResult] = await Promise.all([
@@ -194,7 +228,7 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
       { method: "GET", headers },
     ),
     fetchJson<DraftGoalRow[]>(
-      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,title,description,original_text,accept_state&organization_id=eq.${encodeURIComponent(
+      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,title,description,original_text,goal_type,target_behavior,measurement_type,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,accept_state&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocument.id)}&order=created_at.asc`,
       { method: "GET", headers },
@@ -217,16 +251,6 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     ...checklistItems.filter((item) => item.required && item.status !== "approved").map((item) => item.placeholder_key),
     ...structuredSections.filter((item) => item.required && item.status !== "approved").map((item) => item.field_key),
   ];
-  if (requiredPending.length > 0) {
-    return json(
-      {
-        error: "Required checklist and structured section items must be approved before generating the treatment plan PDF.",
-        pending_required_count: requiredPending.length,
-        pending_required_keys: requiredPending,
-      },
-      409,
-    );
-  }
 
   const acceptedProgram =
     (draftProgramsResult.data ?? []).find((program) => program.accept_state === "accepted" || program.accept_state === "edited") ??
@@ -235,13 +259,26 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
   );
 
-  if (!acceptedProgram || acceptedGoals.length === 0) {
-    return json({ error: "Accepted draft program and goals are required before PDF generation." }, 409);
-  }
-
   const client = Array.isArray(clientResult.data) ? clientResult.data[0] : null;
   if (!client) {
     return json({ error: "Client is out of scope for this organization." }, 403);
+  }
+
+  if (assessmentDocument.template_type === "caloptima_fba") {
+    if (requiredPending.length > 0) {
+      return json(
+        {
+          error: "Required checklist and structured section items must be approved before generating the treatment plan PDF.",
+          pending_required_count: requiredPending.length,
+          pending_required_keys: requiredPending,
+        },
+        409,
+      );
+    }
+
+    if (!acceptedProgram || acceptedGoals.length === 0) {
+      return json({ error: "Accepted draft program and goals are required before PDF generation." }, 409);
+    }
   }
 
   const actorId = getAccessTokenSubject(accessToken);
@@ -256,6 +293,138 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     if (therapistResult.ok && Array.isArray(therapistResult.data) && therapistResult.data[0]) {
       writer = therapistResult.data[0];
     }
+  }
+
+  if (assessmentDocument.template_type === "iehp_fba") {
+    if (!assessmentDocument.template_version_id) {
+      return json({ error: "IEHP assessment template version is required for DOCX generation." }, 409);
+    }
+
+    const templateFieldsResult = await fetchJson<TemplateFieldRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_template_fields?select=field_key,required,layout_json&template_version_id=eq.${encodeURIComponent(
+        assessmentDocument.template_version_id,
+      )}&order=page_number.asc,field_key.asc`,
+      { method: "GET", headers },
+    );
+
+    if (!templateFieldsResult.ok) {
+      return json({ error: "Failed to load IEHP template fields for DOCX generation" }, 500);
+    }
+
+    const authorizationResult = await fetchJson<AuthorizationRow[]>(
+      `${supabaseUrl}/rest/v1/authorizations?select=member_id,insurance_provider:insurance_providers(name)&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&client_id=eq.${encodeURIComponent(assessmentDocument.client_id)}&status=eq.active&order=start_date.desc&limit=1`,
+      { method: "GET", headers },
+    );
+    const activeAuthorizations =
+      authorizationResult.ok && Array.isArray(authorizationResult.data)
+        ? authorizationResult.data.filter((row) => typeof row.member_id === "string" && row.member_id.trim())
+        : [];
+    const authorizationMemberId =
+      activeAuthorizations.find((row) => /iehp|inland\s+empire/i.test(row.insurance_provider?.name ?? ""))?.member_id?.trim() ??
+      activeAuthorizations[0]?.member_id?.trim() ??
+      null;
+
+    const acceptedPrograms = (draftProgramsResult.data ?? []).filter(
+      (program) => program.accept_state === "accepted" || program.accept_state === "edited",
+    );
+    const acceptedGoals = (draftGoalsResult.data ?? []).filter(
+      (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
+    );
+    const pendingDraftProgramCount = (draftProgramsResult.data ?? []).filter((program) => program.accept_state === "pending").length;
+    const pendingDraftGoalCount = (draftGoalsResult.data ?? []).filter((goal) => goal.accept_state === "pending").length;
+
+    const payloadResult = buildIehpDocxPayload({
+      templateFields: templateFieldsResult.data ?? [],
+      checklistItems,
+      structuredSections,
+      client,
+      authorizationMemberId,
+      writer,
+      acceptedPrograms,
+      acceptedGoals,
+      pendingDraftProgramCount,
+      pendingDraftGoalCount,
+    });
+
+    if (parsed.data.preflight_only) {
+      return json({
+        assessment_document_id: assessmentDocument.id,
+        generated_file_type: "docx",
+        preflight: payloadResult.preflight,
+      });
+    }
+
+    if (!payloadResult.preflight.ready) {
+      return json(
+        {
+          error: "IEHP DOCX generation is blocked by review preflight.",
+          assessment_document_id: assessmentDocument.id,
+          generated_file_type: "docx",
+          preflight: payloadResult.preflight,
+        },
+        409,
+      );
+    }
+
+    const timestamp = Date.now();
+    const filename = `generated-iehp-fba-${assessmentDocument.id}-${timestamp}.docx`;
+    const outputObjectPath = `clients/${assessmentDocument.client_id}/assessments/${filename}`;
+    const functionResult = await fetchJson<GenerateDocxFunctionResponse>(
+      `${supabaseUrl}/functions/v1/generate-assessment-plan-docx`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          assessment_document_id: assessmentDocument.id,
+          template_type: "iehp_fba",
+          field_values: payloadResult.values,
+          field_layouts: (templateFieldsResult.data ?? []).map((field) => ({
+            field_key: field.field_key,
+            layout_json: field.layout_json ?? null,
+          })),
+          output_bucket_id: "client-documents",
+          output_object_path: outputObjectPath,
+        }),
+      },
+    );
+
+    if (!functionResult.ok || !functionResult.data) {
+      return json({ error: "Failed to generate completed IEHP DOCX." }, functionResult.status || 500);
+    }
+
+    await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        assessment_document_id: assessmentDocument.id,
+        organization_id: organizationId,
+        client_id: assessmentDocument.client_id,
+        item_type: "document",
+        item_id: assessmentDocument.id,
+        action: "plan_docx_generated",
+        actor_id: actorId,
+        event_payload: {
+          generated_bucket_id: functionResult.data.bucket_id,
+          generated_object_path: functionResult.data.object_path,
+          unresolved_placeholder_count: functionResult.data.unresolved_placeholder_count ?? 0,
+          unresolved_placeholders: functionResult.data.unresolved_placeholders ?? [],
+          preflight_warning_count: payloadResult.preflight.warnings.length,
+        },
+      }),
+    });
+
+    return json({
+      assessment_document_id: assessmentDocument.id,
+      generated_file_type: "docx",
+      content_type: functionResult.data.content_type || IEHP_DOCX_CONTENT_TYPE,
+      filename: functionResult.data.filename,
+      bucket_id: functionResult.data.bucket_id,
+      object_path: functionResult.data.object_path,
+      signed_url: functionResult.data.signed_url,
+      preflight: payloadResult.preflight,
+    });
   }
 
   const renderMap = await loadCalOptimaPdfRenderMap();

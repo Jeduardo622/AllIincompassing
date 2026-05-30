@@ -591,7 +591,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const uploadAssessmentTemplateLabel = TEMPLATE_LABELS[assessmentTemplateType];
   const selectedAssessmentIsIehp = selectedAssessmentDocument?.template_type === "iehp_fba";
   const exportAssessmentPdfLabel = selectedAssessmentIsIehp
-    ? "IEHP PDF export not available"
+    ? "Generate completed IEHP DOCX"
     : `Optional: Export Completed ${selectedAssessmentTemplateLabel} PDF`;
   useEffect(() => {
     if (!selectedAssessmentId || selectedAssessmentDocument?.status !== "drafted") {
@@ -981,13 +981,24 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       });
       const result = await parseJson<AssessmentPlanPdfResponse>(response);
       if (!response.ok) {
-        throw new Error("Unable to generate completed treatment plan PDF. Ensure required checklist rows are approved.");
+        const blockers = result.preflight?.blockers ?? [];
+        if (blockers.length > 0) {
+          const blockerText = blockers
+            .map((blocker) => blocker.key ?? (typeof blocker.count === "number" ? `${blocker.code} (${blocker.count})` : blocker.code))
+            .join("; ");
+          throw new Error(`IEHP preflight blockers: ${blockerText}`);
+        }
+        throw new Error("Unable to generate completed treatment plan. Ensure required checklist rows are approved.");
       }
       return result;
     },
     onSuccess: (result) => {
       if (typeof window !== "undefined" && result.signed_url) {
         window.open(result.signed_url, "_blank", "noopener,noreferrer");
+      }
+      if (result.generated_file_type === "docx") {
+        showSuccess("Completed IEHP DOCX generated.");
+        return;
       }
       const modeLabel =
         result.fill_mode === "acroform" ? "AcroForm" : result.fill_mode === "mixed" ? "mixed AcroForm/overlay" : "overlay";
@@ -1460,11 +1471,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => generateAssessmentPlanPdf.mutate()}
-                disabled={!canQuerySelectedAssessment || selectedAssessmentIsIehp || hasPendingRequiredChecklistItems || generateAssessmentPlanPdf.isLoading}
+                disabled={!canQuerySelectedAssessment || hasPendingRequiredChecklistItems || generateAssessmentPlanPdf.isLoading}
                 title={
-                  selectedAssessmentIsIehp
-                    ? "Completed PDF export is currently supported only for CalOptima FBA documents."
-                    : hasPendingRequiredChecklistItems
+                  hasPendingRequiredChecklistItems
                       ? "Approve all required checklist and structured fields before export."
                       : undefined
                 }

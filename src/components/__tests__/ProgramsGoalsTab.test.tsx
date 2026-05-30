@@ -1800,7 +1800,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(await screen.findByRole("heading", { name: "IEHP FBA Checklist Review" })).toBeInTheDocument();
     expect(await screen.findByText("IEHP FBA document-style review")).toBeInTheDocument();
     expect(await screen.findByText("Page 1: General Information")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /IEHP PDF export not available/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Generate completed IEHP DOCX/i })).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Optional: Export Completed CalOptima FBA PDF/i }),
     ).not.toBeInTheDocument();
@@ -2506,6 +2506,159 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(openSpy).toHaveBeenCalledWith("https://example.com/generated-plan.pdf", "_blank", "noopener,noreferrer");
     expect(showSuccess).toHaveBeenCalledWith("Completed CalOptima PDF generated (overlay mode).");
     openSpy.mockRestore();
+  });
+
+  it("generates completed IEHP DOCX and opens the returned signed URL", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify({ items: [], structured_sections: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "iehp-fba.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/iehp-fba.docx",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-plan-pdf") {
+        return new Response(
+          JSON.stringify({
+            generated_file_type: "docx",
+            content_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename: "generated-iehp-fba.docx",
+            bucket_id: "client-documents",
+            object_path: "clients/client-1/assessments/generated-iehp-fba.docx",
+            signed_url: "https://example.com/generated-iehp-fba.docx",
+            preflight: { ready: true, blockers: [], warnings: [] },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("iehp-fba.docx");
+    const generateDocxButton = screen.getByRole("button", { name: /Generate completed IEHP DOCX/i });
+    await waitFor(() => {
+      expect(generateDocxButton).not.toBeDisabled();
+    });
+    await user.click(generateDocxButton);
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-plan-pdf",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    expect(openSpy).toHaveBeenCalledWith("https://example.com/generated-iehp-fba.docx", "_blank", "noopener,noreferrer");
+    expect(showSuccess).toHaveBeenCalledWith("Completed IEHP DOCX generated.");
+    openSpy.mockRestore();
+  });
+
+  it("shows actionable IEHP preflight blockers from generation responses", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify({ items: [], structured_sections: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "iehp-fba.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/iehp-fba.docx",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-plan-pdf") {
+        return new Response(
+          JSON.stringify({
+            error: "IEHP DOCX generation is blocked by review preflight.",
+            preflight: {
+              ready: false,
+              blockers: [
+                { code: "unapproved_required_checklist", key: "IEHP_FBA_REASON_FOR_REFERRAL", message: "Required field is not approved." },
+                { code: "pending_draft_goals", count: 2, message: "Draft goals are still pending review." },
+              ],
+              warnings: [],
+            },
+          }),
+          { status: 409 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("iehp-fba.docx");
+    const generateDocxButton = screen.getByRole("button", { name: /Generate completed IEHP DOCX/i });
+    await waitFor(() => {
+      expect(generateDocxButton).not.toBeDisabled();
+    });
+    await user.click(generateDocxButton);
+
+    await waitFor(() => {
+      expect(showError).toHaveBeenCalled();
+    });
+    expect(vi.mocked(showError).mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        message: expect.stringContaining("IEHP preflight blockers: IEHP_FBA_REASON_FOR_REFERRAL; pending_draft_goals (2)"),
+      }),
+    );
   });
 
   it("warns operators when generated CalOptima PDF has layout overflow warnings", async () => {

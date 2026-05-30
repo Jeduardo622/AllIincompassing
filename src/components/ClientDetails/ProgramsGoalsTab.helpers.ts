@@ -60,9 +60,23 @@ export interface AssessmentDraftResponse {
 }
 
 export interface AssessmentPlanPdfResponse {
-  fill_mode: "acroform" | "overlay" | "mixed";
+  fill_mode?: "acroform" | "overlay" | "mixed";
+  generated_file_type?: "pdf" | "docx";
+  content_type?: string;
+  filename?: string;
+  bucket_id?: string;
   signed_url: string;
   object_path: string;
+  preflight?: {
+    ready: boolean;
+    blockers: Array<{
+      code: string;
+      key?: string;
+      count?: number;
+      message?: string;
+    }>;
+    warnings: string[];
+  };
   layout_warnings?: Array<{
     placeholder_key: string;
     page: number;

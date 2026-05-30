@@ -59,61 +59,6 @@ let currentUserMetadata: Record<string, unknown> = { organization_id: 'org-123' 
 const inviteTokens: StoredInviteToken[] = [];
 const adminActionRows: Array<Record<string, unknown>> = [];
 
-const createInviteTableClient = () => {
-  const state: { email?: string; organizationId?: string } = {};
-  const builder: any = {
-    select: vi.fn(() => builder),
-    eq: vi.fn((column: string, value: string) => {
-      if (column === 'email') state.email = value;
-      if (column === 'organization_id') state.organizationId = value;
-      return builder;
-    }),
-    order: vi.fn(() => builder),
-    limit: vi.fn(() => builder),
-    maybeSingle: vi.fn(async () => {
-      const filtered = inviteTokens
-        .filter(token =>
-          (state.email ? token.email === state.email : true)
-          && (state.organizationId ? token.organization_id === state.organizationId : true),
-        )
-        .sort((a, b) => b.created_at.localeCompare(a.created_at));
-      const record = filtered[0];
-      return { data: record ? { id: record.id, expires_at: record.expires_at } : null, error: null };
-    }),
-    insert: (value: Record<string, unknown>) => {
-      const record = Array.isArray(value) ? value[0] : value;
-      const id = (record.id as string) ?? crypto.randomUUID();
-      const stored: StoredInviteToken = {
-        id,
-        email: record.email as string,
-        organization_id: record.organization_id as string,
-        token_hash: record.token_hash as string,
-        expires_at: record.expires_at as string,
-        created_by: record.created_by as string,
-        created_at: new Date().toISOString(),
-        role: (record.role as string) ?? 'admin',
-      };
-      inviteTokens.push(stored);
-      return {
-        select: () => ({
-          single: async () => ({ data: { id: stored.id, expires_at: stored.expires_at }, error: null }),
-        }),
-      };
-    },
-    delete: () => ({
-      eq: (column: string, value: string) => {
-        if (column !== 'id') throw new Error(`Unexpected delete column ${column}`);
-        const index = inviteTokens.findIndex(token => token.id === value);
-        if (index >= 0) {
-          inviteTokens.splice(index, 1);
-        }
-        return { error: null };
-      },
-    }),
-  };
-  return builder;
-};
-
 const createMockClient = () => ({
   auth: {
     getUser: vi.fn(async () => ({
@@ -121,10 +66,65 @@ const createMockClient = () => ({
       error: null,
     })),
   },
-  from: (table: string) => {
-    if (table === 'admin_invite_tokens') {
-      return createInviteTableClient();
+  rpc: vi.fn(async (functionName: string, params: Record<string, unknown>) => {
+    if (functionName !== 'create_admin_invite_token_rate_limited') {
+      throw new Error(`Unexpected RPC ${functionName}`);
     }
+
+    const email = String(params.p_email);
+    const organizationId = String(params.p_organization_id);
+    const createdBy = String(params.p_created_by);
+    const now = Date.now();
+    const activeToken = inviteTokens
+      .filter(token => token.email === email && token.organization_id === organizationId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+
+    if (activeToken && new Date(activeToken.expires_at).getTime() > now) {
+      return {
+        data: [{ id: activeToken.id, expires_at: activeToken.expires_at, status: 'active_invite_exists' }],
+        error: null,
+      };
+    }
+
+    for (let index = inviteTokens.length - 1; index >= 0; index -= 1) {
+      const token = inviteTokens[index];
+      if (
+        token.email === email
+        && token.organization_id === organizationId
+        && new Date(token.expires_at).getTime() <= now
+      ) {
+        inviteTokens.splice(index, 1);
+      }
+    }
+
+    const windowStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const limit = 10;
+    const recentInviteCount = inviteTokens.filter(token =>
+      token.created_by === createdBy && token.created_at >= windowStart,
+    ).length;
+
+    if (recentInviteCount >= limit) {
+      return { data: [{ id: null, expires_at: null, status: 'rate_limited' }], error: null };
+    }
+
+    const stored: StoredInviteToken = {
+      id: crypto.randomUUID(),
+      email,
+      organization_id: organizationId,
+      token_hash: String(params.p_token_hash),
+      expires_at: String(params.p_expires_at),
+      created_by: createdBy,
+      created_at: new Date().toISOString(),
+      role: String(params.p_role ?? 'admin'),
+    };
+    inviteTokens.push(stored);
+
+    return {
+      data: [{ id: stored.id, expires_at: stored.expires_at, status: 'created' }],
+      error: null,
+    };
+  }),
+  from: (table: string) => {
     if (table === 'admin_actions') {
       return {
         insert: vi.fn(async (payload: Record<string, unknown>) => {
@@ -263,5 +263,88 @@ describe('admin invite edge function', () => {
       email: expiredEmail,
       email_delivery_status: 'sent',
     });
+  }, 20_000);
+
+  it('rejects replay while an active invite token already exists for the email and organization', async () => {
+    inviteTokens.push({
+      id: 'invite-active',
+      email: 'activeadmin@example.com',
+      organization_id: 'org-123',
+      token_hash: 'deadbeef',
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      created_by: 'admin-1',
+      created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      role: 'admin',
+    });
+
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'activeadmin@example.com' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'active_invite_exists' });
+    expect(inviteTokens).toHaveLength(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('rate limits excessive invite creation by the same admin', async () => {
+    const now = Date.now();
+    for (let index = 0; index < 10; index += 1) {
+      inviteTokens.push({
+        id: `invite-${index}`,
+        email: `candidate-${index}@example.com`,
+        organization_id: 'org-123',
+        token_hash: `hash-${index}`,
+        expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
+        created_by: 'admin-1',
+        created_at: new Date(now - index * 60 * 1000).toISOString(),
+        role: 'admin',
+      });
+    }
+
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'overflow@example.com' }),
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('3600');
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invite_rate_limit_exceeded',
+      retry_after_seconds: 3600,
+    });
+    expect(inviteTokens).toHaveLength(10);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('prevents standard admins from inviting super admins', async () => {
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'super@example.com', role: 'super_admin' }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: 'insufficient_role_for_target' });
+    expect(inviteTokens).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
   }, 20_000);
 });

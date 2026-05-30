@@ -13,6 +13,8 @@ const DEFAULT_EXPIRATION_HOURS = 72;
 const MIN_EXPIRATION_HOURS = 1;
 const MAX_EXPIRATION_HOURS = 24 * 7;
 const ADMIN_INVITE_PATH = "/admin/invite";
+const INVITE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const MAX_INVITES_PER_ADMIN_PER_WINDOW = 10;
 
 const InviteRequestSchema = z.object({
   email: z.string().email(),
@@ -29,24 +31,20 @@ const InviteRequestSchema = z.object({
 type InviteRequest = z.infer<typeof InviteRequestSchema>;
 
 type InviteTokenRecord = {
-  id: string;
+  id: string | null;
   expires_at: string | null;
-};
-
-type InviteLookupResult = {
-  data: InviteTokenRecord | null;
-  error: { message?: string } | null;
+  status: "active_invite_exists" | "created" | "rate_limited" | string;
 };
 
 type InsertInviteResult = {
-  data: InviteTokenRecord | null;
+  data: InviteTokenRecord[] | null;
   error: { message?: string } | null;
 };
 
-const jsonResponse = (status: number, body: Record<string, unknown>) =>
+const jsonResponse = (status: number, body: Record<string, unknown>, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders, ...headers, "Content-Type": "application/json" },
   });
 
 const extractOrganizationId = (metadata: Record<string, unknown> | null | undefined): string | null => {
@@ -172,60 +170,44 @@ async function handleInvite(req: Request, userContext: UserContext) {
     const now = new Date();
     const expiresInHours = payload.expiresInHours ?? DEFAULT_EXPIRATION_HOURS;
     const expiresAt = new Date(now.getTime() + expiresInHours * 60 * 60 * 1000);
-
-    const existingInvite = (await adminClient
-      .from("admin_invite_tokens")
-      .select("id, expires_at")
-      .eq("email", normalizedEmail)
-      .eq("organization_id", targetOrganizationId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()) as InviteLookupResult;
-
-    if (existingInvite.error) {
-      console.error("Failed to lookup existing invite", { code: 'invite_lookup_failed' });
-      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-      return jsonResponse(500, { error: "invite_lookup_failed" });
-    }
-
-    const activeInvite = existingInvite.data;
-    if (activeInvite?.expires_at) {
-      const expiresAtDate = new Date(activeInvite.expires_at);
-      if (!Number.isNaN(expiresAtDate.getTime()) && expiresAtDate.getTime() > now.getTime()) {
-        logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
-        return jsonResponse(409, { error: "active_invite_exists" });
-      }
-    }
-
-    if (activeInvite?.id) {
-      const { error: deleteError } = await adminClient
-        .from("admin_invite_tokens")
-        .delete()
-        .eq("id", activeInvite.id);
-
-      if (deleteError) {
-        console.error("Failed to prune expired invite", { code: 'invite_prune_failed' });
-      }
-    }
-
     const rawToken = crypto.randomUUID().replace(/-/g, "");
     const tokenHash = await hashToken(rawToken);
 
-    const insertedInvite = (await adminClient
-      .from("admin_invite_tokens")
-      .insert({
-        email: normalizedEmail,
-        token_hash: tokenHash,
-        organization_id: targetOrganizationId,
-        expires_at: expiresAt.toISOString(),
-        created_by: userContext.user.id,
-        role: desiredRole,
-      })
-      .select("id, expires_at")
-      .single()) as InsertInviteResult;
+    const insertedInvite = (await adminClient.rpc("create_admin_invite_token_rate_limited", {
+      p_email: normalizedEmail,
+      p_token_hash: tokenHash,
+      p_organization_id: targetOrganizationId,
+      p_expires_at: expiresAt.toISOString(),
+      p_created_by: userContext.user.id,
+      p_role: desiredRole,
+    })) as InsertInviteResult;
 
-    if (insertedInvite.error || !insertedInvite.data) {
+    if (insertedInvite.error || !insertedInvite.data?.[0]) {
       console.error("Failed to insert invite token", { code: 'invite_insert_failed' });
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
+      return jsonResponse(500, { error: "invite_creation_failed" });
+    }
+
+    const inviteResult = insertedInvite.data[0];
+    if (inviteResult.status === "active_invite_exists") {
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
+      return jsonResponse(409, { error: "active_invite_exists" });
+    }
+
+    if (inviteResult.status === "rate_limited") {
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 429);
+      return jsonResponse(
+        429,
+        {
+          error: "invite_rate_limit_exceeded",
+          retry_after_seconds: Math.ceil(INVITE_RATE_LIMIT_WINDOW_MS / 1000),
+        },
+        { "Retry-After": String(Math.ceil(INVITE_RATE_LIMIT_WINDOW_MS / 1000)) },
+      );
+    }
+
+    if (inviteResult.status !== "created" || !inviteResult.id || !inviteResult.expires_at) {
+      console.error("Unexpected invite RPC result", { code: 'invite_rpc_unexpected_status' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
       return jsonResponse(500, { error: "invite_creation_failed" });
     }
@@ -261,7 +243,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
       action_details: {
         email: normalizedEmail,
         expires_at: expiresAt.toISOString(),
-        invite_id: insertedInvite.data.id,
+        invite_id: inviteResult.id,
         role: desiredRole,
         email_delivery_status: emailResult.status,
         ...(emailResult.error ? { email_error: emailResult.error } : {}),
@@ -279,8 +261,8 @@ async function handleInvite(req: Request, userContext: UserContext) {
 
     logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 201);
     return jsonResponse(201, {
-      inviteId: insertedInvite.data.id,
-      expiresAt: expiresAt.toISOString(),
+      inviteId: inviteResult.id,
+      expiresAt: inviteResult.expires_at,
     });
   } catch (error) {
     console.error("Unexpected admin invite error", { code: 'unexpected_invite_error' });

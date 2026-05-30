@@ -5,7 +5,9 @@
 - why: invite issuance affects admin authorization, privilege escalation, token issuance, and tenant-scoped organization membership
 - triggering paths:
   - `supabase/functions/admin-invite/index.ts`
+  - `supabase/migrations/20260530140500_atomic_admin_invite_rate_limit.sql`
   - `tests/admins/invite_flow.spec.ts`
+  - `tests/admins/invite_rate_limit_migration.spec.ts`
 
 ## Scope
 
@@ -13,19 +15,22 @@
 - Linear issue: `WIN-164`
 - files touched:
   - `supabase/functions/admin-invite/index.ts`
+  - `supabase/migrations/20260530140500_atomic_admin_invite_rate_limit.sql`
   - `tests/admins/invite_flow.spec.ts`
+  - `tests/admins/invite_rate_limit_migration.spec.ts`
   - `docs/ai/2026-05-30-admin-invite-abuse-hardening-handoff.md`
 - non-goals:
-  - no schema or RLS changes
+  - no table schema or RLS policy changes
   - no hosted data backfill
   - no new join-request feature or endpoint
   - no invite redemption implementation because no in-repo accept-invite server path was found
 
 ## Abuse Paths Reviewed
 
-- rate limits: added a per-admin hourly cap before token creation and email dispatch
-- replay protection: existing active invite conflict path remains covered by focused tests
-- expired token handling: existing expired invite replacement path remains covered by focused tests
+- rate limits: per-admin hourly cap is enforced inside `public.create_admin_invite_token_rate_limited`, with the one-hour window and limit defined in the RPC instead of caller-supplied parameters
+- concurrent burst protection: RPC takes a per-admin advisory transaction lock before duplicate-active checks, expired pruning, rate-limit count, and insert
+- replay protection: active invite conflict handling now runs in the same RPC critical section
+- expired token handling: expired invite pruning now runs in the same RPC critical section
 - revoked token handling: no revoked-token column or redemption endpoint exists in repo scope
 - privilege escalation: standard admins remain blocked from inviting `super_admin` users; focused test added
 - join requests: no in-repo join-request endpoint, table, or workflow was found
@@ -33,6 +38,7 @@
 ## Tenant Boundary
 
 - invite creation remains restricted to protected admin route handling
+- the atomic RPC independently verifies `auth.uid() = p_created_by`
 - standard admins can invite only into their own organization context
 - super-admin invite role elevation remains restricted to current super admins
 - no cross-tenant read/write broadening was introduced
@@ -53,7 +59,7 @@
 ## Verification Card
 
 - required checks:
-  - `npx vitest run tests/admins/invite_flow.spec.ts`
+  - `npx vitest run tests/admins/invite_flow.spec.ts tests/admins/invite_rate_limit_migration.spec.ts`
   - `npm run ci:check-focused`
   - `npm run lint`
   - `npm run typecheck`
@@ -62,11 +68,10 @@
   - `npm run build`
   - `npm run verify:local`
 - executed checks:
-  - `npx vitest run tests/admins/invite_flow.spec.ts`: pass
+  - `npx vitest run tests/admins/invite_flow.spec.ts tests/admins/invite_rate_limit_migration.spec.ts`: pass
   - `npm run ci:check-focused`: pass
   - `npm run lint`: pass
   - `npm run typecheck`: pass
-  - `npm run test:ci`: pass
   - `npm run validate:tenant`: pass
   - `npm run build`: pass
   - `npm run verify:local`: pass
@@ -79,7 +84,7 @@
 
 - branch-ready: yes
 - linear-ready: yes (`WIN-164`)
-- protected-path drift: expected `supabase/functions/admin-invite/**`
+- protected-path drift: expected `supabase/functions/admin-invite/**` and `supabase/migrations/**`
 - unrelated changes: none
 - generated artifact drift: none
 - verification summary: required local checks passed

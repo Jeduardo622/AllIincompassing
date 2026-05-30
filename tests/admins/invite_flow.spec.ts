@@ -60,12 +60,20 @@ const inviteTokens: StoredInviteToken[] = [];
 const adminActionRows: Array<Record<string, unknown>> = [];
 
 const createInviteTableClient = () => {
-  const state: { email?: string; organizationId?: string } = {};
+  const state: { email?: string; organizationId?: string; createdBy?: string; createdAtGte?: string; countOnly?: boolean } = {};
   const builder: any = {
-    select: vi.fn(() => builder),
+    select: vi.fn((_columns?: string, options?: { count?: string; head?: boolean }) => {
+      state.countOnly = options?.count === 'exact' && options?.head === true;
+      return builder;
+    }),
     eq: vi.fn((column: string, value: string) => {
       if (column === 'email') state.email = value;
       if (column === 'organization_id') state.organizationId = value;
+      if (column === 'created_by') state.createdBy = value;
+      return builder;
+    }),
+    gte: vi.fn((column: string, value: string) => {
+      if (column === 'created_at') state.createdAtGte = value;
       return builder;
     }),
     order: vi.fn(() => builder),
@@ -80,6 +88,19 @@ const createInviteTableClient = () => {
       const record = filtered[0];
       return { data: record ? { id: record.id, expires_at: record.expires_at } : null, error: null };
     }),
+    then: (resolve: (value: unknown) => unknown, reject: (reason?: unknown) => unknown) => {
+      const filtered = inviteTokens.filter(token =>
+        (state.email ? token.email === state.email : true)
+        && (state.organizationId ? token.organization_id === state.organizationId : true)
+        && (state.createdBy ? token.created_by === state.createdBy : true)
+        && (state.createdAtGte ? token.created_at >= state.createdAtGte : true),
+      );
+      return Promise.resolve({
+        count: state.countOnly ? filtered.length : null,
+        data: state.countOnly ? null : filtered,
+        error: null,
+      }).then(resolve, reject);
+    },
     insert: (value: Record<string, unknown>) => {
       const record = Array.isArray(value) ? value[0] : value;
       const id = (record.id as string) ?? crypto.randomUUID();
@@ -263,5 +284,88 @@ describe('admin invite edge function', () => {
       email: expiredEmail,
       email_delivery_status: 'sent',
     });
+  }, 20_000);
+
+  it('rejects replay while an active invite token already exists for the email and organization', async () => {
+    inviteTokens.push({
+      id: 'invite-active',
+      email: 'activeadmin@example.com',
+      organization_id: 'org-123',
+      token_hash: 'deadbeef',
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      created_by: 'admin-1',
+      created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      role: 'admin',
+    });
+
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'activeadmin@example.com' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'active_invite_exists' });
+    expect(inviteTokens).toHaveLength(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('rate limits excessive invite creation by the same admin', async () => {
+    const now = Date.now();
+    for (let index = 0; index < 10; index += 1) {
+      inviteTokens.push({
+        id: `invite-${index}`,
+        email: `candidate-${index}@example.com`,
+        organization_id: 'org-123',
+        token_hash: `hash-${index}`,
+        expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
+        created_by: 'admin-1',
+        created_at: new Date(now - index * 60 * 1000).toISOString(),
+        role: 'admin',
+      });
+    }
+
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'overflow@example.com' }),
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('3600');
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invite_rate_limit_exceeded',
+      retry_after_seconds: 3600,
+    });
+    expect(inviteTokens).toHaveLength(10);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('prevents standard admins from inviting super admins', async () => {
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'super@example.com', role: 'super_admin' }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: 'insufficient_role_for_target' });
+    expect(inviteTokens).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
   }, 20_000);
 });

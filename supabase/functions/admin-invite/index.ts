@@ -13,6 +13,8 @@ const DEFAULT_EXPIRATION_HOURS = 72;
 const MIN_EXPIRATION_HOURS = 1;
 const MAX_EXPIRATION_HOURS = 24 * 7;
 const ADMIN_INVITE_PATH = "/admin/invite";
+const INVITE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const MAX_INVITES_PER_ADMIN_PER_WINDOW = 10;
 
 const InviteRequestSchema = z.object({
   email: z.string().email(),
@@ -43,10 +45,15 @@ type InsertInviteResult = {
   error: { message?: string } | null;
 };
 
-const jsonResponse = (status: number, body: Record<string, unknown>) =>
+type CountResult = {
+  count: number | null;
+  error: { message?: string } | null;
+};
+
+const jsonResponse = (status: number, body: Record<string, unknown>, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders, ...headers, "Content-Type": "application/json" },
   });
 
 const extractOrganizationId = (metadata: Record<string, unknown> | null | undefined): string | null => {
@@ -80,6 +87,18 @@ const ensureEmailServiceConfig = () => {
 const buildInviteUrl = (baseUrl: string, token: string) => {
   const trimmed = baseUrl.replace(/\/$/, "");
   return `${trimmed}/accept-invite?token=${token}`;
+};
+
+const getAdminInviteCountSince = async (
+  adminClient: ReturnType<typeof createRequestClient>,
+  createdBy: string,
+  sinceIso: string,
+): Promise<CountResult> => {
+  return await adminClient
+    .from("admin_invite_tokens")
+    .select("id", { count: "exact", head: true })
+    .eq("created_by", createdBy)
+    .gte("created_at", sinceIso) as CountResult;
 };
 
 async function sendInviteEmail(
@@ -172,6 +191,26 @@ async function handleInvite(req: Request, userContext: UserContext) {
     const now = new Date();
     const expiresInHours = payload.expiresInHours ?? DEFAULT_EXPIRATION_HOURS;
     const expiresAt = new Date(now.getTime() + expiresInHours * 60 * 60 * 1000);
+    const rateLimitWindowStart = new Date(now.getTime() - INVITE_RATE_LIMIT_WINDOW_MS).toISOString();
+
+    const inviteCount = await getAdminInviteCountSince(adminClient, userContext.user.id, rateLimitWindowStart);
+    if (inviteCount.error) {
+      console.error("Failed to check invite rate limit", { code: 'invite_rate_limit_lookup_failed' });
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
+      return jsonResponse(500, { error: "invite_rate_limit_lookup_failed" });
+    }
+
+    if ((inviteCount.count ?? 0) >= MAX_INVITES_PER_ADMIN_PER_WINDOW) {
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 429);
+      return jsonResponse(
+        429,
+        {
+          error: "invite_rate_limit_exceeded",
+          retry_after_seconds: Math.ceil(INVITE_RATE_LIMIT_WINDOW_MS / 1000),
+        },
+        { "Retry-After": String(Math.ceil(INVITE_RATE_LIMIT_WINDOW_MS / 1000)) },
+      );
+    }
 
     const existingInvite = (await adminClient
       .from("admin_invite_tokens")

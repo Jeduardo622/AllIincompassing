@@ -10,7 +10,14 @@ import { resolveOrgId } from "../_shared/org.ts";
 const CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const BUCKET_ID = "client-documents";
-const TEMPLATE_URL = new URL("./fill_docs/Updated FBA -IEHP.docx", import.meta.url);
+const TEMPLATE_FILE_NAME = "Updated FBA -IEHP.docx";
+const TEMPLATE_STORAGE_OBJECT_PATH = `templates/assessment/iehp/${TEMPLATE_FILE_NAME}`;
+const TEMPLATE_READ_TARGETS: Array<string | URL> = [
+  `./${TEMPLATE_FILE_NAME}`,
+  `./fill_docs/${TEMPLATE_FILE_NAME}`,
+  `./functions/generate-assessment-plan-docx/fill_docs/${TEMPLATE_FILE_NAME}`,
+  new URL(`./fill_docs/${TEMPLATE_FILE_NAME}`, import.meta.url),
+];
 const PLACEHOLDER_PATTERN = /\{\{([A-Z0-9_]+)\}\}/g;
 const ASSESSMENT_GENERATION_SECRET_HEADER = "x-assessment-generation-secret";
 
@@ -66,6 +73,13 @@ interface FilledDocxResult {
   unresolved_placeholder_count: number;
   unresolved_placeholders: string[];
   changed_field_count: number;
+}
+
+class TemplateReadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TemplateReadError";
+  }
 }
 
 interface GenerateAssessmentPlanDocxDeps {
@@ -218,6 +232,26 @@ export function isAllowedAssessmentPlanDocxOutputTarget({
   return /^\d{8,}$/.test(generatedSuffix);
 }
 
+const readTemplateBytes = async (): Promise<Uint8Array> => {
+  const errors: string[] = [];
+  for (const target of TEMPLATE_READ_TARGETS) {
+    try {
+      return await Deno.readFile(target);
+    } catch (error) {
+      errors.push(`${String(target)}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const downloadResult = await supabaseAdmin.storage.from(BUCKET_ID).download(TEMPLATE_STORAGE_OBJECT_PATH);
+  if (downloadResult.data && !downloadResult.error) {
+    return new Uint8Array(await downloadResult.data.arrayBuffer());
+  }
+
+  throw new TemplateReadError(
+    `Could not read IEHP DOCX template from bundled static files or storage template object. ${errors.join(" | ")}`,
+  );
+};
+
 export async function fillDocxTemplate(
   templateBytes: Uint8Array,
   fields: Record<string, string>,
@@ -360,6 +394,9 @@ export const createGenerateAssessmentPlanDocxHandler =
       });
     } catch (error) {
       console.error("generate-assessment-plan-docx error", error);
+      if (error instanceof TemplateReadError) {
+        return jsonResponse({ error: "IEHP DOCX template is not available to the deployed function." }, 500);
+      }
       return jsonResponse({ error: "Internal server error" }, 500);
     }
   };
@@ -370,7 +407,7 @@ export const generateAssessmentPlanDocxHandler =
     resolveOrgId: resolveOrgId as unknown as (client: AssessmentDocumentQueryBuilder) => Promise<string | null>,
     supabaseAdmin: supabaseAdmin as unknown as AssessmentPlanDocxStorageClient,
     generationSecret: Deno.env.get("ASSESSMENT_GENERATION_SECRET") ?? null,
-    readTemplateBytes: () => Deno.readFile(TEMPLATE_URL),
+    readTemplateBytes,
     fillDocx: fillDocxTemplate,
   });
 

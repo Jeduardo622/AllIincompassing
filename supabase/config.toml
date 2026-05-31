@@ -255,6 +255,10 @@ inspector_port = 8083
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 # entrypoint = "./functions/MY_FUNCTION_NAME/index.ts"
 
+[functions.generate-assessment-plan-docx]
+verify_jwt = true
+static_files = [ "./functions/generate-assessment-plan-docx/fill_docs/Updated FBA -IEHP.docx" ]
+
 [analytics]
 enabled = true
 port = 54327

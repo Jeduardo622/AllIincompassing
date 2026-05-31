@@ -39,7 +39,8 @@ export interface IehpPreflightBlocker {
     | "missing_child_goal"
     | "missing_parent_goal"
     | "missing_required_output"
-    | "manual_review_required";
+    | "manual_review_required"
+    | "template_unavailable";
   key?: string;
   count?: number;
   message: string;

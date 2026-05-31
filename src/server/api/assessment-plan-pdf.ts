@@ -136,6 +136,14 @@ interface GenerateDocxFunctionResponse {
   unresolved_placeholders?: string[];
 }
 
+interface GenerateDocxTemplateHealthResponse {
+  template_available: boolean;
+  template_type: "iehp_fba";
+  bucket_id: string;
+  storage_object_path: string;
+  byte_count: number;
+}
+
 const CALOPTIMA_TEMPLATE_PATH = resolve(process.cwd(), "CalOptima Health FBA Template (2).pdf");
 const IEHP_DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const ASSESSMENT_GENERATION_SECRET_HEADER = "x-assessment-generation-secret";
@@ -349,21 +357,54 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
       pendingDraftGoalCount,
     });
 
+    const generationSecret = process.env.ASSESSMENT_GENERATION_SECRET?.trim();
+    const templatePreflight = payloadResult.preflight;
+    if (!generationSecret) {
+      templatePreflight.blockers.push({
+        code: "template_unavailable",
+        message: "IEHP DOCX generation credential is not configured.",
+      });
+      templatePreflight.ready = false;
+    } else {
+      const templateHealthResult = await fetchJson<GenerateDocxTemplateHealthResponse>(
+        `${supabaseUrl}/functions/v1/generate-assessment-plan-docx`,
+        {
+          method: "POST",
+          headers: {
+            ...headers,
+            [ASSESSMENT_GENERATION_SECRET_HEADER]: generationSecret,
+          },
+          body: JSON.stringify({
+            assessment_document_id: assessmentDocument.id,
+            template_type: "iehp_fba",
+            template_health_check: true,
+          }),
+        },
+      );
+      if (!templateHealthResult.ok || !templateHealthResult.data?.template_available) {
+        templatePreflight.blockers.push({
+          code: "template_unavailable",
+          message: "IEHP DOCX template is not available to the deployed generation function.",
+        });
+        templatePreflight.ready = false;
+      }
+    }
+
     if (parsed.data.preflight_only) {
       return json({
         assessment_document_id: assessmentDocument.id,
         generated_file_type: "docx",
-        preflight: payloadResult.preflight,
+        preflight: templatePreflight,
       });
     }
 
-    if (!payloadResult.preflight.ready) {
+    if (!templatePreflight.ready) {
       return json(
         {
           error: "IEHP DOCX generation is blocked by review preflight.",
           assessment_document_id: assessmentDocument.id,
           generated_file_type: "docx",
-          preflight: payloadResult.preflight,
+          preflight: templatePreflight,
         },
         409,
       );
@@ -372,10 +413,6 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     const timestamp = Date.now();
     const filename = `generated-iehp-fba-${assessmentDocument.id}-${timestamp}.docx`;
     const outputObjectPath = `clients/${assessmentDocument.client_id}/assessments/${filename}`;
-    const generationSecret = process.env.ASSESSMENT_GENERATION_SECRET?.trim();
-    if (!generationSecret) {
-      return json({ error: "IEHP DOCX generation credential is not configured." }, 500);
-    }
 
     const functionResult = await fetchJson<GenerateDocxFunctionResponse>(
       `${supabaseUrl}/functions/v1/generate-assessment-plan-docx`,
@@ -419,7 +456,7 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
           generated_object_path: functionResult.data.object_path,
           unresolved_placeholder_count: functionResult.data.unresolved_placeholder_count ?? 0,
           unresolved_placeholders: functionResult.data.unresolved_placeholders ?? [],
-          preflight_warning_count: payloadResult.preflight.warnings.length,
+          preflight_warning_count: templatePreflight.warnings.length,
         },
       }),
     });
@@ -432,7 +469,7 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
       bucket_id: functionResult.data.bucket_id,
       object_path: functionResult.data.object_path,
       signed_url: functionResult.data.signed_url,
-      preflight: payloadResult.preflight,
+      preflight: templatePreflight,
     });
   }
 

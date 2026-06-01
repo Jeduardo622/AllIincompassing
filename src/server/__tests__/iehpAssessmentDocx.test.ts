@@ -156,7 +156,7 @@ describe("buildIehpDocxPayload", () => {
     );
   });
 
-  it("blocks pending draft goals and missing required output values", () => {
+  it("ignores staged draft review state and blocks only unresolved required output values", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,
       client: {
@@ -169,8 +169,8 @@ describe("buildIehpDocxPayload", () => {
     });
 
     expect(result.preflight.ready).toBe(false);
-    expect(result.preflight.blockers).toContainEqual(expect.objectContaining({ code: "pending_draft_goals", count: 2 }));
-    expect(result.preflight.blockers).toContainEqual(expect.objectContaining({ code: "missing_parent_goal" }));
+    expect(result.preflight.blockers).not.toContainEqual(expect.objectContaining({ code: "pending_draft_goals" }));
+    expect(result.preflight.blockers).not.toContainEqual(expect.objectContaining({ code: "missing_parent_goal" }));
     expect(result.preflight.blockers).toContainEqual(
       expect.objectContaining({ code: "missing_required_output", key: "IEHP_FBA_LANGUAGE" }),
     );

@@ -562,6 +562,10 @@ describe("assessmentPlanPdfHandler", () => {
     expect(buildIehpDocxPayload).toHaveBeenCalledWith(
       expect.objectContaining({
         authorizationMemberId: "AUTH-MEMBER-999",
+        acceptedPrograms: [],
+        acceptedGoals: [],
+        pendingDraftProgramCount: 0,
+        pendingDraftGoalCount: 0,
       }),
     );
     expect(fetchJson).toHaveBeenLastCalledWith(
@@ -649,6 +653,10 @@ describe("assessmentPlanPdfHandler", () => {
     expect(buildIehpDocxPayload).toHaveBeenCalledWith(
       expect.objectContaining({
         authorizationMemberId: "OTHER-MEMBER-222",
+        acceptedPrograms: [],
+        acceptedGoals: [],
+        pendingDraftProgramCount: 0,
+        pendingDraftGoalCount: 0,
       }),
     );
   });

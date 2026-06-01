@@ -66,7 +66,7 @@ We currently run all environments (preview, staging, production) against the sam
    ```bash
    npm run ci:deploy:session-edge-bundle
    ```
-   That script deploys session lifecycle functions plus care-plan routes (`programs`, `goals`, `program-notes`) and the optional `emails` proxy; see `scripts/ci/deploy-session-edge-bundle.mjs` for the authoritative list.
+   That script deploys session lifecycle functions, care-plan routes (`programs`, `goals`, `program-notes`), the optional `emails` proxy, and assessment extraction/generation functions; see `scripts/ci/deploy-session-edge-bundle.mjs` for the authoritative list.
    Alternatively deploy each function manually with `supabase functions deploy <name> --project-ref <ref>`.
    For session lifecycle routes, ensure gateway JWT verification remains enabled (`verify_jwt=true`) for `sessions-book`, `sessions-hold`, `sessions-confirm`, `sessions-start`, `sessions-cancel`, `generate-session-notes-pdf`, `session-notes-pdf-status`, and `session-notes-pdf-download`.
 5. Monitor the Supabase dashboard deployment logs. If a migration fails, follow the rollback/forward-fix plan documented in the PR.

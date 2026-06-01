@@ -100,6 +100,7 @@ interface AssessmentDocumentScopeRow {
 }
 
 const AUTO_GENERATE_READY_DOCUMENT_STATUSES = new Set(["extracted", "extraction_failed"]);
+const IMMUTABLE_DRAFT_ASSESSMENT_STATUSES = new Set(["approved", "promoted"]);
 const DRAFT_GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
   "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
@@ -136,6 +137,28 @@ interface AssessmentDraftGoalRow {
   client_id: string;
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
+
+const assertDraftAssessmentIsMutable = async (args: {
+  supabaseUrl: string;
+  headers: HeadersInit;
+  organizationId: string;
+  assessmentDocumentId: string;
+}): Promise<{ ok: true } | { ok: false; status: number; error: string }> => {
+  const lookup = await fetchJson<AssessmentDocumentScopeRow[]>(
+    `${args.supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status&id=eq.${encodeURIComponent(
+      args.assessmentDocumentId,
+    )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
+    { method: "GET", headers: args.headers },
+  );
+  const document = Array.isArray(lookup.data) ? lookup.data[0] : null;
+  if (!lookup.ok || !document) {
+    return { ok: false, status: lookup.status || 404, error: "Assessment document not found in organization scope" };
+  }
+  if (IMMUTABLE_DRAFT_ASSESSMENT_STATUSES.has(document.status)) {
+    return { ok: false, status: 409, error: "Published assessment drafts are retained for audit and cannot be edited." };
+  }
+  return { ok: true };
+};
 
 export interface GeneratedDraftPayload {
   programs: Array<{
@@ -745,6 +768,15 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       if (!lookup.ok || !existing) {
         return json({ error: "Draft program not found in organization scope" }, 404);
       }
+      const mutableAssessment = await assertDraftAssessmentIsMutable({
+        supabaseUrl,
+        headers,
+        organizationId,
+        assessmentDocumentId: existing.assessment_document_id,
+      });
+      if (!mutableAssessment.ok) {
+        return json({ error: mutableAssessment.error }, mutableAssessment.status);
+      }
 
       const updatePayload: Record<string, unknown> = {
         updated_at: now,
@@ -814,6 +846,15 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     const existing = Array.isArray(lookup.data) ? lookup.data[0] : null;
     if (!lookup.ok || !existing) {
       return json({ error: "Draft goal not found in organization scope" }, 404);
+    }
+    const mutableAssessment = await assertDraftAssessmentIsMutable({
+      supabaseUrl,
+      headers,
+      organizationId,
+      assessmentDocumentId: existing.assessment_document_id,
+    });
+    if (!mutableAssessment.ok) {
+      return json({ error: mutableAssessment.error }, mutableAssessment.status);
     }
 
     const updatePayload: Record<string, unknown> = {

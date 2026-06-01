@@ -265,6 +265,13 @@ interface ProgramsGoalsTabProps {
   client: Client;
 }
 
+interface AssessmentPromoteResponse {
+  created_program_count: number;
+  created_goal_count: number;
+  promoted_program_count?: number;
+  promoted_goal_count?: number;
+}
+
 export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
@@ -615,6 +622,15 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       checklistItems.some((item) => item.required && item.status !== "approved") ||
       structuredSections.some((section) => section.required && section.status !== "approved"));
   const hasExistingDrafts = (assessmentDrafts?.programs?.length ?? 0) > 0 || (assessmentDrafts?.goals?.length ?? 0) > 0;
+  const acceptedDraftProgramCount = (assessmentDrafts?.programs ?? []).filter(
+    (program) => program.accept_state === "accepted" || program.accept_state === "edited",
+  ).length;
+  const acceptedDraftGoalCount = (assessmentDrafts?.goals ?? []).filter(
+    (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
+  ).length;
+  const pendingDraftProgramCount = (assessmentDrafts?.programs ?? []).filter((program) => program.accept_state === "pending").length;
+  const pendingDraftGoalCount = (assessmentDrafts?.goals ?? []).filter((goal) => goal.accept_state === "pending").length;
+  const showDraftReviewPanel = (ENABLE_PROGRAMS_GOALS_AI_PROPOSALS || selectedAssessmentIsIehp) && !selectedAssessmentAlreadyPublished;
   const extractedChecklistValueCount = checklistItems.filter((item) => item.value_text?.trim()).length;
   const structuredChildGoalCount = structuredSections.filter(isStructuredChildGoalSection).length;
   const structuredParentGoalCount = structuredSections.filter(isStructuredParentGoalSection).length;
@@ -627,6 +643,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     ? checklistItems.filter((item) => item.required && item.status !== "approved").length +
       structuredSections.filter((section) => section.required && section.status !== "approved").length
     : 0;
+  const promoteDisabledReason = !selectedAssessmentId
+    ? "Select an assessment before publishing."
+    : selectedAssessmentAlreadyPublished
+      ? "This assessment has already been approved and published."
+      : hasPendingRequiredChecklistItems
+        ? `${unresolvedRequiredCount} required checklist or structured row${unresolvedRequiredCount === 1 ? "" : "s"} must be approved before publishing.`
+        : acceptedDraftProgramCount === 0
+          ? "At least one draft program must be accepted or edited before publishing."
+          : acceptedDraftGoalCount === 0
+            ? "At least one draft goal must be accepted or edited before publishing."
+            : null;
 
   useEffect(() => {
     const firstAssessmentId = assessmentDocuments[0]?.id ?? null;
@@ -966,6 +993,36 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
       });
       showSuccess("Goal draft saved. Not published yet.");
+    },
+    onError: showError,
+  });
+
+  const promoteAssessment = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssessmentId) {
+        throw new Error("Select an assessment before publishing.");
+      }
+      const response = await callApi("/api/assessment-promote", {
+        method: "POST",
+        body: JSON.stringify({ assessment_document_id: selectedAssessmentId }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to publish assessment drafts."));
+      }
+      return parseJson<AssessmentPromoteResponse>(response);
+    },
+    onSuccess: (result) => {
+      const programCount = result.promoted_program_count ?? result.created_program_count;
+      const goalCount = result.promoted_goal_count ?? result.created_goal_count;
+      queryClient.invalidateQueries({ queryKey: clientProgramsQueryKey });
+      queryClient.invalidateQueries({ queryKey: programGoalsQueryKey });
+      queryClient.invalidateQueries({ queryKey: assessmentDocumentsQueryKey });
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess(
+        `Published to live records. Created ${programCount} production program${programCount === 1 ? "" : "s"} and ${goalCount} goal${goalCount === 1 ? "" : "s"}.`,
+      );
     },
     onError: showError,
   });
@@ -1321,7 +1378,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             Live care plan: <span className="font-semibold">{livePrograms.length}</span> program(s) and{" "}
             <span className="font-semibold">{liveGoals.length}</span> active goal(s) in the selected program.
           </p>
-          {ENABLE_PROGRAMS_GOALS_AI_PROPOSALS && hasDraftsButNoLivePrograms && (
+          {showDraftReviewPanel && hasDraftsButNoLivePrograms && (
             <button
               type="button"
               onClick={() => publishSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
@@ -1331,7 +1388,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             </button>
           )}
         </div>
-        {ENABLE_PROGRAMS_GOALS_AI_PROPOSALS && hasDraftsButNoLivePrograms && (
+        {showDraftReviewPanel && hasDraftsButNoLivePrograms && (
           <p className="mt-2 text-xs text-sky-800/90 dark:text-sky-100/90">
             Uploaded assessments and draft proposals stay in review until you publish them to live Programs & Goals.
           </p>
@@ -1845,7 +1902,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             </div>
           )}
 
-          {ENABLE_PROGRAMS_GOALS_AI_PROPOSALS && (
+          {showDraftReviewPanel && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
               Draft Review (Approve / Reject / Edit)
@@ -2193,6 +2250,40 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
                 {(assessmentDrafts?.programs?.length ?? 0) === 0 && (assessmentDrafts?.goals?.length ?? 0) === 0 && (
                   <p className="text-sm text-gray-500">No staged drafts yet. Generate then save drafts to assessment.</p>
+                )}
+                {selectedAssessmentId && hasExistingDrafts && (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-900/40">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-1">
+                        <p className="font-semibold text-gray-800 dark:text-gray-100">Publish accepted drafts to live Programs & Goals</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-300">
+                          Accepted drafts: {acceptedDraftProgramCount} program(s), {acceptedDraftGoalCount} goal(s). Pending drafts:{" "}
+                          {pendingDraftProgramCount} program(s), {pendingDraftGoalCount} goal(s).
+                        </p>
+                        {promoteDisabledReason && (
+                          <p className="text-xs text-amber-700 dark:text-amber-200">{promoteDisabledReason}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== "undefined") {
+                            const confirmed = window.confirm(
+                              "Publish accepted assessment drafts to this client's live Programs & Goals?",
+                            );
+                            if (!confirmed) {
+                              return;
+                            }
+                          }
+                          promoteAssessment.mutate();
+                        }}
+                        disabled={Boolean(promoteDisabledReason) || promoteAssessment.isLoading}
+                        className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {promoteAssessment.isLoading ? "Publishing..." : "Publish to Live Programs + Goals"}
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

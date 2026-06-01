@@ -1192,6 +1192,126 @@ describe("assessmentDraftsHandler", () => {
     );
   });
 
+  it("blocks draft program updates when the parent assessment is already approved", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "draft-program-1",
+            assessment_document_id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            accept_state: "accepted",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "approved" }],
+      });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          draft_type: "program",
+          id: "11111111-1111-1111-1111-111111111111",
+          accept_state: "edited",
+          name: "Mutated Program",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Published assessment drafts are retained for audit and cannot be edited.",
+    });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_programs?id=eq.draft-program-1"),
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_review_events"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("blocks draft goal updates when the parent assessment is already promoted", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "draft-goal-1",
+            assessment_document_id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            accept_state: "accepted",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "promoted" }],
+      });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          draft_type: "goal",
+          id: "11111111-1111-1111-1111-111111111111",
+          accept_state: "edited",
+          title: "Mutated Goal",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Published assessment drafts are retained for audit and cannot be edited.",
+    });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_goals?id=eq.draft-goal-1"),
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_review_events"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("returns empty drafts when requested assessment is no longer in scope", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

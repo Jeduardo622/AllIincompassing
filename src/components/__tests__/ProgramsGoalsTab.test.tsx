@@ -3666,6 +3666,262 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(screen.queryByText("Accepted draft goals: 2 child / 1 parent")).not.toBeInTheDocument();
   });
 
+  it("shows IEHP publish controls with explicit blockers when required rows remain unresolved", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "synthetic-iehp.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/synthetic-iehp.docx",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "required-row-1",
+                section_key: "recommendations",
+                label: "Recommendation",
+                placeholder_key: "IEHP_FBA_RECOMMENDATION",
+                required: true,
+                mode: "ASSISTED",
+                status: "drafted",
+                review_notes: null,
+                value_text: "Synthetic recommendation",
+              },
+            ],
+            structured_sections: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: [
+              {
+                id: "g1",
+                title: "Goal A",
+                description: "Goal description",
+                original_text: "Original wording",
+                goal_type: "child",
+                accept_state: "accepted",
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("synthetic-iehp.docx");
+    const publishButton = await screen.findByRole("button", { name: /Publish to Live Programs \+ Goals/i });
+    expect(publishButton).toBeDisabled();
+    expect(screen.getByText("1 required checklist or structured row must be approved before publishing.")).toBeInTheDocument();
+  });
+
+  it("publishes accepted IEHP drafts through the promotion API", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "synthetic-iehp.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/synthetic-iehp.docx",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "required-row-1",
+                section_key: "recommendations",
+                label: "Recommendation",
+                placeholder_key: "IEHP_FBA_RECOMMENDATION",
+                required: true,
+                mode: "ASSISTED",
+                status: "approved",
+                review_notes: null,
+                value_text: "Synthetic recommendation",
+              },
+            ],
+            structured_sections: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: [
+              {
+                id: "g1",
+                title: "Goal A",
+                description: "Goal description",
+                original_text: "Original wording",
+                goal_type: "child",
+                accept_state: "accepted",
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-promote") {
+        return new Response(
+          JSON.stringify({
+            created_program_count: 1,
+            created_goal_count: 1,
+            promoted_program_count: 1,
+            promoted_goal_count: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("synthetic-iehp.docx");
+    const publishButton = await screen.findByRole("button", { name: /Publish to Live Programs \+ Goals/i });
+    expect(publishButton).toBeEnabled();
+    await user.click(publishButton);
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-promote",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ assessment_document_id: ASSESSMENT_ID }),
+        }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith("Published to live records. Created 1 production program and 1 goal.");
+    confirmSpy.mockRestore();
+  });
+
+  it("does not render IEHP draft editors for already published assessments", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "synthetic-published-iehp.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/synthetic-published-iehp.docx",
+              status: "approved",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify({ items: [], structured_sections: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: [
+              {
+                id: "g1",
+                title: "Goal A",
+                description: "Goal description",
+                original_text: "Original wording",
+                goal_type: "child",
+                accept_state: "accepted",
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("synthetic-published-iehp.docx")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save Program Draft/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save Goal Draft/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Draft Review (Approve / Reject / Edit)")).not.toBeInTheDocument();
+  });
+
   it("shows add-goal prerequisites when create goal is disabled", async () => {
     renderWithProviders(
       <ProgramsGoalsTab client={buildClient()} />,

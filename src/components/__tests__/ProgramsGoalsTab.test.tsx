@@ -3856,6 +3856,72 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     confirmSpy.mockRestore();
   });
 
+  it("does not render IEHP draft editors for already published assessments", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "synthetic-published-iehp.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/synthetic-published-iehp.docx",
+              status: "approved",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify({ items: [], structured_sections: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: [
+              {
+                id: "g1",
+                title: "Goal A",
+                description: "Goal description",
+                original_text: "Original wording",
+                goal_type: "child",
+                accept_state: "accepted",
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("synthetic-published-iehp.docx")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save Program Draft/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save Goal Draft/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Draft Review (Approve / Reject / Edit)")).not.toBeInTheDocument();
+  });
+
   it("shows add-goal prerequisites when create goal is disabled", async () => {
     renderWithProviders(
       <ProgramsGoalsTab client={buildClient()} />,

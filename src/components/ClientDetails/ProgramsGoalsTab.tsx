@@ -630,7 +630,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   ).length;
   const pendingDraftProgramCount = (assessmentDrafts?.programs ?? []).filter((program) => program.accept_state === "pending").length;
   const pendingDraftGoalCount = (assessmentDrafts?.goals ?? []).filter((goal) => goal.accept_state === "pending").length;
-  const showDraftReviewPanel = ENABLE_PROGRAMS_GOALS_AI_PROPOSALS || selectedAssessmentIsIehp;
+  const showDraftReviewPanel = (ENABLE_PROGRAMS_GOALS_AI_PROPOSALS || selectedAssessmentIsIehp) && !selectedAssessmentAlreadyPublished;
   const extractedChecklistValueCount = checklistItems.filter((item) => item.value_text?.trim()).length;
   const structuredChildGoalCount = structuredSections.filter(isStructuredChildGoalSection).length;
   const structuredParentGoalCount = structuredSections.filter(isStructuredParentGoalSection).length;

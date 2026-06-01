@@ -24,13 +24,30 @@ const ASSESSMENT_GENERATION_SECRET_HEADER = "x-assessment-generation-secret";
 const requestSchema = z.object({
   assessment_document_id: z.string().uuid(),
   template_type: z.literal("iehp_fba"),
-  field_values: z.record(z.string()),
+  template_health_check: z.boolean().optional(),
+  field_values: z.record(z.string()).optional(),
   field_layouts: z.array(z.object({
     field_key: z.string().trim().min(1),
     layout_json: z.record(z.unknown()).nullable().optional(),
   })).optional(),
   output_bucket_id: z.string().trim().min(1).default(BUCKET_ID),
-  output_object_path: z.string().trim().min(1),
+  output_object_path: z.string().trim().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.template_health_check) return;
+  if (!value.output_object_path) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["output_object_path"],
+      message: "output_object_path is required for DOCX generation",
+    });
+  }
+  if (!value.field_values) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["field_values"],
+      message: "field_values is required for DOCX generation",
+    });
+  }
 });
 
 interface AssessmentDocumentScopeRow {
@@ -344,10 +361,20 @@ export const createGenerateAssessmentPlanDocxHandler =
       if (documentResult.data.template_type !== parsed.data.template_type) {
         return jsonResponse({ error: "DOCX generation is not supported for this assessment template." }, 409);
       }
+      const templateBytes = await deps.readTemplateBytes();
+      if (parsed.data.template_health_check) {
+        return jsonResponse({
+          template_available: true,
+          template_type: parsed.data.template_type,
+          bucket_id: BUCKET_ID,
+          storage_object_path: TEMPLATE_STORAGE_OBJECT_PATH,
+          byte_count: templateBytes.byteLength,
+        });
+      }
       if (
         !isAllowedAssessmentPlanDocxOutputTarget({
           bucketId: parsed.data.output_bucket_id,
-          objectPath: parsed.data.output_object_path,
+          objectPath: parsed.data.output_object_path ?? "",
           clientId: documentResult.data.client_id,
           assessmentDocumentId: documentResult.data.id,
         })
@@ -355,14 +382,13 @@ export const createGenerateAssessmentPlanDocxHandler =
         return jsonResponse({ error: "Invalid generated DOCX storage target." }, 403);
       }
 
-      const templateBytes = await deps.readTemplateBytes();
-      const filled = await deps.fillDocx(templateBytes, parsed.data.field_values, parsed.data.field_layouts ?? []);
+      const filled = await deps.fillDocx(templateBytes, parsed.data.field_values ?? {}, parsed.data.field_layouts ?? []);
       if (filled.changed_field_count === 0) {
         return jsonResponse({ error: "IEHP DOCX template did not receive any generated field values." }, 409);
       }
 
       const uploadResult = await deps.supabaseAdmin.storage.from(BUCKET_ID).upload(
-        parsed.data.output_object_path,
+        parsed.data.output_object_path ?? "",
         filled.bytes,
         {
           contentType: CONTENT_TYPE,
@@ -374,14 +400,14 @@ export const createGenerateAssessmentPlanDocxHandler =
       }
 
       const signedResult = await deps.supabaseAdmin.storage.from(BUCKET_ID).createSignedUrl(
-        parsed.data.output_object_path,
+        parsed.data.output_object_path ?? "",
         60 * 10,
       );
       if (signedResult.error || !signedResult.data?.signedUrl) {
         return jsonResponse({ error: "Failed to create download URL." }, 500);
       }
 
-      const filename = parsed.data.output_object_path.split("/").pop() ?? "generated-iehp-fba.docx";
+      const filename = parsed.data.output_object_path?.split("/").pop() ?? "generated-iehp-fba.docx";
       return jsonResponse({
         bucket_id: BUCKET_ID,
         object_path: parsed.data.output_object_path,

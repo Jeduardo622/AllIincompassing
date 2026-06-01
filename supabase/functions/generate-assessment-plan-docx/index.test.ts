@@ -153,6 +153,55 @@ Deno.test("generateAssessmentPlanDocxHandler rejects invalid storage scope", asy
   expect(await response.json()).toEqual({ error: "Invalid generated DOCX storage target." });
 });
 
+Deno.test("generateAssessmentPlanDocxHandler requires field values for generation requests", async () => {
+  const handler = createTestHandler();
+  const response = await handler(postRequest({
+    assessment_document_id: validPayload.assessment_document_id,
+    template_type: "iehp_fba",
+    output_bucket_id: validPayload.output_bucket_id,
+    output_object_path: validPayload.output_object_path,
+  }));
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ error: "Invalid request body" });
+});
+
+Deno.test("generateAssessmentPlanDocxHandler checks template availability without uploading", async () => {
+  let uploadCalled = false;
+  const handler = createTestHandler({
+    admin: {
+      storage: {
+        from: () => ({
+          upload: () => {
+            uploadCalled = true;
+            return Promise.resolve({ data: {}, error: null });
+          },
+          createSignedUrl: () =>
+            Promise.resolve({
+              data: { signedUrl: "https://example.supabase.co/generated.docx" },
+              error: null,
+            }),
+        }),
+      },
+    },
+  });
+  const response = await handler(postRequest({
+    assessment_document_id: validPayload.assessment_document_id,
+    template_type: "iehp_fba",
+    template_health_check: true,
+  }));
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    template_available: true,
+    template_type: "iehp_fba",
+    bucket_id: "client-documents",
+    storage_object_path: "templates/assessment/iehp/Updated FBA -IEHP.docx",
+    byte_count: 3,
+  });
+  expect(uploadCalled).toBe(false);
+});
+
 Deno.test("generateAssessmentPlanDocxHandler uploads to client-documents and returns signed DOCX metadata", async () => {
   const handler = createTestHandler();
   const response = await handler(postRequest(validPayload));

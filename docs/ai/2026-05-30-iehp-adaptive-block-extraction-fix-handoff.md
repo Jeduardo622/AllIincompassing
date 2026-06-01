@@ -16,7 +16,7 @@
   - `supabase/functions/extract-assessment-fields/index.test.ts`
   - `docs/ai/2026-05-30-iehp-adaptive-block-extraction-fix-handoff.md`
 - hosted document updated:
-  - `assessment_documents.id = 86cdd0ce-dba3-44a9-b431-0653f3a2fafa`
+  - assessment document: `WIN-163 target assessment document`
   - updated one `assessment_structured_sections` row and one `assessment_extractions` row for `IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES`
 - single-purpose diff: yes
 
@@ -62,7 +62,7 @@
 - blocked checks:
   - none
 - result: pass
-- residual risk: hosted source structure for document `86cdd0ce-dba3-44a9-b431-0653f3a2fafa` still contains only populated Vineland source text; VB-MAPP, AFLS, and ABAS-3 are represented as explicit null block slots until source decoding/content is investigated
+- residual risk: hosted source structure for the `WIN-163 target assessment document` still contains only populated Vineland source text; VB-MAPP, AFLS, and ABAS-3 are represented as explicit null block slots until source decoding/content is investigated
 
 ## PR Hygiene
 
@@ -79,7 +79,7 @@
 ## Recommended Next Slice
 
 - Linear issue: `WIN-163`
-- inspect the original uploaded DOCX/source conversion path for `Le, Ki IEHP FBA December 2025 (1).docx`
+- inspect the original uploaded DOCX/source conversion path for the `WIN-163 target IEHP FBA DOCX`
 - determine whether VB-MAPP, AFLS, and ABAS-3 content exists in the uploaded source but was dropped during DOCX decoding or normalization
 - if source text exists, fix the decoder or section extraction path and re-run extraction for the document
 - if source text does not exist, keep the review UI empty states and mark those blocks as requiring manual clinician review

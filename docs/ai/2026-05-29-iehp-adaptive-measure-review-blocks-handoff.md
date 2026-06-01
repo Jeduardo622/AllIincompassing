@@ -43,7 +43,7 @@
 - blocked checks:
   - `none`
 - result: pass
-- residual risk: the hosted document `86cdd0ce-dba3-44a9-b431-0653f3a2fafa` currently persists only one populated `Vineland` block in `assessment_blocks`, so the UI will now show explicit empty states for the other named measures rather than invent content
+- residual risk: the `WIN-163 target assessment document` currently persists only one populated `Vineland` block in `assessment_blocks`, so the UI will now show explicit empty states for the other named measures rather than invent content
 
 ## PR Hygiene
 

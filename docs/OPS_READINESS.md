@@ -36,7 +36,7 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - [ ] `API_AUTHORITY_MODE=edge` is enabled in production so `/api/*` remains transport-only for converged routes
 - [ ] Dual-layer throttling is configured (`RATE_LIMIT_MODE=distributed` with Upstash credentials or approved `waf_only` exception)
 - [ ] CORS allowlists are aligned across runtimes (`API_ALLOWED_ORIGINS`/`CORS_ALLOWED_ORIGINS`)
-- [ ] Session lifecycle edge functions enforce `verify_jwt=true` (validated by `npm run ci:deploy:session-edge-bundle`)
+- [ ] Session lifecycle and assessment edge functions enforce `verify_jwt=true` (validated by `npm run ci:deploy:session-edge-bundle`)
 - [ ] Pull-request CI deploy step (`npm run ci:deploy:session-edge-bundle`) can reach Supabase with valid secrets so policy no longer skips downstream quality gates
 - [ ] Dashboard authority path is healthy (`/api/dashboard` transport + `get-dashboard-data` edge envelope parity)
 - [ ] Lighthouse CI advisory reports are reviewed for each release candidate while strict preview URL gating is temporarily disabled

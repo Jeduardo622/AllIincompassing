@@ -90,6 +90,8 @@ interface AdaptiveMeasureBlockPreview {
   assessment_type: string;
   raw_text: string;
   extracted: boolean;
+  manual_review_required: boolean;
+  review_note: string;
 }
 
 const EMPTY_LAYOUT: TemplateLayoutResponse = {
@@ -114,6 +116,8 @@ const PAGE_FIELD_KEY_OVERRIDES: Record<string, number> = {
   IEHP_FBA_REASON_FOR_REFERRAL: 1,
 };
 const IEHP_ADAPTIVE_MEASURE_TYPES = ["VB-MAPP", "Vineland", "AFLS", "ABAS-3"] as const;
+const adaptiveMeasureReviewNote = (assessmentType: string): string =>
+  `${assessmentType} content was not found in the source document text; clinician review is required.`;
 
 const formatPayloadPreview = (value: unknown): string => {
   if (value == null) return "";
@@ -181,11 +185,17 @@ const adaptiveMeasureBlocksFromPayload = (payload: Record<string, unknown> | und
               : "";
           const rawText =
             typeof (block as { raw_text?: unknown }).raw_text === "string" ? (block as { raw_text: string }).raw_text.trim() : "";
+          const manualReviewRequired = (block as { manual_review_required?: unknown }).manual_review_required === true;
+          const reviewNote =
+            typeof (block as { review_note?: unknown }).review_note === "string" ? (block as { review_note: string }).review_note.trim() : "";
+          const isKnownEmptyBlock = IEHP_ADAPTIVE_MEASURE_TYPES.some((type) => type.toLowerCase() === assessmentType.toLowerCase()) && rawText.length === 0;
           if (!assessmentType) return null;
           return {
             assessment_type: assessmentType,
             raw_text: rawText,
             extracted: rawText.length > 0,
+            manual_review_required: manualReviewRequired || isKnownEmptyBlock,
+            review_note: reviewNote || (isKnownEmptyBlock ? adaptiveMeasureReviewNote(assessmentType) : ""),
           };
         })
         .filter((block): block is AdaptiveMeasureBlockPreview => block !== null)
@@ -194,7 +204,13 @@ const adaptiveMeasureBlocksFromPayload = (payload: Record<string, unknown> | und
   const knownTypeSet = new Set(IEHP_ADAPTIVE_MEASURE_TYPES.map((type) => type.toLowerCase()));
   const orderedKnownBlocks = IEHP_ADAPTIVE_MEASURE_TYPES.map((assessmentType) => {
     const existing = parsedBlocks.find((block) => block.assessment_type.toLowerCase() === assessmentType.toLowerCase());
-    return existing ?? { assessment_type: assessmentType, raw_text: "", extracted: false };
+    return existing ?? {
+      assessment_type: assessmentType,
+      raw_text: "",
+      extracted: false,
+      manual_review_required: true,
+      review_note: adaptiveMeasureReviewNote(assessmentType),
+    };
   });
   const extraBlocks = parsedBlocks.filter((block) => !knownTypeSet.has(block.assessment_type.toLowerCase()));
   return [...orderedKnownBlocks, ...extraBlocks];
@@ -247,7 +263,7 @@ const formatStructuredReadableText = (section: StructuredValue): string => {
   if (section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES") {
     const blocks = adaptiveMeasureBlocksFromPayload(section.payload);
     return `Adaptive Measure Summaries\n${blocks
-      .map((block) => `- ${block.assessment_type}: ${block.raw_text || "No extracted block found."}`)
+      .map((block) => `- ${block.assessment_type}: ${block.raw_text || block.review_note || "No extracted block found."}`)
       .join("\n")}`;
   }
   const narrative = readableNarrativeFromPayload(section.payload);
@@ -320,7 +336,9 @@ const renderStructuredReadablePreview = (section: StructuredValue): JSX.Element 
               className={`rounded border px-2 py-2 ${block.extracted ? "border-slate-600/60 bg-slate-900/50" : "border-dashed border-slate-700 bg-slate-900/20"}`}
             >
               <p className="text-xs font-semibold text-slate-100">{block.assessment_type}</p>
-              <p className="text-xs leading-relaxed whitespace-pre-wrap text-slate-300">{block.raw_text || "No extracted block found."}</p>
+              <p className="text-xs leading-relaxed whitespace-pre-wrap text-slate-300">
+                {block.raw_text || block.review_note || "No extracted block found."}
+              </p>
             </div>
           ))}
         </div>

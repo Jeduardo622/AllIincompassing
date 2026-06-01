@@ -1183,14 +1183,21 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
     return { raw_text: compact, rows: preferenceRows };
   }
   if (fieldKey === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES") {
+    const adaptiveBlocks = [
+      { assessment_type: "VB-MAPP", raw_text: compact.match(/VB-MAPP[\s\S]*?(?=Vineland|AFLS|ABAS-3|$)/i)?.[0] ?? null },
+      { assessment_type: "Vineland", raw_text: compact.match(/Vineland[\s\S]*?(?=VB-MAPP|AFLS|ABAS-3|$)/i)?.[0] ?? null },
+      { assessment_type: "AFLS", raw_text: compact.match(/AFLS[\s\S]*?(?=VB-MAPP|Vineland|ABAS-3|$)/i)?.[0] ?? null },
+      { assessment_type: "ABAS-3", raw_text: compact.match(/ABAS-3[\s\S]*?(?=VB-MAPP|Vineland|AFLS|$)/i)?.[0] ?? null },
+    ].map((block) => block.raw_text
+      ? block
+      : {
+        ...block,
+        manual_review_required: true,
+        review_note: `${block.assessment_type} content was not found in the source document text; clinician review is required.`,
+      });
     return {
       raw_text: compact,
-      assessment_blocks: [
-        { assessment_type: "VB-MAPP", raw_text: compact.match(/VB-MAPP[\s\S]*?(?=Vineland|AFLS|ABAS-3|$)/i)?.[0] ?? null },
-        { assessment_type: "Vineland", raw_text: compact.match(/Vineland[\s\S]*?(?=VB-MAPP|AFLS|ABAS-3|$)/i)?.[0] ?? null },
-        { assessment_type: "AFLS", raw_text: compact.match(/AFLS[\s\S]*?(?=VB-MAPP|Vineland|ABAS-3|$)/i)?.[0] ?? null },
-        { assessment_type: "ABAS-3", raw_text: compact.match(/ABAS-3[\s\S]*?(?=VB-MAPP|Vineland|AFLS|$)/i)?.[0] ?? null },
-      ],
+      assessment_blocks: adaptiveBlocks,
       measure_name: compact.match(/(Vineland Adaptive Behavior Scales,\s*3rd Edition)/i)?.[1] ?? null,
       date_administered: compact.match(/Date Administered\s*:?\s*([0-9/]+)/i)?.[1] ?? null,
       interviewer: normalizeExtractedValue(compact.match(/Name of Interviewer\s*:?\s*(.+?)(?=Name of Respondent|Assessment Summary|$)/i)?.[1] ?? ""),

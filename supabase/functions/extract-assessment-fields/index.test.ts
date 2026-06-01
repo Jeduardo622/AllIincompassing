@@ -701,13 +701,28 @@ Deno.test("extractStructuredSections preserves IEHP adaptive measure block slots
 
   const adaptivePayload = sections.find((section) => section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES")?.payload;
   expect(adaptivePayload?.assessment_blocks).toEqual([
-    { assessment_type: "VB-MAPP", raw_text: null },
+    {
+      assessment_type: "VB-MAPP",
+      raw_text: null,
+      manual_review_required: true,
+      review_note: "VB-MAPP content was not found in the source document text; clinician review is required.",
+    },
     expect.objectContaining({
       assessment_type: "Vineland",
       raw_text: expect.stringContaining("Vineland Adaptive Behavior Scales"),
     }),
-    { assessment_type: "AFLS", raw_text: null },
-    { assessment_type: "ABAS-3", raw_text: null },
+    {
+      assessment_type: "AFLS",
+      raw_text: null,
+      manual_review_required: true,
+      review_note: "AFLS content was not found in the source document text; clinician review is required.",
+    },
+    {
+      assessment_type: "ABAS-3",
+      raw_text: null,
+      manual_review_required: true,
+      review_note: "ABAS-3 content was not found in the source document text; clinician review is required.",
+    },
   ]);
 });
 

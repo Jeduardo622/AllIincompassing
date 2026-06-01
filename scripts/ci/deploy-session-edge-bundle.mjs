@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-/** Session lifecycle + care-plan edge routes deployed before policy checks in CI. Keep in sync with docs/supabase_branching.md and README. */
+/** Session lifecycle, care-plan, and assessment edge routes deployed before policy checks in CI. Keep in sync with docs/supabase_branching.md and README. */
 const REQUIRED_FUNCTIONS = [
   "sessions-book",
   "sessions-hold",
@@ -16,6 +16,7 @@ const REQUIRED_FUNCTIONS = [
   "program-notes",
   "emails",
   "extract-assessment-fields",
+  "generate-assessment-plan-docx",
 ];
 
 const EXPECT_VERIFY_JWT = String(process.env.CI_EXPECT_VERIFY_JWT ?? "true").toLowerCase() !== "false";

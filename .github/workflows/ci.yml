@@ -538,7 +538,7 @@ jobs:
           PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_ASSESSMENT_CLIENT_ID: ${{ secrets.PW_ASSESSMENT_CLIENT_ID }}
+          PW_ASSESSMENT_CLIENT_ID: ${{ secrets.PW_ASSESSMENT_CLIENT_ID || secrets.W_ASSESSMENT_CLIENT_ID }}
           PW_ASSESSMENT_SAMPLE_FILE: ${{ secrets.PW_ASSESSMENT_SAMPLE_FILE }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

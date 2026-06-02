@@ -335,15 +335,6 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
       activeAuthorizations[0]?.member_id?.trim() ??
       null;
 
-    const acceptedPrograms = (draftProgramsResult.data ?? []).filter(
-      (program) => program.accept_state === "accepted" || program.accept_state === "edited",
-    );
-    const acceptedGoals = (draftGoalsResult.data ?? []).filter(
-      (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
-    );
-    const pendingDraftProgramCount = (draftProgramsResult.data ?? []).filter((program) => program.accept_state === "pending").length;
-    const pendingDraftGoalCount = (draftGoalsResult.data ?? []).filter((goal) => goal.accept_state === "pending").length;
-
     const payloadResult = buildIehpDocxPayload({
       templateFields: templateFieldsResult.data ?? [],
       checklistItems,
@@ -351,10 +342,10 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
       client,
       authorizationMemberId,
       writer,
-      acceptedPrograms,
-      acceptedGoals,
-      pendingDraftProgramCount,
-      pendingDraftGoalCount,
+      acceptedPrograms: [],
+      acceptedGoals: [],
+      pendingDraftProgramCount: 0,
+      pendingDraftGoalCount: 0,
     });
 
     const generationSecret = process.env.ASSESSMENT_GENERATION_SECRET?.trim();

@@ -2927,6 +2927,24 @@ describe("assessmentDocumentsHandler", () => {
     expect(structuredBody).toContain("The behaviors and functional skills to be addressed");
     expect(structuredBody).toContain("Arlington High School");
     expect(structuredBody).not.toContain("Kim presents with communication deficits");
+
+    const draftWriteCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (typeof url !== "string" || method !== "POST") return false;
+      return url.includes("/rest/v1/assessment_draft_programs") || url.includes("/rest/v1/assessment_draft_goals");
+    });
+    expect(draftWriteCalls).toHaveLength(0);
+    const extractedStatusPatchCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const body = typeof init?.body === "string" ? init.body : "";
+      return (
+        typeof url === "string" &&
+        method === "PATCH" &&
+        url.includes("/rest/v1/assessment_documents?id=eq.doc-iehp-reason") &&
+        body.includes("\"status\":\"extracted\"")
+      );
+    });
+    expect(extractedStatusPatchCall).toBeDefined();
   });
 
   it("records extraction_failed audit event when extraction API returns non-ok", async () => {

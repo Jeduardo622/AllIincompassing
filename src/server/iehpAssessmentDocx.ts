@@ -247,28 +247,6 @@ export function buildIehpDocxPayload(args: BuildIehpDocxPayloadArgs): BuiltIehpD
       });
     });
 
-  if ((args.pendingDraftProgramCount ?? 0) > 0) {
-    blockers.push({
-      code: "pending_draft_programs",
-      count: args.pendingDraftProgramCount,
-      message: "Draft programs are still pending review.",
-    });
-  }
-  if ((args.pendingDraftGoalCount ?? 0) > 0) {
-    blockers.push({
-      code: "pending_draft_goals",
-      count: args.pendingDraftGoalCount,
-      message: "Draft goals are still pending review.",
-    });
-  }
-
-  if (!args.acceptedGoals.some((goal) => goal.goal_type !== "parent")) {
-    blockers.push({ code: "missing_child_goal", message: "At least one accepted or edited child goal is required." });
-  }
-  if (!args.acceptedGoals.some((goal) => goal.goal_type === "parent")) {
-    blockers.push({ code: "missing_parent_goal", message: "At least one accepted or edited parent goal is required." });
-  }
-
   (args.structuredSections ?? [])
     .filter((section) => section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES" && hasManualReviewAdaptiveGap(section.payload))
     .forEach((section) => {

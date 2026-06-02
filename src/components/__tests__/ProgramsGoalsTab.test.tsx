@@ -3666,7 +3666,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(screen.queryByText("Accepted draft goals: 2 child / 1 parent")).not.toBeInTheDocument();
   });
 
-  it("shows IEHP publish controls with explicit blockers when required rows remain unresolved", async () => {
+  it("does not show IEHP publish controls when required rows remain unresolved", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -3744,12 +3744,11 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("synthetic-iehp.docx");
-    const publishButton = await screen.findByRole("button", { name: /Publish to Live Programs \+ Goals/i });
-    expect(publishButton).toBeDisabled();
-    expect(screen.getByText("1 required checklist or structured row must be approved before publishing.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("1 required checklist or structured row must be approved before publishing.")).not.toBeInTheDocument();
   });
 
-  it("publishes accepted IEHP drafts through the promotion API", async () => {
+  it("does not promote IEHP drafts through the live Programs and Goals API", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -3815,20 +3814,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
           { status: 200 },
         );
       }
-      if (method === "POST" && path === "/api/assessment-promote") {
-        return new Response(
-          JSON.stringify({
-            created_program_count: 1,
-            created_goal_count: 1,
-            promoted_program_count: 1,
-            promoted_goal_count: 1,
-          }),
-          { status: 200 },
-        );
-      }
       return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
     });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
@@ -3839,21 +3826,11 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("synthetic-iehp.docx");
-    const publishButton = await screen.findByRole("button", { name: /Publish to Live Programs \+ Goals/i });
-    expect(publishButton).toBeEnabled();
-    await user.click(publishButton);
-
-    await waitFor(() => {
-      expect(callApi).toHaveBeenCalledWith(
-        "/api/assessment-promote",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({ assessment_document_id: ASSESSMENT_ID }),
-        }),
-      );
-    });
-    expect(showSuccess).toHaveBeenCalledWith("Published to live records. Created 1 production program and 1 goal.");
-    confirmSpy.mockRestore();
+    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(callApi).not.toHaveBeenCalledWith(
+      "/api/assessment-promote",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("does not render IEHP draft editors for already published assessments", async () => {

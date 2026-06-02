@@ -814,18 +814,21 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
         assertFetchOk(structuredInsertResult, "structured_section_persistence_failed");
       }
 
-      const deterministicDraftPayload = buildDeterministicDraftPayload(
-        structuredSections.map((section) => ({
-          id: `${createdDocumentId}:${section.field_key}:${section.section_index}`,
-          section_key: section.section_key,
-          field_key: section.field_key,
-          section_index: section.section_index,
-          payload: section.payload,
-          status: section.status,
-          required: section.required,
-        })),
-        AUTO_DRAFT_STRUCTURED_SECTION_STATUSES,
-      );
+      const deterministicDraftPayload =
+        templateType === "iehp_fba"
+          ? null
+          : buildDeterministicDraftPayload(
+              structuredSections.map((section) => ({
+                id: `${createdDocumentId}:${section.field_key}:${section.section_index}`,
+                section_key: section.section_key,
+                field_key: section.field_key,
+                section_index: section.section_index,
+                payload: section.payload,
+                status: section.status,
+                required: section.required,
+              })),
+              AUTO_DRAFT_STRUCTURED_SECTION_STATUSES,
+            );
       let finalStatus: "extracted" | "drafted" = "extracted";
       const extractionCompletedAt = new Date().toISOString();
 

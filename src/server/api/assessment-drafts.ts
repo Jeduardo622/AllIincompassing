@@ -97,6 +97,7 @@ interface AssessmentDocumentScopeRow {
   organization_id: string;
   client_id: string;
   status: string;
+  template_type?: string | null;
 }
 
 const AUTO_GENERATE_READY_DOCUMENT_STATUSES = new Set(["extracted", "extraction_failed"]);
@@ -105,20 +106,12 @@ const DRAFT_GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
   "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
   "CALOPTIMA_FBA_PARENT_GOALS",
-  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
-  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
 ]);
 const DRAFT_PARENT_GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_PARENT_GOALS",
 ]);
 
 const resolveProgramNameFromGoalSection = (fieldKey: string, payload: Record<string, unknown>, isParentGoal: boolean): string => {
-  if (fieldKey === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS") {
-    return getPayloadString(payload, ["program_name", "program", "domain"], "Skill Acquisition");
-  }
-  if (fieldKey === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS") {
-    return getPayloadString(payload, ["program_name", "program", "domain"], "Behavior Treatment");
-  }
   return getPayloadString(payload, ["program_name", "program", "domain"], isParentGoal ? "Parent Training" : "Behavior Treatment");
 };
 
@@ -366,7 +359,7 @@ const getAssessmentDocument = async (
   organizationId: string,
   assessmentDocumentId: string,
 ): Promise<AssessmentDocumentScopeRow | null> => {
-  const lookupUrl = `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status&id=eq.${encodeURIComponent(
+  const lookupUrl = `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type&id=eq.${encodeURIComponent(
     assessmentDocumentId,
   )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`;
   const lookup = await fetchJson<AssessmentDocumentScopeRow[]>(lookupUrl, { method: "GET", headers });
@@ -693,6 +686,10 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
         return json({ error: result.error }, result.status);
       }
       return json({ draft_program_id: result.draftProgramId }, 201);
+    }
+
+    if (document.template_type === "iehp_fba") {
+      return json({ error: "IEHP assessments use structured review data for document generation; draft auto-generation is disabled." }, 409);
     }
 
     const hasExistingDrafts = await draftsAlreadyExistForDocument({

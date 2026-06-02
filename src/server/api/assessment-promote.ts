@@ -18,6 +18,7 @@ interface AssessmentDocumentRow {
   organization_id: string;
   client_id: string;
   status: string;
+  template_type?: string | null;
 }
 
 interface DraftProgramRow {
@@ -72,6 +73,30 @@ const normalizeGoalDataPoint = (point: Record<string, unknown> | string): Record
 const PROMOTED_ASSESSMENT_STATUSES = new Set(["approved", "promoted"]);
 const PROMOTION_READY_STATUS = "drafted";
 const PROMOTION_LOCK_STATUS = "extracted";
+const IEHP_ASSESSMENT_TEMPLATE_TYPE = "iehp_fba";
+
+const buildAssessmentRequiredApprovalLookups = (args: {
+  supabaseUrl: string;
+  organizationId: string;
+  assessmentDocumentId: string;
+  headers: Record<string, string>;
+}) => {
+  const { supabaseUrl, organizationId, assessmentDocumentId, headers } = args;
+  return Promise.all([
+    fetchJson<Array<{ id: string }>>(
+      `${supabaseUrl}/rest/v1/assessment_checklist_items?select=id&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&required=is.true&status=neq.approved`,
+      { method: "GET", headers },
+    ),
+    fetchJson<Array<{ id: string }>>(
+      `${supabaseUrl}/rest/v1/assessment_structured_sections?select=id&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&required=is.true&status=neq.approved`,
+      { method: "GET", headers },
+    ),
+  ]);
+};
 
 export async function assessmentPromoteHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
@@ -112,7 +137,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   };
 
   const docLookup = await fetchJson<AssessmentDocumentRow[]>(
-    `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status&id=eq.${encodeURIComponent(
+    `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type&id=eq.${encodeURIComponent(
       parsed.data.assessment_document_id,
     )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
     { method: "GET", headers },
@@ -123,6 +148,101 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   }
   if (PROMOTED_ASSESSMENT_STATUSES.has(document.status)) {
     return json({ error: "Assessment has already been approved and promoted to live records." }, 409);
+  }
+  if (document.template_type === IEHP_ASSESSMENT_TEMPLATE_TYPE) {
+    const [unapprovedChecklistResult, unapprovedStructuredResult] = await buildAssessmentRequiredApprovalLookups({
+      supabaseUrl,
+      organizationId,
+      assessmentDocumentId: parsed.data.assessment_document_id,
+      headers,
+    });
+    if (!unapprovedChecklistResult.ok || !unapprovedStructuredResult.ok) {
+      return json({ error: "Failed to evaluate IEHP review completion preconditions" }, 500);
+    }
+
+    const unapprovedChecklistCount = Array.isArray(unapprovedChecklistResult.data) ? unapprovedChecklistResult.data.length : 0;
+    const unapprovedStructuredCount = Array.isArray(unapprovedStructuredResult.data) ? unapprovedStructuredResult.data.length : 0;
+    const unresolvedRequiredCount = unapprovedChecklistCount + unapprovedStructuredCount;
+    if (unresolvedRequiredCount > 0) {
+      return json(
+        {
+          error: `Required checklist and structured review rows must be approved before publishing this IEHP assessment.`,
+          unresolved_required_count: unresolvedRequiredCount,
+        },
+        409,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const actorId = getAccessTokenSubject(accessToken);
+    const finalizeReviewedAssessmentResult = await fetchJson<AssessmentDocumentRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}&status=eq.${encodeURIComponent(document.status)}`,
+      {
+        method: "PATCH",
+        headers: { ...headers, Prefer: "return=representation" },
+        body: JSON.stringify({
+          status: "approved",
+          approved_at: now,
+          updated_at: now,
+        }),
+      },
+    );
+    const finalizedDocument = Array.isArray(finalizeReviewedAssessmentResult.data)
+      ? finalizeReviewedAssessmentResult.data[0]
+      : null;
+    if (!finalizeReviewedAssessmentResult.ok) {
+      return json({ error: "Failed to finalize reviewed assessment." }, finalizeReviewedAssessmentResult.status || 500);
+    }
+    if (!finalizedDocument) {
+      return json({ error: "Assessment review state changed before publish completed. Refresh and retry." }, 409);
+    }
+
+    const createReviewedEventResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        assessment_document_id: document.id,
+        organization_id: organizationId,
+        client_id: document.client_id,
+        item_type: "document",
+        item_id: document.id,
+        action: "reviewed_assessment_published",
+        from_status: document.status,
+        to_status: "approved",
+        actor_id: actorId,
+        event_payload: {
+          completion_mode: "assessment_only",
+          created_program_count: 0,
+          created_goal_count: 0,
+          promoted_program_count: 0,
+          promoted_goal_count: 0,
+        },
+      }),
+    });
+    if (!createReviewedEventResult.ok) {
+      await fetchJson(
+        `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`,
+        {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({
+            status: document.status,
+            approved_at: null,
+            updated_at: new Date().toISOString(),
+          }),
+        },
+      );
+      return json({ error: "Failed to record reviewed assessment publish event." }, createReviewedEventResult.status || 500);
+    }
+
+    return json({
+      assessment_document_id: document.id,
+      completion_mode: "assessment_only",
+      created_program_count: 0,
+      created_goal_count: 0,
+      promoted_program_count: 0,
+      promoted_goal_count: 0,
+    });
   }
   if (document.status !== PROMOTION_READY_STATUS) {
     return json({ error: "Assessment drafts must be ready before promotion. Refresh and retry after draft generation completes." }, 409);

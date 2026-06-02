@@ -3833,6 +3833,99 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     );
   });
 
+  it("shows a publish button for fully approved IEHP assessments without staged drafts", async () => {
+    const invalidateQueriesSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "approved-iehp.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/approved-iehp.docx",
+              status: "extracted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "required-row-1",
+                section_key: "recommendations",
+                label: "Recommendation",
+                placeholder_key: "IEHP_FBA_RECOMMENDATION",
+                required: true,
+                mode: "ASSISTED",
+                status: "approved",
+                review_notes: null,
+                value_text: "Synthetic recommendation",
+              },
+            ],
+            structured_sections: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "POST" && path === "/api/assessment-promote") {
+        return new Response(
+          JSON.stringify({
+            assessment_document_id: ASSESSMENT_ID,
+            completion_mode: "assessment_only",
+            created_program_count: 0,
+            created_goal_count: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("approved-iehp.docx");
+    const publishButton = await screen.findByRole("button", { name: /Publish Reviewed Assessment/i });
+    expect(publishButton).toBeEnabled();
+
+    await user.click(publishButton);
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-promote",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith("Published reviewed assessment.");
+    expect(invalidateQueriesSpy).toHaveBeenCalled();
+    invalidateQueriesSpy.mockRestore();
+    confirmSpy.mockRestore();
+  });
+
   it("does not render IEHP draft editors for already published assessments", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

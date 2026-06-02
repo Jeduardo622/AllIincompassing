@@ -150,6 +150,13 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     return json({ error: "Assessment has already been approved and promoted to live records." }, 409);
   }
   if (document.template_type === IEHP_ASSESSMENT_TEMPLATE_TYPE) {
+    if (document.status !== PROMOTION_LOCK_STATUS) {
+      return json(
+        { error: "IEHP assessment extraction must complete before publishing. Refresh and retry once extraction finishes." },
+        409,
+      );
+    }
+
     const [unapprovedChecklistResult, unapprovedStructuredResult] = await buildAssessmentRequiredApprovalLookups({
       supabaseUrl,
       organizationId,

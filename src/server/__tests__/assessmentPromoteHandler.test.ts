@@ -188,6 +188,59 @@ describe("assessmentPromoteHandler", () => {
     ).toBe(false);
   });
 
+  it("blocks IEHP assessment publish before extraction completes", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "uploaded",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("extraction must complete before publishing"),
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_checklist_items")),
+    ).toBe(false);
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_structured_sections")),
+    ).toBe(false);
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url, init]) => typeof url === "string" && init?.method === "PATCH"),
+    ).toBe(false);
+  });
+
   it("promotes all accepted draft programs and preserves goal-to-program links", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");

@@ -270,6 +270,7 @@ interface AssessmentPromoteResponse {
   created_goal_count: number;
   promoted_program_count?: number;
   promoted_goal_count?: number;
+  completion_mode?: "assessment_only";
 }
 
 export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
@@ -630,7 +631,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   ).length;
   const pendingDraftProgramCount = (assessmentDrafts?.programs ?? []).filter((program) => program.accept_state === "pending").length;
   const pendingDraftGoalCount = (assessmentDrafts?.goals ?? []).filter((goal) => goal.accept_state === "pending").length;
-  const showDraftReviewPanel = ENABLE_PROGRAMS_GOALS_AI_PROPOSALS && !selectedAssessmentAlreadyPublished;
+  const showDraftReviewPanel =
+    ENABLE_PROGRAMS_GOALS_AI_PROPOSALS && !selectedAssessmentAlreadyPublished && !selectedAssessmentIsIehp;
   const extractedChecklistValueCount = checklistItems.filter((item) => item.value_text?.trim()).length;
   const structuredChildGoalCount = structuredSections.filter(isStructuredChildGoalSection).length;
   const structuredParentGoalCount = structuredSections.filter(isStructuredParentGoalSection).length;
@@ -654,6 +656,13 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           : acceptedDraftGoalCount === 0
             ? "At least one draft goal must be accepted or edited before publishing."
             : null;
+  const iehpPublishDisabledReason = !selectedAssessmentId
+    ? "Select an assessment before publishing."
+    : selectedAssessmentAlreadyPublished
+      ? "This assessment has already been approved and published."
+      : hasPendingRequiredChecklistItems
+        ? `${unresolvedRequiredCount} required checklist or structured row${unresolvedRequiredCount === 1 ? "" : "s"} must be approved before publishing.`
+        : null;
 
   useEffect(() => {
     const firstAssessmentId = assessmentDocuments[0]?.id ?? null;
@@ -1012,6 +1021,14 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       return parseJson<AssessmentPromoteResponse>(response);
     },
     onSuccess: (result) => {
+      if (result.completion_mode === "assessment_only") {
+        queryClient.invalidateQueries({ queryKey: assessmentDocumentsQueryKey });
+        queryClient.invalidateQueries({
+          queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+        });
+        showSuccess("Published reviewed assessment.");
+        return;
+      }
       const programCount = result.promoted_program_count ?? result.created_program_count;
       const goalCount = result.promoted_goal_count ?? result.created_goal_count;
       queryClient.invalidateQueries({ queryKey: clientProgramsQueryKey });
@@ -1685,10 +1702,43 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                   Checklist review failed to load. Publishing stays blocked until checklist rows can be reviewed.
                 </p>
               ) : selectedAssessmentIsIehp && selectedAssessmentDocument ? (
-                <IehpFbaLayoutReview
-                  assessmentDocument={selectedAssessmentDocument}
-                  organizationId={organizationId}
-                />
+                <div className="space-y-4">
+                  <IehpFbaLayoutReview
+                    assessmentDocument={selectedAssessmentDocument}
+                    organizationId={organizationId}
+                  />
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-1">
+                        <p className="font-semibold text-emerald-900 dark:text-emerald-100">Publish reviewed IEHP assessment</p>
+                        <p className="text-xs text-emerald-800 dark:text-emerald-200">
+                          This completes the review workflow and locks the approved extraction as the published assessment record.
+                        </p>
+                        {iehpPublishDisabledReason && (
+                          <p className="text-xs text-amber-700 dark:text-amber-200">{iehpPublishDisabledReason}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== "undefined") {
+                            const confirmed = window.confirm(
+                              "Publish this reviewed IEHP assessment and complete the workflow?",
+                            );
+                            if (!confirmed) {
+                              return;
+                            }
+                          }
+                          promoteAssessment.mutate();
+                        }}
+                        disabled={Boolean(iehpPublishDisabledReason) || promoteAssessment.isLoading}
+                        className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {promoteAssessment.isLoading ? "Publishing..." : "Publish Reviewed Assessment"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               ) : checklistBySection.length === 0 && structuredSectionsBySection.length === 0 ? (
                 <p className="text-sm text-gray-500">Checklist not available yet for this assessment.</p>
               ) : (

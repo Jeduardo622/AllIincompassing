@@ -45,6 +45,202 @@ describe("assessmentPromoteHandler", () => {
     vi.resetAllMocks();
   });
 
+  it("publishes a fully reviewed IEHP assessment without promoting draft programs or goals", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "approved",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      assessment_document_id: "doc-1",
+      completion_mode: "assessment_only",
+      created_program_count: 0,
+      created_goal_count: 0,
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_draft_programs")),
+    ).toBe(false);
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url]) => typeof url === "string" && url.includes("/rest/v1/programs")),
+    ).toBe(false);
+    const reviewEventCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && init?.method === "POST");
+    expect(reviewEventCall).toBeTruthy();
+    expect(JSON.parse(String((reviewEventCall?.[1] as RequestInit | undefined)?.body ?? "{}"))).toMatchObject({
+      action: "reviewed_assessment_published",
+      from_status: "extracted",
+      to_status: "approved",
+      event_payload: {
+        completion_mode: "assessment_only",
+        created_program_count: 0,
+        created_goal_count: 0,
+      },
+    });
+  });
+
+  it("blocks IEHP assessment publish until all required review rows are approved", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "required-row-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      unresolved_required_count: 1,
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url]) => typeof url === "string" && url.includes("/rest/v1/programs")),
+    ).toBe(false);
+  });
+
+  it("blocks IEHP assessment publish before extraction completes", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "uploaded",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("extraction must complete before publishing"),
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_checklist_items")),
+    ).toBe(false);
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_structured_sections")),
+    ).toBe(false);
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url, init]) => typeof url === "string" && init?.method === "PATCH"),
+    ).toBe(false);
+  });
+
   it("promotes all accepted draft programs and preserves goal-to-program links", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");

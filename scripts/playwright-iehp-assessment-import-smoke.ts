@@ -52,6 +52,26 @@ const pause = async (ms: number): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 };
 
+const fetchWithRetry = async (url: string, init: RequestInit, label: string): Promise<Response> => {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok || response.status < 500) {
+        return response;
+      }
+      lastError = new Error(`${label} failed with status ${response.status}.`);
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < 4) {
+      await pause(1_500 * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(`${label} failed after retries.`);
+};
+
 const writeCleanupFailureManifest = (args: {
   latestDir: string;
   cleanupError: Error;
@@ -71,11 +91,15 @@ const fetchAssessmentDocuments = async (
   accessToken: string,
   clientId: string,
 ): Promise<AssessmentDocumentRecord[]> => {
-  const response = await fetch(`${baseUrl}/api/assessment-documents?client_id=${encodeURIComponent(clientId)}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+  const response = await fetchWithRetry(
+    `${baseUrl}/api/assessment-documents?client_id=${encodeURIComponent(clientId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
-  });
+    'Assessment document query',
+  );
 
   if (!response.ok) {
     throw new Error(`Assessment document query failed with status ${response.status}.`);
@@ -89,13 +113,14 @@ const fetchAssessmentDraftCounts = async (
   accessToken: string,
   assessmentDocumentId: string,
 ): Promise<{ programCount: number; goalCount: number }> => {
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `${baseUrl}/api/assessment-drafts?assessment_document_id=${encodeURIComponent(assessmentDocumentId)}`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
     },
+    'Assessment draft query',
   );
 
   if (!response.ok) {

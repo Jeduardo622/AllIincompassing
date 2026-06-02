@@ -102,6 +102,7 @@ interface AssessmentDocumentScopeRow {
 
 const AUTO_GENERATE_READY_DOCUMENT_STATUSES = new Set(["extracted", "extraction_failed"]);
 const IMMUTABLE_DRAFT_ASSESSMENT_STATUSES = new Set(["approved", "promoted"]);
+const IEHP_DRAFTS_DISABLED_ERROR = "IEHP assessments use structured review data for document generation; draft creation and editing are disabled.";
 const DRAFT_GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
   "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
@@ -138,7 +139,7 @@ const assertDraftAssessmentIsMutable = async (args: {
   assessmentDocumentId: string;
 }): Promise<{ ok: true } | { ok: false; status: number; error: string }> => {
   const lookup = await fetchJson<AssessmentDocumentScopeRow[]>(
-    `${args.supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status&id=eq.${encodeURIComponent(
+    `${args.supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type&id=eq.${encodeURIComponent(
       args.assessmentDocumentId,
     )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
     { method: "GET", headers: args.headers },
@@ -149,6 +150,9 @@ const assertDraftAssessmentIsMutable = async (args: {
   }
   if (IMMUTABLE_DRAFT_ASSESSMENT_STATUSES.has(document.status)) {
     return { ok: false, status: 409, error: "Published assessment drafts are retained for audit and cannot be edited." };
+  }
+  if (document.template_type === "iehp_fba") {
+    return { ok: false, status: 409, error: IEHP_DRAFTS_DISABLED_ERROR };
   }
   return { ok: true };
 };
@@ -665,6 +669,9 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     if (!document) {
       return json({ error: "assessment_document_id is not in scope for this organization" }, 403);
     }
+    if (document.template_type === "iehp_fba") {
+      return json({ error: IEHP_DRAFTS_DISABLED_ERROR }, 409);
+    }
 
     const actorId = getAccessTokenSubject(accessToken);
     if (parsedManual.success) {
@@ -686,10 +693,6 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
         return json({ error: result.error }, result.status);
       }
       return json({ draft_program_id: result.draftProgramId }, 201);
-    }
-
-    if (document.template_type === "iehp_fba") {
-      return json({ error: "IEHP assessments use structured review data for document generation; draft auto-generation is disabled." }, 409);
     }
 
     const hasExistingDrafts = await draftsAlreadyExistForDocument({

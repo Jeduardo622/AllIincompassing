@@ -21,6 +21,9 @@ import {
   resolveOrgAndRole,
 } from "../api/shared";
 
+const IEHP_DRAFTS_DISABLED_ERROR =
+  "IEHP assessments use structured review data for document generation; draft creation and editing are disabled.";
+
 const buildTypedGoals = (
   counts: { childCount?: number; parentCount?: number; programName?: string } = {},
 ): Array<Record<string, unknown>> => [
@@ -265,6 +268,59 @@ describe("assessmentDraftsHandler", () => {
     expect(response.status).toBe(201);
   });
 
+  it("blocks IEHP manual draft creation at the drafts API", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted", template_type: "iehp_fba" }],
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          programs: [
+            {
+              name: "Communication Program",
+              description: "Program description",
+              rationale: "Program rationale",
+              evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence snippet" }],
+              review_flags: [],
+            },
+          ],
+          summary_rationale: "Summary rationale",
+          confidence: "medium",
+          goals: buildTypedGoals({ childCount: 2, parentCount: 1 }),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: IEHP_DRAFTS_DISABLED_ERROR });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_programs"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_goals"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("deterministically creates staged drafts from approved structured sections", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
@@ -423,9 +479,7 @@ describe("assessmentDraftsHandler", () => {
     );
 
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({
-      error: "IEHP assessments use structured review data for document generation; draft auto-generation is disabled.",
-    });
+    await expect(response.json()).resolves.toEqual({ error: IEHP_DRAFTS_DISABLED_ERROR });
     expect(fetchJson).not.toHaveBeenCalledWith(
       expect.stringContaining("/rest/v1/assessment_structured_sections"),
       expect.anything(),
@@ -1249,6 +1303,64 @@ describe("assessmentDraftsHandler", () => {
     });
     expect(fetchJson).not.toHaveBeenCalledWith(
       expect.stringContaining("/rest/v1/assessment_draft_goals?id=eq.draft-goal-1"),
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_review_events"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("blocks retained IEHP draft updates even when the parent assessment is not published", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "draft-program-1",
+            assessment_document_id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            accept_state: "pending",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted", template_type: "iehp_fba" }],
+      });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          draft_type: "program",
+          id: "11111111-1111-1111-1111-111111111111",
+          accept_state: "edited",
+          name: "Mutated IEHP Program",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: IEHP_DRAFTS_DISABLED_ERROR });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_programs?id=eq.draft-program-1"),
       expect.objectContaining({ method: "PATCH" }),
     );
     expect(fetchJson).not.toHaveBeenCalledWith(

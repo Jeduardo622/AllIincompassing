@@ -509,6 +509,77 @@ jobs:
           path: artifacts/latest
           if-no-files-found: ignore
 
+  iehp_assessment_import_smoke:
+    name: iehp-assessment-import-smoke
+    runs-on: ubuntu-latest
+    needs:
+      - policy
+      - change_scope
+    if: needs.change_scope.outputs.docs_only != 'true'
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: IEHP assessment import smoke gate
+        env:
+          PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
+          PW_ADMIN_EMAIL: ${{ secrets.PW_SUPERADMIN_EMAIL || secrets.PW_ADMIN_EMAIL }}
+          PW_ADMIN_PASSWORD: ${{ secrets.PW_SUPERADMIN_PASSWORD || secrets.PW_ADMIN_PASSWORD }}
+          PW_ASSESSMENT_CLIENT_ID: ${{ secrets.PW_ASSESSMENT_CLIENT_ID || secrets.W_ASSESSMENT_CLIENT_ID }}
+          PW_ASSESSMENT_SAMPLE_FILE: ${{ secrets.PW_ASSESSMENT_SAMPLE_FILE }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+        run: |
+          required=(
+            PW_BASE_URL
+            PW_ADMIN_EMAIL
+            PW_ADMIN_PASSWORD
+            PW_ASSESSMENT_CLIENT_ID
+            PW_ASSESSMENT_SAMPLE_FILE
+            VITE_SUPABASE_URL
+            VITE_SUPABASE_ANON_KEY
+          )
+          missing=()
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required secrets for IEHP assessment import smoke gate: ${missing[*]}"
+            exit 1
+          fi
+
+          npm run playwright:iehp-assessment-import-smoke
+
+      - name: Record IEHP import smoke evidence
+        if: always()
+        run: npm run ci:write-evidence -- iehp-assessment-import-smoke "${{ job.status }}"
+
+      - name: Upload IEHP Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: iehp-playwright-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/latest
+          if-no-files-found: ignore
+
   ci_gate:
     name: ci-gate
     runs-on: ubuntu-latest
@@ -522,6 +593,7 @@ jobs:
       - build
       - tier0_browser
       - auth_browser_smoke
+      - iehp_assessment_import_smoke
     steps:
       - name: Enforce lane-specific CI results
         shell: bash
@@ -534,6 +606,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           TIER0_RESULT: ${{ needs.tier0_browser.result }}
           AUTH_SMOKE_RESULT: ${{ needs.auth_browser_smoke.result }}
+          IEHP_IMPORT_SMOKE_RESULT: ${{ needs.iehp_assessment_import_smoke.result }}
         run: |
           set -euo pipefail
           echo "docs_only=${DOCS_ONLY}"
@@ -554,6 +627,7 @@ jobs:
           [ "${BUILD_RESULT}" = "success" ] || failed+=("build=${BUILD_RESULT}")
           [ "${TIER0_RESULT}" = "success" ] || failed+=("tier0-browser=${TIER0_RESULT}")
           [ "${AUTH_SMOKE_RESULT}" = "success" ] || failed+=("auth-browser-smoke=${AUTH_SMOKE_RESULT}")
+          [ "${IEHP_IMPORT_SMOKE_RESULT}" = "success" ] || failed+=("iehp-assessment-import-smoke=${IEHP_IMPORT_SMOKE_RESULT}")
 
           if [ "${#failed[@]}" -gt 0 ]; then
             echo "non-doc run failed required jobs: ${failed[*]}"

@@ -32,7 +32,8 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
      - non-doc path: `change-scope` -> `policy` -> parallel gates:
        - chain A: `lint-typecheck` + `unit-tests` -> `build` -> `tier0-browser`
        - chain B: `auth-browser-smoke`
-       - both chains feed `ci-gate`
+       - chain C: `iehp-assessment-import-smoke`
+       - all chains feed `ci-gate`
 4. Merge queue (`merge_group`) to `main`/`develop`.
    - `ci.yml` runs the non-doc chain before `ci-gate` (no docs-only fast path on `merge_group`).
 5. Manual preview run.
@@ -67,11 +68,13 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
   - `build`
   - `tier0-browser`
   - `auth-browser-smoke`
+  - `iehp-assessment-import-smoke`
 - `ci-gate` is the final required status gate for branch protection.
 - Current transition state:
   - branch protection should require `ci-gate`
   - `policy` validates `CI_REQUIRED_CHECKS=ci-gate`
   - keep the legacy required checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) only until the migration PR has merged and `main` is green
+  - `iehp-assessment-import-smoke` is enforced through `ci-gate`; it does not need to be added as a separate branch-protection check when `ci-gate` is required
 
 ### `supabase-preview.yml`
 
@@ -97,6 +100,7 @@ SUPABASE_DB_URL
 ```
 
 `supabase-preview.yml` and `ci.yml` may also reference additional environment-specific secrets when preview and policy checks run.
+The CI IEHP assessment import smoke additionally requires a dedicated synthetic smoke client and fixture configured through `PW_ASSESSMENT_CLIENT_ID` and `PW_ASSESSMENT_SAMPLE_FILE`, plus the standard Playwright admin and Supabase URL/key secrets. These values must remain secret-backed and must not be copied into repository docs.
 
 For local hosted-db parity runs, export the Supabase variables and set `RUN_DB_IT=1` before running `npm test`.
 

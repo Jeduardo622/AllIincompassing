@@ -27,6 +27,7 @@ const CRITICAL_PLAYWRIGHT_SCRIPTS = [
   path.join(ROOT, "scripts", "playwright-session-complete.ts"),
   path.join(ROOT, "scripts", "playwright-schedule-blocked-close.ts"),
   path.join(ROOT, "scripts", "playwright-session-note-measurement-roundtrip.ts"),
+  path.join(ROOT, "scripts", "playwright-iehp-assessment-import-smoke.ts"),
 ];
 
 const readJson = async (filePath) => JSON.parse(await readFile(filePath, "utf8"));
@@ -138,6 +139,18 @@ const run = async () => {
   }
   if (!ciWorkflow.includes("Record auth smoke evidence")) {
     errors.push(".github/workflows/ci.yml must record auth smoke evidence artifacts for success/failure runs.");
+  }
+  if (!ciWorkflow.includes("iehp-assessment-import-smoke")) {
+    errors.push(".github/workflows/ci.yml must include the IEHP assessment import smoke gate.");
+  }
+  if (!ciWorkflow.includes("npm run playwright:iehp-assessment-import-smoke")) {
+    errors.push(".github/workflows/ci.yml IEHP assessment import smoke gate must run playwright:iehp-assessment-import-smoke.");
+  }
+  if (!ciWorkflow.includes("Record IEHP import smoke evidence")) {
+    errors.push(".github/workflows/ci.yml must record IEHP import smoke evidence artifacts for success/failure runs.");
+  }
+  if (!ciWorkflow.includes("needs.iehp_assessment_import_smoke.result")) {
+    errors.push(".github/workflows/ci.yml ci-gate must depend on the IEHP assessment import smoke result.");
   }
   if (!ciWorkflow.includes("npm run playwright:session-no-show")) {
     errors.push(".github/workflows/ci.yml auth-browser-smoke gate must run playwright:session-no-show.");

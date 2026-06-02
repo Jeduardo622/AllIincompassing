@@ -54,6 +54,7 @@ Internal workflow behavior still matters:
 
 - `docs-guard` is the docs-only fast-path validator.
 - `ci-gate` summarizes CI lane outcomes and is the required-check target after migration.
+- `iehp-assessment-import-smoke` is enforced through `ci-gate` for non-doc runs; keep its fixture and smoke-client values configured as CI secrets.
 - docs-only PRs satisfy the browser/code-quality jobs by resolving them to `SKIPPED`, while `docs-guard` and `ci-gate` pass.
 
 Do not remove the six legacy required checks until the non-doc migration PR proves `ci-gate` is gating the full policy, lint/typecheck, unit, build, tier-0 browser, and auth browser smoke chain.
@@ -64,6 +65,7 @@ Do not remove the six legacy required checks until the non-doc migration PR prov
 
 Note: docs-only PRs run the docs fast path on standard PR events, but merge-queue (`merge_group`) currently uses the full non-doc chain before `ci-gate`.
 Note: `auth-browser-smoke` allows a non-fatal secret-missing skip on `pull_request`, but treats missing secrets as a failure on `merge_group`/`push`; do not treat PR soft-skip behavior as merge-queue parity.
+Note: `iehp-assessment-import-smoke` fails on missing required smoke secrets for non-doc runs because it is intended to be an enforced import guard, not an advisory browser check.
 
 ## Approval Validation Result
 

@@ -1421,6 +1421,58 @@ Deno.test("deterministicValueForRow maps IEHP PRESENTING CONCERNS heading into r
   expect(manual.value_text).not.toContain("Functional Communication");
 });
 
+Deno.test("hydrateIeHpTemplatePlaceholdersFromFields transfers presenting concerns into reason structured payload", () => {
+  const hydrated = __TESTING__.hydrateIeHpTemplatePlaceholdersFromFields(
+    [{
+      section_key: "identification_admin",
+      field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      section_index: 0,
+      payload: {
+        field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+        template_placeholder: true,
+        entered_value_present: false,
+        clinical_value: null,
+        raw_text: "",
+      },
+      source_span: {
+        method: "iehp_template_layout_placeholder",
+        page_number: 2,
+        field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      },
+      status: "drafted",
+      required: true,
+      review_notes: "Template field preserved as an empty placeholder.",
+    }],
+    [{
+      placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+      value_text:
+        "Kim presents with significant communication deficits and primarily relies on hand-leading to express preferences.",
+      value_json: null,
+      confidence: 0.55,
+      mode: "MANUAL",
+      status: "drafted",
+      source_span: { method: "iehp_presenting_concerns_anchor" },
+      review_notes: "Presenting concerns narrative mapped into reason for referral.",
+    }],
+  );
+
+  const reason = hydrated.find((section) => section.field_key === "IEHP_FBA_REASON_FOR_REFERRAL");
+  expect(reason?.payload).toMatchObject({
+    field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+    template_placeholder: false,
+    entered_value_present: true,
+    clinical_value:
+      "Kim presents with significant communication deficits and primarily relies on hand-leading to express preferences.",
+    raw_text:
+      "Kim presents with significant communication deficits and primarily relies on hand-leading to express preferences.",
+  });
+  expect(reason?.source_span).toMatchObject({
+    method: "iehp_template_layout_placeholder",
+    hydrated_from: "deterministic_checklist_field",
+    field_source_method: "iehp_presenting_concerns_anchor",
+  });
+});
+
 Deno.test("deterministicValueForRow ignores inline presenting concerns prose before heading", () => {
   const manual = __TESTING__.deterministicValueForRow(
     {

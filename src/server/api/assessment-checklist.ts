@@ -31,6 +31,13 @@ interface ChecklistRow {
   organization_id: string;
   client_id: string;
   status: ReviewStatus;
+  required?: boolean | null;
+  label?: string | null;
+  placeholder_key?: string | null;
+  field_key?: string | null;
+  value_text?: string | null;
+  value_json?: Record<string, unknown> | unknown[] | null;
+  payload?: Record<string, unknown> | null;
 }
 
 type ReviewStatus = z.infer<typeof reviewStatusSchema>;
@@ -51,6 +58,60 @@ const canTransitionStatus = (current: ReviewStatus, next: ReviewStatus): boolean
   }
   return statusOrder[next] >= statusOrder[current];
 };
+
+const structuredPayloadMetadataKeys = new Set([
+  "field_key",
+  "label",
+  "page_number",
+  "section_key",
+  "field_type",
+  "mode",
+  "required",
+  "source",
+  "layout_json",
+  "template_placeholder",
+  "entered_value_present",
+  "options",
+]);
+
+const hasMeaningfulReviewValue = (value: unknown, parentKey?: string): boolean => {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized.length > 0 && normalized.toLowerCase() !== "unknown";
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.some((entry) => hasMeaningfulReviewValue(entry, parentKey));
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).some(([key, child]) => {
+      if (structuredPayloadMetadataKeys.has(key)) {
+        return false;
+      }
+      if (parentKey === "options" && key === "label") {
+        return false;
+      }
+      return hasMeaningfulReviewValue(child, key);
+    });
+  }
+  return false;
+};
+
+const hasMeaningfulChecklistValue = (
+  valueText: string | null | undefined,
+  valueJson: Record<string, unknown> | unknown[] | null | undefined,
+): boolean => hasMeaningfulReviewValue(valueText) || hasMeaningfulReviewValue(valueJson);
+
+const hasMeaningfulStructuredPayload = (payload: Record<string, unknown> | null | undefined): boolean =>
+  Boolean(payload && hasMeaningfulReviewValue(payload));
 
 export async function assessmentChecklistHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
@@ -126,7 +187,7 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
     }
 
     if (parsed.data.structured_section_id) {
-      const lookupUrl = `${supabaseUrl}/rest/v1/assessment_structured_sections?select=id,assessment_document_id,organization_id,client_id,status&id=eq.${encodeURIComponent(
+      const lookupUrl = `${supabaseUrl}/rest/v1/assessment_structured_sections?select=id,assessment_document_id,organization_id,client_id,status,required,field_key,payload&id=eq.${encodeURIComponent(
         parsed.data.structured_section_id,
       )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`;
       const lookup = await fetchJson<ChecklistRow[]>(lookupUrl, { method: "GET", headers });
@@ -150,6 +211,13 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
       if (existing.status === "approved" && parsed.data.payload !== undefined) {
         return json(
           { error: "Approved structured section payloads are locked. Reject and recreate a reviewed section before changing clinical content." },
+          400,
+        );
+      }
+      const finalStructuredPayload = parsed.data.payload ?? existing.payload;
+      if (nextStatus === "approved" && existing.required === true && !hasMeaningfulStructuredPayload(finalStructuredPayload)) {
+        return json(
+          { error: `Required structured section ${existing.field_key ?? existing.id} cannot be approved while blank.` },
           400,
         );
       }
@@ -203,7 +271,7 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
       return json(updateResult.data[0]);
     }
 
-    const lookupUrl = `${supabaseUrl}/rest/v1/assessment_checklist_items?select=id,assessment_document_id,organization_id,client_id,status&id=eq.${encodeURIComponent(
+    const lookupUrl = `${supabaseUrl}/rest/v1/assessment_checklist_items?select=id,assessment_document_id,organization_id,client_id,status,required,label,placeholder_key,value_text,value_json&id=eq.${encodeURIComponent(
       parsed.data.item_id ?? "",
     )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`;
     const lookup = await fetchJson<ChecklistRow[]>(lookupUrl, { method: "GET", headers });
@@ -224,6 +292,14 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
               ? "Approved checklist rows cannot be downgraded. Edit notes or field value without lowering status."
               : `Invalid checklist status transition: ${existing.status} -> ${nextStatus}`,
         },
+        400,
+      );
+    }
+    const finalValueText = parsed.data.value_text ?? existing.value_text;
+    const finalValueJson = parsed.data.value_json === undefined ? existing.value_json : parsed.data.value_json;
+    if (nextStatus === "approved" && existing.required === true && !hasMeaningfulChecklistValue(finalValueText, finalValueJson)) {
+      return json(
+        { error: `Required checklist item ${existing.label ?? existing.placeholder_key ?? existing.id} cannot be approved while blank.` },
         400,
       );
     }

@@ -2529,6 +2529,48 @@ const isEmptyIeHpTemplatePlaceholderPayload = (payload: Record<string, unknown>)
 const hasExistingDeterministicValue = (field: ExtractedFieldResult): boolean =>
   Boolean(field.value_text) || field.value_json !== null;
 
+const hydrateIeHpTemplatePlaceholdersFromFields = (
+  sections: StructuredSectionResult[],
+  fields: ExtractedFieldResult[],
+): StructuredSectionResult[] => {
+  const fieldByKey = new Map(
+    fields
+      .filter(hasExistingDeterministicValue)
+      .map((field) => [field.placeholder_key, field]),
+  );
+
+  return sections.map((section) => {
+    if (!isEmptyIeHpTemplatePlaceholderPayload(section.payload)) {
+      return section;
+    }
+    const field = fieldByKey.get(section.field_key);
+    if (!field) {
+      return section;
+    }
+    const transferredValue = field.value_text ?? field.value_json;
+    if (transferredValue === null || transferredValue === undefined) {
+      return section;
+    }
+    return {
+      ...section,
+      payload: {
+        ...section.payload,
+        template_placeholder: false,
+        entered_value_present: true,
+        clinical_value: transferredValue,
+        raw_text: typeof transferredValue === "string" ? transferredValue : JSON.stringify(transferredValue),
+      },
+      source_span: {
+        ...(section.source_span ?? {}),
+        hydrated_from: "deterministic_checklist_field",
+        field_source_method: field.source_span?.method ?? null,
+      },
+      review_notes:
+        `${section.review_notes ?? "Template placeholder retained."} Populated from matching deterministic checklist extraction for data transfer review.`,
+    };
+  });
+};
+
 const mergeDeterministicFieldWithStructuredSummary = (
   field: ExtractedFieldResult,
   structuredSummary: { count: number; firstPayload: Record<string, unknown> },
@@ -2581,6 +2623,7 @@ export const __TESTING__ = {
   deterministicValueForRow,
   extractStructuredSections,
   hasExistingDeterministicValue,
+  hydrateIeHpTemplatePlaceholdersFromFields,
   mergeDeterministicFieldWithStructuredSummary,
   isAllowedAssessmentDocumentStorageTarget,
 };
@@ -2659,9 +2702,10 @@ const handler = async (req: Request): Promise<Response> => {
     const deterministic = data.checklist_rows.map((row) =>
       deterministicValueForRow(row, documentText, data.client_snapshot, data.checklist_rows)
     );
-    const structuredSections = extractStructuredSections(documentText, data.template_type, docxStructure).map((section) =>
-      withExtractionProviderSource(section, extractionProvider)
-    );
+    const structuredSections = hydrateIeHpTemplatePlaceholdersFromFields(
+      extractStructuredSections(documentText, data.template_type, docxStructure),
+      deterministic,
+    ).map((section) => withExtractionProviderSource(section, extractionProvider));
     const structuredGoalSummary = summarizeStructuredGoalSections(structuredSections);
     const coverageReport = buildStructuredExtractionCoverageReport(structuredSections, data.template_type);
     const structuredSummaryByKey = new Map<string, { count: number; firstPayload: Record<string, unknown> }>();

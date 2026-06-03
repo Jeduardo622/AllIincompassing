@@ -235,6 +235,57 @@ describe("assessmentChecklistHandler", () => {
     expect(fetchJson).toHaveBeenCalledTimes(1);
   });
 
+  it("blocks blanking an already approved required checklist row when status is omitted", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          id: "item-1",
+          assessment_document_id: "doc-1",
+          organization_id: "org-1",
+          client_id: "client-1",
+          status: "approved",
+          required: true,
+          placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+          label: "Assessor's phone number",
+          value_text: "951-555-0101",
+          value_json: null,
+        },
+      ],
+    });
+
+    const response = await assessmentChecklistHandler(
+      new Request("http://localhost/api/assessment-checklist", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          item_id: "11111111-1111-1111-1111-111111111111",
+          value_text: "",
+          value_json: null,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Required checklist item Assessor's phone number cannot be approved while blank.",
+    });
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+  });
+
   it("returns checklist rows with structured sections", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

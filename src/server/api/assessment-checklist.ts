@@ -297,7 +297,8 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
     }
     const finalValueText = parsed.data.value_text ?? existing.value_text;
     const finalValueJson = parsed.data.value_json === undefined ? existing.value_json : parsed.data.value_json;
-    if (nextStatus === "approved" && existing.required === true && !hasMeaningfulChecklistValue(finalValueText, finalValueJson)) {
+    const finalStatus = nextStatus ?? existing.status;
+    if (finalStatus === "approved" && existing.required === true && !hasMeaningfulChecklistValue(finalValueText, finalValueJson)) {
       return json(
         { error: `Required checklist item ${existing.label ?? existing.placeholder_key ?? existing.id} cannot be approved while blank.` },
         400,

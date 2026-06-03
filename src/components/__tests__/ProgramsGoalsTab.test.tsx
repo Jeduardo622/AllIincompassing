@@ -4067,6 +4067,79 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(screen.getByText("1 approved IEHP data value must be completed before publishing.")).toBeInTheDocument();
   });
 
+  it("allows IEHP publish when a placeholder structured row has clinician-entered content", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "filled-placeholder-iehp.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/filled-placeholder-iehp.docx",
+              status: "extracted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [],
+            structured_sections: [
+              {
+                id: "structured-placeholder",
+                section_key: "behavior_background_services",
+                field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+                section_index: 0,
+                required: true,
+                status: "approved",
+                review_notes: null,
+                payload: {
+                  field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+                  label: "School Information Block",
+                  template_placeholder: true,
+                  entered_value_present: false,
+                  clinical_value: null,
+                  raw_text: "Student attends school with current IEP supports.",
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("filled-placeholder-iehp.docx");
+    const publishButton = await screen.findByRole("button", { name: /Publish Reviewed Assessment/i });
+    expect(publishButton).toBeEnabled();
+    expect(screen.queryByText("1 approved IEHP data value must be completed before publishing.")).not.toBeInTheDocument();
+  });
+
   it("does not render IEHP draft editors for already published assessments", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

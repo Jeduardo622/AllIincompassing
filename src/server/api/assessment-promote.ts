@@ -177,9 +177,6 @@ const hasMeaningfulStructuredValue = (value: unknown): boolean => {
 };
 
 const hasDefaultRequiredStructuredValue = (payload: Record<string, unknown>): boolean => {
-  if (payload.template_placeholder === true && payload.entered_value_present === false) {
-    return false;
-  }
   return Object.entries(payload).some(([key, value]) =>
     !IEHP_STRUCTURED_METADATA_KEYS.has(key) && hasMeaningfulStructuredValue(value)
   );

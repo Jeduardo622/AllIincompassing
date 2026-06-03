@@ -303,6 +303,25 @@ const normalizeExtractedValue = (value: string): string =>
     .replace(/[\s|,;:.-]+$/g, "")
     .trim();
 
+const normalizeIeHpTransferText = (value: string): string =>
+  normalizeExtractedValue(value)
+    .replace(/\bIdentify\s+ing\b/gi, "Identifying")
+    .replace(/\b3\s+rd\b/gi, "3rd")
+    .replace(/\bInterview\s+er\b/gi, "Interviewer")
+    .replace(/\bWest\s+Co\s*a\s*s\s*t\s+ABA\b/gi, "West Coast ABA")
+    .replace(/\s+,/g, ",");
+
+const normalizeIeHpDate = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.replace(/\s+/g, "").trim();
+  return /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(normalized) ? normalized : null;
+};
+
+const normalizeIeHpProgramName = (value: string): string =>
+  normalizeExtractedValue(value).replace(/\bIdentify\s+ing\b/gi, "Identifying");
+
 const CALOPTIMA_INLINE_STOP_LABELS = [
   "Member Name",
   "Member DOB",
@@ -778,7 +797,7 @@ const parseRowsFromProgramBlocks = (
     const bodyStart = match.index ?? 0;
     const bodyEnd = matches[index + 1]?.index ?? normalized.length;
     const block = normalized.slice(bodyStart, bodyEnd).trim();
-    const programName = normalizeExtractedValue(match[1] ?? "") || defaultProgramName;
+    const programName = normalizeIeHpProgramName(match[1] ?? "") || defaultProgramName;
     const instrumentalGoal = block.match(/Instrumental\s+Goal\s*:\s*(.+?)(?=\s+Data\s+Collection\s*:|\s+Mastery\s+Criteria\s*:|\s+Generalization\s+Criteria\s*:|\s+Baseline\s*:|$)/i)?.[1];
     const dataCollection = block.match(/Data\s+Collection\s*:\s*(.+?)(?=\s+Mastery\s+Criteria\s*:|\s+Generalization\s+Criteria\s*:|\s+Baseline\s*:|$)/i)?.[1];
     const mastery = block.match(/Mastery\s+Criteria\s*:\s*(.+?)(?=\s+Generalization\s+Criteria\s*:|\s+Baseline\s*:|$)/i)?.[1];
@@ -1183,6 +1202,7 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
     return { raw_text: compact, rows: preferenceRows };
   }
   if (fieldKey === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES") {
+    const transferText = normalizeIeHpTransferText(compact);
     const adaptiveBlocks = [
       { assessment_type: "VB-MAPP", raw_text: compact.match(/VB-MAPP[\s\S]*?(?=Vineland|AFLS|ABAS-3|$)/i)?.[0] ?? null },
       { assessment_type: "Vineland", raw_text: compact.match(/Vineland[\s\S]*?(?=VB-MAPP|AFLS|ABAS-3|$)/i)?.[0] ?? null },
@@ -1198,10 +1218,19 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
     return {
       raw_text: compact,
       assessment_blocks: adaptiveBlocks,
-      measure_name: compact.match(/(Vineland Adaptive Behavior Scales,\s*3rd Edition)/i)?.[1] ?? null,
-      date_administered: compact.match(/Date Administered\s*:?\s*([0-9/]+)/i)?.[1] ?? null,
-      interviewer: normalizeExtractedValue(compact.match(/Name of Interviewer\s*:?\s*(.+?)(?=Name of Respondent|Assessment Summary|$)/i)?.[1] ?? ""),
-      respondent: normalizeExtractedValue(compact.match(/Name of Respondent\s*:?\s*(.+?)(?=Assessment Summary|$)/i)?.[1] ?? ""),
+      measure_name: normalizeIeHpTransferText(
+        transferText.match(/(Vineland Adaptive Behavior Scales,\s*3rd Edition)/i)?.[1] ?? "",
+      ) || null,
+      date_administered: normalizeIeHpDate(
+        transferText.match(/Date Administered\s*:?\s*([0-9]{1,2}\s*\/\s*[0-9]{1,2}\s*\/\s*[0-9]{2,4})/i)?.[1],
+      ),
+      interviewer: normalizeIeHpTransferText(
+        transferText.match(/Name of Interviewer\s*:?\s*(.+?)(?=Name of Respondent|Assessment Summary|$)/i)?.[1] ??
+          "",
+      ),
+      respondent: normalizeIeHpTransferText(
+        transferText.match(/Name of Respondent\s*:?\s*(.+?)(?=Assessment Summary|$)/i)?.[1] ?? "",
+      ),
       assessment_summary: normalizeExtractedValue(compact.match(/Assessment Summary\s*:?\s*(.+)$/i)?.[1] ?? ""),
     };
   }
@@ -1223,13 +1252,24 @@ const normalizeIeHpSectionPayload = (fieldKey: string, rawText: string): Record<
     return { raw_text: compact, rows: parseIeHpRecommendations(compact) };
   }
   if (fieldKey === "IEHP_FBA_SIGNATURE_BLOCK") {
-    const dateMatch = compact.match(/\b([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})\b/);
+    const transferText = normalizeIeHpTransferText(compact);
+    const dateMatch = transferText.match(/\b([0-9]{1,2}\s*\/\s*[0-9]{1,2}\s*\/\s*[0-9]{2,4})\b/);
+    const completedByAfterDate = transferText.match(
+      /\b[0-9]{1,2}\s*\/\s*[0-9]{1,2}\s*\/\s*[0-9]{2,4}\b\s+(.+?)(?=\s+Date\s*:|\s+Board Certified|\s+West Coast|$)/i,
+    )?.[1];
+    const completedByFallback = transferText.match(
+      /Report completed by\s*:?\s*(?:[-\d\s]+)?(?:_+\s*)?(?:[0-9/]+\s*)?(.+?)(?=Date\s*:|Board Certified|West Coast|$)/i,
+    )?.[1];
+    const agencyMatch = transferText.match(/\b(West Coast ABA)\b/i)?.[1] ??
+      transferText.match(/Board Certified Behavior Analyst\s*,\s*[\w-]+\s+(.+)$/i)?.[1];
     return withTemplateStructurePayload({
       raw_text: compact,
-      report_completed_date: dateMatch?.[1] ?? null,
-      completed_by: normalizeExtractedValue(compact.match(/Report completed by\s*:?\s*(?:_+\s*)?(?:[0-9/]+\s*)?(.+?)(?=Date\s*:|Board Certified|West Coast|$)/i)?.[1] ?? ""),
-      credentials: normalizeExtractedValue(compact.match(/(Board Certified Behavior Analyst[^,]*,\s*[^ ]+)/i)?.[1] ?? ""),
-      agency: normalizeExtractedValue(compact.match(/\b(West Coast ABA)\b/i)?.[1] ?? ""),
+      report_completed_date: normalizeIeHpDate(dateMatch?.[1]),
+      completed_by: normalizeIeHpTransferText(completedByAfterDate ?? completedByFallback ?? ""),
+      credentials: normalizeIeHpTransferText(
+        transferText.match(/(Board Certified Behavior Analyst\s*,\s*[\w-]+)/i)?.[1] ?? "",
+      ),
+      agency: normalizeIeHpTransferText(agencyMatch ?? ""),
     }, rawText);
   }
   return withTemplateStructurePayload({ raw_text: compact }, rawText);

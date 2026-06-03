@@ -116,6 +116,19 @@ const IEHP_GOAL_SECTION_KEYS = new Set([
   "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
   "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
 ]);
+const IEHP_STRUCTURED_METADATA_KEYS = new Set([
+  "field_key",
+  "label",
+  "page_number",
+  "section_key",
+  "field_type",
+  "mode",
+  "required",
+  "source",
+  "layout_json",
+  "template_placeholder",
+  "entered_value_present",
+]);
 
 const isBlankTransferredValue = (value: unknown): boolean => {
   if (value == null) return true;
@@ -150,6 +163,29 @@ const hasLegacySignaturePayload = (payload: Record<string, unknown>): boolean =>
   return !hasTransferSignatureFields && hasNonBlankPayloadValue(payload, "completed_by");
 };
 
+const hasMeaningfulStructuredValue = (value: unknown): boolean => {
+  if (value == null) return false;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized.length > 0 && normalized !== "unknown";
+  }
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return value === true;
+  if (Array.isArray(value)) return value.some(hasMeaningfulStructuredValue);
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).some(([key, nestedValue]) =>
+      !IEHP_STRUCTURED_METADATA_KEYS.has(key) && hasMeaningfulStructuredValue(nestedValue)
+    );
+  }
+  return false;
+};
+
+const hasDefaultRequiredStructuredValue = (payload: Record<string, unknown>): boolean => {
+  return Object.entries(payload).some(([key, value]) =>
+    !IEHP_STRUCTURED_METADATA_KEYS.has(key) && hasMeaningfulStructuredValue(value)
+  );
+};
+
 const countIehpStructuredDataQualityIssues = (sections: AssessmentStructuredSection[]): number =>
   sections.filter((section) => {
     if (!section.required || section.status !== "approved") {
@@ -175,6 +211,9 @@ const countIehpStructuredDataQualityIssues = (sections: AssessmentStructuredSect
     }
     if (section.field_key === "IEHP_FBA_SIGNATURE_BLOCK" && hasMissingRequiredFields && hasLegacySignaturePayload(payload)) {
       return false;
+    }
+    if (requiredFields.length === 0 && !hasDefaultRequiredStructuredValue(payload)) {
+      return true;
     }
     if (hasMissingRequiredFields) {
       return true;

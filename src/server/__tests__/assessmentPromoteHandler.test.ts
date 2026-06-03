@@ -368,6 +368,194 @@ describe("assessmentPromoteHandler", () => {
     ).toBe(false);
   });
 
+  it("blocks IEHP assessment publish when approved required structured rows are empty template placeholders", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "structured-placeholder",
+            field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+            section_index: 0,
+            payload: {
+              field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+              label: "School Information Block",
+              template_placeholder: true,
+              entered_value_present: false,
+              clinical_value: null,
+              raw_text: "",
+            },
+          }],
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "approved",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      blank_required_checklist_count: 0,
+      malformed_structured_count: 1,
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url, init]) =>
+        typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted") && init?.method === "PATCH"
+      ),
+    ).toBe(false);
+  });
+
+  it("publishes IEHP assessment when a placeholder structured row has clinician-entered content", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "structured-placeholder",
+            field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+            section_index: 0,
+            payload: {
+              field_key: "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+              label: "School Information Block",
+              template_placeholder: true,
+              entered_value_present: false,
+              clinical_value: null,
+              raw_text: "Student attends school with current IEP supports.",
+            },
+          }],
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "approved",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      assessment_document_id: "doc-1",
+      completion_mode: "assessment_only",
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url, init]) =>
+        typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted") && init?.method === "PATCH"
+      ),
+    ).toBe(true);
+  });
+
   it("publishes IEHP assessments when approved transferred values and structured payloads are complete", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");

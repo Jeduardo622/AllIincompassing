@@ -21,6 +21,29 @@ interface AssessmentDocumentRow {
   template_type?: string | null;
 }
 
+interface AssessmentRequiredChecklistReviewRow {
+  id: string;
+  placeholder_key: string | null;
+  label: string | null;
+  value_text: string | null;
+  value_json: unknown | null;
+}
+
+interface AssessmentRequiredStructuredReviewRow {
+  id: string;
+  field_key: string;
+  section_index: number | null;
+  payload: Record<string, unknown> | null;
+}
+
+interface IehpPublishDataQualityBlocker {
+  code: "blank_required_checklist" | "incomplete_structured_payload";
+  key: string;
+  message: string;
+  id: string;
+  section_index?: number | null;
+}
+
 interface DraftProgramRow {
   id: string;
   name: string;
@@ -74,6 +97,115 @@ const PROMOTED_ASSESSMENT_STATUSES = new Set(["approved", "promoted"]);
 const PROMOTION_READY_STATUS = "drafted";
 const PROMOTION_LOCK_STATUS = "extracted";
 const IEHP_ASSESSMENT_TEMPLATE_TYPE = "iehp_fba";
+const IEHP_REQUIRED_PAYLOAD_FIELDS: Record<string, string[]> = {
+  IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES: ["measure_name", "date_administered", "interviewer", "respondent"],
+  IEHP_FBA_SIGNATURE_BLOCK: ["completed_by", "report_completed_date", "credentials", "agency"],
+};
+const IEHP_REQUIRED_GOAL_FIELDS = [
+  "program_name",
+  "target_criteria",
+  "baseline_data",
+  "mastery_criteria",
+  "measurement_type",
+];
+const IEHP_GOAL_SECTION_KEYS = new Set([
+  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+]);
+
+const isBlankTransferredValue = (value: unknown): boolean => {
+  if (value == null) return true;
+  if (typeof value === "string") return value.trim().length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object") return Object.keys(value).length === 0;
+  return false;
+};
+
+const hasNonBlankPayloadValue = (payload: Record<string, unknown>, key: string): boolean =>
+  !isBlankTransferredValue(payload[key]);
+
+const hasMeaningfulRawText = (payload: Record<string, unknown>): boolean =>
+  typeof payload.raw_text === "string" && payload.raw_text.trim().length > 0;
+
+const hasMeaningfulAdaptiveBlocks = (payload: Record<string, unknown>): boolean => {
+  const blocks = Array.isArray(payload.assessment_blocks) ? payload.assessment_blocks : [];
+  return blocks.some((block) => {
+    const record = block && typeof block === "object" ? block as Record<string, unknown> : {};
+    return (
+      typeof record.raw_text === "string" &&
+      record.raw_text.trim().length > 0 &&
+      record.manual_review_required !== true
+    );
+  });
+};
+
+const hasLegacySignaturePayload = (payload: Record<string, unknown>): boolean => {
+  const hasTransferSignatureFields = ["report_completed_date", "credentials", "agency"].some((key) =>
+    Object.prototype.hasOwnProperty.call(payload, key)
+  );
+  return !hasTransferSignatureFields && hasNonBlankPayloadValue(payload, "completed_by");
+};
+
+const buildIehpStructuredDataQualityBlockers = (
+  rows: AssessmentRequiredStructuredReviewRow[],
+): IehpPublishDataQualityBlocker[] =>
+  rows.flatMap((row) => {
+    const payload = row.payload && typeof row.payload === "object" ? row.payload : null;
+    if (!payload) {
+      return [{
+        code: "incomplete_structured_payload" as const,
+        key: row.field_key,
+        id: row.id,
+        section_index: row.section_index,
+        message: `${row.field_key} must include a structured payload before publishing.`,
+      }];
+    }
+
+    const requiredFields = IEHP_REQUIRED_PAYLOAD_FIELDS[row.field_key] ?? (
+      IEHP_GOAL_SECTION_KEYS.has(row.field_key) ? IEHP_REQUIRED_GOAL_FIELDS : []
+    );
+    const missingFields = requiredFields.filter((field) => !hasNonBlankPayloadValue(payload, field));
+    if (
+      row.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES" &&
+      missingFields.length > 0 &&
+      hasMeaningfulAdaptiveBlocks(payload)
+    ) {
+      return [];
+    }
+    if (IEHP_GOAL_SECTION_KEYS.has(row.field_key) && missingFields.length > 0 && hasMeaningfulRawText(payload)) {
+      return [];
+    }
+    if (row.field_key === "IEHP_FBA_SIGNATURE_BLOCK" && missingFields.length > 0 && hasLegacySignaturePayload(payload)) {
+      return [];
+    }
+
+    if (row.field_key === "IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS") {
+      const rowsValue = Array.isArray(payload.rows) ? payload.rows : [];
+      const malformedRow = rowsValue.length === 0 || rowsValue.some((entry) => {
+        const record = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+        return (
+          isBlankTransferredValue(record.hcpcs_code ?? record.cpt) ||
+          isBlankTransferredValue(record.description) ||
+          isBlankTransferredValue(record.units_requested)
+        );
+      });
+      if (malformedRow) {
+        missingFields.push("rows");
+      }
+    }
+
+    if (missingFields.length === 0) {
+      return [];
+    }
+
+    return [{
+      code: "incomplete_structured_payload" as const,
+      key: row.field_key,
+      id: row.id,
+      section_index: row.section_index,
+      message: `${row.field_key} is missing required transferred value(s): ${missingFields.join(", ")}.`,
+    }];
+  });
 
 const buildAssessmentRequiredApprovalLookups = (args: {
   supabaseUrl: string;
@@ -93,6 +225,18 @@ const buildAssessmentRequiredApprovalLookups = (args: {
       `${supabaseUrl}/rest/v1/assessment_structured_sections?select=id&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&required=is.true&status=neq.approved`,
+      { method: "GET", headers },
+    ),
+    fetchJson<AssessmentRequiredChecklistReviewRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&required=is.true&status=eq.approved`,
+      { method: "GET", headers },
+    ),
+    fetchJson<AssessmentRequiredStructuredReviewRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&required=is.true&status=eq.approved`,
       { method: "GET", headers },
     ),
   ]);
@@ -157,7 +301,12 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       );
     }
 
-    const [unapprovedChecklistResult, unapprovedStructuredResult] = await buildAssessmentRequiredApprovalLookups({
+    const [
+      unapprovedChecklistResult,
+      unapprovedStructuredResult,
+      approvedChecklistResult,
+      approvedStructuredResult,
+    ] = await buildAssessmentRequiredApprovalLookups({
       supabaseUrl,
       organizationId,
       assessmentDocumentId: parsed.data.assessment_document_id,
@@ -165,6 +314,9 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     });
     if (!unapprovedChecklistResult.ok || !unapprovedStructuredResult.ok) {
       return json({ error: "Failed to evaluate IEHP review completion preconditions" }, 500);
+    }
+    if (!approvedChecklistResult.ok || !approvedStructuredResult.ok) {
+      return json({ error: "Failed to evaluate IEHP publish data quality preconditions" }, 500);
     }
 
     const unapprovedChecklistCount = Array.isArray(unapprovedChecklistResult.data) ? unapprovedChecklistResult.data.length : 0;
@@ -175,6 +327,30 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
         {
           error: `Required checklist and structured review rows must be approved before publishing this IEHP assessment.`,
           unresolved_required_count: unresolvedRequiredCount,
+        },
+        409,
+      );
+    }
+
+    const approvedChecklistRows = Array.isArray(approvedChecklistResult.data) ? approvedChecklistResult.data : [];
+    const blankRequiredChecklistBlockers: IehpPublishDataQualityBlocker[] = approvedChecklistRows
+      .filter((row) => isBlankTransferredValue(row.value_text) && isBlankTransferredValue(row.value_json))
+      .map((row) => ({
+        code: "blank_required_checklist",
+        key: row.placeholder_key ?? row.label ?? row.id,
+        id: row.id,
+        message: `${row.label ?? row.placeholder_key ?? "Required checklist row"} must include transferred data before publishing.`,
+      }));
+    const approvedStructuredRows = Array.isArray(approvedStructuredResult.data) ? approvedStructuredResult.data : [];
+    const malformedStructuredBlockers = buildIehpStructuredDataQualityBlockers(approvedStructuredRows);
+    const dataQualityBlockers = [...blankRequiredChecklistBlockers, ...malformedStructuredBlockers];
+    if (dataQualityBlockers.length > 0) {
+      return json(
+        {
+          error: "IEHP publish data quality validation failed. Resolve blank required checklist values and malformed structured payloads before publishing.",
+          blank_required_checklist_count: blankRequiredChecklistBlockers.length,
+          malformed_structured_count: malformedStructuredBlockers.length,
+          data_quality_blockers: dataQualityBlockers,
         },
         409,
       );

@@ -188,6 +188,439 @@ describe("assessmentPromoteHandler", () => {
     ).toBe(false);
   });
 
+  it("blocks IEHP assessment publish when approved required checklist rows are blank", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "required-row-1",
+            placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+            label: "Assessor phone",
+            value_text: "   ",
+            value_json: null,
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "approved",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      blank_required_checklist_count: 1,
+      malformed_structured_count: 0,
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url, init]) =>
+        typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted") && init?.method === "PATCH"
+      ),
+    ).toBe(false);
+  });
+
+  it("blocks IEHP assessment publish when approved structured transfer payloads are incomplete", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "structured-1",
+            field_key: "IEHP_FBA_SIGNATURE_BLOCK",
+            section_index: 0,
+            payload: {
+              completed_by: "Hailey Huynh",
+              report_completed_date: "",
+              credentials: "Board Certified Behavior Analyst, 1-24-72584",
+              agency: "West Coast ABA",
+            },
+          }],
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "approved",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      blank_required_checklist_count: 0,
+      malformed_structured_count: 1,
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url, init]) =>
+        typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted") && init?.method === "PATCH"
+      ),
+    ).toBe(false);
+  });
+
+  it("publishes IEHP assessments when approved transferred values and structured payloads are complete", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "required-row-1",
+            placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+            label: "Assessor phone",
+            value_text: "(555) 010-1212",
+            value_json: null,
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "structured-adaptive",
+              field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+              section_index: 0,
+              payload: {
+                measure_name: "Vineland Adaptive Behavior Scales, 3rd Edition",
+                date_administered: "12/01/2025",
+                interviewer: "Hailey Huynh, BCBA",
+                respondent: "Chau Luu (Mother)",
+              },
+            },
+            {
+              id: "structured-goal",
+              field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+              section_index: 1,
+              payload: {
+                program_name: "Identifying daily objects/items",
+                target_criteria: "80% of opportunities",
+                baseline_data: "Accuracy in 0% of opportunities",
+                mastery_criteria: "80% across 3 consecutive sessions",
+                measurement_type: "Percentage of opportunities",
+              },
+            },
+            {
+              id: "structured-recommendations",
+              field_key: "IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS",
+              section_index: 0,
+              payload: {
+                rows: [{
+                  cpt: "H2019",
+                  description: "Therapeutic Behavioral Services, per 15 minutes",
+                  units_requested: "2080 units",
+                }],
+              },
+            },
+            {
+              id: "structured-signature",
+              field_key: "IEHP_FBA_SIGNATURE_BLOCK",
+              section_index: 0,
+              payload: {
+                completed_by: "Hailey Huynh",
+                report_completed_date: "12/12/2025",
+                credentials: "Board Certified Behavior Analyst, 1-24-72584",
+                agency: "West Coast ABA",
+              },
+            },
+          ],
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "approved",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      assessment_document_id: "doc-1",
+      completion_mode: "assessment_only",
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url, init]) =>
+        typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted") && init?.method === "PATCH"
+      ),
+    ).toBe(true);
+  });
+
+  it("publishes IEHP assessments with documented legacy structured payload shapes", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "required-row-1",
+            placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+            label: "Reason for referral",
+            value_text: "Member was referred for ABA assessment.",
+            value_json: null,
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "structured-adaptive",
+              field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+              section_index: 0,
+              payload: {
+                assessment_blocks: [{
+                  assessment_type: "Vineland",
+                  raw_text: "Vineland Adaptive Behavior Scales summary text.",
+                  manual_review_required: false,
+                }],
+              },
+            },
+            {
+              id: "structured-goal",
+              field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+              section_index: 0,
+              payload: { raw_text: "School goal narrative with transferred baseline and criteria." },
+            },
+            {
+              id: "structured-signature",
+              field_key: "IEHP_FBA_SIGNATURE_BLOCK",
+              section_index: 0,
+              payload: { completed_by: "Jane Clinician" },
+            },
+          ],
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "approved",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      assessment_document_id: "doc-1",
+      completion_mode: "assessment_only",
+    });
+  });
+
   it("blocks IEHP assessment publish before extraction completes", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

@@ -101,6 +101,98 @@ const formatPayloadValue = (value: unknown): string => {
   }
 };
 
+const IEHP_REQUIRED_PAYLOAD_FIELDS: Record<string, string[]> = {
+  IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES: ["measure_name", "date_administered", "interviewer", "respondent"],
+  IEHP_FBA_SIGNATURE_BLOCK: ["completed_by", "report_completed_date", "credentials", "agency"],
+};
+const IEHP_REQUIRED_GOAL_FIELDS = [
+  "program_name",
+  "target_criteria",
+  "baseline_data",
+  "mastery_criteria",
+  "measurement_type",
+];
+const IEHP_GOAL_SECTION_KEYS = new Set([
+  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+]);
+
+const isBlankTransferredValue = (value: unknown): boolean => {
+  if (value == null) return true;
+  if (typeof value === "string") return value.trim().length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object") return Object.keys(value).length === 0;
+  return false;
+};
+
+const hasNonBlankPayloadValue = (payload: Record<string, unknown>, key: string): boolean =>
+  !isBlankTransferredValue(payload[key]);
+
+const hasMeaningfulRawText = (payload: Record<string, unknown>): boolean =>
+  typeof payload.raw_text === "string" && payload.raw_text.trim().length > 0;
+
+const hasMeaningfulAdaptiveBlocks = (payload: Record<string, unknown>): boolean => {
+  const blocks = Array.isArray(payload.assessment_blocks) ? payload.assessment_blocks : [];
+  return blocks.some((block) => {
+    const record = block && typeof block === "object" ? block as Record<string, unknown> : {};
+    return (
+      typeof record.raw_text === "string" &&
+      record.raw_text.trim().length > 0 &&
+      record.manual_review_required !== true
+    );
+  });
+};
+
+const hasLegacySignaturePayload = (payload: Record<string, unknown>): boolean => {
+  const hasTransferSignatureFields = ["report_completed_date", "credentials", "agency"].some((key) =>
+    Object.prototype.hasOwnProperty.call(payload, key)
+  );
+  return !hasTransferSignatureFields && hasNonBlankPayloadValue(payload, "completed_by");
+};
+
+const countIehpStructuredDataQualityIssues = (sections: AssessmentStructuredSection[]): number =>
+  sections.filter((section) => {
+    if (!section.required || section.status !== "approved") {
+      return false;
+    }
+    const payload = section.payload && typeof section.payload === "object" ? section.payload : null;
+    if (!payload) {
+      return true;
+    }
+    const requiredFields = IEHP_REQUIRED_PAYLOAD_FIELDS[section.field_key] ?? (
+      IEHP_GOAL_SECTION_KEYS.has(section.field_key) ? IEHP_REQUIRED_GOAL_FIELDS : []
+    );
+    const hasMissingRequiredFields = requiredFields.some((field) => !hasNonBlankPayloadValue(payload, field));
+    if (
+      section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES" &&
+      hasMissingRequiredFields &&
+      hasMeaningfulAdaptiveBlocks(payload)
+    ) {
+      return false;
+    }
+    if (IEHP_GOAL_SECTION_KEYS.has(section.field_key) && hasMissingRequiredFields && hasMeaningfulRawText(payload)) {
+      return false;
+    }
+    if (section.field_key === "IEHP_FBA_SIGNATURE_BLOCK" && hasMissingRequiredFields && hasLegacySignaturePayload(payload)) {
+      return false;
+    }
+    if (hasMissingRequiredFields) {
+      return true;
+    }
+    if (section.field_key !== "IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS") {
+      return false;
+    }
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    return rows.length === 0 || rows.some((entry) => {
+      const row = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+      return (
+        isBlankTransferredValue(row.hcpcs_code ?? row.cpt) ||
+        isBlankTransferredValue(row.description) ||
+        isBlankTransferredValue(row.units_requested)
+      );
+    });
+  }).length;
+
 const buildStructuredPayloadPreview = (payload: Record<string, unknown>): string[] => {
   const rows = Array.isArray(payload.rows) ? payload.rows : [];
   if (rows.length > 0) {
@@ -645,6 +737,18 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     ? checklistItems.filter((item) => item.required && item.status !== "approved").length +
       structuredSections.filter((section) => section.required && section.status !== "approved").length
     : 0;
+  const blankApprovedIehpChecklistValueCount = selectedAssessmentIsIehp
+    ? checklistItems.filter((item) =>
+        item.required &&
+        item.status === "approved" &&
+        isBlankTransferredValue(item.value_text) &&
+        isBlankTransferredValue(item.value_json)
+      ).length
+    : 0;
+  const malformedApprovedIehpStructuredCount = selectedAssessmentIsIehp
+    ? countIehpStructuredDataQualityIssues(structuredSections)
+    : 0;
+  const iehpDataQualityIssueCount = blankApprovedIehpChecklistValueCount + malformedApprovedIehpStructuredCount;
   const promoteDisabledReason = !selectedAssessmentId
     ? "Select an assessment before publishing."
     : selectedAssessmentAlreadyPublished
@@ -662,6 +766,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       ? "This assessment has already been approved and published."
       : hasPendingRequiredChecklistItems
         ? `${unresolvedRequiredCount} required checklist or structured row${unresolvedRequiredCount === 1 ? "" : "s"} must be approved before publishing.`
+        : iehpDataQualityIssueCount > 0
+          ? `${iehpDataQualityIssueCount} approved IEHP data value${iehpDataQualityIssueCount === 1 ? "" : "s"} must be completed before publishing.`
         : null;
 
   useEffect(() => {

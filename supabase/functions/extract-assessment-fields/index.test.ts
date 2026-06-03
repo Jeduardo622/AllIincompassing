@@ -726,6 +726,153 @@ Deno.test("extractStructuredSections preserves IEHP adaptive measure block slots
   ]);
 });
 
+Deno.test("extractStructuredSections transfers LE-style IEHP adaptive metadata and signature fields cleanly", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      DESCRIPTION OF ASSESSMENT PROCEDURES:
+      Assessment Measures Administered:
+      Vineland Adaptive Behavior Scales, 3 rd Edition 12 /01/2025
+      ASSESSMENT MEAURES:
+      Vineland Adaptive Behavior Scales, 3 rd Edition
+      Date Administered: 12 / 01 /2025
+      Name of Interview er : Hailey Huynh, BCBA
+      Name of Respondent: Chau Luu (Mother)
+      Assessment Summary: Adaptive functioning summary.
+      Recommendations:
+      Clinical Recommendations
+      CPT Description Units Requested
+      H2019 Therapeutic Behavioral Services, per 15 minutes 2080 units
+      Report completed by:
+      -114300 80810 0 0 825420 -135035 _____________________________________ 12/ 12 /2025
+      Hailey Huynh Date :
+      Board Certified Behavior Analyst , 1-24-72584
+      West Co a s t ABA
+    `,
+  );
+
+  const adaptivePayload = sections.find((section) =>
+    section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES"
+  )?.payload;
+  expect(adaptivePayload?.measure_name).toBe("Vineland Adaptive Behavior Scales, 3rd Edition");
+  expect(adaptivePayload?.date_administered).toBe("12/01/2025");
+  expect(adaptivePayload?.interviewer).toBe("Hailey Huynh, BCBA");
+  expect(adaptivePayload?.respondent).toBe("Chau Luu (Mother)");
+
+  const signaturePayload = sections.find((section) => section.field_key === "IEHP_FBA_SIGNATURE_BLOCK")?.payload;
+  expect(signaturePayload?.completed_by).toBe("Hailey Huynh");
+  expect(signaturePayload?.report_completed_date).toBe("12/12/2025");
+  expect(signaturePayload?.credentials).toBe("Board Certified Behavior Analyst, 1-24-72584");
+  expect(signaturePayload?.agency).toBe("West Coast ABA");
+});
+
+Deno.test("extractStructuredSections normalizes narrow LE-style OCR spacing in program names", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      REPLACEMENT BEHAVIORS:
+      Program Name: Identify ing daily objects/items
+      Instrumental Goal: By December 2026, Kim will identify objects.
+      Data Collection: Percentage of opportunities.
+      Mastery Criteria: 80% of opportunities.
+      Generalization Criteria: Across home and school.
+      Baseline: Accuracy in 0% of opportunities.
+      Behavior Intervention Plan
+    `,
+  );
+
+  const goal = sections.find((section) => section.field_key === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS");
+  expect(goal?.payload.program_name).toBe("Identifying daily objects/items");
+  expect(goal?.payload.title).toBe("Identifying daily objects/items");
+  expect(goal?.payload.target_behavior).toBe("Identifying daily objects/items");
+});
+
+Deno.test("extractStructuredSections leaves ordinary IEHP program title punctuation unchanged", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      REPLACEMENT BEHAVIORS:
+      Program Name: Request help / break
+      Instrumental Goal: By December 2026, Kim will request help or a break.
+      Data Collection: Percentage of opportunities.
+      Mastery Criteria: 80% of opportunities.
+      Generalization Criteria: Across home and school.
+      Baseline: Independent in 0% of opportunities.
+      Behavior Intervention Plan
+    `,
+  );
+
+  const goal = sections.find((section) => section.field_key === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS");
+  expect(goal?.payload.program_name).toBe("Request help / break");
+  expect(goal?.payload.title).toBe("Request help / break");
+  expect(goal?.payload.target_behavior).toBe("Request help / break");
+});
+
+Deno.test("extractStructuredSections parses IEHP signature agency fallback without over-capturing absent agency", () => {
+  const withAgency = asSections(
+    "iehp_fba",
+    `
+      Recommendations:
+      Report completed by:
+      _____________________________________ 12/12/2025
+      Test BCBA Date:
+      Board Certified Behavior Analyst, 1-24-00000
+      Test Agency
+    `,
+  ).find((section) => section.field_key === "IEHP_FBA_SIGNATURE_BLOCK")?.payload;
+
+  expect(withAgency?.completed_by).toBe("Test BCBA");
+  expect(withAgency?.report_completed_date).toBe("12/12/2025");
+  expect(withAgency?.credentials).toBe("Board Certified Behavior Analyst, 1-24-00000");
+  expect(withAgency?.agency).toBe("Test Agency");
+
+  const withoutAgency = asSections(
+    "iehp_fba",
+    `
+      Recommendations:
+      Report completed by:
+      _____________________________________ 12/12/2025
+      Test BCBA Date:
+      Board Certified Behavior Analyst, 1-24-00000
+    `,
+  ).find((section) => section.field_key === "IEHP_FBA_SIGNATURE_BLOCK")?.payload;
+
+  expect(withoutAgency?.completed_by).toBe("Test BCBA");
+  expect(withoutAgency?.report_completed_date).toBe("12/12/2025");
+  expect(withoutAgency?.credentials).toBe("Board Certified Behavior Analyst, 1-24-00000");
+  expect(withoutAgency?.agency).toBe("");
+});
+
+Deno.test("extractStructuredSections preserves intentional slash spacing in IEHP metadata values", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      DESCRIPTION OF ASSESSMENT PROCEDURES:
+      ASSESSMENT MEAURES:
+      Vineland Adaptive Behavior Scales, 3 rd Edition
+      Date Administered: 12 / 01 /2025
+      Name of Interview er : Test BCBA
+      Name of Respondent: Mother / Father
+      Assessment Summary: Adaptive functioning summary.
+      Recommendations:
+      Report completed by:
+      _____________________________________ 12/12/2025
+      Test BCBA Date:
+      Board Certified Behavior Analyst, 1-24-00000
+      Clinic A / Clinic B
+    `,
+  );
+
+  const adaptivePayload = sections.find((section) =>
+    section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES"
+  )?.payload;
+  const signaturePayload = sections.find((section) => section.field_key === "IEHP_FBA_SIGNATURE_BLOCK")?.payload;
+
+  expect(adaptivePayload?.date_administered).toBe("12/01/2025");
+  expect(adaptivePayload?.respondent).toBe("Mother / Father");
+  expect(signaturePayload?.agency).toBe("Clinic A / Clinic B");
+});
+
 Deno.test("extractStructuredSections recognizes blank-template IEHP heading aliases", () => {
   const sections = asSections(
     "iehp_fba",

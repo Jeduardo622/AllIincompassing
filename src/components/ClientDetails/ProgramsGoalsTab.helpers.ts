@@ -10,6 +10,7 @@ export interface AssessmentChecklistItem {
   status: "not_started" | "drafted" | "verified" | "approved";
   review_notes: string | null;
   value_text: string | null;
+  value_json?: unknown | null;
 }
 
 export interface AssessmentStructuredSection {
@@ -17,7 +18,7 @@ export interface AssessmentStructuredSection {
   section_key: string;
   field_key: string;
   section_index: number;
-  payload: Record<string, unknown>;
+  payload: Record<string, unknown> | null;
   source_span?: Record<string, unknown> | null;
   status: "not_started" | "drafted" | "verified" | "approved" | "rejected";
   required: boolean;

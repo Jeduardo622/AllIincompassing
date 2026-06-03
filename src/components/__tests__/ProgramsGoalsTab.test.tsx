@@ -3926,6 +3926,74 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     confirmSpy.mockRestore();
   });
 
+  it("disables IEHP publish when approved required fields are blank", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "blank-approved-iehp.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/blank-approved-iehp.docx",
+              status: "extracted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "required-row-1",
+                section_key: "assessment_information",
+                label: "Assessor phone",
+                placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+                required: true,
+                mode: "ASSISTED",
+                status: "approved",
+                review_notes: null,
+                value_text: "   ",
+                value_json: null,
+              },
+            ],
+            structured_sections: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("blank-approved-iehp.docx");
+    const publishButton = await screen.findByRole("button", { name: /Publish Reviewed Assessment/i });
+    expect(publishButton).toBeDisabled();
+    expect(screen.getByText("1 approved IEHP data value must be completed before publishing.")).toBeInTheDocument();
+  });
+
   it("does not render IEHP draft editors for already published assessments", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

@@ -92,6 +92,40 @@ const formatDate = (value: string | null | undefined): string => {
   return `${`${date.getUTCMonth() + 1}`.padStart(2, "0")}/${`${date.getUTCDate()}`.padStart(2, "0")}/${date.getUTCFullYear()}`;
 };
 
+const compactWhitespace = (value: string): string => value.replace(/\s+/g, " ").trim();
+
+const collapseWhitespace = (value: string): string => value.replace(/\s+/g, "").trim();
+
+const normalizeDateText = (value: string | null | undefined): string => {
+  const compacted = compactWhitespace(value ?? "").replace(/\s*\/\s*/g, "/");
+  if (!compacted) return "";
+  const slashedDate = compacted.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashedDate) {
+    const [, month, day, year] = slashedDate;
+    const parsedMonth = Number(month);
+    const parsedDay = Number(day);
+    const parsedYear = Number(year);
+    const date = new Date(Date.UTC(parsedYear, parsedMonth - 1, parsedDay));
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.getUTCFullYear() !== parsedYear ||
+      date.getUTCMonth() !== parsedMonth - 1 ||
+      date.getUTCDate() !== parsedDay
+    ) {
+      return "";
+    }
+    return `${month.padStart(2, "0")}/${day.padStart(2, "0")}/${year}`;
+  }
+  return formatDate(compacted);
+};
+
+const approvedChecklistText = (checklistValue: AssessmentChecklistValueRow | undefined): string => {
+  if (checklistValue?.status !== "approved") return "";
+  return toText(checklistValue.value_text ?? checklistValue.value_json);
+};
+
+const normalizedCompareText = (value: string): string => compactWhitespace(value).toLowerCase();
+
 const formatAddress = (client: AssessmentClientSnapshot): string =>
   [client.address_line1, client.address_line2, client.city, client.state, client.zip_code]
     .map((item) => (typeof item === "string" ? item.trim() : ""))
@@ -181,7 +215,7 @@ const derivedValue = (
   const structuredText = formatSectionsForKey(fieldKey, args.structuredSections);
   if (structuredText) return structuredText;
 
-  const checklistText = checklistValue ? toText(checklistValue.value_text ?? checklistValue.value_json) : "";
+  const checklistText = approvedChecklistText(checklistValue);
   const { client, writer, acceptedPrograms, acceptedGoals } = args;
   const childGoals = acceptedGoals.filter((goal) => goal.goal_type !== "parent");
   const parentGoals = acceptedGoals.filter((goal) => goal.goal_type === "parent");
@@ -192,9 +226,9 @@ const derivedValue = (
     case "IEHP_FBA_LAST_NAME":
       return client.last_name?.trim() || client.full_name?.trim().split(/\s+/).slice(1).join(" ") || checklistText;
     case "IEHP_FBA_BIRTH_DATE":
-      return formatDate(client.date_of_birth) || checklistText;
+      return formatDate(client.date_of_birth) || normalizeDateText(checklistText);
     case "IEHP_FBA_MEMBER_ID":
-      return `${args.authorizationMemberId ?? client.cin_number ?? client.client_id ?? ""}`.trim() || checklistText;
+      return collapseWhitespace(`${args.authorizationMemberId ?? client.cin_number ?? client.client_id ?? ""}`) || collapseWhitespace(checklistText);
     case "IEHP_FBA_PRESENT_ADDRESS":
       return formatAddress(client) || checklistText;
     case "IEHP_FBA_PARENT_GUARDIAN":
@@ -204,7 +238,7 @@ const derivedValue = (
     case "IEHP_FBA_LANGUAGE":
       return `${client.preferred_language ?? ""}`.trim() || checklistText;
     case "IEHP_FBA_REPORT_DATE":
-      return formatDate(new Date().toISOString()) || checklistText;
+      return normalizeDateText(checklistText);
     case "IEHP_FBA_ASSESSOR_CERTIFICATION":
       return [writer.full_name, formatWriterCredentials(writer)].filter(Boolean).join(", ") || checklistText;
     case "IEHP_FBA_ASSESSOR_PHONE":
@@ -226,6 +260,17 @@ export function buildIehpDocxPayload(args: BuildIehpDocxPayloadArgs): BuiltIehpD
   const checklistByKey = new Map(args.checklistItems.map((item) => [item.placeholder_key, item]));
   const blockers: IehpPreflightBlocker[] = [];
   const warnings: string[] = [];
+  const profileFirstName = args.client.first_name?.trim() || "";
+  const profileLastName = args.client.last_name?.trim() || "";
+  const extractedFirstName = approvedChecklistText(checklistByKey.get("IEHP_FBA_FIRST_NAME"));
+  const extractedLastName = approvedChecklistText(checklistByKey.get("IEHP_FBA_LAST_NAME"));
+
+  if (
+    (profileFirstName && extractedFirstName && normalizedCompareText(profileFirstName) !== normalizedCompareText(extractedFirstName)) ||
+    (profileLastName && extractedLastName && normalizedCompareText(profileLastName) !== normalizedCompareText(extractedLastName))
+  ) {
+    warnings.push("Approved extracted document name differs from client profile; final output uses the client profile name.");
+  }
 
   args.checklistItems
     .filter((item) => item.required && item.status !== "approved")
@@ -265,7 +310,7 @@ export function buildIehpDocxPayload(args: BuildIehpDocxPayloadArgs): BuiltIehpD
       blockers.push({
         code: "missing_required_output",
         key: field.field_key,
-        message: `Required IEHP output field ${field.field_key} resolved empty.`,
+        message: `Required IEHP output field ${field.field_key} is missing from approved review data/source.`,
       });
     }
   });

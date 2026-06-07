@@ -94,6 +94,11 @@ interface AdaptiveMeasureBlockPreview {
   review_note: string;
 }
 
+interface CheckboxPreviewRow {
+  label: string;
+  state: "checked" | "unchecked" | "unknown";
+}
+
 const EMPTY_LAYOUT: TemplateLayoutResponse = {
   template_version: {
     version_key: "",
@@ -164,6 +169,33 @@ const assessmentProcedureRowsFromPayload = (payload: Record<string, unknown> | u
       return { procedure, raw_text: rawText };
     })
     .filter((row) => row.procedure.length > 0 || row.raw_text.length > 0);
+};
+
+const checkboxStateFromValue = (value: unknown): CheckboxPreviewRow["state"] => {
+  if (value === true) return "checked";
+  if (value === false) return "unchecked";
+  if (typeof value !== "string") return "unknown";
+  const normalized = value.trim().toLowerCase();
+  if (["checked", "selected", "true", "yes", "y", "x"].includes(normalized)) return "checked";
+  if (["unchecked", "unselected", "false", "no", "n", ""].includes(normalized)) return "unchecked";
+  return "unknown";
+};
+
+const checkboxRowsFromPayload = (payload: Record<string, unknown> | undefined): CheckboxPreviewRow[] => {
+  const rows = payload?.rows;
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const record = row as Record<string, unknown>;
+      const labelValue = record.label ?? record.name ?? record.question ?? record.item;
+      const label = typeof labelValue === "string" ? labelValue.trim() : "";
+      if (!label) return null;
+      const state = checkboxStateFromValue(record.checked ?? record.selected ?? record.value ?? record.present ?? record.enabled);
+      const hasCheckboxSignal = ["checked", "selected", "value", "present", "enabled"].some((key) => Object.prototype.hasOwnProperty.call(record, key));
+      return hasCheckboxSignal ? { label, state } : null;
+    })
+    .filter((row): row is CheckboxPreviewRow => row !== null);
 };
 
 const readableNarrativeFromPayload = (payload: Record<string, unknown> | undefined): string => {
@@ -339,6 +371,43 @@ const renderStructuredReadablePreview = (section: StructuredValue): JSX.Element 
               <p className="text-xs leading-relaxed whitespace-pre-wrap text-slate-300">
                 {block.raw_text || block.review_note || "No extracted block found."}
               </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const checkboxRows = checkboxRowsFromPayload(section.payload);
+  if (checkboxRows.length > 0) {
+    const tokenByState: Record<CheckboxPreviewRow["state"], string> = {
+      checked: "✓",
+      unchecked: "☐",
+      unknown: "-",
+    };
+    const labelByState: Record<CheckboxPreviewRow["state"], string> = {
+      checked: "selected",
+      unchecked: "not selected",
+      unknown: "unknown",
+    };
+    const classByState: Record<CheckboxPreviewRow["state"], string> = {
+      checked: "border-emerald-400/40 bg-emerald-500/15 text-emerald-200",
+      unchecked: "border-slate-500/50 bg-slate-800/50 text-slate-300",
+      unknown: "border-dashed border-amber-400/40 bg-amber-500/10 text-amber-200",
+    };
+    return (
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200">Checkbox Review</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {checkboxRows.map((row) => (
+            <div key={row.label} className={`flex items-center gap-2 rounded border px-2 py-1 ${classByState[row.state]}`}>
+              <span
+                aria-label={`${row.label} ${labelByState[row.state]}`}
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-current text-xs font-bold"
+              >
+                {tokenByState[row.state]}
+              </span>
+              <span className="text-xs font-medium">{row.label}</span>
             </div>
           ))}
         </div>

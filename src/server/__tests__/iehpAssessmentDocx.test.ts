@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildIehpDocxPayload } from "../iehpAssessmentDocx";
 
@@ -24,7 +26,7 @@ const approvedChecklist = templateFields.map((field) => ({
   placeholder_key: field.field_key,
   required: field.required,
   status: "approved" as const,
-  value_text: `${field.field_key} checklist value`,
+  value_text: field.field_key === "IEHP_FBA_REPORT_DATE" ? "06/01/2026" : `${field.field_key} checklist value`,
   value_json: null,
 }));
 
@@ -127,6 +129,83 @@ describe("buildIehpDocxPayload", () => {
     expect(result.values.IEHP_FBA_MEMBER_ID).toBe("AUTH-MEMBER-999");
   });
 
+  it("normalizes approved IEHP report date and member id before rendering", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      authorizationMemberId: "201209 00973100",
+      checklistItems: approvedChecklist.map((item) =>
+        item.placeholder_key === "IEHP_FBA_REPORT_DATE"
+          ? { ...item, value_text: "12/ 09 /2025" }
+          : item,
+      ),
+    });
+
+    expect(result.values.IEHP_FBA_REPORT_DATE).toBe("12/09/2025");
+    expect(result.values.IEHP_FBA_MEMBER_ID).toBe("20120900973100");
+  });
+
+  it("uses client profile names over extracted names and warns when they differ", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      checklistItems: approvedChecklist.map((item) => {
+        if (item.placeholder_key === "IEHP_FBA_FIRST_NAME") return { ...item, value_text: "Le" };
+        if (item.placeholder_key === "IEHP_FBA_LAST_NAME") return { ...item, value_text: "Kim" };
+        return item;
+      }),
+    });
+
+    expect(result.values.IEHP_FBA_FIRST_NAME).toBe("Synthetic");
+    expect(result.values.IEHP_FBA_LAST_NAME).toBe("Client");
+    expect(result.preflight.warnings).toContainEqual(
+      expect.stringContaining("extracted document name differs from client profile"),
+    );
+  });
+
+  it("does not render unapproved N/A values for required missing fields", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      checklistItems: approvedChecklist.map((item) =>
+        item.placeholder_key === "IEHP_FBA_ASSESSOR_PHONE"
+          ? { ...item, status: "not_started" as const, value_text: "N/A" }
+          : item,
+      ),
+      writer: {
+        ...baseArgs.writer,
+        phone: null,
+      },
+    });
+
+    expect(result.preflight.ready).toBe(false);
+    expect(result.values.IEHP_FBA_ASSESSOR_PHONE).toBe("");
+    expect(result.preflight.blockers).toContainEqual(
+      expect.objectContaining({
+        code: "unapproved_required_checklist",
+        key: "IEHP_FBA_ASSESSOR_PHONE",
+      }),
+    );
+    expect(result.preflight.blockers).toContainEqual(
+      expect.objectContaining({
+        code: "missing_required_output",
+        key: "IEHP_FBA_ASSESSOR_PHONE",
+        message: expect.stringContaining("missing from approved review data/source"),
+      }),
+    );
+  });
+
+  it("allows optional approved N/A values without making them blockers", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      checklistItems: approvedChecklist.map((item) =>
+        item.placeholder_key === "IEHP_FBA_ADDITIONAL_NOTES"
+          ? { ...item, required: false, status: "approved" as const, value_text: "N/A" }
+          : item,
+      ),
+    });
+
+    expect(result.preflight.ready).toBe(true);
+    expect(result.values.IEHP_FBA_ADDITIONAL_NOTES).toBe("N/A");
+  });
+
   it("blocks unresolved manual-review adaptive blocks instead of inventing clinical content", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,
@@ -173,6 +252,61 @@ describe("buildIehpDocxPayload", () => {
     expect(result.preflight.blockers).not.toContainEqual(expect.objectContaining({ code: "missing_parent_goal" }));
     expect(result.preflight.blockers).toContainEqual(
       expect.objectContaining({ code: "missing_required_output", key: "IEHP_FBA_LANGUAGE" }),
+    );
+  });
+
+  it("keeps IEHP manifest fields covered by checklist metadata and output preflight", () => {
+    const manifestPath = join(process.cwd(), "docs", "fill_docs", "iehp_fba_layout_manifest.json");
+    const checklistPath = join(process.cwd(), "docs", "fill_docs", "iehp_fba_field_extraction_checklist.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+      fields: Array<{ field_key: string; required: boolean; mode: string; source: string }>;
+    };
+    const checklist = JSON.parse(readFileSync(checklistPath, "utf8")) as {
+      rows: Array<{ placeholder_key: string; required: boolean; mode: string; source: string }>;
+    };
+    const checklistByKey = new Map(checklist.rows.map((field) => [field.placeholder_key, field]));
+    const duplicateManifestKeys = manifest.fields
+      .map((field) => field.field_key)
+      .filter((key, index, keys) => keys.indexOf(key) !== index);
+
+    expect(duplicateManifestKeys).toEqual([]);
+    expect(manifest.fields.length).toBeGreaterThan(40);
+    for (const field of manifest.fields) {
+      const checklistField = checklistByKey.get(field.field_key);
+      expect(checklistField, `${field.field_key} is missing checklist metadata`).toBeDefined();
+      expect(checklistField?.required).toBe(field.required);
+      expect(checklistField?.mode).toBe(field.mode);
+      expect(checklistField?.source || field.source).toBeTruthy();
+    }
+
+    const manualRequired = manifest.fields
+      .filter((field) => field.required && field.mode === "MANUAL")
+      .map((field) => field.field_key);
+    expect(manualRequired).toEqual(expect.arrayContaining(["IEHP_FBA_REFERRING_PROVIDER"]));
+
+    const missingAssessorPhoneResult = buildIehpDocxPayload({
+      ...baseArgs,
+      templateFields: manifest.fields.map((field) => ({ field_key: field.field_key, required: field.required })),
+      checklistItems: manifest.fields.map((field) => ({
+        placeholder_key: field.field_key,
+        required: field.required,
+        status: field.required ? ("not_started" as const) : ("approved" as const),
+        value_text: "",
+        value_json: null,
+      })),
+      writer: {
+        ...baseArgs.writer,
+        phone: null,
+      },
+      acceptedGoals: [],
+      structuredSections: [],
+    });
+
+    expect(missingAssessorPhoneResult.preflight.blockers).toContainEqual(
+      expect.objectContaining({ key: "IEHP_FBA_ASSESSOR_PHONE" }),
+    );
+    expect(missingAssessorPhoneResult.preflight.blockers).toContainEqual(
+      expect.objectContaining({ key: "IEHP_FBA_REFERRING_PROVIDER" }),
     );
   });
 });

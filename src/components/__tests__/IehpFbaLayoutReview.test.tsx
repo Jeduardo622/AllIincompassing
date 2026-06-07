@@ -952,6 +952,81 @@ describe("IehpFbaLayoutReview", () => {
     });
   });
 
+  it("renders checkbox-grid structured payloads with accessible checked and unchecked tokens", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 7, title: "Environmental Analysis", layout_json: {} }],
+          fields: [
+            {
+              page_number: 7,
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_ENVIRONMENTAL_ANALYSIS",
+              label: "Member Environmental Analysis",
+              field_type: "checkbox_grid",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-env",
+                placeholder_key: "IEHP_FBA_ENVIRONMENTAL_ANALYSIS",
+                section_key: "behavior_background_services",
+                label: "Member Environmental Analysis",
+                mode: "ASSISTED",
+                required: true,
+                status: "approved",
+                value_text: "1 structured section extracted",
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "section-env",
+                field_key: "IEHP_FBA_ENVIRONMENTAL_ANALYSIS",
+                section_index: 0,
+                payload: {
+                  rows: [
+                    { label: "Unsafe items secured", checked: true },
+                    { label: "Pets present", checked: false },
+                    { label: "Community hazards reviewed", checked: null },
+                  ],
+                },
+                source_span: { page_number: 7, method: "iehp_section_anchor" },
+                status: "approved",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          },
+          unresolved_required_count: 0,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 7/i }));
+    expect(await screen.findByText("Checkbox Review")).toBeInTheDocument();
+    expect(screen.getByLabelText("Unsafe items secured selected")).toHaveTextContent("✓");
+    expect(screen.getByLabelText("Pets present not selected")).toHaveTextContent("☐");
+    expect(screen.getByLabelText("Community hazards reviewed unknown")).toHaveTextContent("-");
+  });
+
   it("renders readable assessment procedures preview with optional technical details toggle and readable copy output", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string) => {
       if (path.startsWith("/api/assessment-template-layout?")) {

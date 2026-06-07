@@ -105,6 +105,11 @@ const IEHP_REQUIRED_PAYLOAD_FIELDS: Record<string, string[]> = {
   IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES: ["measure_name", "date_administered", "interviewer", "respondent"],
   IEHP_FBA_SIGNATURE_BLOCK: ["completed_by", "report_completed_date", "credentials", "agency"],
 };
+const IEHP_OPTIONAL_FINAL_OUTPUT_KEYS = new Set([
+  "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+  "IEHP_FBA_ASSESSOR_PHONE",
+  "IEHP_FBA_REFERRING_PROVIDER",
+]);
 const IEHP_REQUIRED_GOAL_FIELDS = [
   "program_name",
   "target_criteria",
@@ -231,6 +236,9 @@ const countIehpStructuredDataQualityIssues = (sections: AssessmentStructuredSect
       );
     });
   }).length;
+
+const isRequiredForAssessmentExport = (fieldKey: string, required: boolean, isIehp: boolean): boolean =>
+  required && !(isIehp && IEHP_OPTIONAL_FINAL_OUTPUT_KEYS.has(fieldKey));
 
 const buildStructuredPayloadPreview = (payload: Record<string, unknown>): string[] => {
   const rows = Array.isArray(payload.rows) ? payload.rows : [];
@@ -753,6 +761,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     (checklistReviewUnavailable ||
       checklistItems.some((item) => item.required && item.status !== "approved") ||
       structuredSections.some((section) => section.required && section.status !== "approved"));
+  const hasPendingRequiredExportItems =
+    ENABLE_CHECKLIST_MAPPING_UI &&
+    (checklistReviewUnavailable ||
+      checklistItems.some((item) =>
+        isRequiredForAssessmentExport(item.placeholder_key, item.required, selectedAssessmentIsIehp) &&
+        item.status !== "approved"
+      ) ||
+      structuredSections.some((section) =>
+        isRequiredForAssessmentExport(section.field_key, section.required, selectedAssessmentIsIehp) &&
+        section.status !== "approved"
+      ));
   const hasExistingDrafts = (assessmentDrafts?.programs?.length ?? 0) > 0 || (assessmentDrafts?.goals?.length ?? 0) > 0;
   const acceptedDraftProgramCount = (assessmentDrafts?.programs ?? []).filter(
     (program) => program.accept_state === "accepted" || program.accept_state === "edited",
@@ -1690,9 +1709,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => generateAssessmentPlanPdf.mutate()}
-                disabled={!canQuerySelectedAssessment || hasPendingRequiredChecklistItems || generateAssessmentPlanPdf.isLoading}
+                disabled={!canQuerySelectedAssessment || hasPendingRequiredExportItems || generateAssessmentPlanPdf.isLoading}
                 title={
-                  hasPendingRequiredChecklistItems
+                  hasPendingRequiredExportItems
                       ? "Approve all required checklist and structured fields before export."
                       : undefined
                 }

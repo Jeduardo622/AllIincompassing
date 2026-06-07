@@ -96,6 +96,15 @@ const compactWhitespace = (value: string): string => value.replace(/\s+/g, " ").
 
 const collapseWhitespace = (value: string): string => value.replace(/\s+/g, "").trim();
 
+const IEHP_OPTIONAL_FINAL_OUTPUT_KEYS = new Set([
+  "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+  "IEHP_FBA_ASSESSOR_PHONE",
+  "IEHP_FBA_REFERRING_PROVIDER",
+]);
+
+const isRequiredForFinalOutput = (fieldKey: string, required: boolean): boolean =>
+  required && !IEHP_OPTIONAL_FINAL_OUTPUT_KEYS.has(fieldKey);
+
 const normalizeDateText = (value: string | null | undefined): string => {
   const compacted = compactWhitespace(value ?? "").replace(/\s*\/\s*/g, "/");
   if (!compacted) return "";
@@ -273,7 +282,7 @@ export function buildIehpDocxPayload(args: BuildIehpDocxPayloadArgs): BuiltIehpD
   }
 
   args.checklistItems
-    .filter((item) => item.required && item.status !== "approved")
+    .filter((item) => isRequiredForFinalOutput(item.placeholder_key, item.required) && item.status !== "approved")
     .forEach((item) => {
       blockers.push({
         code: "unapproved_required_checklist",
@@ -283,7 +292,7 @@ export function buildIehpDocxPayload(args: BuildIehpDocxPayloadArgs): BuiltIehpD
     });
 
   (args.structuredSections ?? [])
-    .filter((section) => section.required && section.status !== "approved")
+    .filter((section) => isRequiredForFinalOutput(section.field_key, section.required) && section.status !== "approved")
     .forEach((section) => {
       blockers.push({
         code: "unapproved_required_structured_section",
@@ -293,7 +302,11 @@ export function buildIehpDocxPayload(args: BuildIehpDocxPayloadArgs): BuiltIehpD
     });
 
   (args.structuredSections ?? [])
-    .filter((section) => section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES" && hasManualReviewAdaptiveGap(section.payload))
+    .filter((section) =>
+      isRequiredForFinalOutput(section.field_key, section.required) &&
+      section.field_key === "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES" &&
+      hasManualReviewAdaptiveGap(section.payload)
+    )
     .forEach((section) => {
       blockers.push({
         code: "manual_review_required",
@@ -306,7 +319,7 @@ export function buildIehpDocxPayload(args: BuildIehpDocxPayloadArgs): BuiltIehpD
   args.templateFields.forEach((field) => {
     const checklistValue = checklistByKey.get(field.field_key);
     values[field.field_key] = derivedValue(field.field_key, args, checklistValue);
-    if (field.required && !values[field.field_key]?.trim()) {
+    if (isRequiredForFinalOutput(field.field_key, field.required) && !values[field.field_key]?.trim()) {
       blockers.push({
         code: "missing_required_output",
         key: field.field_key,

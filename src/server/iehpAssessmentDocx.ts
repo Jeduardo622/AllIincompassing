@@ -102,6 +102,18 @@ const normalizeDateText = (value: string | null | undefined): string => {
   const slashedDate = compacted.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slashedDate) {
     const [, month, day, year] = slashedDate;
+    const parsedMonth = Number(month);
+    const parsedDay = Number(day);
+    const parsedYear = Number(year);
+    const date = new Date(Date.UTC(parsedYear, parsedMonth - 1, parsedDay));
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.getUTCFullYear() !== parsedYear ||
+      date.getUTCMonth() !== parsedMonth - 1 ||
+      date.getUTCDate() !== parsedDay
+    ) {
+      return "";
+    }
     return `${month.padStart(2, "0")}/${day.padStart(2, "0")}/${year}`;
   }
   return formatDate(compacted);

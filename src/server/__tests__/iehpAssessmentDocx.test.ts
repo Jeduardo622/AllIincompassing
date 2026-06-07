@@ -144,6 +144,31 @@ describe("buildIehpDocxPayload", () => {
     expect(result.values.IEHP_FBA_MEMBER_ID).toBe("20120900973100");
   });
 
+  it("blocks approved slashed dates that are not real calendar dates", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      client: {
+        ...baseArgs.client,
+        date_of_birth: null,
+      },
+      checklistItems: approvedChecklist.map((item) => {
+        if (item.placeholder_key === "IEHP_FBA_REPORT_DATE") return { ...item, value_text: "13/40/2025" };
+        if (item.placeholder_key === "IEHP_FBA_BIRTH_DATE") return { ...item, value_text: "02/30/2025" };
+        return item;
+      }),
+    });
+
+    expect(result.preflight.ready).toBe(false);
+    expect(result.values.IEHP_FBA_REPORT_DATE).toBe("");
+    expect(result.values.IEHP_FBA_BIRTH_DATE).toBe("");
+    expect(result.preflight.blockers).toContainEqual(
+      expect.objectContaining({ code: "missing_required_output", key: "IEHP_FBA_REPORT_DATE" }),
+    );
+    expect(result.preflight.blockers).toContainEqual(
+      expect.objectContaining({ code: "missing_required_output", key: "IEHP_FBA_BIRTH_DATE" }),
+    );
+  });
+
   it("uses client profile names over extracted names and warns when they differ", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,

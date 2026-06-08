@@ -188,6 +188,119 @@ describe("assessmentPromoteHandler", () => {
     ).toBe(false);
   });
 
+  it("publishes IEHP assessments when only optional final-output rows remain blank or unapproved", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key&")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            { id: "optional-assessor-phone", placeholder_key: "IEHP_FBA_ASSESSOR_PHONE" },
+            { id: "optional-referring-provider", placeholder_key: "IEHP_FBA_REFERRING_PROVIDER" },
+          ],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key&")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: "optional-adaptive", field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES" }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "optional-approved-phone",
+            placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+            label: "Assessor phone",
+            value_text: "",
+            value_json: null,
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "optional-approved-adaptive",
+            field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+            section_index: 0,
+            payload: {
+              assessment_blocks: [
+                { label: "VB-MAPP", raw_text: null, manual_review_required: true },
+              ],
+            },
+          }],
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "approved",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      assessment_document_id: "doc-1",
+      completion_mode: "assessment_only",
+    });
+    expect(
+      vi.mocked(fetchJson).mock.calls.some(([url, init]) =>
+        typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted") && init?.method === "PATCH"
+      ),
+    ).toBe(true);
+  });
+
   it("blocks IEHP assessment publish when approved required checklist rows are blank", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -215,10 +328,10 @@ describe("assessmentPromoteHandler", () => {
           }],
         };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key&")) {
         return { ok: true, status: 200, data: [] };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key&")) {
         return { ok: true, status: 200, data: [] };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
@@ -227,8 +340,8 @@ describe("assessmentPromoteHandler", () => {
           status: 200,
           data: [{
             id: "required-row-1",
-            placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
-            label: "Assessor phone",
+            placeholder_key: "IEHP_FBA_REPORT_DATE",
+            label: "Report date",
             value_text: "   ",
             value_json: null,
           }],
@@ -303,10 +416,10 @@ describe("assessmentPromoteHandler", () => {
           }],
         };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key&")) {
         return { ok: true, status: 200, data: [] };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key&")) {
         return { ok: true, status: 200, data: [] };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
@@ -395,10 +508,10 @@ describe("assessmentPromoteHandler", () => {
           }],
         };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key&")) {
         return { ok: true, status: 200, data: [] };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key&")) {
         return { ok: true, status: 200, data: [] };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
@@ -489,10 +602,10 @@ describe("assessmentPromoteHandler", () => {
           }],
         };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key&")) {
         return { ok: true, status: 200, data: [] };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key&")) {
         return { ok: true, status: 200, data: [] };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
@@ -584,10 +697,10 @@ describe("assessmentPromoteHandler", () => {
           }],
         };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key&")) {
         return { ok: true, status: 200, data: [] };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key&")) {
         return { ok: true, status: 200, data: [] };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
@@ -724,10 +837,10 @@ describe("assessmentPromoteHandler", () => {
           }],
         };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key&")) {
         return { ok: true, status: 200, data: [] };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id&")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key&")) {
         return { ok: true, status: 200, data: [] };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {

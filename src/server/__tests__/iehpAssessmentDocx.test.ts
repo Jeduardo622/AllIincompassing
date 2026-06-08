@@ -190,31 +190,105 @@ describe("buildIehpDocxPayload", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,
       checklistItems: approvedChecklist.map((item) =>
-        item.placeholder_key === "IEHP_FBA_ASSESSOR_PHONE"
+        item.placeholder_key === "IEHP_FBA_LANGUAGE"
           ? { ...item, status: "not_started" as const, value_text: "N/A" }
           : item,
       ),
+      client: {
+        ...baseArgs.client,
+        preferred_language: null,
+      },
+    });
+
+    expect(result.preflight.ready).toBe(false);
+    expect(result.values.IEHP_FBA_LANGUAGE).toBe("");
+    expect(result.preflight.blockers).toContainEqual(
+      expect.objectContaining({
+        code: "unapproved_required_checklist",
+        key: "IEHP_FBA_LANGUAGE",
+      }),
+    );
+    expect(result.preflight.blockers).toContainEqual(
+      expect.objectContaining({
+        code: "missing_required_output",
+        key: "IEHP_FBA_LANGUAGE",
+        message: expect.stringContaining("missing from approved review data/source"),
+      }),
+    );
+  });
+
+  it("treats absent IEHP source fields as optional for final DOCX generation", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      templateFields: [
+        { field_key: "IEHP_FBA_REFERRING_PROVIDER", required: true },
+        { field_key: "IEHP_FBA_ASSESSOR_PHONE", required: true },
+        { field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES", required: true },
+      ],
+      checklistItems: [
+        {
+          placeholder_key: "IEHP_FBA_REFERRING_PROVIDER",
+          required: true,
+          status: "not_started",
+          value_text: null,
+          value_json: null,
+        },
+        {
+          placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+          required: true,
+          status: "approved",
+          value_text: "N/a",
+          value_json: null,
+        },
+        {
+          placeholder_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+          required: true,
+          status: "approved",
+          value_text: "1 structured section extracted",
+          value_json: null,
+        },
+      ],
+      structuredSections: [
+        {
+          field_key: "IEHP_FBA_ASSESSOR_PHONE",
+          section_key: "identification_admin",
+          section_index: 0,
+          payload: null,
+          status: "drafted",
+          required: true,
+        },
+        {
+          field_key: "IEHP_FBA_REFERRING_PROVIDER",
+          section_key: "identification_admin",
+          section_index: 0,
+          payload: null,
+          status: "not_started",
+          required: true,
+        },
+        {
+          field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+          section_key: "assessment_procedures_testing",
+          section_index: 0,
+          payload: {
+            assessment_blocks: [
+              { label: "VB-MAPP", raw_text: null, manual_review_required: true },
+              { label: "Vineland", raw_text: "Vineland summary" },
+            ],
+          },
+          status: "approved",
+          required: true,
+        },
+      ],
       writer: {
         ...baseArgs.writer,
         phone: null,
       },
     });
 
-    expect(result.preflight.ready).toBe(false);
-    expect(result.values.IEHP_FBA_ASSESSOR_PHONE).toBe("");
-    expect(result.preflight.blockers).toContainEqual(
-      expect.objectContaining({
-        code: "unapproved_required_checklist",
-        key: "IEHP_FBA_ASSESSOR_PHONE",
-      }),
-    );
-    expect(result.preflight.blockers).toContainEqual(
-      expect.objectContaining({
-        code: "missing_required_output",
-        key: "IEHP_FBA_ASSESSOR_PHONE",
-        message: expect.stringContaining("missing from approved review data/source"),
-      }),
-    );
+    expect(result.preflight.ready).toBe(true);
+    expect(result.values.IEHP_FBA_REFERRING_PROVIDER).toBe("");
+    expect(result.values.IEHP_FBA_ASSESSOR_PHONE).toBe("N/a");
+    expect(result.preflight.blockers).toEqual([]);
   });
 
   it("allows optional approved N/A values without making them blockers", () => {
@@ -231,7 +305,7 @@ describe("buildIehpDocxPayload", () => {
     expect(result.values.IEHP_FBA_ADDITIONAL_NOTES).toBe("N/A");
   });
 
-  it("blocks unresolved manual-review adaptive blocks instead of inventing clinical content", () => {
+  it("does not block final generation on unresolved optional adaptive blocks", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,
       structuredSections: [
@@ -251,8 +325,8 @@ describe("buildIehpDocxPayload", () => {
       ],
     });
 
-    expect(result.preflight.ready).toBe(false);
-    expect(result.preflight.blockers).toContainEqual(
+    expect(result.preflight.ready).toBe(true);
+    expect(result.preflight.blockers).not.toContainEqual(
       expect.objectContaining({
         code: "manual_review_required",
         key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
@@ -327,10 +401,10 @@ describe("buildIehpDocxPayload", () => {
       structuredSections: [],
     });
 
-    expect(missingAssessorPhoneResult.preflight.blockers).toContainEqual(
+    expect(missingAssessorPhoneResult.preflight.blockers).not.toContainEqual(
       expect.objectContaining({ key: "IEHP_FBA_ASSESSOR_PHONE" }),
     );
-    expect(missingAssessorPhoneResult.preflight.blockers).toContainEqual(
+    expect(missingAssessorPhoneResult.preflight.blockers).not.toContainEqual(
       expect.objectContaining({ key: "IEHP_FBA_REFERRING_PROVIDER" }),
     );
   });

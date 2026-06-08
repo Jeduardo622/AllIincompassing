@@ -2515,7 +2515,80 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
-        return new Response(JSON.stringify({ items: [], structured_sections: [] }), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "optional-referring-provider",
+                assessment_document_id: ASSESSMENT_ID,
+                placeholder_key: "IEHP_FBA_REFERRING_PROVIDER",
+                label: "Name of Referring Provider",
+                value_text: null,
+                value_json: null,
+                status: "not_started",
+                required: true,
+              },
+              {
+                id: "optional-assessor-phone",
+                assessment_document_id: ASSESSMENT_ID,
+                placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+                label: "Assessor phone",
+                value_text: "N/a",
+                value_json: null,
+                status: "approved",
+                required: true,
+              },
+              {
+                id: "optional-adaptive-summary",
+                assessment_document_id: ASSESSMENT_ID,
+                placeholder_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+                label: "Adaptive measure summaries",
+                value_text: "1 structured section extracted",
+                value_json: null,
+                status: "approved",
+                required: true,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "optional-assessor-phone-section",
+                assessment_document_id: ASSESSMENT_ID,
+                field_key: "IEHP_FBA_ASSESSOR_PHONE",
+                section_key: "identification_admin",
+                section_index: 0,
+                payload: null,
+                status: "drafted",
+                required: true,
+              },
+              {
+                id: "optional-referring-provider-section",
+                assessment_document_id: ASSESSMENT_ID,
+                field_key: "IEHP_FBA_REFERRING_PROVIDER",
+                section_key: "identification_admin",
+                section_index: 0,
+                payload: null,
+                status: "not_started",
+                required: true,
+              },
+              {
+                id: "optional-adaptive-summary-section",
+                assessment_document_id: ASSESSMENT_ID,
+                field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+                section_key: "assessment_procedures_testing",
+                section_index: 0,
+                payload: {
+                  assessment_blocks: [
+                    { label: "VB-MAPP", raw_text: null, manual_review_required: true },
+                    { label: "Vineland", raw_text: "Vineland summary" },
+                  ],
+                },
+                status: "approved",
+                required: true,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
       }
       if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
         return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });

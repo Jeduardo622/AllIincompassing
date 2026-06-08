@@ -209,8 +209,8 @@ describe("assessmentChecklistHandler", () => {
           client_id: "client-1",
           status: "drafted",
           required: true,
-          placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
-          label: "Assessor's phone number",
+          placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+          label: "Reason for Referral",
           value_text: "",
           value_json: null,
         },
@@ -230,7 +230,7 @@ describe("assessmentChecklistHandler", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "Required checklist item Assessor's phone number cannot be approved while blank.",
+      error: "Required checklist item Reason for Referral cannot be approved while blank.",
     });
     expect(fetchJson).toHaveBeenCalledTimes(1);
   });
@@ -259,8 +259,8 @@ describe("assessmentChecklistHandler", () => {
           client_id: "client-1",
           status: "approved",
           required: true,
-          placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
-          label: "Assessor's phone number",
+          placeholder_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+          label: "Reason for Referral",
           value_text: "951-555-0101",
           value_json: null,
         },
@@ -281,9 +281,59 @@ describe("assessmentChecklistHandler", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "Required checklist item Assessor's phone number cannot be approved while blank.",
+      error: "Required checklist item Reason for Referral cannot be approved while blank.",
     });
     expect(fetchJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows approving blank optional IEHP checklist rows even when stored required metadata is stale", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "item-1",
+            assessment_document_id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "drafted",
+            required: true,
+            placeholder_key: "IEHP_FBA_REFERRING_PROVIDER",
+            label: "Name of Referring Provider, Credentials",
+            value_text: "",
+            value_json: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [{ id: "item-1", status: "approved" }] })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null });
+
+    const response = await assessmentChecklistHandler(
+      new Request("http://localhost/api/assessment-checklist", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          item_id: "11111111-1111-1111-1111-111111111111",
+          status: "approved",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ id: "item-1", status: "approved" });
   });
 
   it("returns checklist rows with structured sections", async () => {
@@ -400,10 +450,10 @@ describe("assessmentChecklistHandler", () => {
           client_id: "client-1",
           status: "drafted",
           required: true,
-          field_key: "IEHP_FBA_REFERRING_PROVIDER",
+          field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
           payload: {
-            field_key: "IEHP_FBA_REFERRING_PROVIDER",
-            label: "Name of Referring Provider, Credentials",
+            field_key: "IEHP_FBA_REASON_FOR_REFERRAL",
+            label: "Reason for Referral",
             template_placeholder: true,
             entered_value_present: false,
             clinical_value: null,
@@ -426,9 +476,64 @@ describe("assessmentChecklistHandler", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "Required structured section IEHP_FBA_REFERRING_PROVIDER cannot be approved while blank.",
+      error: "Required structured section IEHP_FBA_REASON_FOR_REFERRAL cannot be approved while blank.",
     });
     expect(fetchJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows approving blank optional IEHP structured placeholders even when stored required metadata is stale", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "section-1",
+            assessment_document_id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "drafted",
+            required: true,
+            field_key: "IEHP_FBA_REFERRING_PROVIDER",
+            payload: {
+              field_key: "IEHP_FBA_REFERRING_PROVIDER",
+              label: "Name of Referring Provider, Credentials",
+              template_placeholder: true,
+              entered_value_present: false,
+              clinical_value: null,
+              raw_text: "",
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [{ id: "section-1", status: "approved" }] })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null });
+
+    const response = await assessmentChecklistHandler(
+      new Request("http://localhost/api/assessment-checklist", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          structured_section_id: "11111111-1111-1111-1111-111111111111",
+          status: "approved",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ id: "section-1", status: "approved" });
   });
 
   it("allows approving filled structured placeholders even when extraction flags are stale", async () => {

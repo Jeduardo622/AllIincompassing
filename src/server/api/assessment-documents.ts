@@ -14,6 +14,7 @@ import {
   type AssessmentChecklistSeedRow,
   type AssessmentTemplateType,
 } from "../assessmentChecklistTemplate";
+import { normalizeIehpRequiredFlag } from "../iehpOptionalFinalOutput";
 import { buildDeterministicDraftPayload, persistDraftRows } from "./assessment-drafts";
 import { serverLogger } from "../../lib/logger/server";
 
@@ -477,7 +478,7 @@ const normalizeTemplateFieldRow = (row: AssessmentTemplateFieldRow): AssessmentC
   const mode = normalizeTemplateFieldMode(row.mode);
   const source = typeof row.source === "string" && row.source.trim().length > 0 ? row.source : "uploaded_assessment_document";
   const fieldType = typeof row.field_type === "string" && row.field_type.trim().length > 0 ? row.field_type : "text";
-  const required = row.required === true;
+  const required = normalizeIehpRequiredFlag(row.field_key, row.required === true);
   return {
     section: row.section_key,
     label: row.label,
@@ -805,7 +806,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
               payload: section.payload,
               source_span: section.source_span,
               status: section.status,
-              required: section.required,
+              required: normalizeIehpRequiredFlag(section.field_key, section.required),
               review_notes: section.review_notes,
             })),
           ),

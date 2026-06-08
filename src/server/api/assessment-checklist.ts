@@ -8,6 +8,7 @@ import {
   json,
   resolveOrgAndRole,
 } from "./shared";
+import { normalizeIehpRequiredFlag } from "../iehpOptionalFinalOutput";
 
 const reviewStatusSchema = z.enum(["not_started", "drafted", "verified", "approved", "rejected"]);
 
@@ -215,7 +216,11 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
         );
       }
       const finalStructuredPayload = parsed.data.payload ?? existing.payload;
-      if (nextStatus === "approved" && existing.required === true && !hasMeaningfulStructuredPayload(finalStructuredPayload)) {
+      if (
+        nextStatus === "approved" &&
+        normalizeIehpRequiredFlag(existing.field_key, existing.required) &&
+        !hasMeaningfulStructuredPayload(finalStructuredPayload)
+      ) {
         return json(
           { error: `Required structured section ${existing.field_key ?? existing.id} cannot be approved while blank.` },
           400,
@@ -298,7 +303,11 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
     const finalValueText = parsed.data.value_text ?? existing.value_text;
     const finalValueJson = parsed.data.value_json === undefined ? existing.value_json : parsed.data.value_json;
     const finalStatus = nextStatus ?? existing.status;
-    if (finalStatus === "approved" && existing.required === true && !hasMeaningfulChecklistValue(finalValueText, finalValueJson)) {
+    if (
+      finalStatus === "approved" &&
+      normalizeIehpRequiredFlag(existing.placeholder_key, existing.required) &&
+      !hasMeaningfulChecklistValue(finalValueText, finalValueJson)
+    ) {
       return json(
         { error: `Required checklist item ${existing.label ?? existing.placeholder_key ?? existing.id} cannot be approved while blank.` },
         400,

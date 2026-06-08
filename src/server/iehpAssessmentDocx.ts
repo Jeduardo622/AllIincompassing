@@ -4,6 +4,7 @@ import type {
   AssessmentStructuredSectionValueRow,
   AssessmentWriterSnapshot,
 } from "./assessmentPlanPdf";
+import { normalizeIehpRequiredFlag } from "./iehpOptionalFinalOutput";
 
 export interface IehpTemplateFieldRow {
   field_key: string;
@@ -96,14 +97,8 @@ const compactWhitespace = (value: string): string => value.replace(/\s+/g, " ").
 
 const collapseWhitespace = (value: string): string => value.replace(/\s+/g, "").trim();
 
-const IEHP_OPTIONAL_FINAL_OUTPUT_KEYS = new Set([
-  "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
-  "IEHP_FBA_ASSESSOR_PHONE",
-  "IEHP_FBA_REFERRING_PROVIDER",
-]);
-
 const isRequiredForFinalOutput = (fieldKey: string, required: boolean): boolean =>
-  required && !IEHP_OPTIONAL_FINAL_OUTPUT_KEYS.has(fieldKey);
+  normalizeIehpRequiredFlag(fieldKey, required);
 
 const normalizeDateText = (value: string | null | undefined): string => {
   const compacted = compactWhitespace(value ?? "").replace(/\s*\/\s*/g, "/");

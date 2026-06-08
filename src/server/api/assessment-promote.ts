@@ -29,11 +29,21 @@ interface AssessmentRequiredChecklistReviewRow {
   value_json: unknown | null;
 }
 
+interface AssessmentRequiredChecklistStatusRow {
+  id: string;
+  placeholder_key: string | null;
+}
+
 interface AssessmentRequiredStructuredReviewRow {
   id: string;
   field_key: string;
   section_index: number | null;
   payload: Record<string, unknown> | null;
+}
+
+interface AssessmentRequiredStructuredStatusRow {
+  id: string;
+  field_key: string;
 }
 
 interface IehpPublishDataQualityBlocker {
@@ -112,6 +122,11 @@ const IEHP_GOAL_SECTION_KEYS = new Set([
   "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
   "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
 ]);
+const IEHP_OPTIONAL_FINAL_OUTPUT_KEYS = new Set([
+  "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+  "IEHP_FBA_ASSESSOR_PHONE",
+  "IEHP_FBA_REFERRING_PROVIDER",
+]);
 const IEHP_STRUCTURED_METADATA_KEYS = new Set([
   "field_key",
   "label",
@@ -136,6 +151,9 @@ const isBlankTransferredValue = (value: unknown): boolean => {
 
 const hasNonBlankPayloadValue = (payload: Record<string, unknown>, key: string): boolean =>
   !isBlankTransferredValue(payload[key]);
+
+const isOptionalIehpFinalOutputKey = (fieldKey: string | null | undefined): boolean =>
+  typeof fieldKey === "string" && IEHP_OPTIONAL_FINAL_OUTPUT_KEYS.has(fieldKey);
 
 const hasMeaningfulRawText = (payload: Record<string, unknown>): boolean =>
   typeof payload.raw_text === "string" && payload.raw_text.trim().length > 0;
@@ -185,7 +203,7 @@ const hasDefaultRequiredStructuredValue = (payload: Record<string, unknown>): bo
 const buildIehpStructuredDataQualityBlockers = (
   rows: AssessmentRequiredStructuredReviewRow[],
 ): IehpPublishDataQualityBlocker[] =>
-  rows.flatMap((row) => {
+  rows.filter((row) => !isOptionalIehpFinalOutputKey(row.field_key)).flatMap((row) => {
     const payload = row.payload && typeof row.payload === "object" ? row.payload : null;
     if (!payload) {
       return [{
@@ -254,14 +272,14 @@ const buildAssessmentRequiredApprovalLookups = (args: {
 }) => {
   const { supabaseUrl, organizationId, assessmentDocumentId, headers } = args;
   return Promise.all([
-    fetchJson<Array<{ id: string }>>(
-      `${supabaseUrl}/rest/v1/assessment_checklist_items?select=id&organization_id=eq.${encodeURIComponent(
+    fetchJson<AssessmentRequiredChecklistStatusRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_checklist_items?select=id,placeholder_key&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&required=is.true&status=neq.approved`,
       { method: "GET", headers },
     ),
-    fetchJson<Array<{ id: string }>>(
-      `${supabaseUrl}/rest/v1/assessment_structured_sections?select=id&organization_id=eq.${encodeURIComponent(
+    fetchJson<AssessmentRequiredStructuredStatusRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_structured_sections?select=id,field_key&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&required=is.true&status=neq.approved`,
       { method: "GET", headers },
@@ -358,8 +376,10 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       return json({ error: "Failed to evaluate IEHP publish data quality preconditions" }, 500);
     }
 
-    const unapprovedChecklistCount = Array.isArray(unapprovedChecklistResult.data) ? unapprovedChecklistResult.data.length : 0;
-    const unapprovedStructuredCount = Array.isArray(unapprovedStructuredResult.data) ? unapprovedStructuredResult.data.length : 0;
+    const unapprovedChecklistRows = Array.isArray(unapprovedChecklistResult.data) ? unapprovedChecklistResult.data : [];
+    const unapprovedStructuredRows = Array.isArray(unapprovedStructuredResult.data) ? unapprovedStructuredResult.data : [];
+    const unapprovedChecklistCount = unapprovedChecklistRows.filter((row) => !isOptionalIehpFinalOutputKey(row.placeholder_key)).length;
+    const unapprovedStructuredCount = unapprovedStructuredRows.filter((row) => !isOptionalIehpFinalOutputKey(row.field_key)).length;
     const unresolvedRequiredCount = unapprovedChecklistCount + unapprovedStructuredCount;
     if (unresolvedRequiredCount > 0) {
       return json(
@@ -373,6 +393,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
 
     const approvedChecklistRows = Array.isArray(approvedChecklistResult.data) ? approvedChecklistResult.data : [];
     const blankRequiredChecklistBlockers: IehpPublishDataQualityBlocker[] = approvedChecklistRows
+      .filter((row) => !isOptionalIehpFinalOutputKey(row.placeholder_key))
       .filter((row) => isBlankTransferredValue(row.value_text) && isBlankTransferredValue(row.value_json))
       .map((row) => ({
         code: "blank_required_checklist",

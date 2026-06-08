@@ -224,6 +224,7 @@ describe("IehpFbaLayoutReview", () => {
     expect(within(card).getByText(/Optional for final IEHP DOCX export/)).toBeInTheDocument();
     expect(within(card).queryByText("Manual review required")).not.toBeInTheDocument();
     expect(screen.getByText("No fields need attention")).toBeInTheDocument();
+    expect(card).not.toHaveClass("ring-2");
 
     fireEvent.click(within(card).getByRole("button", { name: "Expand Assessor's phone number" }));
 

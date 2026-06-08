@@ -12,6 +12,7 @@ import {
   type AssessmentTemplatePage,
   type AssessmentTemplateVersion,
 } from "../assessmentTemplateLayout";
+import { normalizeIehpRequiredFlag } from "../iehpOptionalFinalOutput";
 
 const uuidSchema = z.string().uuid();
 
@@ -248,8 +249,12 @@ export async function assessmentTemplateLayoutHandler(request: Request): Promise
 
   const checklistRows = Array.isArray(checklistResult.data) ? checklistResult.data : [];
   const structuredSections = Array.isArray(structuredResult.data) ? structuredResult.data : [];
-  const unresolvedRequiredCount = checklistRows.filter((row) => row.required && row.status !== "approved").length +
-    structuredSections.filter((section) => section.required && section.status !== "approved").length;
+  const unresolvedRequiredCount = checklistRows
+    .filter((row) => normalizeIehpRequiredFlag(row.placeholder_key, row.required) && row.status !== "approved")
+    .length +
+    structuredSections
+      .filter((section) => normalizeIehpRequiredFlag(section.field_key, section.required) && section.status !== "approved")
+      .length;
   const extractedValueCount = checklistRows.filter((row) => typeof row.value_text === "string" && row.value_text.trim().length > 0).length;
 
   return jsonForRequest(request, {

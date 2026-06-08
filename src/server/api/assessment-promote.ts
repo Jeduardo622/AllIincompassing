@@ -8,6 +8,7 @@ import {
   json,
   resolveOrgAndRole,
 } from "./shared";
+import { isOptionalIehpFinalOutputKey } from "../iehpOptionalFinalOutput";
 
 const promoteSchema = z.object({
   assessment_document_id: z.string().uuid(),
@@ -122,11 +123,6 @@ const IEHP_GOAL_SECTION_KEYS = new Set([
   "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
   "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
 ]);
-const IEHP_OPTIONAL_FINAL_OUTPUT_KEYS = new Set([
-  "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
-  "IEHP_FBA_ASSESSOR_PHONE",
-  "IEHP_FBA_REFERRING_PROVIDER",
-]);
 const IEHP_STRUCTURED_METADATA_KEYS = new Set([
   "field_key",
   "label",
@@ -151,9 +147,6 @@ const isBlankTransferredValue = (value: unknown): boolean => {
 
 const hasNonBlankPayloadValue = (payload: Record<string, unknown>, key: string): boolean =>
   !isBlankTransferredValue(payload[key]);
-
-const isOptionalIehpFinalOutputKey = (fieldKey: string | null | undefined): boolean =>
-  typeof fieldKey === "string" && IEHP_OPTIONAL_FINAL_OUTPUT_KEYS.has(fieldKey);
 
 const hasMeaningfulRawText = (payload: Record<string, unknown>): boolean =>
   typeof payload.raw_text === "string" && payload.raw_text.trim().length > 0;

@@ -137,6 +137,109 @@ describe("assessmentTemplateLayoutHandler", () => {
     expect(body.unresolved_required_count).toBe(0);
   });
 
+  it("excludes optional IEHP final-output rows from unresolved required counts", async () => {
+    vi.mocked(fetchJson).mockImplementation(async (url: string) => {
+      if (url.includes("/rest/v1/assessment_documents?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "11111111-1111-4111-8111-111111111111",
+            organization_id: "org-1",
+            client_id: "client-1",
+            template_type: "iehp_fba",
+            template_version_id: "template-1",
+            status: "drafted",
+            file_name: "synthetic-iehp.docx",
+          }],
+        };
+      }
+      if (url.includes("/rest/v1/assessment_checklist_items?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "item-1",
+            placeholder_key: "IEHP_FBA_REFERRING_PROVIDER",
+            section_key: "identification_admin",
+            label: "Name of Referring Provider, Credentials",
+            mode: "MANUAL",
+            required: true,
+            status: "not_started",
+            value_text: "",
+            value_json: null,
+            review_notes: null,
+          }],
+        };
+      }
+      if (url.includes("/rest/v1/assessment_structured_sections?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "section-1",
+            field_key: "IEHP_FBA_REFERRING_PROVIDER",
+            required: true,
+            status: "drafted",
+            payload: null,
+          }],
+        };
+      }
+      if (url.includes("/rest/v1/assessment_template_versions?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "template-1",
+            template_type: "iehp_fba",
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+            source_sha256: "hash",
+            status: "active",
+          }],
+        };
+      }
+      if (url.includes("/rest/v1/assessment_template_pages?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: "page-1", template_version_id: "template-1", page_number: 1, title: "General Information", layout_json: {} }],
+        };
+      }
+      if (url.includes("/rest/v1/assessment_template_fields?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "field-1",
+            template_version_id: "template-1",
+            page_number: 1,
+            section_key: "identification_admin",
+            field_key: "IEHP_FBA_REFERRING_PROVIDER",
+            label: "Name of Referring Provider, Credentials",
+            field_type: "textarea",
+            mode: "MANUAL",
+            required: true,
+            source: "clinician_manual_entry unless present in uploaded document",
+            layout_json: {},
+          }],
+        };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentTemplateLayoutHandler(
+      new Request("http://localhost/api/assessment-template-layout?assessment_document_id=11111111-1111-4111-8111-111111111111", {
+        headers: { Authorization: "Bearer token" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.unresolved_required_count).toBe(0);
+  });
+
   it("rejects non-IEHP documents", async () => {
     vi.mocked(fetchJson).mockResolvedValueOnce({
       ok: true,

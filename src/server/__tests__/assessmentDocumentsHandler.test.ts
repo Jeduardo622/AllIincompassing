@@ -1797,6 +1797,164 @@ describe("assessmentDocumentsHandler", () => {
     await expect(response.json()).resolves.toMatchObject({ accepted: true });
   });
 
+  it("normalizes optional IEHP structured rows before persisting fresh extraction results", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,template_version_id,bucket_id,object_path")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extracting",
+              template_type: "iehp_fba",
+              template_version_id: "template-1",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.docx",
+              updated_at: "2026-05-15T20:00:00.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_fields?select=section_key,field_key,label,field_type,mode,required,source")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            section_key: "identification_admin",
+            field_key: "IEHP_FBA_REFERRING_PROVIDER",
+            label: "Name of Referring Provider, Credentials",
+            field_type: "textarea",
+            mode: "MANUAL",
+            required: true,
+            source: "clinician_manual_entry unless present in uploaded document",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ full_name: "Client One", date_of_birth: "2017-05-01" }],
+        };
+      }
+      if (
+        method === "GET" &&
+        url.includes(
+          "/rest/v1/assessment_documents?select=status&id=eq.11111111-1111-4111-8111-111111111111&organization_id=eq.org-1&limit=1",
+        )
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (
+        method === "GET" &&
+        url.includes("/rest/v1/assessment_documents?select=status&id=eq.11111111-1111-4111-8111-111111111111")
+      ) {
+        return { ok: true, status: 200, data: [{ status: "extracting" }] };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "22222222-2222-4222-8222-222222222222",
+              status: "extracting",
+              template_type: "iehp_fba",
+              template_version_id: "template-1",
+              bucket_id: "client-documents",
+              object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.docx",
+              updated_at: "2026-05-15T20:00:00.000Z",
+            },
+          ],
+        };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            assessment_document_id: "11111111-1111-4111-8111-111111111111",
+            template_type: "iehp_fba",
+            fields: [],
+            unresolved_keys: [],
+            extracted_count: 0,
+            unresolved_count: 0,
+            extraction_provider: "local_docx",
+            structured_sections: [{
+              section_key: "identification_admin",
+              field_key: "IEHP_FBA_REFERRING_PROVIDER",
+              section_index: 0,
+              payload: {
+                field_key: "IEHP_FBA_REFERRING_PROVIDER",
+                label: "Name of Referring Provider, Credentials",
+                template_placeholder: true,
+                entered_value_present: false,
+                clinical_value: null,
+                raw_text: "",
+              },
+              source_span: { method: "template_placeholder" },
+              status: "drafted",
+              required: true,
+              review_notes: null,
+            }],
+            structured_section_count: 1,
+            structured_child_goal_count: 0,
+            structured_parent_goal_count: 0,
+            adobe_element_count: null,
+            adobe_table_count: null,
+          },
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_structured_sections")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsExtractionBackgroundHandler(
+      new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-4111-8111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    const structuredInsertCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/rest/v1/assessment_structured_sections") &&
+      (init?.method ?? "").toUpperCase() === "POST"
+    );
+    expect(structuredInsertCall).toBeDefined();
+    expect(String(structuredInsertCall?.[1]?.body)).toContain("\"field_key\":\"IEHP_FBA_REFERRING_PROVIDER\"");
+    expect(String(structuredInsertCall?.[1]?.body)).toContain("\"required\":false");
+  });
+
   it("skips background extraction for documents no longer in extracting status", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -1880,6 +2038,103 @@ describe("assessmentDocumentsHandler", () => {
     });
     expect(json.extraction_error).toBeNull();
     expect(loadChecklistTemplateRows).not.toHaveBeenCalled();
+  });
+
+  it("normalizes optional IEHP checklist seed rows before persisting a fresh upload", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([]);
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_fields?select=")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            section_key: "identification_admin",
+            field_key: "IEHP_FBA_REFERRING_PROVIDER",
+            label: "Name of Referring Provider, Credentials",
+            field_type: "textarea",
+            mode: "MANUAL",
+            required: true,
+            source: "clinician_manual_entry unless present in uploaded document",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [{ id: "doc-iehp-optional", organization_id: "org-1", client_id: "11111111-1111-1111-1111-111111111111" }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-iehp-optional")) {
+        return { ok: true, status: 200, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "iehp-fba.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          file_size: 2200,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/iehp-fba.docx",
+          template_type: "iehp_fba",
+        }),
+      }),
+      {
+        scheduleCaloptimaExtraction: async () => ({ ok: true, status: 202 }),
+      },
+    );
+
+    expect(response.status).toBe(201);
+    const checklistInsertCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/rest/v1/assessment_checklist_items") &&
+      (init?.method ?? "").toUpperCase() === "POST"
+    );
+    const extractionInsertCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/rest/v1/assessment_extractions") &&
+      (init?.method ?? "").toUpperCase() === "POST"
+    );
+    expect(checklistInsertCall).toBeDefined();
+    expect(extractionInsertCall).toBeDefined();
+    expect(String(checklistInsertCall?.[1]?.body)).toContain("\"placeholder_key\":\"IEHP_FBA_REFERRING_PROVIDER\"");
+    expect(String(checklistInsertCall?.[1]?.body)).toContain("\"required\":false");
+    expect(String(extractionInsertCall?.[1]?.body)).toContain("\"field_key\":\"IEHP_FBA_REFERRING_PROVIDER\"");
+    expect(String(extractionInsertCall?.[1]?.body)).toContain("\"required\":false");
   });
 
   it("rejects unsupported template_type", async () => {

@@ -552,20 +552,24 @@ export function SessionModal({
       setSelectedProgramIds([]);
       return;
     }
-    const programIdsSet = new Set(programs.map((program) => program.id));
-    const nextProgram = programs.find((program) => program.status === 'active') ?? programs[0];
-    if (!programId || !programIdsSet.has(programId)) {
-      if (session?.id && programId && !programIdsSet.has(programId)) {
+    const activeProgramIdsSet = new Set(
+      programs.filter((program) => program.status === 'active').map((program) => program.id)
+    );
+    const nextProgram = programs.find((program) => program.status === 'active');
+    if (!programId || !activeProgramIdsSet.has(programId)) {
+      if (session?.id && programId && !activeProgramIdsSet.has(programId)) {
         return;
       }
       if (nextProgram?.id) {
         setValue('program_id', nextProgram.id);
+      } else if (programId) {
+        setValue('program_id', '');
       }
     }
 
     setSelectedProgramIds((current) => {
-      const filtered = current.filter((id) => programIdsSet.has(id));
-      const preferredPrimaryProgram = programIdsSet.has(programId ?? '') ? programId : nextProgram?.id ?? '';
+      const filtered = current.filter((id) => activeProgramIdsSet.has(id));
+      const preferredPrimaryProgram = activeProgramIdsSet.has(programId ?? '') ? programId : nextProgram?.id ?? '';
       const withPrimary =
         preferredPrimaryProgram && !filtered.includes(preferredPrimaryProgram)
           ? [preferredPrimaryProgram, ...filtered]
@@ -590,17 +594,19 @@ export function SessionModal({
       activeGoalsByProgram.get(primaryProgramId) ??
       activeGoalsByProgram.get(programId ?? '') ??
       activeGoals;
-    const goalIdsSet = new Set(availableGoals.map((goal) => goal.id));
-    if (session?.id && goalId && !goalIdsSet.has(goalId)) {
+    const activeGoalIdsSet = new Set(activeGoals.map((goal) => goal.id));
+    if (session?.id && goalId && !activeGoalIdsSet.has(goalId)) {
       return;
     }
-    if (!goalId || !goalIdsSet.has(goalId)) {
-      const nextGoal = primaryProgramGoals[0] ?? activeGoals[0] ?? availableGoals[0];
+    if (!goalId || !activeGoalIdsSet.has(goalId)) {
+      const nextGoal = primaryProgramGoals[0] ?? activeGoals[0];
       if (nextGoal?.id) {
         setValue('goal_id', nextGoal.id);
         if (nextGoal.program_id) {
           setValue('program_id', nextGoal.program_id);
         }
+      } else if (goalId) {
+        setValue('goal_id', '');
       }
     }
   }, [
@@ -680,12 +686,13 @@ export function SessionModal({
       }
 
       const currentPrimaryGoal = goalId ? goalsById.get(goalId) : undefined;
+      const canKeepCurrentPrimaryGoal =
+        Boolean(session?.id) || currentPrimaryGoal?.status === 'active';
       const fallbackGoal =
         uniqueProgramIds.flatMap((id) => activeGoalsByProgram.get(id) ?? [])[0] ??
-        activeGoals[0] ??
-        availableGoals[0];
+        activeGoals[0];
       const nextPrimaryGoal =
-        currentPrimaryGoal && uniqueProgramIds.includes(currentPrimaryGoal.program_id)
+        currentPrimaryGoal && canKeepCurrentPrimaryGoal && uniqueProgramIds.includes(currentPrimaryGoal.program_id)
           ? currentPrimaryGoal
           : fallbackGoal;
       if (nextPrimaryGoal?.id && nextPrimaryGoal.id !== goalId) {
@@ -700,7 +707,7 @@ export function SessionModal({
         setValue('program_id', nextPrimaryProgramId);
       }
     },
-    [activeGoals, activeGoalsByProgram, availableGoals, goalId, goalIds, goalsById, programId, programsById, setValue],
+    [activeGoals, activeGoalsByProgram, goalId, goalIds, goalsById, programId, programsById, session?.id, setValue],
   );
 
   const toggleProgramSelection = useCallback(
@@ -1170,7 +1177,9 @@ export function SessionModal({
       !hasStartedSession &&
       session?.status !== 'in_progress' &&
       programId &&
-      goalId,
+      goalId &&
+      hasProgramOptionForValue &&
+      hasGoalOptionForValue,
   );
   const sessionModalMode = useMemo(() => {
     if (!session) {
@@ -1873,7 +1882,7 @@ export function SessionModal({
                   className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a program</option>
-                  {programId && !hasProgramOptionForValue && (
+                  {session?.id && programId && !hasProgramOptionForValue && (
                     <option value={programId}>
                       Current program (unavailable in active list)
                     </option>
@@ -1920,7 +1929,7 @@ export function SessionModal({
                   className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a goal</option>
-                  {goalId && !hasGoalOptionForValue && (
+                  {session?.id && goalId && !hasGoalOptionForValue && (
                     <option value={goalId}>
                       Current goal (unavailable in active list)
                     </option>

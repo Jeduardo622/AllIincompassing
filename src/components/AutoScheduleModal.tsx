@@ -87,20 +87,22 @@ export function AutoScheduleModal({
             throw new Error(`Failed to load programs for client ${clientId}`);
           }
           const programs = await programsResponse.json() as Array<{ id: string; status: string }>;
-          const program = programs.find((p) => p.status === 'active') ?? programs[0];
-          if (!program) {
-            throw new Error(`No program found for client ${clientId}`);
+          const activePrograms = programs.filter((p) => p.status === 'active');
+          if (activePrograms.length === 0) {
+            throw new Error(`No active program found for client ${clientId}`);
           }
-          const goalsResponse = await callEdgeFunctionHttp(`goals?program_id=${program.id}`);
-          if (!goalsResponse.ok) {
-            throw new Error(`Failed to load goals for client ${clientId}`);
+          for (const program of activePrograms) {
+            const goalsResponse = await callEdgeFunctionHttp(`goals?program_id=${program.id}`);
+            if (!goalsResponse.ok) {
+              throw new Error(`Failed to load goals for client ${clientId}`);
+            }
+            const goals = await goalsResponse.json() as Array<{ id: string; status: string }>;
+            const goal = goals.find((g) => g.status === 'active');
+            if (goal) {
+              return { clientId, programId: program.id, goalId: goal.id };
+            }
           }
-          const goals = await goalsResponse.json() as Array<{ id: string; status: string }>;
-          const goal = goals.find((g) => g.status === 'active') ?? goals[0];
-          if (!goal) {
-            throw new Error(`No goal found for client ${clientId}`);
-          }
-          return { clientId, programId: program.id, goalId: goal.id };
+          throw new Error(`No active goal found for client ${clientId}`);
         }),
       );
       const programGoalMap = new Map(programGoalPairs.map((entry) => [entry.clientId, entry]));

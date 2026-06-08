@@ -3,9 +3,25 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { AutoScheduleModal } from '../AutoScheduleModal';
 import type { Therapist, Client, Session } from '../../types';
 import { generateOptimalSchedule } from '../../lib/autoSchedule';
+import { callEdgeFunctionHttp } from '../../lib/api';
+import { showError } from '../../lib/toast';
 
 vi.mock('../../lib/autoSchedule', () => ({
   generateOptimalSchedule: vi.fn()
+}));
+
+vi.mock('../../lib/api', () => ({
+  callEdgeFunctionHttp: vi.fn(),
+}));
+
+vi.mock('../../lib/toast', () => ({
+  showError: vi.fn(),
+}));
+
+vi.mock('../../lib/logger/logger', () => ({
+  logger: {
+    error: vi.fn(),
+  },
 }));
 
 const createTherapist = (overrides: Partial<Therapist> = {}): Therapist => ({
@@ -55,10 +71,14 @@ const createClient = (overrides: Partial<Client> = {}): Client => ({
 });
 
 const mockedGenerateOptimalSchedule = vi.mocked(generateOptimalSchedule);
+const mockedCallEdgeFunctionHttp = vi.mocked(callEdgeFunctionHttp);
+const mockedShowError = vi.mocked(showError);
 
 describe('AutoScheduleModal warnings', () => {
   beforeEach(() => {
     mockedGenerateOptimalSchedule.mockReset();
+    mockedCallEdgeFunctionHttp.mockReset();
+    mockedShowError.mockReset();
   });
 
   it('renders as an accessible dialog with labeled controls', () => {
@@ -153,5 +173,159 @@ describe('AutoScheduleModal warnings', () => {
     expect(
       screen.getByText('All eligible clients are already at their authorized limits for the selected range.')
     ).toBeInTheDocument();
+  });
+
+  it('does not schedule against inactive live programs or non-active goals', async () => {
+    const therapist = createTherapist();
+    const client = createClient();
+    const onSchedule = vi.fn();
+    mockedGenerateOptimalSchedule.mockReturnValue({
+      slots: [
+        {
+          therapist,
+          client,
+          startTime: new Date('2025-03-18T09:00:00.000Z').toISOString(),
+          endTime: new Date('2025-03-18T10:00:00.000Z').toISOString(),
+          score: 0.9,
+        },
+      ],
+      cappedClients: [],
+    });
+    mockedCallEdgeFunctionHttp.mockImplementation(async (path: string) => {
+      if (path.startsWith('programs?')) {
+        return new Response(JSON.stringify([{ id: 'program-inactive', status: 'inactive' }]), { status: 200 });
+      }
+      if (path.startsWith('goals?')) {
+        return new Response(JSON.stringify([{ id: 'goal-paused', status: 'paused' }]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 404 });
+    });
+
+    render(
+      <AutoScheduleModal
+        isOpen
+        onClose={() => {}}
+        onSchedule={onSchedule}
+        therapists={[therapist]}
+        clients={[client]}
+        existingSessions={[] as Session[]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generate preview/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^schedule all sessions$/i }));
+
+    await screen.findByRole('button', { name: /^schedule all sessions$/i });
+    expect(onSchedule).not.toHaveBeenCalled();
+    expect(mockedShowError).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('No active program found'),
+    }));
+  });
+
+  it('does not schedule when the selected live program has no active goals', async () => {
+    const therapist = createTherapist();
+    const client = createClient();
+    const onSchedule = vi.fn();
+    mockedGenerateOptimalSchedule.mockReturnValue({
+      slots: [
+        {
+          therapist,
+          client,
+          startTime: new Date('2025-03-18T09:00:00.000Z').toISOString(),
+          endTime: new Date('2025-03-18T10:00:00.000Z').toISOString(),
+          score: 0.9,
+        },
+      ],
+      cappedClients: [],
+    });
+    mockedCallEdgeFunctionHttp.mockImplementation(async (path: string) => {
+      if (path.startsWith('programs?')) {
+        return new Response(JSON.stringify([{ id: 'program-active', status: 'active' }]), { status: 200 });
+      }
+      if (path.startsWith('goals?')) {
+        return new Response(JSON.stringify([{ id: 'goal-paused', status: 'paused' }]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 404 });
+    });
+
+    render(
+      <AutoScheduleModal
+        isOpen
+        onClose={() => {}}
+        onSchedule={onSchedule}
+        therapists={[therapist]}
+        clients={[client]}
+        existingSessions={[] as Session[]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generate preview/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^schedule all sessions$/i }));
+
+    await screen.findByRole('button', { name: /^schedule all sessions$/i });
+    expect(onSchedule).not.toHaveBeenCalled();
+    expect(mockedShowError).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('No active goal found'),
+    }));
+  });
+
+  it('uses the first active live program that has an active goal', async () => {
+    const therapist = createTherapist();
+    const client = createClient();
+    const onSchedule = vi.fn();
+    mockedGenerateOptimalSchedule.mockReturnValue({
+      slots: [
+        {
+          therapist,
+          client,
+          startTime: new Date('2025-03-18T09:00:00.000Z').toISOString(),
+          endTime: new Date('2025-03-18T10:00:00.000Z').toISOString(),
+          score: 0.9,
+        },
+      ],
+      cappedClients: [],
+    });
+    mockedCallEdgeFunctionHttp.mockImplementation(async (path: string) => {
+      if (path.startsWith('programs?')) {
+        return new Response(
+          JSON.stringify([
+            { id: 'program-active-empty', status: 'active' },
+            { id: 'program-active-ready', status: 'active' },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (path === 'goals?program_id=program-active-empty') {
+        return new Response(JSON.stringify([{ id: 'goal-paused', status: 'paused' }]), { status: 200 });
+      }
+      if (path === 'goals?program_id=program-active-ready') {
+        return new Response(JSON.stringify([{ id: 'goal-active', status: 'active' }]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 404 });
+    });
+
+    render(
+      <AutoScheduleModal
+        isOpen
+        onClose={() => {}}
+        onSchedule={onSchedule}
+        therapists={[therapist]}
+        clients={[client]}
+        existingSessions={[] as Session[]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generate preview/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^schedule all sessions$/i }));
+
+    await screen.findByRole('button', { name: /^schedule all sessions$/i });
+    expect(onSchedule).toHaveBeenCalledWith([
+      expect.objectContaining({
+        client_id: client.id,
+        program_id: 'program-active-ready',
+        goal_id: 'goal-active',
+      }),
+    ]);
+    expect(mockedShowError).not.toHaveBeenCalled();
   });
 });

@@ -154,6 +154,93 @@ describe("IehpFbaLayoutReview", () => {
     });
   });
 
+  it("shows final-output optional IEHP fields as optional even when template metadata is required", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 1, title: "General Information", layout_json: {} }],
+          fields: [
+            {
+              page_number: 1,
+              section_key: "identification_admin",
+              field_key: "IEHP_FBA_ASSESSOR_PHONE",
+              label: "Assessor's phone number",
+              field_type: "text",
+              mode: "ASSISTED",
+              required: true,
+              source: "therapists.phone || company_settings.phone",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "assessor-phone-item",
+                placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+                section_key: "identification_admin",
+                label: "Assessor's phone number",
+                mode: "ASSISTED",
+                required: true,
+                status: "verified",
+                value_text: "",
+                value_json: null,
+                review_notes: "No extracted field value was found in the source document.",
+              },
+            ],
+            structured_sections: [
+              {
+                id: "assessor-phone-section",
+                field_key: "IEHP_FBA_ASSESSOR_PHONE",
+                section_index: 0,
+                payload: {
+                  label: "Assessor's phone number",
+                  raw_text: "No extracted field value was found in the source document.",
+                },
+                status: "drafted",
+                required: true,
+                review_notes: "Template field preserved as optional for final export.",
+              },
+            ],
+          },
+          unresolved_required_count: 0,
+          extracted_value_count: 0,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    const card = await screen.findByTestId("review-attention-target-field-IEHP_FBA_ASSESSOR_PHONE");
+    expect(within(card).getByText("Optional")).toBeInTheDocument();
+    expect(within(card).queryByText("Required")).not.toBeInTheDocument();
+    expect(within(card).getByText(/Optional for final IEHP DOCX export/)).toBeInTheDocument();
+    expect(within(card).queryByText("Manual review required")).not.toBeInTheDocument();
+    expect(screen.queryByText("No fields need attention")).not.toBeInTheDocument();
+    expect(screen.getByText("Jump to page 1 needs attention")).toBeInTheDocument();
+    expect(card).toHaveClass("ring-2");
+
+    fireEvent.click(within(card).getByRole("button", { name: "Expand Assessor's phone number" }));
+
+    await waitFor(() => {
+      expect(
+        within(card).getAllByText(/required for final DOCX: false \(template metadata: true\)/),
+      ).toHaveLength(2);
+    });
+    expect(
+      within(card).getByText((content) =>
+        content.includes("Section 1") && content.includes("required for final DOCX: false")
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("saves required IEHP structured sections so reviewers can clear publish blockers", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       if (path.startsWith("/api/assessment-template-layout?")) {
@@ -634,10 +721,11 @@ describe("IehpFbaLayoutReview", () => {
     expect(document.activeElement).toBe(attentionTarget);
     expect(attentionTarget).toHaveClass("ring-2");
     expect(await screen.findByText("Name of Referring Provider, Credentials")).toBeInTheDocument();
+    expect(within(attentionTarget).getByText("Optional")).toBeInTheDocument();
     expect(screen.getAllByText("Manual review required").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/This required IEHP field is intentionally manual/).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: "Approve Name of Referring Provider, Credentials" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Review Name of Referring Provider, Credentials" }));
+    expect(screen.getByRole("button", { name: "Approve Name of Referring Provider, Credentials" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Name of Referring Provider, Credentials" }));
     expect(await screen.findByLabelText("Name of Referring Provider, Credentials")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Page 1/i }));
     expect(await screen.findByText("Reason for Referral")).toBeInTheDocument();
@@ -648,7 +736,7 @@ describe("IehpFbaLayoutReview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review Missing Manual Field" }));
     expect(screen.getByLabelText("Missing Manual Field")).toBeDisabled();
     expect(screen.getAllByText("Not started").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Manual review required")).toHaveLength(2);
+    expect(screen.getAllByText("Manual review required")).toHaveLength(1);
   });
 
   it("renders mapped fields as collapsed triage cards and quick-approves the field with attached structured sections", async () => {

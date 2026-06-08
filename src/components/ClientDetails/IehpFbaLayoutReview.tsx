@@ -453,8 +453,27 @@ const emptyPageMessage = (pageNumber: number, title: string | undefined): string
   return "This template page is represented for layout parity. No mapped checklist field lands on this page yet.";
 };
 
+const IEHP_OPTIONAL_FINAL_OUTPUT_KEYS = new Set([
+  "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+  "IEHP_FBA_ASSESSOR_PHONE",
+  "IEHP_FBA_REFERRING_PROVIDER",
+]);
+
+const isOptionalFinalOutputField = (fieldKey: string): boolean => IEHP_OPTIONAL_FINAL_OUTPUT_KEYS.has(fieldKey);
+
+const isRequiredForIehpReview = (fieldKey: string, required: boolean): boolean =>
+  required && !isOptionalFinalOutputField(fieldKey);
+
+const displayRequiredLabel = (fieldKey: string, required: boolean): string =>
+  isRequiredForIehpReview(fieldKey, required) ? "Required" : "Optional";
+
+const displayRequiredDetails = (fieldKey: string, required: boolean): string =>
+  isOptionalFinalOutputField(fieldKey) && required
+    ? "required for final DOCX: false (template metadata: true)"
+    : `required: ${String(required)}`;
+
 const isManualRequiredReviewItem = (field: TemplateField, item: ChecklistValue | undefined): boolean =>
-  field.required && field.mode === "MANUAL" && (!item || item.status === "not_started");
+  isRequiredForIehpReview(field.field_key, field.required) && field.mode === "MANUAL" && (!item || item.status === "not_started");
 
 const emptyPageReviewSummary = (): PageReviewSummary => ({
   needsAttention: 0,
@@ -570,13 +589,22 @@ export function IehpFbaLayoutReview({
     data.fields.forEach((field) => {
       const pageNumber = PAGE_FIELD_KEY_OVERRIDES[field.field_key] ?? field.page_number;
       const item = checklistByKey.get(field.field_key);
-      const status = isManualRequiredReviewItem(field, item) ? "not_started" : item?.status ?? "missing";
+      const status = !isRequiredForIehpReview(field.field_key, field.required) && (!item || isAttentionReviewStatus(item.status))
+        ? "approved"
+        : isManualRequiredReviewItem(field, item)
+          ? "not_started"
+          : item?.status ?? "missing";
       addStatusToPageReviewSummary(ensureSummary(pageNumber), status);
     });
     data.values.structured_sections.forEach((section) => {
       const pageNumber = getStructuredSectionPageNumber(section) ?? fieldPageByKey.get(section.field_key);
       if (pageNumber === undefined) return;
-      addStatusToPageReviewSummary(ensureSummary(pageNumber), section.status);
+      addStatusToPageReviewSummary(
+        ensureSummary(pageNumber),
+        !isRequiredForIehpReview(section.field_key, section.required) && isAttentionReviewStatus(section.status)
+          ? "approved"
+          : section.status,
+      );
     });
 
     return summaries;
@@ -599,17 +627,28 @@ export function IehpFbaLayoutReview({
   const activePageAttentionTargetKey = useMemo(() => {
     for (const field of activePageFields) {
       const item = checklistByKey.get(field.field_key);
-      const fieldStatus = isManualRequiredReviewItem(field, item) ? "not_started" : item?.status ?? "missing";
+      const fieldStatus = !isRequiredForIehpReview(field.field_key, field.required) && (!item || isAttentionReviewStatus(item.status))
+        ? "approved"
+        : isManualRequiredReviewItem(field, item)
+          ? "not_started"
+          : item?.status ?? "missing";
       const structuredSections = (structuredByKey.get(field.field_key) ?? []).filter((section) => {
         const pageNumber = getStructuredSectionPageNumber(section);
         return pageNumber === null || pageNumber === activePage;
       });
-      if (isAttentionReviewStatus(fieldStatus) || structuredSections.some((section) => isAttentionReviewStatus(section.status))) {
+      if (
+        isAttentionReviewStatus(fieldStatus) ||
+        structuredSections.some((section) =>
+          isRequiredForIehpReview(section.field_key, section.required) && isAttentionReviewStatus(section.status)
+        )
+      ) {
         return `field-${field.field_key}`;
       }
     }
 
-    const looseSection = activePageLooseStructuredSections.find((section) => isAttentionReviewStatus(section.status));
+    const looseSection = activePageLooseStructuredSections.find((section) =>
+      isRequiredForIehpReview(section.field_key, section.required) && isAttentionReviewStatus(section.status)
+    );
     return looseSection ? `structured-${looseSection.id}` : null;
   }, [activePage, activePageFields, activePageLooseStructuredSections, checklistByKey, structuredByKey]);
 
@@ -932,9 +971,19 @@ export function IehpFbaLayoutReview({
                   });
                   const locked = item?.status === "approved";
                   const manualRequired = isManualRequiredReviewItem(field, item);
-                  const fieldStatus = manualRequired ? "not_started" : item?.status ?? "missing";
+                  const reviewRequired = isRequiredForIehpReview(field.field_key, field.required);
+                  const optionalFinalOutput = isOptionalFinalOutputField(field.field_key);
+                  const fieldStatus = !reviewRequired && (!item || isAttentionReviewStatus(item.status))
+                    ? "approved"
+                    : manualRequired
+                      ? "not_started"
+                      : item?.status ?? "missing";
                   const fieldAttentionTargetKey = `field-${field.field_key}`;
-                  const fieldNeedsAttention = isAttentionReviewStatus(fieldStatus) || structuredSections.some((section) => isAttentionReviewStatus(section.status));
+                  const fieldNeedsAttention =
+                    isAttentionReviewStatus(fieldStatus) ||
+                    structuredSections.some((section) =>
+                      isRequiredForIehpReview(section.field_key, section.required) && isAttentionReviewStatus(section.status)
+                    );
                   const highlightAttentionTarget = activePageAttentionTargetKey === fieldAttentionTargetKey && fieldNeedsAttention;
                   const expanded = Boolean(expandedFieldByKey[field.field_key]);
                   const fieldValuePreview = edit.valueText.trim();
@@ -961,9 +1010,9 @@ export function IehpFbaLayoutReview({
                           )}
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-2">
-                          {field.required && (
-                            <span className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-300">Required</span>
-                          )}
+                          <span className="rounded border border-slate-500 px-2 py-1 text-[11px] font-semibold text-slate-300">
+                            {displayRequiredLabel(field.field_key, field.required)}
+                          </span>
                           <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(manualRequired ? "not_started" : item?.status ?? "not_started")}`}>
                             {manualRequired ? "Manual review required" : formatStatusLabel(item?.status ?? "not_started")}
                           </span>
@@ -973,6 +1022,11 @@ export function IehpFbaLayoutReview({
                       {manualRequired && (
                         <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
                           This required IEHP field is intentionally manual unless reliable document evidence is present.
+                        </p>
+                      )}
+                      {optionalFinalOutput && (
+                        <p className="mt-2 rounded border border-sky-500/40 bg-sky-950/40 p-2 text-xs text-sky-100">
+                          Optional for final IEHP DOCX export; leave blank when no source value exists.
                         </p>
                       )}
 
@@ -1039,7 +1093,7 @@ export function IehpFbaLayoutReview({
                       {expanded && (
                         <div className="mt-3 space-y-3">
                           <p className="text-[11px] text-slate-400">
-                            {field.field_key} • {field.mode} • {field.field_type} • required: {String(field.required)}
+                            {field.field_key} • {field.mode} • {field.field_type} • {displayRequiredDetails(field.field_key, field.required)}
                           </p>
                           <textarea
                             id={`iehp-${field.field_key}`}
@@ -1074,7 +1128,7 @@ export function IehpFbaLayoutReview({
                                   <div key={section.id} className="rounded border border-slate-600 bg-slate-800 p-2">
                                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                                       <span className="font-semibold text-slate-100">
-                                        Section {section.section_index + 1} • required: {String(section.required)}
+                                        Section {section.section_index + 1} • {displayRequiredDetails(section.field_key, section.required)}
                                       </span>
                                       <div className="flex items-center gap-2">
                                         <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusChipClass(section.status)}`}>{formatStatusLabel(section.status)}</span>
@@ -1262,7 +1316,10 @@ export function IehpFbaLayoutReview({
                         };
                         const structuredLocked = section.status === "approved";
                         const structuredAttentionTargetKey = `structured-${section.id}`;
-                        const highlightAttentionTarget = activePageAttentionTargetKey === structuredAttentionTargetKey && isAttentionReviewStatus(section.status);
+                        const highlightAttentionTarget =
+                          activePageAttentionTargetKey === structuredAttentionTargetKey &&
+                          isRequiredForIehpReview(section.field_key, section.required) &&
+                          isAttentionReviewStatus(section.status);
                         const expanded = Boolean(expandedStructuredSectionById[section.id]);
                         const sectionTitle = structuredSectionDisplayTitle(section);
                         return (

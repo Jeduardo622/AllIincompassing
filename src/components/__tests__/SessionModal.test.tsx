@@ -743,6 +743,75 @@ describe('SessionModal', () => {
     });
   });
 
+  it('does not start a scheduled session with unavailable live program and goal selections', async () => {
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain([
+          {
+            ...mockPrograms[0],
+            id: 'inactive-program-1',
+            name: 'Inactive Published Program',
+            status: 'inactive',
+          },
+        ]);
+      }
+      if (table === 'goals') {
+        return buildChain([
+          {
+            ...mockGoals[0],
+            id: 'paused-goal-1',
+            program_id: 'inactive-program-1',
+            title: 'Paused Published Goal',
+            status: 'paused',
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+    const onSessionStarted = vi.fn();
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSessionStarted={onSessionStarted}
+        session={{
+          id: 'session-unavailable-start',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'inactive-program-1',
+          goal_id: 'paused-goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    const startButton = await screen.findByRole('button', { name: /Start Session/i });
+    await waitFor(() => expect(startButton).toBeDisabled());
+    await userEvent.click(startButton);
+
+    expect(vi.mocked(startSessionFromModal)).not.toHaveBeenCalled();
+    expect(onSessionStarted).not.toHaveBeenCalled();
+  });
+
   describe('status select — create mode (no session prop)', () => {
     it('disables in_progress option in create mode', () => {
       renderWithProviders(<SessionModal {...defaultProps} />);
@@ -820,6 +889,69 @@ describe('SessionModal', () => {
       );
       const select = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
       expect(select.value).toBe('in_progress');
+    });
+  });
+
+  it('does not preselect inactive published programs or paused goals for a new session', async () => {
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain([
+          {
+            ...mockPrograms[0],
+            id: 'inactive-program-1',
+            name: 'Inactive Published Program',
+            status: 'inactive',
+          },
+        ]);
+      }
+      if (table === 'goals') {
+        return buildChain([
+          {
+            ...mockGoals[0],
+            id: 'paused-goal-1',
+            program_id: 'inactive-program-1',
+            title: 'Paused Published Goal',
+            status: 'paused',
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(<SessionModal {...defaultProps} onSubmit={onSubmit} />);
+
+    const programSelect = await screen.findByRole('combobox', { name: /Program/i }) as HTMLSelectElement;
+    const goalSelect = screen.getByRole('combobox', { name: /Primary Goal/i }) as HTMLSelectElement;
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+
+    await waitFor(() => {
+      expect(programSelect.value).toBe('');
+      expect(goalSelect.value).toBe('');
+    });
+    expect(screen.queryByRole('option', { name: 'Inactive Published Program' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Paused Published Goal' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2025-03-18T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2025-03-18T11:00' } });
+    await userEvent.click(screen.getByRole('button', { name: /Create Session/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText(/Program is required/i)).toBeInTheDocument();
+      expect(screen.getByText(/Primary goal is required/i)).toBeInTheDocument();
     });
   });
 

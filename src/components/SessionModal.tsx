@@ -185,6 +185,7 @@ export function SessionModal({
     handleSubmit,
     watch,
     setValue,
+    setError,
     reset,
     getValues,
     formState: { errors, isSubmitting, isDirty, dirtyFields },
@@ -913,6 +914,24 @@ export function SessionModal({
         return;
       }
     }
+    const isSavingUnstartedScheduledSession =
+      Boolean(session?.id) &&
+      !hasStartedSession &&
+      data.status === 'scheduled';
+    if (isSavingUnstartedScheduledSession && !hasProgramOptionForValue) {
+      setError('program_id', {
+        type: 'validate',
+        message: 'Select an active program before saving this scheduled session.',
+      });
+      return;
+    }
+    if (isSavingUnstartedScheduledSession && !hasGoalOptionForValue) {
+      setError('goal_id', {
+        type: 'validate',
+        message: 'Select an active primary goal before saving this scheduled session.',
+      });
+      return;
+    }
     try {
       const pruned = pruneEmptyAdhocSessionTargets(
         {
@@ -1171,7 +1190,9 @@ export function SessionModal({
   const isInProgressSession =
     !hasTerminalSessionStatus &&
     (session?.status === 'in_progress' || hasStartedSession);
-  const isDependentDataLoading = (Boolean(clientId) && isProgramsFetching) || (Boolean(clientId) && isGoalsFetching);
+  const isDependentDataLoading =
+    Boolean(clientId) &&
+    (isProgramsFetching || isGoalsFetching || !isProgramsFetched || !isGoalsFetched);
   const canStartSession = Boolean(
     session?.id &&
       !hasStartedSession &&

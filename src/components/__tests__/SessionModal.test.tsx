@@ -635,6 +635,76 @@ describe('SessionModal', () => {
     });
   });
 
+  it('closes an in-progress historical session even when stored program and goal are no longer active', async () => {
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain([
+          {
+            ...mockPrograms[0],
+            id: 'inactive-program-1',
+            name: 'Inactive Published Program',
+            status: 'inactive',
+          },
+        ]);
+      }
+      if (table === 'goals') {
+        return buildChain([
+          {
+            ...mockGoals[0],
+            id: 'paused-goal-1',
+            program_id: 'inactive-program-1',
+            title: 'Paused Published Goal',
+            status: 'paused',
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-close-inactive-history',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'inactive-program-1',
+          goal_id: 'paused-goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: '2026-03-01T10:00:00.000Z',
+        } satisfies Session}
+      />
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Close Session$/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'completed',
+      }));
+    });
+  });
+
   it('blocks Close Session when session capture needs billing defaults but none exist', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const buildChain = (rows: unknown[], singleRow: unknown = null) => {
@@ -812,6 +882,264 @@ describe('SessionModal', () => {
     expect(onSessionStarted).not.toHaveBeenCalled();
   });
 
+  it('does not save an unstarted scheduled session with unavailable live program and goal selections', async () => {
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain([
+          {
+            ...mockPrograms[0],
+            id: 'inactive-program-1',
+            name: 'Inactive Published Program',
+            status: 'inactive',
+          },
+        ]);
+      }
+      if (table === 'goals') {
+        return buildChain([
+          {
+            ...mockGoals[0],
+            id: 'paused-goal-1',
+            program_id: 'inactive-program-1',
+            title: 'Paused Published Goal',
+            status: 'paused',
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-unavailable-save',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'inactive-program-1',
+          goal_id: 'paused-goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    expect(await screen.findByText(/Current program \(unavailable in active list\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Current goal \(unavailable in active list\)/i)).toBeInTheDocument();
+    const unavailableUpdateButton = screen.getByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(unavailableUpdateButton).not.toBeDisabled());
+    await userEvent.click(unavailableUpdateButton);
+
+    await waitFor(() => {
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText(/Select an active program before saving this scheduled session/i)).toBeInTheDocument();
+    });
+  });
+
+  it('does not save an unstarted scheduled session when the program is active but the primary goal is unavailable', async () => {
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain([
+          {
+            ...mockGoals[0],
+            id: 'paused-goal-1',
+            program_id: 'program-1',
+            title: 'Paused Published Goal',
+            status: 'paused',
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-unavailable-goal-save',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'paused-goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    expect(await screen.findByRole('option', { name: 'Default Program' })).toBeInTheDocument();
+    expect(screen.getByText(/Current goal \(unavailable in active list\)/i)).toBeInTheDocument();
+    const unavailableGoalUpdateButton = screen.getByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(unavailableGoalUpdateButton).not.toBeDisabled());
+    await userEvent.click(unavailableGoalUpdateButton);
+
+    await waitFor(() => {
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText(/Select an active primary goal before saving this scheduled session/i)).toBeInTheDocument();
+    });
+  });
+
+  it('saves a legacy scheduled session with no stored program or primary goal', async () => {
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs' || table === 'goals') {
+        return buildChain([]);
+      }
+      return buildChain([]);
+    });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-legacy-no-plan-save',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: null,
+          goal_id: null,
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    const legacyNoPlanUpdateButton = await screen.findByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(legacyNoPlanUpdateButton).not.toBeDisabled());
+    await userEvent.click(legacyNoPlanUpdateButton);
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        program_id: '',
+        goal_id: '',
+        status: 'scheduled',
+      }));
+    });
+    expect(screen.queryByText(/Select an active program before saving this scheduled session/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Select an active primary goal before saving this scheduled session/i)).not.toBeInTheDocument();
+  });
+
+  it('saves a legacy scheduled session with an active program and no stored primary goal', async () => {
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain([]);
+      }
+      return buildChain([]);
+    });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-legacy-no-primary-goal-save',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: null,
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    expect(await screen.findByRole('option', { name: 'Default Program' })).toBeInTheDocument();
+    const legacyNoGoalUpdateButton = screen.getByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(legacyNoGoalUpdateButton).not.toBeDisabled());
+    await userEvent.click(legacyNoGoalUpdateButton);
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        program_id: 'program-1',
+        goal_id: '',
+        status: 'scheduled',
+      }));
+    });
+    expect(screen.queryByText(/Select an active primary goal before saving this scheduled session/i)).not.toBeInTheDocument();
+  });
+
   describe('status select — create mode (no session prop)', () => {
     it('disables in_progress option in create mode', () => {
       renderWithProviders(<SessionModal {...defaultProps} />);
@@ -980,7 +1308,9 @@ describe('SessionModal', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    const saveSuccessButton = screen.getByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(saveSuccessButton).not.toBeDisabled());
+    await userEvent.click(saveSuccessButton);
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();
     });
@@ -1014,7 +1344,9 @@ describe('SessionModal', () => {
     };
     const { rerender } = renderWithProviders(<SessionModal {...props} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    const saveResetButton = screen.getByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(saveResetButton).not.toBeDisabled());
+    await userEvent.click(saveResetButton);
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();
     });
@@ -1051,7 +1383,9 @@ describe('SessionModal', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    const saveFailureButton = screen.getByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(saveFailureButton).not.toBeDisabled());
+    await userEvent.click(saveFailureButton);
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();
     });
@@ -1096,7 +1430,9 @@ describe('SessionModal', () => {
     fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-02T10:00' } });
     fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-02T11:00' } });
 
-    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    const noConflictUpdateButton = screen.getByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(noConflictUpdateButton).not.toBeDisabled());
+    await userEvent.click(noConflictUpdateButton);
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();
@@ -1164,7 +1500,9 @@ describe('SessionModal', () => {
     fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T11:00' } });
 
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    const linkedNoteUpdateButton = screen.getByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(linkedNoteUpdateButton).not.toBeDisabled());
+    await userEvent.click(linkedNoteUpdateButton);
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();

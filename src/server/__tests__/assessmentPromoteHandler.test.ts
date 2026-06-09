@@ -809,6 +809,167 @@ describe("assessmentPromoteHandler", () => {
     ).toBe(true);
   });
 
+  it("promotes approved IEHP structured goals into live session programs and goals", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "structured-behavior-goal",
+              field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+              section_index: 0,
+              payload: {
+                title: "Physical aggression",
+                program_name: "Physical aggression",
+                goal_type: "child",
+                description: "Reduce physical aggression from 3x per hour to 0x per hour.",
+                original_text: "Program Name: Physical aggression Instrumental Goal: Reduce physical aggression.",
+                target_behavior: "Physical aggression",
+                target_criteria: "0x per hour across 4 consecutive weeks",
+                baseline_data: "3x per hour",
+                mastery_criteria: "0x per hour across 4 consecutive weeks",
+                measurement_type: "Rate",
+                generalization_criteria: "Across home and school",
+              },
+            },
+            {
+              id: "structured-skill-goal",
+              field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+              section_index: 1,
+              payload: {
+                title: "Manding for tangibles",
+                program_name: "Manding for tangibles",
+                goal_type: "child",
+                description: "Mand for tangibles with AAC across 10 targets.",
+                original_text: "Program Name: Manding for tangibles Instrumental Goal: Mand with AAC.",
+                target_behavior: "Manding for tangibles",
+                target_criteria: "80% of opportunities across 4 consecutive weeks",
+                baseline_data: "0% of opportunities",
+                mastery_criteria: "80% across 4 consecutive weeks",
+                measurement_type: "Percentage of opportunities",
+                generalization_criteria: "Across home and school",
+              },
+            },
+          ],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/programs")) {
+        const body = JSON.parse(String(init?.body)) as { name: string };
+        return {
+          ok: true,
+          status: 201,
+          data: [{ id: body.name === "Physical aggression" ? "prod-program-1" : "prod-program-2" }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/goals")) {
+        const body = JSON.parse(String(init?.body)) as Array<{ title: string }>;
+        return {
+          ok: true,
+          status: 201,
+          data: body.map((goal, index) => ({ id: `prod-goal-${index + 1}`, title: goal.title })),
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.extracted")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "approved",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      assessment_document_id: "doc-1",
+      completion_mode: "live_program_goals",
+      created_program_count: 2,
+      created_goal_count: 2,
+      promoted_program_count: 2,
+      promoted_goal_count: 2,
+    });
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/programs"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"status":"active"'),
+      }),
+    );
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/goals"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"status":"active"'),
+      }),
+    );
+    const reviewEventCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && init?.method === "POST");
+    expect(reviewEventCall).toBeTruthy();
+    expect(JSON.parse(String((reviewEventCall?.[1] as RequestInit | undefined)?.body ?? "{}"))).toMatchObject({
+      action: "reviewed_assessment_published",
+      event_payload: {
+        completion_mode: "live_program_goals",
+        created_program_count: 2,
+        created_goal_count: 2,
+      },
+    });
+  });
+
   it("publishes IEHP assessments with documented legacy structured payload shapes", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");

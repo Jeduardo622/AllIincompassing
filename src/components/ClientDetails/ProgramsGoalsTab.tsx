@@ -409,7 +409,7 @@ interface AssessmentPromoteResponse {
   created_goal_count: number;
   promoted_program_count?: number;
   promoted_goal_count?: number;
-  completion_mode?: "assessment_only";
+  completion_mode?: "assessment_only" | "live_program_goals";
 }
 
 export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {

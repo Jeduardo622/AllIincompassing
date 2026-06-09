@@ -55,6 +55,22 @@ interface IehpPublishDataQualityBlocker {
   section_index?: number | null;
 }
 
+interface IehpLiveGoalCandidate {
+  programName: string;
+  title: string;
+  description: string;
+  originalText: string;
+  goalType: "child" | "parent";
+  targetBehavior: string | null;
+  measurementType: string | null;
+  baselineData: string | null;
+  targetCriteria: string | null;
+  masteryCriteria: string | null;
+  maintenanceCriteria: string | null;
+  generalizationCriteria: string | null;
+  objectiveDataPoints: Array<Record<string, unknown> | string>;
+}
+
 interface DraftProgramRow {
   id: string;
   name: string;
@@ -192,6 +208,46 @@ const hasDefaultRequiredStructuredValue = (payload: Record<string, unknown>): bo
     !IEHP_STRUCTURED_METADATA_KEYS.has(key) && hasMeaningfulStructuredValue(value)
   );
 };
+
+const normalizeIehpGoalType = (value: unknown): "child" | "parent" =>
+  typeof value === "string" && value.trim().toLowerCase() === "parent" ? "parent" : "child";
+
+const toIehpGoalCandidate = (row: AssessmentRequiredStructuredReviewRow): IehpLiveGoalCandidate | null => {
+  if (!IEHP_GOAL_SECTION_KEYS.has(row.field_key) || !row.payload || typeof row.payload !== "object") {
+    return null;
+  }
+  const payload = row.payload;
+  const programName = toStringOrNull(payload.program_name) ?? toStringOrNull(payload.program) ?? toStringOrNull(payload.title);
+  const title = toStringOrNull(payload.title) ?? programName ?? toStringOrNull(payload.target_behavior);
+  const rawText = toStringOrNull(payload.original_text) ?? toStringOrNull(payload.raw_text);
+  const description = toStringOrNull(payload.description) ?? toStringOrNull(payload.target_criteria) ?? rawText ?? title;
+  if (!programName || !title || !description || !rawText) {
+    return null;
+  }
+  return {
+    programName,
+    title,
+    description,
+    originalText: rawText,
+    goalType: normalizeIehpGoalType(payload.goal_type),
+    targetBehavior: toStringOrNull(payload.target_behavior),
+    measurementType: toStringOrNull(payload.measurement_type),
+    baselineData: toStringOrNull(payload.baseline_data),
+    targetCriteria: toStringOrNull(payload.target_criteria),
+    masteryCriteria: toStringOrNull(payload.mastery_criteria),
+    maintenanceCriteria: toStringOrNull(payload.maintenance_criteria),
+    generalizationCriteria: toStringOrNull(payload.generalization_criteria),
+    objectiveDataPoints: Array.isArray(payload.objective_data_points)
+      ? payload.objective_data_points.filter((point): point is Record<string, unknown> | string =>
+        (typeof point === "string" && point.trim().length > 0) ||
+        (!!point && typeof point === "object" && !Array.isArray(point)),
+      )
+      : [],
+  };
+};
+
+const buildIehpLiveGoalCandidates = (rows: AssessmentRequiredStructuredReviewRow[]): IehpLiveGoalCandidate[] =>
+  rows.map(toIehpGoalCandidate).filter((goal): goal is IehpLiveGoalCandidate => goal !== null);
 
 const buildIehpStructuredDataQualityBlockers = (
   rows: AssessmentRequiredStructuredReviewRow[],
@@ -411,6 +467,59 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
 
     const now = new Date().toISOString();
     const actorId = getAccessTokenSubject(accessToken);
+    const iehpLiveGoals = buildIehpLiveGoalCandidates(approvedStructuredRows);
+    const iehpProgramNames = Array.from(new Set(iehpLiveGoals.map((goal) => goal.programName)));
+    const createdIehpProgramIds: string[] = [];
+    const createdIehpProgramIdByName = new Map<string, string>();
+    let createdIehpGoals: Array<{ id: string; title: string }> = [];
+
+    const rollbackIehpLivePromotion = async (args: { restoreDocumentStatus: boolean }) => {
+      const failedSteps: string[] = [];
+      if (createdIehpProgramIds.length > 0) {
+        const programIdFilter = buildInFilter(createdIehpProgramIds);
+        const deleteGoalsResult = await fetchJson(
+          `${supabaseUrl}/rest/v1/goals?program_id=${programIdFilter}&organization_id=eq.${encodeURIComponent(
+            organizationId,
+          )}&client_id=eq.${encodeURIComponent(document.client_id)}`,
+          { method: "DELETE", headers },
+        );
+        if (!deleteGoalsResult.ok) {
+          failedSteps.push("delete_goals");
+        }
+
+        const deleteProgramsResult = await fetchJson(
+          `${supabaseUrl}/rest/v1/programs?id=${programIdFilter}&organization_id=eq.${encodeURIComponent(
+            organizationId,
+          )}&client_id=eq.${encodeURIComponent(document.client_id)}`,
+          { method: "DELETE", headers },
+        );
+        if (!deleteProgramsResult.ok) {
+          failedSteps.push("delete_programs");
+        }
+      }
+
+      const liveRollbackFailed = failedSteps.includes("delete_goals") || failedSteps.includes("delete_programs");
+      if (args.restoreDocumentStatus && !liveRollbackFailed) {
+        const restoreDocumentResult = await fetchJson(
+          `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`,
+          {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({
+              status: document.status,
+              approved_at: null,
+              updated_at: new Date().toISOString(),
+            }),
+          },
+        );
+        if (!restoreDocumentResult.ok) {
+          failedSteps.push("restore_document_status");
+        }
+      }
+
+      return { ok: failedSteps.length === 0, failedSteps };
+    };
+
     const finalizeReviewedAssessmentResult = await fetchJson<AssessmentDocumentRow[]>(
       `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}&status=eq.${encodeURIComponent(document.status)}`,
       {
@@ -427,12 +536,115 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       ? finalizeReviewedAssessmentResult.data[0]
       : null;
     if (!finalizeReviewedAssessmentResult.ok) {
+      const rollback = await rollbackIehpLivePromotion({ restoreDocumentStatus: false });
+      if (!rollback.ok) {
+        return json(
+          {
+            error: "Failed to finalize reviewed assessment, and rollback did not complete cleanly.",
+            rollback_failed_steps: rollback.failedSteps,
+          },
+          finalizeReviewedAssessmentResult.status || 500,
+        );
+      }
       return json({ error: "Failed to finalize reviewed assessment." }, finalizeReviewedAssessmentResult.status || 500);
     }
     if (!finalizedDocument) {
+      const rollback = await rollbackIehpLivePromotion({ restoreDocumentStatus: false });
+      if (!rollback.ok) {
+        return json(
+          {
+            error: "Assessment review state changed before publish completed, and rollback did not complete cleanly.",
+            rollback_failed_steps: rollback.failedSteps,
+          },
+          409,
+        );
+      }
       return json({ error: "Assessment review state changed before publish completed. Refresh and retry." }, 409);
     }
 
+    for (const programName of iehpProgramNames) {
+      const createProgramResult = await fetchJson<Array<{ id: string }>>(`${supabaseUrl}/rest/v1/programs`, {
+        method: "POST",
+        headers: { ...headers, Prefer: "return=representation" },
+        body: JSON.stringify({
+          organization_id: organizationId,
+          client_id: document.client_id,
+          name: programName,
+          description: `Program derived from approved IEHP structured goal section for ${programName}.`,
+          status: "active",
+        }),
+      });
+      if (!createProgramResult.ok || !Array.isArray(createProgramResult.data) || !createProgramResult.data[0]?.id) {
+        const rollback = await rollbackIehpLivePromotion({ restoreDocumentStatus: true });
+        return json(
+          {
+            error: rollback.ok
+              ? "Failed to create IEHP production programs. Promotion rolled back safely."
+              : "Failed to create IEHP production programs, and rollback did not complete cleanly.",
+            rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+          },
+          createProgramResult.status || 500,
+        );
+      }
+      const createdProgramId = createProgramResult.data[0].id;
+      createdIehpProgramIds.push(createdProgramId);
+      createdIehpProgramIdByName.set(programName, createdProgramId);
+    }
+
+    const iehpGoalsPayload = iehpLiveGoals.map((goal) => ({
+      organization_id: organizationId,
+      client_id: document.client_id,
+      program_id: createdIehpProgramIdByName.get(goal.programName) ?? null,
+      title: goal.title,
+      description: goal.description,
+      original_text: goal.originalText,
+      goal_type: goal.goalType,
+      target_behavior: goal.targetBehavior,
+      measurement_type: goal.measurementType,
+      baseline_data: goal.baselineData,
+      target_criteria: goal.targetCriteria,
+      mastery_criteria: goal.masteryCriteria,
+      maintenance_criteria: goal.maintenanceCriteria,
+      generalization_criteria: goal.generalizationCriteria,
+      objective_data_points: goal.objectiveDataPoints,
+      status: "active",
+    }));
+
+    if (iehpGoalsPayload.some((goal) => !goal.program_id)) {
+      const rollback = await rollbackIehpLivePromotion({ restoreDocumentStatus: true });
+      return json(
+        {
+          error: rollback.ok
+            ? "Approved IEHP goals could not be matched to production programs. Promotion rolled back safely."
+            : "Approved IEHP goals could not be matched to production programs, and rollback did not complete cleanly.",
+          rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+        },
+        409,
+      );
+    }
+
+    const createIehpGoalsResult = iehpGoalsPayload.length > 0
+      ? await fetchJson<Array<{ id: string; title: string }>>(`${supabaseUrl}/rest/v1/goals`, {
+        method: "POST",
+        headers: { ...headers, Prefer: "return=representation" },
+        body: JSON.stringify(iehpGoalsPayload),
+      })
+      : { ok: true, status: 200, data: [] };
+    if (!createIehpGoalsResult.ok) {
+      const rollback = await rollbackIehpLivePromotion({ restoreDocumentStatus: true });
+      return json(
+        {
+          error: rollback.ok
+            ? "Failed to create IEHP production goals. Promotion rolled back safely."
+            : "Failed to create IEHP production goals, and rollback did not complete cleanly.",
+          rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+        },
+        createIehpGoalsResult.status || 500,
+      );
+    }
+    createdIehpGoals = Array.isArray(createIehpGoalsResult.data) ? createIehpGoalsResult.data : [];
+
+    const iehpCompletionMode = iehpLiveGoals.length > 0 ? "live_program_goals" : "assessment_only";
     const createReviewedEventResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
       method: "POST",
       headers,
@@ -447,37 +659,36 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
         to_status: "approved",
         actor_id: actorId,
         event_payload: {
-          completion_mode: "assessment_only",
-          created_program_count: 0,
-          created_goal_count: 0,
-          promoted_program_count: 0,
-          promoted_goal_count: 0,
+          completion_mode: iehpCompletionMode,
+          created_program_count: createdIehpProgramIds.length,
+          created_program_ids: createdIehpProgramIds,
+          created_goal_count: createdIehpGoals.length || iehpLiveGoals.length,
+          promoted_program_count: iehpProgramNames.length,
+          promoted_goal_count: iehpLiveGoals.length,
         },
       }),
     });
     if (!createReviewedEventResult.ok) {
-      await fetchJson(
-        `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`,
-        {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({
-            status: document.status,
-            approved_at: null,
-            updated_at: new Date().toISOString(),
-          }),
-        },
-      );
+      const rollback = await rollbackIehpLivePromotion({ restoreDocumentStatus: true });
+      if (!rollback.ok) {
+        return json(
+          {
+            error: "Failed to record reviewed assessment publish event, and rollback did not complete cleanly.",
+            rollback_failed_steps: rollback.failedSteps,
+          },
+          createReviewedEventResult.status || 500,
+        );
+      }
       return json({ error: "Failed to record reviewed assessment publish event." }, createReviewedEventResult.status || 500);
     }
 
     return json({
       assessment_document_id: document.id,
-      completion_mode: "assessment_only",
-      created_program_count: 0,
-      created_goal_count: 0,
-      promoted_program_count: 0,
-      promoted_goal_count: 0,
+      completion_mode: iehpCompletionMode,
+      created_program_count: createdIehpProgramIds.length,
+      created_goal_count: createdIehpGoals.length || iehpLiveGoals.length,
+      promoted_program_count: iehpProgramNames.length,
+      promoted_goal_count: iehpLiveGoals.length,
     });
   }
   if (document.status !== PROMOTION_READY_STATUS) {

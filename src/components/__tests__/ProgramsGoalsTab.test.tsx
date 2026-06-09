@@ -3906,7 +3906,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     );
   });
 
-  it("shows a publish button for fully approved IEHP assessments without staged drafts", async () => {
+  it("publishes fully approved IEHP assessments to live programs and goals when the server reports live completion", async () => {
     const invalidateQueriesSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
@@ -3961,9 +3961,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         return new Response(
           JSON.stringify({
             assessment_document_id: ASSESSMENT_ID,
-            completion_mode: "assessment_only",
-            created_program_count: 0,
-            created_goal_count: 0,
+            completion_mode: "live_program_goals",
+            created_program_count: 1,
+            created_goal_count: 2,
           }),
           { status: 200 },
         );
@@ -3993,7 +3993,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
-    expect(showSuccess).toHaveBeenCalledWith("Published reviewed assessment.");
+    expect(showSuccess).toHaveBeenCalledWith(
+      "Published to live records. Created 1 production program and 2 goals.",
+    );
     expect(invalidateQueriesSpy).toHaveBeenCalled();
     invalidateQueriesSpy.mockRestore();
     confirmSpy.mockRestore();

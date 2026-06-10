@@ -390,6 +390,17 @@ describe("checkSessionNotesPresent", () => {
     return builder;
   };
 
+  const makeAdminSelectError = (message: string) => {
+    const builder: any = {};
+    const chain = () => builder;
+    builder.select = vi.fn(() => chain());
+    builder.eq = vi.fn(() => chain());
+    builder.then = (
+      resolve: (value: { data: unknown[]; error: { message: string } }) => unknown,
+    ) => resolve({ data: [], error: { message } });
+    return builder;
+  };
+
   it("returns null (passes) when there are no session_goals", async () => {
     (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
       if (table === "session_goals") return makeAdminSelect([]);
@@ -413,6 +424,34 @@ describe("checkSessionNotesPresent", () => {
     expect(result!.status).toBe(409);
     expect(body.code).toBe("SESSION_NOTES_REQUIRED");
     expect(body.missing_goal_count).toBe(1);
+  });
+
+  it("falls back to sessions.goal_id when session_goals is unexpectedly empty", async () => {
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeAdminSelect([]);
+      if (table === "sessions") return makeAdminSelect([{ goal_id: "goal-fallback" }]);
+      if (table === "client_session_notes") return makeAdminSelect([]);
+      return makeAdminSelect([]);
+    });
+
+    const result = await checkSessionNotesPresent("session-1", "org-1", createStubLogger());
+    expect(result).not.toBeNull();
+    const body = await result!.json() as { success: boolean; code: string; missing_goal_count: number };
+    expect(result!.status).toBe(409);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
+    expect(body.missing_goal_count).toBe(1);
+  });
+
+  it("throws when the fallback sessions.goal_id query fails", async () => {
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeAdminSelect([]);
+      if (table === "sessions") return makeAdminSelectError("fallback blew up");
+      return makeAdminSelect([]);
+    });
+
+    await expect(
+      checkSessionNotesPresent("session-1", "org-1", createStubLogger()),
+    ).rejects.toThrow("fallback blew up");
   });
 
   it("returns 409 SESSION_NOTES_REQUIRED when a note row exists but goal_notes is missing an entry for one goal", async () => {
@@ -558,6 +597,33 @@ describe("sessions-complete handler — SESSION_NOTES_REQUIRED guard", () => {
       makeDb(),
       "org-1",
       { session_id: "session-notes-2", outcome: "completed", notes: null },
+      "admin-user",
+      "admin",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean; code: string };
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
+  });
+
+  it("rejects an in_progress session when session_goals is empty but sessions.goal_id exists", async () => {
+    const session = makeSession({ id: "session-notes-fallback", status: "in_progress" });
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeAdminSelect([]);
+      if (table === "sessions") return makeAdminSelect([{ goal_id: "goal-fallback" }]);
+      if (table === "client_session_notes") return makeAdminSelect([]);
+      return makeAdminSelect([]);
+    });
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-notes-fallback", outcome: "completed", notes: null },
       "admin-user",
       "admin",
       createStubLogger(),

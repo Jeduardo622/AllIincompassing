@@ -47,6 +47,13 @@ interface TraceMeta {
   agentOperationId: string | null;
 }
 
+const normalizeRequiredGoalIds = (goalIds: Array<string | null | undefined>): string[] =>
+  Array.from(
+    new Set(
+      goalIds.filter((goalId): goalId is string => typeof goalId === "string" && goalId.length > 0),
+    ),
+  );
+
 class BadRequestError extends Error {
   status = 400;
   constructor(message: string) {
@@ -166,12 +173,31 @@ async function checkSessionNotesPresentForRequest(
     throw new Error(sgError.message ?? "Failed to load session goals for notes check");
   }
 
-  if (!sessionGoals || sessionGoals.length === 0) {
+  let requiredGoalIds = normalizeRequiredGoalIds(
+    ((sessionGoals ?? []) as Array<{ goal_id?: string | null }>).map((sg) => sg.goal_id),
+  );
+
+  if (requiredGoalIds.length === 0) {
+    const { data: sessionRows, error: sessionError } = await supabaseAdmin
+      .from("sessions")
+      .select("goal_id")
+      .eq("id", sessionId)
+      .eq("organization_id", orgId);
+
+    if (sessionError) {
+      logger.error("session.notes-check.goal-fallback-fetch-error", { error: sessionError.message ?? "unknown" });
+      throw new Error(sessionError.message ?? "Failed to load session goal fallback for notes check");
+    }
+
+    requiredGoalIds = normalizeRequiredGoalIds(
+      ((sessionRows ?? []) as Array<{ goal_id?: string | null }>).map((row) => row.goal_id),
+    );
+  }
+
+  if (requiredGoalIds.length === 0) {
     // No goals were recorded for this session — notes guard does not apply.
     return null;
   }
-
-  const requiredGoalIds = (sessionGoals as Array<{ goal_id: string }>).map((sg) => sg.goal_id);
 
   // 2. Fetch all note rows linked to this session within the org.
   const { data: notes, error: notesError } = await supabaseAdmin

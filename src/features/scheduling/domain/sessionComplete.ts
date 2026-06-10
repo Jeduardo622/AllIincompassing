@@ -1,5 +1,6 @@
 import { callApi } from "../../../lib/api";
 import { toNormalizedApiError } from "../../../lib/sdk/errors";
+import { resolveSessionCloseRequiredGoalIds } from "../../../lib/sessionCloseRequiredGoals";
 import { supabase } from "../../../lib/supabase";
 
 export type CompleteSessionRequest = {
@@ -22,13 +23,6 @@ export type InProgressSessionCloseReadiness = {
 export const IN_PROGRESS_CLOSE_NOT_READY_MESSAGE =
   "You must complete the linked session documentation with per-goal notes before closing this in-progress session. Add per-goal text on a client_session_notes row linked to this session_id (for example by saving Session capture on Schedule or Session Notes under Client Details). Unsaved modal text alone does not satisfy this requirement.";
 
-const normalizeRequiredGoalIds = (goalIds: Array<string | null | undefined>): string[] =>
-  Array.from(
-    new Set(
-      goalIds.filter((goalId): goalId is string => typeof goalId === "string" && goalId.length > 0),
-    ),
-  );
-
 export async function checkInProgressSessionCloseReadiness(
   input: InProgressSessionCloseReadinessInput,
 ): Promise<InProgressSessionCloseReadiness> {
@@ -46,22 +40,28 @@ export async function checkInProgressSessionCloseReadiness(
     throw sessionGoalsError;
   }
 
-  let requiredGoalIds = normalizeRequiredGoalIds((sessionGoals ?? []).map((row) => row.goal_id));
-
-  if (requiredGoalIds.length === 0) {
-    const { data: sessionRow, error: sessionError } = await supabase
+  let primaryGoalId: string | null = null;
+  if ((sessionGoals ?? []).length === 0) {
+    const { data: sessions, error: sessionError } = await supabase
       .from("sessions")
       .select("goal_id")
       .eq("id", input.sessionId)
-      .eq("organization_id", input.organizationId)
-      .maybeSingle();
+      .eq("organization_id", input.organizationId);
 
     if (sessionError) {
       throw sessionError;
     }
 
-    requiredGoalIds = normalizeRequiredGoalIds([sessionRow?.goal_id]);
+    primaryGoalId =
+      typeof sessions?.[0]?.goal_id === "string" && sessions[0].goal_id.length > 0
+        ? sessions[0].goal_id
+        : null;
   }
+
+  const requiredGoalIds = resolveSessionCloseRequiredGoalIds({
+    sessionGoalIds: (sessionGoals ?? []).map((row) => row.goal_id),
+    primaryGoalId,
+  });
 
   if (requiredGoalIds.length === 0) {
     return { ready: true, requiredGoalIds: [], missingGoalIds: [] };

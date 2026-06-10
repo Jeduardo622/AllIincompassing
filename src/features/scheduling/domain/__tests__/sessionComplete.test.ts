@@ -191,7 +191,7 @@ describe("checkInProgressSessionCloseReadiness", () => {
     expect(result.missingGoalIds).toEqual([]);
   });
 
-  it("falls back to sessions.goal_id when session_goals is unexpectedly empty", async () => {
+  it("falls back to sessions.goal_id when session_goals are missing", async () => {
     supabaseFromMock.mockImplementation((table: string) => {
       if (table === "session_goals") {
         return createFromResponse({
@@ -200,22 +200,14 @@ describe("checkInProgressSessionCloseReadiness", () => {
         });
       }
       if (table === "sessions") {
-        return {
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                maybeSingle: vi.fn(() => Promise.resolve({
-                  data: { goal_id: "goal-fallback" },
-                  error: null,
-                })),
-              })),
-            })),
-          })),
-        };
+        return createFromResponse({
+          data: [{ goal_id: "goal-fallback" }],
+          error: null,
+        });
       }
       if (table === "client_session_notes") {
         return createFromResponse({
-          data: [{ goal_notes: { "goal-fallback": "Covered by fallback." } }],
+          data: [{ goal_notes: { "goal-fallback": "Covered from primary goal." } }],
           error: null,
         });
       }
@@ -224,7 +216,7 @@ describe("checkInProgressSessionCloseReadiness", () => {
 
     const { checkInProgressSessionCloseReadiness } = await import("../sessionComplete");
     const result = await checkInProgressSessionCloseReadiness({
-      sessionId: "session-fallback",
+      sessionId: "session-3",
       organizationId: "org-1",
     });
 

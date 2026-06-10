@@ -9,6 +9,7 @@ import {
   jsonForRequest,
 } from "./shared";
 import { getRuntimeSupabaseConfig } from "../runtimeConfig";
+import { resolveSessionCloseRequiredGoalIds } from "../../lib/sessionCloseRequiredGoals";
 
 const completeSessionSchema = z.object({
   session_id: z.string().uuid(),
@@ -165,11 +166,13 @@ const checkNotesCoverage = async ({
   organizationId,
   supabaseUrl,
   headers,
+  primaryGoalId,
 }: {
   sessionId: string;
   organizationId: string;
   supabaseUrl: string;
   headers: Record<string, string>;
+  primaryGoalId?: string | null;
 }): Promise<{ ok: true } | { ok: false } | { upstreamError: true; message: string }> => {
   const sessionGoalsResult = await fetchJson<Array<{ goal_id: string }>>(
     `${supabaseUrl}/rest/v1/session_goals?select=goal_id&organization_id=eq.${encodeURIComponent(organizationId)}&session_id=eq.${encodeURIComponent(sessionId)}`,
@@ -178,13 +181,13 @@ const checkNotesCoverage = async ({
   if (!sessionGoalsResult.ok || !sessionGoalsResult.data) {
     return { upstreamError: true, message: "Failed to load session goals for notes check" };
   }
-  if (sessionGoalsResult.data.length === 0) {
+  const requiredGoalIds = resolveSessionCloseRequiredGoalIds({
+    sessionGoalIds: sessionGoalsResult.data.map((row) => row.goal_id),
+    primaryGoalId,
+  });
+  if (requiredGoalIds.length === 0) {
     return { ok: true };
   }
-
-  const requiredGoalIds = sessionGoalsResult.data
-    .map((row) => row.goal_id)
-    .filter((goalId): goalId is string => typeof goalId === "string" && goalId.length > 0);
   const notesRowsResult = await fetchJson<Array<{ goal_notes: Record<string, unknown> | null }>>(
     `${supabaseUrl}/rest/v1/client_session_notes?select=goal_notes&organization_id=eq.${encodeURIComponent(organizationId)}&session_id=eq.${encodeURIComponent(sessionId)}`,
     { method: "GET", headers },
@@ -321,10 +324,11 @@ const completeSessionViaRuntimeRest = async ({
     id: string;
     status: string;
     therapist_id: string | null;
+    goal_id: string | null;
     start_time: string;
     end_time: string;
   }>>(
-    `${supabaseUrl}/rest/v1/sessions?select=id,status,therapist_id,start_time,end_time&organization_id=eq.${encodeURIComponent(organizationId)}&id=eq.${encodeURIComponent(payload.session_id)}`,
+    `${supabaseUrl}/rest/v1/sessions?select=id,status,therapist_id,goal_id,start_time,end_time&organization_id=eq.${encodeURIComponent(organizationId)}&id=eq.${encodeURIComponent(payload.session_id)}`,
     { method: "GET", headers },
   );
   incrementRuntimeMetric("org_scoped_query_total", {
@@ -382,6 +386,7 @@ const completeSessionViaRuntimeRest = async ({
       organizationId,
       supabaseUrl,
       headers,
+      primaryGoalId: session.goal_id,
     });
     if ("upstreamError" in notesCoverage) {
       return errorResponse(request, "upstream_error", notesCoverage.message, {

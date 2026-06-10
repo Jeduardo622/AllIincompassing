@@ -16,6 +16,7 @@ import { getLogger, type Logger } from "../_shared/logging.ts";
 import { increment } from "../_shared/metrics.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
+import { resolveSessionCloseRequiredGoalIds } from "../../../src/lib/sessionCloseRequiredGoals.ts";
 
 // Statuses from which a session may be moved to a terminal outcome.
 // Symmetric with CANCELLABLE_STATUSES in sessions-cancel.
@@ -37,6 +38,7 @@ interface SessionRecord {
   id: string;
   status: string;
   therapist_id: string | null;
+  goal_id: string | null;
   start_time: string;
   end_time: string;
 }
@@ -153,6 +155,7 @@ async function checkSessionNotesPresentForRequest(
   sessionId: string,
   orgId: string,
   logger: Logger,
+  primaryGoalId: string | null = null,
 ): Promise<Response | null> {
   // 1. Fetch session_goals for this session within the org.
   const { data: sessionGoals, error: sgError } = await supabaseAdmin
@@ -166,12 +169,13 @@ async function checkSessionNotesPresentForRequest(
     throw new Error(sgError.message ?? "Failed to load session goals for notes check");
   }
 
-  if (!sessionGoals || sessionGoals.length === 0) {
-    // No goals were recorded for this session — notes guard does not apply.
+  const requiredGoalIds = resolveSessionCloseRequiredGoalIds({
+    sessionGoalIds: (sessionGoals ?? []).map((sg) => sg.goal_id),
+    primaryGoalId,
+  });
+  if (requiredGoalIds.length === 0) {
     return null;
   }
-
-  const requiredGoalIds = (sessionGoals as Array<{ goal_id: string }>).map((sg) => sg.goal_id);
 
   // 2. Fetch all note rows linked to this session within the org.
   const { data: notes, error: notesError } = await supabaseAdmin
@@ -229,8 +233,9 @@ export async function checkSessionNotesPresent(
   sessionId: string,
   orgId: string,
   logger: Logger,
+  primaryGoalId: string | null = null,
 ): Promise<Response | null> {
-  return checkSessionNotesPresentForRequest(buildFallbackRequest(), sessionId, orgId, logger);
+  return checkSessionNotesPresentForRequest(buildFallbackRequest(), sessionId, orgId, logger, primaryGoalId);
 }
 
 async function handleSessionCompletionForRequest(
@@ -247,7 +252,7 @@ async function handleSessionCompletionForRequest(
 
   // Fetch session scoped to the caller's org (uses request-auth client for RLS read)
   const { data: sessions, error: fetchError } = await orgScopedQuery(db, "sessions", orgId)
-    .select("id, status, therapist_id, start_time, end_time")
+    .select("id, status, therapist_id, goal_id, start_time, end_time")
     .eq("id", sessionId)
     .limit(1);
 
@@ -262,7 +267,7 @@ async function handleSessionCompletionForRequest(
     throw new Error(fetchError.message ?? "Failed to load session");
   }
 
-  const session = ((sessions ?? []) as SessionRecord[])[0] ?? null;
+  const session = ((sessions ?? []) as unknown as SessionRecord[])[0] ?? null;
 
   if (!session) {
     logger.warn("session.not-found", { sessionId, reason: "not-in-org-scope" });
@@ -327,7 +332,13 @@ async function handleSessionCompletionForRequest(
   // row with non-empty goal_notes covering every session_goal before the
   // session can be closed.
   if (session.status === "in_progress") {
-    const notesCheckFailure = await checkSessionNotesPresentForRequest(req, sessionId, orgId, logger);
+    const notesCheckFailure = await checkSessionNotesPresentForRequest(
+      req,
+      sessionId,
+      orgId,
+      logger,
+      session.goal_id,
+    );
     if (notesCheckFailure) {
       return notesCheckFailure;
     }

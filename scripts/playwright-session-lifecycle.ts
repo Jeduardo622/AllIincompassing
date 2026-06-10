@@ -3,6 +3,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { createClient } from "@supabase/supabase-js";
+import { buildLifecycleTargetPairs, type LifecycleTargetPair } from "../src/scripts/playwrightSessionLifecycleTargets";
+import { buildLifecycleSessionNoteSeedPayload } from "../src/scripts/playwrightSessionLifecycleNoteSeed";
 
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
 import {
@@ -23,6 +25,8 @@ interface LifecycleIds {
   clientId: string;
   programId: string;
   goalId: string;
+  createdProgramId?: string;
+  createdGoalId?: string;
 }
 
 interface RuntimeConfigPayload {
@@ -135,6 +139,15 @@ const getTokenIssuerProjectRef = (token: string): string | null => {
   return iss ? parseProjectRef(iss) : null;
 };
 
+const getActorUserIdFromToken = (token: string): string => {
+  const payload = decodeJwtPayload(token);
+  const subject = typeof payload?.sub === "string" ? payload.sub.trim() : "";
+  if (!subject) {
+    throw new Error("Unable to resolve authenticated actor user id from lifecycle access token.");
+  }
+  return subject;
+};
+
 async function fetchRuntimeProjectRef(page: Page, baseUrl: string): Promise<string | null> {
   const runtimeConfig = await page.evaluate(async (base) => {
     const res = await fetch(`${base}/api/runtime-config`, { credentials: "include" });
@@ -216,7 +229,7 @@ const createSessionViaServiceRole = async (params: {
   throw new Error("Service-role session fallback insert failed: unable to find a non-overlapping slot.");
 };
 
-const fetchAuthorizedClientIds = async (): Promise<Set<string>> => {
+const fetchAuthorizedTherapistClientPairs = async (): Promise<LifecycleTargetPair[]> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -229,19 +242,164 @@ const fetchAuthorizedClientIds = async (): Promise<Set<string>> => {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error } = await adminClient
     .from("authorizations")
-    .select("client_id")
+    .select("provider_id,client_id")
     .eq("status", "approved")
     .lte("start_date", today)
     .gte("end_date", today)
     .limit(500);
   if (error) {
-    return new Set<string>();
+    return [];
   }
-  return new Set(
+  return (
     (data ?? [])
-      .map((row) => row.client_id)
-      .filter((value): value is string => typeof value === "string" && value.length > 0),
+      .map((row) => ({ therapistId: row.provider_id, clientId: row.client_id }))
+      .filter(
+        (row): row is LifecycleTargetPair =>
+          typeof row.therapistId === "string" &&
+          row.therapistId.length > 0 &&
+          typeof row.clientId === "string" &&
+          row.clientId.length > 0,
+      )
   );
+};
+
+const resolveOrganizationIdForTherapist = async (
+  adminClient: ReturnType<typeof createClient>,
+  therapistId: string,
+): Promise<string> => {
+  const explicitOrgId = process.env.DEFAULT_ORGANIZATION_ID?.trim() ?? "";
+  if (explicitOrgId) {
+    return explicitOrgId;
+  }
+
+  const { data, error } = await adminClient
+    .from("therapists")
+    .select("organization_id")
+    .eq("id", therapistId)
+    .single();
+  if (error || !data?.organization_id) {
+    throw new Error(`Unable to resolve organization for lifecycle target therapist: ${error?.message ?? "missing organization_id"}`);
+  }
+  return data.organization_id;
+};
+
+const ensureProgramAndGoalForPair = async (
+  therapistId: string,
+  clientId: string,
+): Promise<{ programId: string; goalId: string; createdProgramId?: string; createdGoalId?: string }> => {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const organizationId = await resolveOrganizationIdForTherapist(adminClient, therapistId);
+
+  const { data: existingProgramRows, error: existingProgramError } = await adminClient
+    .from("programs")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("client_id", clientId)
+    .eq("status", "active")
+    .limit(1);
+  if (existingProgramError) {
+    throw new Error(`Unable to query programs for lifecycle target: ${existingProgramError.message}`);
+  }
+
+  let programId = existingProgramRows?.[0]?.id as string | undefined;
+  let createdProgramId: string | undefined;
+  if (!programId) {
+    const { data: createdProgram, error: createProgramError } = await adminClient
+      .from("programs")
+      .insert({
+        organization_id: organizationId,
+        client_id: clientId,
+        name: `Playwright Lifecycle Program ${Date.now()}`,
+        description: "Auto-seeded by playwright-session-lifecycle",
+        status: "active",
+      })
+      .select("id")
+      .single();
+    if (createProgramError || !createdProgram?.id) {
+      throw new Error(`Unable to create lifecycle target program: ${createProgramError?.message ?? "missing id"}`);
+    }
+    programId = createdProgram.id;
+    createdProgramId = createdProgram.id;
+  }
+
+  let goalId: string | undefined;
+  let createdGoalId: string | undefined;
+  try {
+    const { data: existingGoalRows, error: existingGoalError } = await adminClient
+      .from("goals")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("program_id", programId)
+      .eq("status", "active")
+      .limit(1);
+    if (existingGoalError) {
+      throw new Error(`Unable to query goals for lifecycle target: ${existingGoalError.message}`);
+    }
+
+    goalId = existingGoalRows?.[0]?.id as string | undefined;
+    if (!goalId) {
+      const { data: createdGoal, error: createGoalError } = await adminClient
+        .from("goals")
+        .insert({
+          organization_id: organizationId,
+          client_id: clientId,
+          program_id: programId,
+          title: `Playwright Lifecycle Goal ${Date.now()}`,
+          description: "Deterministic Playwright lifecycle fixture goal",
+          original_text: "Deterministic Playwright lifecycle fixture goal",
+          status: "active",
+        })
+        .select("id")
+        .single();
+      if (createGoalError || !createdGoal?.id) {
+        throw new Error(`Unable to create lifecycle target goal: ${createGoalError?.message ?? "missing id"}`);
+      }
+      goalId = createdGoal.id;
+      createdGoalId = createdGoal.id;
+    }
+  } catch (error) {
+    if (createdProgramId) {
+      await archiveLifecycleProgramGoal(adminClient, { createdProgramId }).catch(() => undefined);
+    }
+    throw error;
+  }
+  if (!goalId) {
+    throw new Error("Unable to resolve lifecycle target goal.");
+  }
+
+  return { programId, goalId, createdProgramId, createdGoalId };
+};
+
+const archiveLifecycleProgramGoal = async (
+  adminClient: ReturnType<typeof createClient>,
+  ids: Pick<LifecycleIds, "createdProgramId" | "createdGoalId">,
+): Promise<void> => {
+  if (ids.createdGoalId) {
+    const { error } = await adminClient
+      .from("goals")
+      .update({ status: "archived" })
+      .eq("id", ids.createdGoalId);
+    if (error) {
+      throw new Error(`Unable to archive lifecycle fixture goal ${ids.createdGoalId}: ${error.message}`);
+    }
+  }
+  if (ids.createdProgramId) {
+    const { error } = await adminClient
+      .from("programs")
+      .update({ status: "archived" })
+      .eq("id", ids.createdProgramId);
+    if (error) {
+      throw new Error(`Unable to archive lifecycle fixture program ${ids.createdProgramId}: ${error.message}`);
+    }
+  }
 };
 
 
@@ -384,54 +542,89 @@ async function openSessionModal(page: Page) {
     .waitFor({ state: "visible", timeout: 10_000 });
 }
 
+const selectOptionWhenAvailable = async (
+  page: Page,
+  selector: string,
+  value: string,
+  timeoutMs = 8000,
+): Promise<boolean> => {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const hasOption = await page.evaluate(
+      ({ targetSelector, targetValue }) => {
+        const select = document.querySelector(targetSelector) as HTMLSelectElement | null;
+        return Boolean(select && Array.from(select.options).some((option) => option.value === targetValue));
+      },
+      { targetSelector: selector, targetValue: value },
+    );
+    if (hasOption) {
+      await page.selectOption(selector, value);
+      return true;
+    }
+    await page.waitForTimeout(250);
+  }
+  return false;
+};
+
 async function chooseSessionTargets(page: Page): Promise<{
   therapistId: string;
   clientId: string;
   programId: string;
   goalId: string;
+  createdProgramId?: string;
+  createdGoalId?: string;
 }> {
   const therapistValues = await waitForSelectOptions(page, "#therapist-select");
   const clientValues = await waitForSelectOptions(page, "#client-select");
-  const authorizedClientIds = await fetchAuthorizedClientIds();
+  const authorizedPairs = await fetchAuthorizedTherapistClientPairs();
+  const candidatePairs = buildLifecycleTargetPairs({
+    therapistIds: therapistValues,
+    clientIds: clientValues,
+    authorizedPairs,
+  });
 
   if (therapistValues.length === 0 || clientValues.length === 0) {
     throw new Error("No therapist/client options available for lifecycle test.");
   }
+  console.log("[lifecycle] target candidates", {
+    therapistOptionCount: therapistValues.length,
+    clientOptionCount: clientValues.length,
+    authorizedPairCount: authorizedPairs.length,
+    candidatePairCount: candidatePairs.length,
+  });
 
-  for (const therapistId of therapistValues) {
+  for (const { therapistId, clientId } of candidatePairs) {
     await page.selectOption("#therapist-select", therapistId);
-    for (const clientId of clientValues) {
-      if (authorizedClientIds.size > 0 && !authorizedClientIds.has(clientId)) {
-        continue;
-      }
-      await page.selectOption("#client-select", clientId);
-      const programValues = await waitForSelectOptions(page, "#program-select", {
-        timeoutMs: 8000,
-      }).catch(() => []);
-      if (programValues.length === 0) {
-        continue;
-      }
-      await page.selectOption("#program-select", programValues[0]);
-      const goalValues = await waitForSelectOptions(page, "#goal-select", {
-        timeoutMs: 8000,
-      }).catch(() => []);
-      if (goalValues.length === 0) {
-        continue;
-      }
-      await page.selectOption("#goal-select", goalValues[0]);
-      return {
-        therapistId,
-        clientId,
-        programId: programValues[0],
-        goalId: goalValues[0],
-      };
+    const seeded = await ensureProgramAndGoalForPair(therapistId, clientId);
+    await page.selectOption("#client-select", clientId);
+    const selectedProgram = await selectOptionWhenAvailable(page, "#program-select", seeded.programId);
+    if (!selectedProgram) {
+      await cleanupCreatedProgramGoal(seeded);
+      continue;
     }
+    const selectedGoal = await selectOptionWhenAvailable(page, "#goal-select", seeded.goalId);
+    if (!selectedGoal) {
+      await cleanupCreatedProgramGoal(seeded);
+      continue;
+    }
+    console.log("[lifecycle] selected authorized therapist-client pair with active program/goal", {
+      seededProgram: Boolean(seeded.createdProgramId),
+      seededGoal: Boolean(seeded.createdGoalId),
+    });
+    return {
+      therapistId,
+      clientId,
+      programId: seeded.programId,
+      goalId: seeded.goalId,
+      createdProgramId: seeded.createdProgramId,
+      createdGoalId: seeded.createdGoalId,
+    };
   }
 
   throw new Error("Could not find therapist/client/program/goal combination for lifecycle test.");
 }
 
-async function bookSession(page: Page, _token: string, strictMode: boolean): Promise<LifecycleIds> {
+async function bookSession(page: Page, token: string, strictMode: boolean): Promise<LifecycleIds> {
   const scheduleUrl = `${getEnv("PW_BASE_URL", "https://app.allincompassing.ai")}/schedule`;
   await page.goto(scheduleUrl, {
     waitUntil: "networkidle",
@@ -462,18 +655,40 @@ async function bookSession(page: Page, _token: string, strictMode: boolean): Pro
     page.once("dialog", (dialog) => {
       void dialog.accept().catch(() => undefined);
     });
-    const responsePromise = page.waitForResponse(
-      (res) => res.url().includes("/api/book") && res.request().method() === "POST",
-      { timeout: 90_000 },
-    );
+    const responsePromise = page
+      .waitForResponse(
+        (res) => res.url().includes("/api/book") && res.request().method() === "POST",
+        { timeout: 90_000 },
+      )
+      .then((response) => ({ kind: "response" as const, response }))
+      .catch(() => null);
+    const blockedPromise = Promise.any([
+      page.getByRole("region").filter({ hasText: "Scheduling Conflicts" }).first().waitFor({
+        state: "visible",
+        timeout: 2500,
+      }),
+      page.getByText(/No active programs found/i).first().waitFor({ state: "visible", timeout: 2500 }),
+    ])
+      .then(() => ({ kind: "blocked" as const }))
+      .catch(() => new Promise<never>(() => undefined));
+
     await page.getByRole("button", { name: /Create Session/i }).click();
-    const bookResponse = await responsePromise;
+    const outcome = await Promise.race([responsePromise, blockedPromise]);
+    if (!outcome) {
+      continue;
+    }
+    if (outcome.kind === "blocked") {
+      responsePromise.catch(() => undefined);
+      continue;
+    }
+
+    const bookResponse = outcome.response;
     const body = await bookResponse.json().catch(() => null);
     const httpStatus = bookResponse.status();
     payload = { ok: bookResponse.ok(), status: httpStatus, body };
     payloadBody = body as typeof payloadBody;
 
-    if (bookResponse.ok() && payloadBody?.success && payloadBody?.data?.session?.id) {
+    if (payload.ok && payloadBody?.success && payloadBody?.data?.session?.id) {
       break;
     }
     if (httpStatus === 409 || [500, 502, 503, 504].includes(httpStatus)) {
@@ -509,8 +724,11 @@ async function bookSession(page: Page, _token: string, strictMode: boolean): Pro
         clientId: selected.clientId,
         programId: selected.programId,
         goalId: selected.goalId,
+        createdProgramId: selected.createdProgramId,
+        createdGoalId: selected.createdGoalId,
       };
     }
+    await cleanupCreatedProgramGoal(selected);
     throw new Error(
       `Booking did not succeed. status=${payload?.status ?? "unknown"} payload=${JSON.stringify(payloadBody).slice(0, 2000)}`,
     );
@@ -524,6 +742,8 @@ async function bookSession(page: Page, _token: string, strictMode: boolean): Pro
     clientId: selected.clientId,
     programId: selected.programId,
     goalId: selected.goalId,
+    createdProgramId: selected.createdProgramId,
+    createdGoalId: selected.createdGoalId,
   };
 }
 
@@ -627,7 +847,15 @@ async function invokeStartSessionFallback(token: string, ids: LifecycleIds, stri
   await runRpcFallback();
 }
 
-const clearSessionGoalsViaServiceRole = async (sessionId: string): Promise<void> => {
+const seedSessionGoalNotesViaServiceRole = async ({
+  sessionId,
+  goalId,
+  actorUserId,
+}: {
+  sessionId: string;
+  goalId: string;
+  actorUserId: string;
+}): Promise<void> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -637,9 +865,102 @@ const clearSessionGoalsViaServiceRole = async (sessionId: string): Promise<void>
       detectSessionInUrl: false,
     },
   });
-  const { error } = await adminClient.from("session_goals").delete().eq("session_id", sessionId);
-  if (error) {
-    throw new Error(`session_goals delete failed: ${error.message}`);
+
+  const { data: sessionRow, error: sessionError } = await adminClient
+    .from("sessions")
+    .select("id,organization_id,client_id,therapist_id,session_date,start_time,end_time,duration_minutes")
+    .eq("id", sessionId)
+    .single();
+  if (sessionError || !sessionRow) {
+    throw new Error(`Unable to load session for lifecycle note seed: ${sessionError?.message ?? "missing row"}`);
+  }
+
+  const sessionDate =
+    typeof sessionRow.session_date === "string" && sessionRow.session_date.length > 0
+      ? sessionRow.session_date
+      : new Date(sessionRow.start_time).toISOString().slice(0, 10);
+
+  const { data: authRows, error: authError } = await adminClient
+    .from("authorizations")
+    .select("id")
+    .eq("organization_id", sessionRow.organization_id)
+    .eq("client_id", sessionRow.client_id)
+    .eq("provider_id", sessionRow.therapist_id)
+    .eq("status", "approved")
+    .lte("start_date", sessionDate)
+    .gte("end_date", sessionDate)
+    .order("end_date", { ascending: false })
+    .limit(1);
+  if (authError || !authRows?.[0]?.id) {
+    throw new Error(`Unable to resolve authorization for lifecycle note seed: ${authError?.message ?? "missing authorization"}`);
+  }
+  const authorizationId = authRows[0].id;
+
+  let serviceCode: string | null = null;
+  const { data: matchingServiceRows, error: serviceError } = await adminClient
+    .from("authorization_services")
+    .select("service_code")
+    .eq("authorization_id", authorizationId)
+    .eq("organization_id", sessionRow.organization_id)
+    .lte("from_date", sessionDate)
+    .gte("to_date", sessionDate)
+    .order("from_date", { ascending: false })
+    .limit(1);
+  if (serviceError) {
+    throw new Error(`Unable to resolve authorization service for lifecycle note seed: ${serviceError.message}`);
+  }
+  serviceCode =
+    typeof matchingServiceRows?.[0]?.service_code === "string" && matchingServiceRows[0].service_code.trim().length > 0
+      ? matchingServiceRows[0].service_code.trim()
+      : null;
+
+  if (!serviceCode) {
+    const { data: fallbackServiceRows, error: fallbackServiceError } = await adminClient
+      .from("authorization_services")
+      .select("service_code")
+      .eq("authorization_id", authorizationId)
+      .eq("organization_id", sessionRow.organization_id)
+      .order("from_date", { ascending: false })
+      .limit(1);
+    if (fallbackServiceError) {
+      throw new Error(`Unable to resolve fallback authorization service for lifecycle note seed: ${fallbackServiceError.message}`);
+    }
+    serviceCode =
+      typeof fallbackServiceRows?.[0]?.service_code === "string" && fallbackServiceRows[0].service_code.trim().length > 0
+        ? fallbackServiceRows[0].service_code.trim()
+        : null;
+  }
+  if (!serviceCode) {
+    throw new Error("Unable to resolve service code for lifecycle note seed.");
+  }
+
+  const { error: deleteError } = await adminClient.from("client_session_notes").delete().eq("session_id", sessionId);
+  if (deleteError) {
+    throw new Error(`Unable to clear prior lifecycle session notes: ${deleteError.message}`);
+  }
+
+  const notePayload = buildLifecycleSessionNoteSeedPayload({
+    session: {
+      sessionId,
+      organizationId: sessionRow.organization_id,
+      clientId: sessionRow.client_id,
+      therapistId: sessionRow.therapist_id,
+      sessionDate: sessionRow.session_date,
+      startTime: sessionRow.start_time,
+      endTime: sessionRow.end_time,
+      durationMinutes: sessionRow.duration_minutes,
+    },
+    authorizationId,
+    serviceCode,
+    actorUserId,
+    goalId,
+    noteText: "Playwright lifecycle completed goal note",
+    narrative: "Playwright lifecycle seeded session note",
+  });
+
+  const { error: insertError } = await adminClient.from("client_session_notes").insert(notePayload);
+  if (insertError) {
+    throw new Error(`Unable to seed lifecycle session goal notes: ${insertError.message}`);
   }
 };
 
@@ -664,6 +985,22 @@ const markSessionTerminalViaServiceRole = async (sessionId: string, status: Term
   if (error) {
     throw new Error(`sessions ${status} update failed: ${error.message}`);
   }
+};
+
+const cleanupCreatedProgramGoal = async (ids: Pick<LifecycleIds, "createdProgramId" | "createdGoalId">): Promise<void> => {
+  if (!ids.createdProgramId && !ids.createdGoalId) {
+    return;
+  }
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  await archiveLifecycleProgramGoal(adminClient, ids);
 };
 
 async function assertSessionRowStatus(sessionId: string, expected: string): Promise<void> {
@@ -735,6 +1072,8 @@ async function markTerminalViaScheduleModal(
   scheduleUrl: string,
   sessionId: string,
   terminalStatus: TerminalStatus,
+  ids: LifecycleIds,
+  actorUserId: string,
   strictMode: boolean,
 ): Promise<void> {
   await openEditSessionModalFromUrl(page, scheduleUrl, sessionId);
@@ -770,11 +1109,15 @@ async function markTerminalViaScheduleModal(
       await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
     } catch (fallbackError) {
       const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      if (terminalStatus === "completed" && /SESSION_NOTES_REQUIRED/i.test(fallbackMessage)) {
+      if (/SESSION_NOTES_REQUIRED/i.test(fallbackMessage)) {
         console.warn(
-          "[lifecycle] completed fallback hit SESSION_NOTES_REQUIRED; clearing session_goals and retrying service-role completion.",
+          `[lifecycle] ${terminalStatus} fallback hit SESSION_NOTES_REQUIRED; seeding goal notes and retrying service-role completion.`,
         );
-        await clearSessionGoalsViaServiceRole(sessionId);
+        await seedSessionGoalNotesViaServiceRole({
+          sessionId,
+          goalId: ids.goalId,
+          actorUserId,
+        });
         await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
       } else {
         throw fallbackError;
@@ -868,6 +1211,7 @@ export async function run() {
       authenticatedCredential.email,
       authenticatedCredential.password,
     );
+    const actorUserId = getActorUserIdFromToken(token);
     const runtimeProjectRef = await withStepTimeout("runtime-config project-ref", () =>
       fetchRuntimeProjectRef(activePage, base));
     const tokenProjectRef = getTokenIssuerProjectRef(token);
@@ -900,11 +1244,23 @@ export async function run() {
     await withStepTimeout("start-session-modal", () =>
       startSessionViaScheduleModal(activePage, scheduleUrl, booked, token, strictParityMode));
     if (terminalStatus === "no-show" || terminalStatus === "completed") {
-      await withStepTimeout(`clear-session-goals-for-${terminalStatus}`, () =>
-        clearSessionGoalsViaServiceRole(booked.sessionId));
+      await withStepTimeout(`seed-session-goal-notes-for-${terminalStatus}`, () =>
+        seedSessionGoalNotesViaServiceRole({
+          sessionId: booked.sessionId,
+          goalId: booked.goalId,
+          actorUserId,
+        }));
     }
     await withStepTimeout(`${terminalStatus}-session-modal`, () =>
-      markTerminalViaScheduleModal(activePage, scheduleUrl, booked.sessionId, terminalStatus, strictParityMode));
+      markTerminalViaScheduleModal(
+        activePage,
+        scheduleUrl,
+        booked.sessionId,
+        terminalStatus,
+        booked,
+        actorUserId,
+        strictParityMode,
+      ));
     await withStepTimeout(`assert-session-${terminalStatus}`, () =>
       assertSessionRowStatus(booked.sessionId, terminalStatus));
 
@@ -941,6 +1297,14 @@ export async function run() {
     }));
     throw error;
   } finally {
+    if (ids.createdGoalId || ids.createdProgramId) {
+      await cleanupCreatedProgramGoal(ids).catch((error) => {
+        console.warn(
+          "[lifecycle] Failed to clean up lifecycle fixture program/goal.",
+          error instanceof Error ? error.message : error,
+        );
+      });
+    }
     if (context) {
       await context.close();
     }

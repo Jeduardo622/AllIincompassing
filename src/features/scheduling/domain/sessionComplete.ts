@@ -1,5 +1,6 @@
 import { callApi } from "../../../lib/api";
 import { toNormalizedApiError } from "../../../lib/sdk/errors";
+import { resolveSessionCloseRequiredGoalIds } from "../../../lib/sessionCloseRequiredGoals";
 import { supabase } from "../../../lib/supabase";
 
 export type CompleteSessionRequest = {
@@ -39,13 +40,28 @@ export async function checkInProgressSessionCloseReadiness(
     throw sessionGoalsError;
   }
 
-  const requiredGoalIds = Array.from(
-    new Set(
-      (sessionGoals ?? [])
-        .map((row) => row.goal_id)
-        .filter((goalId): goalId is string => typeof goalId === "string" && goalId.length > 0),
-    ),
-  );
+  let primaryGoalId: string | null = null;
+  if ((sessionGoals ?? []).length === 0) {
+    const { data: sessions, error: sessionError } = await supabase
+      .from("sessions")
+      .select("goal_id")
+      .eq("id", input.sessionId)
+      .eq("organization_id", input.organizationId);
+
+    if (sessionError) {
+      throw sessionError;
+    }
+
+    primaryGoalId =
+      typeof sessions?.[0]?.goal_id === "string" && sessions[0].goal_id.length > 0
+        ? sessions[0].goal_id
+        : null;
+  }
+
+  const requiredGoalIds = resolveSessionCloseRequiredGoalIds({
+    sessionGoalIds: (sessionGoals ?? []).map((row) => row.goal_id),
+    primaryGoalId,
+  });
 
   if (requiredGoalIds.length === 0) {
     return { ready: true, requiredGoalIds: [], missingGoalIds: [] };

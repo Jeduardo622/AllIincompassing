@@ -450,7 +450,25 @@ describe("Schedule", () => {
     });
   }, 15000);
 
-  it("blocks week-forward when visible sessions are not all scheduled", async () => {
+  it("recurs only scheduled sessions when visible sessions include other statuses", async () => {
+    const capturedRequests: Array<Record<string, unknown>> = [];
+    server.use(
+      http.post("*/api/sessions-week-forward", async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        capturedRequests.push(body);
+        return HttpResponse.json({
+          success: true,
+          data: {
+            sourceSessionCount: 1,
+            generatedSessionCount: 4,
+            generatedWeekCount: 4,
+            endDate: "2025-08-31",
+            conflicts: [],
+            ...(body.dryRun === true ? {} : { createdSessions: [] }),
+          },
+        });
+      }),
+    );
     mockUseScheduleDataBatch.mockReturnValue({
       data: {
         ...scheduleFixtures,
@@ -471,10 +489,65 @@ describe("Schedule", () => {
       name: /Apply this visible week forward/i,
     });
     await userEvent.click(recurrenceToggle);
+    fireEvent.change(screen.getByLabelText(/End date/i), { target: { value: "2025-08-31" } });
 
+    expect(screen.getByText(/1 scheduled session will be used/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Every visible session must be scheduled before cloning this week forward/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/Every visible session must be scheduled before cloning this week forward/i),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Preview week-forward schedule/i }));
+
+    await waitFor(() => {
+      expect(capturedRequests).toHaveLength(1);
+    });
+
+    expect(capturedRequests[0]).toMatchObject({
+      sourceSessionIds: ["session-1"],
+      endDate: "2025-08-31",
+      dryRun: true,
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Apply this week forward/i }));
+
+    await waitFor(() => {
+      expect(capturedRequests).toHaveLength(2);
+    });
+
+    expect(capturedRequests[1]).toMatchObject({
+      sourceSessionIds: ["session-1"],
+      endDate: "2025-08-31",
+      dryRun: false,
+    });
+  }, 15000);
+
+  it("blocks week-forward when no visible sessions are scheduled", async () => {
+    mockUseScheduleDataBatch.mockReturnValue({
+      data: {
+        ...scheduleFixtures,
+        sessions: [
+          {
+            ...scheduleFixtures.sessions[0],
+            status: "completed",
+          },
+          {
+            ...scheduleFixtures.sessions[1],
+            status: "cancelled",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<Schedule />);
+
+    const recurrenceToggle = await screen.findByRole("checkbox", {
+      name: /Apply this visible week forward/i,
+    });
+    await userEvent.click(recurrenceToggle);
+
+    expect(screen.getByText(/0 scheduled sessions will be used/i)).toBeInTheDocument();
+    expect(screen.getByText(/There are no scheduled sessions in this displayed week to reuse/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Preview week-forward schedule/i })).toBeDisabled();
   }, 15000);
 

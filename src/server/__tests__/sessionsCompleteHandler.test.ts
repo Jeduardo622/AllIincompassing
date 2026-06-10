@@ -35,6 +35,7 @@ describe("sessionsCompleteHandler", () => {
       id: sessionId,
       status: "scheduled",
       therapist_id: "therapist-user",
+      goal_id: "goal-primary",
       start_time: "2026-03-31T09:00:00Z",
       end_time: "2026-03-31T10:00:00Z",
     },
@@ -390,6 +391,7 @@ describe("sessionsCompleteHandler", () => {
         id: sessionId,
         status: "in_progress",
         therapist_id: "therapist-user",
+        goal_id: "goal-1",
         start_time: "2026-03-31T09:00:00Z",
         end_time: "2026-03-31T10:00:00Z",
       },
@@ -412,6 +414,32 @@ describe("sessionsCompleteHandler", () => {
       function: "sessions-complete",
       orgId: "org-1",
     });
+  });
+
+  it("runtime REST fallback uses sessions.goal_id when session_goals is unexpectedly empty", async () => {
+    makeFallbackFetchMock({
+      session: {
+        id: sessionId,
+        status: "in_progress",
+        therapist_id: "therapist-user",
+        start_time: "2026-03-31T09:00:00Z",
+        end_time: "2026-03-31T10:00:00Z",
+        goal_id: "goal-fallback",
+      },
+      goalRows: [],
+      noteRows: [],
+    });
+
+    const response = await __TESTING__.completeSessionViaRuntimeRest({
+      request: new Request("http://localhost/api/sessions-complete", { method: "POST" }),
+      payload: { session_id: sessionId, outcome: "completed", notes: null },
+      accessToken: "token-123",
+      traceHeaders: {},
+    });
+    const body = await response.json() as { code: string };
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
   });
 
   it("runtime REST fallback emits concurrent-modification metric", async () => {
@@ -517,6 +545,7 @@ describe("sessionsCompleteHandler", () => {
         id: sessionId,
         status: "in_progress",
         therapist_id: "therapist-user",
+        goal_id: "goal-1",
         start_time: "2026-03-31T09:00:00Z",
         end_time: "2026-03-31T10:00:00Z",
       },
@@ -541,6 +570,7 @@ describe("sessionsCompleteHandler", () => {
         id: sessionId,
         status: "in_progress",
         therapist_id: "therapist-user",
+        goal_id: "goal-1",
         start_time: "2026-03-31T09:00:00Z",
         end_time: "2026-03-31T10:00:00Z",
       },
@@ -558,5 +588,31 @@ describe("sessionsCompleteHandler", () => {
 
     expect(response.status).toBe(502);
     expect(body.error).toBe("Failed to load session notes for notes check");
+  });
+
+  it("runtime REST fallback uses sessions.goal_id when session_goals are missing", async () => {
+    makeFallbackFetchMock({
+      session: {
+        id: sessionId,
+        status: "in_progress",
+        therapist_id: "therapist-user",
+        goal_id: "goal-primary",
+        start_time: "2026-03-31T09:00:00Z",
+        end_time: "2026-03-31T10:00:00Z",
+      },
+      goalRows: [],
+      noteRows: [],
+    });
+
+    const response = await __TESTING__.completeSessionViaRuntimeRest({
+      request: new Request("http://localhost/api/sessions-complete", { method: "POST" }),
+      payload: { session_id: sessionId, outcome: "completed", notes: null },
+      accessToken: "token-123",
+      traceHeaders: {},
+    });
+    const body = await response.json() as { code: string };
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
   });
 });

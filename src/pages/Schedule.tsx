@@ -103,6 +103,9 @@ const MISSING_NOTES_RETRY_HINT =
   "Before closing this in-progress session, persist per-goal note text for each worked goal on a linked session note. Save session capture from Schedule (Session capture), or add notes in Client Details > Session Notes. Narrative and signatures are completed in Client Details.";
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 const _scheduleBoundedConcurrencyMarker = AUTO_SCHEDULE_CONCURRENCY;
+const isWeekForwardRecurrenceSourceSession = (
+  session: Pick<Session, "status">,
+): boolean => session.status === "scheduled";
 const LazySessionModal = React.lazy(() =>
   import("../components/SessionModal").then((module) => ({ default: module.SessionModal })),
 );
@@ -850,16 +853,12 @@ export const Schedule = React.memo(() => {
     scopedTherapistId,
     therapistLinkedClientIdsQuery.data,
   ]);
-  const weekForwardSourceSessions = displayData.sessions;
-  const weekForwardHasVisibleSessions = weekForwardSourceSessions.length > 0;
-  const weekForwardInvalidStatusSessions = useMemo(
-    () => weekForwardSourceSessions.filter((session) => session.status !== "scheduled"),
-    [weekForwardSourceSessions],
+  const weekForwardVisibleSessions = displayData.sessions;
+  const weekForwardSourceSessions = useMemo(
+    () => weekForwardVisibleSessions.filter(isWeekForwardRecurrenceSourceSession),
+    [weekForwardVisibleSessions],
   );
-  const weekForwardBlockedStatuses = useMemo(
-    () => Array.from(new Set(weekForwardInvalidStatusSessions.map((session) => session.status).filter(Boolean))),
-    [weekForwardInvalidStatusSessions],
-  );
+  const weekForwardHasScheduledSessions = weekForwardSourceSessions.length > 0;
   const weekForwardRequiresOrgContext = effectiveRole === "super_admin" && !activeOrganizationId;
   const weekForwardAvailableInCurrentView = view === "week";
   const weekForwardSourceSummary = `${format(weekStart, "MMM d")} - ${format(weekEnd, "MMM d, yyyy")}`;
@@ -868,8 +867,7 @@ export const Schedule = React.memo(() => {
     recurrenceEnabled &&
     weekForwardAvailableInCurrentView &&
     !weekForwardRequiresOrgContext &&
-    weekForwardHasVisibleSessions &&
-    weekForwardInvalidStatusSessions.length === 0 &&
+    weekForwardHasScheduledSessions &&
     weekForwardEndDate.trim().length > 0;
   const isScheduleShellNarrow = useSyncExternalStore(
     (onStoreChange) => {
@@ -2082,7 +2080,7 @@ export const Schedule = React.memo(() => {
                     <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Source week</div>
                     <div className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">{weekForwardSourceSummary}</div>
                     <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {weekForwardSourceSessions.length} visible {weekForwardSourceSessions.length === 1 ? "session" : "sessions"} will be used.
+                      {weekForwardSourceSessions.length} scheduled {weekForwardSourceSessions.length === 1 ? "session" : "sessions"} will be used.
                     </div>
                   </div>
 
@@ -2114,18 +2112,9 @@ export const Schedule = React.memo(() => {
                   </div>
                 ) : null}
 
-                {!weekForwardHasVisibleSessions ? (
+                {!weekForwardHasScheduledSessions ? (
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-                    There are no visible sessions in this displayed week to reuse.
-                  </div>
-                ) : null}
-
-                {weekForwardInvalidStatusSessions.length > 0 ? (
-                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-                    Every visible session must be scheduled before cloning this week forward.
-                    <div className="mt-1 text-xs">
-                      Blocking statuses: {weekForwardBlockedStatuses.join(", ")}.
-                    </div>
+                    There are no scheduled sessions in this displayed week to reuse.
                   </div>
                 ) : null}
 

@@ -3,6 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { createClient } from "@supabase/supabase-js";
+import { buildLifecycleTargetPairs, type LifecycleTargetPair } from "../src/scripts/playwrightSessionLifecycleTargets";
 
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
 import {
@@ -218,7 +219,7 @@ const createSessionViaServiceRole = async (params: {
   throw new Error("Service-role session fallback insert failed: unable to find a non-overlapping slot.");
 };
 
-const fetchAuthorizedClientIds = async (): Promise<Set<string>> => {
+const fetchAuthorizedTherapistClientPairs = async (): Promise<LifecycleTargetPair[]> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -231,18 +232,24 @@ const fetchAuthorizedClientIds = async (): Promise<Set<string>> => {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error } = await adminClient
     .from("authorizations")
-    .select("client_id")
+    .select("provider_id,client_id")
     .eq("status", "approved")
     .lte("start_date", today)
     .gte("end_date", today)
     .limit(500);
   if (error) {
-    return new Set<string>();
+    return [];
   }
-  return new Set(
+  return (
     (data ?? [])
-      .map((row) => row.client_id)
-      .filter((value): value is string => typeof value === "string" && value.length > 0),
+      .map((row) => ({ therapistId: row.provider_id, clientId: row.client_id }))
+      .filter(
+        (row): row is LifecycleTargetPair =>
+          typeof row.therapistId === "string" &&
+          row.therapistId.length > 0 &&
+          typeof row.clientId === "string" &&
+          row.clientId.length > 0,
+      )
   );
 };
 
@@ -559,7 +566,12 @@ async function chooseSessionTargets(page: Page): Promise<{
 }> {
   const therapistValues = await waitForSelectOptions(page, "#therapist-select");
   const clientValues = await waitForSelectOptions(page, "#client-select");
-  const authorizedClientIds = await fetchAuthorizedClientIds();
+  const authorizedPairs = await fetchAuthorizedTherapistClientPairs();
+  const candidatePairs = buildLifecycleTargetPairs({
+    therapistIds: therapistValues,
+    clientIds: clientValues,
+    authorizedPairs,
+  });
 
   if (therapistValues.length === 0 || clientValues.length === 0) {
     throw new Error("No therapist/client options available for lifecycle test.");
@@ -567,40 +579,36 @@ async function chooseSessionTargets(page: Page): Promise<{
   console.log("[lifecycle] target candidates", {
     therapistOptionCount: therapistValues.length,
     clientOptionCount: clientValues.length,
-    authorizedClientCount: authorizedClientIds.size,
+    authorizedPairCount: authorizedPairs.length,
+    candidatePairCount: candidatePairs.length,
   });
 
-  for (const therapistId of therapistValues) {
+  for (const { therapistId, clientId } of candidatePairs) {
     await page.selectOption("#therapist-select", therapistId);
-    for (const clientId of clientValues) {
-      if (authorizedClientIds.size > 0 && !authorizedClientIds.has(clientId)) {
-        continue;
-      }
-      const seeded = await ensureProgramAndGoalForPair(therapistId, clientId);
-      await page.selectOption("#client-select", clientId);
-      const selectedProgram = await selectOptionWhenAvailable(page, "#program-select", seeded.programId);
-      if (!selectedProgram) {
-        await cleanupCreatedProgramGoal(seeded);
-        continue;
-      }
-      const selectedGoal = await selectOptionWhenAvailable(page, "#goal-select", seeded.goalId);
-      if (!selectedGoal) {
-        await cleanupCreatedProgramGoal(seeded);
-        continue;
-      }
-      console.log("[lifecycle] selected authorized visible client with active program/goal", {
-        seededProgram: Boolean(seeded.createdProgramId),
-        seededGoal: Boolean(seeded.createdGoalId),
-      });
-      return {
-        therapistId,
-        clientId,
-        programId: seeded.programId,
-        goalId: seeded.goalId,
-        createdProgramId: seeded.createdProgramId,
-        createdGoalId: seeded.createdGoalId,
-      };
+    const seeded = await ensureProgramAndGoalForPair(therapistId, clientId);
+    await page.selectOption("#client-select", clientId);
+    const selectedProgram = await selectOptionWhenAvailable(page, "#program-select", seeded.programId);
+    if (!selectedProgram) {
+      await cleanupCreatedProgramGoal(seeded);
+      continue;
     }
+    const selectedGoal = await selectOptionWhenAvailable(page, "#goal-select", seeded.goalId);
+    if (!selectedGoal) {
+      await cleanupCreatedProgramGoal(seeded);
+      continue;
+    }
+    console.log("[lifecycle] selected authorized therapist-client pair with active program/goal", {
+      seededProgram: Boolean(seeded.createdProgramId),
+      seededGoal: Boolean(seeded.createdGoalId),
+    });
+    return {
+      therapistId,
+      clientId,
+      programId: seeded.programId,
+      goalId: seeded.goalId,
+      createdProgramId: seeded.createdProgramId,
+      createdGoalId: seeded.createdGoalId,
+    };
   }
 
   throw new Error("Could not find therapist/client/program/goal combination for lifecycle test.");

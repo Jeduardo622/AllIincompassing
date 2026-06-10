@@ -18,6 +18,7 @@
   "boundaryExceptions": [
     "assessment-documents-extract-background.ts",
     "sessions-complete.ts",
+    "sessions-week-forward.ts",
     "session-notes-upsert.ts"
   ]
 }

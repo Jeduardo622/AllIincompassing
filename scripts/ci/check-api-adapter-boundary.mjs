@@ -56,6 +56,11 @@ const run = () => {
     "fetch(",
     "in-function business logic (sessions-start should remain a transport adapter)",
   );
+  assertNotContains(
+    "netlify/functions/sessions-week-forward.ts",
+    "fetch(",
+    "in-function business logic (sessions-week-forward should remain a transport adapter)",
+  );
 
   console.log("API adapter boundary check passed.");
 };

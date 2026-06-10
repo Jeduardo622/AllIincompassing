@@ -670,17 +670,27 @@ const seedSessionGoalNotesViaServiceRole = async ({
       ? sessionRow.session_date
       : new Date(sessionRow.start_time).toISOString().slice(0, 10);
 
-  const { data: authRows, error: authError } = await adminClient
-    .from("authorizations")
-    .select("id")
-    .eq("organization_id", sessionRow.organization_id)
-    .eq("client_id", sessionRow.client_id)
-    .eq("provider_id", sessionRow.therapist_id)
-    .eq("status", "approved")
-    .lte("start_date", sessionDate)
-    .gte("end_date", sessionDate)
-    .order("end_date", { ascending: false })
-    .limit(1);
+  const fetchApprovedAuthorization = async (scope: { requireProviderMatch: boolean }) => {
+    let query = adminClient
+      .from("authorizations")
+      .select("id")
+      .eq("organization_id", sessionRow.organization_id)
+      .eq("client_id", sessionRow.client_id)
+      .eq("status", "approved")
+      .lte("start_date", sessionDate)
+      .gte("end_date", sessionDate)
+      .order("end_date", { ascending: false })
+      .limit(1);
+    if (scope.requireProviderMatch) {
+      query = query.eq("provider_id", sessionRow.therapist_id);
+    }
+    return query;
+  };
+
+  let { data: authRows, error: authError } = await fetchApprovedAuthorization({ requireProviderMatch: true });
+  if (!authRows?.[0]?.id && !authError) {
+    ({ data: authRows, error: authError } = await fetchApprovedAuthorization({ requireProviderMatch: false }));
+  }
   if (authError || !authRows?.[0]?.id) {
     throw new Error(`Unable to resolve authorization for lifecycle note seed: ${authError?.message ?? "missing authorization"}`);
   }

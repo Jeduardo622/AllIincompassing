@@ -45,8 +45,6 @@ describe("sessionsCompleteHandler", () => {
     authStatus = 200,
     sessionStatus = 200,
     sessionRows,
-    sessionGoalFallbackRows,
-    sessionGoalFallbackStatus = 200,
     goalsStatus = 200,
     notesStatus = 200,
     auditStatus = 200,
@@ -78,9 +76,6 @@ describe("sessionsCompleteHandler", () => {
       return jsonResponse(noteRows, notesStatus);
     }
     if (url.includes("/rest/v1/sessions") && method === "GET") {
-      if (url.includes("select=goal_id")) {
-        return jsonResponse(sessionGoalFallbackRows ?? [{ goal_id: session.goal_id ?? null }], sessionGoalFallbackStatus);
-      }
       return jsonResponse(sessionRows ?? [session], sessionStatus);
     }
     if (url.includes("/rest/v1/sessions") && method === "PATCH") {
@@ -567,32 +562,6 @@ describe("sessionsCompleteHandler", () => {
 
     expect(response.status).toBe(502);
     expect(body.error).toBe("Failed to load session goals for notes check");
-  });
-
-  it("runtime REST fallback maps goal fallback fetch failures to upstream errors", async () => {
-    makeFallbackFetchMock({
-      session: {
-        id: sessionId,
-        status: "in_progress",
-        therapist_id: "therapist-user",
-        start_time: "2026-03-31T09:00:00Z",
-        end_time: "2026-03-31T10:00:00Z",
-        goal_id: "goal-fallback",
-      },
-      goalRows: [],
-      sessionGoalFallbackStatus: 500,
-    });
-
-    const response = await __TESTING__.completeSessionViaRuntimeRest({
-      request: new Request("http://localhost/api/sessions-complete", { method: "POST" }),
-      payload: { session_id: sessionId, outcome: "completed", notes: null },
-      accessToken: "token-123",
-      traceHeaders: {},
-    });
-    const body = await response.json() as { error: string };
-
-    expect(response.status).toBe(502);
-    expect(body.error).toBe("Failed to load session goal fallback for notes check");
   });
 
   it("runtime REST fallback maps client_session_notes fetch failures to upstream errors", async () => {

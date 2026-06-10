@@ -112,6 +112,23 @@ const scheduleFixtures = {
   ],
 };
 
+const cloneScheduleFixtures = () => ({
+  ...scheduleFixtures,
+  sessions: scheduleFixtures.sessions.map((session) => ({
+    ...session,
+    therapist: session.therapist ? { ...session.therapist } : session.therapist,
+    client: session.client ? { ...session.client } : session.client,
+  })),
+  therapists: scheduleFixtures.therapists.map((therapist) => ({
+    ...therapist,
+    availability_hours: { ...therapist.availability_hours },
+  })),
+  clients: scheduleFixtures.clients.map((client) => ({
+    ...client,
+    availability_hours: { ...client.availability_hours },
+  })),
+});
+
 vi.mock("../../lib/optimizedQueries", () => ({
   useScheduleDataBatch: (...args: unknown[]) => mockUseScheduleDataBatch(...args),
   useSessionsOptimized: (...args: unknown[]) => mockUseSessionsOptimized(...args),
@@ -436,6 +453,57 @@ describe("Schedule", () => {
       endDate: "2025-08-31",
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       dryRun: true,
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Apply this week forward/i }));
+
+    await waitFor(() => {
+      expect(capturedRequests).toHaveLength(2);
+    });
+    expect(capturedRequests[1]).toMatchObject({
+      sourceSessionIds: ["session-1", "session-2"],
+      endDate: "2025-08-31",
+      dryRun: false,
+    });
+  }, 15000);
+
+  it("keeps the week-forward preview actionable when schedule data refreshes with unchanged sessions", async () => {
+    const capturedRequests: Array<Record<string, unknown>> = [];
+    server.use(
+      http.post("*/api/sessions-week-forward", async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        capturedRequests.push(body);
+        return HttpResponse.json({
+          success: true,
+          data: {
+            sourceSessionCount: 2,
+            generatedSessionCount: 8,
+            generatedWeekCount: 4,
+            endDate: "2025-08-31",
+            conflicts: [],
+            ...(body.dryRun === true ? {} : { createdSessions: [] }),
+          },
+        });
+      }),
+    );
+    mockUseScheduleDataBatch.mockImplementation(() => ({
+      data: cloneScheduleFixtures(),
+      isLoading: false,
+    }));
+
+    renderWithProviders(<Schedule />);
+
+    const recurrenceToggle = await screen.findByRole("checkbox", {
+      name: /Apply this visible week forward/i,
+    });
+    await userEvent.click(recurrenceToggle);
+    fireEvent.change(screen.getByLabelText(/End date/i), { target: { value: "2025-08-31" } });
+
+    await userEvent.click(screen.getByRole("button", { name: /Preview week-forward schedule/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/^Preview$/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Apply this week forward/i })).toBeEnabled();
     });
 
     await userEvent.click(screen.getByRole("button", { name: /Apply this week forward/i }));

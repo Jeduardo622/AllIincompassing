@@ -858,6 +858,22 @@ export const Schedule = React.memo(() => {
     () => weekForwardVisibleSessions.filter(isWeekForwardRecurrenceSourceSession),
     [weekForwardVisibleSessions],
   );
+  const weekForwardSourceSessionSignature = useMemo(
+    () =>
+      weekForwardSourceSessions
+        .map((session) => [
+          session.id,
+          session.start_time,
+          session.end_time,
+          session.status,
+          session.therapist_id,
+          session.client_id,
+        ].join(":"))
+        .sort()
+        .join("|"),
+    [weekForwardSourceSessions],
+  );
+  const weekForwardDisplayedWeekSignature = `${weekStart.toISOString()}|${weekEnd.toISOString()}`;
   const weekForwardHasScheduledSessions = weekForwardSourceSessions.length > 0;
   const weekForwardRequiresOrgContext = effectiveRole === "super_admin" && !activeOrganizationId;
   const weekForwardAvailableInCurrentView = view === "week";
@@ -1106,7 +1122,8 @@ export const Schedule = React.memo(() => {
     recurrenceEnabled,
     recurrenceTimeZone,
     weekForwardEndDate,
-    weekForwardSourceSessions,
+    weekForwardDisplayedWeekSignature,
+    weekForwardSourceSessionSignature,
     weekForwardAvailableInCurrentView,
   ]);
 

@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import { buildLifecycleTargetPairs, type LifecycleTargetPair } from "../src/scripts/playwrightSessionLifecycleTargets";
+import { buildLifecycleSessionNoteSeedPayload } from "../src/scripts/playwrightSessionLifecycleNoteSeed";
 
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
 import {
@@ -136,6 +137,15 @@ const getTokenIssuerProjectRef = (token: string): string | null => {
   const payload = decodeJwtPayload(token);
   const iss = typeof payload?.iss === "string" ? payload.iss : "";
   return iss ? parseProjectRef(iss) : null;
+};
+
+const getActorUserIdFromToken = (token: string): string => {
+  const payload = decodeJwtPayload(token);
+  const subject = typeof payload?.sub === "string" ? payload.sub.trim() : "";
+  if (!subject) {
+    throw new Error("Unable to resolve authenticated actor user id from lifecycle access token.");
+  }
+  return subject;
 };
 
 async function fetchRuntimeProjectRef(page: Page, baseUrl: string): Promise<string | null> {
@@ -837,7 +847,15 @@ async function invokeStartSessionFallback(token: string, ids: LifecycleIds, stri
   await runRpcFallback();
 }
 
-const clearSessionGoalsViaServiceRole = async (sessionId: string): Promise<void> => {
+const seedSessionGoalNotesViaServiceRole = async ({
+  sessionId,
+  goalId,
+  actorUserId,
+}: {
+  sessionId: string;
+  goalId: string;
+  actorUserId: string;
+}): Promise<void> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -847,9 +865,102 @@ const clearSessionGoalsViaServiceRole = async (sessionId: string): Promise<void>
       detectSessionInUrl: false,
     },
   });
-  const { error } = await adminClient.from("session_goals").delete().eq("session_id", sessionId);
-  if (error) {
-    throw new Error(`session_goals delete failed: ${error.message}`);
+
+  const { data: sessionRow, error: sessionError } = await adminClient
+    .from("sessions")
+    .select("id,organization_id,client_id,therapist_id,session_date,start_time,end_time,duration_minutes")
+    .eq("id", sessionId)
+    .single();
+  if (sessionError || !sessionRow) {
+    throw new Error(`Unable to load session for lifecycle note seed: ${sessionError?.message ?? "missing row"}`);
+  }
+
+  const sessionDate =
+    typeof sessionRow.session_date === "string" && sessionRow.session_date.length > 0
+      ? sessionRow.session_date
+      : new Date(sessionRow.start_time).toISOString().slice(0, 10);
+
+  const { data: authRows, error: authError } = await adminClient
+    .from("authorizations")
+    .select("id")
+    .eq("organization_id", sessionRow.organization_id)
+    .eq("client_id", sessionRow.client_id)
+    .eq("provider_id", sessionRow.therapist_id)
+    .eq("status", "approved")
+    .lte("start_date", sessionDate)
+    .gte("end_date", sessionDate)
+    .order("end_date", { ascending: false })
+    .limit(1);
+  if (authError || !authRows?.[0]?.id) {
+    throw new Error(`Unable to resolve authorization for lifecycle note seed: ${authError?.message ?? "missing authorization"}`);
+  }
+  const authorizationId = authRows[0].id;
+
+  let serviceCode: string | null = null;
+  const { data: matchingServiceRows, error: serviceError } = await adminClient
+    .from("authorization_services")
+    .select("service_code")
+    .eq("authorization_id", authorizationId)
+    .eq("organization_id", sessionRow.organization_id)
+    .lte("from_date", sessionDate)
+    .gte("to_date", sessionDate)
+    .order("from_date", { ascending: false })
+    .limit(1);
+  if (serviceError) {
+    throw new Error(`Unable to resolve authorization service for lifecycle note seed: ${serviceError.message}`);
+  }
+  serviceCode =
+    typeof matchingServiceRows?.[0]?.service_code === "string" && matchingServiceRows[0].service_code.trim().length > 0
+      ? matchingServiceRows[0].service_code.trim()
+      : null;
+
+  if (!serviceCode) {
+    const { data: fallbackServiceRows, error: fallbackServiceError } = await adminClient
+      .from("authorization_services")
+      .select("service_code")
+      .eq("authorization_id", authorizationId)
+      .eq("organization_id", sessionRow.organization_id)
+      .order("from_date", { ascending: false })
+      .limit(1);
+    if (fallbackServiceError) {
+      throw new Error(`Unable to resolve fallback authorization service for lifecycle note seed: ${fallbackServiceError.message}`);
+    }
+    serviceCode =
+      typeof fallbackServiceRows?.[0]?.service_code === "string" && fallbackServiceRows[0].service_code.trim().length > 0
+        ? fallbackServiceRows[0].service_code.trim()
+        : null;
+  }
+  if (!serviceCode) {
+    throw new Error("Unable to resolve service code for lifecycle note seed.");
+  }
+
+  const { error: deleteError } = await adminClient.from("client_session_notes").delete().eq("session_id", sessionId);
+  if (deleteError) {
+    throw new Error(`Unable to clear prior lifecycle session notes: ${deleteError.message}`);
+  }
+
+  const notePayload = buildLifecycleSessionNoteSeedPayload({
+    session: {
+      sessionId,
+      organizationId: sessionRow.organization_id,
+      clientId: sessionRow.client_id,
+      therapistId: sessionRow.therapist_id,
+      sessionDate: sessionRow.session_date,
+      startTime: sessionRow.start_time,
+      endTime: sessionRow.end_time,
+      durationMinutes: sessionRow.duration_minutes,
+    },
+    authorizationId,
+    serviceCode,
+    actorUserId,
+    goalId,
+    noteText: "Playwright lifecycle completed goal note",
+    narrative: "Playwright lifecycle seeded session note",
+  });
+
+  const { error: insertError } = await adminClient.from("client_session_notes").insert(notePayload);
+  if (insertError) {
+    throw new Error(`Unable to seed lifecycle session goal notes: ${insertError.message}`);
   }
 };
 
@@ -961,6 +1072,8 @@ async function markTerminalViaScheduleModal(
   scheduleUrl: string,
   sessionId: string,
   terminalStatus: TerminalStatus,
+  ids: LifecycleIds,
+  actorUserId: string,
   strictMode: boolean,
 ): Promise<void> {
   await openEditSessionModalFromUrl(page, scheduleUrl, sessionId);
@@ -996,11 +1109,15 @@ async function markTerminalViaScheduleModal(
       await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
     } catch (fallbackError) {
       const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      if (terminalStatus === "completed" && /SESSION_NOTES_REQUIRED/i.test(fallbackMessage)) {
+      if (/SESSION_NOTES_REQUIRED/i.test(fallbackMessage)) {
         console.warn(
-          "[lifecycle] completed fallback hit SESSION_NOTES_REQUIRED; clearing session_goals and retrying service-role completion.",
+          `[lifecycle] ${terminalStatus} fallback hit SESSION_NOTES_REQUIRED; seeding goal notes and retrying service-role completion.`,
         );
-        await clearSessionGoalsViaServiceRole(sessionId);
+        await seedSessionGoalNotesViaServiceRole({
+          sessionId,
+          goalId: ids.goalId,
+          actorUserId,
+        });
         await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
       } else {
         throw fallbackError;
@@ -1094,6 +1211,7 @@ export async function run() {
       authenticatedCredential.email,
       authenticatedCredential.password,
     );
+    const actorUserId = getActorUserIdFromToken(token);
     const runtimeProjectRef = await withStepTimeout("runtime-config project-ref", () =>
       fetchRuntimeProjectRef(activePage, base));
     const tokenProjectRef = getTokenIssuerProjectRef(token);
@@ -1126,11 +1244,23 @@ export async function run() {
     await withStepTimeout("start-session-modal", () =>
       startSessionViaScheduleModal(activePage, scheduleUrl, booked, token, strictParityMode));
     if (terminalStatus === "no-show" || terminalStatus === "completed") {
-      await withStepTimeout(`clear-session-goals-for-${terminalStatus}`, () =>
-        clearSessionGoalsViaServiceRole(booked.sessionId));
+      await withStepTimeout(`seed-session-goal-notes-for-${terminalStatus}`, () =>
+        seedSessionGoalNotesViaServiceRole({
+          sessionId: booked.sessionId,
+          goalId: booked.goalId,
+          actorUserId,
+        }));
     }
     await withStepTimeout(`${terminalStatus}-session-modal`, () =>
-      markTerminalViaScheduleModal(activePage, scheduleUrl, booked.sessionId, terminalStatus, strictParityMode));
+      markTerminalViaScheduleModal(
+        activePage,
+        scheduleUrl,
+        booked.sessionId,
+        terminalStatus,
+        booked,
+        actorUserId,
+        strictParityMode,
+      ));
     await withStepTimeout(`assert-session-${terminalStatus}`, () =>
       assertSessionRowStatus(booked.sessionId, terminalStatus));
 

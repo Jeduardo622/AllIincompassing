@@ -45,6 +45,16 @@
   status = 200
 
 [[redirects]]
+  from = "/api/sessions-week-forward"
+  to = "/.netlify/functions/sessions-week-forward"
+  status = 200
+
+[[redirects]]
+  from = "/api/sessions/week-forward"
+  to = "/.netlify/functions/sessions-week-forward"
+  status = 200
+
+[[redirects]]
   from = "/api/session-notes/upsert"
   to = "/.netlify/functions/session-notes-upsert"
   status = 200

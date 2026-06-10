@@ -44,6 +44,15 @@ const CRITICAL_ENDPOINTS = [
     expectedMethod: "POST",
     expectedContentType: "application/json",
   },
+  {
+    route: "/api/sessions-week-forward",
+    aliases: ["/api/sessions/week-forward"],
+    netlifyFunction: "sessions-week-forward.ts",
+    sourceFile: "src/server/api/sessions-week-forward.ts",
+    handlerSymbol: "sessionsWeekForwardHandler",
+    expectedMethod: "POST",
+    expectedContentType: "application/json",
+  },
 ];
 
 const readText = async (relativePath) => {
@@ -75,8 +84,30 @@ const parseBoolean = (value, fallback) => {
   return /^(1|true|yes)$/i.test(value);
 };
 
+const parseRedirects = (content) => {
+  const redirects = [];
+  const lines = content.split(/\r?\n/);
+  let current = null;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === "[[redirects]]") {
+      if (current) redirects.push(current);
+      current = {};
+      continue;
+    }
+    if (!current) continue;
+    const fromMatch = trimmed.match(/^from\s*=\s*"([^"]+)"$/);
+    if (fromMatch) current.from = fromMatch[1];
+    const toMatch = trimmed.match(/^to\s*=\s*"([^"]+)"$/);
+    if (toMatch) current.to = toMatch[1];
+  }
+  if (current) redirects.push(current);
+  return redirects.filter((redirect) => typeof redirect.from === "string" && typeof redirect.to === "string");
+};
+
 const run = async () => {
   const failures = [];
+  const redirects = parseRedirects(await readText("netlify.toml"));
   const edgeParityRequired = parseBoolean(
     process.env.CI_EDGE_ROUTE_PARITY_REQUIRED,
     parseBoolean(process.env.CI_SUPABASE_AUTH_PARITY_REQUIRED, process.env.CI === "true"),
@@ -85,6 +116,15 @@ const run = async () => {
   for (const endpoint of CRITICAL_ENDPOINTS) {
     const netlifyPath = `netlify/functions/${endpoint.netlifyFunction}`;
     const netlifyText = await readText(netlifyPath);
+    const expectedTarget = `/.netlify/functions/${endpoint.netlifyFunction.replace(/\.ts$/, "")}`;
+    for (const route of [endpoint.route, ...(endpoint.aliases ?? [])]) {
+      const redirect = redirects.find((candidate) => candidate.from === route);
+      if (!redirect) {
+        failures.push(`${route}: missing Netlify redirect.`);
+      } else if (redirect.to !== expectedTarget) {
+        failures.push(`${route}: Netlify redirect points to ${redirect.to}, expected ${expectedTarget}.`);
+      }
+    }
     if (endpoint.sourceFile) {
       const sourceText = await readText(endpoint.sourceFile);
       const sourceImportStem = endpoint.sourceFile.replace(/\\/g, "/").replace(/^src\//, "../../src/").replace(/\.ts$/, "");

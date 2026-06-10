@@ -178,13 +178,29 @@ const checkNotesCoverage = async ({
   if (!sessionGoalsResult.ok || !sessionGoalsResult.data) {
     return { upstreamError: true, message: "Failed to load session goals for notes check" };
   }
-  if (sessionGoalsResult.data.length === 0) {
+
+  let requiredGoalIds = sessionGoalsResult.data
+    .map((row) => row.goal_id)
+    .filter((goalId): goalId is string => typeof goalId === "string" && goalId.length > 0);
+
+  if (requiredGoalIds.length === 0) {
+    const sessionResult = await fetchJson<Array<{ goal_id: string | null }>>(
+      `${supabaseUrl}/rest/v1/sessions?select=goal_id&organization_id=eq.${encodeURIComponent(organizationId)}&id=eq.${encodeURIComponent(sessionId)}`,
+      { method: "GET", headers },
+    );
+    if (!sessionResult.ok || !sessionResult.data) {
+      return { upstreamError: true, message: "Failed to load session goal fallback for notes check" };
+    }
+
+    requiredGoalIds = sessionResult.data
+      .map((row) => row.goal_id)
+      .filter((goalId): goalId is string => typeof goalId === "string" && goalId.length > 0);
+  }
+
+  if (requiredGoalIds.length === 0) {
     return { ok: true };
   }
 
-  const requiredGoalIds = sessionGoalsResult.data
-    .map((row) => row.goal_id)
-    .filter((goalId): goalId is string => typeof goalId === "string" && goalId.length > 0);
   const notesRowsResult = await fetchJson<Array<{ goal_notes: Record<string, unknown> | null }>>(
     `${supabaseUrl}/rest/v1/client_session_notes?select=goal_notes&organization_id=eq.${encodeURIComponent(organizationId)}&session_id=eq.${encodeURIComponent(sessionId)}`,
     { method: "GET", headers },

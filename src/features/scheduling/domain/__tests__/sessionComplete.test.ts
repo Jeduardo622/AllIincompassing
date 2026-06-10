@@ -190,4 +190,46 @@ describe("checkInProgressSessionCloseReadiness", () => {
     expect(result.ready).toBe(true);
     expect(result.missingGoalIds).toEqual([]);
   });
+
+  it("falls back to sessions.goal_id when session_goals is unexpectedly empty", async () => {
+    supabaseFromMock.mockImplementation((table: string) => {
+      if (table === "session_goals") {
+        return createFromResponse({
+          data: [],
+          error: null,
+        });
+      }
+      if (table === "sessions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(() => Promise.resolve({
+                  data: { goal_id: "goal-fallback" },
+                  error: null,
+                })),
+              })),
+            })),
+          })),
+        };
+      }
+      if (table === "client_session_notes") {
+        return createFromResponse({
+          data: [{ goal_notes: { "goal-fallback": "Covered by fallback." } }],
+          error: null,
+        });
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const { checkInProgressSessionCloseReadiness } = await import("../sessionComplete");
+    const result = await checkInProgressSessionCloseReadiness({
+      sessionId: "session-fallback",
+      organizationId: "org-1",
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.requiredGoalIds).toEqual(["goal-fallback"]);
+    expect(result.missingGoalIds).toEqual([]);
+  });
 });

@@ -44,6 +44,7 @@ const mockSession = {
   end_time: '2026-03-31T11:00:00Z',
   therapist_id: 'therapist-1',
   therapist: { full_name: 'Test Therapist' },
+  goal_id: null,
 };
 
 const mockTherapist = {
@@ -181,6 +182,26 @@ describe('AddSessionNoteModal — session_goals auto-population', () => {
 
     // Goal must NOT be pre-checked when there are no session_goals.
     expect(goalCheckbox).not.toBeChecked();
+  });
+
+  it('falls back to the linked session primary goal when session_goals are empty', async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([mockProgram]) as any;
+      if (table === 'goals') return buildChain([mockGoal]) as any;
+      if (table === 'sessions') {
+        return buildChainWithLimit([{ ...mockSession, goal_id: 'goal-1' }]) as any;
+      }
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    const goalCheckbox = await screen.findByRole('checkbox', { name: /default goal/i });
+
+    await waitFor(() => {
+      expect(goalCheckbox).toBeChecked();
+    });
   });
 
   it('allows the therapist to uncheck an auto-populated goal', async () => {

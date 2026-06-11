@@ -9,6 +9,7 @@ import {
   mergeUniqueGoalIds,
 } from '../lib/goal-measurements';
 import { useActiveOrganizationId } from '../lib/organization';
+import { resolveSessionCloseRequiredGoalIds } from '../lib/sessionCloseRequiredGoals';
 import { showError } from '../lib/toast';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/authContext';
@@ -184,7 +185,7 @@ export function AddSessionNoteModal({
       }
       const { data, error } = await supabase
         .from('sessions')
-        .select('id, start_time, end_time, therapist_id, therapist:therapist_id(full_name)')
+        .select('id, start_time, end_time, therapist_id, goal_id, therapist:therapist_id(full_name)')
         .eq('client_id', clientId)
         .eq('organization_id', organizationId)
         .order('start_time', { ascending: false })
@@ -198,6 +199,7 @@ export function AddSessionNoteModal({
         start_time: string;
         end_time: string;
         therapist_id: string;
+        goal_id: string | null;
         therapist: { full_name: string | null } | null;
       }>;
     },
@@ -244,14 +246,18 @@ export function AddSessionNoteModal({
   // session ID so that any manual edits the therapist makes afterwards are
   // preserved.  The ref is reset in resetForm() when the modal closes.
   useEffect(() => {
-    if (!sessionGoalsData || sessionGoalsData.length === 0 || goals.length === 0) {
+    if (goals.length === 0) {
       return;
     }
     if (selectedSessionId && selectedSessionId === appliedForSession.current) {
       return;
     }
 
-    const goalIds = sessionGoalsData.map((sg) => sg.goal_id);
+    const selectedSession = sessions.find((entry) => entry.id === selectedSessionId);
+    const goalIds = resolveSessionCloseRequiredGoalIds({
+      sessionGoalIds: (sessionGoalsData ?? []).map((sg) => sg.goal_id),
+      primaryGoalId: selectedSession?.goal_id ?? null,
+    });
     const validIds = goals
       .filter((g) => g.status !== 'archived' && goalIds.includes(g.id))
       .map((g) => g.id);
@@ -260,7 +266,7 @@ export function AddSessionNoteModal({
       setSelectedGoalIds(validIds);
       appliedForSession.current = selectedSessionId;
     }
-  }, [sessionGoalsData, goals, selectedSessionId]);
+  }, [goals, selectedSessionId, sessionGoalsData, sessions]);
 
   const toggleGoalSelection = (goalId: string) => {
     setSelectedGoalIds((prev) => {

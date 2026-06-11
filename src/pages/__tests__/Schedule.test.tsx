@@ -467,6 +467,58 @@ describe("Schedule", () => {
     });
   }, 15000);
 
+  it("applies week-forward only for selected source sessions", async () => {
+    const capturedRequests: Array<Record<string, unknown>> = [];
+    server.use(
+      http.post("*/api/sessions-week-forward", async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        capturedRequests.push(body);
+        return HttpResponse.json({
+          success: true,
+          data: {
+            sourceSessionCount: 1,
+            generatedSessionCount: 4,
+            generatedWeekCount: 4,
+            endDate: "2025-08-31",
+            conflicts: [],
+            ...(body.dryRun === true ? {} : { createdSessions: [] }),
+          },
+        });
+      }),
+    );
+
+    renderWithProviders(<Schedule />);
+
+    const recurrenceToggle = await screen.findByRole("checkbox", {
+      name: /Apply this visible week forward/i,
+    });
+    await userEvent.click(recurrenceToggle);
+    fireEvent.change(screen.getByLabelText(/End date/i), { target: { value: "2025-08-31" } });
+
+    await userEvent.click(await screen.findByLabelText(/Dr\. Myles \/ Jamie Client/i));
+    expect(screen.getByText(/1 of 2 scheduled sessions selected/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Preview week-forward schedule/i }));
+
+    await waitFor(() => {
+      expect(capturedRequests).toHaveLength(1);
+    });
+    expect(capturedRequests[0]).toMatchObject({
+      sourceSessionIds: ["session-2"],
+      dryRun: true,
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Apply this week forward/i }));
+
+    await waitFor(() => {
+      expect(capturedRequests).toHaveLength(2);
+    });
+    expect(capturedRequests[1]).toMatchObject({
+      sourceSessionIds: ["session-2"],
+      dryRun: false,
+    });
+  }, 30000);
+
   it("keeps the week-forward preview actionable when schedule data refreshes with unchanged sessions", async () => {
     const capturedRequests: Array<Record<string, unknown>> = [];
     server.use(
@@ -565,7 +617,7 @@ describe("Schedule", () => {
     await userEvent.click(recurrenceToggle);
     fireEvent.change(screen.getByLabelText(/End date/i), { target: { value: "2025-08-31" } });
 
-    expect(screen.getByText(/1 scheduled session will be used/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 1 scheduled session selected/i)).toBeInTheDocument();
     expect(
       screen.queryByText(/Every visible session must be scheduled before cloning this week forward/i),
     ).not.toBeInTheDocument();
@@ -620,7 +672,7 @@ describe("Schedule", () => {
     });
     await userEvent.click(recurrenceToggle);
 
-    expect(screen.getByText(/0 scheduled sessions will be used/i)).toBeInTheDocument();
+    expect(screen.getByText(/0 of 0 scheduled sessions selected/i)).toBeInTheDocument();
     expect(screen.getByText(/There are no scheduled sessions in this displayed week to reuse/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Preview week-forward schedule/i })).toBeDisabled();
   }, 15000);

@@ -56,6 +56,7 @@ import {
   showGoalOnBxCaptureTab,
   showGoalOnSkillCaptureTab,
 } from '../lib/session-adhoc-targets';
+import { resolveSessionCloseRequiredGoalIds } from '../lib/sessionCloseRequiredGoals';
 import {
   firstServiceCodeOnAuthorization,
   isSessionCaptureBillingGateRelaxed,
@@ -523,16 +524,26 @@ export function SessionModal({
   }, [sessionDetails, setValue]);
 
   useEffect(() => {
-    if (!sessionGoalRows || sessionGoalRows.length === 0) {
+    if (!session?.id) {
       return;
     }
-    const uniqueGoals = Array.from(
-      new Set(sessionGoalRows.map((row) => row.goal_id).filter((id) => typeof id === 'string'))
-    );
+
+    const uniqueGoals = resolveSessionCloseRequiredGoalIds({
+      sessionGoalIds: sessionGoalRows.map((row) => row.goal_id),
+      primaryGoalId: sessionDetails?.goal_id ?? session?.goal_id ?? null,
+    });
+
     if (uniqueGoals.length > 0) {
+      const currentGoalIds = Array.isArray(getValues('goal_ids')) ? getValues('goal_ids') : [];
+      const isSameGoalSet =
+        currentGoalIds.length === uniqueGoals.length &&
+        currentGoalIds.every((goalId, index) => goalId === uniqueGoals[index]);
+      if (isSameGoalSet) {
+        return;
+      }
       setValue('goal_ids', uniqueGoals);
     }
-  }, [sessionGoalRows, setValue]);
+  }, [getValues, session?.goal_id, session?.id, sessionDetails?.goal_id, sessionGoalRows, setValue]);
 
   useEffect(() => {
     if (!isProgramsFetched) {

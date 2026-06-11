@@ -601,6 +601,63 @@ describe('SessionModal', () => {
     expect(screen.queryByRole('button', { name: /^Close Session$/i })).not.toBeInTheDocument();
   });
 
+  it('falls back to the primary session goal for live capture when session_goals are missing', async () => {
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'sessions') {
+        return buildChain([], {
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          started_at: '2026-03-01T10:00:00.000Z',
+        });
+      }
+      if (table === 'session_goals') {
+        return buildChain([]);
+      }
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={{
+          id: 'session-missing-session-goals',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    expect(await screen.findByLabelText(/^Per-goal note$/i)).toBeInTheDocument();
+  });
+
   it('submits completed status when Close Session is clicked', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderWithProviders(

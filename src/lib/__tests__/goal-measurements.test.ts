@@ -25,6 +25,7 @@ describe('goal-measurements helpers', () => {
         trials: '5',
         promptLevel: 'Gestural',
         comment: 'Needed one reminder',
+        target: '  Match peer greeting in 4/5 trials  ',
       }),
     ).toEqual({
       version: 1,
@@ -37,6 +38,7 @@ describe('goal-measurements helpers', () => {
         opportunities: 5,
         prompt_level: 'Gestural',
         note: 'Needed one reminder',
+        target: 'Match peer greeting in 4/5 trials',
         trial_prompt_note: null,
       },
     });
@@ -59,6 +61,7 @@ describe('goal-measurements helpers', () => {
         opportunities: null,
         prompt_level: null,
         note: null,
+        target: null,
         trial_prompt_note: null,
       },
     });

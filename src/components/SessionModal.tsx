@@ -2477,6 +2477,8 @@ export function SessionModal({
                             `session_note_goal_measurements.${selectedGoalId}.data.prompt_level` as const;
                           const noteFieldKey =
                             `session_note_goal_measurements.${selectedGoalId}.data.note` as const;
+                          const targetFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.target` as const;
                           const correctWatch = watch(metricValueFieldKey);
                           const incorrectWatch = watch(incorrectTrialsFieldKey);
                           const correctDisplay =
@@ -2604,6 +2606,24 @@ export function SessionModal({
                                 className="mt-1 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                                 placeholder="Add progress notes for this goal..."
                               />
+                              <label
+                                htmlFor={`goal-target-${selectedGoalId}`}
+                                className="mt-3 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                              >
+                                Target
+                              </label>
+                              <textarea
+                                id={`goal-target-${selectedGoalId}`}
+                                {...register(targetFieldKey)}
+                                rows={2}
+                                className="mt-1 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                placeholder={selectedGoal?.target_criteria?.trim() || 'Record the target for this session...'}
+                              />
+                              {selectedGoal?.target_criteria?.trim() ? (
+                                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                  Current plan target: {selectedGoal.target_criteria}
+                                </p>
+                              ) : null}
                               <input
                                 type="hidden"
                                 {...register(metricLabelFieldKey)}

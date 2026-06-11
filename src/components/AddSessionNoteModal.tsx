@@ -586,6 +586,25 @@ export function AddSessionNoteModal({
                         >
                           {remaining.toLocaleString()} characters remaining
                         </p>
+                        <label
+                          htmlFor={`goal-target-${goal.id}`}
+                          className="mb-1 mt-3 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                        >
+                          Target
+                        </label>
+                        <textarea
+                          id={`goal-target-${goal.id}`}
+                          value={measurementEntry?.data.target ?? ''}
+                          onChange={(e) => updateGoalMeasurement(goal, { target: toOptionalString(e.target.value) })}
+                          rows={2}
+                          placeholder={goal.target_criteria?.trim() || `Record the target for "${goal.title}"…`}
+                          className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                        />
+                        {goal.target_criteria?.trim() ? (
+                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                            Current plan target: {goal.target_criteria}
+                          </p>
+                        ) : null}
                         <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/70 p-3 dark:border-indigo-900/40 dark:bg-indigo-900/10">
                           <div className="flex items-start justify-between gap-2">
                             <div>
@@ -745,6 +764,25 @@ export function AddSessionNoteModal({
                       >
                         {remaining.toLocaleString()} characters remaining
                       </p>
+                      <label
+                        htmlFor={`goal-target-${goal.id}`}
+                        className="mb-1 mt-3 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        Target
+                      </label>
+                      <textarea
+                        id={`goal-target-${goal.id}`}
+                        value={measurementEntry?.data.target ?? ''}
+                        onChange={(e) => updateGoalMeasurement(goal, { target: toOptionalString(e.target.value) })}
+                        rows={2}
+                        placeholder={goal.target_criteria?.trim() || `Record the target for "${goal.title}"…`}
+                        className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                      />
+                      {goal.target_criteria?.trim() ? (
+                        <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                          Current plan target: {goal.target_criteria}
+                        </p>
+                      ) : null}
                       <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/70 p-3 dark:border-indigo-900/40 dark:bg-indigo-900/10">
                         <div className="flex items-start justify-between gap-2">
                           <div>

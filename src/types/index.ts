@@ -335,6 +335,7 @@ export interface SessionGoalMeasurementData {
   opportunities?: number | null;
   prompt_level?: string | null;
   note?: string | null;
+  target?: string | null;
   /** Verbal / physical prompts and reactions for trial data (therapist capture). */
   trial_prompt_note?: string | null;
 }

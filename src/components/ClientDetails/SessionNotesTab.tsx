@@ -77,6 +77,13 @@ const buildMeasurementSummary = (
     });
   }
 
+  if (data.target?.trim()) {
+    summary.push({
+      label: 'Target',
+      value: data.target,
+    });
+  }
+
   if (data.note?.trim()) {
     summary.push({
       label: 'Measurement note',

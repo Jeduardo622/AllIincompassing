@@ -103,6 +103,7 @@ export const hasMeaningfulGoalMeasurementEntry = (
     (data.opportunities !== null && data.opportunities !== undefined) ||
     (data.prompt_level?.trim().length ?? 0) > 0 ||
     (data.note?.trim().length ?? 0) > 0 ||
+    (data.target?.trim().length ?? 0) > 0 ||
     (data.trial_prompt_note?.trim().length ?? 0) > 0
   );
 };
@@ -149,6 +150,7 @@ export const normalizeGoalMeasurementEntry = (
         sourceData.prompt_level ?? sourceData.promptLevel,
       ),
       note: toOptionalString(sourceData.note ?? sourceData.comment),
+      target: toOptionalString(sourceData.target),
       trial_prompt_note: toOptionalString(
         sourceData.trial_prompt_note ?? sourceData.trialPromptNote,
       ),
@@ -175,6 +177,7 @@ export const buildGoalMeasurementEntry = (
       opportunities: normalizedExisting?.data.opportunities ?? null,
       prompt_level: normalizedExisting?.data.prompt_level ?? null,
       note: normalizedExisting?.data.note ?? null,
+      target: normalizedExisting?.data.target ?? null,
       trial_prompt_note: normalizedExisting?.data.trial_prompt_note ?? null,
     },
   };
@@ -210,6 +213,9 @@ export const mergeGoalMeasurementEntry = (
       note: updates.note !== undefined
         ? updates.note ?? null
         : existing?.data.note ?? null,
+      target: updates.target !== undefined
+        ? updates.target ?? null
+        : existing?.data.target ?? null,
       trial_prompt_note: updates.trial_prompt_note !== undefined
         ? updates.trial_prompt_note ?? null
         : existing?.data.trial_prompt_note ?? null,

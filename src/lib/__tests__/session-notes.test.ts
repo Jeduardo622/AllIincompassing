@@ -112,13 +112,14 @@ describe('fetchClientSessionNotes', () => {
           metric_unit: null,
           metric_value: 4,
           incorrect_trials: null,
-          opportunities: 5,
-          prompt_level: 'Gestural',
-          note: 'Legacy payload still loads',
-          trial_prompt_note: null,
-        },
+        opportunities: 5,
+        prompt_level: 'Gestural',
+        note: 'Legacy payload still loads',
+        target: null,
+        trial_prompt_note: null,
       },
-    });
+    },
+  });
   });
 
   it('retries without goal_measurements when select fails on missing column', async () => {

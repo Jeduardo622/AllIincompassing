@@ -38,7 +38,7 @@ const basePayload = {
   goalNotes: { "44444444-4444-4444-8444-444444444444": "  covered  " },
   goalMeasurements: {
     "44444444-4444-4444-8444-444444444444": {
-      data: { metric_value: 4, opportunities: 5, note: "  measured  " },
+      data: { metric_value: 4, opportunities: 5, note: "  measured  ", target: "  Match peer greeting in 4/5 trials  " },
     },
     "55555555-5555-4555-8555-555555555555": {
       data: { note: "   " },
@@ -66,6 +66,7 @@ const buildSessionNoteRow = (id: string) => ({
         opportunities: 5,
         prompt_level: null,
         note: "measured",
+        target: "Match peer greeting in 4/5 trials",
         trial_prompt_note: null,
       },
     },
@@ -148,6 +149,7 @@ describe("sessionNotesUpsertHandler", () => {
               opportunities: 5,
               prompt_level: null,
               note: "measured",
+              target: "Match peer greeting in 4/5 trials",
               trial_prompt_note: null,
             },
           },

@@ -215,7 +215,7 @@ export function AddSessionNoteModal({
 
   // Fetch session_goals when a session is linked.  This is the authoritative
   // list of goals that were worked during that session, written by sessions-start.
-  const { data: sessionGoalsData } = useQuery({
+  const { data: sessionGoalsData, isFetched: isSessionGoalsFetched } = useQuery({
     queryKey: ['session-goals-for-note', selectedSessionId, organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!selectedSessionId || !organizationId) {
@@ -252,6 +252,9 @@ export function AddSessionNoteModal({
     if (selectedSessionId && selectedSessionId === appliedForSession.current) {
       return;
     }
+    if (selectedSessionId && !isSessionGoalsFetched) {
+      return;
+    }
 
     const selectedSession = sessions.find((entry) => entry.id === selectedSessionId);
     const goalIds = resolveSessionCloseRequiredGoalIds({
@@ -266,7 +269,7 @@ export function AddSessionNoteModal({
       setSelectedGoalIds(validIds);
       appliedForSession.current = selectedSessionId;
     }
-  }, [goals, selectedSessionId, sessionGoalsData, sessions]);
+  }, [goals, isSessionGoalsFetched, selectedSessionId, sessionGoalsData, sessions]);
 
   const toggleGoalSelection = (goalId: string) => {
     setSelectedGoalIds((prev) => {

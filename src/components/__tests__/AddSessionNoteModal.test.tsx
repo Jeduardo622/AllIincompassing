@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../test/utils';
 import { AddSessionNoteModal } from '../AddSessionNoteModal';
 import { supabase } from '../../lib/supabase';
@@ -36,6 +36,14 @@ const mockGoal = {
   objective_data_points: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
+};
+
+const mockWorkedGoal = {
+  ...mockGoal,
+  id: 'goal-2',
+  title: 'Worked Goal',
+  description: 'Worked goal for tests',
+  original_text: 'Worked clinical wording',
 };
 
 const mockSession = {
@@ -202,6 +210,50 @@ describe('AddSessionNoteModal — session_goals auto-population', () => {
     await waitFor(() => {
       expect(goalCheckbox).toBeChecked();
     });
+  });
+
+  it('waits for session_goals before applying the primary goal fallback', async () => {
+    let resolveSessionGoals!: (value: { data: Array<{ goal_id: string; program_id: string }>; error: null }) => void;
+    const sessionGoalsPromise = new Promise<{ data: Array<{ goal_id: string; program_id: string }>; error: null }>(
+      (resolve) => {
+        resolveSessionGoals = resolve;
+      },
+    );
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([mockProgram]) as any;
+      if (table === 'goals') return buildChain([mockGoal, mockWorkedGoal]) as any;
+      if (table === 'sessions') {
+        return buildChainWithLimit([{ ...mockSession, goal_id: 'goal-1' }]) as any;
+      }
+      if (table === 'session_goals') {
+        const chain = buildChain([]) as QueryChain;
+        chain.order = vi.fn(() => sessionGoalsPromise);
+        return chain as any;
+      }
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    const primaryGoalCheckbox = await screen.findByRole('checkbox', { name: /default goal/i });
+    const workedGoalCheckbox = await screen.findByRole('checkbox', { name: /worked goal/i });
+
+    expect(primaryGoalCheckbox).not.toBeChecked();
+    expect(workedGoalCheckbox).not.toBeChecked();
+
+    await act(async () => {
+      resolveSessionGoals({
+        data: [{ goal_id: 'goal-2', program_id: 'program-1' }],
+        error: null,
+      });
+      await sessionGoalsPromise;
+    });
+
+    await waitFor(() => {
+      expect(workedGoalCheckbox).toBeChecked();
+    });
+    expect(primaryGoalCheckbox).not.toBeChecked();
   });
 
   it('allows the therapist to uncheck an auto-populated goal', async () => {

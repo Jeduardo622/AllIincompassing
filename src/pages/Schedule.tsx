@@ -106,6 +106,8 @@ const _scheduleBoundedConcurrencyMarker = AUTO_SCHEDULE_CONCURRENCY;
 const isWeekForwardRecurrenceSourceSession = (
   session: Pick<Session, "status">,
 ): boolean => session.status === "scheduled";
+const areStringArraysEqual = (left: string[], right: string[]): boolean =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
 const LazySessionModal = React.lazy(() =>
   import("../components/SessionModal").then((module) => ({ default: module.SessionModal })),
 );
@@ -441,6 +443,8 @@ export const Schedule = React.memo(() => {
   const [recurrenceTimeZone, setRecurrenceTimeZone] = useState(userTimeZone);
   const [weekForwardEndDate, setWeekForwardEndDate] = useState("");
   const [weekForwardPreview, setWeekForwardPreview] = useState<WeekForwardPreviewResult | null>(null);
+  const [weekForwardSelectedSourceSessionIds, setWeekForwardSelectedSourceSessionIds] = useState<string[]>([]);
+  const previousWeekForwardSourceSessionIdsRef = useRef<string[]>([]);
 
   useLayoutEffect(() => {
     setRecurrenceTimeZone(userTimeZone);
@@ -858,6 +862,42 @@ export const Schedule = React.memo(() => {
     () => weekForwardVisibleSessions.filter(isWeekForwardRecurrenceSourceSession),
     [weekForwardVisibleSessions],
   );
+  const weekForwardSourceSessionIdSignature = useMemo(
+    () => weekForwardSourceSessions.map((session) => session.id).join("|"),
+    [weekForwardSourceSessions],
+  );
+  useEffect(() => {
+    const currentIds = weekForwardSourceSessionIdSignature
+      ? weekForwardSourceSessionIdSignature.split("|")
+      : [];
+    const currentIdSet = new Set(currentIds);
+    const previousIdSet = new Set(previousWeekForwardSourceSessionIdsRef.current);
+
+    setWeekForwardSelectedSourceSessionIds((previousSelectedIds) => {
+      if (!recurrenceEnabled) {
+        return areStringArraysEqual(previousSelectedIds, currentIds) ? previousSelectedIds : currentIds;
+      }
+
+      const preservedSelections = previousSelectedIds.filter((id) => currentIdSet.has(id));
+      const newSourceIds = currentIds.filter((id) => !previousIdSet.has(id));
+      const nextIds = [...preservedSelections];
+      for (const id of newSourceIds) {
+        if (!nextIds.includes(id)) {
+          nextIds.push(id);
+        }
+      }
+      if (nextIds.length === 0 && previousSelectedIds.length === 0) {
+        return currentIds;
+      }
+      return areStringArraysEqual(previousSelectedIds, nextIds) ? previousSelectedIds : nextIds;
+    });
+
+    previousWeekForwardSourceSessionIdsRef.current = currentIds;
+  }, [recurrenceEnabled, weekForwardSourceSessionIdSignature]);
+  const weekForwardSelectedSourceSessions = useMemo(() => {
+    const selectedIdSet = new Set(weekForwardSelectedSourceSessionIds);
+    return weekForwardSourceSessions.filter((session) => selectedIdSet.has(session.id));
+  }, [weekForwardSelectedSourceSessionIds, weekForwardSourceSessions]);
   const weekForwardSourceSessionSignature = useMemo(
     () =>
       weekForwardSourceSessions
@@ -873,8 +913,13 @@ export const Schedule = React.memo(() => {
         .join("|"),
     [weekForwardSourceSessions],
   );
+  const weekForwardSelectedSourceSessionSignature = useMemo(
+    () => weekForwardSelectedSourceSessions.map((session) => session.id).sort().join("|"),
+    [weekForwardSelectedSourceSessions],
+  );
   const weekForwardDisplayedWeekSignature = `${weekStart.toISOString()}|${weekEnd.toISOString()}`;
   const weekForwardHasScheduledSessions = weekForwardSourceSessions.length > 0;
+  const weekForwardHasSelectedSourceSessions = weekForwardSelectedSourceSessions.length > 0;
   const weekForwardRequiresOrgContext = effectiveRole === "super_admin" && !activeOrganizationId;
   const weekForwardAvailableInCurrentView = view === "week";
   const weekForwardSourceSummary = `${format(weekStart, "MMM d")} - ${format(weekEnd, "MMM d, yyyy")}`;
@@ -884,6 +929,7 @@ export const Schedule = React.memo(() => {
     weekForwardAvailableInCurrentView &&
     !weekForwardRequiresOrgContext &&
     weekForwardHasScheduledSessions &&
+    weekForwardHasSelectedSourceSessions &&
     weekForwardEndDate.trim().length > 0;
   const isScheduleShellNarrow = useSyncExternalStore(
     (onStoreChange) => {
@@ -1063,7 +1109,7 @@ export const Schedule = React.memo(() => {
   const weekForwardPreviewMutation = useMutation({
     mutationFn: async () =>
       previewWeekForwardScheduling({
-        sourceSessionIds: weekForwardSourceSessions.map((session) => session.id),
+        sourceSessionIds: weekForwardSelectedSourceSessions.map((session) => session.id),
         displayedWeekStart: weekStart.toISOString(),
         displayedWeekEnd: weekEnd.toISOString(),
         endDate: weekForwardEndDate,
@@ -1090,7 +1136,7 @@ export const Schedule = React.memo(() => {
   const weekForwardApplyMutation = useMutation({
     mutationFn: async () =>
       applyWeekForwardScheduling({
-        sourceSessionIds: weekForwardSourceSessions.map((session) => session.id),
+        sourceSessionIds: weekForwardSelectedSourceSessions.map((session) => session.id),
         displayedWeekStart: weekStart.toISOString(),
         displayedWeekEnd: weekEnd.toISOString(),
         endDate: weekForwardEndDate,
@@ -1124,6 +1170,7 @@ export const Schedule = React.memo(() => {
     weekForwardEndDate,
     weekForwardDisplayedWeekSignature,
     weekForwardSourceSessionSignature,
+    weekForwardSelectedSourceSessionSignature,
     weekForwardAvailableInCurrentView,
   ]);
 
@@ -2053,6 +2100,22 @@ export const Schedule = React.memo(() => {
     />
   );
 
+  const toggleWeekForwardSourceSession = (sessionId: string) => {
+    setWeekForwardSelectedSourceSessionIds((current) =>
+      current.includes(sessionId)
+        ? current.filter((id) => id !== sessionId)
+        : [...current, sessionId],
+    );
+  };
+
+  const selectAllWeekForwardSourceSessions = () => {
+    setWeekForwardSelectedSourceSessionIds(weekForwardSourceSessions.map((session) => session.id));
+  };
+
+  const clearWeekForwardSourceSessions = () => {
+    setWeekForwardSelectedSourceSessionIds([]);
+  };
+
   const renderScheduleRecurrenceFieldset = (marginClass: string) => (
     <fieldset
       className={`${marginClass ? `${marginClass} ` : ""}bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4`}
@@ -2097,7 +2160,7 @@ export const Schedule = React.memo(() => {
                     <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Source week</div>
                     <div className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">{weekForwardSourceSummary}</div>
                     <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {weekForwardSourceSessions.length} scheduled {weekForwardSourceSessions.length === 1 ? "session" : "sessions"} will be used.
+                      {weekForwardSelectedSourceSessions.length} of {weekForwardSourceSessions.length} scheduled {weekForwardSourceSessions.length === 1 ? "session" : "sessions"} selected.
                     </div>
                   </div>
 
@@ -2119,6 +2182,58 @@ export const Schedule = React.memo(() => {
                   </div>
                 </div>
 
+                {weekForwardHasScheduledSessions ? (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-dark">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                          Sessions to repeat
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Uncheck sessions that were already applied, then repeat only the newly added sessions.
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={selectAllWeekForwardSourceSessions}
+                          className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearWeekForwardSourceSessions}
+                          className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                      {weekForwardSourceSessions.map((session) => {
+                        const therapistName = displayData.therapists.find((therapist) => therapist.id === session.therapist_id)?.full_name ?? "Unknown therapist";
+                        const clientName = displayData.clients.find((client) => client.id === session.client_id)?.full_name ?? "Unknown client";
+                        const sessionLabel = `${format(parseISO(session.start_time), "EEE h:mm a")} - ${therapistName} / ${clientName}`;
+                        return (
+                          <label
+                            key={session.id}
+                            className="flex items-start gap-2 rounded-md border border-gray-200 bg-white p-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-200"
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={weekForwardSelectedSourceSessionIds.includes(session.id)}
+                              onChange={() => toggleWeekForwardSourceSession(session.id)}
+                            />
+                            <span>{sessionLabel}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
                   The operation stops on the first conflict and creates nothing unless the whole batch is valid.
                 </div>
@@ -2132,6 +2247,12 @@ export const Schedule = React.memo(() => {
                 {!weekForwardHasScheduledSessions ? (
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
                     There are no scheduled sessions in this displayed week to reuse.
+                  </div>
+                ) : null}
+
+                {weekForwardHasScheduledSessions && !weekForwardHasSelectedSourceSessions ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                    Select at least one scheduled session to repeat.
                   </div>
                 ) : null}
 

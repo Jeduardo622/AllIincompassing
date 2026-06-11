@@ -516,7 +516,13 @@ describe("Schedule", () => {
       endDate: "2025-08-31",
       dryRun: false,
     });
-  }, 15000);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Preview week-forward schedule/i })).toBeEnabled();
+    });
+    expect(screen.getByRole("button", { name: /Apply this week forward/i })).toBeDisabled();
+    expect(screen.queryByText(/^Preview$/i)).not.toBeInTheDocument();
+  }, 30000);
 
   it("recurs only scheduled sessions when visible sessions include other statuses", async () => {
     const capturedRequests: Array<Record<string, unknown>> = [];

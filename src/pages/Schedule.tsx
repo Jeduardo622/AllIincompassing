@@ -1097,7 +1097,7 @@ export const Schedule = React.memo(() => {
         timeZone: recurrenceTimeZone,
       }),
     onSuccess: async (result) => {
-      setWeekForwardPreview(result);
+      setWeekForwardPreview(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sessions"] }),
         queryClient.invalidateQueries({ queryKey: ["sessions-batch"] }),

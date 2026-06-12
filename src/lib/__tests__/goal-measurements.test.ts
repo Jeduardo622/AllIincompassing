@@ -1,5 +1,6 @@
 import {
   buildGoalMeasurementEntry,
+  getGoalMeasurementTargets,
   getGoalMeasurementFieldMeta,
   mergeGoalMeasurementEntry,
   mergeUniqueGoalIds,
@@ -38,6 +39,7 @@ describe('goal-measurements helpers', () => {
         opportunities: 5,
         prompt_level: 'Gestural',
         note: 'Needed one reminder',
+        targets: ['Match peer greeting in 4/5 trials'],
         target: 'Match peer greeting in 4/5 trials',
         trial_prompt_note: null,
       },
@@ -61,6 +63,7 @@ describe('goal-measurements helpers', () => {
         opportunities: null,
         prompt_level: null,
         note: null,
+        targets: null,
         target: null,
         trial_prompt_note: null,
       },
@@ -75,6 +78,14 @@ describe('goal-measurements helpers', () => {
         { metric_value: null, opportunities: null, note: null, prompt_level: null },
       ),
     ).toBeNull();
+  });
+
+  it('prefers targets arrays and falls back to legacy target strings', () => {
+    expect(getGoalMeasurementTargets({ targets: [' First ', 'Second'], target: 'Legacy' } as any)).toEqual([
+      'First',
+      'Second',
+    ]);
+    expect(getGoalMeasurementTargets({ target: ' Legacy only ' } as any)).toEqual(['Legacy only']);
   });
 
   it('merges unique goal ids while trimming blanks', () => {

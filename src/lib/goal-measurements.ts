@@ -1,4 +1,4 @@
-import type { Goal, SessionGoalMeasurementEntry } from '../types';
+import type { Goal, SessionGoalMeasurementData, SessionGoalMeasurementEntry } from '../types';
 
 export const GOAL_MEASUREMENT_VERSION = 1 as const;
 
@@ -31,6 +31,32 @@ const toOptionalString = (value: unknown): string | null => {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+};
+
+const normalizeStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => toOptionalString(entry))
+    .filter((entry): entry is string => Boolean(entry));
+};
+
+export const getGoalMeasurementTargets = (
+  data: SessionGoalMeasurementData | null | undefined,
+): string[] => {
+  if (!data) {
+    return [];
+  }
+
+  const normalizedTargets = normalizeStringList(data.targets);
+  if (normalizedTargets.length > 0) {
+    return normalizedTargets;
+  }
+
+  const legacyTarget = toOptionalString(data.target);
+  return legacyTarget ? [legacyTarget] : [];
 };
 
 export const getGoalMeasurementFieldMeta = (goal: Goal | undefined): GoalMeasurementFieldMeta => {
@@ -103,7 +129,7 @@ export const hasMeaningfulGoalMeasurementEntry = (
     (data.opportunities !== null && data.opportunities !== undefined) ||
     (data.prompt_level?.trim().length ?? 0) > 0 ||
     (data.note?.trim().length ?? 0) > 0 ||
-    (data.target?.trim().length ?? 0) > 0 ||
+    getGoalMeasurementTargets(data).length > 0 ||
     (data.trial_prompt_note?.trim().length ?? 0) > 0
   );
 };
@@ -131,6 +157,12 @@ export const normalizeGoalMeasurementEntry = (
     options && 'fallbackMetricUnit' in options
       ? options.fallbackMetricUnit
       : fieldMeta.primaryUnit;
+  const normalizedTargets = normalizeStringList(sourceData.targets);
+  const fallbackLegacyTarget = toOptionalString(sourceData.target);
+  const resolvedTargets =
+    normalizedTargets.length > 0
+      ? normalizedTargets
+      : (fallbackLegacyTarget ? [fallbackLegacyTarget] : []);
   const normalizedEntry: SessionGoalMeasurementEntry = {
     version: GOAL_MEASUREMENT_VERSION,
     data: {
@@ -150,7 +182,8 @@ export const normalizeGoalMeasurementEntry = (
         sourceData.prompt_level ?? sourceData.promptLevel,
       ),
       note: toOptionalString(sourceData.note ?? sourceData.comment),
-      target: toOptionalString(sourceData.target),
+      targets: resolvedTargets.length > 0 ? resolvedTargets : null,
+      target: resolvedTargets[0] ?? null,
       trial_prompt_note: toOptionalString(
         sourceData.trial_prompt_note ?? sourceData.trialPromptNote,
       ),
@@ -166,6 +199,7 @@ export const buildGoalMeasurementEntry = (
 ): SessionGoalMeasurementEntry | null => {
   const fieldMeta = getGoalMeasurementFieldMeta(goal);
   const normalizedExisting = normalizeGoalMeasurementEntry(rawValue, goal);
+  const existingTargets = getGoalMeasurementTargets(normalizedExisting?.data);
   const nextEntry: SessionGoalMeasurementEntry = {
     version: GOAL_MEASUREMENT_VERSION,
     data: {
@@ -177,7 +211,8 @@ export const buildGoalMeasurementEntry = (
       opportunities: normalizedExisting?.data.opportunities ?? null,
       prompt_level: normalizedExisting?.data.prompt_level ?? null,
       note: normalizedExisting?.data.note ?? null,
-      target: normalizedExisting?.data.target ?? null,
+      targets: existingTargets.length > 0 ? existingTargets : null,
+      target: existingTargets[0] ?? null,
       trial_prompt_note: normalizedExisting?.data.trial_prompt_note ?? null,
     },
   };
@@ -192,6 +227,15 @@ export const mergeGoalMeasurementEntry = (
 ): SessionGoalMeasurementEntry | null => {
   const fieldMeta = getGoalMeasurementFieldMeta(goal);
   const existing = buildGoalMeasurementEntry(goal, rawValue);
+  const nextTargets = updates.targets !== undefined
+    ? normalizeStringList(updates.targets)
+    : getGoalMeasurementTargets(existing?.data);
+  const normalizedLegacyTarget = updates.target !== undefined
+    ? toOptionalString(updates.target)
+    : null;
+  const resolvedTargets = nextTargets.length > 0
+    ? nextTargets
+    : (normalizedLegacyTarget ? [normalizedLegacyTarget] : []);
   const nextEntry: SessionGoalMeasurementEntry = {
     version: GOAL_MEASUREMENT_VERSION,
     data: {
@@ -213,9 +257,8 @@ export const mergeGoalMeasurementEntry = (
       note: updates.note !== undefined
         ? updates.note ?? null
         : existing?.data.note ?? null,
-      target: updates.target !== undefined
-        ? updates.target ?? null
-        : existing?.data.target ?? null,
+      targets: resolvedTargets.length > 0 ? resolvedTargets : null,
+      target: resolvedTargets[0] ?? null,
       trial_prompt_note: updates.trial_prompt_note !== undefined
         ? updates.trial_prompt_note ?? null
         : existing?.data.trial_prompt_note ?? null,

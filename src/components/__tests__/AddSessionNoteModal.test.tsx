@@ -409,6 +409,10 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     fireEvent.change(screen.getByLabelText(/^target$/i), {
       target: { value: 'Match peer greeting in 4/5 trials' },
     });
+    fireEvent.click(screen.getByRole('button', { name: /add target/i }));
+    fireEvent.change(screen.getByLabelText(/^target 2$/i), {
+      target: { value: 'Wave to peer independently' },
+    });
     fireEvent.change(screen.getByLabelText(/count \(responses\)/i), {
       target: { value: '4' },
     });
@@ -442,6 +446,7 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
               opportunities: 5,
               prompt_level: 'Gestural',
               note: 'Needed one reminder at the start',
+              targets: ['Match peer greeting in 4/5 trials', 'Wave to peer independently'],
               target: 'Match peer greeting in 4/5 trials',
               trial_prompt_note: null,
             },
@@ -479,6 +484,7 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
                 opportunities: 5,
                 prompt_level: 'Gestural',
                 note: 'Existing measurement note',
+                targets: ['Existing target text', 'Second existing target'],
                 target: 'Existing target text',
               },
             },
@@ -498,6 +504,7 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     expect(screen.getByDisplayValue('Gestural')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Existing measurement note')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Existing target text')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Second existing target')).toBeInTheDocument();
   });
 
   it('preserves an unlinked existing note without auto-attaching a session', async () => {

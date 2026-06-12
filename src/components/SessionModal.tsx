@@ -41,6 +41,7 @@ import {
 } from "../features/scheduling/domain/time";
 import { startSessionFromModal } from "../features/scheduling/domain/sessionStart";
 import {
+  getGoalMeasurementTargets,
   getGoalMeasurementFieldMeta,
   hasMeaningfulGoalMeasurementEntry,
   mergeUniqueGoalIds,
@@ -1286,6 +1287,37 @@ export function SessionModal({
     [getValues, setValue],
   );
 
+  const updateGoalTargets = useCallback(
+    (goalId: string, nextTargets: string[]) => {
+      const targetsPath = `session_note_goal_measurements.${goalId}.data.targets` as const;
+      const targetPath = `session_note_goal_measurements.${goalId}.data.target` as const;
+      setValue(targetsPath, nextTargets, { shouldDirty: true, shouldTouch: true });
+      setValue(
+        targetPath,
+        nextTargets
+          .map((target) => (typeof target === 'string' ? target.trim() : ''))
+          .find((target) => target.length > 0) ?? '',
+        { shouldDirty: true, shouldTouch: true },
+      );
+    },
+    [setValue],
+  );
+
+  const addGoalTarget = useCallback(
+    (goalId: string, existingTargets: string[]) => {
+      updateGoalTargets(goalId, [...existingTargets, '']);
+    },
+    [updateGoalTargets],
+  );
+
+  const removeGoalTarget = useCallback(
+    (goalId: string, targetIndex: number, existingTargets: string[]) => {
+      const nextTargets = existingTargets.filter((_, index) => index !== targetIndex);
+      updateGoalTargets(goalId, nextTargets.length > 0 ? nextTargets : ['']);
+    },
+    [updateGoalTargets],
+  );
+
   const addAdhocSessionTarget = useCallback(
     (kind: 'skill' | 'bx') => {
       const id = createAdhocSessionTargetId(kind);
@@ -2477,10 +2509,24 @@ export function SessionModal({
                             `session_note_goal_measurements.${selectedGoalId}.data.prompt_level` as const;
                           const noteFieldKey =
                             `session_note_goal_measurements.${selectedGoalId}.data.note` as const;
+                          const targetsFieldBaseKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.targets` as const;
                           const targetFieldKey =
                             `session_note_goal_measurements.${selectedGoalId}.data.target` as const;
                           const correctWatch = watch(metricValueFieldKey);
                           const incorrectWatch = watch(incorrectTrialsFieldKey);
+                          const watchedTargets = watch(targetsFieldBaseKey) as unknown;
+                          const sessionTargets = (() => {
+                            if (Array.isArray(watchedTargets)) {
+                              const normalizedWatchedTargets = watchedTargets
+                                .map((target) => (typeof target === 'string' ? target : ''));
+                              if (normalizedWatchedTargets.length > 0) {
+                                return normalizedWatchedTargets;
+                              }
+                            }
+                            const normalizedExistingTargets = getGoalMeasurementTargets(existingMeasurementEntry?.data);
+                            return normalizedExistingTargets.length > 0 ? normalizedExistingTargets : [''];
+                          })();
                           const correctDisplay =
                             typeof correctWatch === 'number' && Number.isFinite(correctWatch)
                               ? correctWatch
@@ -2606,24 +2652,73 @@ export function SessionModal({
                                 className="mt-1 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                                 placeholder="Add progress notes for this goal..."
                               />
-                              <label
-                                htmlFor={`goal-target-${selectedGoalId}`}
-                                className="mt-3 block text-xs font-medium text-gray-600 dark:text-gray-300"
-                              >
-                                Target
-                              </label>
-                              <textarea
-                                id={`goal-target-${selectedGoalId}`}
-                                {...register(targetFieldKey)}
-                                rows={2}
-                                className="mt-1 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                                placeholder={selectedGoal?.target_criteria?.trim() || 'Record the target for this session...'}
-                              />
+                              <div className="mt-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <label
+                                    htmlFor={`goal-target-${selectedGoalId}-0`}
+                                    className="block text-xs font-medium text-gray-600 dark:text-gray-300"
+                                  >
+                                    Targets
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => addGoalTarget(selectedGoalId, sessionTargets)}
+                                    className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark dark:text-indigo-200 dark:hover:bg-indigo-950/40"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Add target
+                                  </button>
+                                </div>
+                                <div className="mt-1 space-y-2">
+                                  {sessionTargets.map((targetValue, targetIndex) => {
+                                    const indexedTargetFieldKey =
+                                      `${targetsFieldBaseKey}.${targetIndex}` as const;
+                                    const indexedTargetRegistration = register(indexedTargetFieldKey, {
+                                      onChange: (event) => {
+                                        const nextTargets = sessionTargets.slice();
+                                        nextTargets[targetIndex] = String(event.target.value ?? '');
+                                        updateGoalTargets(selectedGoalId, nextTargets);
+                                      },
+                                    });
+                                    return (
+                                      <div
+                                        key={`${selectedGoalId}-target-${targetIndex}`}
+                                        className="flex items-start gap-2"
+                                      >
+                                        <textarea
+                                          id={`goal-target-${selectedGoalId}-${targetIndex}`}
+                                          aria-label={targetIndex === 0 ? 'Target' : `Target ${targetIndex + 1}`}
+                                          {...indexedTargetRegistration}
+                                          rows={2}
+                                          defaultValue={targetValue}
+                                          className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                          placeholder={selectedGoal?.target_criteria?.trim() || 'Record the target for this session...'}
+                                        />
+                                        {sessionTargets.length > 1 ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => removeGoalTarget(selectedGoalId, targetIndex, sessionTargets)}
+                                            aria-label={`Remove target ${targetIndex + 1}`}
+                                            className="mt-1 shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-rose-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-rose-300"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                               {selectedGoal?.target_criteria?.trim() ? (
                                 <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
                                   Current plan target: {selectedGoal.target_criteria}
                                 </p>
                               ) : null}
+                              <input
+                                type="hidden"
+                                {...register(targetFieldKey)}
+                                defaultValue={existingMeasurementEntry?.data.target ?? ''}
+                              />
                               <input
                                 type="hidden"
                                 {...register(metricLabelFieldKey)}

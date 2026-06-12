@@ -70,6 +70,7 @@ const noteWithGoalMeasurements: SessionNote = {
         opportunities: 5,
         prompt_level: 'Gestural',
         note: 'Needed one reminder at the start',
+        targets: ['Match peer greeting in 4/5 trials', 'Wave to peer independently'],
         target: 'Match peer greeting in 4/5 trials',
       },
     },
@@ -255,8 +256,10 @@ describe('SessionNotesTab — goal notes display', () => {
       expect(screen.getByText('5')).toBeInTheDocument();
       expect(screen.getByText('Prompt level')).toBeInTheDocument();
       expect(screen.getByText('Gestural')).toBeInTheDocument();
-      expect(screen.getByText('Target')).toBeInTheDocument();
+      expect(screen.getByText('Target 1')).toBeInTheDocument();
       expect(screen.getByText('Match peer greeting in 4/5 trials')).toBeInTheDocument();
+      expect(screen.getByText('Target 2')).toBeInTheDocument();
+      expect(screen.getByText('Wave to peer independently')).toBeInTheDocument();
       expect(screen.getByText('Measurement note')).toBeInTheDocument();
       expect(screen.getByText('Needed one reminder at the start')).toBeInTheDocument();
     });

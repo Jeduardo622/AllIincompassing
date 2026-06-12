@@ -21,6 +21,7 @@ import { AddSessionNoteModal, type SessionNoteFormValues  } from '../AddSessionN
 import { useAuth } from '../../lib/authContext';
 import { useActiveOrganizationId } from '../../lib/organization';
 import { showError, showSuccess } from '../../lib/toast';
+import { getGoalMeasurementTargets } from '../../lib/goal-measurements';
 import {
   calculateSessionDurationMinutes,
   createClientSessionNote,
@@ -77,12 +78,13 @@ const buildMeasurementSummary = (
     });
   }
 
-  if (data.target?.trim()) {
+  const targets = getGoalMeasurementTargets(data);
+  targets.forEach((target, index) => {
     summary.push({
-      label: 'Target',
-      value: data.target,
+      label: targets.length > 1 ? `Target ${index + 1}` : 'Target',
+      value: target,
     });
-  }
+  });
 
   if (data.note?.trim()) {
     summary.push({

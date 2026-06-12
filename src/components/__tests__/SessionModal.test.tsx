@@ -1665,6 +1665,10 @@ describe('SessionModal', () => {
     fireEvent.change(screen.getByLabelText(/^Target$/i), {
       target: { value: 'Match peer greeting in 4/5 trials' },
     });
+    await userEvent.click(screen.getByRole('button', { name: /add target/i }));
+    fireEvent.change(screen.getByLabelText(/^Target 2$/i), {
+      target: { value: 'Wave to peer independently' },
+    });
     for (let i = 0; i < 4; i += 1) {
       await userEvent.click(screen.getByRole('button', { name: /Increase correct trials/i }));
     }
@@ -1686,6 +1690,7 @@ describe('SessionModal', () => {
               metric_label: 'Count',
               metric_unit: 'responses',
               metric_value: 4,
+              targets: ['Match peer greeting in 4/5 trials', 'Wave to peer independently'],
               target: 'Match peer greeting in 4/5 trials',
               trial_prompt_note: 'Needed one reminder at the start',
             }),

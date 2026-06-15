@@ -175,6 +175,54 @@ describe("clinical data parity agent helpers", () => {
     ]);
   });
 
+  it("distinguishes page-level matches from expected section evidence", () => {
+    const expectations = parseClinicalQaExpectations(
+      JSON.stringify({
+        expectations: [
+          {
+            key: "target_behaviors",
+            label: "Target behaviors",
+            sourceSection: "FBA target behavior summary",
+            expectedTerms: ["elopement", "property destruction"],
+            observedSectionTerms: ["Programs", "Goals"],
+            severity: "high",
+            humanReviewBlocker: true,
+          },
+        ],
+      }),
+      "fixtures/redacted-iehp-expectations.json",
+    );
+
+    const findings = evaluateClinicalDataParity(
+      "Assessment summary mentions elopement and property destruction. Programs and Goals only mention replacement skills.",
+      expectations,
+      [
+        {
+          label: "Assessment",
+          text: "Assessment summary mentions elopement and property destruction.",
+        },
+        {
+          label: "Programs and Goals",
+          text: "Programs and Goals only mention replacement skills.",
+        },
+      ],
+    );
+
+    expect(findings[0]).toMatchObject({
+      status: "pass",
+      mismatchType: "match",
+      matchedTerms: ["elopement", "property destruction"],
+      sectionEvidenceStatus: "missing",
+      sectionEvidence: [
+        {
+          sectionLabel: "Programs and Goals",
+          matchedTerms: [],
+          missingTerms: ["elopement", "property destruction"],
+        },
+      ],
+    });
+  });
+
   it("derives parity expectations from redacted source text sections", () => {
     const expectations = deriveClinicalQaExpectationsFromSourceText(`
       FBA target behavior summary

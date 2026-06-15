@@ -63,6 +63,16 @@ The browser runner compares each `expectedTerms` entry against the visible brows
 - `mismatchType`: `match`, `partial`, or `missing`.
 - `observedTextSnippet`: a compact browser-text excerpt around matched evidence when available.
 
+## Source Text Fixture Extraction
+
+When `PW_CLINICAL_QA_EXPECTATIONS_FILE` is omitted and `PW_CLINICAL_QA_SOURCE_FILE` points to a redacted `.txt` or `.md` fixture, the runner derives expectations from supported source labels:
+
+- `Target behaviors: ...`
+- `Replacement behavior: ...`
+- `Measurement terms: ...`
+
+A safe example lives at `tests/fixtures/redacted-iehp-source.example.txt`. Source-only extraction currently does not parse DOCX or PDF. For DOCX/PDF source documents, provide a redacted expectations JSON fixture until a dedicated parser is added.
+
 ## Report Artifacts
 
 Each successful run writes durable artifacts under `artifacts/latest`:

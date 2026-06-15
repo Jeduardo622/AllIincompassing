@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   assertBrowserOnlyTarget,
   assertRedactedQaFixture,
+  assertSupportedClinicalQaSourceTextFixture,
   buildClinicalQaRoute,
   buildClinicalQaReportMarkdown,
+  deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalQaChecklist,
   evaluateClinicalDataParity,
   parseClinicalQaExpectations,
@@ -79,6 +81,18 @@ describe("clinical data parity agent helpers", () => {
     expect(() => assertRedactedQaFixture("fixtures/real-client-iehp-fba.docx", "fixture")).toThrow(
       "clearly redacted",
     );
+  });
+
+  it("allows only text fixtures for source-derived expectations", () => {
+    expect(assertSupportedClinicalQaSourceTextFixture("fixtures/redacted-iehp-source.txt")).toBe(
+      "fixtures/redacted-iehp-source.txt",
+    );
+    expect(assertSupportedClinicalQaSourceTextFixture("fixtures/synthetic-iehp-source.md")).toBe(
+      "fixtures/synthetic-iehp-source.md",
+    );
+    expect(() =>
+      assertSupportedClinicalQaSourceTextFixture("fixtures/redacted-iehp-source.docx"),
+    ).toThrow("text extraction currently supports .txt or .md fixtures");
   });
 
   it("normalizes optional client IDs", () => {
@@ -156,6 +170,49 @@ describe("clinical data parity agent helpers", () => {
         observedSectionMissingTerms: [],
         observedTextSnippet:
           "Programs and goals include elopement and functional communication. Logged in as [redacted-email].",
+        humanReviewBlocker: false,
+      },
+    ]);
+  });
+
+  it("derives parity expectations from redacted source text sections", () => {
+    const expectations = deriveClinicalQaExpectationsFromSourceText(`
+      FBA target behavior summary
+      Target behaviors: elopement; property destruction
+
+      Replacement behavior plan
+      Replacement behavior: functional communication
+
+      Goals and measurement criteria
+      Measurement terms: baseline, mastery, maintenance, generalization
+    `);
+
+    expect(expectations).toEqual([
+      {
+        key: "target_behaviors",
+        label: "Target behaviors",
+        sourceSection: "FBA target behavior summary",
+        expectedTerms: ["elopement", "property destruction"],
+        observedSectionTerms: ["Programs", "Goals"],
+        severity: "high",
+        humanReviewBlocker: true,
+      },
+      {
+        key: "replacement_behavior",
+        label: "Replacement behavior",
+        sourceSection: "Replacement behavior plan",
+        expectedTerms: ["functional communication"],
+        observedSectionTerms: ["Programs", "Goals"],
+        severity: "medium",
+        humanReviewBlocker: false,
+      },
+      {
+        key: "program_goal_measurement",
+        label: "Program goal measurement",
+        sourceSection: "Goals and measurement criteria",
+        expectedTerms: ["baseline", "mastery", "maintenance", "generalization"],
+        observedSectionTerms: ["Programs", "Goals"],
+        severity: "medium",
         humanReviewBlocker: false,
       },
     ]);

@@ -30,6 +30,7 @@
     "playwright:iehp-assessment-import-smoke": "tsx scripts/playwright-iehp-assessment-import-smoke.ts",
     "playwright:assessment-upload-promote-smoke": "tsx scripts/playwright-assessment-upload-promote-smoke.ts",
     "playwright:assessment-pdf-smoke": "tsx scripts/playwright-assessment-pdf-smoke.ts",
+    "playwright:clinical-data-parity-agent": "tsx scripts/clinical-data-parity-agent.ts",
     "playwright:mobile-role-smoke": "tsx scripts/playwright-mobile-role-smoke.ts",
     "playwright:preflight": "tsx scripts/playwright-preflight.ts",
     "playwright:session-lifecycle": "tsx scripts/playwright-session-lifecycle.ts",

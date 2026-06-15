@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clinical Data Parity Auditor"
+  short_description: "Browser-only redacted IEHP/FBA data parity QA"
+  default_prompt: "Use $clinical-data-parity-auditor to inspect redacted test-account IEHP/FBA source-to-output parity with browser-only evidence."

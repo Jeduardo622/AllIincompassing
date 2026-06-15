@@ -3,21 +3,27 @@
     {
       "key": "target_behaviors",
       "label": "Target behaviors",
+      "sourceSection": "FBA target behavior summary",
       "expectedTerms": ["elopement", "property destruction"],
+      "observedSectionTerms": ["Programs", "Goals"],
       "severity": "high",
       "humanReviewBlocker": true
     },
     {
       "key": "replacement_behavior",
       "label": "Replacement behavior",
+      "sourceSection": "Replacement behavior plan",
       "expectedTerms": ["functional communication"],
+      "observedSectionTerms": ["Programs", "Goals"],
       "severity": "medium",
       "humanReviewBlocker": false
     },
     {
       "key": "program_goal_measurement",
       "label": "Program goal measurement",
+      "sourceSection": "Goals and measurement criteria",
       "expectedTerms": ["baseline", "mastery", "maintenance", "generalization"],
+      "observedSectionTerms": ["Programs", "Goals"],
       "severity": "medium",
       "humanReviewBlocker": false
     }

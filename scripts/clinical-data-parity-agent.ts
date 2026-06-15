@@ -5,12 +5,14 @@ import { chromium, type Page } from "playwright";
 import {
   assertRedactedQaFixture,
   assertSupportedClinicalQaSourceTextFixture,
+  buildClinicalQaGeneratedOutputArtifactPath,
   buildClinicalQaReportMarkdown,
   buildClinicalQaRoute,
   deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalDataParity,
   evaluateClinicalQaChecklist,
   type ClinicalQaEvidenceSection,
+  parseClinicalQaGeneratedOutputResponse,
   parseClinicalQaExpectations,
   readClinicalQaOutputFixtureText,
   readClinicalQaSourceFixtureText,
@@ -24,6 +26,13 @@ import {
   ensureArtifactsDir,
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
+
+type ClinicalQaCapturedGeneratedOutput = {
+  artifactPath: string;
+  generatedFileType: "docx" | "pdf";
+  filename: string | null;
+  text: string;
+};
 
 const collectClinicalQaEvidenceSections = async (page: Page): Promise<ClinicalQaEvidenceSection[]> =>
   page.evaluate(`
@@ -73,6 +82,47 @@ const collectClinicalQaEvidenceSections = async (page: Page): Promise<ClinicalQa
     })()
   `);
 
+const captureGeneratedOutputArtifact = async (args: {
+  page: Page;
+  selector: string;
+  latestDir: string;
+  runId: number;
+}): Promise<ClinicalQaCapturedGeneratedOutput> => {
+  const responsePromise = args.page.waitForResponse(
+    (response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/assessment-plan-pdf" && response.request().method() === "POST";
+    },
+    { timeout: 45_000 },
+  );
+  const popupPromise = args.page.waitForEvent("popup", { timeout: 5_000 }).catch(() => null);
+
+  await args.page.locator(args.selector).click({ timeout: 10_000 });
+  const response = await responsePromise;
+  const responsePayload = await response.json();
+  if (!response.ok()) {
+    throw new Error("Generated output request failed before artifact download.");
+  }
+
+  const metadata = parseClinicalQaGeneratedOutputResponse(responsePayload);
+  const artifactPath = buildClinicalQaGeneratedOutputArtifactPath(args.latestDir, args.runId, metadata);
+  const artifactResponse = await args.page.context().request.get(metadata.signedUrl);
+  if (!artifactResponse.ok()) {
+    throw new Error(`Generated output artifact download failed with HTTP ${artifactResponse.status()}.`);
+  }
+
+  await writeFile(artifactPath, await artifactResponse.body());
+  const popup = await popupPromise;
+  await popup?.close().catch(() => undefined);
+
+  return {
+    artifactPath,
+    generatedFileType: metadata.generatedFileType,
+    filename: metadata.filename,
+    text: await readClinicalQaOutputFixtureText(artifactPath),
+  };
+};
+
 const run = async (): Promise<void> => {
   loadPlaywrightEnv();
 
@@ -114,7 +164,8 @@ const run = async (): Promise<void> => {
         )
       : [];
   const expectationsSource = expectationsFixture ? "expectations-file" : sourceFixture ? "source-text" : "none";
-  const outputText = outputFixture ? await readClinicalQaOutputFixtureText(outputFixture) : null;
+  const outputFixtureText = outputFixture ? await readClinicalQaOutputFixtureText(outputFixture) : null;
+  const generatedOutputSelector = process.env.PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR?.trim() || null;
 
   const browser = await chromium.launch({ headless: process.env.HEADLESS !== "false" });
   const context = await browser.newContext();
@@ -125,6 +176,16 @@ const run = async (): Promise<void> => {
     await loginAndAssertSession(page, baseUrl, credentials.email, credentials.password);
     await assertRouteAccessible(page, baseUrl, routePath, { timeoutMs: 20_000 });
 
+    const runId = Date.now();
+    const capturedGeneratedOutput = generatedOutputSelector
+      ? await captureGeneratedOutputArtifact({
+          page,
+          selector: generatedOutputSelector,
+          latestDir,
+          runId,
+        })
+      : null;
+    const outputText = capturedGeneratedOutput?.text ?? outputFixtureText;
     const pageText = await page.locator("body").innerText({ timeout: 10_000 });
     const evidenceSections = await collectClinicalQaEvidenceSections(page);
     const checklist = evaluateClinicalQaChecklist(pageText);
@@ -138,7 +199,6 @@ const run = async (): Promise<void> => {
           })),
         )
       : [];
-    const runId = Date.now();
     const screenshotPath = path.join(latestDir, `clinical-data-parity-agent-${runId}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
     const reportJsonPath = path.join(latestDir, `clinical-data-parity-agent-${runId}.json`);
@@ -155,9 +215,18 @@ const run = async (): Promise<void> => {
       fixtures: {
         sourceConfigured: Boolean(sourceFixture),
         outputConfigured: Boolean(outputFixture),
+        generatedOutputCaptureConfigured: Boolean(generatedOutputSelector),
         expectationsConfigured: Boolean(expectationsFixture),
         expectationsSource,
+        outputSource: capturedGeneratedOutput ? "generated-output-capture" : outputFixture ? "output-fixture" : "none",
       },
+      generatedOutputArtifact: capturedGeneratedOutput
+        ? {
+            path: capturedGeneratedOutput.artifactPath,
+            generatedFileType: capturedGeneratedOutput.generatedFileType,
+            filename: capturedGeneratedOutput.filename,
+          }
+        : null,
       evidenceSections: evidenceSections.map((section) => ({
         label: section.label,
         textLength: section.text.length,

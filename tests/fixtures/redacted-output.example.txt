@@ -1,0 +1,15 @@
+Generated IEHP/FBA output summary for redacted test client 01.
+
+Programs and Goals
+Target behaviors: elopement; property destruction
+Replacement behavior: functional communication
+Measurement criteria: baseline, mastery, maintenance, generalization
+
+ABC and function summary
+Antecedents: transition demand; denied access
+Consequences: adult attention; escape from task
+Functions: escape; access to attention
+
+Intervention context
+Interventions: visual schedule; first then board
+Authorization details: 97153; 12 units weekly

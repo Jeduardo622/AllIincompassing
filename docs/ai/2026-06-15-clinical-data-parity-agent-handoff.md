@@ -37,7 +37,7 @@ Optional:
 - `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR`
 - `PW_CLINICAL_QA_PREFLIGHT_ONLY`
 
-The runner rejects placeholder passwords, API routes, admin-only routes, and fixture paths that are not clearly redacted, synthetic, smoke, or test fixtures.
+The runner rejects placeholder passwords, API routes, admin-only routes, missing fixture files, and fixture paths that are not clearly redacted, synthetic, smoke, or test fixtures.
 
 ## Readiness Preflight
 
@@ -119,6 +119,16 @@ The browser runner compares each `expectedTerms` entry against the visible brows
 - `mismatchType`: `match`, `partial`, or `missing`.
 - `observedTextSnippet`: a compact browser-text excerpt around matched evidence when available.
 - `sectionEvidenceStatus`: whether matched terms also appear inside the expected browser or generated-output section.
+
+## Output Fixture Contract
+
+`PW_CLINICAL_QA_OUTPUT_FILE` points to a redacted, synthetic, smoke, or test `.txt`, `.md`, `.docx`, or `.pdf` fixture. A safe text example lives at `tests/fixtures/redacted-output.example.txt`. Use this path when validating the fixture-based workflow before a generated-output selector is stable:
+
+```bash
+PW_CLINICAL_QA_OUTPUT_FILE=tests/fixtures/redacted-output.example.txt
+```
+
+When both `PW_CLINICAL_QA_OUTPUT_FILE` and `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR` are omitted, preflight blocks because the agent has no output surface for source-to-output parity. When an output fixture path is configured, preflight verifies that the file exists and that its path is clearly redacted, synthetic, smoke, or test scoped.
 
 ## Source Text Fixture Extraction
 

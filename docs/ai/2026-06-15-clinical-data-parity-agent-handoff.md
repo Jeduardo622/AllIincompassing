@@ -63,6 +63,16 @@ The browser runner compares each `expectedTerms` entry against the visible brows
 - `mismatchType`: `match`, `partial`, or `missing`.
 - `observedTextSnippet`: a compact browser-text excerpt around matched evidence when available.
 
+## Report Artifacts
+
+Each successful run writes durable artifacts under `artifacts/latest`:
+
+- screenshot: `clinical-data-parity-agent-<timestamp>.png`
+- JSON report: `clinical-data-parity-agent-<timestamp>.json`
+- markdown report: `clinical-data-parity-agent-<timestamp>.md`
+
+The JSON report matches the stdout payload. The markdown report is intended for reviewer handoff and redacts browser-visible email addresses from observed snippets.
+
 ## Non-Goals
 
 - No production account access.

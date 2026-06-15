@@ -4,6 +4,7 @@ import {
   assertBrowserOnlyTarget,
   assertRedactedQaFixture,
   buildClinicalQaRoute,
+  buildClinicalQaReportMarkdown,
   evaluateClinicalQaChecklist,
   evaluateClinicalDataParity,
   parseClinicalQaExpectations,
@@ -158,5 +159,51 @@ describe("clinical data parity agent helpers", () => {
         humanReviewBlocker: false,
       },
     ]);
+  });
+
+  it("builds a durable markdown report without leaking browser-visible emails", () => {
+    const markdown = buildClinicalQaReportMarkdown({
+      generatedAt: "2026-06-15T17:30:00.000Z",
+      baseUrl: "https://app.example.test",
+      routePath: "/clients/test-client?tab=programs-goals",
+      credentialLabel: "PW_CLINICAL_QA_EMAIL + PW_CLINICAL_QA_PASSWORD",
+      screenshotPath: "artifacts/latest/clinical-data-parity-agent-test.png",
+      checklist: [
+        {
+          key: "program_goal_surface",
+          label: "Programs/goals review surface is visible",
+          status: "pass",
+          missingTerms: [],
+        },
+      ],
+      dataParityFindings: [
+        {
+          key: "target_behaviors",
+          label: "Target behaviors",
+          sourceSection: "Behavioral Observations",
+          expectedTerms: ["elopement", "property destruction"],
+          observedSectionTerms: ["Programs and Goals"],
+          severity: "high",
+          humanReviewBlocker: true,
+          status: "fail",
+          mismatchType: "partial",
+          matchedTerms: ["elopement"],
+          missingTerms: ["property destruction"],
+          observedSectionMatchedTerms: ["Programs and Goals"],
+          observedSectionMissingTerms: [],
+          observedTextSnippet: "Observed by qa@example.com near Programs and Goals.",
+        },
+      ],
+      disclaimer: "QA evidence only. This is not BCBA approval or clinical sign-off.",
+    });
+
+    expect(markdown).toContain("# Clinical Data Parity Agent Report");
+    expect(markdown).toContain("target route: `/clients/test-client?tab=programs-goals`");
+    expect(markdown).toContain("screenshot: `artifacts/latest/clinical-data-parity-agent-test.png`");
+    expect(markdown).toContain("Target behaviors");
+    expect(markdown).toContain("missing: property destruction");
+    expect(markdown).toContain("human review blocker: yes");
+    expect(markdown).toContain("[redacted-email]");
+    expect(markdown).not.toContain("qa@example.com");
   });
 });

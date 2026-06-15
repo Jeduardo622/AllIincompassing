@@ -108,6 +108,15 @@ export const assertRedactedQaFixture = (value: string | undefined, label: string
   return fixturePath;
 };
 
+export const assertSupportedClinicalQaSourceTextFixture = (fixturePath: string): string => {
+  if (!/\.(?:txt|md)$/i.test(fixturePath)) {
+    throw new Error(
+      "PW_CLINICAL_QA_SOURCE_FILE text extraction currently supports .txt or .md fixtures; provide PW_CLINICAL_QA_EXPECTATIONS_FILE for DOCX/PDF.",
+    );
+  }
+  return fixturePath;
+};
+
 export const selectClinicalQaCredentials = (
   candidates: ClinicalQaCredentialCandidate[],
 ): ClinicalQaCredentials => {
@@ -187,6 +196,94 @@ const normalizeOptionalStringArray = (value: unknown): string[] => {
 
 const sanitizeEvidenceText = (value: string): string =>
   value.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]");
+
+const normalizeSourceText = (value: string): string =>
+  sanitizeEvidenceText(value)
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n");
+
+const splitExpectedTerms = (value: string | null): string[] => {
+  if (!value) {
+    return [];
+  }
+  const seen = new Set<string>();
+  return value
+    .split(/[;,]|\n/)
+    .map((term) => term.trim().replace(/[.]+$/g, ""))
+    .filter((term) => term.length > 0)
+    .filter((term) => {
+      const normalized = term.toLowerCase();
+      if (seen.has(normalized)) {
+        return false;
+      }
+      seen.add(normalized);
+      return true;
+    });
+};
+
+const extractLabeledTerms = (sourceText: string, labelPattern: RegExp): string[] => {
+  const match = sourceText.match(labelPattern);
+  return splitExpectedTerms(match?.[1] ?? null);
+};
+
+export const deriveClinicalQaExpectationsFromSourceText = (
+  sourceText: string,
+): ClinicalQaParityExpectation[] => {
+  const normalizedSourceText = normalizeSourceText(sourceText);
+  const expectations: ClinicalQaParityExpectation[] = [];
+
+  const targetBehaviorTerms = extractLabeledTerms(
+    normalizedSourceText,
+    /(?:^|\n)\s*target behaviors?\s*:\s*([^\n]+)/i,
+  );
+  if (targetBehaviorTerms.length > 0) {
+    expectations.push({
+      key: "target_behaviors",
+      label: "Target behaviors",
+      sourceSection: "FBA target behavior summary",
+      expectedTerms: targetBehaviorTerms,
+      observedSectionTerms: ["Programs", "Goals"],
+      severity: "high",
+      humanReviewBlocker: true,
+    });
+  }
+
+  const replacementBehaviorTerms = extractLabeledTerms(
+    normalizedSourceText,
+    /(?:^|\n)\s*replacement behavior\s*:\s*([^\n]+)/i,
+  );
+  if (replacementBehaviorTerms.length > 0) {
+    expectations.push({
+      key: "replacement_behavior",
+      label: "Replacement behavior",
+      sourceSection: "Replacement behavior plan",
+      expectedTerms: replacementBehaviorTerms,
+      observedSectionTerms: ["Programs", "Goals"],
+      severity: "medium",
+      humanReviewBlocker: false,
+    });
+  }
+
+  const measurementTerms = extractLabeledTerms(
+    normalizedSourceText,
+    /(?:^|\n)\s*measurement terms?\s*:\s*([^\n]+)/i,
+  );
+  if (measurementTerms.length > 0) {
+    expectations.push({
+      key: "program_goal_measurement",
+      label: "Program goal measurement",
+      sourceSection: "Goals and measurement criteria",
+      expectedTerms: measurementTerms,
+      observedSectionTerms: ["Programs", "Goals"],
+      severity: "medium",
+      humanReviewBlocker: false,
+    });
+  }
+
+  return expectations;
+};
 
 const buildObservedTextSnippet = (pageText: string, matchedTerms: string[]): string | null => {
   const compactText = sanitizeEvidenceText(pageText.replace(/\s+/g, " ").trim());

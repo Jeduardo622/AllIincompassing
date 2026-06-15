@@ -4,8 +4,10 @@ import { chromium } from "playwright";
 
 import {
   assertRedactedQaFixture,
+  assertSupportedClinicalQaSourceTextFixture,
   buildClinicalQaReportMarkdown,
   buildClinicalQaRoute,
+  deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalDataParity,
   evaluateClinicalQaChecklist,
   parseClinicalQaExpectations,
@@ -55,7 +57,12 @@ const run = async (): Promise<void> => {
   );
   const expectations = expectationsFixture
     ? parseClinicalQaExpectations(await readFile(expectationsFixture, "utf8"), expectationsFixture)
-    : [];
+    : sourceFixture
+      ? deriveClinicalQaExpectationsFromSourceText(
+          await readFile(assertSupportedClinicalQaSourceTextFixture(sourceFixture), "utf8"),
+        )
+      : [];
+  const expectationsSource = expectationsFixture ? "expectations-file" : sourceFixture ? "source-text" : "none";
 
   const browser = await chromium.launch({ headless: process.env.HEADLESS !== "false" });
   const context = await browser.newContext();
@@ -87,6 +94,7 @@ const run = async (): Promise<void> => {
         sourceConfigured: Boolean(sourceFixture),
         outputConfigured: Boolean(outputFixture),
         expectationsConfigured: Boolean(expectationsFixture),
+        expectationsSource,
       },
       checklist,
       dataParityFindings,

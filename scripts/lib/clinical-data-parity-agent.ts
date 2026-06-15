@@ -97,6 +97,11 @@ export type ClinicalQaCapturedGeneratedOutput = {
 
 export type ClinicalQaPreflightEnv = Record<string, string | undefined>;
 
+export type ClinicalQaPreflightModeInput = {
+  env: ClinicalQaPreflightEnv;
+  argv: string[];
+};
+
 export type ClinicalQaPreflightReport = {
   ok: boolean;
   mode: "browser-only-redacted-clinical-data-parity-preflight";
@@ -157,6 +162,11 @@ const REDACTED_PASSWORD_PLACEHOLDER = "****";
 const execFileAsync = promisify(execFile);
 
 export const DEFAULT_CLINICAL_QA_ROUTE = "/";
+
+export const isClinicalQaPreflightOnly = ({ env, argv }: ClinicalQaPreflightModeInput): boolean =>
+  env.PW_CLINICAL_QA_PREFLIGHT_ONLY === "true" ||
+  env.npm_config_preflight === "true" ||
+  argv.includes("--preflight");
 
 export const CLINICAL_DATA_PARITY_CHECKLIST: ClinicalQaChecklistItem[] = [
   {

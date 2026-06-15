@@ -63,6 +63,7 @@ The browser runner compares each `expectedTerms` entry against the visible brows
 - `observedSectionTerms`: visible UI terms expected near the reviewed surface.
 - `mismatchType`: `match`, `partial`, or `missing`.
 - `observedTextSnippet`: a compact browser-text excerpt around matched evidence when available.
+- `sectionEvidenceStatus`: whether matched terms also appear inside the expected browser or generated-output section.
 
 ## Source Text Fixture Extraction
 
@@ -89,6 +90,7 @@ When `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR` is set, the runner:
 - downloads the signed DOCX/PDF artifact through the Playwright browser context
 - saves the artifact under `artifacts/latest/redacted-clinical-qa-generated-output-<timestamp>.<docx|pdf>`
 - extracts text from that redacted artifact and uses it for output parity
+- records generated-output section evidence from labeled text blocks when the artifact text is extractable
 
 The signed URL is used only for immediate download and is not written to the JSON/markdown report payload.
 

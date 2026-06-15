@@ -12,6 +12,7 @@ import {
   buildClinicalQaRoute,
   buildClinicalQaGeneratedOutputArtifactPath,
   buildClinicalQaReportMarkdown,
+  buildClinicalQaTextEvidenceSections,
   captureClinicalQaGeneratedOutputArtifact,
   deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalQaChecklist,
@@ -343,6 +344,60 @@ describe("clinical data parity agent helpers", () => {
     });
   });
 
+  it("evaluates generated output parity against output section evidence", () => {
+    const expectations = parseClinicalQaExpectations(
+      JSON.stringify({
+        expectations: [
+          {
+            key: "target_behaviors",
+            label: "Target behaviors",
+            sourceSection: "FBA target behavior summary",
+            expectedTerms: ["elopement", "property destruction"],
+            observedSectionTerms: ["Target behaviors"],
+            severity: "high",
+            humanReviewBlocker: true,
+          },
+        ],
+      }),
+      "fixtures/redacted-iehp-expectations.json",
+    );
+    const outputText = `
+      Target behaviors
+      Elopement is included in the generated plan.
+
+      Intervention plan
+      Property destruction appears only in the intervention discussion.
+    `;
+    const outputSections = buildClinicalQaTextEvidenceSections(outputText);
+
+    expect(outputSections).toEqual([
+      {
+        label: "Target behaviors",
+        text: "Elopement is included in the generated plan.",
+      },
+      {
+        label: "Intervention plan",
+        text: "Property destruction appears only in the intervention discussion.",
+      },
+    ]);
+
+    const findings = evaluateClinicalDataParity(outputText, expectations, outputSections);
+
+    expect(findings[0]).toMatchObject({
+      status: "pass",
+      mismatchType: "match",
+      matchedTerms: ["elopement", "property destruction"],
+      sectionEvidenceStatus: "partial",
+      sectionEvidence: [
+        {
+          sectionLabel: "Target behaviors",
+          matchedTerms: ["elopement"],
+          missingTerms: ["property destruction"],
+        },
+      ],
+    });
+  });
+
   it("derives parity expectations from redacted source text sections", () => {
     const expectations = deriveClinicalQaExpectationsFromSourceText(`
       FBA target behavior summary
@@ -645,6 +700,7 @@ describe("clinical data parity agent helpers", () => {
           observedTextSnippet: "Generated report includes functional communication.",
         },
       ],
+      outputFindingsHeading: "Generated Output Parity Findings",
       disclaimer: "QA evidence only. This is not BCBA approval or clinical sign-off.",
     });
 
@@ -653,7 +709,7 @@ describe("clinical data parity agent helpers", () => {
     expect(markdown).toContain("screenshot: `artifacts/latest/clinical-data-parity-agent-test.png`");
     expect(markdown).toContain("Target behaviors");
     expect(markdown).toContain("missing: property destruction");
-    expect(markdown).toContain("## Output Fixture Parity Findings");
+    expect(markdown).toContain("## Generated Output Parity Findings");
     expect(markdown).toContain("Generated report includes functional communication.");
     expect(markdown).toContain("human review blocker: yes");
     expect(markdown).toContain("[redacted-email]");

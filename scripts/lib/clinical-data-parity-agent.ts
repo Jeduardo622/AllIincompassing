@@ -45,6 +45,17 @@ export type ClinicalQaParityFinding = ClinicalQaParityExpectation & {
   observedTextSnippet: string | null;
 };
 
+export type ClinicalQaReportInput = {
+  generatedAt: string;
+  baseUrl: string;
+  routePath: string;
+  credentialLabel: string;
+  screenshotPath: string;
+  checklist: ClinicalQaChecklistResult[];
+  dataParityFindings: ClinicalQaParityFinding[];
+  disclaimer: string;
+};
+
 const REDACTED_PASSWORD_PLACEHOLDER = "****";
 
 export const DEFAULT_CLINICAL_QA_ROUTE = "/";
@@ -279,4 +290,52 @@ export const evaluateClinicalDataParity = (
       observedTextSnippet: buildObservedTextSnippet(pageText, [...matchedTerms, ...observedSectionMatchedTerms]),
     };
   });
+};
+
+const formatTermList = (terms: string[]): string => (terms.length > 0 ? terms.join(", ") : "none");
+
+export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): string => {
+  const blockerCount = report.dataParityFindings.filter(
+    (finding) => finding.status === "fail" && finding.humanReviewBlocker,
+  ).length;
+  const checklistLines = report.checklist.map(
+    (item) => `- ${item.status.toUpperCase()} ${item.label}: missing ${formatTermList(item.missingTerms)}`,
+  );
+  const findingLines = report.dataParityFindings.map((finding) => {
+    const sourceSection = finding.sourceSection ?? "unspecified";
+    const snippet = finding.observedTextSnippet ? sanitizeEvidenceText(finding.observedTextSnippet) : "none";
+    return [
+      `- ${finding.status.toUpperCase()} ${finding.label}`,
+      `  - source section: ${sourceSection}`,
+      `  - mismatch type: ${finding.mismatchType}`,
+      `  - severity: ${finding.severity}`,
+      `  - expected: ${formatTermList(finding.expectedTerms)}`,
+      `  - matched: ${formatTermList(finding.matchedTerms)}`,
+      `  - missing: ${formatTermList(finding.missingTerms)}`,
+      `  - observed section missing: ${formatTermList(finding.observedSectionMissingTerms)}`,
+      `  - human review blocker: ${finding.humanReviewBlocker ? "yes" : "no"}`,
+      `  - observed snippet: ${snippet}`,
+    ].join("\n");
+  });
+
+  return [
+    "# Clinical Data Parity Agent Report",
+    "",
+    `generated at: ${report.generatedAt}`,
+    `target route: \`${report.routePath}\``,
+    `base URL: \`${report.baseUrl}\``,
+    `credential label: \`${report.credentialLabel}\``,
+    `screenshot: \`${report.screenshotPath}\``,
+    `human review blockers: ${blockerCount}`,
+    "",
+    "## Checklist",
+    ...(checklistLines.length > 0 ? checklistLines : ["- none"]),
+    "",
+    "## Data Parity Findings",
+    ...(findingLines.length > 0 ? findingLines : ["- none"]),
+    "",
+    "## Disclaimer",
+    report.disclaimer,
+    "",
+  ].join("\n");
 };

@@ -1,9 +1,10 @@
 import path from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
 import {
   assertRedactedQaFixture,
+  buildClinicalQaReportMarkdown,
   buildClinicalQaRoute,
   evaluateClinicalDataParity,
   evaluateClinicalQaChecklist,
@@ -68,8 +69,13 @@ const run = async (): Promise<void> => {
     const pageText = await page.locator("body").innerText({ timeout: 10_000 });
     const checklist = evaluateClinicalQaChecklist(pageText);
     const dataParityFindings = evaluateClinicalDataParity(pageText, expectations);
-    const screenshotPath = path.join(latestDir, `clinical-data-parity-agent-${Date.now()}.png`);
+    const runId = Date.now();
+    const screenshotPath = path.join(latestDir, `clinical-data-parity-agent-${runId}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
+    const reportJsonPath = path.join(latestDir, `clinical-data-parity-agent-${runId}.json`);
+    const reportMarkdownPath = path.join(latestDir, `clinical-data-parity-agent-${runId}.md`);
+    const generatedAt = new Date().toISOString();
+    const disclaimer = "QA evidence only. This is not BCBA approval or clinical sign-off.";
 
     const payload = {
       ok: true,
@@ -88,8 +94,24 @@ const run = async (): Promise<void> => {
         (finding) => finding.status === "fail" && finding.humanReviewBlocker,
       ),
       screenshot: screenshotPath,
-      disclaimer: "QA evidence only. This is not BCBA approval or clinical sign-off.",
+      reportJson: reportJsonPath,
+      reportMarkdown: reportMarkdownPath,
+      generatedAt,
+      disclaimer,
     };
+    const markdown = buildClinicalQaReportMarkdown({
+      generatedAt,
+      baseUrl,
+      routePath,
+      credentialLabel: credentials.label,
+      screenshotPath,
+      checklist,
+      dataParityFindings,
+      disclaimer,
+    });
+
+    await writeFile(reportJsonPath, JSON.stringify(payload, null, 2));
+    await writeFile(reportMarkdownPath, markdown);
 
     console.log(JSON.stringify(payload, null, 2));
   } catch (error) {

@@ -1,3 +1,8 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { deflateRawSync } from "node:zlib";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,10 +15,115 @@ import {
   evaluateClinicalQaChecklist,
   evaluateClinicalDataParity,
   parseClinicalQaExpectations,
+  readClinicalQaSourceFixtureText,
   requireClinicalQaClientId,
   selectClinicalQaCredentials,
 } from "../../scripts/lib/clinical-data-parity-agent";
 import { routeMatchesPathname } from "../../scripts/lib/playwright-smoke";
+
+const crc32Table = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return value >>> 0;
+});
+
+const crc32 = (buffer: Buffer): number => {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc = crc32Table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+};
+
+const buildZip = (files: Record<string, string>): Buffer => {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+
+  for (const [name, content] of Object.entries(files)) {
+    const nameBuffer = Buffer.from(name);
+    const contentBuffer = Buffer.from(content);
+    const compressed = deflateRawSync(contentBuffer);
+    const checksum = crc32(contentBuffer);
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(8, 8);
+    localHeader.writeUInt32LE(checksum, 14);
+    localHeader.writeUInt32LE(compressed.length, 18);
+    localHeader.writeUInt32LE(contentBuffer.length, 22);
+    localHeader.writeUInt16LE(nameBuffer.length, 26);
+    localParts.push(localHeader, nameBuffer, compressed);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(8, 10);
+    centralHeader.writeUInt32LE(checksum, 16);
+    centralHeader.writeUInt32LE(compressed.length, 20);
+    centralHeader.writeUInt32LE(contentBuffer.length, 24);
+    centralHeader.writeUInt16LE(nameBuffer.length, 28);
+    centralHeader.writeUInt32LE(offset, 42);
+    centralParts.push(centralHeader, nameBuffer);
+    offset += localHeader.length + nameBuffer.length + compressed.length;
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(files).length, 8);
+  end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(centralDirectory.length, 12);
+  end.writeUInt32LE(offset, 16);
+
+  return Buffer.concat([...localParts, centralDirectory, end]);
+};
+
+const buildRedactedDocxFixture = (text: string): Buffer =>
+  buildZip({
+    "[Content_Types].xml": '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types" />',
+    "word/document.xml": `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:body></w:document>`,
+  });
+
+const buildRedactedPdfFixture = (text: string): Buffer => {
+  const escapedText = text.replace(/[()\\]/g, (match) => `\\${match}`);
+  return Buffer.from(`%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length ${escapedText.length + 34} >>
+stream
+BT /F1 12 Tf 72 720 Td (${escapedText}) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+0000000241 00000 n
+0000000311 00000 n
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+456
+%%EOF
+`);
+};
 
 describe("clinical data parity agent helpers", () => {
   it("selects dedicated clinical QA credentials before admin fallback", () => {
@@ -83,16 +193,22 @@ describe("clinical data parity agent helpers", () => {
     );
   });
 
-  it("allows only text fixtures for source-derived expectations", () => {
+  it("allows redacted text, DOCX, and PDF fixtures for source-derived expectations", () => {
     expect(assertSupportedClinicalQaSourceTextFixture("fixtures/redacted-iehp-source.txt")).toBe(
       "fixtures/redacted-iehp-source.txt",
     );
     expect(assertSupportedClinicalQaSourceTextFixture("fixtures/synthetic-iehp-source.md")).toBe(
       "fixtures/synthetic-iehp-source.md",
     );
-    expect(() =>
-      assertSupportedClinicalQaSourceTextFixture("fixtures/redacted-iehp-source.docx"),
-    ).toThrow("text extraction currently supports .txt or .md fixtures");
+    expect(assertSupportedClinicalQaSourceTextFixture("fixtures/redacted-iehp-source.docx")).toBe(
+      "fixtures/redacted-iehp-source.docx",
+    );
+    expect(assertSupportedClinicalQaSourceTextFixture("fixtures/redacted-iehp-source.pdf")).toBe(
+      "fixtures/redacted-iehp-source.pdf",
+    );
+    expect(() => assertSupportedClinicalQaSourceTextFixture("fixtures/redacted-iehp-source.png")).toThrow(
+      "supports .txt, .md, .docx, or .pdf fixtures",
+    );
   });
 
   it("normalizes optional client IDs", () => {
@@ -330,6 +446,23 @@ describe("clinical data parity agent helpers", () => {
         humanReviewBlocker: false,
       },
     ]);
+  });
+
+  it("extracts source text from redacted DOCX and PDF fixtures before deriving expectations", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "clinical-qa-redacted-"));
+    const sourceLine = "Target behaviors: elopement; property destruction";
+    const docxPath = path.join(tempDir, "redacted-iehp-source.docx");
+    const pdfPath = path.join(tempDir, "redacted-iehp-source.pdf");
+
+    try {
+      await writeFile(docxPath, buildRedactedDocxFixture(sourceLine));
+      await writeFile(pdfPath, buildRedactedPdfFixture(sourceLine));
+
+      await expect(readClinicalQaSourceFixtureText(docxPath)).resolves.toContain(sourceLine);
+      await expect(readClinicalQaSourceFixtureText(pdfPath)).resolves.toContain(sourceLine);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("builds a durable markdown report without leaking browser-visible emails", () => {

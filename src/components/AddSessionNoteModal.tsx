@@ -353,23 +353,39 @@ export function AddSessionNoteModal({
     });
   };
 
+  const getEditableGoalTargets = (goal: Goal, rawMeasurementEntry: unknown): string[] => {
+    const rawTargets =
+      rawMeasurementEntry &&
+      typeof rawMeasurementEntry === 'object' &&
+      'data' in rawMeasurementEntry &&
+      rawMeasurementEntry.data &&
+      typeof rawMeasurementEntry.data === 'object' &&
+      'targets' in rawMeasurementEntry.data
+        ? rawMeasurementEntry.data.targets
+        : null;
+    if (Array.isArray(rawTargets) && rawTargets.length > 0) {
+      return rawTargets.map((target) => (typeof target === 'string' ? target : ''));
+    }
+
+    const measurementEntry = buildGoalMeasurementEntry(goal, rawMeasurementEntry);
+    const normalizedTargets = getGoalMeasurementTargets(measurementEntry?.data);
+    return normalizedTargets.length > 0 ? normalizedTargets : [''];
+  };
+
   const addGoalTarget = (goal: Goal) => {
-    const measurementEntry = buildGoalMeasurementEntry(goal, goalMeasurements[goal.id]);
-    const currentTargets = getGoalMeasurementTargets(measurementEntry?.data);
+    const currentTargets = getEditableGoalTargets(goal, goalMeasurements[goal.id]);
     updateGoalTargets(goal, [...currentTargets, '']);
   };
 
   const changeGoalTarget = (goal: Goal, targetIndex: number, nextValue: string) => {
-    const measurementEntry = buildGoalMeasurementEntry(goal, goalMeasurements[goal.id]);
-    const currentTargets = getGoalMeasurementTargets(measurementEntry?.data);
-    const nextTargets = (currentTargets.length > 0 ? currentTargets : ['']).slice();
+    const currentTargets = getEditableGoalTargets(goal, goalMeasurements[goal.id]);
+    const nextTargets = currentTargets.slice();
     nextTargets[targetIndex] = nextValue;
     updateGoalTargets(goal, nextTargets);
   };
 
   const removeGoalTarget = (goal: Goal, targetIndex: number) => {
-    const measurementEntry = buildGoalMeasurementEntry(goal, goalMeasurements[goal.id]);
-    const currentTargets = getGoalMeasurementTargets(measurementEntry?.data);
+    const currentTargets = getEditableGoalTargets(goal, goalMeasurements[goal.id]);
     const nextTargets = currentTargets.filter((_, index) => index !== targetIndex);
     updateGoalTargets(goal, nextTargets.length > 0 ? nextTargets : ['']);
   };
@@ -609,14 +625,7 @@ export function AddSessionNoteModal({
                 const isSelected = selectedGoalIds.includes(goal.id);
                 const noteText = goalNotes[goal.id] ?? '';
                 const measurementEntry = buildGoalMeasurementEntry(goal, goalMeasurements[goal.id]);
-                const sessionTargets = (() => {
-                  const rawTargets = goalMeasurements[goal.id]?.data.targets;
-                  if (Array.isArray(rawTargets) && rawTargets.length > 0) {
-                    return rawTargets.map((target) => (typeof target === 'string' ? target : ''));
-                  }
-                  const normalizedTargets = getGoalMeasurementTargets(measurementEntry?.data);
-                  return normalizedTargets.length > 0 ? normalizedTargets : [''];
-                })();
+                const sessionTargets = getEditableGoalTargets(goal, goalMeasurements[goal.id]);
                 const measurementFieldMeta = getGoalMeasurementFieldMeta(goal);
                 const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
                 return (
@@ -827,14 +836,7 @@ export function AddSessionNoteModal({
               const isSelected = selectedGoalIds.includes(goal.id);
               const noteText = goalNotes[goal.id] ?? '';
               const measurementEntry = buildGoalMeasurementEntry(goal, goalMeasurements[goal.id]);
-              const sessionTargets = (() => {
-                const rawTargets = goalMeasurements[goal.id]?.data.targets;
-                if (Array.isArray(rawTargets) && rawTargets.length > 0) {
-                  return rawTargets.map((target) => (typeof target === 'string' ? target : ''));
-                }
-                const normalizedTargets = getGoalMeasurementTargets(measurementEntry?.data);
-                return normalizedTargets.length > 0 ? normalizedTargets : [''];
-              })();
+              const sessionTargets = getEditableGoalTargets(goal, goalMeasurements[goal.id]);
               const measurementFieldMeta = getGoalMeasurementFieldMeta(goal);
               const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
               return (

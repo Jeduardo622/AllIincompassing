@@ -507,6 +507,138 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     expect(screen.getByDisplayValue('Second existing target')).toBeInTheDocument();
   });
 
+  it('preserves blank earlier target slots when editing a later target', async () => {
+    const onSubmit = vi.fn();
+
+    renderWithProviders(
+      <AddSessionNoteModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        therapists={[mockTherapist] as any}
+        selectedAuth="auth-1"
+        existingNote={{
+          id: 'note-target-edit',
+          date: '2026-03-31',
+          start_time: '09:00:00',
+          end_time: '10:00:00',
+          service_code: '97153',
+          therapist_id: 'therapist-1',
+          therapist_name: 'Test Therapist',
+          goals_addressed: ['Default Goal'],
+          goal_ids: ['goal-1'],
+          goal_notes: { 'goal-1': 'Existing goal note' },
+          goal_measurements: {
+            'goal-1': {
+              version: 1,
+              data: {
+                measurement_type: 'frequency',
+                metric_label: 'Count',
+                metric_unit: 'responses',
+                metric_value: 4,
+                opportunities: 5,
+                prompt_level: 'Gestural',
+                note: 'Existing measurement note',
+                targets: ['First target', 'Second target'],
+                target: 'First target',
+              },
+            },
+          },
+          session_id: null,
+          narrative: 'Existing narrative',
+          is_locked: false,
+          client_id: 'client-1',
+          authorization_id: 'auth-1',
+        }}
+      />
+    );
+
+    fireEvent.change(await screen.findByLabelText(/^target$/i), {
+      target: { value: '' },
+    });
+    fireEvent.change(screen.getByLabelText(/^target 2$/i), {
+      target: { value: 'Updated second target' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save note/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        goal_measurements: {
+          'goal-1': expect.objectContaining({
+            data: expect.objectContaining({
+              targets: ['', 'Updated second target'],
+              target: 'Updated second target',
+            }),
+          }),
+        },
+      }));
+    });
+  });
+
+  it('preserves blank earlier target slots when removing a later target', async () => {
+    const onSubmit = vi.fn();
+
+    renderWithProviders(
+      <AddSessionNoteModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        therapists={[mockTherapist] as any}
+        selectedAuth="auth-1"
+        existingNote={{
+          id: 'note-target-remove',
+          date: '2026-03-31',
+          start_time: '09:00:00',
+          end_time: '10:00:00',
+          service_code: '97153',
+          therapist_id: 'therapist-1',
+          therapist_name: 'Test Therapist',
+          goals_addressed: ['Default Goal'],
+          goal_ids: ['goal-1'],
+          goal_notes: { 'goal-1': 'Existing goal note' },
+          goal_measurements: {
+            'goal-1': {
+              version: 1,
+              data: {
+                measurement_type: 'frequency',
+                metric_label: 'Count',
+                metric_unit: 'responses',
+                metric_value: 4,
+                opportunities: 5,
+                prompt_level: 'Gestural',
+                note: 'Existing measurement note',
+                targets: ['First target', 'Second target'],
+                target: 'First target',
+              },
+            },
+          },
+          session_id: null,
+          narrative: 'Existing narrative',
+          is_locked: false,
+          client_id: 'client-1',
+          authorization_id: 'auth-1',
+        }}
+      />
+    );
+
+    fireEvent.change(await screen.findByLabelText(/^target$/i), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /remove target 2/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save note/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        goal_measurements: {
+          'goal-1': expect.objectContaining({
+            data: expect.objectContaining({
+              targets: [''],
+              target: null,
+            }),
+          }),
+        },
+      }));
+    });
+  });
+
   it('preserves an unlinked existing note without auto-attaching a session', async () => {
     const onSubmit = vi.fn();
 

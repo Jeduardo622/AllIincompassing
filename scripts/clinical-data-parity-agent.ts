@@ -12,6 +12,7 @@ import {
   evaluateClinicalQaChecklist,
   type ClinicalQaEvidenceSection,
   parseClinicalQaExpectations,
+  readClinicalQaOutputFixtureText,
   readClinicalQaSourceFixtureText,
   requireClinicalQaClientId,
   selectClinicalQaCredentials,
@@ -113,6 +114,7 @@ const run = async (): Promise<void> => {
         )
       : [];
   const expectationsSource = expectationsFixture ? "expectations-file" : sourceFixture ? "source-text" : "none";
+  const outputText = outputFixture ? await readClinicalQaOutputFixtureText(outputFixture) : null;
 
   const browser = await chromium.launch({ headless: process.env.HEADLESS !== "false" });
   const context = await browser.newContext();
@@ -127,6 +129,15 @@ const run = async (): Promise<void> => {
     const evidenceSections = await collectClinicalQaEvidenceSections(page);
     const checklist = evaluateClinicalQaChecklist(pageText);
     const dataParityFindings = evaluateClinicalDataParity(pageText, expectations, evidenceSections);
+    const outputDataParityFindings = outputText
+      ? evaluateClinicalDataParity(
+          outputText,
+          expectations.map((expectation) => ({
+            ...expectation,
+            observedSectionTerms: [],
+          })),
+        )
+      : [];
     const runId = Date.now();
     const screenshotPath = path.join(latestDir, `clinical-data-parity-agent-${runId}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -153,7 +164,11 @@ const run = async (): Promise<void> => {
       })),
       checklist,
       dataParityFindings,
+      outputDataParityFindings,
       humanReviewBlockers: dataParityFindings.filter(
+        (finding) => finding.status === "fail" && finding.humanReviewBlocker,
+      ),
+      outputHumanReviewBlockers: outputDataParityFindings.filter(
         (finding) => finding.status === "fail" && finding.humanReviewBlocker,
       ),
       screenshot: screenshotPath,
@@ -170,6 +185,7 @@ const run = async (): Promise<void> => {
       screenshotPath,
       checklist,
       dataParityFindings,
+      outputDataParityFindings,
       disclaimer,
     });
 

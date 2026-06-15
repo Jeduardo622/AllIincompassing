@@ -10,10 +10,12 @@ import {
   assertRedactedQaFixture,
   assertSupportedClinicalQaSourceTextFixture,
   buildClinicalQaRoute,
+  buildClinicalQaGeneratedOutputArtifactPath,
   buildClinicalQaReportMarkdown,
   deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalQaChecklist,
   evaluateClinicalDataParity,
+  parseClinicalQaGeneratedOutputResponse,
   parseClinicalQaExpectations,
   readClinicalQaOutputFixtureText,
   readClinicalQaSourceFixtureText,
@@ -484,6 +486,29 @@ describe("clinical data parity agent helpers", () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("parses generated output metadata and saves artifacts under redacted names", () => {
+    const metadata = parseClinicalQaGeneratedOutputResponse({
+      generated_file_type: "docx",
+      signed_url: "https://example.test/generated-iehp-fba.docx?token=redacted",
+      filename: "generated-iehp-fba.docx",
+    });
+
+    expect(metadata).toEqual({
+      generatedFileType: "docx",
+      signedUrl: "https://example.test/generated-iehp-fba.docx?token=redacted",
+      filename: "generated-iehp-fba.docx",
+    });
+    expect(
+      buildClinicalQaGeneratedOutputArtifactPath("artifacts/latest", 1234, metadata),
+    ).toBe(path.join("artifacts/latest", "redacted-clinical-qa-generated-output-1234.docx"));
+    expect(() => parseClinicalQaGeneratedOutputResponse({ signed_url: "https://example.test/file.exe" })).toThrow(
+      "generated_file_type",
+    );
+    expect(() =>
+      parseClinicalQaGeneratedOutputResponse({ generated_file_type: "pdf", signed_url: "" }),
+    ).toThrow("signed_url");
   });
 
   it("builds a durable markdown report without leaking browser-visible emails", () => {

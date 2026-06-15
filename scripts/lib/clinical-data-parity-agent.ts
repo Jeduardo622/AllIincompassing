@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import path, { extname } from "node:path";
 import { promisify } from "node:util";
 import { inflateRawSync } from "node:zlib";
 
@@ -77,6 +77,12 @@ export type ClinicalQaReportInput = {
   disclaimer: string;
 };
 
+export type ClinicalQaGeneratedOutputMetadata = {
+  generatedFileType: "docx" | "pdf";
+  signedUrl: string;
+  filename: string | null;
+};
+
 const REDACTED_PASSWORD_PLACEHOLDER = "****";
 const execFileAsync = promisify(execFile);
 
@@ -138,6 +144,44 @@ export const assertSupportedClinicalQaSourceTextFixture = (fixturePath: string):
   }
   return fixturePath;
 };
+
+export const parseClinicalQaGeneratedOutputResponse = (
+  value: unknown,
+): ClinicalQaGeneratedOutputMetadata => {
+  if (!value || typeof value !== "object") {
+    throw new Error("Generated output response must be a JSON object.");
+  }
+  const response = value as Record<string, unknown>;
+  const generatedFileType = response.generated_file_type;
+  if (generatedFileType !== "docx" && generatedFileType !== "pdf") {
+    throw new Error("Generated output response must include generated_file_type of docx or pdf.");
+  }
+
+  const signedUrl = typeof response.signed_url === "string" ? response.signed_url.trim() : "";
+  if (!signedUrl) {
+    throw new Error("Generated output response must include a non-empty signed_url.");
+  }
+
+  const filename = typeof response.filename === "string" && response.filename.trim()
+    ? response.filename.trim()
+    : null;
+
+  return {
+    generatedFileType,
+    signedUrl,
+    filename,
+  };
+};
+
+export const buildClinicalQaGeneratedOutputArtifactPath = (
+  latestDir: string,
+  runId: number,
+  metadata: ClinicalQaGeneratedOutputMetadata,
+): string =>
+  path.join(
+    latestDir,
+    `redacted-clinical-qa-generated-output-${runId}.${metadata.generatedFileType}`,
+  );
 
 const decodeXmlText = (value: string): string =>
   value

@@ -41,8 +41,10 @@ Optional scope:
 - `PW_CLINICAL_QA_ROUTE`
 - `PW_CLINICAL_QA_SOURCE_FILE`
 - `PW_CLINICAL_QA_OUTPUT_FILE`
+- `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR`
 
 Source/output fixture paths must include `redacted`, `synthetic`, `smoke`, or `test` in the path.
+When `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR` is set, the runner clicks that browser selector, captures the completed assessment output response, saves the downloaded artifact under `artifacts/latest` with a redacted filename, and uses that artifact for output parity.
 
 ## Browser Reachability Check
 

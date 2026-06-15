@@ -20,6 +20,7 @@ import {
   evaluateClinicalQaChecklist,
   evaluateClinicalDataParity,
   getClinicalQaChecklistHumanReviewBlockers,
+  isClinicalQaPreflightOnly,
   parseClinicalQaVisualRubric,
   parseClinicalQaGeneratedOutputResponse,
   parseClinicalQaExpectations,
@@ -207,6 +208,17 @@ describe("clinical data parity agent helpers", () => {
     );
     expect(JSON.stringify(report)).not.toContain("qa@example.test");
     expect(JSON.stringify(report)).not.toContain("****");
+  });
+
+  it("detects clinical QA preflight mode from direct argv and npm config flags", () => {
+    expect(isClinicalQaPreflightOnly({ env: {}, argv: ["node", "script", "--preflight"] })).toBe(true);
+    expect(isClinicalQaPreflightOnly({ env: { npm_config_preflight: "true" }, argv: ["node", "script"] })).toBe(
+      true,
+    );
+    expect(isClinicalQaPreflightOnly({ env: { PW_CLINICAL_QA_PREFLIGHT_ONLY: "true" }, argv: [] })).toBe(true);
+    expect(isClinicalQaPreflightOnly({ env: { npm_config_preflight: "false" }, argv: ["node", "script"] })).toBe(
+      false,
+    );
   });
 
   it("accepts dedicated generated-output clinical QA preflight configuration", () => {

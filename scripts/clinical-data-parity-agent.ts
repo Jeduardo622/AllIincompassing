@@ -15,6 +15,7 @@ import {
   evaluateClinicalDataParity,
   evaluateClinicalQaChecklist,
   getClinicalQaChecklistHumanReviewBlockers,
+  isClinicalQaPreflightOnly,
   type ClinicalQaEvidenceSection,
   parseClinicalQaExpectations,
   parseClinicalQaVisualRubric,
@@ -31,8 +32,7 @@ import {
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
 
-const isPreflightOnly = (): boolean =>
-  process.env.PW_CLINICAL_QA_PREFLIGHT_ONLY === "true" || process.argv.includes("--preflight");
+const isPreflightOnly = (): boolean => isClinicalQaPreflightOnly({ env: process.env, argv: process.argv });
 
 const collectClinicalQaEvidenceSections = async (page: Page): Promise<ClinicalQaEvidenceSection[]> =>
   page.evaluate(`

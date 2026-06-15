@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "key": "behavior_functions_visible",
+      "label": "Behavior functions are visible",
+      "requiredTerms": ["function", "escape", "attention"],
+      "severity": "high",
+      "humanReviewBlocker": true
+    },
+    {
+      "key": "program_goal_measurement_visible",
+      "label": "Program goal measurement criteria are visible",
+      "requiredTerms": ["baseline", "mastery", "maintenance", "generalization"],
+      "severity": "medium",
+      "humanReviewBlocker": false
+    },
+    {
+      "key": "intervention_context_visible",
+      "label": "Intervention context is visible",
+      "requiredTerms": ["intervention", "replacement behavior"],
+      "severity": "medium",
+      "humanReviewBlocker": false
+    }
+  ]
+}

@@ -33,6 +33,7 @@ Optional:
 - `PW_CLINICAL_QA_SOURCE_FILE`
 - `PW_CLINICAL_QA_OUTPUT_FILE`
 - `PW_CLINICAL_QA_EXPECTATIONS_FILE`
+- `PW_CLINICAL_QA_VISUAL_RUBRIC_FILE`
 - `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR`
 - `PW_CLINICAL_QA_PREFLIGHT_ONLY`
 
@@ -70,6 +71,26 @@ Preflight also writes durable artifacts under `artifacts/latest`:
 - markdown report: `clinical-data-parity-preflight-<timestamp>.md`
 
 When setup is incomplete, preflight exits non-zero after writing these artifacts. Use the markdown artifact as the operator handoff for missing safe-run prerequisites.
+
+## Visual Rubric Fixture Contract
+
+`PW_CLINICAL_QA_VISUAL_RUBRIC_FILE` points to an optional redacted, synthetic, smoke, or test JSON fixture that replaces the default visible-surface checklist. A safe example lives at `tests/fixtures/redacted-clinical-qa-visual-rubric.example.json`:
+
+```json
+{
+  "items": [
+    {
+      "key": "behavior_functions_visible",
+      "label": "Behavior functions are visible",
+      "requiredTerms": ["function", "escape", "attention"],
+      "severity": "high",
+      "humanReviewBlocker": true
+    }
+  ]
+}
+```
+
+The `items` array must contain at least one item. Each item requires `key`, `label`, and a non-empty `requiredTerms` array. `severity` defaults to `medium`; `humanReviewBlocker` defaults to `false`. Checklist results are included in the JSON and markdown report with missing terms, severity, and human-review-blocker status. Failed blocker items are also emitted in `checklistHumanReviewBlockers` and included in the markdown blocker count. This rubric is for QA evidence only and does not approve clinical content.
 
 ## Expectations Fixture Contract
 

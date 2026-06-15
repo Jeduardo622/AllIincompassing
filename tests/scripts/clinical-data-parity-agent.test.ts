@@ -19,6 +19,8 @@ import {
   deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalQaChecklist,
   evaluateClinicalDataParity,
+  getClinicalQaChecklistHumanReviewBlockers,
+  parseClinicalQaVisualRubric,
   parseClinicalQaGeneratedOutputResponse,
   parseClinicalQaExpectations,
   readClinicalQaOutputFixtureText,
@@ -315,6 +317,158 @@ describe("clinical data parity agent helpers", () => {
 
     expect(results.every((result) => result.status === "pass")).toBe(true);
     expect(evaluateClinicalQaChecklist("Dashboard only").filter((result) => result.status === "fail")).toHaveLength(3);
+  });
+
+  it("parses a redacted clinical QA visual rubric with severity and human review blockers", () => {
+    const rubric = parseClinicalQaVisualRubric(
+      JSON.stringify({
+        items: [
+          {
+            key: "behavior_functions_visible",
+            label: "Behavior functions are visible",
+            requiredTerms: ["function", "escape", "attention"],
+            severity: "high",
+            humanReviewBlocker: true,
+          },
+          {
+            key: "measurement_visible",
+            label: "Measurement terms are visible",
+            requiredTerms: ["baseline", "mastery"],
+          },
+        ],
+      }),
+      "tests/fixtures/redacted-clinical-qa-visual-rubric.example.json",
+    );
+
+    expect(rubric).toEqual([
+      {
+        key: "behavior_functions_visible",
+        label: "Behavior functions are visible",
+        requiredTerms: ["function", "escape", "attention"],
+        severity: "high",
+        humanReviewBlocker: true,
+      },
+      {
+        key: "measurement_visible",
+        label: "Measurement terms are visible",
+        requiredTerms: ["baseline", "mastery"],
+        severity: "medium",
+        humanReviewBlocker: false,
+      },
+    ]);
+  });
+
+  it("requires redacted paths and valid items for clinical QA visual rubrics", () => {
+    expect(() =>
+      parseClinicalQaVisualRubric(
+        JSON.stringify({ items: [] }),
+        "fixtures/private-clinical-qa-visual-rubric.json",
+      ),
+    ).toThrow("PW_CLINICAL_QA_VISUAL_RUBRIC_FILE must point to a clearly redacted");
+
+    expect(() =>
+      parseClinicalQaVisualRubric(
+        JSON.stringify({ entries: [] }),
+        "fixtures/redacted-clinical-qa-visual-rubric.json",
+      ),
+    ).toThrow("must contain an items array");
+
+    expect(() =>
+      parseClinicalQaVisualRubric(
+        JSON.stringify({ items: [] }),
+        "fixtures/redacted-clinical-qa-visual-rubric.json",
+      ),
+    ).toThrow("must contain at least one item");
+
+    expect(() =>
+      parseClinicalQaVisualRubric(
+        JSON.stringify({
+          items: [
+            {
+              key: "missing_terms",
+              label: "Missing terms",
+              requiredTerms: [],
+            },
+          ],
+        }),
+        "fixtures/redacted-clinical-qa-visual-rubric.json",
+      ),
+    ).toThrow("requires key, label, and non-empty requiredTerms");
+  });
+
+  it("carries visual rubric severity and blocker metadata into checklist results", () => {
+    const checklist = parseClinicalQaVisualRubric(
+      JSON.stringify({
+        items: [
+          {
+            key: "behavior_functions_visible",
+            label: "Behavior functions are visible",
+            requiredTerms: ["escape", "attention"],
+            severity: "high",
+            humanReviewBlocker: true,
+          },
+        ],
+      }),
+      "fixtures/redacted-clinical-qa-visual-rubric.json",
+    );
+
+    expect(evaluateClinicalQaChecklist("Function is escape maintained.", checklist)).toEqual([
+      {
+        key: "behavior_functions_visible",
+        label: "Behavior functions are visible",
+        status: "fail",
+        missingTerms: ["attention"],
+        severity: "high",
+        humanReviewBlocker: true,
+      },
+    ]);
+  });
+
+  it("summarizes failed visual rubric human review blockers", () => {
+    const checklistResults = evaluateClinicalQaChecklist(
+      "Function is escape maintained.",
+      [
+        {
+          key: "behavior_functions_visible",
+          label: "Behavior functions are visible",
+          requiredTerms: ["escape", "attention"],
+          severity: "high",
+          humanReviewBlocker: true,
+        },
+        {
+          key: "measurement_visible",
+          label: "Measurement terms are visible",
+          requiredTerms: ["function"],
+          severity: "medium",
+          humanReviewBlocker: true,
+        },
+      ],
+    );
+
+    expect(getClinicalQaChecklistHumanReviewBlockers(checklistResults)).toEqual([
+      {
+        key: "behavior_functions_visible",
+        label: "Behavior functions are visible",
+        status: "fail",
+        missingTerms: ["attention"],
+        severity: "high",
+        humanReviewBlocker: true,
+      },
+    ]);
+  });
+
+  it("reports optional visual rubric readiness in clinical QA preflight", () => {
+    const report = buildClinicalQaPreflightReport({
+      PW_CLINICAL_QA_EMAIL: "qa@example.test",
+      PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_CLIENT_ID: "client-1",
+      PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-iehp-source.example.txt",
+      PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-output.example.docx",
+      PW_CLINICAL_QA_VISUAL_RUBRIC_FILE: "tests/fixtures/redacted-clinical-qa-visual-rubric.example.json",
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.fixtures.visualRubricConfigured).toBe(true);
   });
 
   it("parses redacted parity expectations and flags missing clinically important terms", () => {
@@ -749,6 +903,16 @@ describe("clinical data parity agent helpers", () => {
           label: "Programs/goals review surface is visible",
           status: "pass",
           missingTerms: [],
+          severity: "medium",
+          humanReviewBlocker: false,
+        },
+        {
+          key: "behavior_functions_visible",
+          label: "Behavior functions are visible",
+          status: "fail",
+          missingTerms: ["attention"],
+          severity: "high",
+          humanReviewBlocker: true,
         },
       ],
       dataParityFindings: [
@@ -794,6 +958,10 @@ describe("clinical data parity agent helpers", () => {
     expect(markdown).toContain("# Clinical Data Parity Agent Report");
     expect(markdown).toContain("target route: `/clients/test-client?tab=programs-goals`");
     expect(markdown).toContain("screenshot: `artifacts/latest/clinical-data-parity-agent-test.png`");
+    expect(markdown).toContain("human review blockers: 2");
+    expect(markdown).toContain(
+      "FAIL Behavior functions are visible: missing attention; severity high; human review blocker yes",
+    );
     expect(markdown).toContain("Target behaviors");
     expect(markdown).toContain("missing: property destruction");
     expect(markdown).toContain("## Generated Output Parity Findings");

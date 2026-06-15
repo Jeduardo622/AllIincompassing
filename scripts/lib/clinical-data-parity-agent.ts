@@ -91,6 +91,26 @@ export type ClinicalQaCapturedGeneratedOutput = {
   text: string;
 };
 
+export type ClinicalQaPreflightEnv = Record<string, string | undefined>;
+
+export type ClinicalQaPreflightReport = {
+  ok: boolean;
+  mode: "browser-only-redacted-clinical-data-parity-preflight";
+  credentialLabel: string | null;
+  routePath: string | null;
+  fixtures: {
+    sourceConfigured: boolean;
+    outputConfigured: boolean;
+    expectationsConfigured: boolean;
+    generatedOutputCaptureConfigured: boolean;
+  };
+  expectationsSource: "expectations-file" | "source-text" | "none";
+  outputSource: "generated-output-capture" | "output-fixture" | "none";
+  blockingIssues: string[];
+  warnings: string[];
+  nextAction: string;
+};
+
 type ClinicalQaGeneratedOutputResponse = {
   url: () => string;
   request: () => { method: () => string };
@@ -452,6 +472,124 @@ export const buildClinicalQaRoute = (args: {
     return `/clients/${encodeURIComponent(args.clientId)}?tab=programs-goals`;
   }
   return DEFAULT_CLINICAL_QA_ROUTE;
+};
+
+const pushFixturePreflightIssue = (
+  blockingIssues: string[],
+  value: string | undefined,
+  label: string,
+  validateSupportedSource = false,
+): string | null => {
+  try {
+    const fixturePath = assertRedactedQaFixture(value, label);
+    if (fixturePath && validateSupportedSource) {
+      assertSupportedClinicalQaSourceTextFixture(fixturePath);
+    }
+    return fixturePath;
+  } catch (error) {
+    blockingIssues.push(error instanceof Error ? error.message : String(error));
+    return null;
+  }
+};
+
+export const buildClinicalQaPreflightReport = (
+  env: ClinicalQaPreflightEnv,
+): ClinicalQaPreflightReport => {
+  const blockingIssues: string[] = [];
+  const warnings: string[] = [];
+
+  let credentialLabel: string | null = null;
+  try {
+    credentialLabel = selectClinicalQaCredentials([
+      {
+        email: env.PW_CLINICAL_QA_EMAIL,
+        password: env.PW_CLINICAL_QA_PASSWORD,
+        label: "PW_CLINICAL_QA_EMAIL + PW_CLINICAL_QA_PASSWORD",
+      },
+      {
+        email: env.PW_ADMIN_EMAIL ?? env.PLAYWRIGHT_ADMIN_EMAIL,
+        password: env.PW_ADMIN_PASSWORD ?? env.PLAYWRIGHT_ADMIN_PASSWORD,
+        label: "PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD",
+      },
+    ]).label;
+  } catch {
+    blockingIssues.push("Set PW_CLINICAL_QA_EMAIL/PW_CLINICAL_QA_PASSWORD or PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD.");
+  }
+  if (!env.PW_CLINICAL_QA_EMAIL?.trim() && (env.PW_ADMIN_EMAIL?.trim() || env.PLAYWRIGHT_ADMIN_EMAIL?.trim())) {
+    warnings.push("Dedicated PW_CLINICAL_QA_EMAIL credentials are preferred over admin fallback credentials.");
+  }
+
+  let routePath: string | null = null;
+  try {
+    const clientId = requireClinicalQaClientId(env.PW_CLINICAL_QA_CLIENT_ID);
+    if (!clientId && !env.PW_CLINICAL_QA_ROUTE?.trim()) {
+      blockingIssues.push("Set PW_CLINICAL_QA_CLIENT_ID or PW_CLINICAL_QA_ROUTE.");
+    } else {
+      routePath = buildClinicalQaRoute({
+        clientId,
+        routePath: env.PW_CLINICAL_QA_ROUTE,
+      });
+    }
+  } catch (error) {
+    blockingIssues.push(error instanceof Error ? error.message : String(error));
+  }
+
+  const sourceFixture = pushFixturePreflightIssue(
+    blockingIssues,
+    env.PW_CLINICAL_QA_SOURCE_FILE,
+    "PW_CLINICAL_QA_SOURCE_FILE",
+    true,
+  );
+  const outputFixture = pushFixturePreflightIssue(
+    blockingIssues,
+    env.PW_CLINICAL_QA_OUTPUT_FILE,
+    "PW_CLINICAL_QA_OUTPUT_FILE",
+    true,
+  );
+  const expectationsFixture = pushFixturePreflightIssue(
+    blockingIssues,
+    env.PW_CLINICAL_QA_EXPECTATIONS_FILE,
+    "PW_CLINICAL_QA_EXPECTATIONS_FILE",
+  );
+  const generatedOutputCaptureConfigured = Boolean(env.PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR?.trim());
+
+  if (!sourceFixture && !expectationsFixture) {
+    blockingIssues.push("Set PW_CLINICAL_QA_SOURCE_FILE or PW_CLINICAL_QA_EXPECTATIONS_FILE.");
+  }
+  if (!outputFixture && !generatedOutputCaptureConfigured) {
+    blockingIssues.push("Set PW_CLINICAL_QA_OUTPUT_FILE or PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR.");
+  }
+  if (outputFixture && !generatedOutputCaptureConfigured) {
+    warnings.push("Generated output capture is not configured; parity will use the redacted output fixture.");
+  }
+
+  const outputSource = generatedOutputCaptureConfigured
+    ? "generated-output-capture"
+    : outputFixture
+      ? "output-fixture"
+      : "none";
+  const expectationsSource = expectationsFixture ? "expectations-file" : sourceFixture ? "source-text" : "none";
+  const ok = blockingIssues.length === 0;
+
+  return {
+    ok,
+    mode: "browser-only-redacted-clinical-data-parity-preflight",
+    credentialLabel,
+    routePath,
+    fixtures: {
+      sourceConfigured: Boolean(sourceFixture),
+      outputConfigured: Boolean(outputFixture),
+      expectationsConfigured: Boolean(expectationsFixture),
+      generatedOutputCaptureConfigured,
+    },
+    expectationsSource,
+    outputSource,
+    blockingIssues,
+    warnings,
+    nextAction: ok
+      ? "Run npm run playwright:clinical-data-parity-agent with the same environment to collect browser evidence."
+      : "Set the missing redacted clinical QA environment values, then rerun preflight.",
+  };
 };
 
 export const evaluateClinicalQaChecklist = (

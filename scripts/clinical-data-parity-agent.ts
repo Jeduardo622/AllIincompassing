@@ -5,6 +5,7 @@ import { chromium, type Page } from "playwright";
 import {
   assertRedactedQaFixture,
   assertSupportedClinicalQaSourceTextFixture,
+  buildClinicalQaPreflightReport,
   buildClinicalQaReportMarkdown,
   buildClinicalQaRoute,
   buildClinicalQaTextEvidenceSections,
@@ -26,6 +27,9 @@ import {
   ensureArtifactsDir,
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
+
+const isPreflightOnly = (): boolean =>
+  process.env.PW_CLINICAL_QA_PREFLIGHT_ONLY === "true" || process.argv.includes("--preflight");
 
 const collectClinicalQaEvidenceSections = async (page: Page): Promise<ClinicalQaEvidenceSection[]> =>
   page.evaluate(`
@@ -76,6 +80,13 @@ const collectClinicalQaEvidenceSections = async (page: Page): Promise<ClinicalQa
   `);
 
 const run = async (): Promise<void> => {
+  if (isPreflightOnly()) {
+    const preflight = buildClinicalQaPreflightReport(process.env);
+    console.log(JSON.stringify(preflight, null, 2));
+    process.exitCode = preflight.ok ? 0 : 1;
+    return;
+  }
+
   loadPlaywrightEnv();
 
   const baseUrl = resolvePlaywrightBaseUrl().replace(/\/$/, "");

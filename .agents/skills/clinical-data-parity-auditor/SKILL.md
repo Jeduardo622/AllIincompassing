@@ -42,9 +42,20 @@ Optional scope:
 - `PW_CLINICAL_QA_SOURCE_FILE`
 - `PW_CLINICAL_QA_OUTPUT_FILE`
 - `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR`
+- `PW_CLINICAL_QA_PREFLIGHT_ONLY`
 
 Source/output fixture paths must include `redacted`, `synthetic`, `smoke`, or `test` in the path.
 When `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR` is set, the runner clicks that browser selector, captures the completed assessment output response, saves the downloaded artifact under `artifacts/latest` with a redacted filename, and uses that artifact for output parity.
+
+## Readiness Preflight
+
+Run this before opening the browser when validating operator setup:
+
+```bash
+PW_CLINICAL_QA_PREFLIGHT_ONLY=true npm run playwright:clinical-data-parity-agent
+```
+
+The preflight path must run before the normal Playwright env loader. It inspects only already-provided process environment values, does not read `.env*` files, does not launch a browser, does not print email/password values, and returns a machine-readable JSON report with `ok`, `blockingIssues`, `warnings`, `routePath`, and fixture readiness.
 
 ## Browser Reachability Check
 

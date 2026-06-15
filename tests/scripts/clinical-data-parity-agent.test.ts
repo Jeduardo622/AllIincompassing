@@ -9,6 +9,7 @@ import {
   assertBrowserOnlyTarget,
   assertRedactedQaFixture,
   assertSupportedClinicalQaSourceTextFixture,
+  buildClinicalQaPreflightReport,
   buildClinicalQaRoute,
   buildClinicalQaGeneratedOutputArtifactPath,
   buildClinicalQaReportMarkdown,
@@ -182,6 +183,66 @@ describe("clinical data parity agent helpers", () => {
     );
     expect(buildClinicalQaRoute({ routePath: "/dashboard", clientId: "client id" })).toBe("/dashboard");
     expect(buildClinicalQaRoute({})).toBe("/");
+  });
+
+  it("reports missing clinical QA preflight inputs without leaking secret values", () => {
+    const report = buildClinicalQaPreflightReport({
+      PW_CLINICAL_QA_EMAIL: "qa@example.test",
+      PW_CLINICAL_QA_PASSWORD: "****",
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.blockingIssues).toContain(
+      "Set PW_CLINICAL_QA_EMAIL/PW_CLINICAL_QA_PASSWORD or PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD.",
+    );
+    expect(report.blockingIssues).toContain("Set PW_CLINICAL_QA_CLIENT_ID or PW_CLINICAL_QA_ROUTE.");
+    expect(report.blockingIssues).toContain(
+      "Set PW_CLINICAL_QA_SOURCE_FILE or PW_CLINICAL_QA_EXPECTATIONS_FILE.",
+    );
+    expect(report.blockingIssues).toContain(
+      "Set PW_CLINICAL_QA_OUTPUT_FILE or PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR.",
+    );
+    expect(JSON.stringify(report)).not.toContain("qa@example.test");
+    expect(JSON.stringify(report)).not.toContain("****");
+  });
+
+  it("accepts dedicated generated-output clinical QA preflight configuration", () => {
+    const report = buildClinicalQaPreflightReport({
+      PW_CLINICAL_QA_EMAIL: "qa@example.test",
+      PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_CLIENT_ID: "client id",
+      PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-iehp-source.example.txt",
+      PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR: "[data-testid='generate-redacted-output']",
+    });
+
+    expect(report).toMatchObject({
+      ok: true,
+      credentialLabel: "PW_CLINICAL_QA_EMAIL + PW_CLINICAL_QA_PASSWORD",
+      routePath: "/clients/client%20id?tab=programs-goals",
+      outputSource: "generated-output-capture",
+      fixtures: {
+        sourceConfigured: true,
+        outputConfigured: false,
+        expectationsConfigured: false,
+        generatedOutputCaptureConfigured: true,
+      },
+    });
+    expect(report.blockingIssues).toEqual([]);
+  });
+
+  it("blocks clinical QA preflight on non-redacted fixture paths", () => {
+    const report = buildClinicalQaPreflightReport({
+      PW_CLINICAL_QA_EMAIL: "qa@example.test",
+      PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_ROUTE: "/clients/client-1",
+      PW_CLINICAL_QA_SOURCE_FILE: "fixtures/private-client-source.docx",
+      PW_CLINICAL_QA_OUTPUT_FILE: "fixtures/redacted-output.docx",
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.blockingIssues).toContain(
+      "PW_CLINICAL_QA_SOURCE_FILE must point to a clearly redacted, synthetic, smoke, or test fixture.",
+    );
   });
 
   it("matches route reachability by pathname when the expected route includes a query string", () => {

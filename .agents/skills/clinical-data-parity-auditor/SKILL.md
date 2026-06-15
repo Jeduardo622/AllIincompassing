@@ -57,6 +57,13 @@ PW_CLINICAL_QA_PREFLIGHT_ONLY=true npm run playwright:clinical-data-parity-agent
 
 The preflight path must run before the normal Playwright env loader. It inspects only already-provided process environment values, does not read `.env*` files, does not launch a browser, does not print email/password values, and returns a machine-readable JSON report with `ok`, `blockingIssues`, `warnings`, `routePath`, and fixture readiness.
 
+Preflight writes durable artifacts under `artifacts/latest` before exiting:
+
+- `clinical-data-parity-preflight-<timestamp>.json`
+- `clinical-data-parity-preflight-<timestamp>.md`
+
+A not-ready preflight exits non-zero after writing the artifacts. Treat that as expected setup evidence when `blockingIssues` lists missing credentials, route, source/expectations, or output-capture inputs.
+
 ## Browser Reachability Check
 
 Run:

@@ -9,6 +9,7 @@ import {
   assertBrowserOnlyTarget,
   assertRedactedQaFixture,
   assertSupportedClinicalQaSourceTextFixture,
+  buildClinicalQaPreflightReportMarkdown,
   buildClinicalQaPreflightReport,
   buildClinicalQaRoute,
   buildClinicalQaGeneratedOutputArtifactPath,
@@ -243,6 +244,31 @@ describe("clinical data parity agent helpers", () => {
     expect(report.blockingIssues).toContain(
       "PW_CLINICAL_QA_SOURCE_FILE must point to a clearly redacted, synthetic, smoke, or test fixture.",
     );
+  });
+
+  it("builds a redacted clinical QA preflight markdown artifact", () => {
+    const report = buildClinicalQaPreflightReport({
+      PW_CLINICAL_QA_EMAIL: "qa@example.test",
+      PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_CLIENT_ID: "client-1",
+      PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-iehp-source.example.txt",
+      PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-output.example.docx",
+    });
+
+    const markdown = buildClinicalQaPreflightReportMarkdown({
+      generatedAt: "2026-06-15T21:30:00.000Z",
+      report,
+    });
+
+    expect(markdown).toContain("# Clinical Data Parity Agent Preflight");
+    expect(markdown).toContain("generated at: 2026-06-15T21:30:00.000Z");
+    expect(markdown).toContain("ready: yes");
+    expect(markdown).toContain("credential label: `PW_CLINICAL_QA_EMAIL + PW_CLINICAL_QA_PASSWORD`");
+    expect(markdown).toContain("target route: `/clients/client-1?tab=programs-goals`");
+    expect(markdown).toContain("output source: `output-fixture`");
+    expect(markdown).toContain("- none");
+    expect(markdown).not.toContain("qa@example.test");
+    expect(markdown).not.toContain("qa-password");
   });
 
   it("matches route reachability by pathname when the expected route includes a query string", () => {

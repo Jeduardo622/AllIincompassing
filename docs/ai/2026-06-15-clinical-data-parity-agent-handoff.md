@@ -64,6 +64,13 @@ Preflight exits before the normal Playwright env loader, so it does not read `.e
 - `outputSource`
 - `nextAction`
 
+Preflight also writes durable artifacts under `artifacts/latest`:
+
+- JSON report: `clinical-data-parity-preflight-<timestamp>.json`
+- markdown report: `clinical-data-parity-preflight-<timestamp>.md`
+
+When setup is incomplete, preflight exits non-zero after writing these artifacts. Use the markdown artifact as the operator handoff for missing safe-run prerequisites.
+
 ## Expectations Fixture Contract
 
 `PW_CLINICAL_QA_EXPECTATIONS_FILE` points to a redacted, synthetic, smoke, or test JSON fixture. A safe example lives at `tests/fixtures/redacted-iehp-expectations.example.json`:
@@ -125,6 +132,8 @@ The signed URL is used only for immediate download and is not written to the JSO
 
 Each successful run writes durable artifacts under `artifacts/latest`:
 
+- preflight JSON report: `clinical-data-parity-preflight-<timestamp>.json`
+- preflight markdown report: `clinical-data-parity-preflight-<timestamp>.md`
 - screenshot: `clinical-data-parity-agent-<timestamp>.png`
 - JSON report: `clinical-data-parity-agent-<timestamp>.json`
 - markdown report: `clinical-data-parity-agent-<timestamp>.md`

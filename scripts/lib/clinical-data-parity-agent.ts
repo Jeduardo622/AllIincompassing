@@ -73,6 +73,7 @@ export type ClinicalQaReportInput = {
   screenshotPath: string;
   checklist: ClinicalQaChecklistResult[];
   dataParityFindings: ClinicalQaParityFinding[];
+  outputDataParityFindings?: ClinicalQaParityFinding[];
   disclaimer: string;
 };
 
@@ -268,8 +269,8 @@ const extractTextFromSimplePdfBuffer = (buffer: Buffer): string | null => {
   return extractedText.length > 0 ? extractedText : null;
 };
 
-export const readClinicalQaSourceFixtureText = async (fixturePath: string): Promise<string> => {
-  assertRedactedQaFixture(fixturePath, "PW_CLINICAL_QA_SOURCE_FILE");
+const readClinicalQaTextFixture = async (fixturePath: string, label: string): Promise<string> => {
+  assertRedactedQaFixture(fixturePath, label);
   assertSupportedClinicalQaSourceTextFixture(fixturePath);
   const extension = extname(fixturePath).toLowerCase();
   if (extension === ".txt" || extension === ".md") {
@@ -284,6 +285,12 @@ export const readClinicalQaSourceFixtureText = async (fixturePath: string): Prom
   }
   throw new Error("Unsupported clinical QA source fixture extension.");
 };
+
+export const readClinicalQaSourceFixtureText = async (fixturePath: string): Promise<string> =>
+  readClinicalQaTextFixture(fixturePath, "PW_CLINICAL_QA_SOURCE_FILE");
+
+export const readClinicalQaOutputFixtureText = async (fixturePath: string): Promise<string> =>
+  readClinicalQaTextFixture(fixturePath, "PW_CLINICAL_QA_OUTPUT_FILE");
 
 export const selectClinicalQaCredentials = (
   candidates: ClinicalQaCredentialCandidate[],
@@ -696,14 +703,8 @@ const formatSectionEvidence = (finding: ClinicalQaParityFinding): string[] => {
   return [`  - section evidence status: ${finding.sectionEvidenceStatus}`, ...sectionLines];
 };
 
-export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): string => {
-  const blockerCount = report.dataParityFindings.filter(
-    (finding) => finding.status === "fail" && finding.humanReviewBlocker,
-  ).length;
-  const checklistLines = report.checklist.map(
-    (item) => `- ${item.status.toUpperCase()} ${item.label}: missing ${formatTermList(item.missingTerms)}`,
-  );
-  const findingLines = report.dataParityFindings.map((finding) => {
+const formatFindingLines = (findings: ClinicalQaParityFinding[]): string[] =>
+  findings.map((finding) => {
     const sourceSection = finding.sourceSection ?? "unspecified";
     const snippet = finding.observedTextSnippet ? sanitizeEvidenceText(finding.observedTextSnippet) : "none";
     return [
@@ -721,6 +722,18 @@ export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): st
     ].join("\n");
   });
 
+export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): string => {
+  const outputDataParityFindings = report.outputDataParityFindings ?? [];
+  const allFindings = [...report.dataParityFindings, ...outputDataParityFindings];
+  const blockerCount = allFindings.filter(
+    (finding) => finding.status === "fail" && finding.humanReviewBlocker,
+  ).length;
+  const checklistLines = report.checklist.map(
+    (item) => `- ${item.status.toUpperCase()} ${item.label}: missing ${formatTermList(item.missingTerms)}`,
+  );
+  const findingLines = formatFindingLines(report.dataParityFindings);
+  const outputFindingLines = formatFindingLines(outputDataParityFindings);
+
   return [
     "# Clinical Data Parity Agent Report",
     "",
@@ -736,6 +749,9 @@ export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): st
     "",
     "## Data Parity Findings",
     ...(findingLines.length > 0 ? findingLines : ["- none"]),
+    "",
+    "## Output Fixture Parity Findings",
+    ...(outputFindingLines.length > 0 ? outputFindingLines : ["- none"]),
     "",
     "## Disclaimer",
     report.disclaimer,

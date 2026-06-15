@@ -15,6 +15,7 @@ import {
   evaluateClinicalQaChecklist,
   evaluateClinicalDataParity,
   parseClinicalQaExpectations,
+  readClinicalQaOutputFixtureText,
   readClinicalQaSourceFixtureText,
   requireClinicalQaClientId,
   selectClinicalQaCredentials,
@@ -465,6 +466,26 @@ describe("clinical data parity agent helpers", () => {
     }
   });
 
+  it("extracts output text from redacted text, DOCX, and PDF fixtures before comparing expectations", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "clinical-qa-redacted-output-"));
+    const outputLine = "Replacement behavior: functional communication";
+    const textPath = path.join(tempDir, "redacted-iehp-output.txt");
+    const docxPath = path.join(tempDir, "redacted-iehp-output.docx");
+    const pdfPath = path.join(tempDir, "redacted-iehp-output.pdf");
+
+    try {
+      await writeFile(textPath, outputLine);
+      await writeFile(docxPath, buildRedactedDocxFixture(outputLine));
+      await writeFile(pdfPath, buildRedactedPdfFixture(outputLine));
+
+      await expect(readClinicalQaOutputFixtureText(textPath)).resolves.toContain(outputLine);
+      await expect(readClinicalQaOutputFixtureText(docxPath)).resolves.toContain(outputLine);
+      await expect(readClinicalQaOutputFixtureText(pdfPath)).resolves.toContain(outputLine);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("builds a durable markdown report without leaking browser-visible emails", () => {
     const markdown = buildClinicalQaReportMarkdown({
       generatedAt: "2026-06-15T17:30:00.000Z",
@@ -498,6 +519,24 @@ describe("clinical data parity agent helpers", () => {
           observedTextSnippet: "Observed by qa@example.com near Programs and Goals.",
         },
       ],
+      outputDataParityFindings: [
+        {
+          key: "replacement_behavior",
+          label: "Replacement behavior",
+          sourceSection: "Replacement behavior plan",
+          expectedTerms: ["functional communication"],
+          observedSectionTerms: [],
+          severity: "medium",
+          humanReviewBlocker: false,
+          status: "pass",
+          mismatchType: "match",
+          matchedTerms: ["functional communication"],
+          missingTerms: [],
+          observedSectionMatchedTerms: [],
+          observedSectionMissingTerms: [],
+          observedTextSnippet: "Generated report includes functional communication.",
+        },
+      ],
       disclaimer: "QA evidence only. This is not BCBA approval or clinical sign-off.",
     });
 
@@ -506,6 +545,8 @@ describe("clinical data parity agent helpers", () => {
     expect(markdown).toContain("screenshot: `artifacts/latest/clinical-data-parity-agent-test.png`");
     expect(markdown).toContain("Target behaviors");
     expect(markdown).toContain("missing: property destruction");
+    expect(markdown).toContain("## Output Fixture Parity Findings");
+    expect(markdown).toContain("Generated report includes functional communication.");
     expect(markdown).toContain("human review blocker: yes");
     expect(markdown).toContain("[redacted-email]");
     expect(markdown).not.toContain("qa@example.com");

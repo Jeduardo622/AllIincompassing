@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import { buildLifecycleTargetPairs, type LifecycleTargetPair } from "../src/scripts/playwrightSessionLifecycleTargets";
+import { assertLifecycleSessionArtifacts } from "../src/scripts/playwrightSessionLifecycleArtifacts";
 import { buildLifecycleSessionNoteSeedPayload } from "../src/scripts/playwrightSessionLifecycleNoteSeed";
 
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
@@ -111,6 +112,14 @@ const buildEdgeAuthHeaders = (token: string): Record<string, string> => ({
   apikey: getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY),
   Authorization: `Bearer ${token}`,
 });
+
+const buildTraceHeaders = (): Record<string, string> => {
+  const requestId = crypto.randomUUID();
+  return {
+    "x-request-id": requestId,
+    "x-correlation-id": requestId,
+  };
+};
 
 interface SessionStartPayload {
   session_id: string;
@@ -974,7 +983,13 @@ const seedSessionGoalNotesViaServiceRole = async ({
   }
 };
 
-const markSessionTerminalViaServiceRole = async (sessionId: string, status: TerminalStatus): Promise<void> => {
+const ensureAtLeastOneSessionGoalForLifecycle = async ({
+  sessionId,
+  goalId,
+}: {
+  sessionId: string;
+  goalId: string;
+}): Promise<void> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -984,16 +999,109 @@ const markSessionTerminalViaServiceRole = async (sessionId: string, status: Term
       detectSessionInUrl: false,
     },
   });
-  const terminalNote =
-    status === "completed"
-      ? "Playwright lifecycle fallback completion note"
-      : "Playwright lifecycle fallback no-show note";
-  const { error } = await adminClient
+  const { data: existing, error: existingError } = await adminClient
+    .from("session_goals")
+    .select("goal_id")
+    .eq("session_id", sessionId)
+    .limit(1);
+  if (existingError) {
+    throw new Error(`session_goals lookup failed: ${existingError.message}`);
+  }
+  if (existing && existing.length > 0) {
+    return;
+  }
+
+  const { data: sessionRow, error: sessionError } = await adminClient
     .from("sessions")
-    .update({ status, notes: terminalNote })
-    .eq("id", sessionId);
-  if (error) {
-    throw new Error(`sessions ${status} update failed: ${error.message}`);
+    .select("organization_id, client_id, program_id")
+    .eq("id", sessionId)
+    .single();
+  if (sessionError || !sessionRow?.organization_id) {
+    throw new Error(`Unable to load session for lifecycle session_goals seed: ${sessionError?.message ?? "missing row"}`);
+  }
+
+  const { error: insertError } = await adminClient.from("session_goals").insert({
+    session_id: sessionId,
+    goal_id: goalId,
+    organization_id: sessionRow.organization_id,
+    client_id: sessionRow.client_id,
+    program_id: sessionRow.program_id,
+  });
+  if (insertError) {
+    throw new Error(`Unable to seed lifecycle session_goals: ${insertError.message}`);
+  }
+};
+
+const fetchLifecycleArtifactCounts = async (sessionId: string): Promise<{
+  sessionGoalsCount: number;
+  clientSessionNotesCount: number;
+}> => {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+
+  const [{ count: sessionGoalsCount, error: sessionGoalsError }, { count: clientSessionNotesCount, error: clientSessionNotesError }] =
+    await Promise.all([
+      adminClient
+        .from("session_goals")
+        .select("goal_id", { count: "exact", head: true })
+        .eq("session_id", sessionId),
+      adminClient
+        .from("client_session_notes")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", sessionId),
+    ]);
+
+  if (sessionGoalsError) {
+    throw new Error(`Unable to count lifecycle session_goals: ${sessionGoalsError.message}`);
+  }
+  if (clientSessionNotesError) {
+    throw new Error(`Unable to count lifecycle client_session_notes: ${clientSessionNotesError.message}`);
+  }
+
+  return {
+    sessionGoalsCount: sessionGoalsCount ?? 0,
+    clientSessionNotesCount: clientSessionNotesCount ?? 0,
+  };
+};
+
+const assertLifecycleArtifactCounts = async (sessionId: string, stage: string): Promise<void> => {
+  const counts = await fetchLifecycleArtifactCounts(sessionId);
+  assertLifecycleSessionArtifacts(stage, counts);
+};
+
+const completeSessionViaApiFallback = async ({
+  baseUrl,
+  token,
+  sessionId,
+  status,
+}: {
+  baseUrl: string;
+  token: string;
+  sessionId: string;
+  status: TerminalStatus;
+}): Promise<void> => {
+  const response = await fetchWithTimeout(`${baseUrl}/api/sessions-complete`, {
+    method: "POST",
+    headers: {
+      ...buildEdgeAuthHeaders(token),
+      ...buildTraceHeaders(),
+    },
+    body: JSON.stringify({
+      session_id: sessionId,
+      outcome: status,
+      notes: null,
+    }),
+  });
+  const bodyText = await response.text();
+  if (!response.ok) {
+    throw new Error(`sessions-complete fallback failed (${response.status}): ${bodyText.slice(0, 800)}`);
   }
 };
 
@@ -1079,10 +1187,12 @@ async function startSessionViaScheduleModal(
 
 async function markTerminalViaScheduleModal(
   page: Page,
+  baseUrl: string,
   scheduleUrl: string,
   sessionId: string,
   terminalStatus: TerminalStatus,
   ids: LifecycleIds,
+  token: string,
   actorUserId: string,
   strictMode: boolean,
 ): Promise<void> {
@@ -1112,26 +1222,40 @@ async function markTerminalViaScheduleModal(
       throw error;
     }
     console.warn(
-      `[lifecycle] sessions-complete not observed or failed; applying service-role ${terminalStatus}.`,
+      `[lifecycle] sessions-complete not observed or failed; retrying through authenticated API ${terminalStatus}.`,
       error instanceof Error ? error.message : error,
     );
     try {
-      await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
+      await completeSessionViaApiFallback({
+        baseUrl,
+        token,
+        sessionId,
+        status: terminalStatus,
+      });
     } catch (fallbackError) {
       const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      if (/SESSION_NOTES_REQUIRED/i.test(fallbackMessage)) {
-        console.warn(
-          `[lifecycle] ${terminalStatus} fallback hit SESSION_NOTES_REQUIRED; seeding goal notes and retrying service-role completion.`,
-        );
-        await seedSessionGoalNotesViaServiceRole({
-          sessionId,
-          goalId: ids.goalId,
-          actorUserId,
-        });
-        await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
-      } else {
+      if (!/SESSION_NOTES_REQUIRED/i.test(fallbackMessage)) {
         throw fallbackError;
       }
+      console.warn(
+        `[lifecycle] ${terminalStatus} API fallback hit SESSION_NOTES_REQUIRED; repairing smoke artifacts and retrying.`,
+      );
+      await ensureAtLeastOneSessionGoalForLifecycle({
+        sessionId,
+        goalId: ids.goalId,
+      });
+      await seedSessionGoalNotesViaServiceRole({
+        sessionId,
+        goalId: ids.goalId,
+        actorUserId,
+      });
+      await assertLifecycleArtifactCounts(sessionId, "before-close");
+      await completeSessionViaApiFallback({
+        baseUrl,
+        token,
+        sessionId,
+        status: terminalStatus,
+      });
     }
   }
   await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
@@ -1253,6 +1377,11 @@ export async function run() {
     const scheduleUrl = `${base}/schedule`;
     await withStepTimeout("start-session-modal", () =>
       startSessionViaScheduleModal(activePage, scheduleUrl, booked, token, strictParityMode));
+    await withStepTimeout("ensure-session-goals-after-start", () =>
+      ensureAtLeastOneSessionGoalForLifecycle({
+        sessionId: booked.sessionId,
+        goalId: booked.goalId,
+      }));
     if (terminalStatus === "no-show" || terminalStatus === "completed") {
       await withStepTimeout(`seed-session-goal-notes-for-${terminalStatus}`, () =>
         seedSessionGoalNotesViaServiceRole({
@@ -1260,19 +1389,25 @@ export async function run() {
           goalId: booked.goalId,
           actorUserId,
         }));
+      await withStepTimeout(`assert-lifecycle-artifacts-before-${terminalStatus}`, () =>
+        assertLifecycleArtifactCounts(booked.sessionId, "before-close"));
     }
     await withStepTimeout(`${terminalStatus}-session-modal`, () =>
       markTerminalViaScheduleModal(
         activePage,
+        base,
         scheduleUrl,
         booked.sessionId,
         terminalStatus,
         booked,
+        token,
         actorUserId,
         strictParityMode,
       ));
     await withStepTimeout(`assert-session-${terminalStatus}`, () =>
       assertSessionRowStatus(booked.sessionId, terminalStatus));
+    await withStepTimeout(`assert-lifecycle-artifacts-after-${terminalStatus}`, () =>
+      assertLifecycleArtifactCounts(booked.sessionId, "after-close"));
 
     const latestDir = path.resolve(process.cwd(), "artifacts", "latest");
     if (!fs.existsSync(latestDir)) {

@@ -12,6 +12,7 @@ import {
   evaluateClinicalQaChecklist,
   type ClinicalQaEvidenceSection,
   parseClinicalQaExpectations,
+  readClinicalQaSourceFixtureText,
   requireClinicalQaClientId,
   selectClinicalQaCredentials,
 } from "./lib/clinical-data-parity-agent";
@@ -108,7 +109,7 @@ const run = async (): Promise<void> => {
     ? parseClinicalQaExpectations(await readFile(expectationsFixture, "utf8"), expectationsFixture)
     : sourceFixture
       ? deriveClinicalQaExpectationsFromSourceText(
-          await readFile(assertSupportedClinicalQaSourceTextFixture(sourceFixture), "utf8"),
+          await readClinicalQaSourceFixtureText(assertSupportedClinicalQaSourceTextFixture(sourceFixture)),
         )
       : [];
   const expectationsSource = expectationsFixture ? "expectations-file" : sourceFixture ? "source-text" : "none";

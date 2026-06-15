@@ -1,3 +1,9 @@
+import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
+import { promisify } from "node:util";
+import { inflateRawSync } from "node:zlib";
+
 export type ClinicalQaCredentialCandidate = {
   email?: string;
   password?: string;
@@ -71,6 +77,7 @@ export type ClinicalQaReportInput = {
 };
 
 const REDACTED_PASSWORD_PLACEHOLDER = "****";
+const execFileAsync = promisify(execFile);
 
 export const DEFAULT_CLINICAL_QA_ROUTE = "/";
 
@@ -123,12 +130,159 @@ export const assertRedactedQaFixture = (value: string | undefined, label: string
 };
 
 export const assertSupportedClinicalQaSourceTextFixture = (fixturePath: string): string => {
-  if (!/\.(?:txt|md)$/i.test(fixturePath)) {
+  if (!/\.(?:txt|md|docx|pdf)$/i.test(fixturePath)) {
     throw new Error(
-      "PW_CLINICAL_QA_SOURCE_FILE text extraction currently supports .txt or .md fixtures; provide PW_CLINICAL_QA_EXPECTATIONS_FILE for DOCX/PDF.",
+      "PW_CLINICAL_QA_SOURCE_FILE text extraction supports .txt, .md, .docx, or .pdf fixtures.",
     );
   }
   return fixturePath;
+};
+
+const decodeXmlText = (value: string): string =>
+  value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+
+const extractTextFromDocxBuffer = (buffer: Buffer): string => {
+  const eocdSignature = 0x06054b50;
+  let eocdOffset = -1;
+  for (let offset = buffer.length - 22; offset >= 0; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === eocdSignature) {
+      eocdOffset = offset;
+      break;
+    }
+  }
+  if (eocdOffset < 0) {
+    throw new Error("DOCX source fixture is not a readable ZIP archive.");
+  }
+
+  const centralDirectoryEntryCount = buffer.readUInt16LE(eocdOffset + 10);
+  let centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  const xmlTextParts: string[] = [];
+
+  for (let index = 0; index < centralDirectoryEntryCount; index += 1) {
+    if (buffer.readUInt32LE(centralDirectoryOffset) !== 0x02014b50) {
+      throw new Error("DOCX source fixture has an invalid ZIP central directory.");
+    }
+
+    const compressionMethod = buffer.readUInt16LE(centralDirectoryOffset + 10);
+    const compressedSize = buffer.readUInt32LE(centralDirectoryOffset + 20);
+    const fileNameLength = buffer.readUInt16LE(centralDirectoryOffset + 28);
+    const extraLength = buffer.readUInt16LE(centralDirectoryOffset + 30);
+    const commentLength = buffer.readUInt16LE(centralDirectoryOffset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(centralDirectoryOffset + 42);
+    const fileName = buffer
+      .subarray(centralDirectoryOffset + 46, centralDirectoryOffset + 46 + fileNameLength)
+      .toString("utf8");
+
+    if (/^word\/(?:document|header\d+|footer\d+)\.xml$/i.test(fileName)) {
+      if (buffer.readUInt32LE(localHeaderOffset) !== 0x04034b50) {
+        throw new Error(`DOCX source fixture has an invalid local ZIP header for ${fileName}.`);
+      }
+      const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+      const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+      const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+      const compressed = buffer.subarray(dataStart, dataStart + compressedSize);
+      const xmlBuffer =
+        compressionMethod === 0
+          ? compressed
+          : compressionMethod === 8
+            ? inflateRawSync(compressed)
+            : null;
+      if (!xmlBuffer) {
+        throw new Error(`DOCX source fixture uses unsupported ZIP compression method ${compressionMethod}.`);
+      }
+      const xml = xmlBuffer
+        .toString("utf8")
+        .replace(/<\/w:p>/g, "\n")
+        .replace(/<w:tab\s*\/>/g, " ");
+      xmlTextParts.push(decodeXmlText(xml.replace(/<[^>]+>/g, " ")));
+    }
+
+    centralDirectoryOffset += 46 + fileNameLength + extraLength + commentLength;
+  }
+
+  const extractedText = xmlTextParts.join("\n").replace(/[ \t]+/g, " ").replace(/\n\s+/g, "\n").trim();
+  if (!extractedText) {
+    throw new Error("DOCX source fixture did not contain extractable document text.");
+  }
+  return extractedText;
+};
+
+const extractTextFromPdfWithPython = async (fixturePath: string): Promise<string> => {
+  const script = [
+    "import sys",
+    "try:",
+    "    from pypdf import PdfReader",
+    "except Exception as exc:",
+    "    raise SystemExit(f'pypdf is required to extract PDF source fixtures: {exc}')",
+    "reader = PdfReader(sys.argv[1])",
+    "parts = []",
+    "for page in reader.pages:",
+    "    parts.append(page.extract_text() or '')",
+    "print('\\n'.join(parts))",
+  ].join("\n");
+
+  let lastError: unknown;
+  for (const command of ["python", "python3"]) {
+    try {
+      const { stdout } = await execFileAsync(command, ["-c", script, fixturePath], {
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const extractedText = stdout.trim();
+      if (!extractedText) {
+        throw new Error("PDF source fixture did not contain extractable text.");
+      }
+      return extractedText;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(
+    `Unable to extract PDF source fixture text. Install Python with pypdf or provide PW_CLINICAL_QA_EXPECTATIONS_FILE. ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+};
+
+const decodePdfLiteralString = (value: string): string =>
+  value.replace(/\\([()\\nrtbf])/g, (_match, escaped: string) => {
+    if (escaped === "n") return "\n";
+    if (escaped === "r") return "\r";
+    if (escaped === "t") return "\t";
+    if (escaped === "b") return "\b";
+    if (escaped === "f") return "\f";
+    return escaped;
+  });
+
+const extractTextFromSimplePdfBuffer = (buffer: Buffer): string | null => {
+  const rawPdf = buffer.toString("latin1");
+  const textParts = Array.from(rawPdf.matchAll(/\(((?:\\.|[^\\()])*)\)\s*Tj/g), (match) =>
+    decodePdfLiteralString(match[1]),
+  );
+  const extractedText = textParts.join("\n").trim();
+  return extractedText.length > 0 ? extractedText : null;
+};
+
+export const readClinicalQaSourceFixtureText = async (fixturePath: string): Promise<string> => {
+  assertRedactedQaFixture(fixturePath, "PW_CLINICAL_QA_SOURCE_FILE");
+  assertSupportedClinicalQaSourceTextFixture(fixturePath);
+  const extension = extname(fixturePath).toLowerCase();
+  if (extension === ".txt" || extension === ".md") {
+    return readFile(fixturePath, "utf8");
+  }
+  if (extension === ".docx") {
+    return extractTextFromDocxBuffer(await readFile(fixturePath));
+  }
+  if (extension === ".pdf") {
+    const simpleText = extractTextFromSimplePdfBuffer(await readFile(fixturePath));
+    return simpleText ?? extractTextFromPdfWithPython(fixturePath);
+  }
+  throw new Error("Unsupported clinical QA source fixture extension.");
 };
 
 export const selectClinicalQaCredentials = (

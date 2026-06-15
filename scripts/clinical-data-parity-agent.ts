@@ -14,8 +14,10 @@ import {
   deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalDataParity,
   evaluateClinicalQaChecklist,
+  getClinicalQaChecklistHumanReviewBlockers,
   type ClinicalQaEvidenceSection,
   parseClinicalQaExpectations,
+  parseClinicalQaVisualRubric,
   readClinicalQaOutputFixtureText,
   readClinicalQaSourceFixtureText,
   requireClinicalQaClientId,
@@ -135,6 +137,13 @@ const run = async (): Promise<void> => {
     process.env.PW_CLINICAL_QA_EXPECTATIONS_FILE,
     "PW_CLINICAL_QA_EXPECTATIONS_FILE",
   );
+  const visualRubricFixture = assertRedactedQaFixture(
+    process.env.PW_CLINICAL_QA_VISUAL_RUBRIC_FILE,
+    "PW_CLINICAL_QA_VISUAL_RUBRIC_FILE",
+  );
+  const visualRubric = visualRubricFixture
+    ? parseClinicalQaVisualRubric(await readFile(visualRubricFixture, "utf8"), visualRubricFixture)
+    : undefined;
   const expectations = expectationsFixture
     ? parseClinicalQaExpectations(await readFile(expectationsFixture, "utf8"), expectationsFixture)
     : sourceFixture
@@ -168,7 +177,7 @@ const run = async (): Promise<void> => {
     const outputEvidenceSections = outputText ? buildClinicalQaTextEvidenceSections(outputText) : [];
     const pageText = await page.locator("body").innerText({ timeout: 10_000 });
     const evidenceSections = await collectClinicalQaEvidenceSections(page);
-    const checklist = evaluateClinicalQaChecklist(pageText);
+    const checklist = evaluateClinicalQaChecklist(pageText, visualRubric);
     const dataParityFindings = evaluateClinicalDataParity(pageText, expectations, evidenceSections);
     const outputDataParityFindings = outputText
       ? evaluateClinicalDataParity(
@@ -195,6 +204,7 @@ const run = async (): Promise<void> => {
         outputConfigured: Boolean(outputFixture),
         generatedOutputCaptureConfigured: Boolean(generatedOutputSelector),
         expectationsConfigured: Boolean(expectationsFixture),
+        visualRubricConfigured: Boolean(visualRubricFixture),
         expectationsSource,
         outputSource: capturedGeneratedOutput ? "generated-output-capture" : outputFixture ? "output-fixture" : "none",
       },
@@ -216,6 +226,7 @@ const run = async (): Promise<void> => {
       checklist,
       dataParityFindings,
       outputDataParityFindings,
+      checklistHumanReviewBlockers: getClinicalQaChecklistHumanReviewBlockers(checklist),
       humanReviewBlockers: dataParityFindings.filter(
         (finding) => finding.status === "fail" && finding.humanReviewBlocker,
       ),

@@ -20,6 +20,8 @@ export type ClinicalQaChecklistItem = {
   key: string;
   label: string;
   requiredTerms: string[];
+  severity?: ClinicalQaParitySeverity;
+  humanReviewBlocker?: boolean;
 };
 
 export type ClinicalQaChecklistResult = {
@@ -27,6 +29,8 @@ export type ClinicalQaChecklistResult = {
   label: string;
   status: "pass" | "fail";
   missingTerms: string[];
+  severity: ClinicalQaParitySeverity;
+  humanReviewBlocker: boolean;
 };
 
 export type ClinicalQaParitySeverity = "low" | "medium" | "high";
@@ -103,6 +107,7 @@ export type ClinicalQaPreflightReport = {
     outputConfigured: boolean;
     expectationsConfigured: boolean;
     generatedOutputCaptureConfigured: boolean;
+    visualRubricConfigured: boolean;
   };
   expectationsSource: "expectations-file" | "source-text" | "none";
   outputSource: "generated-output-capture" | "output-fixture" | "none";
@@ -556,6 +561,11 @@ export const buildClinicalQaPreflightReport = (
     env.PW_CLINICAL_QA_EXPECTATIONS_FILE,
     "PW_CLINICAL_QA_EXPECTATIONS_FILE",
   );
+  const visualRubricFixture = pushFixturePreflightIssue(
+    blockingIssues,
+    env.PW_CLINICAL_QA_VISUAL_RUBRIC_FILE,
+    "PW_CLINICAL_QA_VISUAL_RUBRIC_FILE",
+  );
   const generatedOutputCaptureConfigured = Boolean(env.PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR?.trim());
 
   if (!sourceFixture && !expectationsFixture) {
@@ -586,6 +596,7 @@ export const buildClinicalQaPreflightReport = (
       outputConfigured: Boolean(outputFixture),
       expectationsConfigured: Boolean(expectationsFixture),
       generatedOutputCaptureConfigured,
+      visualRubricConfigured: Boolean(visualRubricFixture),
     },
     expectationsSource,
     outputSource,
@@ -620,6 +631,7 @@ export const buildClinicalQaPreflightReportMarkdown = ({
     `- output configured: ${report.fixtures.outputConfigured ? "yes" : "no"}`,
     `- expectations configured: ${report.fixtures.expectationsConfigured ? "yes" : "no"}`,
     `- generated output capture configured: ${report.fixtures.generatedOutputCaptureConfigured ? "yes" : "no"}`,
+    `- visual rubric configured: ${report.fixtures.visualRubricConfigured ? "yes" : "no"}`,
     "",
     "## Blocking Issues",
     ...(blockingIssueLines.length > 0 ? blockingIssueLines : ["- none"]),
@@ -645,9 +657,16 @@ export const evaluateClinicalQaChecklist = (
       label: item.label,
       status: missingTerms.length === 0 ? "pass" : "fail",
       missingTerms,
+      severity: item.severity ?? "medium",
+      humanReviewBlocker: item.humanReviewBlocker === true,
     };
   });
 };
+
+export const getClinicalQaChecklistHumanReviewBlockers = (
+  checklist: ClinicalQaChecklistResult[],
+): ClinicalQaChecklistResult[] =>
+  checklist.filter((item) => item.status === "fail" && item.humanReviewBlocker);
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string" && item.trim().length > 0);
@@ -979,6 +998,43 @@ export const parseClinicalQaExpectations = (
   });
 };
 
+export const parseClinicalQaVisualRubric = (
+  rawJson: string,
+  fixturePath: string,
+): ClinicalQaChecklistItem[] => {
+  assertRedactedQaFixture(fixturePath, "PW_CLINICAL_QA_VISUAL_RUBRIC_FILE");
+
+  const parsed = JSON.parse(rawJson) as { items?: unknown };
+  if (!Array.isArray(parsed.items)) {
+    throw new Error("Clinical QA visual rubric fixture must contain an items array.");
+  }
+  if (parsed.items.length === 0) {
+    throw new Error("Clinical QA visual rubric fixture must contain at least one item.");
+  }
+
+  return parsed.items.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`Clinical QA visual rubric item at index ${index} must be an object.`);
+    }
+    const item = entry as Record<string, unknown>;
+    const key = typeof item.key === "string" ? item.key.trim() : "";
+    const label = typeof item.label === "string" ? item.label.trim() : "";
+    if (!key || !label || !isStringArray(item.requiredTerms) || item.requiredTerms.length === 0) {
+      throw new Error(
+        `Clinical QA visual rubric item at index ${index} requires key, label, and non-empty requiredTerms.`,
+      );
+    }
+
+    return {
+      key,
+      label,
+      requiredTerms: item.requiredTerms.map((term) => term.trim()),
+      severity: normalizeSeverity(item.severity),
+      humanReviewBlocker: item.humanReviewBlocker === true,
+    };
+  });
+};
+
 export const evaluateClinicalDataParity = (
   pageText: string,
   expectations: ClinicalQaParityExpectation[],
@@ -1055,11 +1111,13 @@ const formatFindingLines = (findings: ClinicalQaParityFinding[]): string[] =>
 export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): string => {
   const outputDataParityFindings = report.outputDataParityFindings ?? [];
   const allFindings = [...report.dataParityFindings, ...outputDataParityFindings];
-  const blockerCount = allFindings.filter(
+  const parityBlockerCount = allFindings.filter(
     (finding) => finding.status === "fail" && finding.humanReviewBlocker,
   ).length;
+  const blockerCount = parityBlockerCount + getClinicalQaChecklistHumanReviewBlockers(report.checklist).length;
   const checklistLines = report.checklist.map(
-    (item) => `- ${item.status.toUpperCase()} ${item.label}: missing ${formatTermList(item.missingTerms)}`,
+    (item) =>
+      `- ${item.status.toUpperCase()} ${item.label}: missing ${formatTermList(item.missingTerms)}; severity ${item.severity}; human review blocker ${item.humanReviewBlocker ? "yes" : "no"}`,
   );
   const findingLines = formatFindingLines(report.dataParityFindings);
   const outputFindingLines = formatFindingLines(outputDataParityFindings);

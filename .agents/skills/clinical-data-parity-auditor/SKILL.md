@@ -41,10 +41,13 @@ Optional scope:
 - `PW_CLINICAL_QA_ROUTE`
 - `PW_CLINICAL_QA_SOURCE_FILE`
 - `PW_CLINICAL_QA_OUTPUT_FILE`
+- `PW_CLINICAL_QA_EXPECTATIONS_FILE`
+- `PW_CLINICAL_QA_VISUAL_RUBRIC_FILE`
 - `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR`
 - `PW_CLINICAL_QA_PREFLIGHT_ONLY`
 
 Source/output fixture paths must include `redacted`, `synthetic`, `smoke`, or `test` in the path.
+When `PW_CLINICAL_QA_VISUAL_RUBRIC_FILE` is set, it must point to a redacted JSON fixture with a non-empty `items` array. Each item requires `key`, `label`, and `requiredTerms`, and may include `severity` (`low`, `medium`, or `high`) plus `humanReviewBlocker`.
 When `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR` is set, the runner clicks that browser selector, captures the completed assessment output response, saves the downloaded artifact under `artifacts/latest` with a redacted filename, and uses that artifact for output parity.
 
 ## Readiness Preflight

@@ -249,6 +249,25 @@ const extractTextFromPdfWithPython = async (fixturePath: string): Promise<string
   );
 };
 
+const decodePdfLiteralString = (value: string): string =>
+  value.replace(/\\([()\\nrtbf])/g, (_match, escaped: string) => {
+    if (escaped === "n") return "\n";
+    if (escaped === "r") return "\r";
+    if (escaped === "t") return "\t";
+    if (escaped === "b") return "\b";
+    if (escaped === "f") return "\f";
+    return escaped;
+  });
+
+const extractTextFromSimplePdfBuffer = (buffer: Buffer): string | null => {
+  const rawPdf = buffer.toString("latin1");
+  const textParts = Array.from(rawPdf.matchAll(/\(((?:\\.|[^\\()])*)\)\s*Tj/g), (match) =>
+    decodePdfLiteralString(match[1]),
+  );
+  const extractedText = textParts.join("\n").trim();
+  return extractedText.length > 0 ? extractedText : null;
+};
+
 export const readClinicalQaSourceFixtureText = async (fixturePath: string): Promise<string> => {
   assertRedactedQaFixture(fixturePath, "PW_CLINICAL_QA_SOURCE_FILE");
   assertSupportedClinicalQaSourceTextFixture(fixturePath);
@@ -260,7 +279,8 @@ export const readClinicalQaSourceFixtureText = async (fixturePath: string): Prom
     return extractTextFromDocxBuffer(await readFile(fixturePath));
   }
   if (extension === ".pdf") {
-    return extractTextFromPdfWithPython(fixturePath);
+    const simpleText = extractTextFromSimplePdfBuffer(await readFile(fixturePath));
+    return simpleText ?? extractTextFromPdfWithPython(fixturePath);
   }
   throw new Error("Unsupported clinical QA source fixture extension.");
 };

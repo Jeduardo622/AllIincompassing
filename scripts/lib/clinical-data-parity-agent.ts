@@ -74,6 +74,7 @@ export type ClinicalQaReportInput = {
   checklist: ClinicalQaChecklistResult[];
   dataParityFindings: ClinicalQaParityFinding[];
   outputDataParityFindings?: ClinicalQaParityFinding[];
+  outputFindingsHeading?: string;
   disclaimer: string;
 };
 
@@ -650,6 +651,28 @@ export const deriveClinicalQaExpectationsFromSourceText = (
   });
 };
 
+export const buildClinicalQaTextEvidenceSections = (text: string): ClinicalQaEvidenceSection[] => {
+  const blocks = text
+    .replace(/\r\n?/g, "\n")
+    .split(/\n\s*\n/)
+    .map((block) =>
+      block
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0),
+    )
+    .filter((lines) => lines.length > 0);
+
+  return blocks.map((lines, index) => {
+    const [label, ...bodyLines] = lines;
+    const sectionText = bodyLines.length > 0 ? bodyLines.join(" ") : label;
+    return {
+      label: label || `Output section ${index + 1}`,
+      text: sectionText.replace(/\s+/g, " ").trim(),
+    };
+  });
+};
+
 const buildObservedTextSnippet = (pageText: string, matchedTerms: string[]): string | null => {
   const compactText = sanitizeEvidenceText(pageText.replace(/\s+/g, " ").trim());
   if (!compactText) {
@@ -861,6 +884,7 @@ export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): st
   );
   const findingLines = formatFindingLines(report.dataParityFindings);
   const outputFindingLines = formatFindingLines(outputDataParityFindings);
+  const outputFindingsHeading = report.outputFindingsHeading ?? "Output Fixture Parity Findings";
 
   return [
     "# Clinical Data Parity Agent Report",
@@ -878,7 +902,7 @@ export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): st
     "## Data Parity Findings",
     ...(findingLines.length > 0 ? findingLines : ["- none"]),
     "",
-    "## Output Fixture Parity Findings",
+    `## ${outputFindingsHeading}`,
     ...(outputFindingLines.length > 0 ? outputFindingLines : ["- none"]),
     "",
     "## Disclaimer",

@@ -7,6 +7,7 @@ import {
   assertSupportedClinicalQaSourceTextFixture,
   buildClinicalQaReportMarkdown,
   buildClinicalQaRoute,
+  buildClinicalQaTextEvidenceSections,
   captureClinicalQaGeneratedOutputArtifact,
   deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalDataParity,
@@ -137,6 +138,7 @@ const run = async (): Promise<void> => {
         })
       : null;
     const outputText = capturedGeneratedOutput?.text ?? outputFixtureText;
+    const outputEvidenceSections = outputText ? buildClinicalQaTextEvidenceSections(outputText) : [];
     const pageText = await page.locator("body").innerText({ timeout: 10_000 });
     const evidenceSections = await collectClinicalQaEvidenceSections(page);
     const checklist = evaluateClinicalQaChecklist(pageText);
@@ -144,10 +146,8 @@ const run = async (): Promise<void> => {
     const outputDataParityFindings = outputText
       ? evaluateClinicalDataParity(
           outputText,
-          expectations.map((expectation) => ({
-            ...expectation,
-            observedSectionTerms: [],
-          })),
+          expectations,
+          outputEvidenceSections,
         )
       : [];
     const screenshotPath = path.join(latestDir, `clinical-data-parity-agent-${runId}.png`);
@@ -182,6 +182,10 @@ const run = async (): Promise<void> => {
         label: section.label,
         textLength: section.text.length,
       })),
+      outputEvidenceSections: outputEvidenceSections.map((section) => ({
+        label: section.label,
+        textLength: section.text.length,
+      })),
       checklist,
       dataParityFindings,
       outputDataParityFindings,
@@ -206,6 +210,9 @@ const run = async (): Promise<void> => {
       checklist,
       dataParityFindings,
       outputDataParityFindings,
+      outputFindingsHeading: capturedGeneratedOutput
+        ? "Generated Output Parity Findings"
+        : "Output Fixture Parity Findings",
       disclaimer,
     });
 

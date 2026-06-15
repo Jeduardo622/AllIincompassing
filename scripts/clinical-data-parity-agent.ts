@@ -1,10 +1,13 @@
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
 import {
   assertRedactedQaFixture,
   buildClinicalQaRoute,
+  evaluateClinicalDataParity,
   evaluateClinicalQaChecklist,
+  parseClinicalQaExpectations,
   requireClinicalQaClientId,
   selectClinicalQaCredentials,
 } from "./lib/clinical-data-parity-agent";
@@ -45,6 +48,13 @@ const run = async (): Promise<void> => {
     process.env.PW_CLINICAL_QA_OUTPUT_FILE,
     "PW_CLINICAL_QA_OUTPUT_FILE",
   );
+  const expectationsFixture = assertRedactedQaFixture(
+    process.env.PW_CLINICAL_QA_EXPECTATIONS_FILE,
+    "PW_CLINICAL_QA_EXPECTATIONS_FILE",
+  );
+  const expectations = expectationsFixture
+    ? parseClinicalQaExpectations(await readFile(expectationsFixture, "utf8"), expectationsFixture)
+    : [];
 
   const browser = await chromium.launch({ headless: process.env.HEADLESS !== "false" });
   const context = await browser.newContext();
@@ -57,6 +67,7 @@ const run = async (): Promise<void> => {
 
     const pageText = await page.locator("body").innerText({ timeout: 10_000 });
     const checklist = evaluateClinicalQaChecklist(pageText);
+    const dataParityFindings = evaluateClinicalDataParity(pageText, expectations);
     const screenshotPath = path.join(latestDir, `clinical-data-parity-agent-${Date.now()}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
 
@@ -69,8 +80,13 @@ const run = async (): Promise<void> => {
       fixtures: {
         sourceConfigured: Boolean(sourceFixture),
         outputConfigured: Boolean(outputFixture),
+        expectationsConfigured: Boolean(expectationsFixture),
       },
       checklist,
+      dataParityFindings,
+      humanReviewBlockers: dataParityFindings.filter(
+        (finding) => finding.status === "fail" && finding.humanReviewBlocker,
+      ),
       screenshot: screenshotPath,
       disclaimer: "QA evidence only. This is not BCBA approval or clinical sign-off.",
     };

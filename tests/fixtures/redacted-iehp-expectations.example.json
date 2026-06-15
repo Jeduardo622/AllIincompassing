@@ -1,0 +1,25 @@
+{
+  "expectations": [
+    {
+      "key": "target_behaviors",
+      "label": "Target behaviors",
+      "expectedTerms": ["elopement", "property destruction"],
+      "severity": "high",
+      "humanReviewBlocker": true
+    },
+    {
+      "key": "replacement_behavior",
+      "label": "Replacement behavior",
+      "expectedTerms": ["functional communication"],
+      "severity": "medium",
+      "humanReviewBlocker": false
+    },
+    {
+      "key": "program_goal_measurement",
+      "label": "Program goal measurement",
+      "expectedTerms": ["baseline", "mastery", "maintenance", "generalization"],
+      "severity": "medium",
+      "humanReviewBlocker": false
+    }
+  ]
+}

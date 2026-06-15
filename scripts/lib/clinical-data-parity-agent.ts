@@ -111,6 +111,11 @@ export type ClinicalQaPreflightReport = {
   nextAction: string;
 };
 
+export type ClinicalQaPreflightReportMarkdownInput = {
+  generatedAt: string;
+  report: ClinicalQaPreflightReport;
+};
+
 type ClinicalQaGeneratedOutputResponse = {
   url: () => string;
   request: () => { method: () => string };
@@ -590,6 +595,42 @@ export const buildClinicalQaPreflightReport = (
       ? "Run npm run playwright:clinical-data-parity-agent with the same environment to collect browser evidence."
       : "Set the missing redacted clinical QA environment values, then rerun preflight.",
   };
+};
+
+export const buildClinicalQaPreflightReportMarkdown = ({
+  generatedAt,
+  report,
+}: ClinicalQaPreflightReportMarkdownInput): string => {
+  const blockingIssueLines = report.blockingIssues.map((issue) => `- ${issue}`);
+  const warningLines = report.warnings.map((warning) => `- ${warning}`);
+
+  return [
+    "# Clinical Data Parity Agent Preflight",
+    "",
+    `generated at: ${generatedAt}`,
+    `ready: ${report.ok ? "yes" : "no"}`,
+    `mode: \`${report.mode}\``,
+    `credential label: \`${report.credentialLabel ?? "none"}\``,
+    `target route: \`${report.routePath ?? "none"}\``,
+    `expectations source: \`${report.expectationsSource}\``,
+    `output source: \`${report.outputSource}\``,
+    "",
+    "## Fixture Readiness",
+    `- source configured: ${report.fixtures.sourceConfigured ? "yes" : "no"}`,
+    `- output configured: ${report.fixtures.outputConfigured ? "yes" : "no"}`,
+    `- expectations configured: ${report.fixtures.expectationsConfigured ? "yes" : "no"}`,
+    `- generated output capture configured: ${report.fixtures.generatedOutputCaptureConfigured ? "yes" : "no"}`,
+    "",
+    "## Blocking Issues",
+    ...(blockingIssueLines.length > 0 ? blockingIssueLines : ["- none"]),
+    "",
+    "## Warnings",
+    ...(warningLines.length > 0 ? warningLines : ["- none"]),
+    "",
+    "## Next Action",
+    report.nextAction,
+    "",
+  ].join("\n");
 };
 
 export const evaluateClinicalQaChecklist = (

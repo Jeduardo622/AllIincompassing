@@ -6,6 +6,7 @@ import {
   assertRedactedQaFixture,
   assertSupportedClinicalQaSourceTextFixture,
   buildClinicalQaPreflightReport,
+  buildClinicalQaPreflightReportMarkdown,
   buildClinicalQaReportMarkdown,
   buildClinicalQaRoute,
   buildClinicalQaTextEvidenceSections,
@@ -81,8 +82,23 @@ const collectClinicalQaEvidenceSections = async (page: Page): Promise<ClinicalQa
 
 const run = async (): Promise<void> => {
   if (isPreflightOnly()) {
+    const latestDir = ensureArtifactsDir();
+    const runId = Date.now();
+    const generatedAt = new Date(runId).toISOString();
     const preflight = buildClinicalQaPreflightReport(process.env);
-    console.log(JSON.stringify(preflight, null, 2));
+    const reportJsonPath = path.join(latestDir, `clinical-data-parity-preflight-${runId}.json`);
+    const reportMarkdownPath = path.join(latestDir, `clinical-data-parity-preflight-${runId}.md`);
+    const payload = {
+      ...preflight,
+      generatedAt,
+      reportJson: reportJsonPath,
+      reportMarkdown: reportMarkdownPath,
+    };
+
+    await writeFile(reportJsonPath, JSON.stringify(payload, null, 2));
+    await writeFile(reportMarkdownPath, buildClinicalQaPreflightReportMarkdown({ generatedAt, report: preflight }));
+
+    console.log(JSON.stringify(payload, null, 2));
     process.exitCode = preflight.ok ? 0 : 1;
     return;
   }

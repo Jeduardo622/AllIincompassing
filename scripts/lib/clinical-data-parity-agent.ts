@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path, { extname } from "node:path";
 import { promisify } from "node:util";
@@ -504,6 +505,9 @@ const pushFixturePreflightIssue = (
     const fixturePath = assertRedactedQaFixture(value, label);
     if (fixturePath && validateSupportedSource) {
       assertSupportedClinicalQaSourceTextFixture(fixturePath);
+    }
+    if (fixturePath && !existsSync(fixturePath)) {
+      throw new Error(`${label} must point to an existing redacted, synthetic, smoke, or test fixture.`);
     }
     return fixturePath;
   } catch (error) {

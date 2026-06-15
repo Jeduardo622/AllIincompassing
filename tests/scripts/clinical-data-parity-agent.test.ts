@@ -260,13 +260,39 @@ describe("clinical data parity agent helpers", () => {
     );
   });
 
+  it("blocks clinical QA preflight when configured redacted fixture files are missing", () => {
+    const report = buildClinicalQaPreflightReport({
+      PW_CLINICAL_QA_EMAIL: "qa@example.test",
+      PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_ROUTE: "/clients/client-1",
+      PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-missing-source.example.txt",
+      PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-missing-output.example.txt",
+      PW_CLINICAL_QA_EXPECTATIONS_FILE: "tests/fixtures/redacted-missing-expectations.example.json",
+      PW_CLINICAL_QA_VISUAL_RUBRIC_FILE: "tests/fixtures/redacted-missing-rubric.example.json",
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.blockingIssues).toContain(
+      "PW_CLINICAL_QA_SOURCE_FILE must point to an existing redacted, synthetic, smoke, or test fixture.",
+    );
+    expect(report.blockingIssues).toContain(
+      "PW_CLINICAL_QA_OUTPUT_FILE must point to an existing redacted, synthetic, smoke, or test fixture.",
+    );
+    expect(report.blockingIssues).toContain(
+      "PW_CLINICAL_QA_EXPECTATIONS_FILE must point to an existing redacted, synthetic, smoke, or test fixture.",
+    );
+    expect(report.blockingIssues).toContain(
+      "PW_CLINICAL_QA_VISUAL_RUBRIC_FILE must point to an existing redacted, synthetic, smoke, or test fixture.",
+    );
+  });
+
   it("builds a redacted clinical QA preflight markdown artifact", () => {
     const report = buildClinicalQaPreflightReport({
       PW_CLINICAL_QA_EMAIL: "qa@example.test",
       PW_CLINICAL_QA_PASSWORD: "qa-password",
       PW_CLINICAL_QA_CLIENT_ID: "client-1",
       PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-iehp-source.example.txt",
-      PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-output.example.docx",
+      PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-output.example.txt",
     });
 
     const markdown = buildClinicalQaPreflightReportMarkdown({
@@ -475,7 +501,7 @@ describe("clinical data parity agent helpers", () => {
       PW_CLINICAL_QA_PASSWORD: "qa-password",
       PW_CLINICAL_QA_CLIENT_ID: "client-1",
       PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-iehp-source.example.txt",
-      PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-output.example.docx",
+      PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-output.example.txt",
       PW_CLINICAL_QA_VISUAL_RUBRIC_FILE: "tests/fixtures/redacted-clinical-qa-visual-rubric.example.json",
     });
 

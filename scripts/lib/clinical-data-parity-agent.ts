@@ -23,6 +23,22 @@ export type ClinicalQaChecklistResult = {
   missingTerms: string[];
 };
 
+export type ClinicalQaParitySeverity = "low" | "medium" | "high";
+
+export type ClinicalQaParityExpectation = {
+  key: string;
+  label: string;
+  expectedTerms: string[];
+  severity: ClinicalQaParitySeverity;
+  humanReviewBlocker: boolean;
+};
+
+export type ClinicalQaParityFinding = ClinicalQaParityExpectation & {
+  status: "pass" | "fail";
+  matchedTerms: string[];
+  missingTerms: string[];
+};
+
 const REDACTED_PASSWORD_PLACEHOLDER = "****";
 
 export const DEFAULT_CLINICAL_QA_ROUTE = "/";
@@ -119,6 +135,72 @@ export const evaluateClinicalQaChecklist = (
       key: item.key,
       label: item.label,
       status: missingTerms.length === 0 ? "pass" : "fail",
+      missingTerms,
+    };
+  });
+};
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string" && item.trim().length > 0);
+
+const normalizeSeverity = (value: unknown): ClinicalQaParitySeverity => {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+  return "medium";
+};
+
+export const parseClinicalQaExpectations = (
+  rawJson: string,
+  fixturePath: string,
+): ClinicalQaParityExpectation[] => {
+  assertRedactedQaFixture(fixturePath, "PW_CLINICAL_QA_EXPECTATIONS_FILE");
+
+  const parsed = JSON.parse(rawJson) as { expectations?: unknown };
+  if (!Array.isArray(parsed.expectations)) {
+    throw new Error("Clinical QA expectations fixture must contain an expectations array.");
+  }
+
+  return parsed.expectations.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`Clinical QA expectation at index ${index} must be an object.`);
+    }
+    const expectation = entry as Record<string, unknown>;
+    const key = typeof expectation.key === "string" ? expectation.key.trim() : "";
+    const label = typeof expectation.label === "string" ? expectation.label.trim() : "";
+    if (!key || !label || !isStringArray(expectation.expectedTerms)) {
+      throw new Error(
+        `Clinical QA expectation at index ${index} requires key, label, and non-empty expectedTerms.`,
+      );
+    }
+
+    return {
+      key,
+      label,
+      expectedTerms: expectation.expectedTerms.map((term) => term.trim()),
+      severity: normalizeSeverity(expectation.severity),
+      humanReviewBlocker: expectation.humanReviewBlocker === true,
+    };
+  });
+};
+
+export const evaluateClinicalDataParity = (
+  pageText: string,
+  expectations: ClinicalQaParityExpectation[],
+): ClinicalQaParityFinding[] => {
+  const normalizedText = pageText.toLowerCase();
+  return expectations.map((expectation) => {
+    const matchedTerms = expectation.expectedTerms.filter((term) =>
+      normalizedText.includes(term.toLowerCase()),
+    );
+    const missingTerms = expectation.expectedTerms.filter(
+      (term) => !normalizedText.includes(term.toLowerCase()),
+    );
+
+    return {
+      ...expectation,
+      status: missingTerms.length === 0 ? "pass" : "fail",
+      matchedTerms,
       missingTerms,
     };
   });

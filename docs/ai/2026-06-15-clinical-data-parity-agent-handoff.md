@@ -32,8 +32,29 @@ Optional:
 - `PW_CLINICAL_QA_ROUTE`
 - `PW_CLINICAL_QA_SOURCE_FILE`
 - `PW_CLINICAL_QA_OUTPUT_FILE`
+- `PW_CLINICAL_QA_EXPECTATIONS_FILE`
 
 The runner rejects placeholder passwords, API routes, admin-only routes, and fixture paths that are not clearly redacted, synthetic, smoke, or test fixtures.
+
+## Expectations Fixture Contract
+
+`PW_CLINICAL_QA_EXPECTATIONS_FILE` points to a redacted, synthetic, smoke, or test JSON fixture. A safe example lives at `tests/fixtures/redacted-iehp-expectations.example.json`:
+
+```json
+{
+  "expectations": [
+    {
+      "key": "target_behaviors",
+      "label": "Target behaviors",
+      "expectedTerms": ["elopement", "property destruction"],
+      "severity": "high",
+      "humanReviewBlocker": true
+    }
+  ]
+}
+```
+
+The browser runner compares each `expectedTerms` entry against the visible browser text and emits `dataParityFindings` plus `humanReviewBlockers` in the JSON payload.
 
 ## Non-Goals
 
@@ -53,5 +74,5 @@ The runner rejects placeholder passwords, API routes, admin-only routes, and fix
 
 ## Residual Risk
 
-- Browser evidence proves access and visible surface checks only; source-to-output clinical parity still requires redacted fixture selection and human review of findings.
+- Browser evidence now supports source-to-output term parity when a redacted expectations JSON fixture is configured. It still requires fixture curation and human review of findings.
 - The agent can reduce reviewer workload but cannot replace BCBA sign-off.

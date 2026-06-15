@@ -5,6 +5,8 @@ import {
   assertRedactedQaFixture,
   buildClinicalQaRoute,
   evaluateClinicalQaChecklist,
+  evaluateClinicalDataParity,
+  parseClinicalQaExpectations,
   requireClinicalQaClientId,
   selectClinicalQaCredentials,
 } from "../../scripts/lib/clinical-data-parity-agent";
@@ -90,5 +92,55 @@ describe("clinical data parity agent helpers", () => {
 
     expect(results.every((result) => result.status === "pass")).toBe(true);
     expect(evaluateClinicalQaChecklist("Dashboard only").filter((result) => result.status === "fail")).toHaveLength(3);
+  });
+
+  it("parses redacted parity expectations and flags missing clinically important terms", () => {
+    const expectations = parseClinicalQaExpectations(
+      JSON.stringify({
+        expectations: [
+          {
+            key: "target_behaviors",
+            label: "Target behaviors",
+            expectedTerms: ["elopement", "property destruction"],
+            severity: "high",
+            humanReviewBlocker: true,
+          },
+          {
+            key: "replacement_behavior",
+            label: "Replacement behavior",
+            expectedTerms: ["functional communication"],
+          },
+        ],
+      }),
+      "fixtures/redacted-iehp-expectations.json",
+    );
+
+    const findings = evaluateClinicalDataParity(
+      "Programs and goals include elopement and functional communication.",
+      expectations,
+    );
+
+    expect(findings).toEqual([
+      {
+        key: "target_behaviors",
+        label: "Target behaviors",
+        status: "fail",
+        severity: "high",
+        expectedTerms: ["elopement", "property destruction"],
+        matchedTerms: ["elopement"],
+        missingTerms: ["property destruction"],
+        humanReviewBlocker: true,
+      },
+      {
+        key: "replacement_behavior",
+        label: "Replacement behavior",
+        status: "pass",
+        severity: "medium",
+        expectedTerms: ["functional communication"],
+        matchedTerms: ["functional communication"],
+        missingTerms: [],
+        humanReviewBlocker: false,
+      },
+    ]);
   });
 });

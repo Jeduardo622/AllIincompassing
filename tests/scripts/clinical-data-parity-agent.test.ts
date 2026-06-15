@@ -8,6 +8,7 @@ import {
   requireClinicalQaClientId,
   selectClinicalQaCredentials,
 } from "../../scripts/lib/clinical-data-parity-agent";
+import { routeMatchesPathname } from "../../scripts/lib/playwright-smoke";
 
 describe("clinical data parity agent helpers", () => {
   it("selects dedicated clinical QA credentials before admin fallback", () => {
@@ -61,6 +62,10 @@ describe("clinical data parity agent helpers", () => {
     );
     expect(buildClinicalQaRoute({ routePath: "/dashboard", clientId: "client id" })).toBe("/dashboard");
     expect(buildClinicalQaRoute({})).toBe("/");
+  });
+
+  it("matches route reachability by pathname when the expected route includes a query string", () => {
+    expect(routeMatchesPathname("/clients/client%20id", "/clients/client%20id?tab=programs-goals")).toBe(true);
   });
 
   it("requires redacted or synthetic fixture names for document comparisons", () => {

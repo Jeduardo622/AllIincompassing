@@ -88,6 +88,12 @@ export const assertUuid = (value: string | undefined, label: string): string => 
   return value;
 };
 
+export const routeMatchesPathname = (actualPathname: string, expectedRoutePath: string): boolean => {
+  const pathname = actualPathname.toLowerCase();
+  const expectedPathname = new URL(expectedRoutePath, "http://local.test").pathname.toLowerCase();
+  return pathname === expectedPathname || pathname.startsWith(`${expectedPathname}/`);
+};
+
 export const loginAndAssertSession = async (
   page: Page,
   baseUrl: string,
@@ -182,11 +188,7 @@ export const assertRouteAccessible = async (
     const pathname = new URL(page.url()).pathname.toLowerCase();
     lastPath = pathname;
 
-    const routePathNormalized = routePath.toLowerCase();
-    const onExpectedRoute =
-      pathname === routePathNormalized ||
-      pathname.startsWith(`${routePathNormalized}/`) ||
-      pathname.startsWith(`${routePathNormalized}?`);
+    const onExpectedRoute = routeMatchesPathname(pathname, routePath);
 
     if (!pathname.includes("/login") && !pathname.includes("/unauthorized") && onExpectedRoute) {
       if (readySelector) {

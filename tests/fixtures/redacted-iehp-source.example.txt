@@ -6,3 +6,15 @@ Replacement behavior: functional communication
 
 Goals and measurement criteria
 Measurement terms: baseline, mastery, maintenance, generalization
+
+ABC and function summary
+Antecedents: transition demand; denied access
+Consequences: adult attention; escape from task
+Functions: escape; access to attention
+
+Intervention plan
+Interventions: visual schedule; first then board
+
+Authorization and client metadata
+Client identifiers: test client 01; redacted medicaid id
+Authorization details: 97153; 12 units weekly

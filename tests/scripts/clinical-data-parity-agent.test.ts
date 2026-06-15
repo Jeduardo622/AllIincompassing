@@ -185,6 +185,18 @@ describe("clinical data parity agent helpers", () => {
 
       Goals and measurement criteria
       Measurement terms: baseline, mastery, maintenance, generalization
+
+      ABC and function summary
+      Antecedents: transition demand; denied access
+      Consequences: adult attention; escape from task
+      Functions: escape; access to attention
+
+      Intervention plan
+      Interventions: visual schedule; first then board
+
+      Authorization and client metadata
+      Client identifiers: test client 01; redacted medicaid id
+      Authorization details: 97153; 12 units weekly
     `);
 
     expect(expectations).toEqual([
@@ -212,6 +224,60 @@ describe("clinical data parity agent helpers", () => {
         sourceSection: "Goals and measurement criteria",
         expectedTerms: ["baseline", "mastery", "maintenance", "generalization"],
         observedSectionTerms: ["Programs", "Goals"],
+        severity: "medium",
+        humanReviewBlocker: false,
+      },
+      {
+        key: "antecedents",
+        label: "Antecedents",
+        sourceSection: "ABC and function summary",
+        expectedTerms: ["transition demand", "denied access"],
+        observedSectionTerms: ["Assessment", "Programs", "Goals"],
+        severity: "high",
+        humanReviewBlocker: true,
+      },
+      {
+        key: "consequences",
+        label: "Consequences",
+        sourceSection: "ABC and function summary",
+        expectedTerms: ["adult attention", "escape from task"],
+        observedSectionTerms: ["Assessment", "Programs", "Goals"],
+        severity: "high",
+        humanReviewBlocker: true,
+      },
+      {
+        key: "functions",
+        label: "Behavior functions",
+        sourceSection: "ABC and function summary",
+        expectedTerms: ["escape", "access to attention"],
+        observedSectionTerms: ["Assessment", "Programs", "Goals"],
+        severity: "high",
+        humanReviewBlocker: true,
+      },
+      {
+        key: "interventions",
+        label: "Interventions",
+        sourceSection: "Intervention plan",
+        expectedTerms: ["visual schedule", "first then board"],
+        observedSectionTerms: ["Programs", "Goals"],
+        severity: "medium",
+        humanReviewBlocker: false,
+      },
+      {
+        key: "client_metadata",
+        label: "Client metadata",
+        sourceSection: "Authorization and client metadata",
+        expectedTerms: ["test client 01", "redacted medicaid id"],
+        observedSectionTerms: ["Client", "Assessment"],
+        severity: "medium",
+        humanReviewBlocker: false,
+      },
+      {
+        key: "authorization_metadata",
+        label: "Authorization metadata",
+        sourceSection: "Authorization and client metadata",
+        expectedTerms: ["97153", "12 units weekly"],
+        observedSectionTerms: ["Authorization", "Client"],
         severity: "medium",
         humanReviewBlocker: false,
       },

@@ -70,6 +70,12 @@ When `PW_CLINICAL_QA_EXPECTATIONS_FILE` is omitted and `PW_CLINICAL_QA_SOURCE_FI
 - `Target behaviors: ...`
 - `Replacement behavior: ...`
 - `Measurement terms: ...`
+- `Antecedents: ...`
+- `Consequences: ...`
+- `Functions: ...`
+- `Interventions: ...`
+- `Client identifiers: ...`
+- `Authorization details: ...`
 
 A safe example lives at `tests/fixtures/redacted-iehp-source.example.txt`. Source-only extraction currently does not parse DOCX or PDF. For DOCX/PDF source documents, provide a redacted expectations JSON fixture until a dedicated parser is added.
 
@@ -101,5 +107,5 @@ The JSON report matches the stdout payload. The markdown report is intended for 
 
 ## Residual Risk
 
-- Browser evidence now supports source-to-output term parity when a redacted expectations JSON fixture is configured. It still requires fixture curation and human review of findings.
+- Browser evidence now supports source-to-output term parity when a redacted expectations JSON fixture or supported redacted text fixture is configured. It still requires fixture curation and human review of findings.
 - The agent can reduce reviewer workload but cannot replace BCBA sign-off.

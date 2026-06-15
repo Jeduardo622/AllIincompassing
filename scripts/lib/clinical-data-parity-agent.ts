@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path, { extname } from "node:path";
 import { promisify } from "node:util";
 import { inflateRawSync } from "node:zlib";
@@ -81,6 +81,45 @@ export type ClinicalQaGeneratedOutputMetadata = {
   generatedFileType: "docx" | "pdf";
   signedUrl: string;
   filename: string | null;
+};
+
+export type ClinicalQaCapturedGeneratedOutput = {
+  artifactPath: string;
+  generatedFileType: "docx" | "pdf";
+  filename: string | null;
+  text: string;
+};
+
+type ClinicalQaGeneratedOutputResponse = {
+  url: () => string;
+  request: () => { method: () => string };
+  json: () => Promise<unknown>;
+  ok: () => boolean;
+};
+
+type ClinicalQaGeneratedOutputArtifactResponse = {
+  ok: () => boolean;
+  status: () => number;
+  body: () => Promise<Buffer>;
+};
+
+export type ClinicalQaGeneratedOutputPage = {
+  waitForResponse: (
+    predicate: (response: ClinicalQaGeneratedOutputResponse) => boolean,
+    options: { timeout: number },
+  ) => Promise<ClinicalQaGeneratedOutputResponse>;
+  waitForEvent: (
+    eventName: "popup",
+    options: { timeout: number },
+  ) => Promise<{ close: () => Promise<unknown> } | null>;
+  locator: (selector: string) => {
+    click: (options: { timeout: number }) => Promise<unknown>;
+  };
+  context: () => {
+    request: {
+      get: (url: string) => Promise<ClinicalQaGeneratedOutputArtifactResponse>;
+    };
+  };
 };
 
 const REDACTED_PASSWORD_PLACEHOLDER = "****";
@@ -182,6 +221,51 @@ export const buildClinicalQaGeneratedOutputArtifactPath = (
     latestDir,
     `redacted-clinical-qa-generated-output-${runId}.${metadata.generatedFileType}`,
   );
+
+export const captureClinicalQaGeneratedOutputArtifact = async (args: {
+  page: ClinicalQaGeneratedOutputPage;
+  selector: string;
+  latestDir: string;
+  runId: number;
+  readOutputText?: (artifactPath: string) => Promise<string>;
+  writeArtifact?: (artifactPath: string, artifactBody: Buffer) => Promise<unknown>;
+}): Promise<ClinicalQaCapturedGeneratedOutput> => {
+  const responsePromise = args.page.waitForResponse(
+    (response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/assessment-plan-pdf" && response.request().method() === "POST";
+    },
+    { timeout: 45_000 },
+  );
+  const popupPromise = args.page.waitForEvent("popup", { timeout: 5_000 }).catch(() => null);
+
+  await args.page.locator(args.selector).click({ timeout: 10_000 });
+  const response = await responsePromise;
+  const responsePayload = await response.json();
+  if (!response.ok()) {
+    throw new Error("Generated output request failed before artifact download.");
+  }
+
+  const metadata = parseClinicalQaGeneratedOutputResponse(responsePayload);
+  const artifactPath = buildClinicalQaGeneratedOutputArtifactPath(args.latestDir, args.runId, metadata);
+  const artifactResponse = await args.page.context().request.get(metadata.signedUrl);
+  if (!artifactResponse.ok()) {
+    throw new Error(`Generated output artifact download failed with HTTP ${artifactResponse.status()}.`);
+  }
+
+  const writeArtifact = args.writeArtifact ?? writeFile;
+  const readOutputText = args.readOutputText ?? readClinicalQaOutputFixtureText;
+  await writeArtifact(artifactPath, await artifactResponse.body());
+  const popup = await popupPromise;
+  await popup?.close().catch(() => undefined);
+
+  return {
+    artifactPath,
+    generatedFileType: metadata.generatedFileType,
+    filename: metadata.filename,
+    text: await readOutputText(artifactPath),
+  };
+};
 
 const decodeXmlText = (value: string): string =>
   value

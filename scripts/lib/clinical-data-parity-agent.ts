@@ -35,6 +35,18 @@ export type ClinicalQaParityExpectation = {
   humanReviewBlocker: boolean;
 };
 
+export type ClinicalQaEvidenceSection = {
+  label: string;
+  text: string;
+};
+
+export type ClinicalQaSectionEvidenceResult = {
+  sectionLabel: string;
+  matchedTerms: string[];
+  missingTerms: string[];
+  observedTextSnippet: string | null;
+};
+
 export type ClinicalQaParityFinding = ClinicalQaParityExpectation & {
   status: "pass" | "fail";
   mismatchType: "match" | "partial" | "missing";
@@ -43,6 +55,8 @@ export type ClinicalQaParityFinding = ClinicalQaParityExpectation & {
   observedSectionMatchedTerms: string[];
   observedSectionMissingTerms: string[];
   observedTextSnippet: string | null;
+  sectionEvidenceStatus?: "match" | "partial" | "missing" | "not_evaluated";
+  sectionEvidence?: ClinicalQaSectionEvidenceResult[];
 };
 
 export type ClinicalQaReportInput = {
@@ -383,6 +397,61 @@ const classifyMismatch = (
   return "partial";
 };
 
+const sectionLabelMatches = (sectionLabel: string, observedSectionTerms: string[]): boolean => {
+  const normalizedLabel = sectionLabel.toLowerCase();
+  return observedSectionTerms.some((term) => normalizedLabel.includes(term.toLowerCase()));
+};
+
+const evaluateSectionEvidence = (
+  expectation: ClinicalQaParityExpectation,
+  evidenceSections: ClinicalQaEvidenceSection[],
+): Pick<ClinicalQaParityFinding, "sectionEvidence" | "sectionEvidenceStatus"> => {
+  if (expectation.observedSectionTerms.length === 0) {
+    return {
+      sectionEvidence: [],
+      sectionEvidenceStatus: "not_evaluated",
+    };
+  }
+
+  const matchingSections = evidenceSections.filter((section) =>
+    sectionLabelMatches(section.label, expectation.observedSectionTerms),
+  );
+  if (matchingSections.length === 0) {
+    return {
+      sectionEvidence: [],
+      sectionEvidenceStatus: "not_evaluated",
+    };
+  }
+
+  const sectionEvidence = matchingSections.map((section) => {
+    const normalizedSectionText = section.text.toLowerCase();
+    const matchedTerms = expectation.expectedTerms.filter((term) =>
+      normalizedSectionText.includes(term.toLowerCase()),
+    );
+    const missingTerms = expectation.expectedTerms.filter(
+      (term) => !normalizedSectionText.includes(term.toLowerCase()),
+    );
+
+    return {
+      sectionLabel: section.label,
+      matchedTerms,
+      missingTerms,
+      observedTextSnippet: buildObservedTextSnippet(section.text, matchedTerms),
+    };
+  });
+  const matchedAcrossSections = new Set(
+    sectionEvidence.flatMap((section) => section.matchedTerms.map((term) => term.toLowerCase())),
+  );
+  const missingAcrossSections = expectation.expectedTerms.filter(
+    (term) => !matchedAcrossSections.has(term.toLowerCase()),
+  );
+
+  return {
+    sectionEvidence,
+    sectionEvidenceStatus: classifyMismatch(expectation.expectedTerms.length, missingAcrossSections.length),
+  };
+};
+
 export const parseClinicalQaExpectations = (
   rawJson: string,
   fixturePath: string,
@@ -422,6 +491,7 @@ export const parseClinicalQaExpectations = (
 export const evaluateClinicalDataParity = (
   pageText: string,
   expectations: ClinicalQaParityExpectation[],
+  evidenceSections?: ClinicalQaEvidenceSection[],
 ): ClinicalQaParityFinding[] => {
   const normalizedText = pageText.toLowerCase();
   return expectations.map((expectation) => {
@@ -438,6 +508,9 @@ export const evaluateClinicalDataParity = (
       (term) => !normalizedText.includes(term.toLowerCase()),
     );
 
+    const sectionEvidence =
+      evidenceSections === undefined ? {} : evaluateSectionEvidence(expectation, evidenceSections);
+
     return {
       ...expectation,
       status: missingTerms.length === 0 ? "pass" : "fail",
@@ -447,11 +520,27 @@ export const evaluateClinicalDataParity = (
       observedSectionMatchedTerms,
       observedSectionMissingTerms,
       observedTextSnippet: buildObservedTextSnippet(pageText, [...matchedTerms, ...observedSectionMatchedTerms]),
+      ...sectionEvidence,
     };
   });
 };
 
 const formatTermList = (terms: string[]): string => (terms.length > 0 ? terms.join(", ") : "none");
+
+const formatSectionEvidence = (finding: ClinicalQaParityFinding): string[] => {
+  if (!finding.sectionEvidenceStatus || !finding.sectionEvidence) {
+    return [];
+  }
+
+  const sectionLines = finding.sectionEvidence.flatMap((section) => [
+    `  - section evidence: ${section.sectionLabel}`,
+    `    - matched: ${formatTermList(section.matchedTerms)}`,
+    `    - missing: ${formatTermList(section.missingTerms)}`,
+    `    - snippet: ${section.observedTextSnippet ? sanitizeEvidenceText(section.observedTextSnippet) : "none"}`,
+  ]);
+
+  return [`  - section evidence status: ${finding.sectionEvidenceStatus}`, ...sectionLines];
+};
 
 export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): string => {
   const blockerCount = report.dataParityFindings.filter(
@@ -472,6 +561,7 @@ export const buildClinicalQaReportMarkdown = (report: ClinicalQaReportInput): st
       `  - matched: ${formatTermList(finding.matchedTerms)}`,
       `  - missing: ${formatTermList(finding.missingTerms)}`,
       `  - observed section missing: ${formatTermList(finding.observedSectionMissingTerms)}`,
+      ...formatSectionEvidence(finding),
       `  - human review blocker: ${finding.humanReviewBlocker ? "yes" : "no"}`,
       `  - observed snippet: ${snippet}`,
     ].join("\n");

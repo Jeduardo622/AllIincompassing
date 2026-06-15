@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
-import { chromium } from "playwright";
+import { chromium, type Page } from "playwright";
 
 import {
   assertRedactedQaFixture,
@@ -10,6 +10,7 @@ import {
   deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalDataParity,
   evaluateClinicalQaChecklist,
+  type ClinicalQaEvidenceSection,
   parseClinicalQaExpectations,
   requireClinicalQaClientId,
   selectClinicalQaCredentials,
@@ -21,6 +22,54 @@ import {
   ensureArtifactsDir,
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
+
+const collectClinicalQaEvidenceSections = async (page: Page): Promise<ClinicalQaEvidenceSection[]> =>
+  page.evaluate(`
+    (() => {
+      const normalize = (value) => (value ?? "").replace(/\\s+/g, " ").trim();
+      const isVisible = (element) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+      };
+      const sectionEntries = new Map();
+      const addSection = (label, text) => {
+        const normalizedLabel = normalize(label);
+        const normalizedText = normalize(text);
+        if (!normalizedLabel || !normalizedText) {
+          return;
+        }
+        sectionEntries.set(\`\${normalizedLabel.toLowerCase()}::\${normalizedText.slice(0, 300)}\`, {
+          label: normalizedLabel,
+          text: normalizedText,
+        });
+      };
+
+      for (const element of document.querySelectorAll('main, article, section, [role="region"], [role="tabpanel"]')) {
+        if (!isVisible(element)) {
+          continue;
+        }
+        const heading = element.querySelector("h1,h2,h3,h4,h5,h6");
+        const label =
+          element.getAttribute("aria-label") ??
+          element.getAttribute("data-testid") ??
+          heading?.textContent ??
+          element.getAttribute("role") ??
+          element.tagName.toLowerCase();
+        addSection(label, element.textContent ?? "");
+      }
+
+      for (const heading of document.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
+        if (!isVisible(heading)) {
+          continue;
+        }
+        const container = heading.closest('section, article, [role="region"], [role="tabpanel"]') ?? heading.parentElement;
+        addSection(heading.textContent ?? "", container?.textContent ?? heading.textContent ?? "");
+      }
+
+      return Array.from(sectionEntries.values());
+    })()
+  `);
 
 const run = async (): Promise<void> => {
   loadPlaywrightEnv();
@@ -74,8 +123,9 @@ const run = async (): Promise<void> => {
     await assertRouteAccessible(page, baseUrl, routePath, { timeoutMs: 20_000 });
 
     const pageText = await page.locator("body").innerText({ timeout: 10_000 });
+    const evidenceSections = await collectClinicalQaEvidenceSections(page);
     const checklist = evaluateClinicalQaChecklist(pageText);
-    const dataParityFindings = evaluateClinicalDataParity(pageText, expectations);
+    const dataParityFindings = evaluateClinicalDataParity(pageText, expectations, evidenceSections);
     const runId = Date.now();
     const screenshotPath = path.join(latestDir, `clinical-data-parity-agent-${runId}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -96,6 +146,10 @@ const run = async (): Promise<void> => {
         expectationsConfigured: Boolean(expectationsFixture),
         expectationsSource,
       },
+      evidenceSections: evidenceSections.map((section) => ({
+        label: section.label,
+        textLength: section.text.length,
+      })),
       checklist,
       dataParityFindings,
       humanReviewBlockers: dataParityFindings.filter(

@@ -46,7 +46,9 @@ The runner rejects placeholder passwords, API routes, admin-only routes, and fix
     {
       "key": "target_behaviors",
       "label": "Target behaviors",
+      "sourceSection": "FBA target behavior summary",
       "expectedTerms": ["elopement", "property destruction"],
+      "observedSectionTerms": ["Programs", "Goals"],
       "severity": "high",
       "humanReviewBlocker": true
     }
@@ -54,7 +56,12 @@ The runner rejects placeholder passwords, API routes, admin-only routes, and fix
 }
 ```
 
-The browser runner compares each `expectedTerms` entry against the visible browser text and emits `dataParityFindings` plus `humanReviewBlockers` in the JSON payload.
+The browser runner compares each `expectedTerms` entry against the visible browser text and emits `dataParityFindings` plus `humanReviewBlockers` in the JSON payload. Findings include:
+
+- `sourceSection`: the redacted source section the expectation came from, or `null`.
+- `observedSectionTerms`: visible UI terms expected near the reviewed surface.
+- `mismatchType`: `match`, `partial`, or `missing`.
+- `observedTextSnippet`: a compact browser-text excerpt around matched evidence when available.
 
 ## Non-Goals
 

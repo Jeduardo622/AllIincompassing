@@ -28,15 +28,21 @@ export type ClinicalQaParitySeverity = "low" | "medium" | "high";
 export type ClinicalQaParityExpectation = {
   key: string;
   label: string;
+  sourceSection: string | null;
   expectedTerms: string[];
+  observedSectionTerms: string[];
   severity: ClinicalQaParitySeverity;
   humanReviewBlocker: boolean;
 };
 
 export type ClinicalQaParityFinding = ClinicalQaParityExpectation & {
   status: "pass" | "fail";
+  mismatchType: "match" | "partial" | "missing";
   matchedTerms: string[];
   missingTerms: string[];
+  observedSectionMatchedTerms: string[];
+  observedSectionMissingTerms: string[];
+  observedTextSnippet: string | null;
 };
 
 const REDACTED_PASSWORD_PLACEHOLDER = "****";
@@ -150,6 +156,63 @@ const normalizeSeverity = (value: unknown): ClinicalQaParitySeverity => {
   return "medium";
 };
 
+const normalizeOptionalString = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const normalizeOptionalStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+};
+
+const sanitizeEvidenceText = (value: string): string =>
+  value.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]");
+
+const buildObservedTextSnippet = (pageText: string, matchedTerms: string[]): string | null => {
+  const compactText = sanitizeEvidenceText(pageText.replace(/\s+/g, " ").trim());
+  if (!compactText) {
+    return null;
+  }
+  if (matchedTerms.length === 0) {
+    return compactText.slice(0, 240);
+  }
+
+  const normalizedText = compactText.toLowerCase();
+  const firstMatchIndex = matchedTerms
+    .map((term) => normalizedText.indexOf(term.toLowerCase()))
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0];
+
+  if (firstMatchIndex === undefined) {
+    return compactText.slice(0, 240);
+  }
+
+  const start = Math.max(0, firstMatchIndex - 80);
+  return compactText.slice(start, start + 240);
+};
+
+const classifyMismatch = (
+  expectedTermCount: number,
+  missingTermCount: number,
+): ClinicalQaParityFinding["mismatchType"] => {
+  if (missingTermCount === 0) {
+    return "match";
+  }
+  if (missingTermCount === expectedTermCount) {
+    return "missing";
+  }
+  return "partial";
+};
+
 export const parseClinicalQaExpectations = (
   rawJson: string,
   fixturePath: string,
@@ -177,7 +240,9 @@ export const parseClinicalQaExpectations = (
     return {
       key,
       label,
+      sourceSection: normalizeOptionalString(expectation.sourceSection),
       expectedTerms: expectation.expectedTerms.map((term) => term.trim()),
+      observedSectionTerms: normalizeOptionalStringArray(expectation.observedSectionTerms),
       severity: normalizeSeverity(expectation.severity),
       humanReviewBlocker: expectation.humanReviewBlocker === true,
     };
@@ -196,12 +261,22 @@ export const evaluateClinicalDataParity = (
     const missingTerms = expectation.expectedTerms.filter(
       (term) => !normalizedText.includes(term.toLowerCase()),
     );
+    const observedSectionMatchedTerms = expectation.observedSectionTerms.filter((term) =>
+      normalizedText.includes(term.toLowerCase()),
+    );
+    const observedSectionMissingTerms = expectation.observedSectionTerms.filter(
+      (term) => !normalizedText.includes(term.toLowerCase()),
+    );
 
     return {
       ...expectation,
       status: missingTerms.length === 0 ? "pass" : "fail",
+      mismatchType: classifyMismatch(expectation.expectedTerms.length, missingTerms.length),
       matchedTerms,
       missingTerms,
+      observedSectionMatchedTerms,
+      observedSectionMissingTerms,
+      observedTextSnippet: buildObservedTextSnippet(pageText, [...matchedTerms, ...observedSectionMatchedTerms]),
     };
   });
 };

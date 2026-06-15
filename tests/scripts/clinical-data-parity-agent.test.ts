@@ -101,7 +101,9 @@ describe("clinical data parity agent helpers", () => {
           {
             key: "target_behaviors",
             label: "Target behaviors",
+            sourceSection: "Behavioral Observations",
             expectedTerms: ["elopement", "property destruction"],
+            observedSectionTerms: ["Programs and Goals"],
             severity: "high",
             humanReviewBlocker: true,
           },
@@ -116,7 +118,7 @@ describe("clinical data parity agent helpers", () => {
     );
 
     const findings = evaluateClinicalDataParity(
-      "Programs and goals include elopement and functional communication.",
+      "Programs and goals include elopement and functional communication. Logged in as qa@example.com.",
       expectations,
     );
 
@@ -125,20 +127,34 @@ describe("clinical data parity agent helpers", () => {
         key: "target_behaviors",
         label: "Target behaviors",
         status: "fail",
+        mismatchType: "partial",
+        sourceSection: "Behavioral Observations",
         severity: "high",
         expectedTerms: ["elopement", "property destruction"],
         matchedTerms: ["elopement"],
         missingTerms: ["property destruction"],
+        observedSectionTerms: ["Programs and Goals"],
+        observedSectionMatchedTerms: ["Programs and Goals"],
+        observedSectionMissingTerms: [],
+        observedTextSnippet:
+          "Programs and goals include elopement and functional communication. Logged in as [redacted-email].",
         humanReviewBlocker: true,
       },
       {
         key: "replacement_behavior",
         label: "Replacement behavior",
         status: "pass",
+        mismatchType: "match",
+        sourceSection: null,
         severity: "medium",
         expectedTerms: ["functional communication"],
         matchedTerms: ["functional communication"],
         missingTerms: [],
+        observedSectionTerms: [],
+        observedSectionMatchedTerms: [],
+        observedSectionMissingTerms: [],
+        observedTextSnippet:
+          "Programs and goals include elopement and functional communication. Logged in as [redacted-email].",
         humanReviewBlocker: false,
       },
     ]);

@@ -228,61 +228,123 @@ const extractLabeledTerms = (sourceText: string, labelPattern: RegExp): string[]
   return splitExpectedTerms(match?.[1] ?? null);
 };
 
+type SourceTextExpectationDefinition = {
+  key: string;
+  label: string;
+  sourceSection: string;
+  labelPattern: RegExp;
+  observedSectionTerms: string[];
+  severity: ClinicalQaParitySeverity;
+  humanReviewBlocker: boolean;
+};
+
+const SOURCE_TEXT_EXPECTATION_DEFINITIONS: SourceTextExpectationDefinition[] = [
+  {
+    key: "target_behaviors",
+    label: "Target behaviors",
+    sourceSection: "FBA target behavior summary",
+    labelPattern: /(?:^|\n)\s*target behaviors?\s*:\s*([^\n]+)/i,
+    observedSectionTerms: ["Programs", "Goals"],
+    severity: "high",
+    humanReviewBlocker: true,
+  },
+  {
+    key: "replacement_behavior",
+    label: "Replacement behavior",
+    sourceSection: "Replacement behavior plan",
+    labelPattern: /(?:^|\n)\s*replacement behavior\s*:\s*([^\n]+)/i,
+    observedSectionTerms: ["Programs", "Goals"],
+    severity: "medium",
+    humanReviewBlocker: false,
+  },
+  {
+    key: "program_goal_measurement",
+    label: "Program goal measurement",
+    sourceSection: "Goals and measurement criteria",
+    labelPattern: /(?:^|\n)\s*measurement terms?\s*:\s*([^\n]+)/i,
+    observedSectionTerms: ["Programs", "Goals"],
+    severity: "medium",
+    humanReviewBlocker: false,
+  },
+  {
+    key: "antecedents",
+    label: "Antecedents",
+    sourceSection: "ABC and function summary",
+    labelPattern: /(?:^|\n)\s*antecedents?\s*:\s*([^\n]+)/i,
+    observedSectionTerms: ["Assessment", "Programs", "Goals"],
+    severity: "high",
+    humanReviewBlocker: true,
+  },
+  {
+    key: "consequences",
+    label: "Consequences",
+    sourceSection: "ABC and function summary",
+    labelPattern: /(?:^|\n)\s*consequences?\s*:\s*([^\n]+)/i,
+    observedSectionTerms: ["Assessment", "Programs", "Goals"],
+    severity: "high",
+    humanReviewBlocker: true,
+  },
+  {
+    key: "functions",
+    label: "Behavior functions",
+    sourceSection: "ABC and function summary",
+    labelPattern: /(?:^|\n)\s*functions?\s*:\s*([^\n]+)/i,
+    observedSectionTerms: ["Assessment", "Programs", "Goals"],
+    severity: "high",
+    humanReviewBlocker: true,
+  },
+  {
+    key: "interventions",
+    label: "Interventions",
+    sourceSection: "Intervention plan",
+    labelPattern: /(?:^|\n)\s*interventions?\s*:\s*([^\n]+)/i,
+    observedSectionTerms: ["Programs", "Goals"],
+    severity: "medium",
+    humanReviewBlocker: false,
+  },
+  {
+    key: "client_metadata",
+    label: "Client metadata",
+    sourceSection: "Authorization and client metadata",
+    labelPattern: /(?:^|\n)\s*client identifiers?\s*:\s*([^\n]+)/i,
+    observedSectionTerms: ["Client", "Assessment"],
+    severity: "medium",
+    humanReviewBlocker: false,
+  },
+  {
+    key: "authorization_metadata",
+    label: "Authorization metadata",
+    sourceSection: "Authorization and client metadata",
+    labelPattern: /(?:^|\n)\s*authorization details?\s*:\s*([^\n]+)/i,
+    observedSectionTerms: ["Authorization", "Client"],
+    severity: "medium",
+    humanReviewBlocker: false,
+  },
+];
+
 export const deriveClinicalQaExpectationsFromSourceText = (
   sourceText: string,
 ): ClinicalQaParityExpectation[] => {
   const normalizedSourceText = normalizeSourceText(sourceText);
-  const expectations: ClinicalQaParityExpectation[] = [];
 
-  const targetBehaviorTerms = extractLabeledTerms(
-    normalizedSourceText,
-    /(?:^|\n)\s*target behaviors?\s*:\s*([^\n]+)/i,
-  );
-  if (targetBehaviorTerms.length > 0) {
-    expectations.push({
-      key: "target_behaviors",
-      label: "Target behaviors",
-      sourceSection: "FBA target behavior summary",
-      expectedTerms: targetBehaviorTerms,
-      observedSectionTerms: ["Programs", "Goals"],
-      severity: "high",
-      humanReviewBlocker: true,
-    });
-  }
+  return SOURCE_TEXT_EXPECTATION_DEFINITIONS.flatMap((definition) => {
+    const expectedTerms = extractLabeledTerms(normalizedSourceText, definition.labelPattern);
+    if (expectedTerms.length === 0) {
+      return [];
+    }
 
-  const replacementBehaviorTerms = extractLabeledTerms(
-    normalizedSourceText,
-    /(?:^|\n)\s*replacement behavior\s*:\s*([^\n]+)/i,
-  );
-  if (replacementBehaviorTerms.length > 0) {
-    expectations.push({
-      key: "replacement_behavior",
-      label: "Replacement behavior",
-      sourceSection: "Replacement behavior plan",
-      expectedTerms: replacementBehaviorTerms,
-      observedSectionTerms: ["Programs", "Goals"],
-      severity: "medium",
-      humanReviewBlocker: false,
-    });
-  }
-
-  const measurementTerms = extractLabeledTerms(
-    normalizedSourceText,
-    /(?:^|\n)\s*measurement terms?\s*:\s*([^\n]+)/i,
-  );
-  if (measurementTerms.length > 0) {
-    expectations.push({
-      key: "program_goal_measurement",
-      label: "Program goal measurement",
-      sourceSection: "Goals and measurement criteria",
-      expectedTerms: measurementTerms,
-      observedSectionTerms: ["Programs", "Goals"],
-      severity: "medium",
-      humanReviewBlocker: false,
-    });
-  }
-
-  return expectations;
+    return [
+      {
+        key: definition.key,
+        label: definition.label,
+        sourceSection: definition.sourceSection,
+        expectedTerms,
+        observedSectionTerms: definition.observedSectionTerms,
+        severity: definition.severity,
+        humanReviewBlocker: definition.humanReviewBlocker,
+      },
+    ];
+  });
 };
 
 const buildObservedTextSnippet = (pageText: string, matchedTerms: string[]): string | null => {

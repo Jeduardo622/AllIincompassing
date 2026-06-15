@@ -5,14 +5,13 @@ import { chromium, type Page } from "playwright";
 import {
   assertRedactedQaFixture,
   assertSupportedClinicalQaSourceTextFixture,
-  buildClinicalQaGeneratedOutputArtifactPath,
   buildClinicalQaReportMarkdown,
   buildClinicalQaRoute,
+  captureClinicalQaGeneratedOutputArtifact,
   deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalDataParity,
   evaluateClinicalQaChecklist,
   type ClinicalQaEvidenceSection,
-  parseClinicalQaGeneratedOutputResponse,
   parseClinicalQaExpectations,
   readClinicalQaOutputFixtureText,
   readClinicalQaSourceFixtureText,
@@ -26,13 +25,6 @@ import {
   ensureArtifactsDir,
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
-
-type ClinicalQaCapturedGeneratedOutput = {
-  artifactPath: string;
-  generatedFileType: "docx" | "pdf";
-  filename: string | null;
-  text: string;
-};
 
 const collectClinicalQaEvidenceSections = async (page: Page): Promise<ClinicalQaEvidenceSection[]> =>
   page.evaluate(`
@@ -81,47 +73,6 @@ const collectClinicalQaEvidenceSections = async (page: Page): Promise<ClinicalQa
       return Array.from(sectionEntries.values());
     })()
   `);
-
-const captureGeneratedOutputArtifact = async (args: {
-  page: Page;
-  selector: string;
-  latestDir: string;
-  runId: number;
-}): Promise<ClinicalQaCapturedGeneratedOutput> => {
-  const responsePromise = args.page.waitForResponse(
-    (response) => {
-      const url = new URL(response.url());
-      return url.pathname === "/api/assessment-plan-pdf" && response.request().method() === "POST";
-    },
-    { timeout: 45_000 },
-  );
-  const popupPromise = args.page.waitForEvent("popup", { timeout: 5_000 }).catch(() => null);
-
-  await args.page.locator(args.selector).click({ timeout: 10_000 });
-  const response = await responsePromise;
-  const responsePayload = await response.json();
-  if (!response.ok()) {
-    throw new Error("Generated output request failed before artifact download.");
-  }
-
-  const metadata = parseClinicalQaGeneratedOutputResponse(responsePayload);
-  const artifactPath = buildClinicalQaGeneratedOutputArtifactPath(args.latestDir, args.runId, metadata);
-  const artifactResponse = await args.page.context().request.get(metadata.signedUrl);
-  if (!artifactResponse.ok()) {
-    throw new Error(`Generated output artifact download failed with HTTP ${artifactResponse.status()}.`);
-  }
-
-  await writeFile(artifactPath, await artifactResponse.body());
-  const popup = await popupPromise;
-  await popup?.close().catch(() => undefined);
-
-  return {
-    artifactPath,
-    generatedFileType: metadata.generatedFileType,
-    filename: metadata.filename,
-    text: await readClinicalQaOutputFixtureText(artifactPath),
-  };
-};
 
 const run = async (): Promise<void> => {
   loadPlaywrightEnv();
@@ -178,7 +129,7 @@ const run = async (): Promise<void> => {
 
     const runId = Date.now();
     const capturedGeneratedOutput = generatedOutputSelector
-      ? await captureGeneratedOutputArtifact({
+      ? await captureClinicalQaGeneratedOutputArtifact({
           page,
           selector: generatedOutputSelector,
           latestDir,

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { deflateRawSync } from "node:zlib";
@@ -12,6 +12,7 @@ import {
   buildClinicalQaRoute,
   buildClinicalQaGeneratedOutputArtifactPath,
   buildClinicalQaReportMarkdown,
+  captureClinicalQaGeneratedOutputArtifact,
   deriveClinicalQaExpectationsFromSourceText,
   evaluateClinicalQaChecklist,
   evaluateClinicalDataParity,
@@ -509,6 +510,88 @@ describe("clinical data parity agent helpers", () => {
     expect(() =>
       parseClinicalQaGeneratedOutputResponse({ generated_file_type: "pdf", signed_url: "" }),
     ).toThrow("signed_url");
+  });
+
+  it("captures generated output artifacts through the browser response path", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "clinical-qa-redacted-generated-"));
+    const events: string[] = [];
+    const artifactBody = Buffer.from("Generated output includes functional communication.");
+    const response = {
+      url: () => "https://app.example.test/api/assessment-plan-pdf",
+      request: () => ({ method: () => "POST" }),
+      json: async () => ({
+        generated_file_type: "pdf",
+        signed_url: "https://storage.example.test/generated.pdf?token=secret",
+        filename: "generated-iehp-fba.pdf",
+      }),
+      ok: () => true,
+    };
+    let closedPopup = false;
+
+    const page = {
+      waitForResponse: async (predicate: (candidate: typeof response) => boolean) => {
+        events.push("waitForResponse");
+        expect(predicate(response)).toBe(true);
+        return response;
+      },
+      waitForEvent: async (eventName: string, options: { timeout: number }) => {
+        events.push(`waitForEvent:${eventName}:${options.timeout}`);
+        return {
+          close: async () => {
+            closedPopup = true;
+          },
+        };
+      },
+      locator: (selector: string) => {
+        expect(selector).toBe("[data-testid='generate-final-output']");
+        return {
+          click: async (options: { timeout: number }) => {
+            events.push(`click:${options.timeout}`);
+          },
+        };
+      },
+      context: () => ({
+        request: {
+          get: async (url: string) => {
+            events.push("download");
+            expect(url).toBe("https://storage.example.test/generated.pdf?token=secret");
+            return {
+              ok: () => true,
+              status: () => 200,
+              body: async () => artifactBody,
+            };
+          },
+        },
+      }),
+    };
+
+    try {
+      const captured = await captureClinicalQaGeneratedOutputArtifact({
+        page,
+        selector: "[data-testid='generate-final-output']",
+        latestDir: tempDir,
+        runId: 42,
+        readOutputText: async (artifactPath) => `extracted text from ${path.basename(artifactPath)}`,
+      });
+
+      expect(events).toEqual([
+        "waitForResponse",
+        "waitForEvent:popup:5000",
+        "click:10000",
+        "download",
+      ]);
+      expect(closedPopup).toBe(true);
+      expect(captured).toEqual({
+        artifactPath: path.join(tempDir, "redacted-clinical-qa-generated-output-42.pdf"),
+        generatedFileType: "pdf",
+        filename: "generated-iehp-fba.pdf",
+        text: "extracted text from redacted-clinical-qa-generated-output-42.pdf",
+      });
+      await expect(readFile(captured.artifactPath)).resolves.toEqual(artifactBody);
+      expect(JSON.stringify(captured)).not.toContain("token=secret");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("builds a durable markdown report without leaking browser-visible emails", () => {

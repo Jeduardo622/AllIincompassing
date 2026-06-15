@@ -34,8 +34,35 @@ Optional:
 - `PW_CLINICAL_QA_OUTPUT_FILE`
 - `PW_CLINICAL_QA_EXPECTATIONS_FILE`
 - `PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR`
+- `PW_CLINICAL_QA_PREFLIGHT_ONLY`
 
 The runner rejects placeholder passwords, API routes, admin-only routes, and fixture paths that are not clearly redacted, synthetic, smoke, or test fixtures.
+
+## Readiness Preflight
+
+Before launching a browser run, execute:
+
+```bash
+PW_CLINICAL_QA_PREFLIGHT_ONLY=true npm run playwright:clinical-data-parity-agent
+```
+
+The equivalent CLI form is:
+
+```bash
+npm run playwright:clinical-data-parity-agent -- --preflight
+```
+
+Preflight exits before the normal Playwright env loader, so it does not read `.env.local`, `.env`, or `.env.codex`. It inspects only shell-provided process env, does not launch Playwright, and does not echo email/password values. The JSON report includes:
+
+- `ok`
+- `blockingIssues`
+- `warnings`
+- `credentialLabel`
+- `routePath`
+- fixture readiness
+- `expectationsSource`
+- `outputSource`
+- `nextAction`
 
 ## Expectations Fixture Contract
 

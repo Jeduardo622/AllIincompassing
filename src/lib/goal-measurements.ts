@@ -43,6 +43,17 @@ const normalizeStringList = (value: unknown): string[] => {
     .filter((entry): entry is string => Boolean(entry));
 };
 
+const normalizeEditableStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry) => (typeof entry === 'string' ? entry : ''));
+};
+
+const getPrimaryNonEmptyTarget = (targets: readonly string[]): string | null =>
+  targets.map((target) => toOptionalString(target)).find((target): target is string => Boolean(target)) ?? null;
+
 export const getGoalMeasurementTargets = (
   data: SessionGoalMeasurementData | null | undefined,
 ): string[] => {
@@ -199,7 +210,14 @@ export const buildGoalMeasurementEntry = (
 ): SessionGoalMeasurementEntry | null => {
   const fieldMeta = getGoalMeasurementFieldMeta(goal);
   const normalizedExisting = normalizeGoalMeasurementEntry(rawValue, goal);
-  const existingTargets = getGoalMeasurementTargets(normalizedExisting?.data);
+  const sourceData =
+    rawValue && typeof rawValue === 'object' && 'data' in rawValue && rawValue.data && typeof rawValue.data === 'object'
+      ? rawValue.data
+      : rawValue;
+  const editableTargets = normalizeEditableStringList(
+    sourceData && typeof sourceData === 'object' && 'targets' in sourceData ? sourceData.targets : undefined,
+  );
+  const existingTargets = editableTargets.length > 0 ? editableTargets : getGoalMeasurementTargets(normalizedExisting?.data);
   const nextEntry: SessionGoalMeasurementEntry = {
     version: GOAL_MEASUREMENT_VERSION,
     data: {
@@ -212,7 +230,7 @@ export const buildGoalMeasurementEntry = (
       prompt_level: normalizedExisting?.data.prompt_level ?? null,
       note: normalizedExisting?.data.note ?? null,
       targets: existingTargets.length > 0 ? existingTargets : null,
-      target: existingTargets[0] ?? null,
+      target: getPrimaryNonEmptyTarget(existingTargets),
       trial_prompt_note: normalizedExisting?.data.trial_prompt_note ?? null,
     },
   };
@@ -228,8 +246,8 @@ export const mergeGoalMeasurementEntry = (
   const fieldMeta = getGoalMeasurementFieldMeta(goal);
   const existing = buildGoalMeasurementEntry(goal, rawValue);
   const nextTargets = updates.targets !== undefined
-    ? normalizeStringList(updates.targets)
-    : getGoalMeasurementTargets(existing?.data);
+    ? normalizeEditableStringList(updates.targets)
+    : normalizeEditableStringList(existing?.data.targets) ;
   const normalizedLegacyTarget = updates.target !== undefined
     ? toOptionalString(updates.target)
     : null;
@@ -258,7 +276,7 @@ export const mergeGoalMeasurementEntry = (
         ? updates.note ?? null
         : existing?.data.note ?? null,
       targets: resolvedTargets.length > 0 ? resolvedTargets : null,
-      target: resolvedTargets[0] ?? null,
+      target: getPrimaryNonEmptyTarget(resolvedTargets),
       trial_prompt_note: updates.trial_prompt_note !== undefined
         ? updates.trial_prompt_note ?? null
         : existing?.data.trial_prompt_note ?? null,

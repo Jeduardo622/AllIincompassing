@@ -5,6 +5,7 @@ import { chromium, type BrowserContext, type Page } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import { buildLifecycleTargetPairs, type LifecycleTargetPair } from "../src/scripts/playwrightSessionLifecycleTargets";
 import { assertLifecycleSessionArtifacts } from "../src/scripts/playwrightSessionLifecycleArtifacts";
+import { isAlreadyTerminalLifecycleFallbackResponse } from "../src/scripts/playwrightSessionLifecycleFallback";
 import { buildLifecycleSessionNoteSeedPayload } from "../src/scripts/playwrightSessionLifecycleNoteSeed";
 
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
@@ -1101,6 +1102,9 @@ const completeSessionViaApiFallback = async ({
   });
   const bodyText = await response.text();
   if (!response.ok) {
+    if (isAlreadyTerminalLifecycleFallbackResponse(response.status, bodyText)) {
+      return;
+    }
     throw new Error(`sessions-complete fallback failed (${response.status}): ${bodyText.slice(0, 800)}`);
   }
 };

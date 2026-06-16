@@ -261,9 +261,10 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     ...structuredSections.filter((item) => item.required && item.status !== "approved").map((item) => item.field_key),
   ];
 
-  const acceptedProgram =
-    (draftProgramsResult.data ?? []).find((program) => program.accept_state === "accepted" || program.accept_state === "edited") ??
-    null;
+  const acceptedPrograms = (draftProgramsResult.data ?? []).filter(
+    (program) => program.accept_state === "accepted" || program.accept_state === "edited",
+  );
+  const acceptedProgram = acceptedPrograms[0] ?? null;
   const acceptedGoals = (draftGoalsResult.data ?? []).filter(
     (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
   );
@@ -342,8 +343,8 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
       client,
       authorizationMemberId,
       writer,
-      acceptedPrograms: [],
-      acceptedGoals: [],
+      acceptedPrograms,
+      acceptedGoals,
       pendingDraftProgramCount: 0,
       pendingDraftGoalCount: 0,
     });

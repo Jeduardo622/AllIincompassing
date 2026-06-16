@@ -455,6 +455,9 @@ describe("Schedule", () => {
       dryRun: true,
     });
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Apply this week forward/i })).toBeEnabled();
+    });
     await userEvent.click(screen.getByRole("button", { name: /Apply this week forward/i }));
 
     await waitFor(() => {

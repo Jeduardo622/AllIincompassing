@@ -1695,6 +1695,69 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
   });
 
+  it("auto-selects IEHP template when the uploaded FBA filename identifies IEHP", async () => {
+    const baseCallApiImpl = vi.mocked(callApi).getMockImplementation();
+    if (!baseCallApiImpl) {
+      throw new Error("Missing base API mock implementation.");
+    }
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "POST" && path === "/api/assessment-documents") {
+        return new Response(
+          JSON.stringify({
+            id: ASSESSMENT_ID,
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            template_type: "iehp_fba",
+            file_name: "Le, Ki IEHP FBA December 2025 (1).docx",
+            mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            file_size: 1000,
+            bucket_id: "client-documents",
+            object_path: "clients/client-1/assessments/le-ki-iehp-fba.docx",
+            status: "uploaded",
+            created_at: "2026-02-11T00:00:00.000Z",
+          }),
+          { status: 201 },
+        );
+      }
+      return baseCallApiImpl(path, init);
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab client={buildClient()} />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText(/CalOptima FBA Upload Workflow/i);
+    const templateSelect = screen.getByRole("combobox", { name: /FBA template/i });
+    expect(templateSelect).toHaveValue("caloptima_fba");
+    const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
+    const file = new File(["mock iehp content"], "Le, Ki IEHP FBA December 2025 (1).docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    await user.upload(uploadInput, file);
+
+    expect(templateSelect).toHaveValue("iehp_fba");
+    expect(await screen.findByText(/IEHP FBA Upload Workflow/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Upload IEHP FBA/i }));
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-documents",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("\"template_type\":\"iehp_fba\""),
+        }),
+      );
+    });
+  });
+
   it("renders IEHP-specific review labels for a selected uploaded assessment", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

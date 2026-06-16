@@ -48,6 +48,16 @@ const isAllowedAssessmentObjectPath = (objectPath: string, clientId: string): bo
     normalized.startsWith(`clients/${clientId}/assessments/`);
 };
 
+const detectAssessmentTemplateTypeFromFileName = (fileName: string): AssessmentTemplateType | null => {
+  const normalized = fileName.toLowerCase();
+  const hasIehp = /(?:^|[^a-z0-9])iehp(?:[^a-z0-9]|$)/.test(normalized);
+  const hasCalOptima = /(?:^|[^a-z0-9])caloptima(?:[^a-z0-9]|$)/.test(normalized);
+  const hasFba = /(?:^|[^a-z0-9])fba(?:[^a-z0-9]|$)/.test(normalized);
+  if (hasIehp && hasFba) return "iehp_fba";
+  if (hasCalOptima && hasFba) return "caloptima_fba";
+  return null;
+};
+
 interface AssessmentDocumentRow {
   id: string;
   organization_id: string;
@@ -1227,6 +1237,16 @@ export async function assessmentDocumentsHandler(
 
     const actorId = getAccessTokenSubject(accessToken);
     const templateType = parsed.data.template_type ?? "caloptima_fba";
+    const detectedTemplateType = detectAssessmentTemplateTypeFromFileName(parsed.data.file_name);
+    if (detectedTemplateType && detectedTemplateType !== templateType) {
+      return jsonForRequest(
+        request,
+        {
+          error: `Uploaded file name appears to be ${detectedTemplateType === "iehp_fba" ? "an IEHP FBA" : "a CalOptima FBA"} document. Select the matching FBA template before uploading.`,
+        },
+        400,
+      );
+    }
     let templateVersionId: string | null;
     try {
       templateVersionId = await resolveActiveTemplateVersionId({ supabaseUrl, headers, templateType });

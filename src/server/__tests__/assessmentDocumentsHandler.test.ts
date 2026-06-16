@@ -2168,6 +2168,86 @@ describe("assessmentDocumentsHandler", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects an assessment upload when the filename identifies a different FBA template", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "Le, Ki IEHP FBA December 2025 (1).docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/le-ki-iehp-fba.docx",
+          template_type: "caloptima_fba",
+        }),
+      }),
+    );
+
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.error).toMatch(/appears to be an IEHP FBA document/i);
+  });
+
+  it("rejects an IEHP upload when the filename identifies a CalOptima FBA template", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "CalOptima FBA assessment.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/caloptima-fba.docx",
+          template_type: "iehp_fba",
+        }),
+      }),
+    );
+
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.error).toMatch(/appears to be a CalOptima FBA document/i);
+  });
+
   it("rejects assessment uploads outside the approved storage bucket", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

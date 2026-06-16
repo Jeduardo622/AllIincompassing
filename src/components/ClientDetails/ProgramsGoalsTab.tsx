@@ -52,6 +52,16 @@ const ACTIVE_ASSESSMENT_POLL_STATUSES: ReadonlySet<AssessmentDocumentRecord["sta
   "extraction_running",
 ]);
 
+const detectAssessmentTemplateTypeFromFileName = (fileName: string): AssessmentTemplateType | null => {
+  const normalized = fileName.toLowerCase();
+  const hasIehp = /(?:^|[^a-z0-9])iehp(?:[^a-z0-9]|$)/.test(normalized);
+  const hasCalOptima = /(?:^|[^a-z0-9])caloptima(?:[^a-z0-9]|$)/.test(normalized);
+  const hasFba = /(?:^|[^a-z0-9])fba(?:[^a-z0-9]|$)/.test(normalized);
+  if (hasIehp && hasFba) return "iehp_fba";
+  if (hasCalOptima && hasFba) return "caloptima_fba";
+  return null;
+};
+
 const isStructuredChildGoalSection = (section: AssessmentStructuredSection): boolean =>
   section.field_key === "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS" ||
   section.field_key === "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS" ||
@@ -979,6 +989,14 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     }
   };
 
+  const handleAssessmentFileChange = (file: File | null) => {
+    setAssessmentFile(file);
+    const detectedTemplateType = file ? detectAssessmentTemplateTypeFromFileName(file.name) : null;
+    if (detectedTemplateType) {
+      setAssessmentTemplateType(detectedTemplateType);
+    }
+  };
+
   const updateChecklistItem = useMutation({
     mutationFn: async (itemId: string) => {
       const edit = checklistEdits[itemId];
@@ -1605,7 +1623,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 id="programs-goals-fba-file-upload"
                 type="file"
                 accept=".pdf,.docx"
-                onChange={(event) => setAssessmentFile(event.target.files?.[0] ?? null)}
+                onChange={(event) => handleAssessmentFileChange(event.target.files?.[0] ?? null)}
                 className="w-full text-sm"
               />
               <button

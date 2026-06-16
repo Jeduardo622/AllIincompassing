@@ -62,6 +62,11 @@ const detectAssessmentTemplateTypeFromFileName = (fileName: string): AssessmentT
   return null;
 };
 
+const buildAssessmentTemplateMismatchError = (detectedTemplateType: AssessmentTemplateType): Error =>
+  new Error(
+    `The selected file appears to be ${TEMPLATE_LABELS[detectedTemplateType]}. Select ${TEMPLATE_LABELS[detectedTemplateType]} before uploading.`,
+  );
+
 const isStructuredChildGoalSection = (section: AssessmentStructuredSection): boolean =>
   section.field_key === "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS" ||
   section.field_key === "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS" ||
@@ -948,6 +953,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!isSupportedAssessmentFile(assessmentFile)) {
         throw new Error("Unsupported file type. Upload a .pdf or .docx assessment.");
       }
+      const detectedTemplateType = detectAssessmentTemplateTypeFromFileName(assessmentFile.name);
+      if (detectedTemplateType && detectedTemplateType !== assessmentTemplateType) {
+        throw buildAssessmentTemplateMismatchError(detectedTemplateType);
+      }
       const filePath = `clients/${client.id}/assessments/${Date.now()}-${assessmentFile.name.replace(/\s+/g, "-")}`;
       const { error: uploadError } = await supabase.storage.from("client-documents").upload(filePath, assessmentFile);
       if (uploadError) {
@@ -979,6 +988,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
   const handleUploadAssessment = async () => {
     if (!assessmentFile || isUploadProcessing) {
+      return;
+    }
+    const detectedTemplateType = detectAssessmentTemplateTypeFromFileName(assessmentFile.name);
+    if (detectedTemplateType && detectedTemplateType !== assessmentTemplateType) {
+      showError(buildAssessmentTemplateMismatchError(detectedTemplateType));
       return;
     }
     setIsUploadProcessing(true);

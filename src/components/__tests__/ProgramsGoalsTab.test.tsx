@@ -14,6 +14,10 @@ import * as organizationModule from "../../lib/organization";
 
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 const ASSESSMENT_ID = "11111111-1111-4111-8111-111111111111";
+const { storageUploadMock, storageRemoveMock } = vi.hoisted(() => ({
+  storageUploadMock: vi.fn().mockResolvedValue({ error: null }),
+  storageRemoveMock: vi.fn().mockResolvedValue({ error: null }),
+}));
 type ProgramsGoalsTabClient = React.ComponentProps<typeof ProgramsGoalsTab>["client"];
 
 const seedStubAuthState = () => {
@@ -169,8 +173,8 @@ vi.mock("../../lib/supabase", () => ({
     from: vi.fn(),
     storage: {
       from: () => ({
-        upload: vi.fn().mockResolvedValue({ error: null }),
-        remove: vi.fn().mockResolvedValue({ error: null }),
+        upload: storageUploadMock,
+        remove: storageRemoveMock,
       }),
     },
   },
@@ -182,6 +186,10 @@ let user: ReturnType<typeof userEvent.setup>;
 describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
   beforeEach(() => {
     user = userEvent.setup({ delay: null });
+    storageUploadMock.mockReset();
+    storageUploadMock.mockResolvedValue({ error: null });
+    storageRemoveMock.mockReset();
+    storageRemoveMock.mockResolvedValue({ error: null });
 
     vi.mocked(supabase.from).mockImplementation((tableName: string) => {
       const chain = {
@@ -1756,6 +1764,47 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         }),
       );
     });
+  });
+
+  it("blocks a filename/template mismatch before uploading to storage", async () => {
+    renderWithProviders(
+      <ProgramsGoalsTab client={buildClient()} />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText(/CalOptima FBA Upload Workflow/i);
+    const templateSelect = screen.getByRole("combobox", { name: /FBA template/i });
+    const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
+    const file = new File(["mock iehp content"], "Le, Ki IEHP FBA December 2025 (1).docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+
+    await user.upload(uploadInput, file);
+    expect(templateSelect).toHaveValue("iehp_fba");
+
+    await user.selectOptions(templateSelect, "caloptima_fba");
+    expect(templateSelect).toHaveValue("caloptima_fba");
+    await user.click(screen.getByRole("button", { name: /Upload CalOptima FBA/i }));
+
+    await waitFor(() => {
+      expect(showError).toHaveBeenCalled();
+    });
+    const [error] = vi.mocked(showError).mock.calls[0] ?? [];
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      "The selected file appears to be IEHP FBA. Select IEHP FBA before uploading.",
+    );
+    expect(storageUploadMock).not.toHaveBeenCalled();
+    expect(callApi).not.toHaveBeenCalledWith(
+      "/api/assessment-documents",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("renders IEHP-specific review labels for a selected uploaded assessment", async () => {

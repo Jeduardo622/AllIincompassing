@@ -380,7 +380,14 @@ describe("assessmentPlanPdfHandler", () => {
       })
       .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
       .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
-      .mockResolvedValueOnce({ ok: true, status: 200, data: [{ id: "program-1", name: "Program", description: null, accept_state: "accepted" }] })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          { id: "program-1", name: "Program", description: null, accept_state: "accepted" },
+          { id: "program-2", name: "Edited Program", description: "Second program", accept_state: "edited" },
+        ],
+      })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -465,7 +472,14 @@ describe("assessmentPlanPdfHandler", () => {
       })
       .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
       .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
-      .mockResolvedValueOnce({ ok: true, status: 200, data: [{ id: "program-1", name: "Program", description: null, accept_state: "accepted" }] })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          { id: "program-1", name: "Program", description: null, accept_state: "accepted" },
+          { id: "program-2", name: "Edited Program", description: "Second program", accept_state: "edited" },
+        ],
+      })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -562,8 +576,11 @@ describe("assessmentPlanPdfHandler", () => {
     expect(buildIehpDocxPayload).toHaveBeenCalledWith(
       expect.objectContaining({
         authorizationMemberId: "AUTH-MEMBER-999",
-        acceptedPrograms: [],
-        acceptedGoals: [],
+        acceptedPrograms: expect.arrayContaining([
+          expect.objectContaining({ id: "program-1", accept_state: "accepted" }),
+          expect.objectContaining({ id: "program-2", accept_state: "edited" }),
+        ]),
+        acceptedGoals: expect.arrayContaining([expect.objectContaining({ id: "goal-1", accept_state: "accepted" })]),
         pendingDraftProgramCount: 0,
         pendingDraftGoalCount: 0,
       }),
@@ -653,8 +670,8 @@ describe("assessmentPlanPdfHandler", () => {
     expect(buildIehpDocxPayload).toHaveBeenCalledWith(
       expect.objectContaining({
         authorizationMemberId: "OTHER-MEMBER-222",
-        acceptedPrograms: [],
-        acceptedGoals: [],
+        acceptedPrograms: expect.arrayContaining([expect.objectContaining({ id: "program-1", accept_state: "accepted" })]),
+        acceptedGoals: expect.arrayContaining([expect.objectContaining({ id: "goal-1", accept_state: "accepted" })]),
         pendingDraftProgramCount: 0,
         pendingDraftGoalCount: 0,
       }),

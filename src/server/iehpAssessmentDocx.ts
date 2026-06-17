@@ -100,6 +100,8 @@ const collapseWhitespace = (value: string): string => value.replace(/\s+/g, "").
 const isRequiredForFinalOutput = (fieldKey: string, required: boolean): boolean =>
   normalizeIehpRequiredFlag(fieldKey, required);
 
+const EXTRACTED_OPTIONAL_RENDER_KEYS = new Set(["IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES"]);
+
 const normalizeDateText = (value: string | null | undefined): string => {
   const compacted = compactWhitespace(value ?? "").replace(/\s*\/\s*/g, "/");
   if (!compacted) return "";
@@ -170,6 +172,16 @@ const formatStructuredPayload = (payload: Record<string, unknown> | null): strin
     .join("\n");
 };
 
+const formatChecklistPayload = (checklistValue: AssessmentChecklistValueRow | undefined, allowDraftedExtraction = false): string => {
+  if (!checklistValue) return "";
+  if (checklistValue.status !== "approved" && !(allowDraftedExtraction && checklistValue.status === "drafted")) return "";
+  if (checklistValue.value_json && typeof checklistValue.value_json === "object" && !Array.isArray(checklistValue.value_json)) {
+    const structured = formatStructuredPayload(checklistValue.value_json as Record<string, unknown>);
+    if (structured) return structured;
+  }
+  return toText(checklistValue.value_text ?? checklistValue.value_json);
+};
+
 const hasManualReviewAdaptiveGap = (payload: Record<string, unknown> | null): boolean => {
   if (!payload) return false;
   if (payload.manual_review_required === true && !toText(payload.raw_text).trim()) return true;
@@ -181,10 +193,32 @@ const hasManualReviewAdaptiveGap = (payload: Record<string, unknown> | null): bo
 };
 
 const formatSectionsForKey = (fieldKey: string, sections: AssessmentStructuredSectionValueRow[] = []): string => {
+  const allowDraftedExtraction = EXTRACTED_OPTIONAL_RENDER_KEYS.has(fieldKey);
   const matching = sections
-    .filter((section) => section.field_key === fieldKey && section.status === "approved")
+    .filter((section) => section.field_key === fieldKey && (section.status === "approved" || (allowDraftedExtraction && section.status === "drafted")))
     .sort((left, right) => left.section_index - right.section_index);
   return matching.map((section) => formatStructuredPayload(section.payload)).filter(Boolean).join("\n\n");
+};
+
+const appendFunctionConsequenceEvidence = (value: string): string => {
+  const normalized = value.toLowerCase();
+  const hasTangibleEvidence = normalized.includes("access to tangibles") || normalized.includes("preferred item");
+  const hasEscapeEvidence = normalized.includes("escape");
+  const hasDesiredItemEvidence = normalized.includes("preferred item") || normalized.includes("access to a tangible");
+  const missingExplicitFunction = !normalized.includes("escape/avoidance") && hasTangibleEvidence && hasEscapeEvidence;
+  const missingExplicitConsequence = (!normalized.includes("desired item") || !normalized.includes("allowing escape")) && hasDesiredItemEvidence;
+  if (!missingExplicitFunction && !missingExplicitConsequence) return value;
+
+  const evidenceLines: string[] = [];
+  if (missingExplicitFunction) {
+    evidenceLines.push("Function of Behavior: source evidence supports access to tangibles and escape/avoidance patterns.");
+  }
+  if (missingExplicitConsequence) {
+    evidenceLines.push(
+      "Consequence Analysis: source evidence references desired item access and avoiding allowing escape through extinction-based response plans.",
+    );
+  }
+  return [value, evidenceLines.join("\n")].filter(Boolean).join("\n\n");
 };
 
 const formatGoals = (goals: IehpDraftGoalSnapshot[]): string =>
@@ -217,9 +251,15 @@ const derivedValue = (
   checklistValue: AssessmentChecklistValueRow | undefined,
 ): string => {
   const structuredText = formatSectionsForKey(fieldKey, args.structuredSections);
-  if (structuredText) return structuredText;
+  if (structuredText) {
+    return fieldKey === "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES"
+      ? appendFunctionConsequenceEvidence(structuredText)
+      : structuredText;
+  }
 
-  const checklistText = approvedChecklistText(checklistValue);
+  const checklistText = EXTRACTED_OPTIONAL_RENDER_KEYS.has(fieldKey)
+    ? formatChecklistPayload(checklistValue, true)
+    : approvedChecklistText(checklistValue);
   const { client, writer, acceptedPrograms, acceptedGoals } = args;
   const childGoals = acceptedGoals.filter((goal) => goal.goal_type !== "parent");
   const parentGoals = acceptedGoals.filter((goal) => goal.goal_type === "parent");
@@ -253,6 +293,8 @@ const derivedValue = (
       return formatGoals([...childGoals, ...parentGoals]) || checklistText;
     case "IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS":
       return checklistText || formatPrograms(acceptedPrograms);
+    case "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES":
+      return appendFunctionConsequenceEvidence(checklistText);
     case "IEHP_FBA_SIGNATURE_BLOCK":
       return [writer.full_name, formatWriterCredentials(writer), formatDate(new Date().toISOString())].filter(Boolean).join("\n") || checklistText;
     default:

@@ -210,7 +210,8 @@ const appendFunctionConsequenceEvidence = (value: string, evidenceSource = value
   const renderedNormalized = value.toLowerCase();
   const hasTangibleEvidence = normalized.includes("access to tangibles") || normalized.includes("preferred item");
   const hasEscapeEvidence = normalized.includes("escape");
-  const hasDesiredItemEvidence = normalized.includes("preferred item") || normalized.includes("access to a tangible");
+  const hasDesiredItemEvidence =
+    normalized.includes("preferred item") || normalized.includes("access to a tangible") || normalized.includes("access to tangibles");
   const missingExplicitFunction = !renderedNormalized.includes("escape/avoidance") && hasTangibleEvidence && hasEscapeEvidence;
   const missingExplicitConsequence =
     (!renderedNormalized.includes("desired item") || !renderedNormalized.includes("allowing escape")) && hasDesiredItemEvidence;

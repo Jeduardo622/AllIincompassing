@@ -441,7 +441,7 @@ describe("buildIehpDocxPayload", () => {
           section_index: 0,
           payload: {
             raw_text:
-              "Structured goal text notes escape behaviors, access to tangibles, and preferred items but lacks explicit parity phrases.",
+              "Structured goal text notes escape behaviors and access to tangibles but lacks explicit parity phrases.",
           },
           status: "approved" as const,
           required: true,

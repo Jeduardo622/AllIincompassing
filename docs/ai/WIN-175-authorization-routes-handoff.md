@@ -63,12 +63,11 @@
   - `npm run typecheck`: pass
   - `npm run test:routes:tier0`: pass
   - `npm run build`: pass
-  - `npm run playwright:authorizations-read-scope`: fail against production because production still serves the old `/authorizations` therapist access behavior until this branch deploys.
+  - `PW_BASE_URL=https://deploy-preview-658--velvety-cendol-dae4d6.netlify.app npm run playwright:authorizations-read-scope`: pass
   - `npm run ci:playwright`: fail
   - `npm run verify:local`: fail
 - blocked checks:
   - `npm run test:ci`: not rerun to full green after unrelated suite instability; focused auth, route, and parity coverage above passed.
-  - `npm run playwright:authorizations-read-scope`: updated for the new blocked-therapist expectation; runtime proof requires a deployed target containing this PR's route guard.
   - `npm run ci:playwright`: env-loading issue was resolved via `PLAYWRIGHT_ENV_FILE`, but the aggregate command still fails on unrelated `playwright:session-capture-adhoc-upsert` timeout outside this slice.
   - `npm run verify:local`: still fails because it wraps broader suites that include unrelated failures.
 - result: pass-with-blocked-checks
@@ -92,4 +91,4 @@
 
 ## Handoff Summary
 
-This slice tightens authorization visibility so therapist and BT users can no longer reach the standalone `/authorizations` route and therapist viewers no longer see the client `Pre-Authorizations` tab. The change stays isolated to route guards, client tab filtering, and matching audit/test fixtures, with focused vitest, route-audit parity, policy, tier-0 route, and build checks passing. Aggregate Playwright now runs with the supported env-loading path and reaches a different unrelated failure in `playwright:session-capture-adhoc-upsert`, so that broader blocker remains outside this PR's scope and should be triaged separately.
+This slice tightens authorization visibility so therapist and BT users can no longer reach the standalone `/authorizations` route and therapist viewers no longer see the client `Pre-Authorizations` tab. The change stays isolated to route guards, client tab filtering, matching audit/test fixtures, and the authorizations read-scope smoke. Focused vitest, route-audit parity, policy, tier-0 route, build, and deploy-preview `playwright:authorizations-read-scope` checks pass. Aggregate Playwright now runs with the supported env-loading path and reaches a different unrelated failure in `playwright:session-capture-adhoc-upsert`, so that broader blocker remains outside this PR's scope and should be triaged separately.

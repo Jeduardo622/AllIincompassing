@@ -334,6 +334,57 @@ describe("buildIehpDocxPayload", () => {
     );
   });
 
+  it("renders optional extracted adaptive summaries and explicit function/consequence evidence for final parity", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      templateFields: [
+        { field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES", required: true },
+        { field_key: "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES", required: true },
+      ],
+      checklistItems: [
+        {
+          placeholder_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+          required: true,
+          status: "drafted" as const,
+          value_text: "1 structured section extracted",
+          value_json: {
+            raw_text:
+              "Vineland-3 results: Adaptive Behavior Composite (ABC) standard score of 20, below the 1st percentile. Communication, Daily Living Skills, and Socialization standard scores were 20.",
+          },
+        },
+        {
+          placeholder_key: "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES",
+          required: true,
+          status: "approved" as const,
+          value_text:
+            "Extinction consists of withholding reinforcement so attention, escape, and access to tangibles are not delivered. Preferred items may be used as motivation.",
+          value_json: null,
+        },
+      ],
+      structuredSections: [
+        {
+          field_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+          section_key: "assessment_procedures_testing",
+          section_index: 0,
+          payload: {
+            raw_text:
+              "Vineland-3 results: Adaptive Behavior Composite (ABC) standard score of 20, below the 1st percentile. Communication, Daily Living Skills, and Socialization standard scores were 20.",
+          },
+          status: "drafted" as const,
+          required: true,
+        },
+      ],
+    });
+
+    expect(result.preflight.ready).toBe(true);
+    expect(result.values.IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES).toContain("standard score of 20");
+    expect(result.values.IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES).toContain("below the 1st percentile");
+    expect(result.values.IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES).toContain("access to tangibles");
+    expect(result.values.IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES).toContain("escape/avoidance");
+    expect(result.values.IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES).toContain("desired item");
+    expect(result.values.IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES).toContain("allowing escape");
+  });
+
   it("ignores staged draft review state and blocks only unresolved required output values", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,

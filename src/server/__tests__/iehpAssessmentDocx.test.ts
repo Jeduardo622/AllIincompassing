@@ -334,7 +334,7 @@ describe("buildIehpDocxPayload", () => {
     );
   });
 
-  it("renders optional extracted adaptive summaries and explicit function/consequence evidence for final parity", () => {
+  it("renders verified optional extracted adaptive summaries and explicit function/consequence evidence for final parity", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,
       templateFields: [
@@ -345,12 +345,9 @@ describe("buildIehpDocxPayload", () => {
         {
           placeholder_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
           required: true,
-          status: "drafted" as const,
+          status: "approved" as const,
           value_text: "1 structured section extracted",
-          value_json: {
-            raw_text:
-              "Vineland-3 results: Adaptive Behavior Composite (ABC) standard score of 20, below the 1st percentile. Communication, Daily Living Skills, and Socialization standard scores were 20.",
-          },
+          value_json: null,
         },
         {
           placeholder_key: "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES",
@@ -370,7 +367,7 @@ describe("buildIehpDocxPayload", () => {
             raw_text:
               "Vineland-3 results: Adaptive Behavior Composite (ABC) standard score of 20, below the 1st percentile. Communication, Daily Living Skills, and Socialization standard scores were 20.",
           },
-          status: "drafted" as const,
+          status: "verified" as const,
           required: true,
         },
       ],
@@ -383,6 +380,45 @@ describe("buildIehpDocxPayload", () => {
     expect(result.values.IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES).toContain("escape/avoidance");
     expect(result.values.IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES).toContain("desired item");
     expect(result.values.IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES).toContain("allowing escape");
+  });
+
+  it("adds explicit function and consequence evidence to goal blocks when source original text carries behavior plan details", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      templateFields: [{ field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", required: true }],
+      checklistItems: [
+        {
+          placeholder_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+          required: true,
+          status: "approved" as const,
+          value_text: null,
+          value_json: null,
+        },
+      ],
+      acceptedGoals: [
+        {
+          title: "Attending to adult-led activities",
+          description: "Kim will participate in adult-led activities.",
+          original_text:
+            "Extinction consists of withholding reinforcement so attention, escape, and access to tangibles are not delivered. Preferred items may be used as motivation.",
+          goal_type: "child" as const,
+          target_behavior: "adult-led activity participation",
+          measurement_type: "Percentage of opportunities",
+          baseline_data: "Baseline is partial and does not include source function evidence.",
+          target_criteria: "80% of opportunities",
+          mastery_criteria: "80% of opportunities across 4 consecutive weeks",
+          maintenance_criteria: null,
+          generalization_criteria: "Across home and school",
+          objective_data_points: [],
+        },
+      ],
+    });
+
+    expect(result.preflight.ready).toBe(true);
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("access to tangibles");
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("escape/avoidance");
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("desired item");
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("allowing escape");
   });
 
   it("ignores staged draft review state and blocks only unresolved required output values", () => {

@@ -1,6 +1,7 @@
 /**
- * Production (or PW_BASE_URL) smoke: therapist and org admin reach /authorizations and
- * expose REST authorizations row counts for comparison. Does not mutate data.
+ * Production (or PW_BASE_URL) smoke: therapist is blocked from /authorizations while
+ * org admin can reach /authorizations and expose REST authorizations row counts.
+ * Does not mutate data.
  *
  * Env: PW_BASE_URL, PW_THERAPIST_*, PW_ADMIN_* (see scripts/lib/load-playwright-env.ts).
  */
@@ -9,7 +10,34 @@ import { chromium } from "playwright";
 import { loadPlaywrightEnv, resolvePlaywrightBaseUrl } from "./lib/load-playwright-env";
 import { loginAndAssertSession, preflightCredentials } from "./lib/playwright-smoke";
 
-type CountPayload = { persona: string; url: string; authorizationsRows: number; restStatus?: number };
+type BlockedPayload = { persona: string; url: string; access: "blocked" };
+type CountPayload = {
+  persona: string;
+  url: string;
+  access: "allowed";
+  authorizationsRows: number;
+  restStatus?: number;
+};
+type SmokePayload = BlockedPayload | CountPayload;
+
+const assertBlockedFromAuthorizations = async (
+  page: import("playwright").Page,
+  baseUrl: string,
+  persona: string,
+): Promise<BlockedPayload> => {
+  await page.goto(`${baseUrl.replace(/\/$/, "")}/authorizations`, {
+    waitUntil: "domcontentloaded",
+    timeout: 90_000,
+  });
+
+  await page.waitForURL(/\/unauthorized(?:[/?#]|$)/i, { timeout: 30_000 });
+
+  return {
+    persona,
+    url: page.url(),
+    access: "blocked",
+  };
+};
 
 const countAuthorizationsFromPage = async (
   page: import("playwright").Page,
@@ -50,6 +78,7 @@ const countAuthorizationsFromPage = async (
   return {
     persona,
     url: page.url(),
+    access: "allowed",
     authorizationsRows: rows,
     restStatus,
   };
@@ -76,14 +105,14 @@ async function run(): Promise<void> {
   ]);
 
   const browser = await chromium.launch({ headless });
-  const results: CountPayload[] = [];
+  const results: SmokePayload[] = [];
 
   try {
     const ctxT = await browser.newContext();
     const pageT = await ctxT.newPage();
     try {
       await loginAndAssertSession(pageT, baseUrl, therapistCreds.email, therapistCreds.password);
-      results.push(await countAuthorizationsFromPage(pageT, baseUrl, "therapist"));
+      results.push(await assertBlockedFromAuthorizations(pageT, baseUrl, "therapist"));
     } finally {
       await ctxT.close();
     }
@@ -97,27 +126,6 @@ async function run(): Promise<void> {
       await ctxA.close();
     }
 
-    const therapist = results.find((r) => r.persona === "therapist");
-    const admin = results.find((r) => r.persona === "org_admin");
-
-    const comparison =
-      therapist && admin
-        ? {
-            therapistRows: therapist.authorizationsRows,
-            adminRows: admin.authorizationsRows,
-            note:
-              admin.authorizationsRows >= therapist.authorizationsRows
-                ? "admin visible count >= therapist (consistent with broader admin read where data exists)"
-                : "admin returned fewer rows than therapist (regression: org_admin read narrower than therapist)",
-          }
-        : {};
-
-    if (therapist && admin && admin.authorizationsRows < therapist.authorizationsRows) {
-      throw new Error(
-        `authorizations read-scope smoke failed: org_admin rows (${admin.authorizationsRows}) < therapist rows (${therapist.authorizationsRows}); expected admin org-wide read >= therapist caseload read.`,
-      );
-    }
-
     // eslint-disable-next-line no-console
     console.log(
       JSON.stringify(
@@ -125,7 +133,6 @@ async function run(): Promise<void> {
           ok: true,
           baseUrl,
           results,
-          comparison,
         },
         null,
         2,

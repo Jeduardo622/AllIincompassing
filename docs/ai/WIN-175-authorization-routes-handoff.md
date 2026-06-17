@@ -7,6 +7,7 @@
   - `src/App.tsx`
   - `src/pages/ClientDetails.tsx`
   - `src/server/routes/guards.ts`
+  - `scripts/playwright-authorizations-read-scope-smoke.ts`
   - `scripts/route-audit.ts`
   - `scripts/route-audit.cjs`
   - `cypress/support/routeScenarios.ts`
@@ -18,6 +19,7 @@
   - `cypress/support/routeScenarios.ts`
   - `scripts/route-audit.cjs`
   - `scripts/route-audit.ts`
+  - `scripts/playwright-authorizations-read-scope-smoke.ts`
   - `src/App.tsx`
   - `src/pages/ClientDetails.tsx`
   - `src/pages/__tests__/AppNavigation.test.tsx`
@@ -61,10 +63,12 @@
   - `npm run typecheck`: pass
   - `npm run test:routes:tier0`: pass
   - `npm run build`: pass
+  - `npm run playwright:authorizations-read-scope`: fail against production because production still serves the old `/authorizations` therapist access behavior until this branch deploys.
   - `npm run ci:playwright`: fail
   - `npm run verify:local`: fail
 - blocked checks:
   - `npm run test:ci`: not rerun to full green after unrelated suite instability; focused auth, route, and parity coverage above passed.
+  - `npm run playwright:authorizations-read-scope`: updated for the new blocked-therapist expectation; runtime proof requires a deployed target containing this PR's route guard.
   - `npm run ci:playwright`: env-loading issue was resolved via `PLAYWRIGHT_ENV_FILE`, but the aggregate command still fails on unrelated `playwright:session-capture-adhoc-upsert` timeout outside this slice.
   - `npm run verify:local`: still fails because it wraps broader suites that include unrelated failures.
 - result: pass-with-blocked-checks

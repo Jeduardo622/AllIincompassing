@@ -146,6 +146,11 @@ export function ClientDetails() {
     },
   ];
 
+  const visibleTabs = useMemo(
+    () => tabs.filter((tab) => !(isTherapistViewer && tab.id === 'pre-auth')),
+    [isTherapistViewer, tabs],
+  );
+
   if (!activeOrganizationId) {
     return (
       <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg shadow p-8 text-amber-800 dark:text-amber-100">
@@ -266,8 +271,8 @@ export function ClientDetails() {
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
         <div className="border-b dark:border-gray-700 px-3 py-2 sm:px-4">
-          <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
-            {tabs.map((tab) => {
+            <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+            {visibleTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
 
@@ -308,7 +313,7 @@ export function ClientDetails() {
           {activeTab === 'profile' && <ProfileTab client={client} viewerRole={effectiveRole} />}
           {activeTab === 'session-notes' && <SessionNotesTab client={client} />}
           {activeTab === 'programs-goals' && <ProgramsGoalsTab client={client} />}
-          {activeTab === 'pre-auth' && <PreAuthTab client={client} />}
+          {activeTab === 'pre-auth' && !isTherapistViewer && <PreAuthTab client={client} />}
           {activeTab === 'contracts' && <ServiceContractsTab client={client} />}
         </div>
       </div>

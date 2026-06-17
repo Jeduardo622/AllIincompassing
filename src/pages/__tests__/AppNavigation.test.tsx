@@ -195,4 +195,14 @@ describe('App navigation landing', () => {
       expect(window.location.pathname).toBe('/unauthorized');
     });
   });
+
+  it('blocks therapists from authorizations route', async () => {
+    authRole = 'therapist';
+    window.history.pushState({}, '', '/authorizations');
+    renderApp();
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/unauthorized');
+    });
+  });
 });

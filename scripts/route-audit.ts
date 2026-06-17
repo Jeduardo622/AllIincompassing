@@ -117,7 +117,7 @@ export const ROUTES: readonly RouteDefinition[] = [
   { path: '/therapists/new', component: 'TherapistOnboarding', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/documentation', component: 'Documentation', roles: ['client', 'therapist', 'admin', 'super_admin'], permissions: [] },
   { path: '/fill-docs', component: 'FillDocs', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
-  { path: '/authorizations', component: 'Authorizations', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
+  { path: '/authorizations', component: 'Authorizations', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/messages', component: 'MessagesInbox', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
   { path: '/messages/new', component: 'MessagesNew', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
   {

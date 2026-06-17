@@ -152,6 +152,16 @@ describe('ClientDetails page', () => {
     });
   });
 
+  it('hides the Pre-Authorizations tab for therapist viewers', async () => {
+    renderWithProviders(<ClientDetails />, {
+      auth: { role: 'therapist', userId: 'therapist-user-id' },
+    });
+
+    await waitFor(() => expect(screen.getByText('ProfileTabContent')).toBeInTheDocument());
+
+    expect(screen.queryByRole('button', { name: /Pre-Authorizations/i })).not.toBeInTheDocument();
+  });
+
   it('allows a therapist whose auth user maps to a separate therapist row id', async () => {
     mockLocationSearch = '?tab=programs-goals';
     vi.mocked(fetchClientByIdForViewer).mockResolvedValue({

@@ -233,9 +233,9 @@ function App() {
                       )}
                     />
 
-                    {/* Authorizations - accessible to therapists and above */}
+                    {/* Authorizations - accessible to admins and above */}
                     <Route path="authorizations" element={
-                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'super_admin']}>
                         <Authorizations />
                       </RoleGuard>
                     } />

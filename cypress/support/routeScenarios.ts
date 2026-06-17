@@ -25,7 +25,7 @@ export const routeGroups = {
     { path: "/clients", roles: ["therapist", "admin", "super_admin"] },
     { path: "/clients/client-1", roles: ["therapist", "admin", "super_admin"] },
     { path: "/documentation", roles: ["client", "therapist", "admin", "super_admin"] },
-    { path: "/authorizations", roles: ["therapist", "admin", "super_admin"] },
+    { path: "/authorizations", roles: ["admin", "super_admin"] },
     { path: "/family", roles: [] },
   ],
   schedule: [

@@ -421,6 +421,42 @@ describe("buildIehpDocxPayload", () => {
     expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("allowing escape");
   });
 
+  it("adds explicit function and consequence evidence to structured IEHP goal blocks", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      templateFields: [{ field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", required: true }],
+      checklistItems: [
+        {
+          placeholder_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+          required: true,
+          status: "approved" as const,
+          value_text: null,
+          value_json: null,
+        },
+      ],
+      structuredSections: [
+        {
+          field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+          section_key: "goals",
+          section_index: 0,
+          payload: {
+            raw_text:
+              "Structured goal text notes escape behaviors, access to tangibles, and preferred items but lacks explicit parity phrases.",
+          },
+          status: "approved" as const,
+          required: true,
+        },
+      ],
+      acceptedGoals: [],
+    });
+
+    expect(result.preflight.ready).toBe(true);
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("access to tangibles");
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("escape/avoidance");
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("desired item");
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("allowing escape");
+  });
+
   it("ignores staged draft review state and blocks only unresolved required output values", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,

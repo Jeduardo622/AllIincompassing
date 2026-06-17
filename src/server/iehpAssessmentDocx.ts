@@ -260,7 +260,9 @@ const derivedValue = (
 ): string => {
   const structuredText = formatSectionsForKey(fieldKey, args.structuredSections);
   if (structuredText) {
-    return fieldKey === "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES"
+    return fieldKey === "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES" ||
+      fieldKey === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS" ||
+      fieldKey === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS"
       ? appendFunctionConsequenceEvidence(structuredText)
       : structuredText;
   }

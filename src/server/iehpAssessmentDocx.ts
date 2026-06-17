@@ -210,7 +210,8 @@ const appendFunctionConsequenceEvidence = (value: string, evidenceSource = value
   const renderedNormalized = value.toLowerCase();
   const hasTangibleEvidence = normalized.includes("access to tangibles") || normalized.includes("preferred item");
   const hasEscapeEvidence = normalized.includes("escape");
-  const hasDesiredItemEvidence = normalized.includes("preferred item") || normalized.includes("access to a tangible");
+  const hasDesiredItemEvidence =
+    normalized.includes("preferred item") || normalized.includes("access to a tangible") || normalized.includes("access to tangibles");
   const missingExplicitFunction = !renderedNormalized.includes("escape/avoidance") && hasTangibleEvidence && hasEscapeEvidence;
   const missingExplicitConsequence =
     (!renderedNormalized.includes("desired item") || !renderedNormalized.includes("allowing escape")) && hasDesiredItemEvidence;
@@ -260,7 +261,9 @@ const derivedValue = (
 ): string => {
   const structuredText = formatSectionsForKey(fieldKey, args.structuredSections);
   if (structuredText) {
-    return fieldKey === "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES"
+    return fieldKey === "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES" ||
+      fieldKey === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS" ||
+      fieldKey === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS"
       ? appendFunctionConsequenceEvidence(structuredText)
       : structuredText;
   }

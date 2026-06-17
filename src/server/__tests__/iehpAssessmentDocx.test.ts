@@ -385,6 +385,45 @@ describe("buildIehpDocxPayload", () => {
     expect(result.values.IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES).toContain("allowing escape");
   });
 
+  it("adds explicit function and consequence evidence to goal blocks when source text carries behavior plan details", () => {
+    const result = buildIehpDocxPayload({
+      ...baseArgs,
+      templateFields: [{ field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", required: true }],
+      checklistItems: [
+        {
+          placeholder_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+          required: true,
+          status: "approved" as const,
+          value_text: null,
+          value_json: null,
+        },
+      ],
+      acceptedGoals: [
+        {
+          title: "Attending to adult-led activities",
+          description: "Kim will participate in adult-led activities.",
+          original_text: "Original behavior intervention plan.",
+          goal_type: "child" as const,
+          target_behavior: "adult-led activity participation",
+          measurement_type: "Percentage of opportunities",
+          baseline_data:
+            "Extinction consists of withholding reinforcement so attention, escape, and access to tangibles are not delivered. Preferred items may be used as motivation.",
+          target_criteria: "80% of opportunities",
+          mastery_criteria: "80% of opportunities across 4 consecutive weeks",
+          maintenance_criteria: null,
+          generalization_criteria: "Across home and school",
+          objective_data_points: [],
+        },
+      ],
+    });
+
+    expect(result.preflight.ready).toBe(true);
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("access to tangibles");
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("escape/avoidance");
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("desired item");
+    expect(result.values.IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS).toContain("allowing escape");
+  });
+
   it("ignores staged draft review state and blocks only unresolved required output values", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,

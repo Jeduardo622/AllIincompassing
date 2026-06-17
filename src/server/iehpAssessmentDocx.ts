@@ -238,7 +238,7 @@ const formatGoals = (goals: IehpDraftGoalSnapshot[]): string =>
           ? `Objective data: ${toText(goal.objective_data_points)}`
           : "",
       ].filter(Boolean);
-      return parts.join("\n");
+      return appendFunctionConsequenceEvidence(parts.join("\n"));
     })
     .join("\n\n");
 

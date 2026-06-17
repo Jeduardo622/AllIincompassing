@@ -205,13 +205,15 @@ const formatSectionsForKey = (fieldKey: string, sections: AssessmentStructuredSe
   return matching.map((section) => formatStructuredPayload(section.payload)).filter(Boolean).join("\n\n");
 };
 
-const appendFunctionConsequenceEvidence = (value: string): string => {
-  const normalized = value.toLowerCase();
+const appendFunctionConsequenceEvidence = (value: string, evidenceSource = value): string => {
+  const normalized = evidenceSource.toLowerCase();
+  const renderedNormalized = value.toLowerCase();
   const hasTangibleEvidence = normalized.includes("access to tangibles") || normalized.includes("preferred item");
   const hasEscapeEvidence = normalized.includes("escape");
   const hasDesiredItemEvidence = normalized.includes("preferred item") || normalized.includes("access to a tangible");
-  const missingExplicitFunction = !normalized.includes("escape/avoidance") && hasTangibleEvidence && hasEscapeEvidence;
-  const missingExplicitConsequence = (!normalized.includes("desired item") || !normalized.includes("allowing escape")) && hasDesiredItemEvidence;
+  const missingExplicitFunction = !renderedNormalized.includes("escape/avoidance") && hasTangibleEvidence && hasEscapeEvidence;
+  const missingExplicitConsequence =
+    (!renderedNormalized.includes("desired item") || !renderedNormalized.includes("allowing escape")) && hasDesiredItemEvidence;
   if (!missingExplicitFunction && !missingExplicitConsequence) return value;
 
   const evidenceLines: string[] = [];
@@ -243,7 +245,8 @@ const formatGoals = (goals: IehpDraftGoalSnapshot[]): string =>
           ? `Objective data: ${toText(goal.objective_data_points)}`
           : "",
       ].filter(Boolean);
-      return appendFunctionConsequenceEvidence(parts.join("\n"));
+      const renderedGoal = parts.join("\n");
+      return appendFunctionConsequenceEvidence(renderedGoal, [renderedGoal, goal.original_text].filter(Boolean).join("\n"));
     })
     .join("\n\n");
 

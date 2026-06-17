@@ -382,7 +382,7 @@ describe("buildIehpDocxPayload", () => {
     expect(result.values.IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES).toContain("allowing escape");
   });
 
-  it("adds explicit function and consequence evidence to goal blocks when source text carries behavior plan details", () => {
+  it("adds explicit function and consequence evidence to goal blocks when source original text carries behavior plan details", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,
       templateFields: [{ field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", required: true }],
@@ -399,12 +399,12 @@ describe("buildIehpDocxPayload", () => {
         {
           title: "Attending to adult-led activities",
           description: "Kim will participate in adult-led activities.",
-          original_text: "Original behavior intervention plan.",
+          original_text:
+            "Extinction consists of withholding reinforcement so attention, escape, and access to tangibles are not delivered. Preferred items may be used as motivation.",
           goal_type: "child" as const,
           target_behavior: "adult-led activity participation",
           measurement_type: "Percentage of opportunities",
-          baseline_data:
-            "Extinction consists of withholding reinforcement so attention, escape, and access to tangibles are not delivered. Preferred items may be used as motivation.",
+          baseline_data: "Baseline is partial and does not include source function evidence.",
           target_criteria: "80% of opportunities",
           mastery_criteria: "80% of opportunities across 4 consecutive weeks",
           maintenance_criteria: null,

@@ -195,7 +195,12 @@ const hasManualReviewAdaptiveGap = (payload: Record<string, unknown> | null): bo
 const formatSectionsForKey = (fieldKey: string, sections: AssessmentStructuredSectionValueRow[] = []): string => {
   const allowDraftedExtraction = EXTRACTED_OPTIONAL_RENDER_KEYS.has(fieldKey);
   const matching = sections
-    .filter((section) => section.field_key === fieldKey && (section.status === "approved" || (allowDraftedExtraction && section.status === "drafted")))
+    .filter(
+      (section) =>
+        section.field_key === fieldKey &&
+        (section.status === "approved" ||
+          (allowDraftedExtraction && (section.status === "drafted" || section.status === "verified"))),
+    )
     .sort((left, right) => left.section_index - right.section_index);
   return matching.map((section) => formatStructuredPayload(section.payload)).filter(Boolean).join("\n\n");
 };

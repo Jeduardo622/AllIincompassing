@@ -334,7 +334,7 @@ describe("buildIehpDocxPayload", () => {
     );
   });
 
-  it("renders optional extracted adaptive summaries and explicit function/consequence evidence for final parity", () => {
+  it("renders verified optional extracted adaptive summaries and explicit function/consequence evidence for final parity", () => {
     const result = buildIehpDocxPayload({
       ...baseArgs,
       templateFields: [
@@ -345,12 +345,9 @@ describe("buildIehpDocxPayload", () => {
         {
           placeholder_key: "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
           required: true,
-          status: "drafted" as const,
+          status: "approved" as const,
           value_text: "1 structured section extracted",
-          value_json: {
-            raw_text:
-              "Vineland-3 results: Adaptive Behavior Composite (ABC) standard score of 20, below the 1st percentile. Communication, Daily Living Skills, and Socialization standard scores were 20.",
-          },
+          value_json: null,
         },
         {
           placeholder_key: "IEHP_FBA_TEACHING_INTERVENTION_STRATEGIES",
@@ -370,7 +367,7 @@ describe("buildIehpDocxPayload", () => {
             raw_text:
               "Vineland-3 results: Adaptive Behavior Composite (ABC) standard score of 20, below the 1st percentile. Communication, Daily Living Skills, and Socialization standard scores were 20.",
           },
-          status: "drafted" as const,
+          status: "verified" as const,
           required: true,
         },
       ],

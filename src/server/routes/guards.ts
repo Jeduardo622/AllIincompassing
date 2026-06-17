@@ -88,7 +88,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/authorizations',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    allowedRoles: ['admin', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.authorizations: authorizations_org_read'],
   }),

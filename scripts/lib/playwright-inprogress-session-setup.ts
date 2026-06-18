@@ -2,7 +2,11 @@
  * Book a session via /api/book, start in-progress via edge/RPC, cancel via edge/service-role.
  * Extracted for Playwright regressions that must not import `playwright-session-lifecycle.ts` entrypoint.
  */
-import { getTimezoneOffset } from "date-fns-tz";
+import {
+  formatInTimeZone,
+  fromZonedTime as zonedTimeToUtc,
+  getTimezoneOffset,
+} from "date-fns-tz";
 import { createClient } from "@supabase/supabase-js";
 import type { Page } from "playwright";
 
@@ -65,6 +69,7 @@ const createSessionViaServiceRole = async (params: {
   goalId: string;
   startIso: string;
   endIso: string;
+  timeZone: string;
 }): Promise<string> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
@@ -93,7 +98,7 @@ const createSessionViaServiceRole = async (params: {
   const durationMs = Math.max(15 * 60 * 1000, baseEnd.getTime() - baseStart.getTime());
 
   for (let attempt = 0; attempt < 48; attempt += 1) {
-    const start = new Date(baseStart.getTime() + attempt * 2 * 60 * 60 * 1000);
+    const start = buildVisibleScheduleBookingAttemptStart(baseStart, attempt, params.timeZone);
     const end = new Date(start.getTime() + durationMs);
     const { data, error } = await adminClient
       .from("sessions")
@@ -347,12 +352,55 @@ const toDatetimeLocal = (date: Date): string => {
   return local.toISOString().slice(0, 16);
 };
 
-const buildBookingBaseStart = (): Date => {
-  const runSeed = Number(process.env.GITHUB_RUN_ID ?? Date.now());
-  const offsetHours = Number.isFinite(runSeed) ? Math.abs(Math.trunc(runSeed)) % 12 : 0;
-  const start = new Date();
-  start.setHours(start.getHours() + 4 + offsetHours, 0, 0, 0);
+const VISIBLE_SCHEDULE_START_HOURS = [8, 10, 12, 14, 16] as const;
+
+const addCalendarDays = (localDate: string, days: number): string => {
+  const [year, month, day] = localDate.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+};
+
+const toZonedGridStart = (localDate: string, hour: number, timeZone: string): Date =>
+  zonedTimeToUtc(`${localDate}T${String(hour).padStart(2, "0")}:00:00`, timeZone);
+
+export const buildVisibleScheduleBookingBaseStart = (
+  now = new Date(),
+  seed = Number(process.env.GITHUB_RUN_ID ?? Date.now()),
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+): Date => {
+  const seedNumber = Number.isFinite(seed) ? Math.abs(Math.trunc(seed)) : 0;
+  const visibleHour = VISIBLE_SCHEDULE_START_HOURS[seedNumber % VISIBLE_SCHEDULE_START_HOURS.length];
+  const localDate = formatInTimeZone(now, timeZone, "yyyy-MM-dd");
+  let start = toZonedGridStart(localDate, visibleHour, timeZone);
+  if (start.getTime() <= now.getTime()) {
+    start = toZonedGridStart(addCalendarDays(localDate, 1), visibleHour, timeZone);
+  }
   return start;
+};
+
+export const buildVisibleScheduleBookingAttemptStart = (
+  baseStart: Date,
+  attempt: number,
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+): Date => {
+  const localDate = formatInTimeZone(baseStart, timeZone, "yyyy-MM-dd");
+  const localHour = Number(formatInTimeZone(baseStart, timeZone, "H"));
+  const baseIndex = VISIBLE_SCHEDULE_START_HOURS.findIndex((hour) => hour === localHour);
+  const safeBaseIndex = baseIndex >= 0 ? baseIndex : 0;
+  const sequenceIndex = safeBaseIndex + Math.max(0, Math.trunc(attempt));
+  const dayOffset = Math.floor(sequenceIndex / VISIBLE_SCHEDULE_START_HOURS.length);
+  const visibleHour = VISIBLE_SCHEDULE_START_HOURS[sequenceIndex % VISIBLE_SCHEDULE_START_HOURS.length];
+  return toZonedGridStart(addCalendarDays(localDate, dayOffset), visibleHour, timeZone);
+};
+
+export const resolveBrowserScheduleTimeZone = async (page: Pick<Page, "evaluate">): Promise<string> => {
+  const timeZone = await page.evaluate(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return null;
+    }
+  });
+  return typeof timeZone === "string" && timeZone.trim().length > 0 ? timeZone : "UTC";
 };
 
 async function openSessionModal(page: Page) {
@@ -459,15 +507,15 @@ export async function bookSession(
 
   const selected = await chooseSessionTargets(page, { allowedTherapistIds });
 
-  const start = buildBookingBaseStart();
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+  const timeZone = await resolveBrowserScheduleTimeZone(page);
+  const start = buildVisibleScheduleBookingBaseStart(new Date(), undefined, timeZone);
   let finalStartIso = "";
   let finalEndIso = "";
   let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
   let payloadBody: { success?: boolean; data?: { session?: { id?: string } } } | null = null;
 
   for (let attempt = 0; attempt < 48; attempt += 1) {
-    const attemptStart = new Date(start.getTime() + attempt * 2 * 60 * 60 * 1000);
+    const attemptStart = buildVisibleScheduleBookingAttemptStart(start, attempt, timeZone);
     const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
     const startIso = attemptStart.toISOString();
     const endIso = attemptEnd.toISOString();
@@ -549,6 +597,7 @@ export async function bookSession(
         goalId: selected.goalId,
         startIso: finalStartIso,
         endIso: finalEndIso,
+        timeZone,
       });
       return {
         sessionId: fallbackSessionId,

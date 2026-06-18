@@ -8,6 +8,7 @@ const showErrorMock = vi.fn();
 const showSuccessMock = vi.fn();
 const buildBookSessionApiPayloadMock = vi.fn((session: unknown) => session);
 const upsertClientSessionNoteForSessionMock = vi.fn();
+const invalidateSessionNoteCachesAfterSessionWriteMock = vi.fn();
 
 const currentSessionStart = new Date();
 currentSessionStart.setHours(10, 0, 0, 0);
@@ -84,6 +85,11 @@ vi.mock("../../lib/toast", () => ({
 vi.mock("../../lib/session-notes", () => ({
   upsertClientSessionNoteForSession: (...args: unknown[]) =>
     upsertClientSessionNoteForSessionMock(...args),
+}));
+
+vi.mock("../../features/scheduling/domain/sessionNoteQueryInvalidation", () => ({
+  invalidateSessionNoteCachesAfterSessionWrite: (...args: unknown[]) =>
+    invalidateSessionNoteCachesAfterSessionWriteMock(...args),
 }));
 
 vi.mock("../../lib/conflictPolicy", () => ({
@@ -197,6 +203,45 @@ vi.mock("../../components/SessionModal", () => ({
           }}
         >
           submit-capture-persist
+        </button>
+        <button
+          aria-label="submit-capture-persist-by-id"
+          onClick={() => {
+            const result = onSubmit({
+              id: "session-1",
+              therapist_id: "therapist-1",
+              client_id: "client-1",
+              program_id: "program-1",
+              goal_id: "goal-1",
+              start_time: originalSessionWindow.start_time,
+              end_time: originalSessionWindow.end_time,
+              status: "in_progress",
+              session_note_goal_ids: ["goal-1", "adhoc-skill-550e8400-e29b-41d4-a716-446655440000"],
+              session_note_goals_addressed: ["Goal 1", "Session target"],
+              session_note_goal_notes: {
+                "goal-1": "Plan note",
+                "adhoc-skill-550e8400-e29b-41d4-a716-446655440000": "Adhoc note",
+              },
+              session_note_goal_measurements: {
+                "adhoc-skill-550e8400-e29b-41d4-a716-446655440000": {
+                  version: 1,
+                  data: { measurement_type: "frequency", metric_value: 1 },
+                },
+              },
+              session_note_authorization_id: "auth-1",
+              session_note_service_code: "97153",
+              session_note_persist_requested: true,
+              session_note_capture_merge_goal_ids: [
+                "goal-1",
+                "adhoc-skill-550e8400-e29b-41d4-a716-446655440000",
+              ],
+            });
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          submit-capture-persist-by-id
         </button>
         <button
           aria-label="submit-cancel"
@@ -490,6 +535,57 @@ describe("Schedule orchestration integration hardening", () => {
     }));
     expect(bookSessionViaApiMock.mock.calls[0][1]).toBeUndefined();
     expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("manual live capture persistence can resolve the edit session from submitted id", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    await screen.findByTestId("session-modal");
+    expect(screen.getByTestId("modal-mode")).toHaveTextContent("create");
+    fireEvent.click(screen.getByLabelText("submit-capture-persist-by-id"));
+
+    await waitFor(() => {
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
+      expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
+    });
+    expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1",
+      clientId: "client-1",
+      authorizationId: "auth-1",
+      serviceCode: "97153",
+    }));
+    expect(invalidateSessionNoteCachesAfterSessionWriteMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sessionId: "session-1",
+        clientId: "client-1",
+      }),
+    );
+    expect(bookSessionViaApiMock.mock.calls[0][1]).toBeUndefined();
+    expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("does not update the session when live capture persistence fails", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    upsertClientSessionNoteForSessionMock.mockRejectedValueOnce(new Error("upsert failed"));
+
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    await screen.findByTestId("session-modal");
+    fireEvent.click(screen.getByLabelText("submit-capture-persist-by-id"));
+
+    await waitFor(() => {
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
+    });
+    expect(bookSessionViaApiMock).not.toHaveBeenCalled();
   });
 
   it("manual close clears retry hint without success-style submission", async () => {

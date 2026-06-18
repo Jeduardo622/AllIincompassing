@@ -1076,6 +1076,7 @@ export function SessionModal({
       }
       const transformed: SessionModalSubmitData = {
         ...working,
+        ...(session?.id ? { id: session.id } : {}),
         session_note_narrative: working.session_note_narrative?.trim() ?? '',
         session_note_goal_notes: normalizedGoalNoteMap,
         session_note_goal_measurements: normalizedGoalMeasurementMap,

@@ -161,6 +161,44 @@ vi.mock("../../components/SessionModal", () => ({
           submit-update-with-note-context
         </button>
         <button
+          aria-label="submit-capture-persist"
+          onClick={() => {
+            const result = onSubmit({
+              therapist_id: "therapist-1",
+              client_id: "client-1",
+              program_id: "program-1",
+              goal_id: "goal-1",
+              start_time: originalSessionWindow.start_time,
+              end_time: originalSessionWindow.end_time,
+              status: "in_progress",
+              session_note_goal_ids: ["goal-1", "adhoc-skill-550e8400-e29b-41d4-a716-446655440000"],
+              session_note_goals_addressed: ["Goal 1", "Session target"],
+              session_note_goal_notes: {
+                "goal-1": "Plan note",
+                "adhoc-skill-550e8400-e29b-41d4-a716-446655440000": "Adhoc note",
+              },
+              session_note_goal_measurements: {
+                "adhoc-skill-550e8400-e29b-41d4-a716-446655440000": {
+                  version: 1,
+                  data: { measurement_type: "frequency", metric_value: 1 },
+                },
+              },
+              session_note_authorization_id: "auth-1",
+              session_note_service_code: "97153",
+              session_note_persist_requested: true,
+              session_note_capture_merge_goal_ids: [
+                "goal-1",
+                "adhoc-skill-550e8400-e29b-41d4-a716-446655440000",
+              ],
+            });
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          submit-capture-persist
+        </button>
+        <button
           aria-label="submit-cancel"
           onClick={() => {
             const result = onSubmit({
@@ -418,6 +456,38 @@ describe("Schedule orchestration integration hardening", () => {
     });
 
     expect(upsertClientSessionNoteForSessionMock).not.toHaveBeenCalled();
+    expect(bookSessionViaApiMock.mock.calls[0][1]).toBeUndefined();
+    expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("manual live capture persistence upserts notes before updating the session", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    expect(screen.getByTestId("modal-mode")).toHaveTextContent("edit");
+    fireEvent.click(screen.getByLabelText("submit-capture-persist"));
+
+    await waitFor(() => {
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
+      expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
+    });
+    expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1",
+      clientId: "client-1",
+      authorizationId: "auth-1",
+      serviceCode: "97153",
+      captureMergeGoalIds: [
+        "goal-1",
+        "adhoc-skill-550e8400-e29b-41d4-a716-446655440000",
+      ],
+      goalNotes: expect.objectContaining({
+        "adhoc-skill-550e8400-e29b-41d4-a716-446655440000": "Adhoc note",
+      }),
+    }));
     expect(bookSessionViaApiMock.mock.calls[0][1]).toBeUndefined();
     expect(showErrorMock).not.toHaveBeenCalled();
   });

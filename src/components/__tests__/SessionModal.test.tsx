@@ -1772,6 +1772,7 @@ describe('SessionModal', () => {
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'session-adhoc-save-skills',
         session_note_persist_requested: true,
         session_note_authorization_id: 'auth-1',
         session_note_service_code: '97153',

@@ -1045,12 +1045,17 @@ export const Schedule = React.memo(() => {
 
   const updateSessionMutation = useMutation({
     mutationFn: async (updatedSession: Partial<Session>) => {
-      if (!selectedSession) {
+      const baseSession =
+        selectedSession ??
+        (updatedSession.id
+          ? displayData.sessions.find((session) => session.id === updatedSession.id)
+          : undefined);
+      if (!baseSession) {
         throw new Error("No session selected for update");
       }
 
       const mergedSession: Session = {
-        ...selectedSession,
+        ...baseSession,
         ...updatedSession,
       };
 
@@ -1069,7 +1074,7 @@ export const Schedule = React.memo(() => {
       const bookingResult = await bookSessionViaApi(
         {
           ...buildBookSessionApiPayload(
-            { ...mergedSession, id: selectedSession.id },
+            { ...mergedSession, id: baseSession.id },
             {
               startOffsetMinutes,
               endOffsetMinutes,
@@ -1083,11 +1088,16 @@ export const Schedule = React.memo(() => {
 
       return bookingResult.session;
     },
-    onSuccess: () => {
-      if (selectedSession?.id && selectedSession.client_id) {
+    onSuccess: (_savedSession, updatedSession) => {
+      const invalidationSession =
+        selectedSession ??
+        (updatedSession.id
+          ? displayData.sessions.find((session) => session.id === updatedSession.id)
+          : undefined);
+      if (invalidationSession?.id && invalidationSession.client_id) {
         invalidateSessionNoteCachesAfterSessionWrite(queryClient, {
-          sessionId: selectedSession.id,
-          clientId: selectedSession.client_id,
+          sessionId: invalidationSession.id,
+          clientId: invalidationSession.client_id,
           organizationId: activeOrganizationId,
         });
       }
@@ -1505,12 +1515,17 @@ export const Schedule = React.memo(() => {
   const handleSubmit = useCallback(
     async (data: ScheduleSubmitData) => {
       const sessionPayload = stripClinicalNoteFields(data);
+      const effectiveSelectedSession =
+        selectedSession ??
+        (typeof sessionPayload.id === "string"
+          ? displayData.sessions.find((session) => session.id === sessionPayload.id)
+          : undefined);
       const mergeCaptureIds = data.session_note_capture_merge_goal_ids?.filter(
         (id): id is string => typeof id === "string" && id.trim().length > 0,
       );
       const clinicalNoteDraft = buildClinicalNoteDraft(data, { captureMergeGoalIds: mergeCaptureIds });
       const decision = decideScheduleSubmitBranch({
-        selectedSession,
+        selectedSession: effectiveSelectedSession,
         data: sessionPayload,
       });
 
@@ -1534,7 +1549,7 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-complete": {
-          let liveInProgress = selectedSession?.status === "in_progress";
+          let liveInProgress = effectiveSelectedSession?.status === "in_progress";
           if (!liveInProgress) {
             const { data: liveRow, error: liveError } = await supabase
               .from("sessions")
@@ -1584,7 +1599,7 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-no-show": {
-          let liveInProgressNoShow = selectedSession?.status === "in_progress";
+          let liveInProgressNoShow = effectiveSelectedSession?.status === "in_progress";
           if (!liveInProgressNoShow) {
             const { data: liveRowNs, error: liveErrorNs } = await supabase
               .from("sessions")
@@ -1634,7 +1649,7 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-update": {
-          if (selectedSession && clinicalNoteDraft) {
+          if (effectiveSelectedSession && clinicalNoteDraft) {
             if (!activeOrganizationId) {
               throw new Error("Organization context is required to save session capture.");
             }
@@ -1653,16 +1668,16 @@ export const Schedule = React.memo(() => {
               );
             }
             await upsertClientSessionNoteForSession({
-              sessionId: selectedSession.id,
-              clientId: sessionPayload.client_id ?? selectedSession.client_id,
+              sessionId: effectiveSelectedSession.id,
+              clientId: sessionPayload.client_id ?? effectiveSelectedSession.client_id,
               authorizationId: clinicalNoteDraft.authorizationId,
-              therapistId: sessionPayload.therapist_id ?? selectedSession.therapist_id,
+              therapistId: sessionPayload.therapist_id ?? effectiveSelectedSession.therapist_id,
               organizationId: activeOrganizationId,
               actorUserId: user.id,
               serviceCode: clinicalNoteDraft.serviceCode,
-              sessionDate: format(parseISO(sessionPayload.start_time ?? selectedSession.start_time), "yyyy-MM-dd"),
-              startTime: format(parseISO(sessionPayload.start_time ?? selectedSession.start_time), "HH:mm:ss"),
-              endTime: format(parseISO(sessionPayload.end_time ?? selectedSession.end_time), "HH:mm:ss"),
+              sessionDate: format(parseISO(sessionPayload.start_time ?? effectiveSelectedSession.start_time), "yyyy-MM-dd"),
+              startTime: format(parseISO(sessionPayload.start_time ?? effectiveSelectedSession.start_time), "HH:mm:ss"),
+              endTime: format(parseISO(sessionPayload.end_time ?? effectiveSelectedSession.end_time), "HH:mm:ss"),
               goalsAddressed: clinicalNoteDraft.goalsAddressed,
               goalIds: clinicalNoteDraft.goalIds,
               goalMeasurements: clinicalNoteDraft.goalMeasurements,
@@ -1697,6 +1712,7 @@ export const Schedule = React.memo(() => {
       completeSessionMutation,
       updateSessionMutation,
       createSessionMutation,
+      displayData.sessions,
     ],
   );
 

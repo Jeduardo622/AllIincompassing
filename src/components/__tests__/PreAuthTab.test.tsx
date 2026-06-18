@@ -59,6 +59,55 @@ const {
       };
     }
 
+    if (table === "therapists") {
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            in: vi.fn(() => ({
+              order: vi.fn(() =>
+                Promise.resolve({
+                  data: [{ id: "therapist-provider-1", full_name: "Provider Therapist" }],
+                  error: null,
+                }),
+              ),
+            })),
+          })),
+        })),
+      };
+    }
+
+    if (table === "clients") {
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(() =>
+                Promise.resolve({
+                  data: { therapist_id: "therapist-provider-1" },
+                  error: null,
+                }),
+              ),
+            })),
+          })),
+        })),
+      };
+    }
+
+    if (table === "client_therapist_links") {
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() =>
+              Promise.resolve({
+                data: [{ therapist_id: "therapist-provider-1" }],
+                error: null,
+              }),
+            ),
+          })),
+        })),
+      };
+    }
+
     if (table === "client_session_notes" || table === "authorizations") {
       return {
         select: vi.fn(() => createEqQuery([])),
@@ -129,6 +178,9 @@ describe("PreAuthTab manual authorization upload", () => {
     await screen.findByRole("heading", { name: /authorization notice details/i });
     await user.type(screen.getByLabelText(/authorization number/i), "IEHP-AUTH-123");
     await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
     await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
     await user.type(screen.getByLabelText(/member id/i), "MEM-123");
     await user.type(screen.getByLabelText(/start date/i), "2026-06-23");
@@ -155,7 +207,7 @@ describe("PreAuthTab manual authorization upload", () => {
         expect.objectContaining({
           authorization_number: "IEHP-AUTH-123",
           client_id: "client-1",
-          provider_id: "admin-user-id",
+          provider_id: "therapist-provider-1",
           insurance_provider_id: "payer-1",
           plan_type: "Medicaid",
           member_id: "MEM-123",

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   ClipboardCheck, Calendar, AlertCircle, 
@@ -28,6 +28,7 @@ interface Authorization {
   approval_notes?: string | null;
   denied_at?: string | null;
   denial_reason?: string | null;
+  provider_id?: string | null;
   plan_type?: string | null;
   member_id?: string | null;
   insurance_provider_id?: string | null;
@@ -56,6 +57,7 @@ type AuthorizationStatus = 'approved' | 'pending' | 'denied';
 interface PreAuthWizardData {
   insurance: string;
   insuranceProviderId: string;
+  providerId: string;
   authorizationNumber: string;
   status: AuthorizationStatus;
   startDate: string;
@@ -74,6 +76,7 @@ const AUTHORIZATION_STATUSES: AuthorizationStatus[] = ['approved', 'pending', 'd
 const createEmptyWizardData = (): PreAuthWizardData => ({
   insurance: '',
   insuranceProviderId: '',
+  providerId: '',
   authorizationNumber: '',
   status: 'approved',
   startDate: '',
@@ -153,6 +156,91 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return data as Array<{ id: string; name: string }>;
     },
   });
+
+  const { data: clientPrimaryProvider } = useQuery({
+    queryKey: ['client-authorization-provider', client.id, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load the client provider.');
+      }
+
+      const { data, error } = await supabase
+        .from('clients')
+        .select('therapist_id')
+        .eq('id', client.id)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as { therapist_id: string | null } | null;
+    },
+    enabled: Boolean(client.id && organizationId),
+  });
+
+  const clientPrimaryProviderId = clientPrimaryProvider?.therapist_id ?? '';
+
+  const { data: linkedClientProviders = [] } = useQuery({
+    queryKey: ['client-authorization-linked-providers', client.id, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load linked providers.');
+      }
+
+      const { data, error } = await supabase
+        .from('client_therapist_links')
+        .select('therapist_id')
+        .eq('client_id', client.id)
+        .eq('organization_id', organizationId);
+
+      if (error) throw error;
+      return data as Array<{ therapist_id: string }>;
+    },
+    enabled: Boolean(client.id && organizationId),
+  });
+
+  const assignedProviderIds = useMemo(() => {
+    return Array.from(
+      new Set([
+        clientPrimaryProviderId,
+        ...linkedClientProviders.map((provider) => provider.therapist_id),
+      ].filter(Boolean)),
+    );
+  }, [clientPrimaryProviderId, linkedClientProviders]);
+
+  const { data: authorizationProviderTherapists = [] } = useQuery({
+    queryKey: ['authorization-provider-therapists', organizationId ?? 'MISSING_ORG', assignedProviderIds],
+    queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load therapists.');
+      }
+
+      const { data, error } = await supabase
+        .from('therapists')
+        .select('id,full_name')
+        .eq('organization_id', organizationId)
+        .in('id', assignedProviderIds)
+        .order('full_name');
+
+      if (error) throw error;
+      return data as Array<{ id: string; full_name: string | null }>;
+    },
+    enabled: Boolean(organizationId && assignedProviderIds.length > 0),
+  });
+
+  useEffect(() => {
+    if (wizardData.providerId || !clientPrimaryProviderId) {
+      return;
+    }
+
+    const primaryProviderExists = authorizationProviderTherapists.some(
+      (therapist) => therapist.id === clientPrimaryProviderId,
+    );
+    if (!primaryProviderExists) {
+      return;
+    }
+
+    setWizardData((prev) => (prev.providerId ? prev : { ...prev, providerId: clientPrimaryProviderId }));
+  }, [authorizationProviderTherapists, clientPrimaryProviderId, wizardData.providerId]);
 
   const { data: sessionNoteUsage = [] } = useQuery({
     queryKey: ['client-session-note-usage', client.id, organizationId ?? 'MISSING_ORG'],
@@ -365,6 +453,11 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return;
     }
 
+    if (!wizardData.providerId) {
+      showError('Select the therapist/provider for this authorization.');
+      return;
+    }
+
     const authorizationNumber = wizardData.authorizationNumber.trim();
     const diagnosisCode = wizardData.diagnosisCode.trim();
     const diagnosisDescription = wizardData.diagnosisDescription.trim();
@@ -402,7 +495,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       const { id: authorizationId } = await createAuthorizationWithServices({
         authorization_number: authorizationNumber,
         client_id: client.id,
-        provider_id: user.id,
+        provider_id: wizardData.providerId,
         insurance_provider_id: wizardData.insuranceProviderId || null,
         plan_type: wizardData.planType || null,
         member_id: wizardData.memberId || null,
@@ -472,6 +565,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       ...createEmptyWizardData(),
       insurance: auth.insurance_provider?.name ?? '',
       insuranceProviderId: auth.insurance_provider_id ?? '',
+      providerId: auth.provider_id ?? '',
       authorizationNumber: auth.authorization_number ?? '',
       status: normalizeAuthorizationStatus(auth.status),
       startDate: auth.start_date ?? '',
@@ -948,6 +1042,30 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                         ))}
                       </select>
                     </div>
+
+                    <div>
+                      <label htmlFor="preauth-provider-therapist" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Rendering Therapist / Provider
+                      </label>
+                      <select
+                        id="preauth-provider-therapist"
+                        value={wizardData.providerId}
+                        onChange={(e) => setWizardData({ ...wizardData, providerId: e.target.value })}
+                        className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                      >
+                        <option value="">Select therapist/provider</option>
+                        {authorizationProviderTherapists.map((therapist) => (
+                          <option key={therapist.id} value={therapist.id}>
+                            {therapist.full_name ?? 'Unnamed therapist'}
+                          </option>
+                        ))}
+                      </select>
+                      {clientPrimaryProviderId && wizardData.providerId === clientPrimaryProviderId && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Defaulted from the client primary therapist.
+                        </p>
+                      )}
+                    </div>
                     
                     <div>
                       <label htmlFor="preauth-plan-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1224,6 +1342,11 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                       </p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
                         {wizardData.insurance || 'Not selected'} · {wizardData.planType || 'No plan type'}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Provider:{' '}
+                        {authorizationProviderTherapists.find((therapist) => therapist.id === wizardData.providerId)?.full_name ??
+                          'No provider selected'}
                       </p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
                         {wizardData.diagnosisCode || 'No diagnosis code'} - {wizardData.diagnosisDescription || 'No diagnosis description'}

@@ -15,28 +15,52 @@ describe("playwright in-progress session setup", () => {
     for (let seed = 0; seed < 24; seed += 1) {
       const start = buildVisibleScheduleBookingBaseStart(now, seed, timeZone);
       const localHour = Number(formatInTimeZone(start, timeZone, "H"));
+      const isoWeekday = Number(formatInTimeZone(start, timeZone, "i"));
 
       expect(start.getTime()).toBeGreaterThan(now.getTime());
       expect(formatInTimeZone(start, timeZone, "m")).toBe("0");
       expect(formatInTimeZone(start, timeZone, "s")).toBe("0");
       expect(localHour).toBeGreaterThanOrEqual(8);
       expect(localHour).toBeLessThan(18);
+      expect(isoWeekday).toBeGreaterThanOrEqual(1);
+      expect(isoWeekday).toBeLessThanOrEqual(6);
     }
   });
 
-  it("keeps retry attempts inside rendered schedule grid hours", () => {
+  it("moves Sunday base bookings to the next rendered weekday", () => {
     const timeZone = "America/Los_Angeles";
-    const baseStart = new Date("2026-06-18T23:00:00.000Z");
+    const sundayBeforeChosenHour = new Date("2026-06-21T14:30:00.000Z");
+
+    const start = buildVisibleScheduleBookingBaseStart(sundayBeforeChosenHour, 0, timeZone);
+
+    expect(formatInTimeZone(start, timeZone, "yyyy-MM-dd HH:mm i")).toBe("2026-06-22 08:00 1");
+  });
+
+  it("moves late Saturday base bookings to Monday instead of Sunday", () => {
+    const timeZone = "America/Los_Angeles";
+    const saturdayAfterChosenHour = new Date("2026-06-21T00:30:00.000Z");
+
+    const start = buildVisibleScheduleBookingBaseStart(saturdayAfterChosenHour, 0, timeZone);
+
+    expect(formatInTimeZone(start, timeZone, "yyyy-MM-dd HH:mm i")).toBe("2026-06-22 08:00 1");
+  });
+
+  it("keeps retry attempts inside rendered schedule grid hours and weekdays", () => {
+    const timeZone = "America/Los_Angeles";
+    const baseStart = new Date("2026-06-20T23:00:00.000Z");
 
     for (let attempt = 0; attempt < 48; attempt += 1) {
       const start = buildVisibleScheduleBookingAttemptStart(baseStart, attempt, timeZone);
       const localHour = Number(formatInTimeZone(start, timeZone, "H"));
+      const isoWeekday = Number(formatInTimeZone(start, timeZone, "i"));
 
       expect(start.getTime()).toBeGreaterThanOrEqual(baseStart.getTime());
       expect(formatInTimeZone(start, timeZone, "m")).toBe("0");
       expect(formatInTimeZone(start, timeZone, "s")).toBe("0");
       expect(localHour).toBeGreaterThanOrEqual(8);
       expect(localHour).toBeLessThan(18);
+      expect(isoWeekday).toBeGreaterThanOrEqual(1);
+      expect(isoWeekday).toBeLessThanOrEqual(6);
     }
   });
 

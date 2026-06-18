@@ -362,6 +362,26 @@ const addCalendarDays = (localDate: string, days: number): string => {
 const toZonedGridStart = (localDate: string, hour: number, timeZone: string): Date =>
   zonedTimeToUtc(`${localDate}T${String(hour).padStart(2, "0")}:00:00`, timeZone);
 
+const isRenderedScheduleLocalDate = (localDate: string, timeZone: string): boolean => {
+  const isoWeekday = Number(formatInTimeZone(toZonedGridStart(localDate, 12, timeZone), timeZone, "i"));
+  return isoWeekday >= 1 && isoWeekday <= 6;
+};
+
+const addRenderedScheduleDays = (localDate: string, days: number, timeZone: string): string => {
+  let nextDate = localDate;
+  let renderedDaysRemaining = Math.max(0, Math.trunc(days));
+
+  do {
+    if (isRenderedScheduleLocalDate(nextDate, timeZone)) {
+      if (renderedDaysRemaining === 0) {
+        return nextDate;
+      }
+      renderedDaysRemaining -= 1;
+    }
+    nextDate = addCalendarDays(nextDate, 1);
+  } while (true);
+};
+
 export const buildVisibleScheduleBookingBaseStart = (
   now = new Date(),
   seed = Number(process.env.GITHUB_RUN_ID ?? Date.now()),
@@ -369,10 +389,10 @@ export const buildVisibleScheduleBookingBaseStart = (
 ): Date => {
   const seedNumber = Number.isFinite(seed) ? Math.abs(Math.trunc(seed)) : 0;
   const visibleHour = VISIBLE_SCHEDULE_START_HOURS[seedNumber % VISIBLE_SCHEDULE_START_HOURS.length];
-  const localDate = formatInTimeZone(now, timeZone, "yyyy-MM-dd");
+  const localDate = addRenderedScheduleDays(formatInTimeZone(now, timeZone, "yyyy-MM-dd"), 0, timeZone);
   let start = toZonedGridStart(localDate, visibleHour, timeZone);
   if (start.getTime() <= now.getTime()) {
-    start = toZonedGridStart(addCalendarDays(localDate, 1), visibleHour, timeZone);
+    start = toZonedGridStart(addRenderedScheduleDays(localDate, 1, timeZone), visibleHour, timeZone);
   }
   return start;
 };
@@ -389,7 +409,7 @@ export const buildVisibleScheduleBookingAttemptStart = (
   const sequenceIndex = safeBaseIndex + Math.max(0, Math.trunc(attempt));
   const dayOffset = Math.floor(sequenceIndex / VISIBLE_SCHEDULE_START_HOURS.length);
   const visibleHour = VISIBLE_SCHEDULE_START_HOURS[sequenceIndex % VISIBLE_SCHEDULE_START_HOURS.length];
-  return toZonedGridStart(addCalendarDays(localDate, dayOffset), visibleHour, timeZone);
+  return toZonedGridStart(addRenderedScheduleDays(localDate, dayOffset, timeZone), visibleHour, timeZone);
 };
 
 export const resolveBrowserScheduleTimeZone = async (page: Pick<Page, "evaluate">): Promise<string> => {

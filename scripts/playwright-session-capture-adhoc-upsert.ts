@@ -5,7 +5,6 @@
  * Requires the same Playwright env contract as other non-AI session scripts (see playwright-preflight).
  */
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
@@ -40,8 +39,6 @@ const getEnv = (key: string, fallback?: string): string => {
 const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(value ?? "");
 
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
-const PARTIAL_CAPTURE_WAIT_MS = Number(process.env.PW_SESSION_CAPTURE_PARTIAL_WAIT_MS ?? "20000");
-const FULL_CAPTURE_WAIT_MS = Number(process.env.PW_SESSION_CAPTURE_FULL_WAIT_MS ?? "120000");
 
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
   console.log(`[session-capture-adhoc] start ${label}`);
@@ -131,102 +128,6 @@ async function waitForSessionStatus(sessionId: string, status: string, timeoutMs
     await new Promise((r) => setTimeout(r, 1000));
   }
   throw new Error(`Timed out waiting for session ${sessionId} status=${status}`);
-}
-
-async function fetchBillingDefaultsForClient(clientId: string): Promise<{ authorizationId: string; serviceCode: string }> {
-  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
-  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const admin = createClient(supabaseUrl, serviceRole, {
-    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-  });
-  const { data, error } = await admin
-    .from("authorizations")
-    .select("id, services:authorization_services(service_code)")
-    .eq("client_id", clientId)
-    .order("start_date", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) {
-    throw new Error(`Failed to fetch billing defaults for client ${clientId}: ${error.message}`);
-  }
-  const authorizationId = typeof data?.id === "string" ? data.id : "";
-  const services = Array.isArray(data?.services) ? data.services : [];
-  const serviceCode =
-    services
-      .map((service) =>
-        service && typeof service === "object" && "service_code" in service
-          ? String(service.service_code ?? "").trim()
-          : "",
-      )
-      .find((value) => value.length > 0) ?? "97153";
-  if (!authorizationId) {
-    throw new Error(`No authorization is available for client ${clientId}.`);
-  }
-  return { authorizationId, serviceCode };
-}
-
-const toUtcDatePart = (iso: string): string => new Date(iso).toISOString().slice(0, 10);
-const toUtcTimePart = (iso: string): string => new Date(iso).toISOString().slice(11, 19);
-
-async function postAdhocCaptureViaApi(
-  page: Page,
-  token: string,
-  booked: LifecycleIds,
-  marker: string,
-): Promise<{ goal_notes?: Record<string, string> | null; goal_ids?: string[] | null }> {
-  const billing = await fetchBillingDefaultsForClient(booked.clientId);
-  const adhocId = `adhoc-skill-${randomUUID()}`;
-  const payload = {
-    sessionId: booked.sessionId,
-    clientId: booked.clientId,
-    authorizationId: billing.authorizationId,
-    therapistId: booked.therapistId,
-    serviceCode: billing.serviceCode,
-    sessionDate: toUtcDatePart(booked.startIso),
-    startTime: toUtcTimePart(booked.startIso),
-    endTime: toUtcTimePart(booked.endIso),
-    goalIds: [booked.goalId, adhocId],
-    goalsAddressed: ["Playwright lifecycle goal", "Session target"],
-    goalNotes: {
-      [booked.goalId]: `Plan note ${marker}`,
-      [adhocId]: `Adhoc note ${marker}`,
-    },
-    goalMeasurements: {
-      [adhocId]: {
-        version: 1,
-        data: {
-          measurement_type: "frequency",
-          metric_label: "Count",
-          metric_unit: "responses",
-          metric_value: 1,
-        },
-      },
-    },
-    narrative: "",
-    isLocked: false,
-    captureMergeGoalIds: [booked.goalId, adhocId],
-  };
-  const result = await page.evaluate(
-    async ({ apiToken, body }) => {
-      const response = await fetch("/api/session-notes/upsert", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiToken}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const responseBody = await response.json().catch(() => null);
-      return {
-        ok: response.ok,
-        status: response.status,
-        body: responseBody,
-      };
-    },
-    { apiToken: token, body: payload },
-  );
-  assert.equal(result.ok, true, `direct session-notes upsert failed: HTTP ${result.status} ${JSON.stringify(result.body)}`);
-  return result.body as { goal_notes?: Record<string, string> | null; goal_ids?: string[] | null };
 }
 
 async function run(): Promise<void> {
@@ -357,120 +258,83 @@ async function run(): Promise<void> {
       activePage.on("requestfailed", requestFailedListener);
       activePage.on("console", consoleListener);
       try {
-      await openEditSessionModalFromCalendar(activePage, scheduleUrl, booked.sessionId);
-      const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
-      const capture = editDialog.getByTestId("session-modal-capture-section");
-      await capture.waitFor({ state: "visible", timeout: 30_000 });
-      await selectFirstOptionIfEmpty(
-        editDialog.first().locator('#session-note-auth-select, select[name="session_note_authorization_id"]'),
-        "authorization",
-      );
-      await selectFirstOptionIfEmpty(
-        editDialog.first().locator('#session-note-service-code-select, select[name="session_note_service_code"]'),
-        "service code",
-      );
-
-      await editDialog.locator(`#goal-note-${booked.goalId}`).fill(`Plan note ${marker}`);
-
-      await capture.getByRole("button", { name: /Add skill/i }).click();
-      const adhocCard = capture.locator('[data-testid^="session-modal-goal-capture-adhoc-skill-"]').last();
-      await adhocCard.waitFor({ state: "visible", timeout: 30_000 });
-      await adhocCard.scrollIntoViewIfNeeded();
-      await adhocCard.locator('input[placeholder="Name this target"]:visible').first().fill(`Adhoc title ${marker}`);
-      await adhocCard.getByLabel(/^Per-goal note$/i).fill(`Adhoc note ${marker}`);
-      await adhocCard.getByRole("button", { name: /Increase correct trials/i }).first().click();
-
-      const buildFailure = async (error: unknown, phase: string, partialError?: unknown): Promise<Error> => {
-        const diagnostics = await activePage.evaluate(() => {
-          const form = document.querySelector("#session-form") as HTMLFormElement | null;
-          const invalidFields = form
-            ? Array.from(form.elements)
-                .filter((element): element is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement =>
-                  "validity" in element && !element.validity.valid)
-                .map((element) => ({
-                  id: element.id,
-                  name: element.name,
-                  value: element.value,
-                  validationMessage: element.validationMessage,
-                }))
-            : [];
-          const saveSkillsButton = Array.from(document.querySelectorAll("button")).find((button) =>
-            /Save skills/i.test(button.textContent ?? ""));
-          return {
-            formValid: form?.checkValidity() ?? null,
-            invalidFields,
-            saveSkillsDisabled: saveSkillsButton instanceof HTMLButtonElement ? saveSkillsButton.disabled : null,
-            visibleAdhocTitleCount: document.querySelectorAll('input[placeholder="Name this target"]').length,
-            saveStateText: document.body.textContent?.match(/Saved|Unable to save|Saving/i)?.[0] ?? null,
-            sessionNoteAuthSelectCount: document.querySelectorAll(
-              '#session-note-auth-select, select[name="session_note_authorization_id"]',
-            ).length,
-            sessionNoteServiceCodeSelectCount: document.querySelectorAll(
-              '#session-note-service-code-select, select[name="session_note_service_code"]',
-            ).length,
-          };
-        });
-        return new Error(
-          `${error instanceof Error ? error.message : String(error)} diagnostics=${JSON.stringify({
-            phase,
-            ...diagnostics,
-            observedRequests: observedRequests.slice(-20),
-            failedRequests: failedRequests.slice(-10),
-            consoleErrors: consoleErrors.slice(-10),
-            partialSaveError: partialError instanceof Error ? partialError.message : partialError ? String(partialError) : null,
-          })}`,
+        await openEditSessionModalFromCalendar(activePage, scheduleUrl, booked.sessionId);
+        const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
+        const capture = editDialog.getByTestId("session-modal-capture-section");
+        await capture.waitFor({ state: "visible", timeout: 30_000 });
+        await selectFirstOptionIfEmpty(
+          editDialog.first().locator('#session-note-auth-select, select[name="session_note_authorization_id"]'),
+          "authorization",
         );
-      };
+        await selectFirstOptionIfEmpty(
+          editDialog.first().locator('#session-note-service-code-select, select[name="session_note_service_code"]'),
+          "service code",
+        );
 
-      let res: Awaited<ReturnType<Page["waitForResponse"]>>;
-      let partialSaveError: unknown = null;
-      try {
-        const partialUpsertPromise = activePage.waitForResponse(
+        await editDialog.locator(`#goal-note-${booked.goalId}`).fill(`Plan note ${marker}`);
+
+        await capture.getByRole("button", { name: /Add skill/i }).click();
+        const adhocCard = capture.locator('[data-testid^="session-modal-goal-capture-adhoc-skill-"]').last();
+        await adhocCard.waitFor({ state: "visible", timeout: 30_000 });
+        await adhocCard.scrollIntoViewIfNeeded();
+        await adhocCard.locator('input[placeholder="Name this target"]:visible').first().fill(`Adhoc title ${marker}`);
+        await adhocCard.getByLabel(/^Per-goal note$/i).fill(`Adhoc note ${marker}`);
+        await adhocCard.getByRole("button", { name: /Increase correct trials/i }).first().click();
+
+        const buildFailure = async (error: unknown): Promise<Error> => {
+          const diagnostics = await activePage.evaluate(() => {
+            const form = document.querySelector("#session-form") as HTMLFormElement | null;
+            const invalidFields = form
+              ? Array.from(form.elements)
+                  .filter((element): element is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement =>
+                    "validity" in element && !element.validity.valid)
+                  .map((element) => ({
+                    id: element.id,
+                    name: element.name,
+                    value: element.value,
+                    validationMessage: element.validationMessage,
+                  }))
+              : [];
+            const saveSkillsButton = Array.from(document.querySelectorAll("button")).find((button) =>
+              /Save skills/i.test(button.textContent ?? ""));
+            return {
+              formValid: form?.checkValidity() ?? null,
+              invalidFields,
+              saveSkillsDisabled: saveSkillsButton instanceof HTMLButtonElement ? saveSkillsButton.disabled : null,
+              visibleAdhocTitleCount: document.querySelectorAll('input[placeholder="Name this target"]').length,
+              saveStateText: document.body.textContent?.match(/Saved|Unable to save|Saving/i)?.[0] ?? null,
+              sessionNoteAuthSelectCount: document.querySelectorAll(
+                '#session-note-auth-select, select[name="session_note_authorization_id"]',
+              ).length,
+              sessionNoteServiceCodeSelectCount: document.querySelectorAll(
+                '#session-note-service-code-select, select[name="session_note_service_code"]',
+              ).length,
+            };
+          });
+          return new Error(
+            `${error instanceof Error ? error.message : String(error)} diagnostics=${JSON.stringify({
+              ...diagnostics,
+              observedRequests: observedRequests.slice(-20),
+              failedRequests: failedRequests.slice(-10),
+              consoleErrors: consoleErrors.slice(-10),
+            })}`,
+          );
+        };
+
+        const upsertPromise = activePage.waitForResponse(
           (response) =>
             response.url().includes("/api/session-notes/upsert") && response.request().method() === "POST",
-          { timeout: PARTIAL_CAPTURE_WAIT_MS },
+          { timeout: 120_000 },
         );
         await editDialog.getByTestId("session-modal-save-capture-skills").click();
-        res = await partialUpsertPromise;
-      } catch (error) {
-        partialSaveError = error;
-        console.warn(
-          `[session-capture-adhoc] Save skills did not emit session-notes upsert within ${PARTIAL_CAPTURE_WAIT_MS}ms; falling back to Save progress.`,
-        );
-        const fullUpsertPromise = activePage.waitForResponse(
-          (response) =>
-            response.url().includes("/api/session-notes/upsert") && response.request().method() === "POST",
-          { timeout: FULL_CAPTURE_WAIT_MS },
-        );
-        await editDialog.getByRole("button", { name: /Save progress/i }).click();
-        res = await fullUpsertPromise.catch(async (fullError) => {
-          throw await buildFailure(fullError, "save-progress-fallback", partialSaveError);
+        const res = await upsertPromise.catch(async (error) => {
+          throw await buildFailure(error);
         });
-      } finally {
-        activePage.off("request", requestListener);
-        activePage.off("requestfailed", requestFailedListener);
-        activePage.off("console", consoleListener);
-      }
-      assert.equal(res.ok(), true, `session-notes upsert failed: HTTP ${res.status()}`);
-      const body = (await res.json()) as {
-        goal_notes?: Record<string, string> | null;
-        goal_ids?: string[] | null;
-      };
-      const adhocNoteKey = Object.keys(body.goal_notes ?? {}).find((k) => /^adhoc-skill-/i.test(k));
-      assert.ok(adhocNoteKey, "response.goal_notes must include an adhoc-skill-* key");
-      assert.match(adhocNoteKey ?? "", /^adhoc-skill-/i);
-      assert.ok(
-        (body.goal_ids ?? []).some((id) => /^adhoc-skill-/i.test(id)),
-        "response.goal_ids must include ad-hoc id",
-      );
-      } catch (uiError) {
-        activePage.off("request", requestListener);
-        activePage.off("requestfailed", requestFailedListener);
-        activePage.off("console", consoleListener);
-        console.warn(
-          `[session-capture-adhoc] UI capture path did not produce an upsert; falling back to direct authenticated API proof. reason=${uiError instanceof Error ? uiError.message : String(uiError)}`,
-        );
-        const body = await postAdhocCaptureViaApi(activePage, token, booked, marker);
+        assert.equal(res.ok(), true, `session-notes upsert failed: HTTP ${res.status()}`);
+        const body = (await res.json()) as {
+          goal_notes?: Record<string, string> | null;
+          goal_ids?: string[] | null;
+        };
         const adhocNoteKey = Object.keys(body.goal_notes ?? {}).find((k) => /^adhoc-skill-/i.test(k));
         assert.ok(adhocNoteKey, "response.goal_notes must include an adhoc-skill-* key");
         assert.match(adhocNoteKey ?? "", /^adhoc-skill-/i);
@@ -478,6 +342,10 @@ async function run(): Promise<void> {
           (body.goal_ids ?? []).some((id) => /^adhoc-skill-/i.test(id)),
           "response.goal_ids must include ad-hoc id",
         );
+      } finally {
+        activePage.off("request", requestListener);
+        activePage.off("requestfailed", requestFailedListener);
+        activePage.off("console", consoleListener);
       }
     });
 

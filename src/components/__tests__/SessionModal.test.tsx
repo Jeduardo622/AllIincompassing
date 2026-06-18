@@ -1700,6 +1700,94 @@ describe('SessionModal', () => {
     });
   }, 10000);
 
+  it('submits ad-hoc skill rows when Save skills is clicked during a live session', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([
+          {
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-adhoc-save-skills',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    fireEvent.change(await screen.findByLabelText(/^Per-goal note$/i), {
+      target: { value: 'Plan goal note' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Add skill/i }));
+    const titleInputs = await screen.findAllByPlaceholderText('Name this target');
+    const titleInput = titleInputs.find((input) => input.id.startsWith('adhoc-title-')) ?? titleInputs[0];
+    fireEvent.change(titleInput, { target: { value: 'Adhoc skill target' } });
+    const perGoalNotes = screen.getAllByLabelText(/^Per-goal note$/i);
+    fireEvent.change(perGoalNotes[perGoalNotes.length - 1], {
+      target: { value: 'Adhoc skill note' },
+    });
+    await userEvent.click(screen.getAllByRole('button', { name: /Increase correct trials/i }).at(-1)!);
+
+    await userEvent.click(screen.getByTestId('session-modal-save-capture-skills'));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_persist_requested: true,
+        session_note_authorization_id: 'auth-1',
+        session_note_service_code: '97153',
+        session_note_goal_notes: expect.objectContaining({
+          'goal-1': 'Plan goal note',
+        }),
+        session_note_capture_merge_goal_ids: expect.arrayContaining(['goal-1']),
+      }));
+    });
+    const submitted = onSubmit.mock.calls[0][0];
+    const adhocId = submitted.session_note_goal_ids.find((id: string) => id.startsWith('adhoc-skill-'));
+    expect(adhocId).toBeTruthy();
+    expect(submitted.session_note_goal_notes[adhocId]).toBe('Adhoc skill note');
+    expect(submitted.session_note_capture_merge_goal_ids).toContain(adhocId);
+  }, 10000);
+
   it('includes +5 trial shortcut in saved correct counts', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const buildChain = (rows: unknown[]) => {

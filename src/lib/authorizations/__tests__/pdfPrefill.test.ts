@@ -59,6 +59,23 @@ describe('parseAuthorizationPdfText', () => {
     });
   });
 
+  it('does not return impossible calendar dates', () => {
+    const result = parseAuthorizationPdfText(`
+      Authorization #: PDF-AUTH-BAD-DATES
+      Service From: 02/31/2026
+      Service To: 04/31/2026
+      Procedure Code 97153
+      Requested Units: 12
+    `);
+
+    expect(result).toMatchObject({
+      authorizationNumber: 'PDF-AUTH-BAD-DATES',
+      services: [{ serviceCode: '97153', requestedUnits: 12 }],
+    });
+    expect(result).not.toHaveProperty('startDate');
+    expect(result).not.toHaveProperty('endDate');
+  });
+
   it('does not infer status from requested or approved unit labels', () => {
     expect(
       parseAuthorizationPdfText(`
@@ -168,5 +185,54 @@ describe('mergeAuthorizationPdfPrefill', () => {
         catalog,
       ).data.units,
     ).toEqual({ '97153': 44 });
+  });
+
+  it('does not overwrite status by default when current status has a value', () => {
+    const current = {
+      authorizationNumber: '',
+      status: 'approved' as const,
+      startDate: '',
+      endDate: '',
+      diagnosisCode: '',
+      diagnosisDescription: '',
+      memberId: '',
+      services: [] as string[],
+      units: {} as Record<string, number>,
+    };
+
+    expect(
+      mergeAuthorizationPdfPrefill(current, { status: 'denied', services: [] }, catalog),
+    ).toEqual({
+      data: current,
+      appliedFields: [],
+      skippedServiceCodes: [],
+    });
+  });
+
+  it('applies status when the current status field is still defaulted', () => {
+    const current = {
+      authorizationNumber: '',
+      status: 'approved' as const,
+      startDate: '',
+      endDate: '',
+      diagnosisCode: '',
+      diagnosisDescription: '',
+      memberId: '',
+      services: [] as string[],
+      units: {} as Record<string, number>,
+    };
+
+    expect(
+      mergeAuthorizationPdfPrefill(
+        current,
+        { status: 'denied', services: [] },
+        catalog,
+        { statusFieldIsDefault: true },
+      ),
+    ).toEqual({
+      data: { ...current, status: 'denied' },
+      appliedFields: ['status'],
+      skippedServiceCodes: [],
+    });
   });
 });

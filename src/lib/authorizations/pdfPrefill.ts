@@ -35,15 +35,35 @@ export interface AuthorizationPdfMergeResult<T extends AuthorizationPdfMergeInpu
   skippedServiceCodes: string[];
 }
 
+export interface AuthorizationPdfMergeOptions {
+  statusFieldIsDefault?: boolean;
+}
+
 const DATE_PATTERN = String.raw`(?:\d{1,2}[/.]\d{1,2}[/.]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})`;
 const SERVICE_CODE_PATTERN = /\b(?:97(?:153|155|156|158)|0362T|0373T|H\d{4}|[A-Z]\d{4})\b/g;
 
 const collapseWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim();
 
+const isRealCalendarDate = (year: number, month: number, day: number): boolean => {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+};
+
 const normalizeDate = (value: string): string | undefined => {
   const raw = value.trim();
   const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw);
   if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    if (!isRealCalendarDate(year, month, day)) {
+      return undefined;
+    }
+
     return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
   }
 
@@ -55,7 +75,7 @@ const normalizeDate = (value: string): string | undefined => {
   const month = Number(dateMatch[1]);
   const day = Number(dateMatch[2]);
   const year = Number(dateMatch[3].length === 2 ? `20${dateMatch[3]}` : dateMatch[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 2000) {
+  if (year < 2000 || !isRealCalendarDate(year, month, day)) {
     return undefined;
   }
 
@@ -204,6 +224,7 @@ export const mergeAuthorizationPdfPrefill = <T extends AuthorizationPdfMergeInpu
   current: T,
   prefill: AuthorizationPdfPrefill,
   serviceCatalog: Record<string, string>,
+  options: AuthorizationPdfMergeOptions = {},
 ): AuthorizationPdfMergeResult<T> => {
   const next: T = {
     ...current,
@@ -227,7 +248,7 @@ export const mergeAuthorizationPdfPrefill = <T extends AuthorizationPdfMergeInpu
   fillIfBlank('diagnosisDescription', prefill.diagnosisDescription as T['diagnosisDescription']);
   fillIfBlank('memberId', prefill.memberId as T['memberId']);
 
-  if (prefill.status && !current.status) {
+  if (prefill.status && (!current.status || options.statusFieldIsDefault)) {
     next.status = prefill.status as T['status'];
     appliedFields.add('status');
   }

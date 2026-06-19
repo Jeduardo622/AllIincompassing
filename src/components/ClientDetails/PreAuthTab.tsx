@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   ClipboardCheck, Calendar, AlertCircle, 
@@ -21,11 +21,14 @@ interface Authorization {
   start_date: string;
   end_date: string;
   status: string;
+  diagnosis_code?: string | null;
+  diagnosis_description?: string | null;
   approved_at?: string | null;
   approved_by?: string | null;
   approval_notes?: string | null;
   denied_at?: string | null;
   denial_reason?: string | null;
+  provider_id?: string | null;
   plan_type?: string | null;
   member_id?: string | null;
   insurance_provider_id?: string | null;
@@ -49,6 +52,54 @@ const ACCEPTED_FILE_TYPES = [
   'image/png'
 ] as const;
 
+type AuthorizationStatus = 'approved' | 'pending' | 'denied';
+
+interface PreAuthWizardData {
+  insurance: string;
+  insuranceProviderId: string;
+  providerId: string;
+  authorizationNumber: string;
+  status: AuthorizationStatus;
+  startDate: string;
+  endDate: string;
+  diagnosisCode: string;
+  diagnosisDescription: string;
+  services: string[];
+  units: Record<string, number>;
+  documents: File[];
+  planType: string;
+  memberId: string;
+}
+
+const AUTHORIZATION_STATUSES: AuthorizationStatus[] = ['approved', 'pending', 'denied'];
+
+const createEmptyWizardData = (): PreAuthWizardData => ({
+  insurance: '',
+  insuranceProviderId: '',
+  providerId: '',
+  authorizationNumber: '',
+  status: 'approved',
+  startDate: '',
+  endDate: '',
+  diagnosisCode: 'F84.0',
+  diagnosisDescription: 'Autistic disorder',
+  services: [],
+  units: {},
+  documents: [],
+  planType: '',
+  memberId: '',
+});
+
+const normalizeAuthorizationStatus = (status?: string | null): AuthorizationStatus => {
+  return AUTHORIZATION_STATUSES.includes(status as AuthorizationStatus)
+    ? (status as AuthorizationStatus)
+    : 'approved';
+};
+
+const getDecisionStatus = (status: AuthorizationStatus) => {
+  return status === 'denied' ? 'denied' : status === 'approved' ? 'approved' : 'pending';
+};
+
 export function PreAuthTab({ client }: PreAuthTabProps) {
   const { user } = useAuth();
   const organizationId = useActiveOrganizationId();
@@ -56,15 +107,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [selectedAuthorizationForView, setSelectedAuthorizationForView] = useState<Authorization | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
-  const [wizardData, setWizardData] = useState({
-    insurance: '',
-    insuranceProviderId: '' as string,
-    services: [] as string[],
-    units: {} as Record<string, number>,
-    documents: [] as File[],
-    planType: '',
-    memberId: '',
-  });
+  const [wizardData, setWizardData] = useState<PreAuthWizardData>(() => createEmptyWizardData());
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,6 +156,91 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return data as Array<{ id: string; name: string }>;
     },
   });
+
+  const { data: clientPrimaryProvider } = useQuery({
+    queryKey: ['client-authorization-provider', client.id, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load the client provider.');
+      }
+
+      const { data, error } = await supabase
+        .from('clients')
+        .select('therapist_id')
+        .eq('id', client.id)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as { therapist_id: string | null } | null;
+    },
+    enabled: Boolean(client.id && organizationId),
+  });
+
+  const clientPrimaryProviderId = clientPrimaryProvider?.therapist_id ?? '';
+
+  const { data: linkedClientProviders = [] } = useQuery({
+    queryKey: ['client-authorization-linked-providers', client.id, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load linked providers.');
+      }
+
+      const { data, error } = await supabase
+        .from('client_therapist_links')
+        .select('therapist_id')
+        .eq('client_id', client.id)
+        .eq('organization_id', organizationId);
+
+      if (error) throw error;
+      return data as Array<{ therapist_id: string }>;
+    },
+    enabled: Boolean(client.id && organizationId),
+  });
+
+  const assignedProviderIds = useMemo(() => {
+    return Array.from(
+      new Set([
+        clientPrimaryProviderId,
+        ...linkedClientProviders.map((provider) => provider.therapist_id),
+      ].filter(Boolean)),
+    );
+  }, [clientPrimaryProviderId, linkedClientProviders]);
+
+  const { data: authorizationProviderTherapists = [] } = useQuery({
+    queryKey: ['authorization-provider-therapists', organizationId ?? 'MISSING_ORG', assignedProviderIds],
+    queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load therapists.');
+      }
+
+      const { data, error } = await supabase
+        .from('therapists')
+        .select('id,full_name')
+        .eq('organization_id', organizationId)
+        .in('id', assignedProviderIds)
+        .order('full_name');
+
+      if (error) throw error;
+      return data as Array<{ id: string; full_name: string | null }>;
+    },
+    enabled: Boolean(organizationId && assignedProviderIds.length > 0),
+  });
+
+  useEffect(() => {
+    if (wizardData.providerId || !clientPrimaryProviderId) {
+      return;
+    }
+
+    const primaryProviderExists = authorizationProviderTherapists.some(
+      (therapist) => therapist.id === clientPrimaryProviderId,
+    );
+    if (!primaryProviderExists) {
+      return;
+    }
+
+    setWizardData((prev) => (prev.providerId ? prev : { ...prev, providerId: clientPrimaryProviderId }));
+  }, [authorizationProviderTherapists, clientPrimaryProviderId, wizardData.providerId]);
 
   const { data: sessionNoteUsage = [] } = useQuery({
     queryKey: ['client-session-note-usage', client.id, organizationId ?? 'MISSING_ORG'],
@@ -325,39 +453,66 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return;
     }
 
+    if (!wizardData.providerId) {
+      showError('Select the therapist/provider for this authorization.');
+      return;
+    }
+
+    const authorizationNumber = wizardData.authorizationNumber.trim();
+    const diagnosisCode = wizardData.diagnosisCode.trim();
+    const diagnosisDescription = wizardData.diagnosisDescription.trim();
+
+    if (!authorizationNumber) {
+      showError('Enter the authorization number from the approval notice.');
+      return;
+    }
+
+    if (!wizardData.startDate || !wizardData.endDate || wizardData.endDate < wizardData.startDate) {
+      showError('Enter a valid authorization date range.');
+      return;
+    }
+
+    if (!diagnosisCode || !diagnosisDescription) {
+      showError('Enter diagnosis code and description from the authorization notice.');
+      return;
+    }
+
     if (wizardData.services.some((code) => !wizardData.units[code] || wizardData.units[code] <= 0)) {
       showError('Enter units for all selected services.');
+      return;
+    }
+
+    if (wizardData.documents.length === 0) {
+      showError('Upload the authorization notice before submitting.');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const startDate = new Date();
-      const endDate = new Date();
-      endDate.setDate(startDate.getDate() + 180);
+      const decisionStatus = getDecisionStatus(wizardData.status);
 
       const { id: authorizationId } = await createAuthorizationWithServices({
-        authorization_number: `AUTH-${Date.now()}`,
+        authorization_number: authorizationNumber,
         client_id: client.id,
-        provider_id: user.id,
+        provider_id: wizardData.providerId,
         insurance_provider_id: wizardData.insuranceProviderId || null,
         plan_type: wizardData.planType || null,
         member_id: wizardData.memberId || null,
-        diagnosis_code: 'TBD',
-        diagnosis_description: wizardData.insurance || null,
-        start_date: startDate.toISOString().slice(0, 10),
-        end_date: endDate.toISOString().slice(0, 10),
-        status: 'approved',
+        diagnosis_code: diagnosisCode,
+        diagnosis_description: diagnosisDescription,
+        start_date: wizardData.startDate,
+        end_date: wizardData.endDate,
+        status: wizardData.status,
         services: wizardData.services.map((serviceCode) => ({
           service_code: serviceCode,
           service_description: serviceCatalog[serviceCode] ?? '',
-          from_date: startDate.toISOString().slice(0, 10),
-          to_date: endDate.toISOString().slice(0, 10),
+          from_date: wizardData.startDate,
+          to_date: wizardData.endDate,
           requested_units: wizardData.units[serviceCode],
-          approved_units: wizardData.units[serviceCode],
-          unit_type: 'unit',
-          decision_status: 'approved',
+          approved_units: wizardData.status === 'approved' ? wizardData.units[serviceCode] : null,
+          unit_type: 'Units',
+          decision_status: decisionStatus,
         })),
       });
 
@@ -391,21 +546,13 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
         });
       }
 
-      showSuccess('Pre-authorization submitted and approved.');
+      showSuccess('Authorization uploaded and saved.');
       await queryClient.invalidateQueries({
         queryKey: ['authorizations', client.id, organizationId ?? 'MISSING_ORG'],
       });
       setIsWizardOpen(false);
       setCurrentStep(1);
-      setWizardData({
-        insurance: '',
-        insuranceProviderId: '',
-        services: [],
-        units: {},
-        documents: [],
-        planType: '',
-        memberId: '',
-      });
+      setWizardData(createEmptyWizardData());
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Failed to submit pre-authorization.');
     } finally {
@@ -415,8 +562,16 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   
   const handleRenewAuthorization = (auth: Authorization) => {
     setWizardData({
+      ...createEmptyWizardData(),
       insurance: auth.insurance_provider?.name ?? '',
       insuranceProviderId: auth.insurance_provider_id ?? '',
+      providerId: auth.provider_id ?? '',
+      authorizationNumber: auth.authorization_number ?? '',
+      status: normalizeAuthorizationStatus(auth.status),
+      startDate: auth.start_date ?? '',
+      endDate: auth.end_date ?? '',
+      diagnosisCode: auth.diagnosis_code ?? 'F84.0',
+      diagnosisDescription: auth.diagnosis_description ?? 'Autistic disorder',
       planType: auth.plan_type ?? '',
       memberId: auth.member_id ?? '',
       services: auth.services.map(s => s.service_code),
@@ -424,7 +579,6 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
         acc[s.service_code] = s.requested_units;
         return acc;
       }, {} as Record<string, number>),
-      documents: [],
     });
     setIsWizardOpen(true);
   };
@@ -754,10 +908,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                 ))}
               </div>
               <div className="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
-                <span>Insurance</span>
+                <span>Notice</span>
                 <span>Services</span>
                 <span>Units</span>
-                <span>Documents</span>
+                <span>Upload</span>
                 <span>Submit</span>
               </div>
             </div>
@@ -767,9 +921,101 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
               {currentStep === 1 && (
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                    Insurance & Plan
+                    Authorization Notice Details
                   </h3>
+                  <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+                    Enter the fields from the payer authorization notice before attaching the PDF.
+                  </p>
                   <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label htmlFor="preauth-authorization-number" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Authorization Number
+                        </label>
+                        <input
+                          id="preauth-authorization-number"
+                          type="text"
+                          value={wizardData.authorizationNumber}
+                          onChange={(e) => setWizardData({ ...wizardData, authorizationNumber: e.target.value })}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="preauth-status" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Authorization Status
+                        </label>
+                        <select
+                          id="preauth-status"
+                          value={wizardData.status}
+                          onChange={(e) => setWizardData({ ...wizardData, status: e.target.value as AuthorizationStatus })}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        >
+                          {AUTHORIZATION_STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {status.charAt(0).toUpperCase() + status.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label htmlFor="preauth-start-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Start Date
+                        </label>
+                        <input
+                          id="preauth-start-date"
+                          type="date"
+                          value={wizardData.startDate}
+                          onChange={(e) => setWizardData({ ...wizardData, startDate: e.target.value })}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="preauth-end-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          End Date
+                        </label>
+                        <input
+                          id="preauth-end-date"
+                          type="date"
+                          value={wizardData.endDate}
+                          onChange={(e) => setWizardData({ ...wizardData, endDate: e.target.value })}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label htmlFor="preauth-diagnosis-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Diagnosis Code
+                        </label>
+                        <input
+                          id="preauth-diagnosis-code"
+                          type="text"
+                          value={wizardData.diagnosisCode}
+                          onChange={(e) => setWizardData({ ...wizardData, diagnosisCode: e.target.value })}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="preauth-diagnosis-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Diagnosis Description
+                        </label>
+                        <input
+                          id="preauth-diagnosis-description"
+                          type="text"
+                          value={wizardData.diagnosisDescription}
+                          onChange={(e) => setWizardData({ ...wizardData, diagnosisDescription: e.target.value })}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        />
+                      </div>
+                    </div>
+
                     <div>
                       <label htmlFor="preauth-insurance" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Insurance Provider
@@ -795,6 +1041,30 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="preauth-provider-therapist" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Rendering Therapist / Provider
+                      </label>
+                      <select
+                        id="preauth-provider-therapist"
+                        value={wizardData.providerId}
+                        onChange={(e) => setWizardData({ ...wizardData, providerId: e.target.value })}
+                        className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                      >
+                        <option value="">Select therapist/provider</option>
+                        {authorizationProviderTherapists.map((therapist) => (
+                          <option key={therapist.id} value={therapist.id}>
+                            {therapist.full_name ?? 'Unnamed therapist'}
+                          </option>
+                        ))}
+                      </select>
+                      {clientPrimaryProviderId && wizardData.providerId === clientPrimaryProviderId && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Defaulted from the client primary therapist.
+                        </p>
+                      )}
                     </div>
                     
                     <div>
@@ -953,7 +1223,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
               {currentStep === 4 && (
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                    Upload Supporting Documents
+                    Upload Authorization Notice
                   </h3>
                   <div
                     className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
@@ -982,7 +1252,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                   >
                     <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
-                      Drag and drop files here, or click to select files
+                      Drag and drop the payer authorization notice here, or click to select files
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
                       Supported formats: PDF, DOCX, JPG, PNG (max 10MB)
@@ -1044,6 +1314,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                       Required Documents
                     </h4>
                     <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1 list-disc list-inside">
+                      <li>Authorization or pre-authorization notice</li>
                       <li>Treatment plan</li>
                       <li>Diagnostic evaluation</li>
                       <li>Progress report (if renewal)</li>
@@ -1061,10 +1332,24 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                   <div className="space-y-4">
                     <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Insurance & Plan
+                        Authorization Notice
                       </h4>
                       <p className="text-sm text-gray-900 dark:text-white">
-                        {wizardData.insurance || 'Not selected'}
+                        {wizardData.authorizationNumber || 'Missing authorization number'} · {wizardData.status}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {wizardData.startDate || 'Missing start date'} - {wizardData.endDate || 'Missing end date'}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {wizardData.insurance || 'Not selected'} · {wizardData.planType || 'No plan type'}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Provider:{' '}
+                        {authorizationProviderTherapists.find((therapist) => therapist.id === wizardData.providerId)?.full_name ??
+                          'No provider selected'}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {wizardData.diagnosisCode || 'No diagnosis code'} - {wizardData.diagnosisDescription || 'No diagnosis description'}
                       </p>
                     </div>
                     
@@ -1086,11 +1371,17 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                     
                     <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Supporting Documents
+                        Authorization Upload
                       </h4>
-                      <p className="text-sm text-gray-900 dark:text-white">
-                        {wizardData.documents.length} documents uploaded
-                      </p>
+                      <div className="space-y-1 text-sm text-gray-900 dark:text-white">
+                        {wizardData.documents.length > 0 ? (
+                          wizardData.documents.map((file, index) => (
+                            <p key={`${file.name}-${index}`}>{file.name}</p>
+                          ))
+                        ) : (
+                          <p>No authorization notice uploaded</p>
+                        )}
+                      </div>
                     </div>
                     
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
@@ -1101,8 +1392,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                             Submission Notice
                           </p>
                           <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                            By submitting this request, you certify that all information is accurate and complete.
-                            The authorization will be submitted to the payer for review.
+                            By submitting this upload, you certify that the entered fields match the attached payer authorization notice.
                           </p>
                         </div>
                       </div>

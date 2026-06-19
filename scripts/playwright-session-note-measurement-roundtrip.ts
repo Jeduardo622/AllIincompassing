@@ -123,25 +123,58 @@ const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): P
   }
 };
 
-const openEditSessionModalFromCalendar = async (page: Page, scheduleUrl: string, sessionId: string): Promise<void> => {
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    await page.goto(`${scheduleUrl}?_${Date.now()}`, {
-      waitUntil: "networkidle",
-      timeout: 60000,
-    });
-    const sessionCard = page.locator(`[data-session-id="${sessionId}"]`).first();
-    try {
-      await sessionCard.waitFor({ state: "visible", timeout: 12_000 });
-      await sessionCard.scrollIntoViewIfNeeded();
-      await sessionCard.click();
-      const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
-      await dialog.waitFor({ state: "visible", timeout: 12_000 });
-      return;
-    } catch {
-      await page.waitForTimeout(500 + attempt * 250);
+const openEditSessionModalFromCalendar = async (
+  page: Page,
+  scheduleUrl: string,
+  sessionId: string,
+  sessionStartIso?: string,
+): Promise<void> => {
+  await page.goto(`${scheduleUrl}?_${Date.now()}`, {
+    waitUntil: "networkidle",
+    timeout: 60000,
+  });
+
+  let visitedPeriods = 0;
+  for (let periodAttempt = 0; periodAttempt < 8; periodAttempt += 1) {
+    visitedPeriods = periodAttempt + 1;
+    let sessionCardVisible = false;
+
+    for (let samePeriodAttempt = 0; samePeriodAttempt < 3; samePeriodAttempt += 1) {
+      const sessionCard = page.locator(`[data-session-id="${sessionId}"]`).first();
+      sessionCardVisible = await sessionCard
+        .waitFor({ state: "visible", timeout: samePeriodAttempt === 0 ? 12_000 : 4_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!sessionCardVisible) {
+        break;
+      }
+
+      try {
+        await sessionCard.scrollIntoViewIfNeeded();
+        await sessionCard.click();
+        const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
+        await dialog.waitFor({ state: "visible", timeout: 12_000 });
+        return;
+      } catch {
+        await page.waitForTimeout(500 + samePeriodAttempt * 250);
+      }
     }
+
+    if (sessionCardVisible) {
+      continue;
+    }
+
+    const nextPeriodButton = page.getByRole("button", { name: /next period/i }).first();
+    if ((await nextPeriodButton.count()) === 0) {
+      break;
+    }
+    await nextPeriodButton.click();
+    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
+    await page.waitForTimeout(500 + periodAttempt * 250);
   }
-  throw new Error("Session modal (Edit Session / Live session) did not open from the rendered schedule card.");
+  throw new Error(
+    `Session modal (Edit Session / Live session) did not open from the rendered schedule card after ${visitedPeriods} schedule period(s). sessionStartIso=${sessionStartIso ?? "unknown"}`,
+  );
 };
 
 const ensureGoalCaptureFieldsVisible = async (dialog: ReturnType<Page["locator"]>, goalId: string): Promise<void> => {
@@ -410,7 +443,7 @@ async function run(): Promise<void> {
     });
 
     await withStepTimeout("open-session-modal-clinical", async () => {
-      await openEditSessionModalFromCalendar(activePage, scheduleUrl, booked.sessionId);
+      await openEditSessionModalFromCalendar(activePage, scheduleUrl, booked.sessionId, booked.startIso);
       const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
       await selectFirstOptionIfEmpty(
         editDialog.first().locator('#session-note-auth-select, select[name="session_note_authorization_id"]'),

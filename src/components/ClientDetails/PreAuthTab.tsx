@@ -153,10 +153,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return acc;
     }, {});
   }, [cptCodes]);
-
-  useEffect(() => {
-    serviceCatalogRef.current = serviceCatalog;
-  }, [serviceCatalog]);
+  serviceCatalogRef.current = serviceCatalog;
 
   const cptCodeOptions = useMemo(() => {
     return cptCodes.map((code) => ({

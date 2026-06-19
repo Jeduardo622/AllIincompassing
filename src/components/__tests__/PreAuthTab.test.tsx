@@ -1,6 +1,6 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
+import { act, renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
 import { PreAuthTab } from "../ClientDetails/PreAuthTab";
 import { createAuthorizationWithServices, updateAuthorizationDocuments } from "../../lib/authorizations/mutations";
 import { showSuccess } from "../../lib/toast";
@@ -16,6 +16,8 @@ const {
   useActiveOrganizationIdMock,
   extractPdfTextMock,
   MockPdfTextExtractionError,
+  cptCodesMockData,
+  cptCodesQueryMock,
 } = vi.hoisted(() => {
   const createAuthorizationWithServicesMock = vi.fn();
   const updateAuthorizationDocumentsMock = vi.fn();
@@ -23,6 +25,13 @@ const {
   const useAuthMock = vi.fn();
   const useActiveOrganizationIdMock = vi.fn();
   const extractPdfTextMock = vi.fn();
+  const cptCodesMockData = [{ code: "97153", short_description: "Adaptive behavior treatment by protocol" }];
+  const cptCodesQueryMock = vi.fn(() =>
+    Promise.resolve({
+      data: cptCodesMockData,
+      error: null,
+    }),
+  );
   class MockPdfTextExtractionError extends Error {
     constructor(message: string) {
       super(message);
@@ -44,12 +53,7 @@ const {
       return {
         select: vi.fn(() => ({
           eq: vi.fn(() => ({
-            order: vi.fn(() =>
-              Promise.resolve({
-                data: [{ code: "97153", short_description: "Adaptive behavior treatment by protocol" }],
-                error: null,
-              }),
-            ),
+            order: cptCodesQueryMock,
           })),
         })),
       };
@@ -137,6 +141,8 @@ const {
     useActiveOrganizationIdMock,
     extractPdfTextMock,
     MockPdfTextExtractionError,
+    cptCodesMockData,
+    cptCodesQueryMock,
   };
 });
 
@@ -195,6 +201,16 @@ describe("PreAuthTab manual authorization upload", () => {
     updateAuthorizationDocumentsMock.mockResolvedValue(undefined);
     storageUploadMock.mockResolvedValue({ error: null });
     extractPdfTextMock.mockResolvedValue("");
+    cptCodesMockData.splice(0, cptCodesMockData.length, {
+      code: "97153",
+      short_description: "Adaptive behavior treatment by protocol",
+    });
+    cptCodesQueryMock.mockImplementation(() =>
+      Promise.resolve({
+        data: cptCodesMockData,
+        error: null,
+      }),
+    );
   });
 
   it("creates an authorization from entered notice fields and attaches the uploaded PDF", async () => {
@@ -586,5 +602,56 @@ describe("PreAuthTab manual authorization upload", () => {
         { upsert: false },
       );
     });
+  });
+
+  it("uses CPT codes loaded during delayed PDF extraction for service prefill", async () => {
+    const deferredText = createDeferred<string>();
+    const deferredCptCodes = createDeferred<Array<{ code: string; short_description: string }>>();
+    cptCodesQueryMock.mockReturnValueOnce(deferredCptCodes.promise.then((data) => ({ data, error: null })));
+    extractPdfTextMock.mockReturnValueOnce(deferredText.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    expect(await screen.findByText(/Loading CPT codes/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "catalog-refresh-auth-notice.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    expect(await screen.findByText(/Extracting authorization PDF/i)).toBeInTheDocument();
+
+    await act(async () => {
+      deferredCptCodes.resolve([
+        { code: "97155", short_description: "Adaptive behavior treatment with protocol modification" },
+      ]);
+    });
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    expect(await screen.findByLabelText(/97155/i)).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    await act(async () => {
+      deferredText.resolve(`
+        Authorization Number: IEHP-CATALOG-1
+        Decision: approved
+        Service From: 07/01/2026 to 12/31/2026
+        97155 approved units: 32
+      `);
+    });
+
+    expect(await screen.findByText(/PDF prefill applied/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Unsupported service codes skipped: 97155/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    expect(screen.getByLabelText(/units requested/i)).toHaveValue(32);
   });
 });

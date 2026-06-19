@@ -111,9 +111,15 @@ const parseDates = (text: string): Pick<AuthorizationPdfPrefill, 'startDate' | '
     'i',
   ).exec(text);
   if (serviceRange) {
+    const startDate = normalizeDate(serviceRange[1]);
+    const endDate = normalizeDate(serviceRange[2]);
+    if (!startDate || !endDate) {
+      return {};
+    }
+
     return {
-      startDate: normalizeDate(serviceRange[1]),
-      endDate: normalizeDate(serviceRange[2]),
+      startDate,
+      endDate,
     };
   }
 
@@ -122,9 +128,15 @@ const parseDates = (text: string): Pick<AuthorizationPdfPrefill, 'startDate' | '
     'i',
   ).exec(text);
   if (compactRange) {
+    const startDate = normalizeDate(compactRange[1]);
+    const endDate = normalizeDate(compactRange[2]);
+    if (!startDate || !endDate) {
+      return {};
+    }
+
     return {
-      startDate: normalizeDate(compactRange[1]),
-      endDate: normalizeDate(compactRange[2]),
+      startDate,
+      endDate,
     };
   }
 

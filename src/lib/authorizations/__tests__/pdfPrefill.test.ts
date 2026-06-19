@@ -76,6 +76,38 @@ describe('parseAuthorizationPdfText', () => {
     expect(result).not.toHaveProperty('endDate');
   });
 
+  it('drops a labeled date range when either side is invalid', () => {
+    const result = parseAuthorizationPdfText(`
+      Authorization #: PDF-AUTH-MIXED-DATES
+      Service From: 02/31/2026
+      Service To: 04/30/2026
+      Procedure Code 97153
+      Requested Units: 12
+    `);
+
+    expect(result).toMatchObject({
+      authorizationNumber: 'PDF-AUTH-MIXED-DATES',
+      services: [{ serviceCode: '97153', requestedUnits: 12 }],
+    });
+    expect(result).not.toHaveProperty('startDate');
+    expect(result).not.toHaveProperty('endDate');
+  });
+
+  it('drops a compact date range when either side is invalid', () => {
+    const result = parseAuthorizationPdfText(`
+      Authorization #: PDF-AUTH-MIXED-TABLE
+      Code Description From To Requested Approved
+      97155 Adaptive behavior treatment 02.31.2026 04.30.2026 48 40
+    `);
+
+    expect(result).toMatchObject({
+      authorizationNumber: 'PDF-AUTH-MIXED-TABLE',
+      services: [{ serviceCode: '97155', requestedUnits: 48, approvedUnits: 40 }],
+    });
+    expect(result).not.toHaveProperty('startDate');
+    expect(result).not.toHaveProperty('endDate');
+  });
+
   it('does not infer status from requested or approved unit labels', () => {
     expect(
       parseAuthorizationPdfText(`
@@ -104,6 +136,21 @@ describe('parseAuthorizationPdfText', () => {
       services: [{ serviceCode: '97155', requestedUnits: 48, approvedUnits: 40 }],
     });
     expect(result).not.toHaveProperty('status');
+  });
+
+  it('does not apply global requested or approved units across multiple service codes', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Authorization #: PDF-AUTH-MULTI-SERVICE
+        Procedure Code 97153
+        Procedure Code 97155
+        Requested Units: 120
+        Approved Units: 96
+      `),
+    ).toEqual({
+      authorizationNumber: 'PDF-AUTH-MULTI-SERVICE',
+      services: [{ serviceCode: '97153' }, { serviceCode: '97155' }],
+    });
   });
 
   it('extracts pending status only from explicit status or decision wording', () => {

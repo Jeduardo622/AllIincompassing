@@ -558,6 +558,51 @@ describe("PreAuthTab manual authorization upload", () => {
     expect(screen.queryByText(/PDF prefill applied/i)).not.toBeInTheDocument();
   });
 
+  it("ignores delayed PDF prefill after the source document is removed", async () => {
+    const deferredText = createDeferred<string>();
+    extractPdfTextMock.mockReturnValueOnce(deferredText.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "removed-auth-notice.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    expect(await screen.findByText(/Extracting authorization PDF/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /remove/i }));
+
+    deferredText.resolve(`
+      Authorization Number: REMOVED-AUTH-1
+      Decision: denied
+      Member ID: REMOVED-MEMBER
+      Service From: 07/01/2026 to 12/31/2026
+      97153 approved units: 24
+    `);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Extracting authorization PDF/i)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/PDF prefill applied/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByRole("button", { name: /back/i }));
+
+    expect(screen.getByLabelText(/authorization number/i)).toHaveValue("");
+    expect(screen.getByLabelText(/member id/i)).toHaveValue("");
+    expect(screen.getByLabelText(/authorization status/i)).toHaveValue("approved");
+  });
+
   it("preserves the uploaded file while delayed PDF prefill resolves", async () => {
     const deferredText = createDeferred<string>();
     extractPdfTextMock.mockReturnValueOnce(deferredText.promise);

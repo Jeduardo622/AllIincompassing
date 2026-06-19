@@ -733,6 +733,8 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   };
 
   const handleDocumentRemove = (index: number) => {
+    pdfPrefillGenerationRef.current += 1;
+    setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
     setWizardData((prev) => ({
       ...prev,
       documents: prev.documents.filter((_, i) => i !== index),

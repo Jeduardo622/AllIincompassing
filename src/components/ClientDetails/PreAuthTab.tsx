@@ -127,6 +127,9 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfPrefillGenerationRef = useRef(0);
+  const hasAdminEditedStatusRef = useRef(false);
+  const serviceCatalogRef = useRef<Record<string, string>>({});
   const {
     data: cptCodes = [],
     isLoading: isLoadingCptCodes,
@@ -150,6 +153,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return acc;
     }, {});
   }, [cptCodes]);
+
+  useEffect(() => {
+    serviceCatalogRef.current = serviceCatalog;
+  }, [serviceCatalog]);
 
   const cptCodeOptions = useMemo(() => {
     return cptCodes.map((code) => ({
@@ -454,7 +461,9 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   };
 
   const resetPdfPrefillState = () => {
+    pdfPrefillGenerationRef.current += 1;
     setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
+    hasAdminEditedStatusRef.current = false;
     setHasAdminEditedStatus(false);
   };
 
@@ -493,11 +502,20 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return;
     }
 
+    const generation = pdfPrefillGenerationRef.current + 1;
+    pdfPrefillGenerationRef.current = generation;
     setPdfPrefillState({ status: 'extracting', skippedServiceCodes: [] });
 
     try {
       const extractedText = await extractPdfText(pdfFile);
+      if (generation !== pdfPrefillGenerationRef.current) {
+        return;
+      }
+
       const parsedPrefill = parseAuthorizationPdfText(extractedText);
+      if (generation !== pdfPrefillGenerationRef.current) {
+        return;
+      }
 
       if (!prefillHasStructuredValues(parsedPrefill)) {
         setPdfPrefillState({
@@ -509,8 +527,12 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       }
 
       setWizardData((prev) => {
-        const mergeResult = mergeAuthorizationPdfPrefill(prev, parsedPrefill, serviceCatalog, {
-          statusFieldIsDefault: !hasAdminEditedStatus,
+        if (generation !== pdfPrefillGenerationRef.current) {
+          return prev;
+        }
+
+        const mergeResult = mergeAuthorizationPdfPrefill(prev, parsedPrefill, serviceCatalogRef.current, {
+          statusFieldIsDefault: !hasAdminEditedStatusRef.current,
         });
         setPdfPrefillState({
           status: 'applied',
@@ -519,6 +541,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
         return mergeResult.data;
       });
     } catch (error) {
+      if (generation !== pdfPrefillGenerationRef.current) {
+        return;
+      }
+
       const message =
         error instanceof PdfTextExtractionError
           ? error.message
@@ -1046,6 +1072,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                           id="preauth-status"
                           value={wizardData.status}
                           onChange={(e) => {
+                            hasAdminEditedStatusRef.current = true;
                             setHasAdminEditedStatus(true);
                             setWizardData({ ...wizardData, status: e.target.value as AuthorizationStatus });
                           }}

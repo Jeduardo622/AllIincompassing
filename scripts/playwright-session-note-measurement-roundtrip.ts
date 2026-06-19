@@ -29,11 +29,6 @@ import {
   type LifecycleIds,
 } from "./lib/playwright-inprogress-session-setup";
 
-const SCHEDULE_MODAL_MODE_KEY = "scheduleModal";
-const SCHEDULE_MODAL_SESSION_KEY = "scheduleSessionId";
-const SCHEDULE_MODAL_EXPIRY_KEY = "scheduleExp";
-const SCHEDULE_MODAL_URL_TTL_MS = 30 * 60 * 1000;
-
 const getEnv = (key: string, fallback?: string): string => {
   const value = process.env[key] ?? fallback;
   if (!value) {
@@ -128,30 +123,25 @@ const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): P
   }
 };
 
-const buildScheduleEditSessionUrl = (scheduleUrl: string, sessionId: string): string => {
-  const url = new URL(scheduleUrl);
-  const expiresAtMs = Date.now() + SCHEDULE_MODAL_URL_TTL_MS;
-  url.searchParams.set(SCHEDULE_MODAL_MODE_KEY, "edit");
-  url.searchParams.set(SCHEDULE_MODAL_SESSION_KEY, sessionId);
-  url.searchParams.set(SCHEDULE_MODAL_EXPIRY_KEY, String(expiresAtMs));
-  return url.toString();
-};
-
-const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sessionId: string): Promise<void> => {
+const openEditSessionModalFromCalendar = async (page: Page, scheduleUrl: string, sessionId: string): Promise<void> => {
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    await page.goto(buildScheduleEditSessionUrl(scheduleUrl, sessionId), {
+    await page.goto(`${scheduleUrl}?_${Date.now()}`, {
       waitUntil: "networkidle",
       timeout: 60000,
     });
-    const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
+    const sessionCard = page.locator(`[data-session-id="${sessionId}"]`).first();
     try {
+      await sessionCard.waitFor({ state: "visible", timeout: 12_000 });
+      await sessionCard.scrollIntoViewIfNeeded();
+      await sessionCard.click();
+      const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
       await dialog.waitFor({ state: "visible", timeout: 12_000 });
       return;
     } catch {
       await page.waitForTimeout(500 + attempt * 250);
     }
   }
-  throw new Error("Session modal (Edit Session / Live session) did not open from schedule deep link.");
+  throw new Error("Session modal (Edit Session / Live session) did not open from the rendered schedule card.");
 };
 
 const ensureGoalCaptureFieldsVisible = async (dialog: ReturnType<Page["locator"]>, goalId: string): Promise<void> => {
@@ -420,7 +410,7 @@ async function run(): Promise<void> {
     });
 
     await withStepTimeout("open-session-modal-clinical", async () => {
-      await openEditSessionModalFromUrl(activePage, scheduleUrl, booked.sessionId);
+      await openEditSessionModalFromCalendar(activePage, scheduleUrl, booked.sessionId);
       const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
       await selectFirstOptionIfEmpty(
         editDialog.first().locator('#session-note-auth-select, select[name="session_note_authorization_id"]'),

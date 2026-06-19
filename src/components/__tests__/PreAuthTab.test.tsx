@@ -1,6 +1,6 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
+import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
 import { PreAuthTab } from "../ClientDetails/PreAuthTab";
 import { createAuthorizationWithServices, updateAuthorizationDocuments } from "../../lib/authorizations/mutations";
 import { showSuccess } from "../../lib/toast";
@@ -609,6 +609,23 @@ describe("PreAuthTab manual authorization upload", () => {
     const deferredCptCodes = createDeferred<Array<{ code: string; short_description: string }>>();
     cptCodesQueryMock.mockReturnValueOnce(deferredCptCodes.promise.then((data) => ({ data, error: null })));
     extractPdfTextMock.mockReturnValueOnce(deferredText.promise);
+    let resolvedPdfTextDuringCatalogRender = false;
+    const catalogCode = {
+      code: "97155",
+      get short_description() {
+        if (!resolvedPdfTextDuringCatalogRender) {
+          resolvedPdfTextDuringCatalogRender = true;
+          deferredText.resolve(`
+            Authorization Number: IEHP-CATALOG-1
+            Decision: approved
+            Service From: 07/01/2026 to 12/31/2026
+            97155 approved units: 32
+          `);
+        }
+
+        return "Adaptive behavior treatment with protocol modification";
+      },
+    };
     const user = userEvent.setup();
     renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
 
@@ -628,27 +645,10 @@ describe("PreAuthTab manual authorization upload", () => {
     );
     expect(await screen.findByText(/Extracting authorization PDF/i)).toBeInTheDocument();
 
-    await act(async () => {
-      deferredCptCodes.resolve([
-        { code: "97155", short_description: "Adaptive behavior treatment with protocol modification" },
-      ]);
-    });
-    await user.click(screen.getByRole("button", { name: /back/i }));
-    await user.click(screen.getByRole("button", { name: /back/i }));
-    expect(await screen.findByLabelText(/97155/i)).not.toBeChecked();
-    await user.click(screen.getByRole("button", { name: /next/i }));
-    await user.click(screen.getByRole("button", { name: /next/i }));
-
-    await act(async () => {
-      deferredText.resolve(`
-        Authorization Number: IEHP-CATALOG-1
-        Decision: approved
-        Service From: 07/01/2026 to 12/31/2026
-        97155 approved units: 32
-      `);
-    });
+    deferredCptCodes.resolve([catalogCode]);
 
     expect(await screen.findByText(/PDF prefill applied/i)).toBeInTheDocument();
+    expect(resolvedPdfTextDuringCatalogRender).toBe(true);
     expect(screen.queryByText(/Unsupported service codes skipped: 97155/i)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /back/i }));

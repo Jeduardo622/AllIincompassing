@@ -299,7 +299,7 @@ describe("PreAuthTab manual authorization upload", () => {
       Authorization Number: IEHP-PDF-456
       Decision: pending
       Member ID: MEM-PDF-456
-      Diagnosis: F84.0 - Autistic disorder
+      Diagnosis: F90.2 - Attention-deficit hyperactivity disorder, combined type
       Service From: 07/01/2026 to 12/31/2026
       97153 requested units: 96 approved units: 88
     `);
@@ -336,6 +336,8 @@ describe("PreAuthTab manual authorization upload", () => {
         expect.objectContaining({
           authorization_number: "IEHP-PDF-456",
           member_id: "MEM-PDF-456",
+          diagnosis_code: "F90.2",
+          diagnosis_description: "Attention-deficit hyperactivity disorder, combined type",
           start_date: "2026-07-01",
           end_date: "2026-12-31",
           status: "pending",
@@ -357,6 +359,7 @@ describe("PreAuthTab manual authorization upload", () => {
       Authorization Number: IEHP-PDF-999
       Decision: approved
       Member ID: MEM-PDF-999
+      Diagnosis: F84.0 - Autistic disorder
       Service From: 08/01/2026 to 09/30/2026
       97153 approved units: 40
     `);
@@ -371,6 +374,13 @@ describe("PreAuthTab manual authorization upload", () => {
     await user.type(screen.getByLabelText(/start date/i), "2026-06-01");
     await user.type(screen.getByLabelText(/end date/i), "2026-06-30");
     await user.type(screen.getByLabelText(/member id/i), "ADMIN-MEMBER-1");
+    await user.clear(screen.getByLabelText(/diagnosis code/i));
+    await user.type(screen.getByLabelText(/diagnosis code/i), "F90.2");
+    await user.clear(screen.getByLabelText(/diagnosis description/i));
+    await user.type(
+      screen.getByLabelText(/diagnosis description/i),
+      "Attention-deficit hyperactivity disorder, combined type",
+    );
 
     await user.click(screen.getByRole("button", { name: /next/i }));
     await user.click(screen.getByRole("button", { name: /next/i }));
@@ -395,6 +405,10 @@ describe("PreAuthTab manual authorization upload", () => {
     expect(screen.getByLabelText(/start date/i)).toHaveValue("2026-06-01");
     expect(screen.getByLabelText(/end date/i)).toHaveValue("2026-06-30");
     expect(screen.getByLabelText(/member id/i)).toHaveValue("ADMIN-MEMBER-1");
+    expect(screen.getByLabelText(/diagnosis code/i)).toHaveValue("F90.2");
+    expect(screen.getByLabelText(/diagnosis description/i)).toHaveValue(
+      "Attention-deficit hyperactivity disorder, combined type",
+    );
   });
 
   it("keeps manual submission usable and shows manual-entry status when PDF text is unavailable", async () => {
@@ -512,6 +526,55 @@ describe("PreAuthTab manual authorization upload", () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/authorization number/i)).toHaveValue("IEHP-DELAYED-1");
       expect(screen.getByLabelText(/authorization status/i)).toHaveValue("denied");
+    });
+  });
+
+  it("uses the latest admin diagnosis edit when delayed PDF prefill resolves", async () => {
+    const deferredText = createDeferred<string>();
+    extractPdfTextMock.mockReturnValueOnce(deferredText.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "auth-diagnosis-notice.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    expect(await screen.findByText(/Extracting authorization PDF/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.clear(screen.getByLabelText(/diagnosis code/i));
+    await user.type(screen.getByLabelText(/diagnosis code/i), "F90.2");
+    await user.clear(screen.getByLabelText(/diagnosis description/i));
+    await user.type(
+      screen.getByLabelText(/diagnosis description/i),
+      "Attention-deficit hyperactivity disorder, combined type",
+    );
+
+    deferredText.resolve(`
+      Authorization Number: IEHP-DELAYED-DX-1
+      Diagnosis: F84.0 - Autistic disorder
+      Service From: 07/01/2026 to 12/31/2026
+      97153 approved units: 24
+    `);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/authorization number/i)).toHaveValue("IEHP-DELAYED-DX-1");
+      expect(screen.getByLabelText(/diagnosis code/i)).toHaveValue("F90.2");
+      expect(screen.getByLabelText(/diagnosis description/i)).toHaveValue(
+        "Attention-deficit hyperactivity disorder, combined type",
+      );
     });
   });
 

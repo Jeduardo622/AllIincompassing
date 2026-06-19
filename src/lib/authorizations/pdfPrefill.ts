@@ -37,10 +37,19 @@ export interface AuthorizationPdfMergeResult<T extends AuthorizationPdfMergeInpu
 
 export interface AuthorizationPdfMergeOptions {
   statusFieldIsDefault?: boolean;
+  diagnosisCodeFieldIsDefault?: boolean;
+  diagnosisDescriptionFieldIsDefault?: boolean;
+  defaultDiagnosisCode?: string;
+  defaultDiagnosisDescription?: string;
 }
 
 const DATE_PATTERN = String.raw`(?:\d{1,2}[/.]\d{1,2}[/.]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})`;
-const SERVICE_CODE_PATTERN = /\b(?:97(?:153|155|156|158)|0362T|0373T|H\d{4}|[A-Z]\d{4})\b/g;
+const SERVICE_CODE_PATTERN_SOURCE = String.raw`(?:97(?:151|152|153|154|155|156|157|158)|0\d{3}T|[A-Z]\d{4}(?:-?[A-Z0-9]{2})?)`;
+const SERVICE_CODE_PATTERN = new RegExp(String.raw`\b${SERVICE_CODE_PATTERN_SOURCE}\b`, 'g');
+const SERVICE_ROW_START_PATTERN = new RegExp(String.raw`^${SERVICE_CODE_PATTERN_SOURCE}\b`, 'i');
+const SERVICE_CONTEXT_PATTERN = /\b(?:procedure|service|code|cpt|hcpcs)\b/i;
+const DEFAULT_DIAGNOSIS_CODE = 'F84.0';
+const DEFAULT_DIAGNOSIS_DESCRIPTION = 'Autistic disorder';
 
 const collapseWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim();
 
@@ -172,12 +181,16 @@ const parseServices = (text: string): AuthorizationPdfPrefillService[] => {
   const globalApprovedUnits = parseLabeledUnits(text, 'approved');
 
   for (const line of lines) {
+    if (!SERVICE_CONTEXT_PATTERN.test(line) && !SERVICE_ROW_START_PATTERN.test(line)) {
+      continue;
+    }
+
     const codes = [...line.matchAll(SERVICE_CODE_PATTERN)].map((match) => match[0].toUpperCase());
     for (const serviceCode of codes) {
       const existing = services.get(serviceCode) ?? { serviceCode };
       const requestedUnits = parseLabeledUnits(line, 'requested') ?? existing.requestedUnits;
       const approvedUnits = parseLabeledUnits(line, 'approved') ?? existing.approvedUnits;
-      const compactUnits = parseCompactServiceRowUnits(line);
+      const compactUnits = parseCompactServiceRowUnits(line, serviceCode);
 
       services.set(serviceCode, {
         serviceCode,
@@ -198,10 +211,14 @@ const parseServices = (text: string): AuthorizationPdfPrefillService[] => {
 
 const parseCompactServiceRowUnits = (
   line: string,
+  serviceCode: string,
 ): Pick<AuthorizationPdfPrefillService, 'requestedUnits' | 'approvedUnits'> | undefined => {
-  const withoutDates = line.replace(new RegExp(DATE_PATTERN, 'g'), ' ');
+  const escapedServiceCode = serviceCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const withoutDates = line
+    .replace(new RegExp(DATE_PATTERN, 'g'), ' ')
+    .replace(new RegExp(`\\b${escapedServiceCode}\\b`, 'i'), ' ');
   const numbers = withoutDates.match(/\b\d+\b/g)?.map(Number).filter((value) => value > 0) ?? [];
-  if (numbers.length < 3) {
+  if (numbers.length < 2) {
     return undefined;
   }
 
@@ -218,7 +235,7 @@ export const parseAuthorizationPdfText = (text: string): AuthorizationPdfPrefill
     /\breferral\s*(?:id|#|number)?\s*:?\s*([A-Z0-9][A-Z0-9-]{3,})/i,
   ]);
   const memberId = firstMatch(normalizedText, [
-    /\bmember\s*(?:id|#|number)?\s*:?\s*([A-Z0-9][A-Z0-9-]{2,})/i,
+    /\bmember\s*(?:(?:id|#|number)\s*:?\s*|:\s*)((?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]{2,})/i,
     /\bcin\s*:?\s*([A-Z0-9][A-Z0-9-]{2,})/i,
   ]);
 
@@ -245,6 +262,9 @@ export const mergeAuthorizationPdfPrefill = <T extends AuthorizationPdfMergeInpu
   };
   const appliedFields = new Set<string>();
   const skippedServiceCodes = new Set<string>();
+  const defaultDiagnosisCode = options.defaultDiagnosisCode ?? DEFAULT_DIAGNOSIS_CODE;
+  const defaultDiagnosisDescription =
+    options.defaultDiagnosisDescription ?? DEFAULT_DIAGNOSIS_DESCRIPTION;
 
   const fillIfBlank = <K extends keyof T>(field: K, value: T[K] | undefined) => {
     if (!next[field] && value) {
@@ -256,8 +276,6 @@ export const mergeAuthorizationPdfPrefill = <T extends AuthorizationPdfMergeInpu
   fillIfBlank('authorizationNumber', prefill.authorizationNumber as T['authorizationNumber']);
   fillIfBlank('startDate', prefill.startDate as T['startDate']);
   fillIfBlank('endDate', prefill.endDate as T['endDate']);
-  fillIfBlank('diagnosisCode', prefill.diagnosisCode as T['diagnosisCode']);
-  fillIfBlank('diagnosisDescription', prefill.diagnosisDescription as T['diagnosisDescription']);
   fillIfBlank('memberId', prefill.memberId as T['memberId']);
 
   if (prefill.status && (!current.status || options.statusFieldIsDefault)) {
@@ -265,10 +283,34 @@ export const mergeAuthorizationPdfPrefill = <T extends AuthorizationPdfMergeInpu
     appliedFields.add('status');
   }
 
+  const currentDiagnosisCodeIsDefault =
+    current.diagnosisCode.trim().toUpperCase() === defaultDiagnosisCode.toUpperCase();
+  const currentDiagnosisDescriptionIsDefault =
+    collapseWhitespace(current.diagnosisDescription).toLowerCase() ===
+    collapseWhitespace(defaultDiagnosisDescription).toLowerCase();
+
+  if (
+    prefill.diagnosisCode &&
+    (!current.diagnosisCode || (options.diagnosisCodeFieldIsDefault && currentDiagnosisCodeIsDefault))
+  ) {
+    next.diagnosisCode = prefill.diagnosisCode as T['diagnosisCode'];
+    appliedFields.add('diagnosisCode');
+  }
+
+  if (
+    prefill.diagnosisDescription &&
+    (!current.diagnosisDescription ||
+      (options.diagnosisDescriptionFieldIsDefault && currentDiagnosisDescriptionIsDefault))
+  ) {
+    next.diagnosisDescription = prefill.diagnosisDescription as T['diagnosisDescription'];
+    appliedFields.add('diagnosisDescription');
+  }
+
   for (const service of prefill.services) {
-    const code = service.serviceCode.toUpperCase();
-    if (!serviceCatalog[code]) {
-      skippedServiceCodes.add(code);
+    const parsedCode = service.serviceCode.toUpperCase();
+    const code = resolveCatalogServiceCode(parsedCode, serviceCatalog);
+    if (!code) {
+      skippedServiceCodes.add(parsedCode);
       continue;
     }
 
@@ -289,6 +331,21 @@ export const mergeAuthorizationPdfPrefill = <T extends AuthorizationPdfMergeInpu
     appliedFields: [...appliedFields],
     skippedServiceCodes: [...skippedServiceCodes],
   };
+};
+
+const normalizeServiceCodeForCatalogMatch = (code: string): string => {
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+};
+
+const resolveCatalogServiceCode = (
+  parsedCode: string,
+  serviceCatalog: Record<string, string>,
+): string | undefined => {
+  const normalizedParsedCode = normalizeServiceCodeForCatalogMatch(parsedCode);
+  const matches = Object.keys(serviceCatalog).filter(
+    (catalogCode) => normalizeServiceCodeForCatalogMatch(catalogCode) === normalizedParsedCode,
+  );
+  return matches.length === 1 ? matches[0] : undefined;
 };
 
 const stripUndefined = (prefill: AuthorizationPdfPrefill): AuthorizationPdfPrefill => {

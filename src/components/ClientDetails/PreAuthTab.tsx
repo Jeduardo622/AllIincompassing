@@ -128,6 +128,8 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfPrefillGenerationRef = useRef(0);
   const hasAdminEditedStatusRef = useRef(false);
+  const hasAdminEditedDiagnosisCodeRef = useRef(false);
+  const hasAdminEditedDiagnosisDescriptionRef = useRef(false);
   const serviceCatalogRef = useRef<Record<string, string>>({});
   const {
     data: cptCodes = [],
@@ -460,6 +462,8 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     pdfPrefillGenerationRef.current += 1;
     setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
     hasAdminEditedStatusRef.current = false;
+    hasAdminEditedDiagnosisCodeRef.current = false;
+    hasAdminEditedDiagnosisDescriptionRef.current = false;
   };
 
   const resetWizardForNewAuthorization = () => {
@@ -528,6 +532,8 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
 
         const mergeResult = mergeAuthorizationPdfPrefill(prev, parsedPrefill, serviceCatalogRef.current, {
           statusFieldIsDefault: !hasAdminEditedStatusRef.current,
+          diagnosisCodeFieldIsDefault: !hasAdminEditedDiagnosisCodeRef.current,
+          diagnosisDescriptionFieldIsDefault: !hasAdminEditedDiagnosisDescriptionRef.current,
         });
         setPdfPrefillState({
           status: 'applied',
@@ -1120,7 +1126,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                           id="preauth-diagnosis-code"
                           type="text"
                           value={wizardData.diagnosisCode}
-                          onChange={(e) => setWizardData({ ...wizardData, diagnosisCode: e.target.value })}
+                          onChange={(e) => {
+                            hasAdminEditedDiagnosisCodeRef.current = true;
+                            setWizardData({ ...wizardData, diagnosisCode: e.target.value });
+                          }}
                           className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                         />
                       </div>
@@ -1133,7 +1142,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                           id="preauth-diagnosis-description"
                           type="text"
                           value={wizardData.diagnosisDescription}
-                          onChange={(e) => setWizardData({ ...wizardData, diagnosisDescription: e.target.value })}
+                          onChange={(e) => {
+                            hasAdminEditedDiagnosisDescriptionRef.current = true;
+                            setWizardData({ ...wizardData, diagnosisDescription: e.target.value });
+                          }}
                           className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                         />
                       </div>

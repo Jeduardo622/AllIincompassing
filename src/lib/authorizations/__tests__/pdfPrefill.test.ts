@@ -163,12 +163,86 @@ describe('parseAuthorizationPdfText', () => {
       services: [],
     });
   });
+
+  it('recognizes active catalog service codes and split modifier codes exactly', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Code Description From To Requested Approved
+        97151 Behavior identification assessment 06/23/2026 12/22/2026 32 28
+        97152 Behavior identification supporting assessment 06/23/2026 12/22/2026 8 8
+        97154 Group adaptive behavior treatment 06/23/2026 12/22/2026 20 16
+        97157 Multiple-family adaptive behavior treatment guidance 06/23/2026 12/22/2026 12 12
+        H0032-HO Treatment planning supervision 06/23/2026 12/22/2026 10 10
+      `),
+    ).toMatchObject({
+      services: [
+        { serviceCode: '97151', requestedUnits: 32, approvedUnits: 28 },
+        { serviceCode: '97152', requestedUnits: 8, approvedUnits: 8 },
+        { serviceCode: '97154', requestedUnits: 20, approvedUnits: 16 },
+        { serviceCode: '97157', requestedUnits: 12, approvedUnits: 12 },
+        { serviceCode: 'H0032-HO', requestedUnits: 10, approvedUnits: 10 },
+      ],
+    });
+  });
+
+  it('does not treat generic leading numeric identifiers as service rows', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        12345 Member authorization tracking row 06/23/2026 12/22/2026 32 28
+        ZIP Code 92345
+      `),
+    ).toEqual({
+      startDate: '2026-06-23',
+      endDate: '2026-12-22',
+      services: [],
+    });
+  });
+
+  it('recognizes split modifier codes when PDF text drops the hyphen', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Code Description From To Requested Approved
+        H0032HO Treatment planning supervision 06/23/2026 12/22/2026 10 10
+      `),
+    ).toMatchObject({
+      services: [{ serviceCode: 'H0032HO', requestedUnits: 10, approvedUnits: 10 }],
+    });
+  });
+
+  it('does not treat member names as member IDs', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Member: Jane Doe
+        Member ID: MEM-0001
+        CIN: CIN-222333
+      `),
+    ).toMatchObject({
+      memberId: 'MEM-0001',
+      services: [],
+    });
+  });
+
+  it('accepts unlabeled member values when they look like IDs', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Member: MEM-0001
+      `),
+    ).toMatchObject({
+      memberId: 'MEM-0001',
+      services: [],
+    });
+  });
 });
 
 describe('mergeAuthorizationPdfPrefill', () => {
   const catalog = {
+    '97151': 'Behavior identification assessment',
+    '97152': 'Behavior identification supporting assessment',
     '97153': 'Adaptive behavior treatment by protocol',
+    '97154': 'Group adaptive behavior treatment',
     '97155': 'Adaptive behavior treatment with protocol modification',
+    '97157': 'Multiple-family adaptive behavior treatment guidance',
+    'H0032-HO': 'Treatment planning supervision',
   };
 
   it('fills empty fields and catalog-matched services without overwriting entered values', () => {
@@ -234,6 +308,139 @@ describe('mergeAuthorizationPdfPrefill', () => {
     ).toEqual({ '97153': 44 });
   });
 
+  it('merges active catalog service codes and split modifier codes without skipping them', () => {
+    const current = {
+      authorizationNumber: '',
+      status: 'approved' as const,
+      startDate: '',
+      endDate: '',
+      diagnosisCode: '',
+      diagnosisDescription: '',
+      memberId: '',
+      services: [] as string[],
+      units: {} as Record<string, number>,
+    };
+
+    expect(
+      mergeAuthorizationPdfPrefill(
+        current,
+        {
+          services: [
+            { serviceCode: '97151', approvedUnits: 28 },
+            { serviceCode: '97152', approvedUnits: 8 },
+            { serviceCode: '97154', approvedUnits: 16 },
+            { serviceCode: '97157', approvedUnits: 12 },
+            { serviceCode: 'H0032-HO', approvedUnits: 10 },
+          ],
+        },
+        catalog,
+      ),
+    ).toEqual({
+      data: {
+        ...current,
+        services: ['97151', '97152', '97154', '97157', 'H0032-HO'],
+        units: {
+          '97151': 28,
+          '97152': 8,
+          '97154': 16,
+          '97157': 12,
+          'H0032-HO': 10,
+        },
+      },
+      appliedFields: ['services', 'units'],
+      skippedServiceCodes: [],
+    });
+  });
+
+  it('matches split modifier PDF codes to unhyphenated catalog codes when unambiguous', () => {
+    const current = {
+      authorizationNumber: '',
+      status: 'approved' as const,
+      startDate: '',
+      endDate: '',
+      diagnosisCode: '',
+      diagnosisDescription: '',
+      memberId: '',
+      services: [] as string[],
+      units: {} as Record<string, number>,
+    };
+
+    expect(
+      mergeAuthorizationPdfPrefill(
+        current,
+        { services: [{ serviceCode: 'H0032-HO', approvedUnits: 10 }] },
+        { H0032HO: 'Treatment planning supervision' },
+      ),
+    ).toEqual({
+      data: {
+        ...current,
+        services: ['H0032HO'],
+        units: { H0032HO: 10 },
+      },
+      appliedFields: ['services', 'units'],
+      skippedServiceCodes: [],
+    });
+  });
+
+  it('matches hyphenless split modifier PDF codes to hyphenated catalog codes when unambiguous', () => {
+    const current = {
+      authorizationNumber: '',
+      status: 'approved' as const,
+      startDate: '',
+      endDate: '',
+      diagnosisCode: '',
+      diagnosisDescription: '',
+      memberId: '',
+      services: [] as string[],
+      units: {} as Record<string, number>,
+    };
+
+    expect(
+      mergeAuthorizationPdfPrefill(
+        current,
+        { services: [{ serviceCode: 'H0032HO', approvedUnits: 10 }] },
+        catalog,
+      ),
+    ).toEqual({
+      data: {
+        ...current,
+        services: ['H0032-HO'],
+        units: { 'H0032-HO': 10 },
+      },
+      appliedFields: ['services', 'units'],
+      skippedServiceCodes: [],
+    });
+  });
+
+  it('skips split modifier PDF codes when normalized catalog matching is ambiguous', () => {
+    const current = {
+      authorizationNumber: '',
+      status: 'approved' as const,
+      startDate: '',
+      endDate: '',
+      diagnosisCode: '',
+      diagnosisDescription: '',
+      memberId: '',
+      services: [] as string[],
+      units: {} as Record<string, number>,
+    };
+
+    expect(
+      mergeAuthorizationPdfPrefill(
+        current,
+        { services: [{ serviceCode: 'H0032HO', approvedUnits: 10 }] },
+        {
+          'H0032-HO': 'Treatment planning supervision',
+          H0032HO: 'Treatment planning supervision duplicate',
+        },
+      ),
+    ).toEqual({
+      data: current,
+      appliedFields: [],
+      skippedServiceCodes: ['H0032HO'],
+    });
+  });
+
   it('does not overwrite status by default when current status has a value', () => {
     const current = {
       authorizationNumber: '',
@@ -281,5 +488,103 @@ describe('mergeAuthorizationPdfPrefill', () => {
       appliedFields: ['status'],
       skippedServiceCodes: [],
     });
+  });
+
+  it('applies PDF diagnosis when the current diagnosis fields are still defaulted', () => {
+    const current = {
+      authorizationNumber: '',
+      status: 'approved' as const,
+      startDate: '',
+      endDate: '',
+      diagnosisCode: 'F84.0',
+      diagnosisDescription: 'Autistic disorder',
+      memberId: '',
+      services: [] as string[],
+      units: {} as Record<string, number>,
+    };
+
+    expect(
+      mergeAuthorizationPdfPrefill(
+        current,
+        {
+          diagnosisCode: 'F90.2',
+          diagnosisDescription: 'Attention-deficit hyperactivity disorder, combined type',
+          services: [],
+        },
+        catalog,
+        {
+          diagnosisCodeFieldIsDefault: true,
+          diagnosisDescriptionFieldIsDefault: true,
+        },
+      ),
+    ).toEqual({
+      data: {
+        ...current,
+        diagnosisCode: 'F90.2',
+        diagnosisDescription: 'Attention-deficit hyperactivity disorder, combined type',
+      },
+      appliedFields: ['diagnosisCode', 'diagnosisDescription'],
+      skippedServiceCodes: [],
+    });
+  });
+
+  it('does not overwrite admin-entered diagnosis fields when defaults were edited', () => {
+    const current = {
+      authorizationNumber: '',
+      status: 'approved' as const,
+      startDate: '',
+      endDate: '',
+      diagnosisCode: 'F90.2',
+      diagnosisDescription: 'Attention-deficit hyperactivity disorder, combined type',
+      memberId: '',
+      services: [] as string[],
+      units: {} as Record<string, number>,
+    };
+
+    expect(
+      mergeAuthorizationPdfPrefill(
+        current,
+        {
+          diagnosisCode: 'F84.0',
+          diagnosisDescription: 'Autistic disorder',
+          services: [],
+        },
+        catalog,
+      ),
+    ).toEqual({
+      data: current,
+      appliedFields: [],
+      skippedServiceCodes: [],
+    });
+  });
+
+  it('does not overwrite non-default diagnosis fields even when default flags are mistakenly true', () => {
+    const current = {
+      authorizationNumber: '',
+      status: 'approved' as const,
+      startDate: '',
+      endDate: '',
+      diagnosisCode: 'F90.2',
+      diagnosisDescription: 'Attention-deficit hyperactivity disorder, combined type',
+      memberId: '',
+      services: [] as string[],
+      units: {} as Record<string, number>,
+    };
+
+    expect(
+      mergeAuthorizationPdfPrefill(
+        current,
+        {
+          diagnosisCode: 'F84.0',
+          diagnosisDescription: 'Autistic disorder',
+          services: [],
+        },
+        catalog,
+        {
+          diagnosisCodeFieldIsDefault: true,
+          diagnosisDescriptionFieldIsDefault: true,
+        },
+      ).data,
+    ).toEqual(current);
   });
 });

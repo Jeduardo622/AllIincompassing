@@ -123,7 +123,6 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     status: 'idle',
     skippedServiceCodes: [],
   });
-  const [hasAdminEditedStatus, setHasAdminEditedStatus] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -461,7 +460,6 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     pdfPrefillGenerationRef.current += 1;
     setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
     hasAdminEditedStatusRef.current = false;
-    setHasAdminEditedStatus(false);
   };
 
   const resetWizardForNewAuthorization = () => {
@@ -1070,7 +1068,6 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                           value={wizardData.status}
                           onChange={(e) => {
                             hasAdminEditedStatusRef.current = true;
-                            setHasAdminEditedStatus(true);
                             setWizardData({ ...wizardData, status: e.target.value as AuthorizationStatus });
                           }}
                           className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"

@@ -75,9 +75,13 @@ const firstMatch = (text: string, patterns: RegExp[]): string | undefined => {
 };
 
 const parseStatus = (text: string): AuthorizationPdfStatus | undefined => {
-  if (/\bdenied\b/i.test(text)) return 'denied';
-  if (/\bapproved\b/i.test(text)) return 'approved';
-  if (/\bpending\b|\brequested\b/i.test(text)) return 'pending';
+  const explicitStatus =
+    /\b(?:status|decision)\s*(?:is\s+|:\s*)?(approved|pending|denied|requested)\b/i.exec(text) ??
+    /\b(approved|pending|denied|requested)\s+(?:status|decision)\b/i.exec(text);
+  const value = explicitStatus?.[1]?.toLowerCase();
+  if (value === 'denied') return 'denied';
+  if (value === 'approved') return 'approved';
+  if (value === 'pending' || value === 'requested') return 'pending';
   return undefined;
 };
 

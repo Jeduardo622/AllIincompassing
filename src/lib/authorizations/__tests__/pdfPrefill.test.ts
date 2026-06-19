@@ -58,6 +58,47 @@ describe('parseAuthorizationPdfText', () => {
       services: [],
     });
   });
+
+  it('does not infer status from requested or approved unit labels', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Authorization #: PDF-AUTH-UNITS
+        Procedure Code 97153
+        Requested Units: 120
+        Approved Units: 96
+      `),
+    ).toEqual({
+      authorizationNumber: 'PDF-AUTH-UNITS',
+      services: [{ serviceCode: '97153', requestedUnits: 120, approvedUnits: 96 }],
+    });
+  });
+
+  it('does not infer status from requested or approved table columns', () => {
+    const result = parseAuthorizationPdfText(`
+      Authorization #: PDF-AUTH-TABLE
+      Code Description From To Requested Approved
+      97155 Adaptive behavior treatment 6.23.2026 12.22.2026 48 40
+    `);
+
+    expect(result).toMatchObject({
+      authorizationNumber: 'PDF-AUTH-TABLE',
+      startDate: '2026-06-23',
+      endDate: '2026-12-22',
+      services: [{ serviceCode: '97155', requestedUnits: 48, approvedUnits: 40 }],
+    });
+    expect(result).not.toHaveProperty('status');
+  });
+
+  it('extracts pending status only from explicit status or decision wording', () => {
+    expect(parseAuthorizationPdfText('Status: Pending')).toEqual({
+      status: 'pending',
+      services: [],
+    });
+    expect(parseAuthorizationPdfText('Decision: Requested')).toEqual({
+      status: 'pending',
+      services: [],
+    });
+  });
 });
 
 describe('mergeAuthorizationPdfPrefill', () => {

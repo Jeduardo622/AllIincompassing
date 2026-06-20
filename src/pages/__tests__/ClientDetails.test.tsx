@@ -162,6 +162,28 @@ describe('ClientDetails page', () => {
     expect(screen.queryByRole('button', { name: /Pre-Authorizations/i })).not.toBeInTheDocument();
   });
 
+  it('renders the Pre-Authorizations tab for super admin viewers', async () => {
+    renderWithProviders(<ClientDetails />, {
+      auth: { role: 'super_admin', userId: 'super-admin-user-id' },
+    });
+
+    await waitFor(() => expect(screen.getByText('ProfileTabContent')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /Pre-Authorizations/i }));
+    expect(screen.getByText('PreAuthTabContent')).toBeInTheDocument();
+  });
+
+  it('hides the Pre-Authorizations tab for client viewers', async () => {
+    renderWithProviders(<ClientDetails />, {
+      auth: { role: 'client', userId: 'client-1' },
+    });
+
+    await waitFor(() => expect(screen.getByText('ProfileTabContent')).toBeInTheDocument());
+
+    expect(screen.queryByRole('button', { name: /Pre-Authorizations/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('PreAuthTabContent')).not.toBeInTheDocument();
+  });
+
   it('allows a therapist whose auth user maps to a separate therapist row id', async () => {
     mockLocationSearch = '?tab=programs-goals';
     vi.mocked(fetchClientByIdForViewer).mockResolvedValue({

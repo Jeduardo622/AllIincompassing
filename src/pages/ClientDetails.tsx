@@ -57,6 +57,7 @@ export function ClientDetails() {
 
   const isTherapistViewer = effectiveRole === 'therapist';
   const isClientViewer = effectiveRole === 'client';
+  const isAuthorizationAdminViewer = effectiveRole === 'admin' || effectiveRole === 'super_admin';
   const viewingOwnClientRecord = Boolean(isClientViewer && client?.id === profile?.id);
   const canViewClientRecord = Boolean(
     client &&
@@ -113,43 +114,52 @@ export function ClientDetails() {
     enabled: Boolean(clientId && activeOrganizationId && canViewClientRecord),
   });
 
-  const tabs = [
-    {
-      id: 'profile' as TabType,
-      name: 'Profile / Notes & Issues',
-      mobileName: 'Profile',
-      icon: User,
-    },
-    {
-      id: 'session-notes' as TabType,
-      name: 'Session Notes / Physical Auth',
-      mobileName: 'Notes',
-      icon: FileText,
-    },
-    {
-      id: 'programs-goals' as TabType,
-      name: 'Programs & Goals',
-      mobileName: 'Programs',
-      icon: FileText,
-    },
-    {
-      id: 'pre-auth' as TabType,
-      name: 'Pre-Authorizations',
-      mobileName: 'Pre-Auth',
-      icon: ClipboardCheck,
-    },
-    {
-      id: 'contracts' as TabType,
-      name: 'Service Contracts',
-      mobileName: 'Contracts',
-      icon: FileContract,
-    },
-  ];
+  const tabs = useMemo(
+    () => [
+      {
+        id: 'profile' as TabType,
+        name: 'Profile / Notes & Issues',
+        mobileName: 'Profile',
+        icon: User,
+      },
+      {
+        id: 'session-notes' as TabType,
+        name: 'Session Notes / Physical Auth',
+        mobileName: 'Notes',
+        icon: FileText,
+      },
+      {
+        id: 'programs-goals' as TabType,
+        name: 'Programs & Goals',
+        mobileName: 'Programs',
+        icon: FileText,
+      },
+      {
+        id: 'pre-auth' as TabType,
+        name: 'Pre-Authorizations',
+        mobileName: 'Pre-Auth',
+        icon: ClipboardCheck,
+      },
+      {
+        id: 'contracts' as TabType,
+        name: 'Service Contracts',
+        mobileName: 'Contracts',
+        icon: FileContract,
+      },
+    ],
+    [],
+  );
 
   const visibleTabs = useMemo(
-    () => tabs.filter((tab) => !(isTherapistViewer && tab.id === 'pre-auth')),
-    [isTherapistViewer, tabs],
+    () => tabs.filter((tab) => tab.id !== 'pre-auth' || isAuthorizationAdminViewer),
+    [isAuthorizationAdminViewer, tabs],
   );
+
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab('profile');
+    }
+  }, [activeTab, visibleTabs]);
 
   if (!activeOrganizationId) {
     return (
@@ -313,7 +323,7 @@ export function ClientDetails() {
           {activeTab === 'profile' && <ProfileTab client={client} viewerRole={effectiveRole} />}
           {activeTab === 'session-notes' && <SessionNotesTab client={client} />}
           {activeTab === 'programs-goals' && <ProgramsGoalsTab client={client} />}
-          {activeTab === 'pre-auth' && !isTherapistViewer && <PreAuthTab client={client} />}
+          {activeTab === 'pre-auth' && isAuthorizationAdminViewer && <PreAuthTab client={client} />}
           {activeTab === 'contracts' && <ServiceContractsTab client={client} />}
         </div>
       </div>

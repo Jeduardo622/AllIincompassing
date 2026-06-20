@@ -10,6 +10,8 @@ import { showError, showSuccess } from '../../lib/toast';
 import { useActiveOrganizationId } from '../../lib/organization';
 import { useAuth } from '../../lib/authContext';
 import { createAuthorizationWithServices, updateAuthorizationDocuments } from '../../lib/authorizations/mutations';
+import { parseAuthorizationPdfText, mergeAuthorizationPdfPrefill } from '../../lib/authorizations/pdfPrefill';
+import { extractPdfText, PdfTextExtractionError } from '../../lib/authorizations/pdfText';
 
 interface PreAuthTabProps {
   client: { id: string };
@@ -71,7 +73,16 @@ interface PreAuthWizardData {
   memberId: string;
 }
 
+type PdfPrefillState =
+  | { status: 'idle'; skippedServiceCodes: string[] }
+  | { status: 'extracting'; skippedServiceCodes: string[] }
+  | { status: 'applied'; skippedServiceCodes: string[] }
+  | { status: 'no_text'; message: string; skippedServiceCodes: string[] }
+  | { status: 'failed'; message: string; skippedServiceCodes: string[] };
+
 const AUTHORIZATION_STATUSES: AuthorizationStatus[] = ['approved', 'pending', 'denied'];
+const NO_EMBEDDED_PDF_TEXT_MESSAGE = 'No embedded PDF text was found.';
+const GENERIC_PDF_PREFILL_ERROR_MESSAGE = 'PDF text extraction failed. Enter the authorization fields manually.';
 
 const createEmptyWizardData = (): PreAuthWizardData => ({
   insurance: '',
@@ -108,9 +119,18 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   const [selectedAuthorizationForView, setSelectedAuthorizationForView] = useState<Authorization | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [wizardData, setWizardData] = useState<PreAuthWizardData>(() => createEmptyWizardData());
+  const [pdfPrefillState, setPdfPrefillState] = useState<PdfPrefillState>({
+    status: 'idle',
+    skippedServiceCodes: [],
+  });
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfPrefillGenerationRef = useRef(0);
+  const hasAdminEditedStatusRef = useRef(false);
+  const hasAdminEditedDiagnosisCodeRef = useRef(false);
+  const hasAdminEditedDiagnosisDescriptionRef = useRef(false);
+  const serviceCatalogRef = useRef<Record<string, string>>({});
   const {
     data: cptCodes = [],
     isLoading: isLoadingCptCodes,
@@ -134,6 +154,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return acc;
     }, {});
   }, [cptCodes]);
+  serviceCatalogRef.current = serviceCatalog;
 
   const cptCodeOptions = useMemo(() => {
     return cptCodes.map((code) => ({
@@ -436,6 +457,106 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   const handlePrevStep = () => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
   };
+
+  const resetPdfPrefillState = () => {
+    pdfPrefillGenerationRef.current += 1;
+    setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
+    hasAdminEditedStatusRef.current = false;
+    hasAdminEditedDiagnosisCodeRef.current = false;
+    hasAdminEditedDiagnosisDescriptionRef.current = false;
+  };
+
+  const resetWizardForNewAuthorization = () => {
+    setCurrentStep(1);
+    setWizardData(createEmptyWizardData());
+    resetPdfPrefillState();
+  };
+
+  const openNewAuthorizationWizard = () => {
+    resetWizardForNewAuthorization();
+    setIsWizardOpen(true);
+  };
+
+  const closeWizard = () => {
+    setIsWizardOpen(false);
+    resetWizardForNewAuthorization();
+  };
+
+  const prefillHasStructuredValues = (prefill: ReturnType<typeof parseAuthorizationPdfText>) => {
+    return Boolean(
+      prefill.authorizationNumber ||
+        prefill.status ||
+        prefill.startDate ||
+        prefill.endDate ||
+        prefill.diagnosisCode ||
+        prefill.diagnosisDescription ||
+        prefill.memberId ||
+        prefill.services.length > 0,
+    );
+  };
+
+  const applyPdfPrefillFromFiles = async (files: File[]) => {
+    const pdfFile = files.find((file) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
+    if (!pdfFile) {
+      return;
+    }
+
+    const generation = pdfPrefillGenerationRef.current + 1;
+    pdfPrefillGenerationRef.current = generation;
+    setPdfPrefillState({ status: 'extracting', skippedServiceCodes: [] });
+
+    try {
+      const extractedText = await extractPdfText(pdfFile);
+      if (generation !== pdfPrefillGenerationRef.current) {
+        return;
+      }
+
+      const parsedPrefill = parseAuthorizationPdfText(extractedText);
+      if (generation !== pdfPrefillGenerationRef.current) {
+        return;
+      }
+
+      if (!prefillHasStructuredValues(parsedPrefill)) {
+        setPdfPrefillState({
+          status: 'no_text',
+          message: NO_EMBEDDED_PDF_TEXT_MESSAGE,
+          skippedServiceCodes: [],
+        });
+        return;
+      }
+
+      setWizardData((prev) => {
+        if (generation !== pdfPrefillGenerationRef.current) {
+          return prev;
+        }
+
+        const mergeResult = mergeAuthorizationPdfPrefill(prev, parsedPrefill, serviceCatalogRef.current, {
+          statusFieldIsDefault: !hasAdminEditedStatusRef.current,
+          diagnosisCodeFieldIsDefault: !hasAdminEditedDiagnosisCodeRef.current,
+          diagnosisDescriptionFieldIsDefault: !hasAdminEditedDiagnosisDescriptionRef.current,
+        });
+        setPdfPrefillState({
+          status: 'applied',
+          skippedServiceCodes: mergeResult.skippedServiceCodes,
+        });
+        return mergeResult.data;
+      });
+    } catch (error) {
+      if (generation !== pdfPrefillGenerationRef.current) {
+        return;
+      }
+
+      const message =
+        error instanceof PdfTextExtractionError
+          ? error.message
+          : GENERIC_PDF_PREFILL_ERROR_MESSAGE;
+      setPdfPrefillState({
+        status: message === NO_EMBEDDED_PDF_TEXT_MESSAGE ? 'no_text' : 'failed',
+        message,
+        skippedServiceCodes: [],
+      });
+    }
+  };
   
   const handleWizardSubmit = async () => {
     if (!organizationId || !user?.id) {
@@ -553,6 +674,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       setIsWizardOpen(false);
       setCurrentStep(1);
       setWizardData(createEmptyWizardData());
+      resetPdfPrefillState();
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Failed to submit pre-authorization.');
     } finally {
@@ -561,6 +683,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   };
   
   const handleRenewAuthorization = (auth: Authorization) => {
+    resetPdfPrefillState();
     setWizardData({
       ...createEmptyWizardData(),
       insurance: auth.insurance_provider?.name ?? '',
@@ -608,6 +731,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return;
     }
 
+    void applyPdfPrefillFromFiles(acceptedFiles);
     setWizardData((prev) => ({
       ...prev,
       documents: [...prev.documents, ...acceptedFiles],
@@ -615,6 +739,8 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   };
 
   const handleDocumentRemove = (index: number) => {
+    pdfPrefillGenerationRef.current += 1;
+    setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
     setWizardData((prev) => ({
       ...prev,
       documents: prev.documents.filter((_, i) => i !== index),
@@ -636,7 +762,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
             Authorization Tracker
           </h3>
           <button
-            onClick={() => setIsWizardOpen(true)}
+            onClick={openNewAuthorizationWizard}
             className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
           >
             <Plus className="w-4 h-4 mr-1" />
@@ -948,7 +1074,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                         <select
                           id="preauth-status"
                           value={wizardData.status}
-                          onChange={(e) => setWizardData({ ...wizardData, status: e.target.value as AuthorizationStatus })}
+                          onChange={(e) => {
+                            hasAdminEditedStatusRef.current = true;
+                            setWizardData({ ...wizardData, status: e.target.value as AuthorizationStatus });
+                          }}
                           className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                         >
                           {AUTHORIZATION_STATUSES.map((status) => (
@@ -997,7 +1126,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                           id="preauth-diagnosis-code"
                           type="text"
                           value={wizardData.diagnosisCode}
-                          onChange={(e) => setWizardData({ ...wizardData, diagnosisCode: e.target.value })}
+                          onChange={(e) => {
+                            hasAdminEditedDiagnosisCodeRef.current = true;
+                            setWizardData({ ...wizardData, diagnosisCode: e.target.value });
+                          }}
                           className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                         />
                       </div>
@@ -1010,7 +1142,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                           id="preauth-diagnosis-description"
                           type="text"
                           value={wizardData.diagnosisDescription}
-                          onChange={(e) => setWizardData({ ...wizardData, diagnosisDescription: e.target.value })}
+                          onChange={(e) => {
+                            hasAdminEditedDiagnosisDescriptionRef.current = true;
+                            setWizardData({ ...wizardData, diagnosisDescription: e.target.value });
+                          }}
                           className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                         />
                       </div>
@@ -1278,6 +1413,37 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                       }}
                     />
                   </div>
+
+                  {pdfPrefillState.status !== 'idle' && (
+                    <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-200">
+                      {pdfPrefillState.status === 'extracting' && (
+                        <p className="font-medium">Extracting authorization PDF...</p>
+                      )}
+                      {pdfPrefillState.status === 'applied' && (
+                        <>
+                          <p className="font-medium">PDF prefill applied.</p>
+                          <p className="mt-1">Review extracted fields before submitting.</p>
+                        </>
+                      )}
+                      {pdfPrefillState.status === 'no_text' && (
+                        <>
+                          <p className="font-medium">{pdfPrefillState.message}</p>
+                          <p className="mt-1">Manual entry remains available.</p>
+                        </>
+                      )}
+                      {pdfPrefillState.status === 'failed' && (
+                        <>
+                          <p className="font-medium">{pdfPrefillState.message}</p>
+                          <p className="mt-1">Manual entry remains available.</p>
+                        </>
+                      )}
+                      {pdfPrefillState.skippedServiceCodes.length > 0 && (
+                        <p className="mt-1">
+                          Unsupported service codes skipped: {pdfPrefillState.skippedServiceCodes.join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   
                   {wizardData.documents.length > 0 && (
                     <div className="mt-4">
@@ -1408,7 +1574,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                 type="button"
                 onClick={() => {
                   if (currentStep === 1) {
-                    setIsWizardOpen(false);
+                    closeWizard();
                   } else {
                     handlePrevStep();
                   }

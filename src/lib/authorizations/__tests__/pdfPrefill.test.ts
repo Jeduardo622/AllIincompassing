@@ -248,6 +248,19 @@ describe('parseAuthorizationPdfText', () => {
     });
   });
 
+  it('does not parse HCPCS service rows as multiline diagnosis codes', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Diagnosis
+        H2019 Therapeutic Behavioral Services
+        Requested Units: 120
+        Approved Units: 96
+      `),
+    ).toEqual({
+      services: [{ serviceCode: 'H2019', requestedUnits: 120, approvedUnits: 96 }],
+    });
+  });
+
   it('does not infer full approval from negative or partial authorization prose', () => {
     expect(
       parseAuthorizationPdfText('Based on review, not all requested services have been authorized.'),

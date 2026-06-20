@@ -48,6 +48,7 @@ const SERVICE_CODE_PATTERN_SOURCE = String.raw`(?:97(?:151|152|153|154|155|156|1
 const SERVICE_CODE_PATTERN = new RegExp(String.raw`\b${SERVICE_CODE_PATTERN_SOURCE}\b`, 'g');
 const SERVICE_ROW_START_PATTERN = new RegExp(String.raw`^${SERVICE_CODE_PATTERN_SOURCE}\b`, 'i');
 const SERVICE_CONTEXT_PATTERN = /\b(?:procedure|service|code|cpt|hcpcs)\b/i;
+const ICD_CODE_PATTERN_SOURCE = String.raw`[A-Z]\d{2}(?:\.\d+)?(?![A-Z0-9])`;
 const DEFAULT_DIAGNOSIS_CODE = 'F84.0';
 const DEFAULT_DIAGNOSIS_DESCRIPTION = 'Autistic disorder';
 
@@ -178,13 +179,16 @@ const parseDates = (text: string): Pick<AuthorizationPdfPrefill, 'startDate' | '
 const parseDiagnosis = (
   text: string,
 ): Pick<AuthorizationPdfPrefill, 'diagnosisCode' | 'diagnosisDescription'> => {
+  const inlineDiagnosisPattern = new RegExp(
+    String.raw`\b(?:diagnosis|icd-?10(?: code)?)\s*:?\s*(${ICD_CODE_PATTERN_SOURCE})\s*(?:-|:)?\s*([A-Za-z][^\n\r]{2,80})?`,
+    'i',
+  );
+  const multilineDiagnosisPattern = new RegExp(
+    String.raw`\b(?:diagnosis|icd-?10(?: code)?)[^\n\r]*[\n\r]+\s*(?:\d+\s*)?\(?(${ICD_CODE_PATTERN_SOURCE})\)?\s*(?:-|:)?\s*([A-Za-z][^\n\r]{2,80})?`,
+    'i',
+  );
   const match =
-    /\b(?:diagnosis|icd-?10(?: code)?)\s*:?\s*([A-Z]\d{2}(?:\.\d+)?)\s*(?:-|:)?\s*([A-Za-z][^\n\r]{2,80})?/i.exec(
-      text,
-    ) ??
-    /\b(?:diagnosis|icd-?10(?: code)?)[^\n\r]*[\n\r]+\s*(?:\d+\s*)?\(?([A-Z]\d{2}(?:\.\d+)?)\)?\s*(?:-|:)?\s*([A-Za-z][^\n\r]{2,80})?/i.exec(
-      text,
-    );
+    inlineDiagnosisPattern.exec(text) ?? multilineDiagnosisPattern.exec(text);
   if (!match) {
     return {};
   }

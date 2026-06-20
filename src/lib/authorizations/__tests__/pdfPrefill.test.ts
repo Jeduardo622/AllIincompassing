@@ -108,6 +108,21 @@ describe('parseAuthorizationPdfText', () => {
     expect(result).not.toHaveProperty('endDate');
   });
 
+  it('prefers labeled authorization dates over service-row dates', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Service From: 06/01/2026
+        Service To: 12/31/2026
+        Code Description From To Requested Approved
+        H2019 Behavioral services 06/23/2026 12/22/2026 1560 1560
+      `),
+    ).toMatchObject({
+      startDate: '2026-06-01',
+      endDate: '2026-12-31',
+      services: [{ serviceCode: 'H2019', requestedUnits: 1560, approvedUnits: 1560 }],
+    });
+  });
+
   it('does not infer status from requested or approved unit labels', () => {
     expect(
       parseAuthorizationPdfText(`
@@ -232,6 +247,190 @@ describe('parseAuthorizationPdfText', () => {
       services: [],
     });
   });
+
+  it('does not parse HCPCS service rows as multiline diagnosis codes', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Diagnosis
+        H2019 Therapeutic Behavioral Services
+        Requested Units: 120
+        Approved Units: 96
+      `),
+    ).toEqual({
+      services: [{ serviceCode: 'H2019', requestedUnits: 120, approvedUnits: 96 }],
+    });
+  });
+
+  it('does not infer full approval from negative or partial authorization prose', () => {
+    expect(
+      parseAuthorizationPdfText('Based on review, not all requested services have been authorized.'),
+    ).toEqual({
+      services: [],
+    });
+    expect(
+      parseAuthorizationPdfText('Based on review, requested services have not been authorized.'),
+    ).toEqual({
+      services: [],
+    });
+    expect(
+      parseAuthorizationPdfText('Based on review, requested services have been authorized in part.'),
+    ).toEqual({
+      services: [],
+    });
+    expect(
+      parseAuthorizationPdfText('Based on review, requested services have been authorized, not all at the requested level.'),
+    ).toEqual({
+      services: [],
+    });
+    expect(
+      parseAuthorizationPdfText('Based on review, requested services have been authorized with modifications.'),
+    ).toEqual({
+      services: [],
+    });
+  });
+
+  it('extracts IEHP vertical procedure blocks with modifier rows', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Referral ID: IEHP-AUTH-REAL-SHAPE
+        Diagnosis
+        1 (F84.0) - Autistic disorder
+        Status: Approved Priority: Standard-Preservice
+        1 Code
+        H2019
+        Requested
+        Units
+        Approved
+        2080 Units
+        Decision
+        Approved
+        Dates
+        6/16/2026 -12/13/2026
+        2 Code
+        H0032
+        Requested
+        Units
+        Approved
+        832 Units
+        Decision
+        Approved
+        Dates
+        6/16/2026 -12/13/2026
+        3 Code (Modifier)
+        H0032 (HO)
+        Requested
+        Units
+        Approved
+        312 Units
+        Decision
+        Approved
+        Dates
+        6/16/2026 -12/13/2026
+      `),
+    ).toMatchObject({
+      authorizationNumber: 'IEHP-AUTH-REAL-SHAPE',
+      status: 'approved',
+      diagnosisCode: 'F84.0',
+      diagnosisDescription: 'Autistic disorder',
+      startDate: '2026-06-16',
+      endDate: '2026-12-13',
+      services: [
+        { serviceCode: 'H2019', approvedUnits: 2080 },
+        { serviceCode: 'H0032', approvedUnits: 832 },
+        { serviceCode: 'H0032-HO', approvedUnits: 312 },
+      ],
+    });
+  });
+
+  it('extracts approved IEHP vertical units when requested and approved rows differ', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Referral ID: IEHP-AUTH-REQUESTED-APPROVED
+        1 Code
+        H2019
+        Requested
+        3000 Units
+        Approved
+        2080 Units
+        Decision
+        Approved
+        Dates
+        6/16/2026 -12/13/2026
+      `),
+    ).toMatchObject({
+      authorizationNumber: 'IEHP-AUTH-REQUESTED-APPROVED',
+      services: [{ serviceCode: 'H2019', approvedUnits: 2080 }],
+    });
+  });
+
+  it('extracts IEHP vertical units from browser PDF text without row numbers', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Status: Approved Priority: Standard-Preservice
+        Code
+        Requested
+        Approved
+        Dates
+        H2019
+        Units
+        2080 Units
+        Approved
+        Code
+        Requested
+        Approved
+        Dates
+        H0032
+        Units
+        832 Units
+        Approved
+        Code (Modifier)
+        Requested
+        Approved
+        Dates
+        H0032 (HO)
+        Units
+        312 Units
+        Approved
+      `),
+    ).toMatchObject({
+      status: 'approved',
+      services: [
+        { serviceCode: 'H2019', approvedUnits: 2080 },
+        { serviceCode: 'H0032', approvedUnits: 832 },
+        { serviceCode: 'H0032-HO', approvedUnits: 312 },
+      ],
+    });
+  });
+
+  it('extracts CalOptima rows with OCR-like code and date separators', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Provider Notice of Action / Preauthorization for Outpatient Services
+        Member Name: Example Member CIN #: Z1234567Q
+        Date of Birth: 09/04/2020 Authorization #: SYNTHAUTH1
+        Diagnosis: Codes and Descriptions
+        F84.0 - Autistic disorder
+        Req Appr { Unit | Decision Code Description From Date{ To Date Units | Units | Type Status
+        HO032HN SERVICE PLAN DVLP 06/23/2026 {12/22/2026{ 208 208 Units | Approved
+        HO032HO | SERVICE PLAN DVLP 06/23/2026 {12/22/2026:] 104 104 Units | Approved
+        H2019 BEHAVIORAL SERVICES {06/23/2026 {12/22/2026 1560 i 1560 i} Units | Approved
+        Based on review, the above requested services has been authorized
+      `),
+    ).toMatchObject({
+      authorizationNumber: 'SYNTHAUTH1',
+      status: 'approved',
+      memberId: 'Z1234567Q',
+      diagnosisCode: 'F84.0',
+      diagnosisDescription: 'Autistic disorder',
+      startDate: '2026-06-23',
+      endDate: '2026-12-22',
+      services: [
+        { serviceCode: 'H0032-HN', requestedUnits: 208, approvedUnits: 208 },
+        { serviceCode: 'H0032-HO', requestedUnits: 104, approvedUnits: 104 },
+        { serviceCode: 'H2019', requestedUnits: 1560, approvedUnits: 1560 },
+      ],
+    });
+  });
 });
 
 describe('mergeAuthorizationPdfPrefill', () => {
@@ -242,6 +441,7 @@ describe('mergeAuthorizationPdfPrefill', () => {
     '97154': 'Group adaptive behavior treatment',
     '97155': 'Adaptive behavior treatment with protocol modification',
     '97157': 'Multiple-family adaptive behavior treatment guidance',
+    'H0032-HN': 'Treatment planning by non-physician',
     'H0032-HO': 'Treatment planning supervision',
   };
 
@@ -330,6 +530,7 @@ describe('mergeAuthorizationPdfPrefill', () => {
             { serviceCode: '97152', approvedUnits: 8 },
             { serviceCode: '97154', approvedUnits: 16 },
             { serviceCode: '97157', approvedUnits: 12 },
+            { serviceCode: 'H0032-HN', approvedUnits: 6 },
             { serviceCode: 'H0032-HO', approvedUnits: 10 },
           ],
         },
@@ -338,12 +539,13 @@ describe('mergeAuthorizationPdfPrefill', () => {
     ).toEqual({
       data: {
         ...current,
-        services: ['97151', '97152', '97154', '97157', 'H0032-HO'],
+        services: ['97151', '97152', '97154', '97157', 'H0032-HN', 'H0032-HO'],
         units: {
           '97151': 28,
           '97152': 8,
           '97154': 16,
           '97157': 12,
+          'H0032-HN': 6,
           'H0032-HO': 10,
         },
       },

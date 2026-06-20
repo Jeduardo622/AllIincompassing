@@ -44,10 +44,11 @@ export interface AuthorizationPdfMergeOptions {
 }
 
 const DATE_PATTERN = String.raw`(?:\d{1,2}[/.]\d{1,2}[/.]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})`;
-const SERVICE_CODE_PATTERN_SOURCE = String.raw`(?:97(?:151|152|153|154|155|156|157|158)|0\d{3}T|[A-Z]\d{4}(?:-?[A-Z0-9]{2})?)`;
+const SERVICE_CODE_PATTERN_SOURCE = String.raw`(?:97(?:151|152|153|154|155|156|157|158)|0\d{3}T|H[O0]\d{3}(?:-?[A-Z0-9]{2})?|[A-Z]\d{4}(?:-?[A-Z0-9]{2})?)`;
 const SERVICE_CODE_PATTERN = new RegExp(String.raw`\b${SERVICE_CODE_PATTERN_SOURCE}\b`, 'g');
 const SERVICE_ROW_START_PATTERN = new RegExp(String.raw`^${SERVICE_CODE_PATTERN_SOURCE}\b`, 'i');
 const SERVICE_CONTEXT_PATTERN = /\b(?:procedure|service|code|cpt|hcpcs)\b/i;
+const ICD_CODE_PATTERN_SOURCE = String.raw`[A-Z]\d{2}(?:\.\d+)?(?![A-Z0-9])`;
 const DEFAULT_DIAGNOSIS_CODE = 'F84.0';
 const DEFAULT_DIAGNOSIS_DESCRIPTION = 'Autistic disorder';
 
@@ -111,6 +112,14 @@ const parseStatus = (text: string): AuthorizationPdfStatus | undefined => {
   if (value === 'denied') return 'denied';
   if (value === 'approved') return 'approved';
   if (value === 'pending' || value === 'requested') return 'pending';
+  const authorizedProse = /\b(?:requested\s+services?|services?)\s+ha(?:s|ve)\s+been\s+authorized\b/i;
+  const negativeOrPartialProse =
+    /\b(?:not\s+all|not|partially|partial|in\s+part|modifications?|modified)\b[\s\S]{0,80}\b(?:requested\s+services?|services?|authorized)\b/i;
+  const qualifiedAuthorizationProse =
+    /\bauthorized\b[\s\S]{0,80}\b(?:not\s+all|not|in\s+part|partially|partial|modifications?|modified)\b/i;
+  if (authorizedProse.test(text) && !negativeOrPartialProse.test(text) && !qualifiedAuthorizationProse.test(text)) {
+    return 'approved';
+  }
   return undefined;
 };
 
@@ -149,16 +158,37 @@ const parseDates = (text: string): Pick<AuthorizationPdfPrefill, 'startDate' | '
     };
   }
 
+  const serviceRowRange = new RegExp(
+    `${SERVICE_CODE_PATTERN_SOURCE}[\\s\\S]{0,120}?(${DATE_PATTERN})\\D{0,20}?(${DATE_PATTERN})`,
+    'i',
+  ).exec(text);
+  if (serviceRowRange) {
+    const startDate = normalizeDate(serviceRowRange[1]);
+    const endDate = normalizeDate(serviceRowRange[2]);
+    if (startDate && endDate) {
+      return {
+        startDate,
+        endDate,
+      };
+    }
+  }
+
   return {};
 };
 
 const parseDiagnosis = (
   text: string,
 ): Pick<AuthorizationPdfPrefill, 'diagnosisCode' | 'diagnosisDescription'> => {
+  const inlineDiagnosisPattern = new RegExp(
+    String.raw`\b(?:diagnosis|icd-?10(?: code)?)\s*:?\s*(${ICD_CODE_PATTERN_SOURCE})\s*(?:-|:)?\s*([A-Za-z][^\n\r]{2,80})?`,
+    'i',
+  );
+  const multilineDiagnosisPattern = new RegExp(
+    String.raw`\b(?:diagnosis|icd-?10(?: code)?)[^\n\r]*[\n\r]+\s*(?:\d+\s*)?\(?(${ICD_CODE_PATTERN_SOURCE})\)?\s*(?:-|:)?\s*([A-Za-z][^\n\r]{2,80})?`,
+    'i',
+  );
   const match =
-    /\b(?:diagnosis|icd-?10(?: code)?)\s*:?\s*([A-Z]\d{2}(?:\.\d+)?)\s*(?:-|:)?\s*([A-Za-z][^\n\r]{2,80})?/i.exec(
-      text,
-    );
+    inlineDiagnosisPattern.exec(text) ?? multilineDiagnosisPattern.exec(text);
   if (!match) {
     return {};
   }
@@ -179,25 +209,38 @@ const parseServices = (text: string): AuthorizationPdfPrefillService[] => {
   const lines = text.split(/\r?\n/).map(collapseWhitespace).filter(Boolean);
   const globalRequestedUnits = parseLabeledUnits(text, 'requested');
   const globalApprovedUnits = parseLabeledUnits(text, 'approved');
+  const setService = (service: AuthorizationPdfPrefillService) => {
+    const serviceCode = normalizeParsedServiceCode(service.serviceCode);
+    const existing = services.get(serviceCode) ?? { serviceCode };
+    services.set(serviceCode, {
+      serviceCode,
+      requestedUnits: service.requestedUnits ?? existing.requestedUnits,
+      approvedUnits: service.approvedUnits ?? existing.approvedUnits,
+    });
+  };
 
   for (const line of lines) {
     if (!SERVICE_CONTEXT_PATTERN.test(line) && !SERVICE_ROW_START_PATTERN.test(line)) {
       continue;
     }
 
-    const codes = [...line.matchAll(SERVICE_CODE_PATTERN)].map((match) => match[0].toUpperCase());
+    const codes = getServiceCodesFromLine(line);
     for (const serviceCode of codes) {
       const existing = services.get(serviceCode) ?? { serviceCode };
       const requestedUnits = parseLabeledUnits(line, 'requested') ?? existing.requestedUnits;
       const approvedUnits = parseLabeledUnits(line, 'approved') ?? existing.approvedUnits;
       const compactUnits = parseCompactServiceRowUnits(line, serviceCode);
 
-      services.set(serviceCode, {
+      setService({
         serviceCode,
         requestedUnits: requestedUnits ?? compactUnits?.requestedUnits,
         approvedUnits: approvedUnits ?? compactUnits?.approvedUnits,
       });
     }
+  }
+
+  for (const service of parseVerticalServiceBlocks(lines)) {
+    setService(service);
   }
 
   if (services.size === 1) {
@@ -207,6 +250,59 @@ const parseServices = (text: string): AuthorizationPdfPrefillService[] => {
   }
 
   return [...services.values()];
+};
+
+const getServiceCodesFromLine = (line: string): string[] => {
+  const normalizedLine = line.replace(
+    /\b(H[O0]\d{3})\s*\(\s*([A-Z0-9]{2})\s*\)/gi,
+    (_, code: string, modifier: string) => `${code}-${modifier}`,
+  );
+  return [...normalizedLine.matchAll(SERVICE_CODE_PATTERN)].map((match) =>
+    normalizeParsedServiceCode(match[0]),
+  );
+};
+
+const normalizeParsedServiceCode = (code: string): string => {
+  const upper = code.toUpperCase().replace(/\s+/g, '');
+  const ocrHCode = /^HO(\d{3})(?:-?([A-Z0-9]{2}))?$/.exec(upper);
+  if (ocrHCode) {
+    return `H0${ocrHCode[1]}${ocrHCode[2] ? `-${ocrHCode[2]}` : ''}`;
+  }
+
+  const parentheticalModifier = /^([A-Z]\d{4})\(([A-Z0-9]{2})\)$/.exec(upper);
+  if (parentheticalModifier) {
+    return `${parentheticalModifier[1]}-${parentheticalModifier[2]}`;
+  }
+
+  return upper;
+};
+
+const parseVerticalServiceBlocks = (lines: string[]): AuthorizationPdfPrefillService[] => {
+  const services: AuthorizationPdfPrefillService[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^(?:\d+\s+)?Code(?:\s+\(Modifier\))?$/i.test(lines[index])) {
+      continue;
+    }
+
+    const block = lines.slice(index + 1, index + 18);
+    const codeLine = block.find((line) => getServiceCodesFromLine(line).length > 0);
+    const serviceCode = codeLine ? getServiceCodesFromLine(codeLine)[0] : undefined;
+    if (!serviceCode) {
+      continue;
+    }
+
+    const approvedIndex = block.findIndex((line) => /^Approved\b/i.test(line));
+    const approvedBlock = approvedIndex >= 0 ? block.slice(approvedIndex + 1) : block;
+    const unitsLine = approvedBlock.find((line) => /\b\d+\s+Units\b/i.test(line));
+    const approvedUnits = unitsLine ? Number(/\b(\d+)\s+Units\b/i.exec(unitsLine)?.[1]) : undefined;
+    services.push({
+      serviceCode,
+      approvedUnits: Number.isFinite(approvedUnits) ? approvedUnits : undefined,
+    });
+  }
+
+  return services;
 };
 
 const parseCompactServiceRowUnits = (
@@ -236,7 +332,7 @@ export const parseAuthorizationPdfText = (text: string): AuthorizationPdfPrefill
   ]);
   const memberId = firstMatch(normalizedText, [
     /\bmember\s*(?:(?:id|#|number)\s*:?\s*|:\s*)((?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]{2,})/i,
-    /\bcin\s*:?\s*([A-Z0-9][A-Z0-9-]{2,})/i,
+    /\bcin\s*(?:#|id|number)?\s*:?\s*([A-Z0-9][A-Z0-9-]{2,})/i,
   ]);
 
   return stripUndefined({

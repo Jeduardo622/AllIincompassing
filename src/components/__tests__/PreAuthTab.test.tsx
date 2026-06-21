@@ -537,6 +537,58 @@ describe("PreAuthTab manual authorization upload", () => {
     ).toBeInTheDocument();
   });
 
+  it("clears the blank member ID review warning when an admin enters the member ID after PDF prefill", async () => {
+    extractPdfTextMock.mockResolvedValue(`
+      Authorization Number: IEHP-PDF-784
+      Diagnosis: F84.0 - Autistic disorder
+      Service From: 07/01/2026 to 12/31/2026
+      97153 approved units: 20
+      H2019 approved units: 10
+    `);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
+    await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "auth-notice.pdf", {
+        type: "application/pdf",
+      }),
+    );
+
+    expect(await screen.findByText(/PDF prefill applied/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.type(screen.getByLabelText(/member id/i), "MEM-ADMIN-784");
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(
+      screen.queryByText(/Member ID is blank. Confirm the payer notice does not include a member ID before submitting./i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Some service codes from the PDF were not added because they are not active in the service catalog: H2019./i,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("preserves skipped service-code review warnings after a later no-text upload", async () => {
     extractPdfTextMock
       .mockResolvedValueOnce(`
@@ -591,6 +643,133 @@ describe("PreAuthTab manual authorization upload", () => {
         /Some service codes from the PDF were not added because they are not active in the service catalog: H2019./i,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("preserves skipped service-code review warnings after a later extractable PDF has no skipped codes", async () => {
+    extractPdfTextMock
+      .mockResolvedValueOnce(`
+        Authorization Number: IEHP-PDF-780
+        Diagnosis: F84.0 - Autistic disorder
+        Service From: 07/01/2026 to 12/31/2026
+        97153 approved units: 20
+        H2019 approved units: 10
+      `)
+      .mockResolvedValueOnce(`
+        Authorization Number: IEHP-PDF-781
+        Diagnosis: F84.0 - Autistic disorder
+        Service From: 07/01/2026 to 12/31/2026
+        97153 approved units: 20
+      `);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
+    await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "auth-notice.pdf", {
+        type: "application/pdf",
+        lastModified: 1,
+      }),
+    );
+
+    expect(await screen.findByText(/Unsupported service codes skipped: H2019/i)).toBeInTheDocument();
+
+    await user.upload(
+      fileInput,
+      new File(["synthetic clean authorization notice"], "clean-auth-notice.pdf", {
+        type: "application/pdf",
+        lastModified: 2,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Unsupported service codes skipped: H2019/i)).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(
+      screen.getByText(
+        /Some service codes from the PDF were not added because they are not active in the service catalog: H2019./i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("removes only the selected duplicate-metadata document skipped-code warning", async () => {
+    extractPdfTextMock
+      .mockResolvedValueOnce(`
+        Authorization Number: IEHP-PDF-782
+        Diagnosis: F84.0 - Autistic disorder
+        Service From: 07/01/2026 to 12/31/2026
+        97153 approved units: 20
+        H2019 approved units: 10
+      `)
+      .mockResolvedValueOnce(`
+        Authorization Number: IEHP-PDF-783
+        Diagnosis: F84.0 - Autistic disorder
+        Service From: 07/01/2026 to 12/31/2026
+        97153 approved units: 20
+        H2014 approved units: 8
+      `);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
+    await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const duplicateFileOptions = {
+      type: "application/pdf",
+      lastModified: 123,
+    };
+    await user.upload(
+      fileInput,
+      new File(["same synthetic bytes"], "duplicate-auth.pdf", duplicateFileOptions),
+    );
+
+    expect(await screen.findByText(/Unsupported service codes skipped: H2019/i)).toBeInTheDocument();
+
+    await user.upload(
+      fileInput,
+      new File(["same synthetic bytes"], "duplicate-auth.pdf", duplicateFileOptions),
+    );
+
+    expect(await screen.findByText(/Unsupported service codes skipped: H2014/i)).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: /remove/i })[0]);
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(
+      screen.getByText(
+        /Some service codes from the PDF were not added because they are not active in the service catalog: H2014./i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /Some service codes from the PDF were not added because they are not active in the service catalog: H2019/i,
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("uses the latest admin status edit when delayed PDF prefill resolves", async () => {

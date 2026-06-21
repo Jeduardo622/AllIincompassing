@@ -537,6 +537,58 @@ describe("PreAuthTab manual authorization upload", () => {
     ).toBeInTheDocument();
   });
 
+  it("clears the blank member ID review warning when an admin enters the member ID after PDF prefill", async () => {
+    extractPdfTextMock.mockResolvedValue(`
+      Authorization Number: IEHP-PDF-784
+      Diagnosis: F84.0 - Autistic disorder
+      Service From: 07/01/2026 to 12/31/2026
+      97153 approved units: 20
+      H2019 approved units: 10
+    `);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
+    await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "auth-notice.pdf", {
+        type: "application/pdf",
+      }),
+    );
+
+    expect(await screen.findByText(/PDF prefill applied/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.type(screen.getByLabelText(/member id/i), "MEM-ADMIN-784");
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(
+      screen.queryByText(/Member ID is blank. Confirm the payer notice does not include a member ID before submitting./i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Some service codes from the PDF were not added because they are not active in the service catalog: H2019./i,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("preserves skipped service-code review warnings after a later no-text upload", async () => {
     extractPdfTextMock
       .mockResolvedValueOnce(`

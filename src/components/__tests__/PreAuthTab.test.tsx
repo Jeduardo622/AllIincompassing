@@ -489,6 +489,110 @@ describe("PreAuthTab manual authorization upload", () => {
     expect(screen.getByText(/Unsupported service codes skipped: H2019/i)).toBeInTheDocument();
   });
 
+  it("warns on review when uploaded PDF prefill leaves member ID blank or skips service codes", async () => {
+    extractPdfTextMock.mockResolvedValue(`
+      Authorization Number: IEHP-PDF-778
+      Diagnosis: F84.0 - Autistic disorder
+      Service From: 07/01/2026 to 12/31/2026
+      97153 approved units: 20
+      H2019 approved units: 10
+    `);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
+    await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "auth-notice.pdf", {
+        type: "application/pdf",
+      }),
+    );
+
+    expect(await screen.findByText(/PDF prefill applied/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(
+      screen.getByText(/Review extracted authorization fields before submitting/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Member ID is blank. Confirm the payer notice does not include a member ID before submitting./i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Some service codes from the PDF were not added because they are not active in the service catalog: H2019./i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("preserves skipped service-code review warnings after a later no-text upload", async () => {
+    extractPdfTextMock
+      .mockResolvedValueOnce(`
+        Authorization Number: IEHP-PDF-779
+        Diagnosis: F84.0 - Autistic disorder
+        Service From: 07/01/2026 to 12/31/2026
+        97153 approved units: 20
+        H2019 approved units: 10
+      `)
+      .mockRejectedValueOnce(new MockPdfTextExtractionError("No embedded PDF text was found."));
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
+    await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "auth-notice.pdf", {
+        type: "application/pdf",
+        lastModified: 1,
+      }),
+    );
+
+    expect(await screen.findByText(/PDF prefill applied/i)).toBeInTheDocument();
+    expect(screen.getByText(/Unsupported service codes skipped: H2019/i)).toBeInTheDocument();
+
+    await user.upload(
+      fileInput,
+      new File(["synthetic scanned support document"], "scanned-support.pdf", {
+        type: "application/pdf",
+        lastModified: 2,
+      }),
+    );
+
+    expect(await screen.findByText(/No embedded PDF text was found/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(
+      screen.getByText(
+        /Some service codes from the PDF were not added because they are not active in the service catalog: H2019./i,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("uses the latest admin status edit when delayed PDF prefill resolves", async () => {
     const deferredText = createDeferred<string>();
     extractPdfTextMock.mockReturnValueOnce(deferredText.promise);

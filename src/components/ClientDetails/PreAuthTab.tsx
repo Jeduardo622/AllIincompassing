@@ -83,6 +83,7 @@ type PdfPrefillState =
 const AUTHORIZATION_STATUSES: AuthorizationStatus[] = ['approved', 'pending', 'denied'];
 const NO_EMBEDDED_PDF_TEXT_MESSAGE = 'No embedded PDF text was found.';
 const GENERIC_PDF_PREFILL_ERROR_MESSAGE = 'PDF text extraction failed. Enter the authorization fields manually.';
+const getDocumentKey = (file: File) => `${file.name}:${file.size}:${file.lastModified}`;
 
 const createEmptyWizardData = (): PreAuthWizardData => ({
   insurance: '',
@@ -123,6 +124,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     status: 'idle',
     skippedServiceCodes: [],
   });
+  const [skippedServiceCodesByDocument, setSkippedServiceCodesByDocument] = useState<Record<string, string[]>>({});
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -385,6 +387,28 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     return Math.ceil(minutes / 15);
   };
 
+  const reviewWarnings = useMemo(() => {
+    const warnings: string[] = [];
+
+    if (wizardData.documents.length > 0 && !wizardData.memberId.trim()) {
+      warnings.push(
+        'Member ID is blank. Confirm the payer notice does not include a member ID before submitting.',
+      );
+    }
+
+    const skippedServiceCodes = Array.from(
+      new Set(Object.values(skippedServiceCodesByDocument).flat()),
+    );
+
+    if (skippedServiceCodes.length > 0) {
+      warnings.push(
+        `Some service codes from the PDF were not added because they are not active in the service catalog: ${skippedServiceCodes.join(', ')}.`,
+      );
+    }
+
+    return warnings;
+  }, [skippedServiceCodesByDocument, wizardData.documents.length, wizardData.memberId]);
+
   const authorizationMetrics = useMemo(() => {
     if (!authorizations.length) {
       return {
@@ -461,6 +485,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   const resetPdfPrefillState = () => {
     pdfPrefillGenerationRef.current += 1;
     setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
+    setSkippedServiceCodesByDocument({});
     hasAdminEditedStatusRef.current = false;
     hasAdminEditedDiagnosisCodeRef.current = false;
     hasAdminEditedDiagnosisDescriptionRef.current = false;
@@ -501,6 +526,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       return;
     }
 
+    const pdfFileKey = getDocumentKey(pdfFile);
     const generation = pdfPrefillGenerationRef.current + 1;
     pdfPrefillGenerationRef.current = generation;
     setPdfPrefillState({ status: 'extracting', skippedServiceCodes: [] });
@@ -522,6 +548,11 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
           message: NO_EMBEDDED_PDF_TEXT_MESSAGE,
           skippedServiceCodes: [],
         });
+        setSkippedServiceCodesByDocument((prev) => {
+          const next = { ...prev };
+          delete next[pdfFileKey];
+          return next;
+        });
         return;
       }
 
@@ -539,6 +570,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
           status: 'applied',
           skippedServiceCodes: mergeResult.skippedServiceCodes,
         });
+        setSkippedServiceCodesByDocument((prev) => ({
+          ...prev,
+          [pdfFileKey]: mergeResult.skippedServiceCodes,
+        }));
         return mergeResult.data;
       });
     } catch (error) {
@@ -554,6 +589,11 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
         status: message === NO_EMBEDDED_PDF_TEXT_MESSAGE ? 'no_text' : 'failed',
         message,
         skippedServiceCodes: [],
+      });
+      setSkippedServiceCodesByDocument((prev) => {
+        const next = { ...prev };
+        delete next[pdfFileKey];
+        return next;
       });
     }
   };
@@ -741,6 +781,15 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   const handleDocumentRemove = (index: number) => {
     pdfPrefillGenerationRef.current += 1;
     setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
+    const removedFile = wizardData.documents[index];
+    if (removedFile) {
+      const removedFileKey = getDocumentKey(removedFile);
+      setSkippedServiceCodesByDocument((skippedByDocument) => {
+        const next = { ...skippedByDocument };
+        delete next[removedFileKey];
+        return next;
+      });
+    }
     setWizardData((prev) => ({
       ...prev,
       documents: prev.documents.filter((_, i) => i !== index),
@@ -1549,6 +1598,24 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                         )}
                       </div>
                     </div>
+
+                    {reviewWarnings.length > 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
+                        <div className="flex items-start">
+                          <AlertCircle className="mr-2 mt-0.5 h-5 w-5 text-amber-500" />
+                          <div>
+                            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                              Review extracted authorization fields before submitting
+                            </p>
+                            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-700 dark:text-amber-300">
+                              {reviewWarnings.map((warning) => (
+                                <li key={warning}>{warning}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                       <div className="flex items-start">

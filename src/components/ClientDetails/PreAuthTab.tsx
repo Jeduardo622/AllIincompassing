@@ -83,7 +83,7 @@ type PdfPrefillState =
 const AUTHORIZATION_STATUSES: AuthorizationStatus[] = ['approved', 'pending', 'denied'];
 const NO_EMBEDDED_PDF_TEXT_MESSAGE = 'No embedded PDF text was found.';
 const GENERIC_PDF_PREFILL_ERROR_MESSAGE = 'PDF text extraction failed. Enter the authorization fields manually.';
-const getDocumentKey = (file: File) => `${file.name}:${file.size}:${file.lastModified}`;
+const createDocumentUploadKey = (sequence: number) => `upload-${sequence}`;
 
 const createEmptyWizardData = (): PreAuthWizardData => ({
   insurance: '',
@@ -125,10 +125,12 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     skippedServiceCodes: [],
   });
   const [skippedServiceCodesByDocument, setSkippedServiceCodesByDocument] = useState<Record<string, string[]>>({});
+  const [documentUploadKeys, setDocumentUploadKeys] = useState<string[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfPrefillGenerationRef = useRef(0);
+  const documentUploadKeySequenceRef = useRef(0);
   const hasAdminEditedStatusRef = useRef(false);
   const hasAdminEditedDiagnosisCodeRef = useRef(false);
   const hasAdminEditedDiagnosisDescriptionRef = useRef(false);
@@ -486,6 +488,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     pdfPrefillGenerationRef.current += 1;
     setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
     setSkippedServiceCodesByDocument({});
+    setDocumentUploadKeys([]);
     hasAdminEditedStatusRef.current = false;
     hasAdminEditedDiagnosisCodeRef.current = false;
     hasAdminEditedDiagnosisDescriptionRef.current = false;
@@ -520,13 +523,13 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     );
   };
 
-  const applyPdfPrefillFromFiles = async (files: File[]) => {
-    const pdfFile = files.find((file) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
-    if (!pdfFile) {
+  const applyPdfPrefillFromFiles = async (entries: Array<{ file: File; uploadKey: string }>) => {
+    const pdfEntry = entries.find(({ file }) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
+    if (!pdfEntry) {
       return;
     }
 
-    const pdfFileKey = getDocumentKey(pdfFile);
+    const { file: pdfFile, uploadKey: pdfFileKey } = pdfEntry;
     const generation = pdfPrefillGenerationRef.current + 1;
     pdfPrefillGenerationRef.current = generation;
     setPdfPrefillState({ status: 'extracting', skippedServiceCodes: [] });
@@ -752,6 +755,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     }
 
     const acceptedFiles: File[] = [];
+    const acceptedEntries: Array<{ file: File; uploadKey: string }> = [];
     Array.from(fileList).forEach((file) => {
       const isAcceptedType = ACCEPTED_FILE_TYPES.includes(file.type as typeof ACCEPTED_FILE_TYPES[number]);
       if (!isAcceptedType) {
@@ -765,28 +769,33 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       }
 
       acceptedFiles.push(file);
+      documentUploadKeySequenceRef.current += 1;
+      acceptedEntries.push({
+        file,
+        uploadKey: createDocumentUploadKey(documentUploadKeySequenceRef.current),
+      });
     });
 
     if (!acceptedFiles.length) {
       return;
     }
 
-    void applyPdfPrefillFromFiles(acceptedFiles);
+    void applyPdfPrefillFromFiles(acceptedEntries);
     setWizardData((prev) => ({
       ...prev,
       documents: [...prev.documents, ...acceptedFiles],
     }));
+    setDocumentUploadKeys((prev) => [...prev, ...acceptedEntries.map((entry) => entry.uploadKey)]);
   };
 
   const handleDocumentRemove = (index: number) => {
     pdfPrefillGenerationRef.current += 1;
     setPdfPrefillState({ status: 'idle', skippedServiceCodes: [] });
-    const removedFile = wizardData.documents[index];
-    if (removedFile) {
-      const removedFileKey = getDocumentKey(removedFile);
+    const removedDocumentUploadKey = documentUploadKeys[index];
+    if (removedDocumentUploadKey) {
       setSkippedServiceCodesByDocument((skippedByDocument) => {
         const next = { ...skippedByDocument };
-        delete next[removedFileKey];
+        delete next[removedDocumentUploadKey];
         return next;
       });
     }
@@ -794,6 +803,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
       ...prev,
       documents: prev.documents.filter((_, i) => i !== index),
     }));
+    setDocumentUploadKeys((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {

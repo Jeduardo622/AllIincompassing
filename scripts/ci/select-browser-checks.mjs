@@ -4,6 +4,7 @@ import { appendFileSync } from "node:fs";
 const TIER0_SPECS = {
   public: "cypress/e2e/routes_public.cy.ts",
   client: "cypress/e2e/routes_client.cy.ts",
+  preauth: "cypress/e2e/preauth_workflow.cy.ts",
   schedule: "cypress/e2e/routes_schedule.cy.ts",
   admin: "cypress/e2e/routes_admin.cy.ts",
   auth: "cypress/e2e/routes_auth.cy.ts",
@@ -125,6 +126,15 @@ const classifyFile = (file) => {
     /^src\/lib\/(sessions|booking|useRouteQueryRefetch)/,
   ])) {
     return { specs: ["schedule", "auth"], authSmoke: true, reason: "schedule/session route" };
+  }
+
+  if (matchAny(file, [
+    /^cypress\/e2e\/preauth_workflow\.cy\.ts$/,
+    /^src\/pages\/ClientDetails\.tsx$/,
+    /^src\/components\/ClientDetails\/PreAuthTab\.tsx$/,
+    /^src\/components\/__tests__\/PreAuthTab\.test\.tsx$/,
+  ])) {
+    return { specs: ["client", "preauth"], authSmoke: false, reason: "PreAuth workflow route" };
   }
 
   if (matchAny(file, [

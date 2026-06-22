@@ -27,6 +27,8 @@ interface LifecycleIds {
   clientId: string;
   programId: string;
   goalId: string;
+  startIso: string;
+  endIso: string;
   createdProgramId?: string;
   createdGoalId?: string;
 }
@@ -42,12 +44,6 @@ interface BrowserFetchResult<TBody> {
 }
 
 const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(value ?? "");
-/** Mirrors `src/pages/schedule-modal-url-state.ts` query keys for deep-linking the SessionModal. */
-const SCHEDULE_MODAL_MODE_KEY = "scheduleModal";
-const SCHEDULE_MODAL_SESSION_KEY = "scheduleSessionId";
-const SCHEDULE_MODAL_EXPIRY_KEY = "scheduleExp";
-const SCHEDULE_MODAL_URL_TTL_MS = 30 * 60 * 1000;
-
 /** UI wait (90s) + edge/RPC fallback can exceed 120s on cold paths. */
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
 
@@ -181,7 +177,7 @@ const createSessionViaServiceRole = async (params: {
   goalId: string;
   startIso: string;
   endIso: string;
-}): Promise<string> => {
+}): Promise<{ sessionId: string; startIso: string; endIso: string }> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -207,9 +203,9 @@ const createSessionViaServiceRole = async (params: {
   const baseStart = new Date(params.startIso);
   const baseEnd = new Date(params.endIso);
   const durationMs = Math.max(15 * 60 * 1000, baseEnd.getTime() - baseStart.getTime());
+  const fallbackStarts = buildBookingCandidateStarts().filter((candidate) => candidate.getTime() >= baseStart.getTime());
 
-  for (let attempt = 0; attempt < 48; attempt += 1) {
-    const start = new Date(baseStart.getTime() + attempt * 2 * 60 * 60 * 1000);
+  for (const start of fallbackStarts) {
     const end = new Date(start.getTime() + durationMs);
     const { data, error } = await adminClient
       .from("sessions")
@@ -224,11 +220,15 @@ const createSessionViaServiceRole = async (params: {
         status: "scheduled",
         notes: "Playwright lifecycle fallback booking",
       })
-      .select("id")
+      .select("id,start_time,end_time")
       .single();
 
     if (!error && data?.id) {
-      return data.id;
+      return {
+        sessionId: data.id,
+        startIso: typeof data.start_time === "string" ? data.start_time : start.toISOString(),
+        endIso: typeof data.end_time === "string" ? data.end_time : end.toISOString(),
+      };
     }
     const message = error?.message ?? "";
     if (!message.includes("sessions_no_overlap")) {
@@ -498,39 +498,71 @@ const toDatetimeLocal = (date: Date): string => {
   return local.toISOString().slice(0, 16);
 };
 
-const buildBookingBaseStart = (): Date => {
+const buildBookingCandidateStarts = (): Date[] => {
   const runSeed = Number(process.env.GITHUB_RUN_ID ?? Date.now());
-  const offsetHours = Number.isFinite(runSeed) ? Math.abs(Math.trunc(runSeed)) % 12 : 0;
-  const start = new Date();
-  start.setHours(start.getHours() + 4 + offsetHours, 0, 0, 0);
-  return start;
-};
+  const daytimeHours = [9, 11, 13, 15];
+  const rotation = Number.isFinite(runSeed) ? Math.abs(Math.trunc(runSeed)) % daytimeHours.length : 0;
+  const hours = [...daytimeHours.slice(rotation), ...daytimeHours.slice(0, rotation)];
+  const candidates: Date[] = [];
+  const day = new Date();
+  day.setHours(0, 0, 0, 0);
+  day.setDate(day.getDate() + 1);
 
-const buildScheduleEditSessionUrl = (scheduleUrl: string, sessionId: string): string => {
-  const url = new URL(scheduleUrl);
-  const expiresAtMs = Date.now() + SCHEDULE_MODAL_URL_TTL_MS;
-  url.searchParams.set(SCHEDULE_MODAL_MODE_KEY, "edit");
-  url.searchParams.set(SCHEDULE_MODAL_SESSION_KEY, sessionId);
-  url.searchParams.set(SCHEDULE_MODAL_EXPIRY_KEY, String(expiresAtMs));
-  return url.toString();
-};
-
-const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sessionId: string): Promise<void> => {
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    await page.goto(buildScheduleEditSessionUrl(scheduleUrl, sessionId), {
-      waitUntil: "networkidle",
-      timeout: 60000,
-    });
-    const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
-    try {
-      await dialog.waitFor({ state: "visible", timeout: 12_000 });
-      return;
-    } catch {
-      await page.waitForTimeout(500 + attempt * 250);
+  for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
+    const candidateDay = new Date(day);
+    candidateDay.setDate(day.getDate() + dayOffset);
+    if (candidateDay.getDay() === 0) {
+      continue;
+    }
+    for (const hour of hours) {
+      const candidate = new Date(candidateDay);
+      candidate.setHours(hour, 0, 0, 0);
+      candidates.push(candidate);
     }
   }
+
+  return candidates;
+};
+
+const openEditSessionModalFromCalendar = async (
+  page: Page,
+  scheduleUrl: string,
+  sessionId: string,
+  sessionStartIso: string,
+): Promise<void> => {
+  await page.goto(`${scheduleUrl}?_${Date.now()}`, {
+    waitUntil: "networkidle",
+    timeout: 60000,
+  });
+
+  let visitedPeriods = 0;
+  for (let periodAttempt = 0; periodAttempt < 8; periodAttempt += 1) {
+    visitedPeriods = periodAttempt + 1;
+    const sessionCard = page.locator(`[data-session-id="${sessionId}"]`).first();
+    const visible = await sessionCard
+      .waitFor({ state: "visible", timeout: periodAttempt === 0 ? 12_000 : 5_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (visible) {
+      await sessionCard.scrollIntoViewIfNeeded();
+      await sessionCard.click();
+      const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
+      await dialog.waitFor({ state: "visible", timeout: 12_000 });
+      return;
+    }
+
+    const nextPeriodButton = page.getByRole("button", { name: /next period/i }).first();
+    if ((await nextPeriodButton.count()) === 0) {
+      break;
+    }
+    await nextPeriodButton.click();
+    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
+    await page.waitForTimeout(500 + periodAttempt * 250);
+  }
+
   throw new Error(
-    "Session modal (Edit Session / Live session) did not open from schedule deep link; session may not be loaded in schedule data yet.",
+    `Session modal (Edit Session / Live session) did not open from the rendered schedule card after ${visitedPeriods} schedule period(s). sessionStartIso=${sessionStartIso}`,
   );
 };
 
@@ -645,14 +677,14 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
 
   const selected = await chooseSessionTargets(page);
 
-  const start = buildBookingBaseStart();
+  const candidateStarts = buildBookingCandidateStarts();
   let finalStartIso = "";
   let finalEndIso = "";
   let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
   let payloadBody: { success?: boolean; data?: { session?: { id?: string } }; code?: string } | null = null;
 
-  for (let attempt = 0; attempt < 48; attempt += 1) {
-    const attemptStart = new Date(start.getTime() + attempt * 2 * 60 * 60 * 1000);
+  for (let attempt = 0; attempt < candidateStarts.length; attempt += 1) {
+    const attemptStart = candidateStarts[attempt];
     const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
     const startIso = attemptStart.toISOString();
     const endIso = attemptEnd.toISOString();
@@ -720,7 +752,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
       httpStatus === 401 ||
       (typeof payloadBody?.code === "string" && payloadBody.code.toLowerCase() === "unauthorized");
     if (!strictMode && bodyUnauthorized && finalStartIso && finalEndIso) {
-      const fallbackSessionId = await createSessionViaServiceRole({
+      const fallbackSession = await createSessionViaServiceRole({
         therapistId: selected.therapistId,
         clientId: selected.clientId,
         programId: selected.programId,
@@ -729,11 +761,13 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
         endIso: finalEndIso,
       });
       return {
-        sessionId: fallbackSessionId,
+        sessionId: fallbackSession.sessionId,
         therapistId: selected.therapistId,
         clientId: selected.clientId,
         programId: selected.programId,
         goalId: selected.goalId,
+        startIso: fallbackSession.startIso,
+        endIso: fallbackSession.endIso,
         createdProgramId: selected.createdProgramId,
         createdGoalId: selected.createdGoalId,
       };
@@ -752,6 +786,8 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
     clientId: selected.clientId,
     programId: selected.programId,
     goalId: selected.goalId,
+    startIso: finalStartIso,
+    endIso: finalEndIso,
     createdProgramId: selected.createdProgramId,
     createdGoalId: selected.createdGoalId,
   };
@@ -1152,7 +1188,7 @@ async function startSessionViaScheduleModal(
   token: string,
   strictMode: boolean,
 ): Promise<void> {
-  await openEditSessionModalFromUrl(page, scheduleUrl, ids.sessionId);
+  await openEditSessionModalFromCalendar(page, scheduleUrl, ids.sessionId, ids.startIso);
   const startButton = page.getByRole("button", { name: /^Start Session$/i });
   await startButton.waitFor({ state: "visible", timeout: 20_000 });
   await expectStartButtonEnabled(page, startButton);
@@ -1200,7 +1236,7 @@ async function markTerminalViaScheduleModal(
   actorUserId: string,
   strictMode: boolean,
 ): Promise<void> {
-  await openEditSessionModalFromUrl(page, scheduleUrl, sessionId);
+  await openEditSessionModalFromCalendar(page, scheduleUrl, sessionId, ids.startIso);
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
   await page.locator("#status-select").selectOption(terminalStatus);
   page.once("dialog", (dialog) => {

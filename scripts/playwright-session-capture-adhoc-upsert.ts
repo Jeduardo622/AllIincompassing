@@ -326,7 +326,10 @@ async function run(): Promise<void> {
             response.url().includes("/api/session-notes/upsert") && response.request().method() === "POST",
           { timeout: 120_000 },
         );
-        await editDialog.getByTestId("session-modal-save-capture-skills").click();
+        activePage.once("dialog", (dialog) => {
+          void dialog.accept();
+        });
+        await editDialog.getByRole("button", { name: /^Save progress$/i }).click();
         const res = await upsertPromise.catch(async (error) => {
           throw await buildFailure(error);
         });

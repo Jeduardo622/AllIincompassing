@@ -576,10 +576,13 @@ async function openSessionModal(page: Page) {
     const browserGlobal = globalThis as unknown as {
       dispatchEvent: (event: unknown) => boolean;
       CustomEvent: new (name: string, init?: { detail?: unknown }) => unknown;
+      document?: { dispatchEvent: (event: unknown) => boolean };
     };
     const now = new Date();
     now.setHours(now.getHours() + 2);
-    browserGlobal.dispatchEvent(new browserGlobal.CustomEvent("openScheduleModal", { detail: { start_time: now.toISOString() } }));
+    const eventDetail = { start_time: now.toISOString() };
+    browserGlobal.dispatchEvent(new browserGlobal.CustomEvent("openScheduleModal", { detail: eventDetail }));
+    browserGlobal.document?.dispatchEvent(new browserGlobal.CustomEvent("openScheduleModal", { detail: eventDetail }));
   });
   await page
     .locator(
@@ -587,15 +590,12 @@ async function openSessionModal(page: Page) {
     )
     .first()
     .waitFor({ state: "visible", timeout: 10_000 });
+  await page.getByRole("button", { name: /Create Session/i }).waitFor({ state: "visible", timeout: 10_000 });
 }
 
 async function ensureSessionModalOpen(page: Page) {
-  const modal = page
-    .locator(
-      '[role="dialog"]:has-text("New Session"), [role="dialog"]:has-text("Edit Session"), [role="dialog"]:has-text("Live session")',
-    )
-    .first();
-  if (await modal.isVisible().catch(() => false)) {
+  const createSessionButton = page.getByRole("button", { name: /Create Session/i });
+  if (await createSessionButton.isVisible().catch(() => false)) {
     return;
   }
   await openSessionModal(page);

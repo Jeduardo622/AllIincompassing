@@ -1,24 +1,30 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('authorization document RPC execute grants', () => {
+  const migrationsDir = join(process.cwd(), 'supabase/migrations');
+  const createRpcMigrationVersion = '20260622154313';
+  const createRpcMigrationSlug = 'restrict_authorization_create_rpc_anon_execute';
+  const createRpcMigrationFile = `${createRpcMigrationVersion}_${createRpcMigrationSlug}.sql`;
   const documentRpcMigrationSql = readFileSync(
     join(
-      process.cwd(),
-      'supabase/migrations/20260622142046_restrict_authorization_document_rpc_anon_execute.sql',
+      migrationsDir,
+      '20260622142046_restrict_authorization_document_rpc_anon_execute.sql',
     ),
     'utf-8',
   );
-  const createRpcMigrationSql = readFileSync(
-    join(
-      process.cwd(),
-      'supabase/migrations/20260622164000_restrict_authorization_create_rpc_anon_execute.sql',
-    ),
-    'utf-8',
-  );
+  const createRpcMigrationSql = readFileSync(join(migrationsDir, createRpcMigrationFile), 'utf-8');
   const migrationSql = `${documentRpcMigrationSql}\n${createRpcMigrationSql}`;
   const grantStatements = migrationSql.match(/grant execute on function[^;]+;/gi) ?? [];
+
+  it('tracks the hosted migration version for the authorization create RPC hardening', () => {
+    const createRpcMigrationFiles = readdirSync(migrationsDir).filter((fileName) =>
+      fileName.endsWith(`_${createRpcMigrationSlug}.sql`),
+    );
+
+    expect(createRpcMigrationFiles).toEqual([createRpcMigrationFile]);
+  });
 
   it('removes unauthenticated execute access from document RPCs', () => {
     expect(migrationSql).toMatch(

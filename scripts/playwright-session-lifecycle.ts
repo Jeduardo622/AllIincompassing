@@ -498,10 +498,15 @@ const toDatetimeLocal = (date: Date): string => {
   return local.toISOString().slice(0, 16);
 };
 
-const buildBookingCandidateStarts = (): Date[] => {
+export const buildBookingCandidateStarts = (
+  terminalStatus = process.env.PW_LIFECYCLE_TERMINAL_STATUS,
+): Date[] => {
   const runSeed = Number(process.env.GITHUB_RUN_ID ?? Date.now());
   const daytimeHours = [9, 11, 13, 15];
-  const rotation = Number.isFinite(runSeed) ? Math.abs(Math.trunc(runSeed)) % daytimeHours.length : 0;
+  const terminalStatusOffset = terminalStatus?.trim().toLowerCase() === "completed" ? 1 : 0;
+  const rotation = Number.isFinite(runSeed)
+    ? (Math.abs(Math.trunc(runSeed)) + terminalStatusOffset) % daytimeHours.length
+    : terminalStatusOffset;
   const hours = [...daytimeHours.slice(rotation), ...daytimeHours.slice(0, rotation)];
   const candidates: Date[] = [];
   const day = new Date();

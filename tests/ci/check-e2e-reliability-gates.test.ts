@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -146,6 +146,14 @@ const createFixture = (
 };
 
 describe("check-e2e-reliability-gates", () => {
+  test("session note measurement roundtrip script does not emit soft-skip reliability warnings", () => {
+    const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
+    const content = readFileSync(scriptPath, "utf8");
+
+    expect(content).not.toMatch(/skip(ped|s)?/i);
+    expect(content).not.toMatch(/smoke skipped/i);
+  });
+
   test("accepts ci:playwright runner invocation semantics", () => {
     const fixtureRoot = createFixture(`tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`);
 

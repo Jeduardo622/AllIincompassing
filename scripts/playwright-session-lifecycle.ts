@@ -589,6 +589,18 @@ async function openSessionModal(page: Page) {
     .waitFor({ state: "visible", timeout: 10_000 });
 }
 
+async function ensureSessionModalOpen(page: Page) {
+  const modal = page
+    .locator(
+      '[role="dialog"]:has-text("New Session"), [role="dialog"]:has-text("Edit Session"), [role="dialog"]:has-text("Live session")',
+    )
+    .first();
+  if (await modal.isVisible().catch(() => false)) {
+    return;
+  }
+  await openSessionModal(page);
+}
+
 const selectOptionWhenAvailable = async (
   page: Page,
   selector: string,
@@ -699,6 +711,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
   } | null = null;
 
   while (true) {
+    await ensureSessionModalOpen(page);
     let selected: Awaited<ReturnType<typeof chooseSessionTargetsExcluding>>;
     try {
       selected = await chooseSessionTargetsExcluding(page, excludedPairKeys);

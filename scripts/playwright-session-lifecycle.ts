@@ -613,13 +613,16 @@ const selectOptionWhenAvailable = async (
   return false;
 };
 
-async function chooseSessionTargets(page: Page): Promise<{
+const lifecyclePairKey = (therapistId: string, clientId: string): string => `${therapistId}:${clientId}`;
+
+async function chooseSessionTargetsExcluding(page: Page, excludedPairKeys: Set<string>): Promise<{
   therapistId: string;
   clientId: string;
   programId: string;
   goalId: string;
   createdProgramId?: string;
   createdGoalId?: string;
+  pairKey: string;
 }> {
   const therapistValues = await waitForSelectOptions(page, "#therapist-select");
   const clientValues = await waitForSelectOptions(page, "#client-select");
@@ -641,6 +644,10 @@ async function chooseSessionTargets(page: Page): Promise<{
   });
 
   for (const { therapistId, clientId } of candidatePairs) {
+    const pairKey = lifecyclePairKey(therapistId, clientId);
+    if (excludedPairKeys.has(pairKey)) {
+      continue;
+    }
     await page.selectOption("#therapist-select", therapistId);
     const seeded = await ensureProgramAndGoalForPair(therapistId, clientId);
     await page.selectOption("#client-select", clientId);
@@ -665,6 +672,7 @@ async function chooseSessionTargets(page: Page): Promise<{
       goalId: seeded.goalId,
       createdProgramId: seeded.createdProgramId,
       createdGoalId: seeded.createdGoalId,
+      pairKey,
     };
   }
 
@@ -680,78 +688,119 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
   await page.waitForSelector("text=Schedule", { timeout: 15_000 }).catch(() => undefined);
   await openSessionModal(page);
 
-  const selected = await chooseSessionTargets(page);
-
   const candidateStarts = buildBookingCandidateStarts();
-  let finalStartIso = "";
-  let finalEndIso = "";
-  let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
-  let payloadBody: { success?: boolean; data?: { session?: { id?: string } }; code?: string } | null = null;
+  const excludedPairKeys = new Set<string>();
+  let lastFailure: {
+    selected: Awaited<ReturnType<typeof chooseSessionTargetsExcluding>>;
+    finalStartIso: string;
+    finalEndIso: string;
+    payload: BrowserFetchResult<Record<string, unknown>> | null;
+    payloadBody: { success?: boolean; data?: { session?: { id?: string } }; code?: string } | null;
+  } | null = null;
 
-  for (let attempt = 0; attempt < candidateStarts.length; attempt += 1) {
-    const attemptStart = candidateStarts[attempt];
-    const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
-    const startIso = attemptStart.toISOString();
-    const endIso = attemptEnd.toISOString();
-    finalStartIso = startIso;
-    finalEndIso = endIso;
-
-    await page.locator("#start-time-input").fill(toDatetimeLocal(attemptStart));
-    await page.locator("#end-time-input").fill(toDatetimeLocal(attemptEnd));
-
-    page.once("dialog", (dialog) => {
-      void dialog.accept().catch(() => undefined);
-    });
-    const responsePromise = page
-      .waitForResponse(
-        (res) => res.url().includes("/api/book") && res.request().method() === "POST",
-        { timeout: 90_000 },
-      )
-      .then((response) => ({ kind: "response" as const, response }))
-      .catch(() => null);
-    const blockedPromise = Promise.any([
-      page.getByRole("region").filter({ hasText: "Scheduling Conflicts" }).first().waitFor({
-        state: "visible",
-        timeout: 2500,
-      }),
-      page.getByText(/No active programs found/i).first().waitFor({ state: "visible", timeout: 2500 }),
-    ])
-      .then(() => ({ kind: "blocked" as const }))
-      .catch(() => new Promise<never>(() => undefined));
-
-    await page.getByRole("button", { name: /Create Session/i }).click();
-    const outcome = await Promise.race([responsePromise, blockedPromise]);
-    if (!outcome) {
-      continue;
+  while (true) {
+    let selected: Awaited<ReturnType<typeof chooseSessionTargetsExcluding>>;
+    try {
+      selected = await chooseSessionTargetsExcluding(page, excludedPairKeys);
+    } catch (error) {
+      if (lastFailure) {
+        break;
+      }
+      throw error;
     }
-    if (outcome.kind === "blocked") {
-      responsePromise.catch(() => undefined);
-      continue;
-    }
+    let finalStartIso = "";
+    let finalEndIso = "";
+    let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
+    let payloadBody: { success?: boolean; data?: { session?: { id?: string } }; code?: string } | null = null;
 
-    const bookResponse = outcome.response;
-    const body = await bookResponse.json().catch(() => null);
-    const httpStatus = bookResponse.status();
-    payload = { ok: bookResponse.ok(), status: httpStatus, body };
-    payloadBody = body as typeof payloadBody;
+    for (let attempt = 0; attempt < candidateStarts.length; attempt += 1) {
+      const attemptStart = candidateStarts[attempt];
+      const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
+      const startIso = attemptStart.toISOString();
+      const endIso = attemptEnd.toISOString();
+      finalStartIso = startIso;
+      finalEndIso = endIso;
 
-    if (payload.ok && payloadBody?.success && payloadBody?.data?.session?.id) {
+      await page.locator("#start-time-input").fill(toDatetimeLocal(attemptStart));
+      await page.locator("#end-time-input").fill(toDatetimeLocal(attemptEnd));
+
+      page.once("dialog", (dialog) => {
+        void dialog.accept().catch(() => undefined);
+      });
+      const responsePromise = page
+        .waitForResponse(
+          (res) => res.url().includes("/api/book") && res.request().method() === "POST",
+          { timeout: 90_000 },
+        )
+        .then((response) => ({ kind: "response" as const, response }))
+        .catch(() => null);
+      const blockedPromise = Promise.any([
+        page.getByRole("region").filter({ hasText: "Scheduling Conflicts" }).first().waitFor({
+          state: "visible",
+          timeout: 2500,
+        }),
+        page.getByText(/No active programs found/i).first().waitFor({ state: "visible", timeout: 2500 }),
+      ])
+        .then(() => ({ kind: "blocked" as const }))
+        .catch(() => new Promise<never>(() => undefined));
+
+      await page.getByRole("button", { name: /Create Session/i }).click();
+      const outcome = await Promise.race([responsePromise, blockedPromise]);
+      if (!outcome) {
+        continue;
+      }
+      if (outcome.kind === "blocked") {
+        responsePromise.catch(() => undefined);
+        continue;
+      }
+
+      const bookResponse = outcome.response;
+      const body = await bookResponse.json().catch(() => null);
+      const httpStatus = bookResponse.status();
+      payload = { ok: bookResponse.ok(), status: httpStatus, body };
+      payloadBody = body as typeof payloadBody;
+
+      if (payload.ok && payloadBody?.success && payloadBody?.data?.session?.id) {
+        const sessionId = payloadBody.data.session.id as string;
+        return {
+          sessionId,
+          therapistId: selected.therapistId,
+          clientId: selected.clientId,
+          programId: selected.programId,
+          goalId: selected.goalId,
+          startIso: finalStartIso,
+          endIso: finalEndIso,
+          createdProgramId: selected.createdProgramId,
+          createdGoalId: selected.createdGoalId,
+        };
+      }
+      if (httpStatus === 409 || [500, 502, 503, 504].includes(httpStatus)) {
+        await new Promise((resolve) => setTimeout(resolve, 500 + attempt * 250));
+        continue;
+      }
+      const bookUnauthorized =
+        httpStatus === 401 ||
+        (typeof payloadBody?.code === "string" && payloadBody.code.toLowerCase() === "unauthorized");
+      if (!strictMode && bookUnauthorized && finalStartIso && finalEndIso) {
+        break;
+      }
       break;
     }
-    if (httpStatus === 409 || [500, 502, 503, 504].includes(httpStatus)) {
-      await new Promise((resolve) => setTimeout(resolve, 500 + attempt * 250));
+
+    lastFailure = { selected, finalStartIso, finalEndIso, payload, payloadBody };
+    if (payload?.status === 409) {
+      console.warn("[lifecycle] booking conflict exhausted candidate starts; trying next therapist-client pair", {
+        pairKey: selected.pairKey,
+      });
+      await cleanupCreatedProgramGoal(selected);
+      excludedPairKeys.add(selected.pairKey);
       continue;
-    }
-    const bookUnauthorized =
-      httpStatus === 401 ||
-      (typeof payloadBody?.code === "string" && payloadBody.code.toLowerCase() === "unauthorized");
-    if (!strictMode && bookUnauthorized && finalStartIso && finalEndIso) {
-      break;
     }
     break;
   }
 
-  if (!payload || !payloadBody?.success || !payloadBody?.data?.session?.id) {
+  if (lastFailure) {
+    const { selected, finalStartIso, finalEndIso, payload, payloadBody } = lastFailure;
     const httpStatus = typeof payload?.status === "number" ? payload.status : 0;
     const bodyUnauthorized =
       httpStatus === 401 ||
@@ -783,19 +832,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
     );
   }
 
-  const sessionId = payloadBody.data!.session!.id as string;
-
-  return {
-    sessionId,
-    therapistId: selected.therapistId,
-    clientId: selected.clientId,
-    programId: selected.programId,
-    goalId: selected.goalId,
-    startIso: finalStartIso,
-    endIso: finalEndIso,
-    createdProgramId: selected.createdProgramId,
-    createdGoalId: selected.createdGoalId,
-  };
+  throw new Error("Booking did not succeed. No therapist-client pair was attempted.");
 }
 
 const expectStartButtonEnabled = async (

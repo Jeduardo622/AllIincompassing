@@ -294,6 +294,48 @@ describe("PreAuthTab manual authorization upload", () => {
     expect(showSuccess).toHaveBeenCalledWith("Authorization uploaded and saved.");
   });
 
+  it("accepts an uploaded PDF when the browser does not provide a MIME type", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.type(screen.getByLabelText(/authorization number/i), "IEHP-AUTH-EMPTY-MIME");
+    await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
+    await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
+    await user.type(screen.getByLabelText(/member id/i), "MEM-EMPTY-MIME");
+    await user.type(screen.getByLabelText(/start date/i), "2026-06-23");
+    await user.type(screen.getByLabelText(/end date/i), "2026-12-22");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(await screen.findByLabelText(/97153/i));
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.type(screen.getByLabelText(/units requested/i), "120");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["synthetic authorization notice"], "Behavioral Referral - IEHP Provider SeAp 6.15.pdf");
+    await user.upload(fileInput, file);
+
+    expect(await screen.findByText("Behavioral Referral - IEHP Provider SeAp 6.15.pdf")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /submit request/i }));
+
+    await waitFor(() => {
+      expect(storageUploadMock).toHaveBeenCalledWith(
+        expect.stringMatching(/^clients\/client-1\/authorizations\/auth-created-id\/.+\.pdf$/),
+        file,
+        { upsert: false },
+      );
+    });
+  });
+
   it("prefills empty wizard fields from an uploaded PDF and submits extracted values", async () => {
     extractPdfTextMock.mockResolvedValue(`
       Authorization Number: IEHP-PDF-456

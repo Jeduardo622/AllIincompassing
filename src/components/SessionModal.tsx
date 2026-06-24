@@ -1289,11 +1289,11 @@ export function SessionModal({
   );
 
   const updateGoalTargets = useCallback(
-    (goalId: string, nextTargets: string[]) => {
+    (goalId: string, nextTargets: string[], nextTargetTrialsSource?: unknown[]) => {
       const targetsPath = `session_note_goal_measurements.${goalId}.data.targets` as const;
       const targetPath = `session_note_goal_measurements.${goalId}.data.target` as const;
       const targetTrialsPath = `session_note_goal_measurements.${goalId}.data.target_trials` as const;
-      const currentTargetTrials = getValues(targetTrialsPath);
+      const currentTargetTrials = nextTargetTrialsSource ?? getValues(targetTrialsPath);
       const nextTargetTrials = Array.isArray(currentTargetTrials)
         ? nextTargets.map((target, index) => ({
           ...(typeof currentTargetTrials[index] === 'object' && currentTargetTrials[index] !== null
@@ -1325,9 +1325,14 @@ export function SessionModal({
   const removeGoalTarget = useCallback(
     (goalId: string, targetIndex: number, existingTargets: string[]) => {
       const nextTargets = existingTargets.filter((_, index) => index !== targetIndex);
-      updateGoalTargets(goalId, nextTargets.length > 0 ? nextTargets : ['']);
+      const targetTrialsPath = `session_note_goal_measurements.${goalId}.data.target_trials` as const;
+      const currentTargetTrials = getValues(targetTrialsPath);
+      const nextTargetTrials = Array.isArray(currentTargetTrials)
+        ? currentTargetTrials.filter((_, index) => index !== targetIndex)
+        : undefined;
+      updateGoalTargets(goalId, nextTargets.length > 0 ? nextTargets : [''], nextTargetTrials);
     },
-    [updateGoalTargets],
+    [getValues, updateGoalTargets],
   );
 
   const addAdhocSessionTarget = useCallback(
@@ -2737,7 +2742,7 @@ export function SessionModal({
                                             aria-label={targetIndex === 0 ? 'Target' : `Target ${targetIndex + 1}`}
                                             {...indexedTargetRegistration}
                                             rows={2}
-                                            defaultValue={targetValue}
+                                            value={targetValue}
                                             className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                                             placeholder={selectedGoal?.target_criteria?.trim() || 'Record the target for this session...'}
                                           />

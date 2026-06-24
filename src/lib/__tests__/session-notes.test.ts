@@ -117,6 +117,15 @@ describe('fetchClientSessionNotes', () => {
           note: 'Legacy payload still loads',
           targets: null,
           target: null,
+          target_trials: [
+            {
+              target: null,
+              metric_value: 4,
+              incorrect_trials: null,
+              opportunities: 5,
+              trial_prompt_note: null,
+            },
+          ],
           trial_prompt_note: null,
         },
       },

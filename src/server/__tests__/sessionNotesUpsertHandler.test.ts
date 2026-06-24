@@ -151,6 +151,15 @@ describe("sessionNotesUpsertHandler", () => {
               note: "measured",
               targets: ["Match peer greeting in 4/5 trials"],
               target: "Match peer greeting in 4/5 trials",
+              target_trials: [
+                {
+                  target: "Match peer greeting in 4/5 trials",
+                  metric_value: 4,
+                  incorrect_trials: null,
+                  opportunities: 5,
+                  trial_prompt_note: null,
+                },
+              ],
               trial_prompt_note: null,
             },
           },

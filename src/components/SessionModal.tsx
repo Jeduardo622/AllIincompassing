@@ -1273,8 +1273,8 @@ export function SessionModal({
   }, [sessionCaptureBxGoalIds, sessionCaptureSkillGoalIds, sessionCaptureTab]);
 
   const bumpTrialCount = useCallback(
-    (goalId: string, field: 'metric_value' | 'incorrect_trials', delta: number) => {
-      const path = `session_note_goal_measurements.${goalId}.data.${field}` as const;
+    (goalId: string, targetIndex: number, field: 'metric_value' | 'incorrect_trials', delta: number) => {
+      const path = `session_note_goal_measurements.${goalId}.data.target_trials.${targetIndex}.${field}` as const;
       const raw = getValues(path);
       const cur =
         typeof raw === 'number' && Number.isFinite(raw)
@@ -1292,6 +1292,16 @@ export function SessionModal({
     (goalId: string, nextTargets: string[]) => {
       const targetsPath = `session_note_goal_measurements.${goalId}.data.targets` as const;
       const targetPath = `session_note_goal_measurements.${goalId}.data.target` as const;
+      const targetTrialsPath = `session_note_goal_measurements.${goalId}.data.target_trials` as const;
+      const currentTargetTrials = getValues(targetTrialsPath);
+      const nextTargetTrials = Array.isArray(currentTargetTrials)
+        ? nextTargets.map((target, index) => ({
+          ...(typeof currentTargetTrials[index] === 'object' && currentTargetTrials[index] !== null
+            ? currentTargetTrials[index]
+            : {}),
+          target,
+        }))
+        : nextTargets.map((target) => ({ target }));
       setValue(targetsPath, nextTargets, { shouldDirty: true, shouldTouch: true });
       setValue(
         targetPath,
@@ -1300,8 +1310,9 @@ export function SessionModal({
           .find((target) => target.length > 0) ?? '',
         { shouldDirty: true, shouldTouch: true },
       );
+      setValue(targetTrialsPath, nextTargetTrials, { shouldDirty: true, shouldTouch: true });
     },
-    [setValue],
+    [getValues, setValue],
   );
 
   const addGoalTarget = useCallback(
@@ -2492,12 +2503,6 @@ export function SessionModal({
                           );
                           const minTrials = getTherapistMinTrialsTarget(selectedGoal);
                           const fieldKey = `session_note_goal_notes.${selectedGoalId}` as const;
-                          const metricValueFieldKey =
-                            `session_note_goal_measurements.${selectedGoalId}.data.metric_value` as const;
-                          const incorrectTrialsFieldKey =
-                            `session_note_goal_measurements.${selectedGoalId}.data.incorrect_trials` as const;
-                          const trialPromptNoteFieldKey =
-                            `session_note_goal_measurements.${selectedGoalId}.data.trial_prompt_note` as const;
                           const metricLabelFieldKey =
                             `session_note_goal_measurements.${selectedGoalId}.data.metric_label` as const;
                           const metricUnitFieldKey =
@@ -2514,9 +2519,10 @@ export function SessionModal({
                             `session_note_goal_measurements.${selectedGoalId}.data.targets` as const;
                           const targetFieldKey =
                             `session_note_goal_measurements.${selectedGoalId}.data.target` as const;
-                          const correctWatch = watch(metricValueFieldKey);
-                          const incorrectWatch = watch(incorrectTrialsFieldKey);
+                          const targetTrialsFieldBaseKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.target_trials` as const;
                           const watchedTargets = watch(targetsFieldBaseKey) as unknown;
+                          const watchedTargetTrials = watch(targetTrialsFieldBaseKey) as unknown;
                           const sessionTargets = (() => {
                             if (Array.isArray(watchedTargets)) {
                               const normalizedWatchedTargets = watchedTargets
@@ -2528,14 +2534,36 @@ export function SessionModal({
                             const normalizedExistingTargets = getGoalMeasurementTargets(existingMeasurementEntry?.data);
                             return normalizedExistingTargets.length > 0 ? normalizedExistingTargets : [''];
                           })();
-                          const correctDisplay =
-                            typeof correctWatch === 'number' && Number.isFinite(correctWatch)
-                              ? correctWatch
-                              : Number(correctWatch) || 0;
-                          const incorrectDisplay =
-                            typeof incorrectWatch === 'number' && Number.isFinite(incorrectWatch)
-                              ? incorrectWatch
-                              : Number(incorrectWatch) || 0;
+                          const targetTrialRows = Array.isArray(watchedTargetTrials)
+                            ? watchedTargetTrials
+                            : existingMeasurementEntry?.data.target_trials ?? [];
+                          const getTargetTrialValue = (
+                            targetIndex: number,
+                            field: 'metric_value' | 'incorrect_trials' | 'opportunities',
+                          ) => {
+                            const trialRow = targetTrialRows[targetIndex];
+                            if (!trialRow || typeof trialRow !== 'object') {
+                              return 0;
+                            }
+                            const raw = (trialRow as Record<string, unknown>)[field];
+                            return typeof raw === 'number' && Number.isFinite(raw) ? raw : Number(raw) || 0;
+                          };
+                          const getTargetTrialNote = (targetIndex: number) => {
+                            const trialRow = targetTrialRows[targetIndex];
+                            if (!trialRow || typeof trialRow !== 'object') {
+                              return '';
+                            }
+                            const raw = (trialRow as Record<string, unknown>).trial_prompt_note;
+                            return typeof raw === 'string' ? raw : '';
+                          };
+                          const correctDisplay = sessionTargets.reduce(
+                            (sum, _target, targetIndex) => sum + getTargetTrialValue(targetIndex, 'metric_value'),
+                            0,
+                          );
+                          const incorrectDisplay = sessionTargets.reduce(
+                            (sum, _target, targetIndex) => sum + getTargetTrialValue(targetIndex, 'incorrect_trials'),
+                            0,
+                          );
                           const mobileGoalSummaryLabel = isAdhocSessionTargetId(selectedGoalId)
                             ? (storedTitle.trim() ? storedTitle : 'Ad-hoc target')
                             : (selectedGoal?.title ?? selectedGoalId);
@@ -2670,10 +2698,27 @@ export function SessionModal({
                                     Add target
                                   </button>
                                 </div>
+                                {minTrials != null && (
+                                  <p className="mt-1 text-[11px] font-medium text-indigo-800 dark:text-indigo-100">
+                                    Min trials per target (therapist target): {minTrials}
+                                  </p>
+                                )}
                                 <div className="mt-1 space-y-2">
                                   {sessionTargets.map((targetValue, targetIndex) => {
                                     const indexedTargetFieldKey =
                                       `${targetsFieldBaseKey}.${targetIndex}` as const;
+                                    const targetTrialMetricValueFieldKey =
+                                      `${targetTrialsFieldBaseKey}.${targetIndex}.metric_value` as const;
+                                    const targetTrialIncorrectTrialsFieldKey =
+                                      `${targetTrialsFieldBaseKey}.${targetIndex}.incorrect_trials` as const;
+                                    const targetTrialOpportunitiesFieldKey =
+                                      `${targetTrialsFieldBaseKey}.${targetIndex}.opportunities` as const;
+                                    const targetTrialPromptNoteFieldKey =
+                                      `${targetTrialsFieldBaseKey}.${targetIndex}.trial_prompt_note` as const;
+                                    const targetTrialTargetFieldKey =
+                                      `${targetTrialsFieldBaseKey}.${targetIndex}.target` as const;
+                                    const targetCorrectDisplay = getTargetTrialValue(targetIndex, 'metric_value');
+                                    const targetIncorrectDisplay = getTargetTrialValue(targetIndex, 'incorrect_trials');
                                     const indexedTargetRegistration = register(indexedTargetFieldKey, {
                                       onChange: (event) => {
                                         const nextTargets = sessionTargets.slice();
@@ -2684,27 +2729,158 @@ export function SessionModal({
                                     return (
                                       <div
                                         key={`${selectedGoalId}-target-${targetIndex}`}
-                                        className="flex items-start gap-2"
+                                        className="rounded-md border border-indigo-100 bg-indigo-50/50 p-2 dark:border-indigo-900/40 dark:bg-indigo-900/10"
                                       >
-                                        <textarea
-                                          id={`goal-target-${selectedGoalId}-${targetIndex}`}
-                                          aria-label={targetIndex === 0 ? 'Target' : `Target ${targetIndex + 1}`}
-                                          {...indexedTargetRegistration}
-                                          rows={2}
-                                          defaultValue={targetValue}
-                                          className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                                          placeholder={selectedGoal?.target_criteria?.trim() || 'Record the target for this session...'}
+                                        <div className="flex items-start gap-2">
+                                          <textarea
+                                            id={`goal-target-${selectedGoalId}-${targetIndex}`}
+                                            aria-label={targetIndex === 0 ? 'Target' : `Target ${targetIndex + 1}`}
+                                            {...indexedTargetRegistration}
+                                            rows={2}
+                                            defaultValue={targetValue}
+                                            className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                            placeholder={selectedGoal?.target_criteria?.trim() || 'Record the target for this session...'}
+                                          />
+                                          {sessionTargets.length > 1 ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => removeGoalTarget(selectedGoalId, targetIndex, sessionTargets)}
+                                              aria-label={`Remove target ${targetIndex + 1}`}
+                                              className="mt-1 shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-rose-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-rose-300"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </button>
+                                          ) : null}
+                                        </div>
+                                        <input
+                                          type="hidden"
+                                          {...register(targetTrialTargetFieldKey)}
+                                          value={targetValue}
+                                          readOnly
                                         />
-                                        {sessionTargets.length > 1 ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => removeGoalTarget(selectedGoalId, targetIndex, sessionTargets)}
-                                            aria-label={`Remove target ${targetIndex + 1}`}
-                                            className="mt-1 shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-rose-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-rose-300"
+                                        <div className="mt-3">
+                                          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
+                                            Trials for target {targetIndex + 1}
+                                          </p>
+                                          <p className="mt-1 text-[11px] text-indigo-700/90 dark:text-indigo-200/80">
+                                            + correct or achieved · − incorrect or no response.
+                                          </p>
+                                          <div className="mt-3 flex flex-wrap items-center gap-3">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">+</span>
+                                              <button
+                                                type="button"
+                                                aria-label={`Increase correct trials for target ${targetIndex + 1}`}
+                                                className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-lg font-bold text-white shadow-sm hover:bg-emerald-700"
+                                                onClick={() => bumpTrialCount(selectedGoalId, targetIndex, 'metric_value', 1)}
+                                              >
+                                                +
+                                              </button>
+                                              <span className="min-w-[2rem] rounded-md border border-gray-200 bg-white px-2 py-1 text-center text-sm dark:border-gray-600 dark:bg-dark">
+                                                {targetCorrectDisplay}
+                                              </span>
+                                              <button
+                                                type="button"
+                                                aria-label={`Decrease correct trials for target ${targetIndex + 1}`}
+                                                className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-700 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-400 dark:text-emerald-200"
+                                                onClick={() => bumpTrialCount(selectedGoalId, targetIndex, 'metric_value', -1)}
+                                              >
+                                                −
+                                              </button>
+                                              <button
+                                                type="button"
+                                                aria-label={`Add 5 correct trials for target ${targetIndex + 1}`}
+                                                className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
+                                                onClick={() => bumpTrialCount(selectedGoalId, targetIndex, 'metric_value', 5)}
+                                              >
+                                                +5
+                                              </button>
+                                              <button
+                                                type="button"
+                                                aria-label={`Subtract 5 correct trials for target ${targetIndex + 1}`}
+                                                disabled={targetCorrectDisplay < 5}
+                                                className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
+                                                onClick={() => bumpTrialCount(selectedGoalId, targetIndex, 'metric_value', -5)}
+                                              >
+                                                −5
+                                              </button>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">−</span>
+                                              <button
+                                                type="button"
+                                                aria-label={`Increase incorrect or no-response trials for target ${targetIndex + 1}`}
+                                                className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 text-lg font-bold text-white shadow-sm hover:bg-rose-700"
+                                                onClick={() => bumpTrialCount(selectedGoalId, targetIndex, 'incorrect_trials', 1)}
+                                              >
+                                                +
+                                              </button>
+                                              <span className="min-w-[2rem] rounded-md border border-gray-200 bg-white px-2 py-1 text-center text-sm dark:border-gray-600 dark:bg-dark">
+                                                {targetIncorrectDisplay}
+                                              </span>
+                                              <button
+                                                type="button"
+                                                aria-label={`Decrease incorrect trials for target ${targetIndex + 1}`}
+                                                className="flex h-10 w-10 items-center justify-center rounded-full border border-rose-700 text-rose-700 hover:bg-rose-50 dark:border-rose-400 dark:text-rose-200"
+                                                onClick={() => bumpTrialCount(selectedGoalId, targetIndex, 'incorrect_trials', -1)}
+                                              >
+                                                −
+                                              </button>
+                                              <button
+                                                type="button"
+                                                aria-label={`Add 5 incorrect or no-response trials for target ${targetIndex + 1}`}
+                                                className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
+                                                onClick={() => bumpTrialCount(selectedGoalId, targetIndex, 'incorrect_trials', 5)}
+                                              >
+                                                +5
+                                              </button>
+                                              <button
+                                                type="button"
+                                                aria-label={`Subtract 5 incorrect trials for target ${targetIndex + 1}`}
+                                                disabled={targetIncorrectDisplay < 5}
+                                                className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
+                                                onClick={() => bumpTrialCount(selectedGoalId, targetIndex, 'incorrect_trials', -5)}
+                                              >
+                                                −5
+                                              </button>
+                                            </div>
+                                          </div>
+                                          <input
+                                            type="number"
+                                            className="sr-only"
+                                            tabIndex={-1}
+                                            aria-hidden
+                                            {...register(targetTrialMetricValueFieldKey, { setValueAs: toFormNumber })}
+                                            defaultValue={targetCorrectDisplay || ''}
+                                          />
+                                          <input
+                                            type="number"
+                                            className="sr-only"
+                                            tabIndex={-1}
+                                            aria-hidden
+                                            {...register(targetTrialIncorrectTrialsFieldKey, { setValueAs: toFormNumber })}
+                                            defaultValue={targetIncorrectDisplay || ''}
+                                          />
+                                          <input
+                                            type="hidden"
+                                            {...register(targetTrialOpportunitiesFieldKey, { setValueAs: toFormNumber })}
+                                            defaultValue={getTargetTrialValue(targetIndex, 'opportunities') || ''}
+                                          />
+                                          <label
+                                            htmlFor={`trial-prompt-note-${selectedGoalId}-${targetIndex}`}
+                                            className="mt-3 block text-xs font-medium text-gray-600 dark:text-gray-300"
                                           >
-                                            <Trash2 className="h-4 w-4" />
-                                          </button>
-                                        ) : null}
+                                            Prompts &amp; reactions for target {targetIndex + 1}
+                                          </label>
+                                          <textarea
+                                            id={`trial-prompt-note-${selectedGoalId}-${targetIndex}`}
+                                            {...register(targetTrialPromptNoteFieldKey)}
+                                            rows={2}
+                                            defaultValue={getTargetTrialNote(targetIndex)}
+                                            className="mt-1 w-full rounded-md border-gray-300 bg-white text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                            placeholder="Record prompts used and client reactions for this target..."
+                                          />
+                                        </div>
                                       </div>
                                     );
                                   })}
@@ -2750,129 +2926,6 @@ export function SessionModal({
                                 {...register(noteFieldKey)}
                                 defaultValue={existingMeasurementEntry?.data.note ?? ''}
                               />
-                              <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/70 p-3 dark:border-indigo-900/40 dark:bg-indigo-900/10">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
-                                  Trials
-                                </p>
-                                <p className="mt-1 text-[11px] text-indigo-700/90 dark:text-indigo-200/80">
-                                  + correct or achieved · − incorrect or no response. Admin or BCBA can complete
-                                  additional measurement fields in Client Details.
-                                </p>
-                                {minTrials != null && (
-                                  <p className="mt-2 text-[11px] font-medium text-indigo-800 dark:text-indigo-100">
-                                    Min trials (therapist target): {minTrials}
-                                  </p>
-                                )}
-                                <div className="mt-3 flex flex-wrap items-center gap-3">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">+</span>
-                                    <button
-                                      type="button"
-                                      aria-label="Increase correct trials"
-                                      className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-lg font-bold text-white shadow-sm hover:bg-emerald-700"
-                                      onClick={() => bumpTrialCount(selectedGoalId, 'metric_value', 1)}
-                                    >
-                                      +
-                                    </button>
-                                    <span className="min-w-[2rem] rounded-md border border-gray-200 bg-white px-2 py-1 text-center text-sm dark:border-gray-600 dark:bg-dark">
-                                      {correctDisplay}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      aria-label="Decrease correct trials"
-                                      className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-700 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-400 dark:text-emerald-200"
-                                      onClick={() => bumpTrialCount(selectedGoalId, 'metric_value', -1)}
-                                    >
-                                      −
-                                    </button>
-                                    <button
-                                      type="button"
-                                      aria-label="Add 5 correct trials"
-                                      className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
-                                      onClick={() => bumpTrialCount(selectedGoalId, 'metric_value', 5)}
-                                    >
-                                      +5
-                                    </button>
-                                    <button
-                                      type="button"
-                                      aria-label="Subtract 5 correct trials"
-                                      disabled={correctDisplay < 5}
-                                      className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
-                                      onClick={() => bumpTrialCount(selectedGoalId, 'metric_value', -5)}
-                                    >
-                                      −5
-                                    </button>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">−</span>
-                                    <button
-                                      type="button"
-                                      aria-label="Increase incorrect or no-response trials"
-                                      className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 text-lg font-bold text-white shadow-sm hover:bg-rose-700"
-                                      onClick={() => bumpTrialCount(selectedGoalId, 'incorrect_trials', 1)}
-                                    >
-                                      +
-                                    </button>
-                                    <span className="min-w-[2rem] rounded-md border border-gray-200 bg-white px-2 py-1 text-center text-sm dark:border-gray-600 dark:bg-dark">
-                                      {incorrectDisplay}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      aria-label="Decrease incorrect trials"
-                                      className="flex h-10 w-10 items-center justify-center rounded-full border border-rose-700 text-rose-700 hover:bg-rose-50 dark:border-rose-400 dark:text-rose-200"
-                                      onClick={() => bumpTrialCount(selectedGoalId, 'incorrect_trials', -1)}
-                                    >
-                                      −
-                                    </button>
-                                    <button
-                                      type="button"
-                                      aria-label="Add 5 incorrect or no-response trials"
-                                      className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
-                                      onClick={() => bumpTrialCount(selectedGoalId, 'incorrect_trials', 5)}
-                                    >
-                                      +5
-                                    </button>
-                                    <button
-                                      type="button"
-                                      aria-label="Subtract 5 incorrect trials"
-                                      disabled={incorrectDisplay < 5}
-                                      className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
-                                      onClick={() => bumpTrialCount(selectedGoalId, 'incorrect_trials', -5)}
-                                    >
-                                      −5
-                                    </button>
-                                  </div>
-                                </div>
-                                <input
-                                  type="number"
-                                  className="sr-only"
-                                  tabIndex={-1}
-                                  aria-hidden
-                                  {...register(metricValueFieldKey, { setValueAs: toFormNumber })}
-                                  defaultValue={toFormNumber(existingMeasurementEntry?.data.metric_value) ?? ''}
-                                />
-                                <input
-                                  type="number"
-                                  className="sr-only"
-                                  tabIndex={-1}
-                                  aria-hidden
-                                  {...register(incorrectTrialsFieldKey, { setValueAs: toFormNumber })}
-                                  defaultValue={toFormNumber(existingMeasurementEntry?.data.incorrect_trials) ?? ''}
-                                />
-                                <label
-                                  htmlFor={`trial-prompt-note-${selectedGoalId}`}
-                                  className="mt-3 block text-xs font-medium text-gray-600 dark:text-gray-300"
-                                >
-                                  Prompts &amp; reactions (verbal / physical)
-                                </label>
-                                <textarea
-                                  id={`trial-prompt-note-${selectedGoalId}`}
-                                  {...register(trialPromptNoteFieldKey)}
-                                  rows={2}
-                                  className="mt-1 w-full rounded-md border-gray-300 bg-white text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                                  placeholder="Record prompts used and client reactions for these trials..."
-                                />
-                              </div>
                             </details>
                           );
                         })}

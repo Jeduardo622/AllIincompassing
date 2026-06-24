@@ -448,6 +448,15 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
               note: 'Needed one reminder at the start',
               targets: ['Match peer greeting in 4/5 trials', 'Wave to peer independently'],
               target: 'Match peer greeting in 4/5 trials',
+              target_trials: [
+                {
+                  target: 'Match peer greeting in 4/5 trials',
+                  metric_value: 4,
+                  incorrect_trials: null,
+                  opportunities: 5,
+                  trial_prompt_note: null,
+                },
+              ],
               trial_prompt_note: null,
             },
           },

@@ -337,7 +337,17 @@ export interface SessionGoalMeasurementData {
   note?: string | null;
   targets?: string[] | null;
   target?: string | null;
+  target_trials?: SessionTargetTrialData[] | null;
   /** Verbal / physical prompts and reactions for trial data (therapist capture). */
+  trial_prompt_note?: string | null;
+}
+
+export interface SessionTargetTrialData {
+  target?: string | null;
+  metric_value?: number | null;
+  incorrect_trials?: number | null;
+  opportunities?: number | null;
+  /** Verbal / physical prompts and reactions for this target's trial data. */
   trial_prompt_note?: string | null;
 }
 

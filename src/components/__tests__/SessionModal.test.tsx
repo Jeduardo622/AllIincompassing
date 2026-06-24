@@ -1603,7 +1603,7 @@ describe('SessionModal', () => {
     expect(screen.getByRole('tab', { name: /^BX$/i })).toBeInTheDocument();
   });
 
-  it('submits normalized per-goal measurements with session capture', async () => {
+  it('submits normalized per-target trials with session capture', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const buildChain = (rows: unknown[]) => {
       const chain: SupabaseQueryChain = {
@@ -1658,7 +1658,7 @@ describe('SessionModal', () => {
       />
     );
 
-    await screen.findByRole('button', { name: /Increase correct trials/i });
+    await screen.findByRole('button', { name: /Increase correct trials for target 1/i });
     fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
       target: { value: 'Observed steady progress' },
     });
@@ -1670,10 +1670,15 @@ describe('SessionModal', () => {
       target: { value: 'Wave to peer independently' },
     });
     for (let i = 0; i < 4; i += 1) {
-      await userEvent.click(screen.getByRole('button', { name: /Increase correct trials/i }));
+      await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
     }
-    fireEvent.change(screen.getByLabelText(/Prompts & reactions/i), {
+    await userEvent.click(screen.getByRole('button', { name: /Increase incorrect or no-response trials for target 2/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Add 5 correct trials for target 2/i }));
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 1/i), {
       target: { value: 'Needed one reminder at the start' },
+    });
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 2/i), {
+      target: { value: 'Independent after model' },
     });
 
     await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
@@ -1689,16 +1694,33 @@ describe('SessionModal', () => {
               measurement_type: 'frequency',
               metric_label: 'Count',
               metric_unit: 'responses',
-              metric_value: 4,
+              metric_value: 9,
+              incorrect_trials: 1,
               targets: ['Match peer greeting in 4/5 trials', 'Wave to peer independently'],
               target: 'Match peer greeting in 4/5 trials',
-              trial_prompt_note: 'Needed one reminder at the start',
+              target_trials: [
+                {
+                  target: 'Match peer greeting in 4/5 trials',
+                  metric_value: 4,
+                  incorrect_trials: null,
+                  opportunities: null,
+                  trial_prompt_note: 'Needed one reminder at the start',
+                },
+                {
+                  target: 'Wave to peer independently',
+                  metric_value: 5,
+                  incorrect_trials: 1,
+                  opportunities: null,
+                  trial_prompt_note: 'Independent after model',
+                },
+              ],
+              trial_prompt_note: 'Needed one reminder at the start; Independent after model',
             }),
           },
         },
       }));
     });
-  }, 10000);
+  }, 15000);
 
   it('submits ad-hoc skill rows when Save skills is clicked during a live session', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);

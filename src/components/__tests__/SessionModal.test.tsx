@@ -1603,7 +1603,7 @@ describe('SessionModal', () => {
     expect(screen.getByRole('tab', { name: /^BX$/i })).toBeInTheDocument();
   });
 
-  it('submits normalized per-goal measurements with session capture', async () => {
+  it('submits normalized per-target trials with session capture', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const buildChain = (rows: unknown[]) => {
       const chain: SupabaseQueryChain = {
@@ -1658,7 +1658,7 @@ describe('SessionModal', () => {
       />
     );
 
-    await screen.findByRole('button', { name: /Increase correct trials/i });
+    await screen.findByRole('button', { name: /Increase correct trials for target 1/i });
     fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
       target: { value: 'Observed steady progress' },
     });
@@ -1670,10 +1670,15 @@ describe('SessionModal', () => {
       target: { value: 'Wave to peer independently' },
     });
     for (let i = 0; i < 4; i += 1) {
-      await userEvent.click(screen.getByRole('button', { name: /Increase correct trials/i }));
+      await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
     }
-    fireEvent.change(screen.getByLabelText(/Prompts & reactions/i), {
+    await userEvent.click(screen.getByRole('button', { name: /Increase incorrect or no-response trials for target 2/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Add 5 correct trials for target 2/i }));
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 1/i), {
       target: { value: 'Needed one reminder at the start' },
+    });
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 2/i), {
+      target: { value: 'Independent after model' },
     });
 
     await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
@@ -1689,16 +1694,137 @@ describe('SessionModal', () => {
               measurement_type: 'frequency',
               metric_label: 'Count',
               metric_unit: 'responses',
-              metric_value: 4,
+              metric_value: 9,
+              incorrect_trials: 1,
               targets: ['Match peer greeting in 4/5 trials', 'Wave to peer independently'],
               target: 'Match peer greeting in 4/5 trials',
-              trial_prompt_note: 'Needed one reminder at the start',
+              target_trials: [
+                {
+                  target: 'Match peer greeting in 4/5 trials',
+                  metric_value: 4,
+                  incorrect_trials: null,
+                  opportunities: null,
+                  trial_prompt_note: 'Needed one reminder at the start',
+                },
+                {
+                  target: 'Wave to peer independently',
+                  metric_value: 5,
+                  incorrect_trials: 1,
+                  opportunities: null,
+                  trial_prompt_note: 'Independent after model',
+                },
+              ],
+              trial_prompt_note: 'Needed one reminder at the start; Independent after model',
             }),
           },
         },
       }));
     });
-  }, 10000);
+  }, 15000);
+
+  it('preserves remaining target trials when deleting an earlier target', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([
+          {
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-target-removal',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await screen.findByRole('button', { name: /Increase correct trials for target 1/i });
+    fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
+      target: { value: 'Target B remains in treatment' },
+    });
+    fireEvent.change(screen.getByLabelText(/^Target$/i), {
+      target: { value: 'Target A' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /add target/i }));
+    fireEvent.change(screen.getByLabelText(/^Target 2$/i), {
+      target: { value: 'Target B' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Add 5 correct trials for target 2/i }));
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 1/i), {
+      target: { value: 'Prompt note A' },
+    });
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 2/i), {
+      target: { value: 'Prompt note B' },
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Remove target 1/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_goal_measurements: {
+          'goal-1': {
+            version: 1,
+            data: expect.objectContaining({
+              metric_value: 5,
+              targets: ['Target B'],
+              target: 'Target B',
+              target_trials: [
+                {
+                  target: 'Target B',
+                  metric_value: 5,
+                  incorrect_trials: null,
+                  opportunities: null,
+                  trial_prompt_note: 'Prompt note B',
+                },
+              ],
+              trial_prompt_note: 'Prompt note B',
+            }),
+          },
+        },
+      }));
+    });
+  }, 15000);
 
   it('submits ad-hoc skill rows when Save skills is clicked during a live session', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);

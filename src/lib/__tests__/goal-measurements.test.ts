@@ -41,7 +41,68 @@ describe('goal-measurements helpers', () => {
         note: 'Needed one reminder',
         targets: ['Match peer greeting in 4/5 trials'],
         target: 'Match peer greeting in 4/5 trials',
+        target_trials: [
+          {
+            target: 'Match peer greeting in 4/5 trials',
+            metric_value: 4,
+            incorrect_trials: null,
+            opportunities: 5,
+            trial_prompt_note: null,
+          },
+        ],
         trial_prompt_note: null,
+      },
+    });
+  });
+
+  it('normalizes target-scoped trial rows and derives legacy summary fields', () => {
+    expect(
+      normalizeGoalMeasurementEntry({
+        targets: ['Tie shoes', 'Ask for help'],
+        target_trials: [
+          {
+            metric_value: '3',
+            incorrect_trials: '1',
+            trialPromptNote: 'Verbal prompt',
+          },
+          {
+            metric_value: 2,
+            incorrectTrials: 0,
+            opportunities: '4',
+            trial_prompt_note: 'Independent',
+          },
+        ],
+      }),
+    ).toEqual({
+      version: 1,
+      data: {
+        measurement_type: null,
+        metric_label: 'Count',
+        metric_unit: 'responses',
+        metric_value: 5,
+        incorrect_trials: 1,
+        opportunities: 4,
+        prompt_level: null,
+        note: null,
+        targets: ['Tie shoes', 'Ask for help'],
+        target: 'Tie shoes',
+        target_trials: [
+          {
+            target: 'Tie shoes',
+            metric_value: 3,
+            incorrect_trials: 1,
+            opportunities: null,
+            trial_prompt_note: 'Verbal prompt',
+          },
+          {
+            target: 'Ask for help',
+            metric_value: 2,
+            incorrect_trials: 0,
+            opportunities: 4,
+            trial_prompt_note: 'Independent',
+          },
+        ],
+        trial_prompt_note: 'Verbal prompt; Independent',
       },
     });
   });
@@ -65,6 +126,15 @@ describe('goal-measurements helpers', () => {
         note: null,
         targets: null,
         target: null,
+        target_trials: [
+          {
+            target: null,
+            metric_value: 12,
+            incorrect_trials: null,
+            opportunities: null,
+            trial_prompt_note: null,
+          },
+        ],
         trial_prompt_note: null,
       },
     });
@@ -86,6 +156,15 @@ describe('goal-measurements helpers', () => {
       'Second',
     ]);
     expect(getGoalMeasurementTargets({ target: ' Legacy only ' } as any)).toEqual(['Legacy only']);
+  });
+
+  it('drops whitespace-only targets and empty target trial rows', () => {
+    expect(
+      normalizeGoalMeasurementEntry({
+        targets: ['  '],
+        target_trials: [{ target: ' ', metric_value: '', incorrect_trials: null, trial_prompt_note: '  ' }],
+      }),
+    ).toBeNull();
   });
 
   it('merges unique goal ids while trimming blanks', () => {

@@ -1,4 +1,4 @@
-import type { Goal, SessionGoalMeasurementData, SessionGoalMeasurementEntry } from '../types';
+import type { Goal, SessionGoalMeasurementData, SessionGoalMeasurementEntry, SessionTargetTrialData } from '../types';
 
 export const GOAL_MEASUREMENT_VERSION = 1 as const;
 
@@ -53,6 +53,78 @@ const normalizeEditableStringList = (value: unknown): string[] => {
 
 const getPrimaryNonEmptyTarget = (targets: readonly string[]): string | null =>
   targets.map((target) => toOptionalString(target)).find((target): target is string => Boolean(target)) ?? null;
+
+const hasTargetTrialData = (trial: SessionTargetTrialData | null | undefined): trial is SessionTargetTrialData =>
+  Boolean(
+    trial &&
+      ((trial.metric_value !== null && trial.metric_value !== undefined) ||
+        (trial.incorrect_trials !== null && trial.incorrect_trials !== undefined) ||
+        (trial.opportunities !== null && trial.opportunities !== undefined) ||
+        (trial.trial_prompt_note?.trim().length ?? 0) > 0 ||
+        (trial.target?.trim().length ?? 0) > 0),
+  );
+
+const normalizeTargetTrials = (
+  value: unknown,
+  targets: readonly string[],
+): SessionTargetTrialData[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry, index) => {
+      const source = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+      const trial: SessionTargetTrialData = {
+        target: toOptionalString(source.target) ?? toOptionalString(targets[index]) ?? null,
+        metric_value: toOptionalNumber(source.metric_value ?? source.count ?? source.value),
+        incorrect_trials: toOptionalNumber(source.incorrect_trials ?? source.incorrectTrials),
+        opportunities: toOptionalNumber(source.opportunities ?? source.trials),
+        trial_prompt_note: toOptionalString(source.trial_prompt_note ?? source.trialPromptNote),
+      };
+      return hasTargetTrialData(trial) ? trial : null;
+    })
+    .filter((entry): entry is SessionTargetTrialData => Boolean(entry));
+};
+
+const buildLegacyTargetTrial = (
+  sourceData: Record<string, unknown>,
+  targets: readonly string[],
+): SessionTargetTrialData | null => {
+  const trial: SessionTargetTrialData = {
+    target: getPrimaryNonEmptyTarget(targets),
+    metric_value: toOptionalNumber(sourceData.metric_value ?? sourceData.count ?? sourceData.value),
+    incorrect_trials: toOptionalNumber(sourceData.incorrect_trials ?? sourceData.incorrectTrials),
+    opportunities: toOptionalNumber(sourceData.opportunities ?? sourceData.trials),
+    trial_prompt_note: toOptionalString(sourceData.trial_prompt_note ?? sourceData.trialPromptNote),
+  };
+  return hasTargetTrialData(trial) ? trial : null;
+};
+
+const sumTargetTrialNumber = (
+  trials: readonly SessionTargetTrialData[],
+  field: 'metric_value' | 'incorrect_trials' | 'opportunities',
+): number | null => {
+  let sum = 0;
+  let hasValue = false;
+
+  for (const trial of trials) {
+    const value = trial[field];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      sum += value;
+      hasValue = true;
+    }
+  }
+
+  return hasValue ? sum : null;
+};
+
+const summarizeTargetTrialPromptNotes = (trials: readonly SessionTargetTrialData[]): string | null => {
+  const notes = trials
+    .map((trial) => trial.trial_prompt_note?.trim() ?? '')
+    .filter((note) => note.length > 0);
+  return notes.length > 0 ? notes.join('; ') : null;
+};
 
 export const getGoalMeasurementTargets = (
   data: SessionGoalMeasurementData | null | undefined,
@@ -141,6 +213,7 @@ export const hasMeaningfulGoalMeasurementEntry = (
     (data.prompt_level?.trim().length ?? 0) > 0 ||
     (data.note?.trim().length ?? 0) > 0 ||
     getGoalMeasurementTargets(data).length > 0 ||
+    (data.target_trials ?? []).some(hasTargetTrialData) ||
     (data.trial_prompt_note?.trim().length ?? 0) > 0
   );
 };
@@ -174,19 +247,26 @@ export const normalizeGoalMeasurementEntry = (
     normalizedTargets.length > 0
       ? normalizedTargets
       : (fallbackLegacyTarget ? [fallbackLegacyTarget] : []);
+  const normalizedTargetTrials = normalizeTargetTrials(sourceData.target_trials, resolvedTargets);
+  const legacyTargetTrial = normalizedTargetTrials.length === 0
+    ? buildLegacyTargetTrial(sourceData, resolvedTargets)
+    : null;
+  const resolvedTargetTrials = normalizedTargetTrials.length > 0
+    ? normalizedTargetTrials
+    : (legacyTargetTrial ? [legacyTargetTrial] : []);
   const normalizedEntry: SessionGoalMeasurementEntry = {
     version: GOAL_MEASUREMENT_VERSION,
     data: {
       measurement_type: goal?.measurement_type ?? toOptionalString(sourceData.measurement_type),
       metric_label: toOptionalString(sourceData.metric_label) ?? fieldMeta.primaryLabel,
       metric_unit: toOptionalString(sourceData.metric_unit) ?? fallbackMetricUnit,
-      metric_value: toOptionalNumber(
+      metric_value: sumTargetTrialNumber(resolvedTargetTrials, 'metric_value') ?? toOptionalNumber(
         sourceData.metric_value ?? sourceData.count ?? sourceData.value,
       ),
-      incorrect_trials: toOptionalNumber(
+      incorrect_trials: sumTargetTrialNumber(resolvedTargetTrials, 'incorrect_trials') ?? toOptionalNumber(
         sourceData.incorrect_trials ?? sourceData.incorrectTrials,
       ),
-      opportunities: toOptionalNumber(
+      opportunities: sumTargetTrialNumber(resolvedTargetTrials, 'opportunities') ?? toOptionalNumber(
         sourceData.opportunities ?? sourceData.trials,
       ),
       prompt_level: toOptionalString(
@@ -195,7 +275,8 @@ export const normalizeGoalMeasurementEntry = (
       note: toOptionalString(sourceData.note ?? sourceData.comment),
       targets: resolvedTargets.length > 0 ? resolvedTargets : null,
       target: resolvedTargets[0] ?? null,
-      trial_prompt_note: toOptionalString(
+      target_trials: resolvedTargetTrials.length > 0 ? resolvedTargetTrials : null,
+      trial_prompt_note: summarizeTargetTrialPromptNotes(resolvedTargetTrials) ?? toOptionalString(
         sourceData.trial_prompt_note ?? sourceData.trialPromptNote,
       ),
     },
@@ -218,6 +299,10 @@ export const buildGoalMeasurementEntry = (
     sourceData && typeof sourceData === 'object' && 'targets' in sourceData ? sourceData.targets : undefined,
   );
   const existingTargets = editableTargets.length > 0 ? editableTargets : getGoalMeasurementTargets(normalizedExisting?.data);
+  const existingTargetTrials =
+    sourceData && typeof sourceData === 'object' && 'target_trials' in sourceData
+      ? normalizeTargetTrials(sourceData.target_trials, existingTargets)
+      : normalizedExisting?.data.target_trials ?? [];
   const nextEntry: SessionGoalMeasurementEntry = {
     version: GOAL_MEASUREMENT_VERSION,
     data: {
@@ -231,7 +316,8 @@ export const buildGoalMeasurementEntry = (
       note: normalizedExisting?.data.note ?? null,
       targets: existingTargets.length > 0 ? existingTargets : null,
       target: getPrimaryNonEmptyTarget(existingTargets),
-      trial_prompt_note: normalizedExisting?.data.trial_prompt_note ?? null,
+      target_trials: existingTargetTrials.length > 0 ? existingTargetTrials : null,
+      trial_prompt_note: summarizeTargetTrialPromptNotes(existingTargetTrials) ?? normalizedExisting?.data.trial_prompt_note ?? null,
     },
   };
 
@@ -254,6 +340,38 @@ export const mergeGoalMeasurementEntry = (
   const resolvedTargets = nextTargets.length > 0
     ? nextTargets
     : (normalizedLegacyTarget ? [normalizedLegacyTarget] : []);
+  const existingTargetTrials = normalizeTargetTrials(existing?.data.target_trials, resolvedTargets);
+  const hasFlatTrialUpdates =
+    updates.metric_value !== undefined ||
+    updates.incorrect_trials !== undefined ||
+    updates.opportunities !== undefined ||
+    updates.trial_prompt_note !== undefined;
+  const nextTargetTrials = updates.target_trials !== undefined
+    ? normalizeTargetTrials(updates.target_trials, resolvedTargets)
+    : hasFlatTrialUpdates
+      ? normalizeTargetTrials(
+        [
+          {
+            ...(existingTargetTrials[0] ?? {}),
+            target: getPrimaryNonEmptyTarget(resolvedTargets),
+            metric_value: updates.metric_value !== undefined
+              ? updates.metric_value ?? null
+              : existingTargetTrials[0]?.metric_value ?? null,
+            incorrect_trials: updates.incorrect_trials !== undefined
+              ? updates.incorrect_trials ?? null
+              : existingTargetTrials[0]?.incorrect_trials ?? null,
+            opportunities: updates.opportunities !== undefined
+              ? updates.opportunities ?? null
+              : existingTargetTrials[0]?.opportunities ?? null,
+            trial_prompt_note: updates.trial_prompt_note !== undefined
+              ? updates.trial_prompt_note ?? null
+              : existingTargetTrials[0]?.trial_prompt_note ?? null,
+          },
+          ...existingTargetTrials.slice(1),
+        ],
+        resolvedTargets,
+      )
+      : existingTargetTrials;
   const nextEntry: SessionGoalMeasurementEntry = {
     version: GOAL_MEASUREMENT_VERSION,
     data: {
@@ -277,9 +395,10 @@ export const mergeGoalMeasurementEntry = (
         : existing?.data.note ?? null,
       targets: resolvedTargets.length > 0 ? resolvedTargets : null,
       target: getPrimaryNonEmptyTarget(resolvedTargets),
-      trial_prompt_note: updates.trial_prompt_note !== undefined
+      target_trials: nextTargetTrials.length > 0 ? nextTargetTrials : null,
+      trial_prompt_note: summarizeTargetTrialPromptNotes(nextTargetTrials) ?? (updates.trial_prompt_note !== undefined
         ? updates.trial_prompt_note ?? null
-        : existing?.data.trial_prompt_note ?? null,
+        : existing?.data.trial_prompt_note ?? null),
     },
   };
 

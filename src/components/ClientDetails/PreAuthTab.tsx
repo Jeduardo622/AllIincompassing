@@ -53,6 +53,7 @@ const ACCEPTED_FILE_TYPES = [
   'image/jpeg',
   'image/png'
 ] as const;
+const ACCEPTED_FILE_EXTENSIONS = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'] as const;
 
 type AuthorizationStatus = 'approved' | 'pending' | 'denied';
 
@@ -84,6 +85,21 @@ const AUTHORIZATION_STATUSES: AuthorizationStatus[] = ['approved', 'pending', 'd
 const NO_EMBEDDED_PDF_TEXT_MESSAGE = 'No embedded PDF text was found.';
 const GENERIC_PDF_PREFILL_ERROR_MESSAGE = 'PDF text extraction failed. Enter the authorization fields manually.';
 const createDocumentUploadKey = (sequence: number) => `upload-${sequence}`;
+
+const getFileExtension = (fileName: string) => {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  return extension && extension !== fileName.toLowerCase() ? extension : '';
+};
+
+const isAcceptedFile = (file: File) => {
+  const hasAcceptedType = ACCEPTED_FILE_TYPES.includes(file.type as typeof ACCEPTED_FILE_TYPES[number]);
+  if (hasAcceptedType) {
+    return true;
+  }
+
+  const extension = getFileExtension(file.name);
+  return ACCEPTED_FILE_EXTENSIONS.includes(extension as typeof ACCEPTED_FILE_EXTENSIONS[number]);
+};
 
 const createEmptyWizardData = (): PreAuthWizardData => ({
   insurance: '',
@@ -757,8 +773,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     const acceptedFiles: File[] = [];
     const acceptedEntries: Array<{ file: File; uploadKey: string }> = [];
     Array.from(fileList).forEach((file) => {
-      const isAcceptedType = ACCEPTED_FILE_TYPES.includes(file.type as typeof ACCEPTED_FILE_TYPES[number]);
-      if (!isAcceptedType) {
+      if (!isAcceptedFile(file)) {
         showError(`Unsupported file type: ${file.name}`);
         return;
       }

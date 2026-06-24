@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   ClipboardCheck, Calendar, AlertCircle, 
   FileText, Plus, ArrowRight,
-  CheckCircle
+  CheckCircle, Download
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showError, showSuccess } from '../../lib/toast';
@@ -35,6 +35,7 @@ interface Authorization {
   member_id?: string | null;
   insurance_provider_id?: string | null;
   insurance_provider?: { id: string; name: string } | null;
+  documents?: AuthorizationDocument[] | null;
   services: {
     id: string;
     service_code: string;
@@ -43,6 +44,13 @@ interface Authorization {
     approved_units: number;
     unit_type: string;
   }[];
+}
+
+interface AuthorizationDocument {
+  name?: string | null;
+  path?: string | null;
+  size?: number | null;
+  type?: string | null;
 }
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -128,8 +136,42 @@ const getDecisionStatus = (status: AuthorizationStatus) => {
   return status === 'denied' ? 'denied' : status === 'approved' ? 'approved' : 'pending';
 };
 
+const formatDocumentSize = (size?: number | null) => {
+  if (!Number.isFinite(size) || !size || size <= 0) {
+    return 'Size unavailable';
+  }
+
+  if (size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(size / 1024))} KB`;
+  }
+
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+const getDocumentFileName = (document: AuthorizationDocument) => {
+  const name = typeof document.name === 'string' ? document.name.trim() : '';
+  if (name) {
+    return name;
+  }
+
+  return document.path?.split('/').pop() || 'authorization-notice';
+};
+
+const isAuthorizationDocumentPath = (args: {
+  clientId: string;
+  authorizationId: string;
+  documentPath: string;
+}) => {
+  if (typeof args.documentPath !== 'string') {
+    return false;
+  }
+
+  const expectedPrefix = `clients/${args.clientId}/authorizations/${args.authorizationId}/`;
+  return args.documentPath.startsWith(expectedPrefix) && !args.documentPath.includes('..');
+};
+
 export function PreAuthTab({ client }: PreAuthTabProps) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const organizationId = useActiveOrganizationId();
   const queryClient = useQueryClient();
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -144,6 +186,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   const [documentUploadKeys, setDocumentUploadKeys] = useState<string[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [downloadingDocumentPath, setDownloadingDocumentPath] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfPrefillGenerationRef = useRef(0);
   const documentUploadKeySequenceRef = useRef(0);
@@ -825,6 +868,56 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
     event.preventDefault();
     setIsDragActive(false);
     handleFilesAdded(event.dataTransfer.files);
+  };
+
+  const canDownloadAuthorizationDocuments = isAdmin();
+
+  const handleAuthorizationDocumentDownload = async (
+    authorization: Authorization,
+    document: AuthorizationDocument,
+  ) => {
+    if (!canDownloadAuthorizationDocuments) {
+      showError('Only admins can download authorization notices.');
+      return;
+    }
+
+    if (!isAuthorizationDocumentPath({
+      clientId: client.id,
+      authorizationId: authorization.id,
+      documentPath: document.path,
+    })) {
+      showError('This authorization notice path is invalid.');
+      return;
+    }
+
+    setDownloadingDocumentPath(document.path);
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('client-documents')
+        .download(document.path);
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error('No file was returned for this authorization notice.');
+      }
+
+      const objectUrl = window.URL.createObjectURL(data);
+      const link = window.document.createElement('a');
+      link.href = objectUrl;
+      link.download = getDocumentFileName(document);
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Failed to download authorization notice.');
+    } finally {
+      setDownloadingDocumentPath(null);
+    }
   };
   
   return (
@@ -1735,6 +1828,52 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                 ) : (
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     No services are attached to this authorization.
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="mb-1 font-medium">Uploaded Authorization Notices</p>
+                {(selectedAuthorizationForView.documents ?? []).length > 0 ? (
+                  <ul className="space-y-2">
+                    {(selectedAuthorizationForView.documents ?? []).map((document) => {
+                      const fileName = getDocumentFileName(document);
+                      return (
+                        <li
+                          key={`${document.path}-${fileName}`}
+                          className="flex items-center justify-between gap-3 rounded-md border border-gray-200 px-3 py-2 dark:border-gray-700"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-gray-900 dark:text-white">
+                              {fileName}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {formatDocumentSize(document.size)}
+                            </p>
+                          </div>
+                          {canDownloadAuthorizationDocuments ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleAuthorizationDocumentDownload(selectedAuthorizationForView, document)
+                              }
+                              disabled={downloadingDocumentPath === document.path}
+                              className="inline-flex shrink-0 items-center rounded-md border border-blue-200 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/20"
+                            >
+                              <Download className="mr-1 h-3.5 w-3.5" />
+                              {downloadingDocumentPath === document.path ? 'Downloading' : 'Download'}
+                            </button>
+                          ) : (
+                            <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                              Admin download
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    No authorization notices are attached to this authorization.
                   </p>
                 )}
               </div>

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
 import { PreAuthTab } from "../ClientDetails/PreAuthTab";
 import { createAuthorizationWithServices, updateAuthorizationDocuments } from "../../lib/authorizations/mutations";
-import { showSuccess } from "../../lib/toast";
+import { showError, showSuccess } from "../../lib/toast";
 
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 
@@ -11,6 +11,7 @@ const {
   createAuthorizationWithServicesMock,
   updateAuthorizationDocumentsMock,
   storageUploadMock,
+  storageDownloadMock,
   supabaseFromMock,
   useAuthMock,
   useActiveOrganizationIdMock,
@@ -18,14 +19,17 @@ const {
   MockPdfTextExtractionError,
   cptCodesMockData,
   cptCodesQueryMock,
+  authorizationsMockData,
 } = vi.hoisted(() => {
   const createAuthorizationWithServicesMock = vi.fn();
   const updateAuthorizationDocumentsMock = vi.fn();
   const storageUploadMock = vi.fn();
+  const storageDownloadMock = vi.fn();
   const useAuthMock = vi.fn();
   const useActiveOrganizationIdMock = vi.fn();
   const extractPdfTextMock = vi.fn();
   const cptCodesMockData = [{ code: "97153", short_description: "Adaptive behavior treatment by protocol" }];
+  const authorizationsMockData: unknown[] = [];
   const cptCodesQueryMock = vi.fn(() =>
     Promise.resolve({
       data: cptCodesMockData,
@@ -121,9 +125,15 @@ const {
       };
     }
 
-    if (table === "client_session_notes" || table === "authorizations") {
+    if (table === "client_session_notes") {
       return {
         select: vi.fn(() => createEqQuery([])),
+      };
+    }
+
+    if (table === "authorizations") {
+      return {
+        select: vi.fn(() => createEqQuery(authorizationsMockData)),
       };
     }
 
@@ -136,6 +146,7 @@ const {
     createAuthorizationWithServicesMock,
     updateAuthorizationDocumentsMock,
     storageUploadMock,
+    storageDownloadMock,
     supabaseFromMock,
     useAuthMock,
     useActiveOrganizationIdMock,
@@ -143,6 +154,7 @@ const {
     MockPdfTextExtractionError,
     cptCodesMockData,
     cptCodesQueryMock,
+    authorizationsMockData,
   };
 });
 
@@ -161,6 +173,7 @@ vi.mock("../../lib/supabase", () => ({
     storage: {
       from: vi.fn(() => ({
         upload: storageUploadMock,
+        download: storageDownloadMock,
       })),
     },
   },
@@ -181,6 +194,26 @@ vi.mock("../../lib/toast", () => ({
   showSuccess: vi.fn(),
 }));
 
+const installDownloadBrowserMocks = () => {
+  const createObjectUrlSpy = vi.fn(() => "blob:authorization-notice");
+  const revokeObjectUrlSpy = vi.fn();
+  Object.defineProperty(window.URL, "createObjectURL", {
+    configurable: true,
+    value: createObjectUrlSpy,
+  });
+  Object.defineProperty(window.URL, "revokeObjectURL", {
+    configurable: true,
+    value: revokeObjectUrlSpy,
+  });
+  const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+  return {
+    anchorClickSpy,
+    createObjectUrlSpy,
+    revokeObjectUrlSpy,
+  };
+};
+
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -195,11 +228,13 @@ const createDeferred = <T,>() => {
 describe("PreAuthTab manual authorization upload", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useAuthMock.mockReturnValue({ user: { id: "admin-user-id" } });
+    authorizationsMockData.splice(0, authorizationsMockData.length);
+    useAuthMock.mockReturnValue({ user: { id: "admin-user-id" }, isAdmin: () => false });
     useActiveOrganizationIdMock.mockReturnValue(ORG_ID);
     createAuthorizationWithServicesMock.mockResolvedValue({ id: "auth-created-id" });
     updateAuthorizationDocumentsMock.mockResolvedValue(undefined);
     storageUploadMock.mockResolvedValue({ error: null });
+    storageDownloadMock.mockResolvedValue({ data: new Blob(["synthetic authorization notice"]), error: null });
     extractPdfTextMock.mockResolvedValue("");
     cptCodesMockData.splice(0, cptCodesMockData.length, {
       code: "97153",
@@ -334,6 +369,181 @@ describe("PreAuthTab manual authorization upload", () => {
         { upsert: false },
       );
     });
+  });
+
+  it("lets admins download an uploaded authorization notice from the detail view", async () => {
+    const { anchorClickSpy, createObjectUrlSpy, revokeObjectUrlSpy } = installDownloadBrowserMocks();
+    useAuthMock.mockReturnValue({ user: { id: "admin-user-id" }, isAdmin: () => true });
+    authorizationsMockData.push({
+      id: "auth-created-id",
+      authorization_number: "IEHP-AUTH-DOC",
+      start_date: "2026-06-23",
+      end_date: "2026-12-22",
+      status: "approved",
+      insurance_provider: { id: "payer-1", name: "IEHP" },
+      documents: [
+        {
+          name: "Behavioral Referral - IEHP Provider SeAp 6.15.pdf",
+          path: "clients/client-1/authorizations/auth-created-id/notice.pdf",
+          size: 67584,
+          type: "application/pdf",
+        },
+      ],
+      services: [
+        {
+          id: "service-1",
+          service_code: "97153",
+          service_description: "Adaptive behavior treatment by protocol",
+          requested_units: 120,
+          approved_units: 120,
+          unit_type: "Units",
+        },
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(await screen.findByRole("button", { name: /view/i }));
+    expect(await screen.findByText("Behavioral Referral - IEHP Provider SeAp 6.15.pdf")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /download/i }));
+
+    await waitFor(() => {
+      expect(storageDownloadMock).toHaveBeenCalledWith("clients/client-1/authorizations/auth-created-id/notice.pdf");
+    });
+    expect(anchorClickSpy).toHaveBeenCalledTimes(1);
+    expect(createObjectUrlSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:authorization-notice");
+
+    anchorClickSpy.mockRestore();
+  });
+
+  it("blocks admin downloads when stored authorization notice paths do not match the client authorization", async () => {
+    useAuthMock.mockReturnValue({ user: { id: "admin-user-id" }, isAdmin: () => true });
+    authorizationsMockData.push({
+      id: "auth-created-id",
+      authorization_number: "IEHP-AUTH-DOC",
+      start_date: "2026-06-23",
+      end_date: "2026-12-22",
+      status: "approved",
+      insurance_provider: { id: "payer-1", name: "IEHP" },
+      documents: [
+        {
+          name: "wrong-client-notice.pdf",
+          path: "clients/other-client/authorizations/auth-created-id/notice.pdf",
+          size: 67584,
+          type: "application/pdf",
+        },
+      ],
+      services: [],
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(await screen.findByRole("button", { name: /view/i }));
+    await user.click(screen.getByRole("button", { name: /download/i }));
+
+    expect(storageDownloadMock).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith("This authorization notice path is invalid.");
+  });
+
+  it("clears the download loading state when storage download fails", async () => {
+    installDownloadBrowserMocks();
+    storageDownloadMock.mockResolvedValue({ data: null, error: new Error("Storage download failed") });
+    useAuthMock.mockReturnValue({ user: { id: "admin-user-id" }, isAdmin: () => true });
+    authorizationsMockData.push({
+      id: "auth-created-id",
+      authorization_number: "IEHP-AUTH-DOC",
+      start_date: "2026-06-23",
+      end_date: "2026-12-22",
+      status: "approved",
+      insurance_provider: { id: "payer-1", name: "IEHP" },
+      documents: [
+        {
+          name: "auth-notice.pdf",
+          path: "clients/client-1/authorizations/auth-created-id/notice.pdf",
+          size: 67584,
+          type: "application/pdf",
+        },
+      ],
+      services: [],
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(await screen.findByRole("button", { name: /view/i }));
+    await user.click(screen.getByRole("button", { name: /download/i }));
+
+    await waitFor(() => {
+      expect(showError).toHaveBeenCalledWith("Storage download failed");
+    });
+    expect(screen.getByRole("button", { name: /download/i })).toBeEnabled();
+  });
+
+  it("lets super admins download uploaded authorization notices through the admin role helper", async () => {
+    const { anchorClickSpy } = installDownloadBrowserMocks();
+    useAuthMock.mockReturnValue({ user: { id: "super-admin-user-id" }, isAdmin: () => true });
+    authorizationsMockData.push({
+      id: "auth-created-id",
+      authorization_number: "IEHP-AUTH-DOC",
+      start_date: "2026-06-23",
+      end_date: "2026-12-22",
+      status: "approved",
+      insurance_provider: { id: "payer-1", name: "IEHP" },
+      documents: [
+        {
+          name: "super-admin-notice.pdf",
+          path: "clients/client-1/authorizations/auth-created-id/notice.pdf",
+          size: 67584,
+          type: "application/pdf",
+        },
+      ],
+      services: [],
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(await screen.findByRole("button", { name: /view/i }));
+    await user.click(screen.getByRole("button", { name: /download/i }));
+
+    await waitFor(() => {
+      expect(storageDownloadMock).toHaveBeenCalledWith("clients/client-1/authorizations/auth-created-id/notice.pdf");
+    });
+    expect(anchorClickSpy).toHaveBeenCalledTimes(1);
+    anchorClickSpy.mockRestore();
+  });
+
+  it("shows uploaded authorization notice metadata without download controls for non-admin staff", async () => {
+    authorizationsMockData.push({
+      id: "auth-created-id",
+      authorization_number: "IEHP-AUTH-DOC",
+      start_date: "2026-06-23",
+      end_date: "2026-12-22",
+      status: "approved",
+      insurance_provider: { id: "payer-1", name: "IEHP" },
+      documents: [
+        {
+          name: "auth-notice.pdf",
+          path: "clients/client-1/authorizations/auth-created-id/notice.pdf",
+          size: 67584,
+          type: "application/pdf",
+        },
+      ],
+      services: [],
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(await screen.findByRole("button", { name: /view/i }));
+
+    expect(await screen.findByText("auth-notice.pdf")).toBeInTheDocument();
+    expect(screen.getByText(/admin download/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /download/i })).not.toBeInTheDocument();
   });
 
   it("prefills empty wizard fields from an uploaded PDF and submits extracted values", async () => {

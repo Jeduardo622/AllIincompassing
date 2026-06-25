@@ -2168,6 +2168,185 @@ describe('SessionModal', () => {
     });
   }, 10000);
 
+  it('filters saved plan-goal targets to target_criteria when resaving legacy capture', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const planTarget = 'Match peer greeting in 4/5 trials';
+    const legacyFreeformTarget = 'Legacy freeform target';
+    const linkedSessionNote = {
+      id: 'linked-note-mixed-plan-targets',
+      authorization_id: 'auth-1',
+      service_code: '97153',
+      narrative: '',
+      goal_notes: {
+        'goal-1': 'Observed mixed saved targets',
+      },
+      goal_measurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            targets: [legacyFreeformTarget, planTarget],
+            target: planTarget,
+            target_trials: [
+              {
+                target: legacyFreeformTarget,
+                metric_value: 5,
+                incorrect_trials: 4,
+                opportunities: 9,
+                trial_prompt_note: 'Legacy target prompt note',
+              },
+              {
+                target: planTarget,
+                metric_value: 2,
+                incorrect_trials: 1,
+                opportunities: 3,
+                trial_prompt_note: 'Plan target prompt note',
+              },
+            ],
+          },
+        },
+      },
+      goal_ids: ['goal-1'],
+      goals_addressed: ['Default Goal'],
+    };
+
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'linked-note-mixed-plan-targets',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: linkedSessionNote.goals_addressed,
+      goal_ids: linkedSessionNote.goal_ids,
+      goal_measurements: linkedSessionNote.goal_measurements as Record<string, unknown>,
+      goal_notes: linkedSessionNote.goal_notes,
+      session_id: 'session-linked-mixed-plan-targets',
+      narrative: linkedSessionNote.narrative,
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T09:00:00.000Z',
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: mockPrograms, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'goals') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: mockGoals, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'authorizations') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          order: vi.fn(async () => ({
+            data: [{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }],
+            error: null,
+          })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: [], error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-linked-mixed-plan-targets',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Observed mixed saved targets')).toBeInTheDocument();
+    });
+
+    const planTargetButton = await screen.findByRole('button', { name: /Plan target selected/i });
+    expect(planTargetButton).toHaveTextContent(planTarget);
+    expect(screen.queryByText(legacyFreeformTarget)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 1/i), {
+      target: { value: 'Edited plan target prompt note' },
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_persist_requested: true,
+        session_note_goal_measurements: {
+          'goal-1': {
+            version: 1,
+            data: expect.objectContaining({
+              metric_value: 3,
+              incorrect_trials: 1,
+              opportunities: 3,
+              targets: [planTarget],
+              target: planTarget,
+              target_trials: [
+                expect.objectContaining({
+                  target: planTarget,
+                  metric_value: 3,
+                  incorrect_trials: 1,
+                  opportunities: 3,
+                  trial_prompt_note: 'Edited plan target prompt note',
+                }),
+              ],
+              trial_prompt_note: 'Edited plan target prompt note',
+            }),
+          },
+        },
+      }));
+    });
+  }, 10000);
+
   it('preserves linked note measurements for drifted saved goals when saving', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const linkedSessionNote = {

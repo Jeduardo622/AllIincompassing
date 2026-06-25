@@ -125,7 +125,9 @@ const mapRowToSessionNote = (
 });
 
 export interface FetchClientSessionNotesOptions {
-  readonly limit?: number;
+  readonly limit?: number | null;
+  readonly startDate?: string;
+  readonly endDate?: string;
 }
 
 export const fetchClientSessionNotes = async (
@@ -141,16 +143,54 @@ export const fetchClientSessionNotes = async (
     throw new Error('Organization context is required to load session notes.');
   }
 
-  const limit = options.limit ?? 100;
+  const limit = options.limit === undefined ? 100 : options.limit;
 
-  const runQuery = async (selectClause: string) => await supabase
-    .from(TABLE)
-    .select(selectClause)
-    .eq('client_id', clientId)
-    .eq('organization_id', organizationId)
-    .order('session_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  const buildQuery = (selectClause: string) => {
+    let query = supabase
+      .from(TABLE)
+      .select(selectClause)
+      .eq('client_id', clientId)
+      .eq('organization_id', organizationId);
+
+    if (options.startDate) {
+      query = query.gte('session_date', options.startDate);
+    }
+    if (options.endDate) {
+      query = query.lte('session_date', options.endDate);
+    }
+
+    return query
+      .order('session_date', { ascending: false })
+      .order('created_at', { ascending: false });
+  };
+
+  const runQuery = async (selectClause: string) => {
+    if (limit !== null) {
+      return await buildQuery(selectClause).limit(limit);
+    }
+
+    const pageSize = 1000;
+    const rows: unknown[] = [];
+    let page = 0;
+
+    while (true) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      const result = await buildQuery(selectClause).range(from, to);
+      if (result.error) {
+        return { data: null, error: result.error };
+      }
+
+      const pageRows = result.data ?? [];
+      rows.push(...pageRows);
+
+      if (pageRows.length < pageSize) {
+        return { data: rows, error: null };
+      }
+
+      page += 1;
+    }
+  };
 
   const primary = await runQuery(SESSION_NOTE_WITH_THERAPIST_SELECT);
   if (primary.error && isMissingGoalMeasurementsColumnError(primary.error)) {

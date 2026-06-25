@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { User, FileText, ClipboardCheck, Contact as FileContract, ArrowLeft, Calendar, AlertCircle, Clock } from 'lucide-react';
+import { User, FileText, ClipboardCheck, Contact as FileContract, ArrowLeft, Calendar, AlertCircle, Clock, BarChart3 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchClientByIdForViewer } from '../lib/clients/fetchers';
 import { ProfileTab } from '../components/ClientDetails/ProfileTab';
@@ -9,10 +9,11 @@ import { SessionNotesTab } from '../components/ClientDetails/SessionNotesTab';
 import { PreAuthTab } from '../components/ClientDetails/PreAuthTab';
 import { ServiceContractsTab } from '../components/ClientDetails/ServiceContractsTab';
 import { ProgramsGoalsTab } from '../components/ClientDetails/ProgramsGoalsTab';
+import { ClientSessionTrendsTab } from '../components/ClientDetails/ClientSessionTrendsTab';
 import { useAuth } from '../lib/authContext';
 import { useActiveOrganizationId } from '../lib/organization';
 
-type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts' | 'programs-goals';
+type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts' | 'programs-goals' | 'session-trends';
 
 const parseTabFromSearch = (search: string): TabType => {
   const tab = new URLSearchParams(search).get('tab');
@@ -20,6 +21,7 @@ const parseTabFromSearch = (search: string): TabType => {
   switch (tab) {
     case 'session-notes':
     case 'programs-goals':
+    case 'session-trends':
       return tab;
     default:
       return 'profile';
@@ -32,7 +34,7 @@ export function ClientDetails() {
   const location = useLocation();
   const initialTab = useMemo<TabType>(() => parseTabFromSearch(location.search), [location.search]);
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
-  const { profile, effectiveRole } = useAuth();
+  const { profile, effectiveRole, loading: authLoading, profileLoading } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
 
   useEffect(() => {
@@ -58,6 +60,7 @@ export function ClientDetails() {
   const isTherapistViewer = effectiveRole === 'therapist';
   const isClientViewer = effectiveRole === 'client';
   const isAuthorizationAdminViewer = effectiveRole === 'admin' || effectiveRole === 'super_admin';
+  const canViewSessionTrends = effectiveRole === 'admin' || effectiveRole === 'super_admin';
   const viewingOwnClientRecord = Boolean(isClientViewer && client?.id === profile?.id);
   const canViewClientRecord = Boolean(
     client &&
@@ -135,6 +138,12 @@ export function ClientDetails() {
         icon: FileText,
       },
       {
+        id: 'session-trends' as TabType,
+        name: 'Session Trends',
+        mobileName: 'Trends',
+        icon: BarChart3,
+      },
+      {
         id: 'pre-auth' as TabType,
         name: 'Pre-Authorizations',
         mobileName: 'Pre-Auth',
@@ -151,15 +160,26 @@ export function ClientDetails() {
   );
 
   const visibleTabs = useMemo(
-    () => tabs.filter((tab) => tab.id !== 'pre-auth' || isAuthorizationAdminViewer),
-    [isAuthorizationAdminViewer, tabs],
+    () => tabs.filter((tab) => {
+      if (tab.id === 'pre-auth') {
+        return isAuthorizationAdminViewer;
+      }
+      if (tab.id === 'session-trends') {
+        return canViewSessionTrends;
+      }
+      return true;
+    }),
+    [canViewSessionTrends, isAuthorizationAdminViewer, tabs],
   );
 
   useEffect(() => {
+    if (authLoading || profileLoading || isLoading) {
+      return;
+    }
     if (!visibleTabs.some((tab) => tab.id === activeTab)) {
       setActiveTab('profile');
     }
-  }, [activeTab, visibleTabs]);
+  }, [activeTab, authLoading, isLoading, profileLoading, visibleTabs]);
 
   if (!activeOrganizationId) {
     return (
@@ -323,6 +343,7 @@ export function ClientDetails() {
           {activeTab === 'profile' && <ProfileTab client={client} viewerRole={effectiveRole} />}
           {activeTab === 'session-notes' && <SessionNotesTab client={client} />}
           {activeTab === 'programs-goals' && <ProgramsGoalsTab client={client} />}
+          {activeTab === 'session-trends' && canViewSessionTrends && <ClientSessionTrendsTab client={client} />}
           {activeTab === 'pre-auth' && isAuthorizationAdminViewer && <PreAuthTab client={client} />}
           {activeTab === 'contracts' && <ServiceContractsTab client={client} />}
         </div>

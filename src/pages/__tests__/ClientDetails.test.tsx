@@ -45,6 +45,10 @@ vi.mock('../../components/ClientDetails/ProgramsGoalsTab', () => ({
   ProgramsGoalsTab: () => <div>ProgramsGoalsTabContent</div>,
 }));
 
+vi.mock('../../components/ClientDetails/ClientSessionTrendsTab', () => ({
+  ClientSessionTrendsTab: () => <div>ClientSessionTrendsTabContent</div>,
+}));
+
 vi.mock('../../components/ClientDetails/PreAuthTab', () => ({
   PreAuthTab: () => <div>PreAuthTabContent</div>,
 }));
@@ -105,6 +109,9 @@ describe('ClientDetails page', () => {
     await userEvent.click(screen.getByRole('button', { name: /Programs & Goals/i }));
     expect(screen.getByText('ProgramsGoalsTabContent')).toBeInTheDocument();
 
+    await userEvent.click(screen.getByRole('button', { name: /Session Trends/i }));
+    expect(screen.getByText('ClientSessionTrendsTabContent')).toBeInTheDocument();
+
     await userEvent.click(screen.getByRole('button', { name: /Pre-Authorizations/i }));
     expect(screen.getByText('PreAuthTabContent')).toBeInTheDocument();
 
@@ -130,6 +137,27 @@ describe('ClientDetails page', () => {
     await waitFor(() => expect(supabase.from).toHaveBeenCalledWith('sessions'));
     expect(supabase.from).toHaveBeenCalledWith('client_issues');
     expect(screen.queryByText('ProfileTabContent')).not.toBeInTheDocument();
+  });
+
+  it('selects Session Trends tab from tab query param for admin viewers', async () => {
+    mockLocationSearch = '?tab=session-trends';
+
+    renderWithProviders(<ClientDetails />);
+
+    await waitFor(() => expect(screen.getByText('ClientSessionTrendsTabContent')).toBeInTheDocument());
+    expect(screen.queryByText('ProfileTabContent')).not.toBeInTheDocument();
+  });
+
+  it('falls back from Session Trends query param for therapist viewers', async () => {
+    mockLocationSearch = '?tab=session-trends';
+
+    renderWithProviders(<ClientDetails />, {
+      auth: { role: 'therapist', userId: 'therapist-user-id' },
+    });
+
+    await waitFor(() => expect(screen.getByText('ProfileTabContent')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /Session Trends/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('ClientSessionTrendsTabContent')).not.toBeInTheDocument();
   });
 
   it('does not render Programs & Goals or summary queries for an unassigned therapist deeplink', async () => {
@@ -160,6 +188,7 @@ describe('ClientDetails page', () => {
     await waitFor(() => expect(screen.getByText('ProfileTabContent')).toBeInTheDocument());
 
     expect(screen.queryByRole('button', { name: /Pre-Authorizations/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Session Trends/i })).not.toBeInTheDocument();
   });
 
   it('renders the Pre-Authorizations tab for super admin viewers', async () => {

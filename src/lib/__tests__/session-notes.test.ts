@@ -132,6 +132,122 @@ describe('fetchClientSessionNotes', () => {
     });
   });
 
+  it('paginates date-bounded reads when the caller requests an unlimited result set', async () => {
+    const ranges: Array<[number, number]> = [];
+    const filters: Array<[string, string]> = [];
+    const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+      ...baseServerNote,
+      id: `note-${index}`,
+      session_date: '2025-06-01',
+      therapists: { full_name: 'Test Therapist', title: 'BCBA' },
+    }));
+    const secondPage = [{
+      ...baseServerNote,
+      id: 'note-1000',
+      session_date: '2025-06-02',
+      therapists: { full_name: 'Test Therapist', title: 'BCBA' },
+    }];
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'client_session_notes') {
+        return {};
+      }
+
+      const chain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        gte: vi.fn((field: string, value: string) => {
+          filters.push([field, value]);
+          return chain;
+        }),
+        lte: vi.fn((field: string, value: string) => {
+          filters.push([field, value]);
+          return chain;
+        }),
+        order: vi.fn(() => chain),
+        range: vi.fn(async (from: number, to: number) => {
+          ranges.push([from, to]);
+          return { data: ranges.length === 1 ? firstPage : secondPage, error: null };
+        }),
+      };
+
+      return chain;
+    });
+
+    const result = await fetchClientSessionNotes('client-1', 'org-1', {
+      limit: null,
+      startDate: '2025-06-01',
+      endDate: '2025-06-30',
+    });
+
+    expect(ranges).toEqual([[0, 999], [1000, 1999]]);
+    expect(filters).toEqual([
+      ['session_date', '2025-06-01'],
+      ['session_date', '2025-06-30'],
+      ['session_date', '2025-06-01'],
+      ['session_date', '2025-06-30'],
+    ]);
+    expect(result).toHaveLength(1001);
+    expect(result.at(-1)?.id).toBe('note-1000');
+  });
+
+  it('paginates the fallback select when unlimited reads hit a missing goal_measurements column', async () => {
+    const selectCalls: string[] = [];
+    const ranges: Array<[number, number]> = [];
+    const fallbackRows = [{
+      ...baseServerNote,
+      id: 'note-fallback-paged',
+      session_date: '2025-06-01',
+      therapists: { full_name: 'Fallback Therapist', title: 'BCBA' },
+    }];
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'client_session_notes') {
+        return {};
+      }
+
+      const chain = {
+        select: vi.fn((clause: string) => {
+          selectCalls.push(clause);
+          return chain;
+        }),
+        eq: vi.fn(() => chain),
+        gte: vi.fn(() => chain),
+        lte: vi.fn(() => chain),
+        order: vi.fn(() => chain),
+        range: vi.fn(async (from: number, to: number) => {
+          ranges.push([from, to]);
+          if (selectCalls.length === 1) {
+            return {
+              data: null,
+              error: {
+                code: '42703',
+                message: 'column client_session_notes.goal_measurements does not exist',
+                details: null,
+                hint: null,
+              },
+            };
+          }
+          return { data: fallbackRows, error: null };
+        }),
+      };
+
+      return chain;
+    });
+
+    const result = await fetchClientSessionNotes('client-1', 'org-1', {
+      limit: null,
+      startDate: '2025-06-01',
+      endDate: '2025-06-30',
+    });
+
+    expect(selectCalls).toHaveLength(2);
+    expect(ranges).toEqual([[0, 999], [0, 999]]);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe('note-fallback-paged');
+    expect(result[0]?.goal_measurements).toBeNull();
+  });
+
   it('retries without goal_measurements when select fails on missing column', async () => {
     const fallbackRows = [
       {

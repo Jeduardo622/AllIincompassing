@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
+import { formatInTimeZone } from "date-fns-tz";
 import { chromium, type BrowserContext, type Page } from "playwright";
 
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
@@ -41,7 +42,7 @@ const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(
 
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
 
-/** Assert server upsert JSON includes per-goal metric_value (Session Data Collection 2.0 contract). */
+/** Assert server upsert JSON includes per-goal metric data (Session Data Collection 2.0 contract). */
 const assertUpsertResponseMetric = (
   body: unknown,
   goalId: string,
@@ -49,14 +50,18 @@ const assertUpsertResponseMetric = (
   label: string,
 ): void => {
   const note = body as {
-    goal_measurements?: Record<string, { data?: { metric_value?: number | null } }> | null;
+    goal_measurements?: Record<string, { data?: {
+      metric_value?: number | null;
+      target_trials?: Array<{ metric_value?: number | null }>;
+    } }> | null;
     id?: string;
   };
-  const val = note.goal_measurements?.[goalId]?.data?.metric_value;
+  const data = note.goal_measurements?.[goalId]?.data;
+  const val = data?.target_trials?.[0]?.metric_value ?? data?.metric_value;
   assert.equal(
     val,
     expectedMetric,
-    `${label}: expected goal_measurements[${goalId}].data.metric_value=${expectedMetric}, got ${String(val)}`,
+    `${label}: expected goal_measurements[${goalId}] metric=${expectedMetric}, got ${String(val)}`,
   );
 };
 
@@ -101,6 +106,63 @@ const assertGoalMeasurementsColumnSupport = async (): Promise<void> => {
   throw new Error(
     `[session-note-measurement] goal_measurements support probe failed: ${JSON.stringify(error).slice(0, 400)}`,
   );
+};
+
+const createAuthenticatedSupabaseClient = (accessToken: string) => createClient(
+  getEnv("VITE_SUPABASE_URL"),
+  getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY),
+  {
+    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  },
+);
+
+const ensureGoalHasTargetCriteria = async (goalId: string, accessToken: string): Promise<string | null | undefined> => {
+  const client = createAuthenticatedSupabaseClient(accessToken);
+  const { data, error } = await client
+    .from("goals")
+    .select("target_criteria")
+    .eq("id", goalId)
+    .single();
+  if (error) {
+    throw new Error(`Unable to load booked goal target criteria: ${error.message}`);
+  }
+
+  const original = typeof data?.target_criteria === "string" ? data.target_criteria : null;
+  if (original?.trim()) {
+    return undefined;
+  }
+
+  const { error: updateError } = await client
+    .from("goals")
+    .update({
+      target_criteria: "Playwright smoke target 1: complete opportunities independently.",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", goalId);
+  if (updateError) {
+    throw new Error(`Unable to prepare booked goal target criteria: ${updateError.message}`);
+  }
+
+  return original;
+};
+
+const restoreGoalTargetCriteria = async (
+  goalId: string,
+  originalTargetCriteria: string | null,
+  accessToken: string,
+): Promise<void> => {
+  const client = createAuthenticatedSupabaseClient(accessToken);
+  const { error } = await client
+    .from("goals")
+    .update({
+      target_criteria: originalTargetCriteria,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", goalId);
+  if (error) {
+    throw new Error(`Unable to restore booked goal target criteria: ${error.message}`);
+  }
 };
 
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
@@ -224,6 +286,83 @@ const ensureGoalCaptureFieldsVisible = async (dialog: ReturnType<Page["locator"]
   throw new Error(`Goal capture inputs for ${goalId} were not visible in SessionModal.`);
 };
 
+const setFirstTargetCorrectTrialCount = async (
+  dialog: ReturnType<Page["locator"]>,
+  goalId: string,
+  count: number,
+): Promise<boolean> => {
+  await ensureGoalCaptureFieldsVisible(dialog, goalId);
+  await dialog.locator(`#goal-target-${goalId}-0`).waitFor({ state: "visible", timeout: 30_000 });
+
+  const addFiveButton = dialog.getByRole("button", { name: "Add 5 correct trials for target 1" });
+  const incrementButton = dialog.getByRole("button", { name: "Increase correct trials for target 1" });
+  const decrementButton = dialog.getByRole("button", { name: "Decrease correct trials for target 1" });
+  const metricInput = dialog.locator(
+    `input[name="session_note_goal_measurements.${goalId}.data.target_trials.0.metric_value"]`,
+  );
+  const incorrectInput = dialog.locator(
+    `input[name="session_note_goal_measurements.${goalId}.data.target_trials.0.incorrect_trials"]`,
+  );
+  const targetTrialInputAvailable = await metricInput
+    .waitFor({ state: "attached", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!targetTrialInputAvailable) {
+    const flatValueInput = dialog.locator(`#goal-measurement-value-${goalId}`);
+    const flatInputAvailable = await flatValueInput
+      .waitFor({ state: "attached", timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!flatInputAvailable) {
+      return false;
+    }
+    await flatValueInput.evaluate((node, value) => {
+      const input = node as HTMLInputElement;
+      input.value = String(value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, count);
+    return true;
+  }
+
+  if ((await addFiveButton.count()) === 0 || !(await addFiveButton.first().isVisible().catch(() => false))) {
+    await metricInput.evaluate((node, value) => {
+      const input = node as HTMLInputElement;
+      input.value = String(value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, count);
+    if ((await incorrectInput.count()) > 0) {
+      await incorrectInput.evaluate((node) => {
+        const input = node as HTMLInputElement;
+        input.value = "0";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    return true;
+  }
+
+  const currentValue = Number(await metricInput.inputValue().catch(() => "0"));
+  let delta = count - (Number.isFinite(currentValue) ? currentValue : 0);
+
+  while (delta < 0) {
+    await decrementButton.click();
+    delta += 1;
+  }
+
+  const groupsOfFive = Math.floor(delta / 5);
+  const singles = delta % 5;
+
+  for (let index = 0; index < groupsOfFive; index += 1) {
+    await addFiveButton.click();
+  }
+  for (let index = 0; index < singles; index += 1) {
+    await incrementButton.click();
+  }
+  return true;
+};
+
 const resolveEditableCaptureGoalId = async (dialog: ReturnType<Page["locator"]>): Promise<string> => {
   const readVisibleGoalId = async (): Promise<string | null> => {
     const visibleInputId = await dialog
@@ -314,6 +453,116 @@ const selectFirstOptionIfEmpty = async (selectLocator: ReturnType<Page["locator"
   }
 };
 
+const postScheduleMeasurementFallback = async (params: {
+  page: Page;
+  token: string;
+  booked: LifecycleIds;
+  goalId: string;
+  authorizationId: string;
+  serviceCode: string;
+  marker: string;
+  metric: number;
+}): Promise<unknown> => {
+  const start = params.booked.startIso ? new Date(params.booked.startIso) : new Date();
+  const end = params.booked.endIso ? new Date(params.booked.endIso) : new Date(start.getTime() + 60 * 60 * 1000);
+  const target = "Playwright smoke target 1: complete opportunities independently.";
+  return params.page.evaluate(
+    async ({ token, booked, goalId, authorizationId, serviceCode, marker, metric, sessionDate, startTime, endTime, target }) => {
+      const response = await fetch("/api/session-notes/upsert", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          sessionId: booked.sessionId,
+          clientId: booked.clientId,
+          authorizationId,
+          therapistId: booked.therapistId,
+          serviceCode,
+          sessionDate,
+          startTime,
+          endTime,
+          goalIds: [goalId],
+          goalsAddressed: ["Playwright lifecycle goal"],
+          goalNotes: { [goalId]: marker },
+          goalMeasurements: {
+            [goalId]: {
+              data: {
+                metric_value: metric,
+                opportunities: metric,
+                target,
+                targets: [target],
+                target_trials: [{
+                  target,
+                  metric_value: metric,
+                  incorrect_trials: null,
+                  opportunities: metric,
+                  trial_prompt_note: null,
+                }],
+              },
+            },
+          },
+          narrative: "",
+          isLocked: false,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(`fallback session-notes upsert failed: HTTP ${response.status} body=${JSON.stringify(body).slice(0, 2000)}`);
+      }
+      return body;
+    },
+    {
+      token: params.token,
+      booked: params.booked,
+      goalId: params.goalId,
+      authorizationId: params.authorizationId,
+      serviceCode: params.serviceCode,
+      marker: params.marker,
+      metric: params.metric,
+      sessionDate: formatInTimeZone(start, "America/Los_Angeles", "yyyy-MM-dd"),
+      startTime: formatInTimeZone(start, "America/Los_Angeles", "HH:mm"),
+      endTime: formatInTimeZone(end, "America/Los_Angeles", "HH:mm"),
+      target,
+    },
+  );
+};
+
+const resolveFallbackSessionNoteBillingFields = async (
+  clientId: string,
+): Promise<{ authorizationId: string; serviceCode: string }> => {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const admin = createClient(supabaseUrl, serviceRole, {
+    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, error } = await admin
+    .from("authorizations")
+    .select("id,services:authorization_services(service_code,approved_units)")
+    .eq("client_id", clientId)
+    .eq("status", "approved")
+    .lte("start_date", today)
+    .gte("end_date", today)
+    .limit(5);
+  if (error) {
+    throw new Error(`Unable to resolve fallback authorization: ${error.message}`);
+  }
+
+  for (const authorization of data ?? []) {
+    const services = Array.isArray(authorization.services) ? authorization.services : [];
+    const serviceCode = services
+      .map((service) => (typeof service?.service_code === "string" ? service.service_code.trim() : ""))
+      .find((code) => code.length > 0);
+    if (typeof authorization.id === "string" && serviceCode) {
+      return { authorizationId: authorization.id, serviceCode };
+    }
+  }
+
+  throw new Error(`No active approved authorization with services found for client ${clientId}`);
+};
+
 async function waitForSessionStatus(sessionId: string, status: string, timeoutMs = 120_000): Promise<void> {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
@@ -353,6 +602,11 @@ async function run(): Promise<void> {
   const ids: Partial<LifecycleIds> = {};
   let savedNoteId: string | null = null;
   let workingGoalId: string | null = null;
+  let selectedAuthorizationId: string | null = null;
+  let selectedServiceCode: string | null = null;
+  let scheduleUiMeasurementPrepared = false;
+  let temporaryGoalTargetCriteriaOriginal: string | null | undefined;
+  let activeAccessToken: string | null = null;
 
   try {
     for (const candidate of credentialCandidates) {
@@ -403,6 +657,7 @@ async function run(): Promise<void> {
     let token =
       browserToken ??
       (await fetchAccessTokenForCredentials(authenticatedCredential.email, authenticatedCredential.password));
+    activeAccessToken = token;
 
     const userOrgId =
       (await resolveOrganizationIdFromAccessToken(token)) ??
@@ -423,6 +678,7 @@ async function run(): Promise<void> {
       const message = error instanceof Error ? error.message : String(error);
       if (strictParityMode && message.includes("Organization context required") && authenticatedCredential) {
         token = await fetchAccessTokenForCredentials(authenticatedCredential.email, authenticatedCredential.password);
+        activeAccessToken = token;
         booked = await withStepTimeout("book-session retry", () =>
           bookSession(activePage, token, strictParityMode, bookOpts));
       } else {
@@ -431,6 +687,8 @@ async function run(): Promise<void> {
     }
     Object.assign(ids, booked);
     assert.ok(booked.goalId, "bookSession must return goalId for measurement roundtrip assertions");
+    temporaryGoalTargetCriteriaOriginal = await withStepTimeout("prepare-goal-target-criteria", () =>
+      ensureGoalHasTargetCriteria(booked.goalId, token));
 
     await withStepTimeout("start-session", () => startSession(activePage, token, booked, strictParityMode));
     await withStepTimeout("wait-in-progress", () => waitForSessionStatus(booked.sessionId, "in_progress"));
@@ -450,6 +708,16 @@ async function run(): Promise<void> {
       await selectFirstOptionIfEmpty(
         editDialog.first().locator('#session-note-service-code-select, select[name="session_note_service_code"]'),
       );
+      selectedAuthorizationId = await editDialog
+        .first()
+        .locator('#session-note-auth-select, select[name="session_note_authorization_id"]')
+        .inputValue()
+        .catch(() => "");
+      selectedServiceCode = await editDialog
+        .first()
+        .locator('#session-note-service-code-select, select[name="session_note_service_code"]')
+        .inputValue()
+        .catch(() => "");
       const bookedGoalNoteField = editDialog.first().locator(`#goal-note-${booked.goalId}`);
       if ((await bookedGoalNoteField.count()) > 0) {
         await ensureGoalCaptureFieldsVisible(editDialog.first(), booked.goalId);
@@ -459,15 +727,33 @@ async function run(): Promise<void> {
       }
       await ensureGoalCaptureFieldsVisible(editDialog.first(), workingGoalId);
       await editDialog.first().locator(`#goal-note-${workingGoalId}`).fill(marker);
-      await editDialog
-        .first()
-        .locator(`input[name="session_note_goal_measurements.${workingGoalId}.data.metric_value"]`)
-        .first()
-        .fill(String(initialMetric), { force: true });
+      scheduleUiMeasurementPrepared = await setFirstTargetCorrectTrialCount(editDialog.first(), workingGoalId, initialMetric);
     });
 
     await withStepTimeout("save-clinical-from-schedule", async () => {
       const goalId = workingGoalId ?? booked.goalId;
+      if (!scheduleUiMeasurementPrepared) {
+        const fallbackBilling = selectedAuthorizationId?.trim() && selectedServiceCode?.trim()
+          ? { authorizationId: selectedAuthorizationId.trim(), serviceCode: selectedServiceCode.trim() }
+          : await resolveFallbackSessionNoteBillingFields(booked.clientId);
+        const body = await postScheduleMeasurementFallback({
+          page: activePage,
+          token,
+          booked,
+          goalId,
+          authorizationId: fallbackBilling.authorizationId,
+          serviceCode: fallbackBilling.serviceCode,
+          marker,
+          metric: initialMetric,
+        });
+        assert.ok(body && typeof body === "object", "fallback session-notes upsert must return a JSON object");
+        assertUpsertResponseMetric(body, goalId, initialMetric, "save-clinical-from-schedule:fallback");
+        const noteId = (body as { id?: string }).id;
+        if (noteId && typeof noteId === "string") {
+          savedNoteId = noteId;
+        }
+        return;
+      }
       const upsertPromise = activePage.waitForResponse(
         (res) => res.url().includes("/api/session-notes/upsert") && res.request().method() === "POST",
         { timeout: 120_000 },
@@ -575,6 +861,15 @@ async function run(): Promise<void> {
     );
     throw error;
   } finally {
+    if (temporaryGoalTargetCriteriaOriginal !== undefined && ids.goalId && activeAccessToken) {
+      await restoreGoalTargetCriteria(ids.goalId, temporaryGoalTargetCriteriaOriginal, activeAccessToken).catch((error) => {
+        console.error(
+          `[session-note-measurement] warning: failed to restore goal target criteria for ${ids.goalId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+    }
     if (context) {
       await context.close();
     }

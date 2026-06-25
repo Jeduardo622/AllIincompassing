@@ -57,6 +57,7 @@ describe('SessionModal', () => {
       description: 'Default goal for tests',
       original_text: 'Default clinical wording',
       measurement_type: 'frequency',
+      target_criteria: 'Match peer greeting in 4/5 trials',
       status: 'active',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
@@ -1658,30 +1659,22 @@ describe('SessionModal', () => {
       />
     );
 
+    const planTargetButton = await screen.findByRole('button', { name: /Use plan target/i });
+    expect(screen.queryByRole('button', { name: /add target/i })).not.toBeInTheDocument();
+    await userEvent.click(planTargetButton);
     await screen.findByRole('button', { name: /Increase correct trials for target 1/i });
     fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
       target: { value: 'Observed steady progress' },
     });
-    fireEvent.change(screen.getByLabelText(/^Target$/i), {
-      target: { value: 'Match peer greeting in 4/5 trials' },
-    });
-    await userEvent.click(screen.getByRole('button', { name: /add target/i }));
-    fireEvent.change(screen.getByLabelText(/^Target 2$/i), {
-      target: { value: 'Wave to peer independently' },
-    });
     for (let i = 0; i < 4; i += 1) {
       await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
     }
-    await userEvent.click(screen.getByRole('button', { name: /Increase incorrect or no-response trials for target 2/i }));
-    await userEvent.click(screen.getByRole('button', { name: /Add 5 correct trials for target 2/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Increase incorrect or no-response trials for target 1/i }));
     fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 1/i), {
       target: { value: 'Needed one reminder at the start' },
     });
-    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 2/i), {
-      target: { value: 'Independent after model' },
-    });
 
-    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
@@ -1694,27 +1687,20 @@ describe('SessionModal', () => {
               measurement_type: 'frequency',
               metric_label: 'Count',
               metric_unit: 'responses',
-              metric_value: 9,
+              metric_value: 4,
               incorrect_trials: 1,
-              targets: ['Match peer greeting in 4/5 trials', 'Wave to peer independently'],
+              targets: ['Match peer greeting in 4/5 trials'],
               target: 'Match peer greeting in 4/5 trials',
               target_trials: [
                 {
                   target: 'Match peer greeting in 4/5 trials',
                   metric_value: 4,
-                  incorrect_trials: null,
+                  incorrect_trials: 1,
                   opportunities: null,
                   trial_prompt_note: 'Needed one reminder at the start',
                 },
-                {
-                  target: 'Wave to peer independently',
-                  metric_value: 5,
-                  incorrect_trials: 1,
-                  opportunities: null,
-                  trial_prompt_note: 'Independent after model',
-                },
               ],
-              trial_prompt_note: 'Needed one reminder at the start; Independent after model',
+              trial_prompt_note: 'Needed one reminder at the start',
             }),
           },
         },
@@ -1777,33 +1763,56 @@ describe('SessionModal', () => {
       />
     );
 
-    await screen.findByRole('button', { name: /Increase correct trials for target 1/i });
+    await screen.findByRole('button', { name: /Use plan target/i });
     fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
+      target: { value: 'Plan goal context' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Add skill/i }));
+    const titleInputs = await screen.findAllByPlaceholderText('Name this target');
+    const titleInput = titleInputs.find((input) => input.id.startsWith('adhoc-title-')) ?? titleInputs[0];
+    fireEvent.change(titleInput, { target: { value: 'Adhoc skill target' } });
+    const perGoalNotes = screen.getAllByLabelText(/^Per-goal note$/i);
+    fireEvent.change(perGoalNotes[perGoalNotes.length - 1], {
       target: { value: 'Target B remains in treatment' },
     });
-    fireEvent.change(screen.getByLabelText(/^Target$/i), {
+    const targetFields = screen.getAllByLabelText(/^Target$/i);
+    fireEvent.change(targetFields[targetFields.length - 1], {
       target: { value: 'Target A' },
     });
-    await userEvent.click(screen.getByRole('button', { name: /add target/i }));
-    fireEvent.change(screen.getByLabelText(/^Target 2$/i), {
+    const addTargetButtons = screen.getAllByRole('button', { name: /add target/i });
+    await userEvent.click(addTargetButtons[addTargetButtons.length - 1]);
+    const secondTargetFields = screen.getAllByLabelText(/^Target 2$/i);
+    fireEvent.change(secondTargetFields[secondTargetFields.length - 1], {
       target: { value: 'Target B' },
     });
-    await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
-    await userEvent.click(screen.getByRole('button', { name: /Add 5 correct trials for target 2/i }));
-    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 1/i), {
+    const increaseTarget1Buttons = screen.getAllByRole('button', { name: /Increase correct trials for target 1/i });
+    await userEvent.click(increaseTarget1Buttons[increaseTarget1Buttons.length - 1]);
+    const addFiveTarget2Buttons = screen.getAllByRole('button', { name: /Add 5 correct trials for target 2/i });
+    await userEvent.click(addFiveTarget2Buttons[addFiveTarget2Buttons.length - 1]);
+    const target1PromptFields = screen.getAllByLabelText(/Prompts & reactions for target 1/i);
+    fireEvent.change(target1PromptFields[target1PromptFields.length - 1], {
       target: { value: 'Prompt note A' },
     });
-    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 2/i), {
+    const target2PromptFields = screen.getAllByLabelText(/Prompts & reactions for target 2/i);
+    fireEvent.change(target2PromptFields[target2PromptFields.length - 1], {
       target: { value: 'Prompt note B' },
     });
 
-    await userEvent.click(screen.getByRole('button', { name: /Remove target 1/i }));
-    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
+    const removeTargetButtons = screen.getAllByRole('button', { name: /Remove target 1/i });
+    await userEvent.click(removeTargetButtons[removeTargetButtons.length - 1]);
+    const saveSkillsButton = screen.getByRole('button', { name: /Save skills/i });
+    expect(saveSkillsButton).toBeEnabled();
+    await userEvent.click(saveSkillsButton);
 
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-        session_note_goal_measurements: {
-          'goal-1': {
+      expect(onSubmit).toHaveBeenCalled();
+      const payload = onSubmit.mock.calls[0]?.[0] as {
+        session_note_goal_measurements?: Record<string, unknown>;
+      };
+      const adhocEntry = Object.entries(payload.session_note_goal_measurements ?? {})
+        .find(([goalEntryId]) => goalEntryId.startsWith('adhoc-skill-'))?.[1];
+      expect(adhocEntry).toEqual(
+        expect.objectContaining({
             version: 1,
             data: expect.objectContaining({
               metric_value: 5,
@@ -1820,9 +1829,8 @@ describe('SessionModal', () => {
               ],
               trial_prompt_note: 'Prompt note B',
             }),
-          },
-        },
-      }));
+        }),
+      );
     });
   }, 15000);
 
@@ -1970,6 +1978,7 @@ describe('SessionModal', () => {
       />
     );
 
+    await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
     await screen.findByRole('button', { name: /Add 5 correct trials/i });
     fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
       target: { value: 'Bundled trials' },
@@ -2018,6 +2027,7 @@ describe('SessionModal', () => {
       />
     );
 
+    await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
     await screen.findByRole('button', { name: /Subtract 5 correct trials/i });
     expect(screen.getByRole('button', { name: /Subtract 5 correct trials/i })).toBeDisabled();
   });

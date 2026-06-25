@@ -1546,19 +1546,28 @@ export function SessionModal({
     if (!linkedSessionNote || !session?.id || isDirty) {
       return;
     }
+    const linkedMeasurements = (linkedSessionNote.goal_measurements as Record<string, unknown> | null) ?? {};
+    const normalizedLinkedMeasurements = Object.fromEntries(
+      Object.entries(linkedMeasurements)
+        .map(([goalEntryId, rawValue]) => {
+          const normalized = normalizeGoalMeasurementEntry(rawValue, goalsById.get(goalEntryId));
+          return normalized ? [goalEntryId, normalized] : null;
+        })
+        .filter((entry): entry is [string, SessionGoalMeasurementEntry] => Boolean(entry)),
+    );
     setValue(
       'session_note_goal_notes',
       (linkedSessionNote.goal_notes as Record<string, string> | null) ?? {},
     );
     setValue(
       'session_note_goal_measurements',
-      (linkedSessionNote.goal_measurements as Record<string, unknown> | null) ?? {},
+      normalizedLinkedMeasurements,
     );
     setValue('session_note_goal_ids', linkedSessionNote.goal_ids ?? []);
     setValue('session_note_goals_addressed', linkedSessionNote.goals_addressed ?? []);
     setValue('session_note_authorization_id', linkedSessionNote.authorization_id ?? '');
     setValue('session_note_service_code', linkedSessionNote.service_code ?? '');
-  }, [linkedSessionNote, session?.id, setValue, isDirty]);
+  }, [goalsById, linkedSessionNote, session?.id, setValue, isDirty]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -2572,6 +2581,17 @@ export function SessionModal({
                           const mobileGoalSummaryLabel = isAdhocSessionTargetId(selectedGoalId)
                             ? (storedTitle.trim() ? storedTitle : 'Ad-hoc target')
                             : (selectedGoal?.title ?? selectedGoalId);
+                          const isAdhocTarget = isAdhocSessionTargetId(selectedGoalId);
+                          const planTargetText = isAdhocTarget ? '' : selectedGoal?.target_criteria?.trim() ?? '';
+                          const selectedPlanTargets = sessionTargets
+                            .map((target) => target.trim())
+                            .filter((target) => target.length > 0);
+                          const hasSelectedPlanTarget = Boolean(
+                            planTargetText && selectedPlanTargets.includes(planTargetText),
+                          );
+                          const visibleSessionTargets = isAdhocTarget || selectedPlanTargets.length === 0
+                            ? sessionTargets
+                            : selectedPlanTargets;
                           const captureDetailsOpen =
                             !isSessionCaptureNarrow || mobileCaptureOpenGoalId === selectedGoalId;
                           return (
@@ -2598,7 +2618,7 @@ export function SessionModal({
                                     Trials +{correctDisplay} · −{incorrectDisplay}
                                   </p>
                                 </div>
-                                {isAdhocSessionTargetId(selectedGoalId) ? (
+                                {isAdhocTarget ? (
                                   <button
                                     type="button"
                                     onClick={(event) => {
@@ -2618,7 +2638,7 @@ export function SessionModal({
                                 />
                               </summary>
                               <div className="hidden sm:flex sm:items-start sm:justify-between sm:gap-2">
-                                {isAdhocSessionTargetId(selectedGoalId) ? (
+                                {isAdhocTarget ? (
                                   <div className="min-w-0 flex-1">
                                     <label
                                       htmlFor={`adhoc-title-${selectedGoalId}`}
@@ -2642,7 +2662,7 @@ export function SessionModal({
                                     {selectedGoal?.title ?? selectedGoalId}
                                   </p>
                                 )}
-                                {isAdhocSessionTargetId(selectedGoalId) && (
+                                {isAdhocTarget && (
                                   <button
                                     type="button"
                                     onClick={() => removeAdhocSessionTarget(selectedGoalId)}
@@ -2653,7 +2673,7 @@ export function SessionModal({
                                   </button>
                                 )}
                               </div>
-                              {isAdhocSessionTargetId(selectedGoalId) ? (
+                              {isAdhocTarget ? (
                                 <div className="mt-3 sm:hidden">
                                   <label
                                     htmlFor={`adhoc-title-mobile-${selectedGoalId}`}
@@ -2694,22 +2714,46 @@ export function SessionModal({
                                   >
                                     Targets
                                   </label>
-                                  <button
-                                    type="button"
-                                    onClick={() => addGoalTarget(selectedGoalId, sessionTargets)}
-                                    className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark dark:text-indigo-200 dark:hover:bg-indigo-950/40"
-                                  >
-                                    <Plus className="h-3.5 w-3.5" />
-                                    Add target
-                                  </button>
+                                  {isAdhocTarget ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => addGoalTarget(selectedGoalId, sessionTargets)}
+                                      className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark dark:text-indigo-200 dark:hover:bg-indigo-950/40"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                      Add target
+                                    </button>
+                                  ) : null}
                                 </div>
                                 {minTrials != null && (
                                   <p className="mt-1 text-[11px] font-medium text-indigo-800 dark:text-indigo-100">
                                     Min trials per target (therapist target): {minTrials}
                                   </p>
                                 )}
+                                {!isAdhocTarget ? (
+                                  <div className="mt-2">
+                                    {planTargetText ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateGoalTargets(selectedGoalId, [planTargetText])}
+                                        disabled={hasSelectedPlanTarget}
+                                        className="w-full rounded-md border border-indigo-200 bg-white px-3 py-2 text-left text-sm font-medium text-indigo-900 shadow-sm hover:bg-indigo-50 disabled:cursor-default disabled:border-emerald-200 disabled:bg-emerald-50 disabled:text-emerald-900 dark:border-indigo-800 dark:bg-dark dark:text-indigo-100 dark:hover:bg-indigo-950/40 dark:disabled:border-emerald-900/60 dark:disabled:bg-emerald-900/20 dark:disabled:text-emerald-100"
+                                      >
+                                        <span className="block text-[11px] font-semibold uppercase tracking-wide">
+                                          {hasSelectedPlanTarget ? 'Plan target selected' : 'Use plan target'}
+                                        </span>
+                                        <span className="mt-1 block break-words">{planTargetText}</span>
+                                      </button>
+                                    ) : (
+                                      <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-100">
+                                        No plan target is set for this goal. Ask an admin to add the target under
+                                        Programs &amp; Goals.
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : null}
                                 <div className="mt-1 space-y-2">
-                                  {sessionTargets.map((targetValue, targetIndex) => {
+                                  {visibleSessionTargets.map((targetValue, targetIndex) => {
                                     const indexedTargetFieldKey =
                                       `${targetsFieldBaseKey}.${targetIndex}` as const;
                                     const targetTrialMetricValueFieldKey =
@@ -2724,6 +2768,13 @@ export function SessionModal({
                                       `${targetTrialsFieldBaseKey}.${targetIndex}.target` as const;
                                     const targetCorrectDisplay = getTargetTrialValue(targetIndex, 'metric_value');
                                     const targetIncorrectDisplay = getTargetTrialValue(targetIndex, 'incorrect_trials');
+                                    const shouldRenderTargetTrialFields =
+                                      isAdhocTarget ||
+                                      targetValue.trim().length > 0 ||
+                                      targetCorrectDisplay > 0 ||
+                                      targetIncorrectDisplay > 0 ||
+                                      getTargetTrialValue(targetIndex, 'opportunities') > 0 ||
+                                      getTargetTrialNote(targetIndex).trim().length > 0;
                                     const indexedTargetRegistration = register(indexedTargetFieldKey, {
                                       onChange: (event) => {
                                         const nextTargets = sessionTargets.slice();
@@ -2736,34 +2787,53 @@ export function SessionModal({
                                         key={`${selectedGoalId}-target-${targetIndex}`}
                                         className="rounded-md border border-indigo-100 bg-indigo-50/50 p-2 dark:border-indigo-900/40 dark:bg-indigo-900/10"
                                       >
-                                        <div className="flex items-start gap-2">
-                                          <textarea
-                                            id={`goal-target-${selectedGoalId}-${targetIndex}`}
-                                            aria-label={targetIndex === 0 ? 'Target' : `Target ${targetIndex + 1}`}
-                                            {...indexedTargetRegistration}
-                                            rows={2}
-                                            value={targetValue}
-                                            className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                                            placeholder={selectedGoal?.target_criteria?.trim() || 'Record the target for this session...'}
-                                          />
-                                          {sessionTargets.length > 1 ? (
-                                            <button
-                                              type="button"
-                                              onClick={() => removeGoalTarget(selectedGoalId, targetIndex, sessionTargets)}
-                                              aria-label={`Remove target ${targetIndex + 1}`}
-                                              className="mt-1 shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-rose-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-rose-300"
+                                        {isAdhocTarget ? (
+                                          <div className="flex items-start gap-2">
+                                            <textarea
+                                              id={`goal-target-${selectedGoalId}-${targetIndex}`}
+                                              aria-label={targetIndex === 0 ? 'Target' : `Target ${targetIndex + 1}`}
+                                              {...indexedTargetRegistration}
+                                              rows={2}
+                                              value={targetValue}
+                                              className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                              placeholder="Record the target for this session..."
+                                            />
+                                            {sessionTargets.length > 1 ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => removeGoalTarget(selectedGoalId, targetIndex, sessionTargets)}
+                                                aria-label={`Remove target ${targetIndex + 1}`}
+                                                className="mt-1 shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-rose-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-rose-300"
+                                              >
+                                                <Trash2 className="h-4 w-4" />
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                        ) : (
+                                          <div>
+                                            <p
+                                              id={`goal-target-${selectedGoalId}-${targetIndex}`}
+                                              className="break-words rounded-md border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-950 shadow-sm dark:border-indigo-800 dark:bg-dark dark:text-indigo-100"
                                             >
-                                              <Trash2 className="h-4 w-4" />
-                                            </button>
-                                          ) : null}
-                                        </div>
-                                        <input
-                                          type="hidden"
-                                          {...register(targetTrialTargetFieldKey)}
-                                          value={targetValue}
-                                          readOnly
-                                        />
-                                        <div className="mt-3">
+                                              {targetValue || planTargetText || 'No target selected'}
+                                            </p>
+                                            <input
+                                              type="hidden"
+                                              {...indexedTargetRegistration}
+                                              value={targetValue}
+                                              readOnly
+                                            />
+                                          </div>
+                                        )}
+                                        {shouldRenderTargetTrialFields ? (
+                                          <div className="contents">
+                                            <input
+                                              type="hidden"
+                                              {...register(targetTrialTargetFieldKey)}
+                                              value={targetValue}
+                                              readOnly
+                                            />
+                                            <div className="mt-3">
                                           <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
                                             Trials for target {targetIndex + 1}
                                           </p>
@@ -2885,7 +2955,9 @@ export function SessionModal({
                                             className="mt-1 w-full rounded-md border-gray-300 bg-white text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                                             placeholder="Record prompts used and client reactions for this target..."
                                           />
-                                        </div>
+                                            </div>
+                                          </div>
+                                        ) : null}
                                       </div>
                                     );
                                   })}
@@ -2924,7 +2996,8 @@ export function SessionModal({
                               <input
                                 type="hidden"
                                 {...register(promptLevelFieldKey)}
-                                defaultValue={existingMeasurementEntry?.data.prompt_level ?? ''}
+                                value={existingMeasurementEntry?.data.prompt_level ?? ''}
+                                readOnly
                               />
                               <input
                                 type="hidden"

@@ -256,6 +256,9 @@ const getServiceCodesFromLine = (line: string): string[] => {
   const normalizedLine = line.replace(
     /\b(H[O0]\d{3})\s*\(\s*([A-Z0-9]{2})\s*\)/gi,
     (_, code: string, modifier: string) => `${code}-${modifier}`,
+  ).replace(
+    /\b(H[O0]\d{3})\s+([A-Z]{2})\b/gi,
+    (_, code: string, modifier: string) => `${code}-${modifier}`,
   );
   return [...normalizedLine.matchAll(SERVICE_CODE_PATTERN)].map((match) =>
     normalizeParsedServiceCode(match[0]),

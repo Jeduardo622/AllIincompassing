@@ -224,6 +224,32 @@ describe('parseAuthorizationPdfText', () => {
     });
   });
 
+  it('recognizes split modifier codes when extraction separates code and modifier cells', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Code Modifier Description From To Requested Approved
+        H0032 HO Treatment planning supervision 06/23/2026 12/22/2026 10 10
+      `),
+    ).toMatchObject({
+      startDate: '2026-06-23',
+      endDate: '2026-12-22',
+      services: [{ serviceCode: 'H0032-HO', requestedUnits: 10, approvedUnits: 10 }],
+    });
+  });
+
+  it('does not treat compact-row date parts as split modifiers', () => {
+    expect(
+      parseAuthorizationPdfText(`
+        Code From To Requested Approved
+        H0032 06/23/2026 12/22/2026 12 10
+      `),
+    ).toMatchObject({
+      startDate: '2026-06-23',
+      endDate: '2026-12-22',
+      services: [{ serviceCode: 'H0032', requestedUnits: 12, approvedUnits: 10 }],
+    });
+  });
+
   it('does not treat member names as member IDs', () => {
     expect(
       parseAuthorizationPdfText(`

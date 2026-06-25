@@ -50,6 +50,11 @@ const ciPlaywrightRunnerHasChild = (runner, scriptName) => childIndex(runner.chi
 const ciWorkflowRunsPlaywrightScript = (workflow, scriptName) =>
   workflow.includes(`npm run ${scriptName}`) || workflow.includes("npm run ci:playwright");
 
+const workflowJobTimeoutMinutes = (workflow) => {
+  const match = workflow.match(/^\s+timeout-minutes:\s*(\d+)\s*$/m);
+  return match ? Number.parseInt(match[1], 10) : undefined;
+};
+
 const extractWorkflowJob = (workflow, jobName) => {
   const lines = workflow.split(/\r?\n/);
   const start = lines.findIndex((line) => line === `  ${jobName}:`);
@@ -202,6 +207,10 @@ const run = async () => {
     errors.push(
       ".github/workflows/ci.yml auth-browser-smoke gate must run playwright:session-note-measurement-roundtrip directly or via ci:playwright.",
     );
+  }
+  const authBrowserSmokeTimeout = workflowJobTimeoutMinutes(authBrowserSmokeJob);
+  if (typeof authBrowserSmokeTimeout !== "number" || authBrowserSmokeTimeout < 35) {
+    errors.push(".github/workflows/ci.yml auth-browser-smoke timeout-minutes must be at least 35.");
   }
   if (
     authBrowserSmokeJob.includes("npm run playwright:session-no-show") &&

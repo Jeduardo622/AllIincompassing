@@ -606,6 +606,143 @@ describe("PreAuthTab manual authorization upload", () => {
     });
   });
 
+  it("prefills split modifier service codes from uploaded authorization PDF text", async () => {
+    cptCodesMockData.splice(
+      0,
+      cptCodesMockData.length,
+      {
+        code: "97153",
+        short_description: "Adaptive behavior treatment by protocol",
+      },
+      {
+        code: "H0032-HO",
+        short_description: "Treatment planning supervision",
+      },
+    );
+    extractPdfTextMock.mockResolvedValue(`
+      Authorization Number: IEHP-PDF-MOD-1
+      Decision: approved
+      Member ID: MEM-PDF-MOD-1
+      Diagnosis: F84.0 - Autistic disorder
+      Service From: 07/01/2026 to 12/31/2026
+      Code Modifier Description From To Requested Approved
+      H0032 HO Treatment planning supervision 07/01/2026 12/31/2026 12 10
+    `);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
+    await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "auth-notice.pdf", {
+        type: "application/pdf",
+      }),
+    );
+
+    expect(await screen.findByText(/PDF prefill applied/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Unsupported service codes skipped/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /submit request/i }));
+
+    await waitFor(() => {
+      expect(createAuthorizationWithServices).toHaveBeenCalledWith(
+        expect.objectContaining({
+          authorization_number: "IEHP-PDF-MOD-1",
+          member_id: "MEM-PDF-MOD-1",
+          services: [
+            expect.objectContaining({
+              service_code: "H0032-HO",
+              requested_units: 10,
+              approved_units: 10,
+              decision_status: "approved",
+            }),
+          ],
+        }),
+      );
+    });
+  });
+
+  it("prefills unmodified H-code rows when dates follow the code directly", async () => {
+    cptCodesMockData.splice(
+      0,
+      cptCodesMockData.length,
+      {
+        code: "H0032",
+        short_description: "Treatment planning",
+      },
+    );
+    extractPdfTextMock.mockResolvedValue(`
+      Authorization Number: IEHP-PDF-HCODE-1
+      Decision: approved
+      Member ID: MEM-PDF-HCODE-1
+      Diagnosis: F84.0 - Autistic disorder
+      Code From To Requested Approved
+      H0032 07/01/2026 12/31/2026 12 10
+    `);
+    const user = userEvent.setup();
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    await user.click(screen.getByRole("button", { name: /new authorization/i }));
+
+    await screen.findByRole("heading", { name: /authorization notice details/i });
+    await user.selectOptions(await screen.findByLabelText(/insurance provider/i), "payer-1");
+    await waitFor(() => {
+      expect(screen.getByLabelText(/rendering therapist/i)).toHaveValue("therapist-provider-1");
+    });
+    await user.selectOptions(screen.getByLabelText(/plan type/i), "Medicaid");
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["synthetic authorization notice"], "auth-notice.pdf", {
+        type: "application/pdf",
+      }),
+    );
+
+    expect(await screen.findByText(/PDF prefill applied/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Unsupported service codes skipped/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await user.click(screen.getByRole("button", { name: /submit request/i }));
+
+    await waitFor(() => {
+      expect(createAuthorizationWithServices).toHaveBeenCalledWith(
+        expect.objectContaining({
+          authorization_number: "IEHP-PDF-HCODE-1",
+          member_id: "MEM-PDF-HCODE-1",
+          start_date: "2026-07-01",
+          end_date: "2026-12-31",
+          services: [
+            expect.objectContaining({
+              service_code: "H0032",
+              requested_units: 10,
+              approved_units: 10,
+              decision_status: "approved",
+            }),
+          ],
+        }),
+      );
+    });
+  });
+
   it("does not overwrite admin-entered notice fields during PDF prefill", async () => {
     extractPdfTextMock.mockResolvedValue(`
       Authorization Number: IEHP-PDF-999

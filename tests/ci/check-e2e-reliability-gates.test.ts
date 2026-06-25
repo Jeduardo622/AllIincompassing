@@ -103,6 +103,7 @@ const createFixture = (
       ...extraWorkflowLines.map((line) => `      ${line}`),
       "  auth_browser_smoke:",
       "    name: auth-browser-smoke",
+      "    timeout-minutes: 35",
       "    steps:",
       "      - name: Auth browser smoke gate",
       "        run: |",
@@ -188,6 +189,18 @@ describe("check-e2e-reliability-gates", () => {
     expect(result.stderr).toContain(
       "auth-browser-smoke gate must run playwright:session-no-show directly or via ci:playwright",
     );
+  });
+
+  test("rejects auth-browser-smoke timeout below the required hosted budget", () => {
+    const fixtureRoot = createFixture(`tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`);
+    const workflowPath = path.join(fixtureRoot, ".github/workflows/ci.yml");
+    const workflow = readFileSync(workflowPath, "utf8").replace("timeout-minutes: 35", "timeout-minutes: 25");
+    writeFileSync(workflowPath, workflow);
+
+    const result = spawnSync("node", [gatePath], { cwd: fixtureRoot, encoding: "utf8" });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("auth-browser-smoke timeout-minutes must be at least 35");
   });
 
   test("rejects old ci:playwright shell-chain semantics", () => {

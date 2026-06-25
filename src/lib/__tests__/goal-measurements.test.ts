@@ -55,6 +55,22 @@ describe('goal-measurements helpers', () => {
     });
   });
 
+  it('falls back to legacy promptLevel when canonical prompt_level is empty', () => {
+    expect(
+      normalizeGoalMeasurementEntry({
+        metric_value: 1,
+        prompt_level: '',
+        promptLevel: 'Model',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          prompt_level: 'Model',
+        }),
+      }),
+    );
+  });
+
   it('normalizes target-scoped trial rows and derives legacy summary fields', () => {
     expect(
       normalizeGoalMeasurementEntry({

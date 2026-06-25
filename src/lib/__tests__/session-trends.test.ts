@@ -153,4 +153,125 @@ describe('buildSessionTrendModel', () => {
       denominator: null,
     });
   });
+
+  it('preserves raw flat percent snapshots that include opportunities', () => {
+    const flatNote: SessionNote = {
+      ...note('note-flat-with-opportunities', '2026-06-01', []),
+      goal_measurements: {
+        [goal.id]: {
+          version: 1,
+          data: {
+            measurement_type: 'percent accuracy',
+            metric_label: 'Percent',
+            metric_unit: '%',
+            metric_value: 80,
+            opportunities: 10,
+            target: 'Earthquake',
+          },
+        },
+      },
+    };
+
+    const model = buildSessionTrendModel(
+      [flatNote],
+      [goal],
+      {
+        displayPeriod: 'month',
+        dateRange: { startDate: '2026-06-01', endDate: '2026-06-30' },
+      },
+    );
+
+    expect(model.buckets[0].median).toBe(80);
+    expect(model.buckets[0].evidence[0]).toMatchObject({
+      source: 'flat_percent',
+      numerator: null,
+      denominator: null,
+    });
+  });
+
+  it('preserves normalized flat percent snapshots before synthetic trial math', () => {
+    const normalizedFlatNote: SessionNote = {
+      ...note('note-normalized-flat', '2026-06-01', []),
+      goal_measurements: {
+        [goal.id]: {
+          version: 1,
+          data: {
+            measurement_type: 'percent accuracy',
+            metric_label: 'Percent',
+            metric_unit: '%',
+            metric_value: 80,
+            opportunities: 10,
+            target: 'Earthquake',
+            targets: ['Earthquake'],
+            target_trials: [
+              {
+                target: 'Earthquake',
+                metric_value: 80,
+                opportunities: 10,
+                incorrect_trials: null,
+                trial_prompt_note: null,
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const model = buildSessionTrendModel(
+      [normalizedFlatNote],
+      [goal],
+      {
+        displayPeriod: 'month',
+        dateRange: { startDate: '2026-06-01', endDate: '2026-06-30' },
+      },
+    );
+
+    expect(model.buckets[0].median).toBe(80);
+    expect(model.buckets[0].evidence[0]).toMatchObject({
+      source: 'flat_percent',
+      numerator: null,
+      denominator: null,
+    });
+  });
+
+  it('charts normalized flat percent snapshots when synthetic trials have no denominator', () => {
+    const normalizedFlatNote: SessionNote = {
+      ...note('note-normalized-flat-no-denominator', '2026-06-01', []),
+      goal_measurements: {
+        [goal.id]: {
+          version: 1,
+          data: {
+            measurement_type: 'percent accuracy',
+            metric_label: 'Percent',
+            metric_unit: '%',
+            metric_value: 75,
+            target: 'Earthquake',
+            targets: ['Earthquake'],
+            target_trials: [
+              {
+                target: 'Earthquake',
+                metric_value: 75,
+                incorrect_trials: null,
+                opportunities: null,
+                trial_prompt_note: null,
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const model = buildSessionTrendModel(
+      [normalizedFlatNote],
+      [goal],
+      {
+        displayPeriod: 'month',
+        dateRange: { startDate: '2026-06-01', endDate: '2026-06-30' },
+      },
+    );
+
+    expect(model.excludedSessionCount).toBe(0);
+    expect(model.buckets[0].median).toBe(75);
+    expect(model.buckets[0].evidence[0].source).toBe('flat_percent');
+  });
 });

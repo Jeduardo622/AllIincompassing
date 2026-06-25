@@ -173,14 +173,9 @@ const buildTrialPercent = (
   return null;
 };
 
-const buildPercentPoint = (
+const buildFlatPercentPoint = (
   data: SessionGoalMeasurementData,
-): { percent: number; numerator: number | null; denominator: number | null; source: 'flat_percent' | 'flat_trials' } | null => {
-  const trialPercent = buildTrialPercent(data.metric_value, data.incorrect_trials, data.opportunities);
-  if (trialPercent) {
-    return trialPercent;
-  }
-
+): { percent: number; numerator: null; denominator: null; source: 'flat_percent' } | null => {
   if (looksPercentBased(data) && isFiniteNumber(data.metric_value) && data.metric_value >= 0 && data.metric_value <= 100) {
     return {
       percent: data.metric_value,
@@ -193,6 +188,22 @@ const buildPercentPoint = (
   return null;
 };
 
+const buildPercentPoint = (
+  data: SessionGoalMeasurementData,
+): { percent: number; numerator: number | null; denominator: number | null; source: 'flat_percent' | 'flat_trials' } | null => {
+  const flatPercent = buildFlatPercentPoint(data);
+  const trialPercent = buildTrialPercent(data.metric_value, data.incorrect_trials, data.opportunities);
+  if (flatPercent && (!trialPercent || trialPercent.percent > 100)) {
+    return flatPercent;
+  }
+
+  if (trialPercent) {
+    return trialPercent;
+  }
+
+  return flatPercent;
+};
+
 const normalizeTargetLabel = (target: string | null | undefined, fallback: string): string => {
   const trimmed = target?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : fallback;
@@ -200,6 +211,23 @@ const normalizeTargetLabel = (target: string | null | undefined, fallback: strin
 
 const buildTargetKey = (goalId: string, targetLabel: string): string =>
   `${goalId}::${targetLabel.trim().toLowerCase()}`;
+
+const shouldPreferFlatPercentSnapshot = (
+  data: SessionGoalMeasurementData,
+  targetTrials: readonly SessionTargetTrialData[],
+): boolean => {
+  if (!buildFlatPercentPoint(data) || targetTrials.length !== 1) {
+    return false;
+  }
+
+  const trial = targetTrials[0];
+  const trialPercent = buildTrialPercent(trial.metric_value, trial.incorrect_trials, trial.opportunities);
+  if (!trialPercent) {
+    return true;
+  }
+
+  return trialPercent.percent > 100;
+};
 
 const extractEvidenceForNote = (
   note: SessionNote,
@@ -218,6 +246,29 @@ const extractEvidenceForNote = (
     const targetTrials = data.target_trials ?? [];
 
     if (targetTrials.length > 0) {
+      if (shouldPreferFlatPercentSnapshot(data, targetTrials)) {
+        const percentPoint = buildFlatPercentPoint(data);
+        if (!percentPoint) {
+          return;
+        }
+
+        const targetLabel = normalizeTargetLabel(data.target ?? targetTrials[0]?.target, goalLabel);
+        points.push({
+          noteId: note.id,
+          sessionDate: note.date,
+          therapistName: note.therapist_name,
+          goalId,
+          goalLabel,
+          targetKey: buildTargetKey(goalId, targetLabel),
+          targetLabel,
+          percent: percentPoint.percent,
+          numerator: percentPoint.numerator,
+          denominator: percentPoint.denominator,
+          source: percentPoint.source,
+        });
+        return;
+      }
+
       targetTrials.forEach((trial: SessionTargetTrialData, index) => {
         const targetLabel = normalizeTargetLabel(trial.target, data.targets?.[index] ?? data.target ?? goalLabel);
         const trialPercent = buildTrialPercent(

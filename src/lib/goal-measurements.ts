@@ -269,9 +269,7 @@ export const normalizeGoalMeasurementEntry = (
       opportunities: sumTargetTrialNumber(resolvedTargetTrials, 'opportunities') ?? toOptionalNumber(
         sourceData.opportunities ?? sourceData.trials,
       ),
-      prompt_level: toOptionalString(
-        sourceData.prompt_level ?? sourceData.promptLevel,
-      ),
+      prompt_level: toOptionalString(sourceData.prompt_level) ?? toOptionalString(sourceData.promptLevel),
       note: toOptionalString(sourceData.note ?? sourceData.comment),
       targets: resolvedTargets.length > 0 ? resolvedTargets : null,
       target: resolvedTargets[0] ?? null,

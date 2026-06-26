@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+
+import { resolveServerAssetPath } from "./serverAssetPath";
 
 interface PdfFallbackCoordinates {
   page: number;
@@ -101,7 +102,7 @@ export interface BuiltTemplatePayload {
 
 let cachedCalOptimaMap: PdfRenderMapEntry[] | null = null;
 
-const CALOPTIMA_RENDER_MAP_PATH = resolve(process.cwd(), "docs", "fill_docs", "caloptima_fba_pdf_render_map.json");
+const CALOPTIMA_RENDER_MAP_PATH = resolveServerAssetPath("docs/fill_docs/caloptima_fba_pdf_render_map.json");
 
 const toText = (value: unknown): string => {
   if (value === null || value === undefined) return "";

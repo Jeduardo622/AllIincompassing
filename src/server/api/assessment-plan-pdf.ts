@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { z } from "zod";
 import {
   CORS_HEADERS,
@@ -12,6 +11,7 @@ import {
 } from "./shared";
 import { buildCalOptimaTemplatePayload, loadCalOptimaPdfRenderMap } from "../assessmentPlanPdf";
 import { buildIehpDocxPayload } from "../iehpAssessmentDocx";
+import { resolveServerAssetPath } from "../serverAssetPath";
 
 const requestSchema = z.object({
   assessment_document_id: z.string().uuid(),
@@ -144,7 +144,7 @@ interface GenerateDocxTemplateHealthResponse {
   byte_count: number;
 }
 
-const CALOPTIMA_TEMPLATE_PATH = resolve(process.cwd(), "CalOptima Health FBA Template (2).pdf");
+const CALOPTIMA_TEMPLATE_PATH = resolveServerAssetPath("CalOptima Health FBA Template (2).pdf");
 const IEHP_DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const ASSESSMENT_GENERATION_SECRET_HEADER = "x-assessment-generation-secret";
 

@@ -102,14 +102,51 @@ export interface BuiltTemplatePayload {
 
 let cachedCalOptimaMap: PdfRenderMapEntry[] | null = null;
 
-const CALOPTIMA_RENDER_MAP_PATH = resolveServerAssetPath("docs/fill_docs/caloptima_fba_pdf_render_map.json");
+const CALOPTIMA_RENDER_MAP_PATH = resolveServerAssetPath(
+  "docs/fill_docs/caloptima_fba_pdf_render_map.json",
+);
+const CALOPTIMA_GOAL_DETAIL_APPENDIX_KEY = "CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX";
+
+const CALOPTIMA_GOAL_APPENDIX_FIELDS = new Map<
+  string,
+  { heading: string; singular: string; plural: string }
+>([
+  [
+    "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+    {
+      heading: "Target and replacement behavior goals",
+      singular: "target and replacement behavior goal",
+      plural: "target and replacement behavior goals",
+    },
+  ],
+  [
+    "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+    {
+      heading: "Skill acquisition goals",
+      singular: "skill acquisition goal",
+      plural: "skill acquisition goals",
+    },
+  ],
+  [
+    "CALOPTIMA_FBA_PARENT_GOALS",
+    {
+      heading: "Parent/caregiver goals",
+      singular: "parent/caregiver goal",
+      plural: "parent/caregiver goals",
+    },
+  ],
+]);
 
 const toText = (value: unknown): string => {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value.trim();
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
   if (Array.isArray(value)) {
-    return value.map((entry) => toText(entry)).filter((entry) => entry.length > 0).join(", ");
+    return value
+      .map((entry) => toText(entry))
+      .filter((entry) => entry.length > 0)
+      .join(", ");
   }
   if (typeof value === "object") {
     try {
@@ -141,14 +178,19 @@ const normalizeMapEntry = (entry: unknown): PdfRenderMapEntry | null => {
     typeof fallback.font_size !== "number" ||
     typeof fallback.max_width !== "number" ||
     (fallback.height !== undefined && typeof fallback.height !== "number") ||
-    (fallback.line_height !== undefined && typeof fallback.line_height !== "number") ||
-    (fallback.max_lines !== undefined && typeof fallback.max_lines !== "number") ||
-    (fallback.field_kind !== undefined && typeof fallback.field_kind !== "string")
+    (fallback.line_height !== undefined &&
+      typeof fallback.line_height !== "number") ||
+    (fallback.max_lines !== undefined &&
+      typeof fallback.max_lines !== "number") ||
+    (fallback.field_kind !== undefined &&
+      typeof fallback.field_kind !== "string")
   ) {
     return null;
   }
 
-  const formFieldCandidates = record.form_field_candidates.filter((candidate) => typeof candidate === "string") as string[];
+  const formFieldCandidates = record.form_field_candidates.filter(
+    (candidate) => typeof candidate === "string",
+  ) as string[];
   if (formFieldCandidates.length === 0) {
     return null;
   }
@@ -162,22 +204,34 @@ const normalizeMapEntry = (entry: unknown): PdfRenderMapEntry | null => {
       y: fallback.y,
       font_size: fallback.font_size,
       max_width: fallback.max_width,
-      ...(typeof fallback.height === "number" ? { height: fallback.height } : {}),
-      ...(typeof fallback.line_height === "number" ? { line_height: fallback.line_height } : {}),
-      ...(typeof fallback.max_lines === "number" ? { max_lines: fallback.max_lines } : {}),
-      ...(typeof fallback.field_kind === "string" ? { field_kind: fallback.field_kind } : {}),
+      ...(typeof fallback.height === "number"
+        ? { height: fallback.height }
+        : {}),
+      ...(typeof fallback.line_height === "number"
+        ? { line_height: fallback.line_height }
+        : {}),
+      ...(typeof fallback.max_lines === "number"
+        ? { max_lines: fallback.max_lines }
+        : {}),
+      ...(typeof fallback.field_kind === "string"
+        ? { field_kind: fallback.field_kind }
+        : {}),
     },
   };
 };
 
-export async function loadCalOptimaPdfRenderMap(): Promise<PdfRenderMapEntry[]> {
+export async function loadCalOptimaPdfRenderMap(): Promise<
+  PdfRenderMapEntry[]
+> {
   if (cachedCalOptimaMap) {
     return cachedCalOptimaMap;
   }
 
   const raw = await readFile(CALOPTIMA_RENDER_MAP_PATH, "utf8");
   const parsed = JSON.parse(raw) as PdfRenderMapFile;
-  const entries = Array.isArray(parsed.entries) ? parsed.entries.map(normalizeMapEntry).filter(Boolean) : [];
+  const entries = Array.isArray(parsed.entries)
+    ? parsed.entries.map(normalizeMapEntry).filter(Boolean)
+    : [];
 
   if (entries.length === 0) {
     throw new Error("CalOptima PDF render map is missing or invalid.");
@@ -198,7 +252,12 @@ const formatDate = (value: string | null | undefined): string => {
 };
 
 const formatWriterCredentials = (writer: AssessmentWriterSnapshot): string => {
-  const parts = [writer.title, writer.license_number, writer.bcba_number, writer.rbt_number]
+  const parts = [
+    writer.title,
+    writer.license_number,
+    writer.bcba_number,
+    writer.rbt_number,
+  ]
     .map((item) => (typeof item === "string" ? item.trim() : ""))
     .filter((item) => item.length > 0);
   return parts.join(" | ");
@@ -206,7 +265,10 @@ const formatWriterCredentials = (writer: AssessmentWriterSnapshot): string => {
 
 const formatDiagnosis = (diagnosis: string[] | null | undefined): string => {
   if (!Array.isArray(diagnosis) || diagnosis.length === 0) return "";
-  return diagnosis.map((entry) => entry.trim()).filter((entry) => entry.length > 0).join("; ");
+  return diagnosis
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .join("; ");
 };
 
 const formatAcceptedGoals = (goals: DraftGoalSnapshot[]): string => {
@@ -216,7 +278,9 @@ const formatAcceptedGoals = (goals: DraftGoalSnapshot[]): string => {
     .join("\n");
 };
 
-const formatStructuredPayload = (payload: Record<string, unknown> | null): string => {
+const formatStructuredPayload = (
+  payload: Record<string, unknown> | null,
+): string => {
   if (!payload) return "";
   if (Array.isArray(payload.rows)) {
     return payload.rows
@@ -245,27 +309,86 @@ const formatStructuredPayload = (payload: Record<string, unknown> | null): strin
     })
     .filter(Boolean);
   const objectiveRows = Array.isArray(payload.objective_data_points)
-    ? payload.objective_data_points.map((row, index) => `objective ${index + 1}: ${toText(row)}`)
+    ? payload.objective_data_points.map(
+        (row, index) => `objective ${index + 1}: ${toText(row)}`,
+      )
     : [];
   return [...lines, ...objectiveRows].join("\n");
 };
 
-const formatStructuredSectionsForKey = (placeholderKey: string, args: BuildTemplatePayloadArgs): string => {
-  const sections = (args.structuredSections ?? [])
-    .filter((section) => section.field_key === placeholderKey && section.status === "approved")
+const getApprovedStructuredSectionsForKey = (
+  placeholderKey: string,
+  args: BuildTemplatePayloadArgs,
+): AssessmentStructuredSectionValueRow[] =>
+  (args.structuredSections ?? [])
+    .filter(
+      (section) =>
+        section.field_key === placeholderKey && section.status === "approved",
+    )
     .sort((left, right) => left.section_index - right.section_index);
-  if (sections.length === 0) return "";
-  return sections
+
+const formatStructuredSections = (
+  sections: AssessmentStructuredSectionValueRow[],
+): string => {
+  const blocks = sections
     .map((section, index) => {
       const formatted = formatStructuredPayload(section.payload);
       return formatted ? `${index + 1}. ${formatted}` : "";
     })
-    .filter(Boolean)
-    .join("\n\n");
+    .filter(Boolean);
+  if (blocks.length === 0) return "";
+  return blocks.join("\n\n");
+};
+
+const formatStructuredSectionsForKey = (
+  placeholderKey: string,
+  args: BuildTemplatePayloadArgs,
+): string =>
+  formatStructuredSections(
+    getApprovedStructuredSectionsForKey(placeholderKey, args),
+  );
+
+const countFormattedStructuredSectionsForKey = (
+  placeholderKey: string,
+  args: BuildTemplatePayloadArgs,
+): number =>
+  getApprovedStructuredSectionsForKey(placeholderKey, args).filter(
+    (section) => formatStructuredPayload(section.payload).length > 0,
+  ).length;
+
+const formatGoalAppendixNotice = (
+  config: { singular: string; plural: string },
+  count: number,
+): string => {
+  const label = count === 1 ? config.singular : config.plural;
+  return `See Goal Detail Appendix for ${count} complete ${label}.`;
+};
+
+const buildGoalDetailAppendix = (args: BuildTemplatePayloadArgs): string => {
+  const sections: string[] = [];
+
+  CALOPTIMA_GOAL_APPENDIX_FIELDS.forEach((config, placeholderKey) => {
+    const structuredText = formatStructuredSectionsForKey(placeholderKey, args);
+    if (!structuredText) return;
+    sections.push(`${config.heading}\n${structuredText}`);
+  });
+
+  const acceptedGoalsText = formatAcceptedGoals(args.acceptedGoals);
+  if (acceptedGoalsText) {
+    sections.push(`Accepted draft goals\n${acceptedGoalsText}`);
+  }
+
+  return sections.join("\n\n");
 };
 
 const formatAddress = (client: AssessmentClientSnapshot): string => {
-  return [client.address_line1, client.address_line2, client.city, client.state, client.zip_code]
+  return [
+    client.address_line1,
+    client.address_line2,
+    client.city,
+    client.state,
+    client.zip_code,
+  ]
     .map((item) => (typeof item === "string" ? item.trim() : ""))
     .filter((item) => item.length > 0)
     .join(", ");
@@ -276,19 +399,46 @@ const getDerivedValue = (
   args: BuildTemplatePayloadArgs,
   checklistValue: AssessmentChecklistValueRow | undefined,
 ): string => {
+  const goalAppendixConfig = CALOPTIMA_GOAL_APPENDIX_FIELDS.get(placeholderKey);
+  if (goalAppendixConfig) {
+    const structuredSectionCount = countFormattedStructuredSectionsForKey(
+      placeholderKey,
+      args,
+    );
+    if (structuredSectionCount > 0) {
+      return formatGoalAppendixNotice(
+        goalAppendixConfig,
+        structuredSectionCount,
+      );
+    }
+  }
+
   const structuredText = formatStructuredSectionsForKey(placeholderKey, args);
   if (structuredText.length > 0) {
     return structuredText;
   }
-  const checklistText = checklistValue ? toText(checklistValue.value_text ?? checklistValue.value_json) : "";
+  const checklistText = checklistValue
+    ? toText(checklistValue.value_text ?? checklistValue.value_json)
+    : "";
   if (checklistText.length > 0) {
     return checklistText;
   }
 
   const { client, writer, acceptedProgram, acceptedGoals } = args;
+  if (goalAppendixConfig && acceptedGoals.length > 0) {
+    const label =
+      acceptedGoals.length === 1
+        ? "accepted draft goal"
+        : "accepted draft goals";
+    return `See Goal Detail Appendix for ${acceptedGoals.length} ${label}.`;
+  }
+
   switch (placeholderKey) {
     case "CALOPTIMA_FBA_MEMBER_NAME":
-      return client.full_name?.trim() || `${client.first_name ?? ""} ${client.last_name ?? ""}`.trim();
+      return (
+        client.full_name?.trim() ||
+        `${client.first_name ?? ""} ${client.last_name ?? ""}`.trim()
+      );
     case "CALOPTIMA_FBA_MEMBER_DOB":
       return formatDate(client.date_of_birth);
     case "CALOPTIMA_FBA_CIN":
@@ -323,9 +473,13 @@ const getDerivedValue = (
   }
 };
 
-export async function buildCalOptimaTemplatePayload(args: BuildTemplatePayloadArgs): Promise<BuiltTemplatePayload> {
+export async function buildCalOptimaTemplatePayload(
+  args: BuildTemplatePayloadArgs,
+): Promise<BuiltTemplatePayload> {
   const renderMap = await loadCalOptimaPdfRenderMap();
-  const checklistByKey = new Map(args.checklistItems.map((item) => [item.placeholder_key, item]));
+  const checklistByKey = new Map(
+    args.checklistItems.map((item) => [item.placeholder_key, item]),
+  );
 
   const values: Record<string, string> = {};
   const missingRequiredKeys: string[] = [];
@@ -341,10 +495,19 @@ export async function buildCalOptimaTemplatePayload(args: BuildTemplatePayloadAr
   });
 
   (args.structuredSections ?? []).forEach((section) => {
-    if (section.required && section.status === "approved" && !values[section.field_key]?.trim()) {
+    if (
+      section.required &&
+      section.status === "approved" &&
+      !values[section.field_key]?.trim()
+    ) {
       missingRequiredKeys.push(section.field_key);
     }
   });
+
+  const goalDetailAppendix = buildGoalDetailAppendix(args);
+  if (goalDetailAppendix) {
+    values[CALOPTIMA_GOAL_DETAIL_APPENDIX_KEY] = goalDetailAppendix;
+  }
 
   return {
     values,

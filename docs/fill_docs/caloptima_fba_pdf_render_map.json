@@ -95,10 +95,10 @@
         "page": 1,
         "x": 95,
         "y": 618,
-        "font_size": 10,
+        "font_size": 8,
         "max_width": 230,
         "height": 14,
-        "line_height": 12,
+        "line_height": 10,
         "max_lines": 1,
         "field_kind": "text"
       },
@@ -216,12 +216,12 @@
         "page": 2,
         "x": 64,
         "y": 655,
-        "font_size": 10,
+        "font_size": 8,
         "max_width": 208,
         "height": 12,
         "max_lines": 1,
         "field_kind": "date",
-        "line_height": 12
+        "line_height": 10
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false

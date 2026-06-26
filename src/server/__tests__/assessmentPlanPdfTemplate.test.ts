@@ -2,19 +2,45 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadCalOptimaChecklistTemplateRows } from "../assessmentChecklistTemplate";
-import { buildCalOptimaTemplatePayload, loadCalOptimaPdfRenderMap } from "../assessmentPlanPdf";
+import {
+  buildCalOptimaTemplatePayload,
+  loadCalOptimaPdfRenderMap,
+} from "../assessmentPlanPdf";
 
-const registryPath = resolve(process.cwd(), "docs", "fill_docs", "caloptima_fba_template_field_map.json");
-const checklistPath = resolve(process.cwd(), "docs", "fill_docs", "caloptima_fba_field_extraction_checklist.json");
-const renderMapPath = resolve(process.cwd(), "docs", "fill_docs", "caloptima_fba_pdf_render_map.json");
-const extractorPath = resolve(process.cwd(), "supabase", "functions", "extract-assessment-fields", "index.ts");
+const registryPath = resolve(
+  process.cwd(),
+  "docs",
+  "fill_docs",
+  "caloptima_fba_template_field_map.json",
+);
+const checklistPath = resolve(
+  process.cwd(),
+  "docs",
+  "fill_docs",
+  "caloptima_fba_field_extraction_checklist.json",
+);
+const renderMapPath = resolve(
+  process.cwd(),
+  "docs",
+  "fill_docs",
+  "caloptima_fba_pdf_render_map.json",
+);
+const extractorPath = resolve(
+  process.cwd(),
+  "supabase",
+  "functions",
+  "extract-assessment-fields",
+  "index.ts",
+);
 
 const readJsonFile = async (path: string): Promise<Record<string, unknown>> => {
   return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> => {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
 };
 
 const asRecordArray = (value: unknown): Record<string, unknown>[] => {
@@ -22,11 +48,15 @@ const asRecordArray = (value: unknown): Record<string, unknown>[] => {
 };
 
 const asStringArray = (value: unknown): string[] => {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
 };
 
 const placeholderKeys = (entries: Record<string, unknown>[]): string[] => {
-  return entries.map((entry) => entry.placeholder_key).filter((key): key is string => typeof key === "string");
+  return entries
+    .map((entry) => entry.placeholder_key)
+    .filter((key): key is string => typeof key === "string");
 };
 
 describe("CalOptima PDF render map", () => {
@@ -36,10 +66,16 @@ describe("CalOptima PDF render map", () => {
       loadCalOptimaPdfRenderMap(),
     ]);
 
-    const checklistKeys = new Set(checklistRows.map((row) => row.placeholder_key));
-    const renderMapKeys = new Set(renderMap.map((entry) => entry.placeholder_key));
+    const checklistKeys = new Set(
+      checklistRows.map((row) => row.placeholder_key),
+    );
+    const renderMapKeys = new Set(
+      renderMap.map((entry) => entry.placeholder_key),
+    );
 
-    const missingKeys = Array.from(checklistKeys).filter((key) => !renderMapKeys.has(key));
+    const missingKeys = Array.from(checklistKeys).filter(
+      (key) => !renderMapKeys.has(key),
+    );
     expect(missingKeys).toEqual([]);
   });
 
@@ -61,16 +97,35 @@ describe("CalOptima PDF render map", () => {
 
   it("keeps tail-section overlay fields anchored to their actual template pages", async () => {
     const renderMap = await loadCalOptimaPdfRenderMap();
-    const entriesByKey = new Map(renderMap.map((entry) => [entry.placeholder_key, entry]));
+    const entriesByKey = new Map(
+      renderMap.map((entry) => [entry.placeholder_key, entry]),
+    );
 
-    expect(entriesByKey.get("CALOPTIMA_FBA_SUMMARY_RECOMMENDATIONS")?.fallback.page).toBe(27);
-    expect(entriesByKey.get("CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS")?.fallback.page).toBe(27);
-    expect(entriesByKey.get("CALOPTIMA_FBA_TELEHEALTH_CONSENT")?.fallback.page).toBe(27);
-    expect(entriesByKey.get("CALOPTIMA_FBA_PARENT_INVOLVEMENT")?.fallback.page).toBe(28);
-    expect(entriesByKey.get("CALOPTIMA_FBA_REPORT_WRITTEN_BY")?.fallback.page).toBe(28);
-    expect(entriesByKey.get("CALOPTIMA_FBA_WRITER_CREDENTIALS")?.fallback.page).toBe(28);
-    expect(entriesByKey.get("CALOPTIMA_FBA_REPORT_COMPLETED_DATE")?.fallback.page).toBe(28);
-    expect(entriesByKey.get("CALOPTIMA_FBA_SIGNATURES")?.fallback.page).toBe(28);
+    expect(
+      entriesByKey.get("CALOPTIMA_FBA_SUMMARY_RECOMMENDATIONS")?.fallback.page,
+    ).toBe(27);
+    expect(
+      entriesByKey.get("CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS")?.fallback
+        .page,
+    ).toBe(27);
+    expect(
+      entriesByKey.get("CALOPTIMA_FBA_TELEHEALTH_CONSENT")?.fallback.page,
+    ).toBe(27);
+    expect(
+      entriesByKey.get("CALOPTIMA_FBA_PARENT_INVOLVEMENT")?.fallback.page,
+    ).toBe(28);
+    expect(
+      entriesByKey.get("CALOPTIMA_FBA_REPORT_WRITTEN_BY")?.fallback.page,
+    ).toBe(28);
+    expect(
+      entriesByKey.get("CALOPTIMA_FBA_WRITER_CREDENTIALS")?.fallback.page,
+    ).toBe(28);
+    expect(
+      entriesByKey.get("CALOPTIMA_FBA_REPORT_COMPLETED_DATE")?.fallback.page,
+    ).toBe(28);
+    expect(entriesByKey.get("CALOPTIMA_FBA_SIGNATURES")?.fallback.page).toBe(
+      28,
+    );
   });
 
   it("keeps registry, checklist, and render placeholder keys in parity", async () => {
@@ -84,8 +139,12 @@ describe("CalOptima PDF render map", () => {
     const checklistRows = asRecordArray(checklist.rows);
     const renderEntries = asRecordArray(renderMap.entries);
 
-    expect(placeholderKeys(checklistRows).sort()).toEqual(placeholderKeys(registryLabels).sort());
-    expect(placeholderKeys(renderEntries).sort()).toEqual(placeholderKeys(registryLabels).sort());
+    expect(placeholderKeys(checklistRows).sort()).toEqual(
+      placeholderKeys(registryLabels).sort(),
+    );
+    expect(placeholderKeys(renderEntries).sort()).toEqual(
+      placeholderKeys(registryLabels).sort(),
+    );
   });
 
   it("defines implementation metadata for every registry field", async () => {
@@ -95,7 +154,9 @@ describe("CalOptima PDF render map", () => {
     registryLabels.forEach((label) => {
       const pdfRender = asRecord(label.pdf_render);
 
-      expect(label.placeholder_key).toEqual(expect.stringMatching(/^CALOPTIMA_FBA_/));
+      expect(label.placeholder_key).toEqual(
+        expect.stringMatching(/^CALOPTIMA_FBA_/),
+      );
       expect(label.input_type).toEqual(expect.any(String));
       expect(label.destination).toEqual(expect.any(String));
       expect(pdfRender.target).toEqual("caloptima_fba_pdf_render_map");
@@ -105,10 +166,15 @@ describe("CalOptima PDF render map", () => {
   });
 
   it("keeps CalOptima extraction metadata deterministic and alias-backed for redacted report headings", async () => {
-    const [registry, checklist] = await Promise.all([readJsonFile(registryPath), readJsonFile(checklistPath)]);
+    const [registry, checklist] = await Promise.all([
+      readJsonFile(registryPath),
+      readJsonFile(checklistPath),
+    ]);
     const registryLabels = asRecordArray(asRecord(registry.FBA).labels);
     const checklistRows = asRecordArray(checklist.rows);
-    const rowsByKey = new Map(checklistRows.map((row) => [row.placeholder_key, row]));
+    const rowsByKey = new Map(
+      checklistRows.map((row) => [row.placeholder_key, row]),
+    );
     const aliasRequiredKeys = [
       "CALOPTIMA_FBA_ADMIN_CONTACT_NAME_TITLE",
       "CALOPTIMA_FBA_CHIEF_COMPLAINT",
@@ -130,17 +196,25 @@ describe("CalOptima PDF render map", () => {
     });
 
     aliasRequiredKeys.forEach((key) => {
-      const registryLabel = asRecord(registryLabels.find((label) => label.placeholder_key === key));
+      const registryLabel = asRecord(
+        registryLabels.find((label) => label.placeholder_key === key),
+      );
       const checklistRow = asRecord(rowsByKey.get(key));
 
-      expect(asStringArray(registryLabel.extraction_aliases).length).toBeGreaterThan(0);
-      expect(asStringArray(checklistRow.extraction_aliases).length).toBeGreaterThan(0);
+      expect(
+        asStringArray(registryLabel.extraction_aliases).length,
+      ).toBeGreaterThan(0);
+      expect(
+        asStringArray(checklistRow.extraction_aliases).length,
+      ).toBeGreaterThan(0);
     });
   });
 
   it("keeps deterministic structured extraction metadata aligned with runtime structured outputs", async () => {
     const checklist = await readJsonFile(checklistPath);
-    const rowsByKey = new Map(asRecordArray(checklist.rows).map((row) => [row.placeholder_key, row]));
+    const rowsByKey = new Map(
+      asRecordArray(checklist.rows).map((row) => [row.placeholder_key, row]),
+    );
     const deterministicStructuredKeys = [
       "CALOPTIMA_FBA_COORDINATION_OF_CARE",
       "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES",
@@ -154,7 +228,9 @@ describe("CalOptima PDF render map", () => {
     ];
 
     deterministicStructuredKeys.forEach((key) => {
-      expect(asRecord(rowsByKey.get(key)).extraction_method).toBe("deterministic_structured_extraction_plus_review");
+      expect(asRecord(rowsByKey.get(key)).extraction_method).toBe(
+        "deterministic_structured_extraction_plus_review",
+      );
     });
   });
 
@@ -162,11 +238,17 @@ describe("CalOptima PDF render map", () => {
     const extractorSource = await readFile(extractorPath, "utf8");
 
     expect(extractorSource).not.toContain("isTargetBehaviorBlock");
-    expect(extractorSource).toContain('field_key: "CALOPTIMA_FBA_TRANSITION_PLAN"');
-    expect(extractorSource).toContain('/XII\\.\\s+/i');
-    expect(extractorSource).toContain('/\\*\\*\\s+By\\s+signing/i');
-    expect(extractorSource).toContain('"CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS"');
-    expect(extractorSource).not.toContain("CALOPTIMA_FBA_HCPCS_RECOMMENDATIONS");
+    expect(extractorSource).toContain(
+      'field_key: "CALOPTIMA_FBA_TRANSITION_PLAN"',
+    );
+    expect(extractorSource).toContain("/XII\\.\\s+/i");
+    expect(extractorSource).toContain("/\\*\\*\\s+By\\s+signing/i");
+    expect(extractorSource).toContain(
+      '"CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS"',
+    );
+    expect(extractorSource).not.toContain(
+      "CALOPTIMA_FBA_HCPCS_RECOMMENDATIONS",
+    );
     expect(extractorSource).not.toContain("CALOPTIMA_FBA_DAILY_SCHEDULES");
   });
 
@@ -178,9 +260,18 @@ describe("CalOptima PDF render map", () => {
     ]);
 
     const registryLabels = asRecordArray(asRecord(registry.FBA).labels);
-    const checklistRowsByKey = new Map(asRecordArray(checklist.rows).map((row) => [row.placeholder_key, row]));
-    const renderEntriesByKey = new Map(asRecordArray(renderMap.entries).map((entry) => [entry.placeholder_key, entry]));
-    const structuredLabels = registryLabels.filter((label) => typeof label.structured_section === "string");
+    const checklistRowsByKey = new Map(
+      asRecordArray(checklist.rows).map((row) => [row.placeholder_key, row]),
+    );
+    const renderEntriesByKey = new Map(
+      asRecordArray(renderMap.entries).map((entry) => [
+        entry.placeholder_key,
+        entry,
+      ]),
+    );
+    const structuredLabels = registryLabels.filter(
+      (label) => typeof label.structured_section === "string",
+    );
 
     expect(structuredLabels.length).toBeGreaterThan(0);
 
@@ -191,7 +282,9 @@ describe("CalOptima PDF render map", () => {
 
       expect(label.input_type).toEqual("structured_section");
       expect(label.destination).toEqual("assessment_checklist.value_json");
-      expect(label.review_behavior).toEqual("structured_clinical_review_required");
+      expect(label.review_behavior).toEqual(
+        "structured_clinical_review_required",
+      );
       expect(checklistRow.structured_section).toEqual(label.structured_section);
       expect(checklistRow.input_type).toEqual(label.input_type);
       expect(checklistRow.destination).toEqual(label.destination);
@@ -200,7 +293,7 @@ describe("CalOptima PDF render map", () => {
     });
   });
 
-  it("prefers approved structured sections over checklist summary values for the same placeholder", async () => {
+  it("moves approved structured goal details into the CalOptima appendix while keeping the template field short", async () => {
     const payload = await buildCalOptimaTemplatePayload({
       checklistItems: [
         {
@@ -230,8 +323,109 @@ describe("CalOptima PDF render map", () => {
       acceptedGoals: [],
     });
 
-    expect(payload.values.CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS).toContain("Reviewed communication goal");
-    expect(payload.values.CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS).not.toContain("structured sections extracted");
-    expect(payload.values.CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS).not.toContain("Unreviewed summary payload");
+    expect(payload.values.CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS).toBe(
+      "See Goal Detail Appendix for 1 complete skill acquisition goal.",
+    );
+    expect(payload.values.CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS).not.toContain(
+      "Reviewed communication goal",
+    );
+    expect(payload.values.CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX).toContain(
+      "Skill acquisition goals",
+    );
+    expect(payload.values.CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX).toContain(
+      "Reviewed communication goal",
+    );
+    expect(payload.values.CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS).not.toContain(
+      "structured sections extracted",
+    );
+    expect(payload.values.CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS).not.toContain(
+      "Unreviewed summary payload",
+    );
+  });
+
+  it("does not point goal fields to an appendix when approved structured goal rows are empty", async () => {
+    const payload = await buildCalOptimaTemplatePayload({
+      checklistItems: [
+        {
+          placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+          required: true,
+          status: "approved",
+          value_text: null,
+          value_json: null,
+        },
+      ],
+      structuredSections: [
+        {
+          field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+          section_key: "goals_treatment_planning",
+          section_index: 0,
+          payload: null,
+          status: "approved",
+          required: true,
+        },
+      ],
+      client: { full_name: "Test Client" },
+      writer: { full_name: "Test Writer" },
+      acceptedProgram: null,
+      acceptedGoals: [],
+    });
+
+    expect(payload.values.CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS).toBe("");
+    expect(payload.values).not.toHaveProperty(
+      "CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX",
+    );
+    expect(payload.missing_required_keys).toContain(
+      "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+    );
+  });
+
+  it("keeps accepted draft goals in the appendix when only some goal fields have structured sections", async () => {
+    const payload = await buildCalOptimaTemplatePayload({
+      checklistItems: [],
+      structuredSections: [
+        {
+          field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+          section_key: "goals_treatment_planning",
+          section_index: 0,
+          payload: {
+            title: "Reviewed communication goal",
+            target_criteria: "80% independent requests across two weeks.",
+          },
+          status: "approved",
+          required: true,
+        },
+      ],
+      client: { full_name: "Test Client" },
+      writer: { full_name: "Test Writer" },
+      acceptedProgram: null,
+      acceptedGoals: [
+        {
+          title: "Fallback parent participation goal",
+          description:
+            "Caregiver will implement prompting steps during routines.",
+          original_text:
+            "Caregiver will implement prompting steps during routines.",
+        },
+      ],
+    });
+
+    expect(payload.values.CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS).toBe(
+      "See Goal Detail Appendix for 1 complete skill acquisition goal.",
+    );
+    expect(payload.values.CALOPTIMA_FBA_PARENT_GOALS).toBe(
+      "See Goal Detail Appendix for 1 accepted draft goal.",
+    );
+    expect(payload.values.CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX).toContain(
+      "Skill acquisition goals",
+    );
+    expect(payload.values.CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX).toContain(
+      "Reviewed communication goal",
+    );
+    expect(payload.values.CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX).toContain(
+      "Accepted draft goals",
+    );
+    expect(payload.values.CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX).toContain(
+      "Fallback parent participation goal",
+    );
   });
 });

@@ -78,7 +78,11 @@ const createRequestClientForDocument = (
 const createAdminStorage = () => ({
   storage: {
     from: () => ({
-      upload: () => Promise.resolve({ data: {}, error: null }),
+      upload: (
+        _objectPath: string,
+        _bytes: Uint8Array,
+        _options: { contentType: string; upsert: boolean },
+      ) => Promise.resolve({ data: {}, error: null }),
       createSignedUrl: () =>
         Promise.resolve({
           data: { signedUrl: "https://example.supabase.co/generated.pdf" },
@@ -87,6 +91,31 @@ const createAdminStorage = () => ({
     }),
   },
 });
+
+const createCapturingAdminStorage = () => {
+  let uploadedBytes: Uint8Array | null = null;
+
+  return {
+    getUploadedBytes: () => uploadedBytes,
+    storage: {
+      from: () => ({
+        upload: (
+          _objectPath: string,
+          bytes: Uint8Array,
+          _options: { contentType: string; upsert: boolean },
+        ) => {
+          uploadedBytes = bytes;
+          return Promise.resolve({ data: {}, error: null });
+        },
+        createSignedUrl: () =>
+          Promise.resolve({
+            data: { signedUrl: "https://example.supabase.co/generated.pdf" },
+            error: null,
+          }),
+      }),
+    },
+  };
+};
 
 const createPdfWithFieldsBase64 = async (): Promise<string> => {
   const pdfDoc = await PDFDocument.create();
@@ -392,4 +421,105 @@ Deno.test("generateAssessmentPlanPdfHandler reports filled_pages from visible re
   const body = await response.json();
   expect(body.filled_pages).toEqual([1, 4]);
   expect(body.fill_mode).toBe("mixed");
+});
+
+Deno.test("generateAssessmentPlanPdfHandler appends readable goal appendix pages without layout warnings", async () => {
+  const templatePdfBase64 = await createPdfWithFieldsBase64();
+  const admin = createCapturingAdminStorage();
+  const payload = {
+    ...validPayload,
+    template_pdf_base64: templatePdfBase64,
+    render_map_entries: [
+      {
+        placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        form_field_candidates: ["Missing Skill Goals"],
+        fallback: {
+          page: 1,
+          x: 20,
+          y: 720,
+          font_size: 8,
+          max_width: 260,
+          height: 20,
+          line_height: 10,
+          max_lines: 2,
+          field_kind: "structured_section",
+        },
+      },
+    ],
+    field_values: {
+      CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS:
+        "See Goal Detail Appendix for 2 complete skill acquisition goals.",
+      CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX: [
+        "Skill acquisition goals",
+        "1. Communication goal: request help independently across three settings.",
+        "2. Daily living goal: complete hygiene routine with visual supports.",
+        ...Array.from(
+          { length: 120 },
+          (_, index) =>
+            `${index + 3}. Continuation detail ${
+              index + 1
+            }: maintain clinically reviewed goal details across appended PDF pages.`,
+        ),
+      ].join("\n"),
+    },
+  };
+  const handler = createTestHandler({ admin });
+  const response = await handler(postRequest(payload));
+
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(body.overflow_keys).toEqual([]);
+  expect(body.layout_warnings).toEqual([]);
+
+  const uploadedBytes = admin.getUploadedBytes();
+  if (!uploadedBytes) {
+    throw new Error("Expected generated PDF bytes to be uploaded.");
+  }
+  const pdfDoc = await PDFDocument.load(uploadedBytes);
+  expect(pdfDoc.getPageCount()).toBeGreaterThan(5);
+});
+
+Deno.test("generateAssessmentPlanPdfHandler skips appendix pages when appendix content sanitizes to empty", async () => {
+  const templatePdfBase64 = await createPdfWithFieldsBase64();
+  const admin = createCapturingAdminStorage();
+  const payload = {
+    ...validPayload,
+    template_pdf_base64: templatePdfBase64,
+    render_map_entries: [
+      {
+        placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        form_field_candidates: ["Missing Skill Goals"],
+        fallback: {
+          page: 1,
+          x: 20,
+          y: 720,
+          font_size: 8,
+          max_width: 260,
+          height: 20,
+          line_height: 10,
+          max_lines: 2,
+          field_kind: "structured_section",
+        },
+      },
+    ],
+    field_values: {
+      CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS:
+        "See Goal Detail Appendix for 1 complete skill acquisition goal.",
+      CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX: "☢",
+    },
+  };
+  const handler = createTestHandler({ admin });
+  const response = await handler(postRequest(payload));
+
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(body.overflow_keys).toEqual([]);
+  expect(body.layout_warnings).toEqual([]);
+
+  const uploadedBytes = admin.getUploadedBytes();
+  if (!uploadedBytes) {
+    throw new Error("Expected generated PDF bytes to be uploaded.");
+  }
+  const pdfDoc = await PDFDocument.load(uploadedBytes);
+  expect(pdfDoc.getPageCount()).toBe(4);
 });

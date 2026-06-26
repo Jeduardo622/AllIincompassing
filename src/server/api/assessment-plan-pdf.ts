@@ -144,9 +144,7 @@ interface GenerateDocxTemplateHealthResponse {
   byte_count: number;
 }
 
-const CALOPTIMA_TEMPLATE_PATH = resolveServerAssetPath("CalOptima Health FBA Template (2).pdf", {
-  moduleUrl: import.meta.url,
-});
+const CALOPTIMA_TEMPLATE_PATH = resolveServerAssetPath("CalOptima Health FBA Template (2).pdf");
 const IEHP_DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const ASSESSMENT_GENERATION_SECRET_HEADER = "x-assessment-generation-secret";
 

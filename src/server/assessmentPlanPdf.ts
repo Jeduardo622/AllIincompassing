@@ -102,9 +102,7 @@ export interface BuiltTemplatePayload {
 
 let cachedCalOptimaMap: PdfRenderMapEntry[] | null = null;
 
-const CALOPTIMA_RENDER_MAP_PATH = resolveServerAssetPath("docs/fill_docs/caloptima_fba_pdf_render_map.json", {
-  moduleUrl: import.meta.url,
-});
+const CALOPTIMA_RENDER_MAP_PATH = resolveServerAssetPath("docs/fill_docs/caloptima_fba_pdf_render_map.json");
 
 const toText = (value: unknown): string => {
   if (value === null || value === undefined) return "";

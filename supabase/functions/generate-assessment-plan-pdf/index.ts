@@ -1,6 +1,7 @@
 import {
   PDFCheckBox,
   PDFDocument,
+  type PDFFont,
   PDFTextField,
   rgb,
   StandardFonts,
@@ -16,6 +17,7 @@ import { resolveOrgId } from "../_shared/org.ts";
 import {
   layoutOverlayText,
   type OverlayLayoutWarning,
+  wrapOverlayText,
 } from "./overlay-layout.ts";
 import {
   isPdfCheckboxNotApplicableValue,
@@ -52,6 +54,14 @@ const requestSchema = z.object({
   output_bucket_id: z.string().trim().min(1).default("client-documents"),
   output_object_path: z.string().trim().min(1),
 });
+
+const GOAL_DETAIL_APPENDIX_KEY = "CALOPTIMA_FBA_GOAL_DETAIL_APPENDIX";
+const APPENDIX_PAGE_SIZE: [number, number] = [612, 792];
+const APPENDIX_MARGIN = 54;
+const APPENDIX_TITLE_FONT_SIZE = 14;
+const APPENDIX_BODY_FONT_SIZE = 9;
+const APPENDIX_LINE_HEIGHT = 12;
+const APPENDIX_PARAGRAPH_GAP = 4;
 
 interface AssessmentDocumentScopeRow {
   id: string;
@@ -107,6 +117,71 @@ const toUint8Array = (base64Value: string): Uint8Array => {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+};
+
+const appendGoalDetailAppendixPages = (
+  pdfDoc: PDFDocument,
+  appendixText: string,
+  regularFont: PDFFont,
+  boldFont: PDFFont,
+): number[] => {
+  const pageNumbers: number[] = [];
+  const maxTextWidth = APPENDIX_PAGE_SIZE[0] - APPENDIX_MARGIN * 2;
+  let page = pdfDoc.addPage(APPENDIX_PAGE_SIZE);
+  let y = APPENDIX_PAGE_SIZE[1] - APPENDIX_MARGIN;
+
+  const drawHeader = (continued: boolean) => {
+    pageNumbers.push(pdfDoc.getPageCount());
+    page.drawText(`Goal Detail Appendix${continued ? " (continued)" : ""}`, {
+      x: APPENDIX_MARGIN,
+      y,
+      size: APPENDIX_TITLE_FONT_SIZE,
+      font: boldFont,
+      color: rgb(0.12, 0.12, 0.12),
+    });
+    y -= APPENDIX_LINE_HEIGHT + APPENDIX_PARAGRAPH_GAP;
+  };
+
+  const addContinuationPage = () => {
+    page = pdfDoc.addPage(APPENDIX_PAGE_SIZE);
+    y = APPENDIX_PAGE_SIZE[1] - APPENDIX_MARGIN;
+    drawHeader(true);
+  };
+
+  drawHeader(false);
+
+  sanitizePdfText(appendixText).split(/\n/).forEach((paragraph) => {
+    const normalized = paragraph.trim();
+    if (!normalized) {
+      y -= APPENDIX_PARAGRAPH_GAP;
+      return;
+    }
+
+    const lines = wrapOverlayText(
+      normalized,
+      maxTextWidth,
+      regularFont,
+      APPENDIX_BODY_FONT_SIZE,
+    );
+
+    lines.forEach((line) => {
+      if (y < APPENDIX_MARGIN + APPENDIX_LINE_HEIGHT) {
+        addContinuationPage();
+      }
+      page.drawText(line, {
+        x: APPENDIX_MARGIN,
+        y,
+        size: APPENDIX_BODY_FONT_SIZE,
+        font: regularFont,
+        color: rgb(0.12, 0.12, 0.12),
+      });
+      y -= APPENDIX_LINE_HEIGHT;
+    });
+
+    y -= APPENDIX_PARAGRAPH_GAP;
+  });
+
+  return pageNumbers;
 };
 
 export const createGenerateAssessmentPlanPdfHandler =
@@ -211,6 +286,16 @@ export const createGenerateAssessmentPlanPdfHandler =
       let filledAcroFormCount = 0;
       const acroFormFilledKeys = new Set<string>();
       const filledPages = new Set<number>();
+      let regularFont: PDFFont | null = null;
+      let boldFont: PDFFont | null = null;
+      const getRegularFont = async () => {
+        regularFont ??= await pdfDoc.embedFont(StandardFonts.Helvetica);
+        return regularFont;
+      };
+      const getBoldFont = async () => {
+        boldFont ??= await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        return boldFont;
+      };
 
       for (const entry of parsed.data.render_map_entries) {
         const rawValue = parsed.data.field_values[entry.placeholder_key];
@@ -254,7 +339,7 @@ export const createGenerateAssessmentPlanPdfHandler =
       const layoutWarnings: OverlayLayoutWarning[] = [];
       let overlayFilledCount = 0;
       if (acroFormFilledKeys.size < parsed.data.render_map_entries.length) {
-        const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const overlayFont = await getRegularFont();
 
         for (const entry of parsed.data.render_map_entries) {
           if (acroFormFilledKeys.has(entry.placeholder_key)) continue;
@@ -270,7 +355,7 @@ export const createGenerateAssessmentPlanPdfHandler =
           const page = pdfDoc.getPage(pageIndex);
           if (!page) continue;
 
-          const layout = layoutOverlayText(entry, value, regularFont);
+          const layout = layoutOverlayText(entry, value, overlayFont);
           if (layout.warning) {
             layoutWarnings.push(layout.warning);
           }
@@ -283,14 +368,30 @@ export const createGenerateAssessmentPlanPdfHandler =
               x: entry.fallback.x,
               y: entry.fallback.y - lineIndex * layout.line_height,
               size: entry.fallback.font_size,
-              font: regularFont,
+              font: overlayFont,
               color: rgb(0.12, 0.12, 0.12),
             });
           });
         }
       }
+
+      const appendixText = parsed.data.field_values[GOAL_DETAIL_APPENDIX_KEY];
+      const sanitizedAppendixText = typeof appendixText === "string"
+        ? sanitizePdfText(appendixText).trim()
+        : "";
+      const appendixPages = sanitizedAppendixText.length > 0
+        ? appendGoalDetailAppendixPages(
+          pdfDoc,
+          sanitizedAppendixText,
+          await getRegularFont(),
+          await getBoldFont(),
+        )
+        : [];
+      appendixPages.forEach((pageNumber) => filledPages.add(pageNumber));
+
       const fillMode: "acroform" | "overlay" | "mixed" =
-        filledAcroFormCount > 0 && overlayFilledCount > 0
+        filledAcroFormCount > 0 &&
+          (overlayFilledCount > 0 || appendixPages.length > 0)
           ? "mixed"
           : filledAcroFormCount > 0
           ? "acroform"

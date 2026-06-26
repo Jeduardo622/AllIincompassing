@@ -136,10 +136,10 @@
         "page": 1,
         "x": 95,
         "y": 602,
-        "font_size": 10,
+        "font_size": 8,
         "max_width": 230,
         "height": 14,
-        "line_height": 12,
+        "line_height": 10,
         "max_lines": 1,
         "field_kind": "text"
       },

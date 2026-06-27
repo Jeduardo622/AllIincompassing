@@ -682,7 +682,7 @@ async function run(): Promise<void> {
           capturedAccessToken ??
           (await getTokenFromBrowserStorage(page)) ??
           (await fetchAccessTokenForCredentials(authenticatedCredential.email, authenticatedCredential.password));
-        await cancelSession(page, t, bookedIds.sessionId);
+        await cancelSession(page, t, bookedIds.sessionId, bookedIds);
       } catch (cleanupError) {
         console.warn(
           `[blocked-close] cleanup cancel failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,

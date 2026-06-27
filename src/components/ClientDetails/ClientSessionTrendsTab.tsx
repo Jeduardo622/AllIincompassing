@@ -192,7 +192,7 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
       x: {
         title: {
           display: true,
-          text: displayPeriod === 'month' ? 'Month' : 'Week',
+          text: displayPeriod === 'month' ? 'Month' : displayPeriod === 'week' ? 'Week' : 'Day',
         },
       },
     },
@@ -279,6 +279,7 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
           >
             <option value="month">Month</option>
             <option value="week">Week</option>
+            <option value="day">Day</option>
           </select>
         </label>
 

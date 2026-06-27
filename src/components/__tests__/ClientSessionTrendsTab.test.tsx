@@ -135,6 +135,7 @@ describe('ClientSessionTrendsTab', () => {
     expect(screen.getByRole('heading', { name: /Session Trends/i })).toBeInTheDocument();
     expect(screen.getByLabelText('Goal')).toHaveTextContent('Safety: Emergency scenarios');
     expect(screen.getByLabelText('Target')).toHaveTextContent('lost in community');
+    expect(screen.getByRole('option', { name: 'Day' })).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getAllByText(/80%|100%/).length).toBeGreaterThan(0);
   });

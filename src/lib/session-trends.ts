@@ -1,6 +1,6 @@
 import type { Goal, SessionGoalMeasurementData, SessionNote, SessionTargetTrialData } from '../types';
 
-export type SessionTrendDisplayPeriod = 'month' | 'week';
+export type SessionTrendDisplayPeriod = 'month' | 'week' | 'day';
 
 export interface SessionTrendDateRange {
   readonly startDate?: string;
@@ -88,6 +88,9 @@ const formatMonthLabel = (date: Date): string =>
 const formatWeekLabel = (date: Date): string =>
   `Week of ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date)}`;
 
+const formatDayLabel = (date: Date): string =>
+  new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date);
+
 const getWeekStart = (date: Date): Date => {
   const copy = new Date(date);
   const day = copy.getDay();
@@ -114,6 +117,13 @@ const buildBucket = (
     return {
       key: toLocalIsoDate(weekStart),
       label: formatWeekLabel(weekStart),
+    };
+  }
+
+  if (displayPeriod === 'day') {
+    return {
+      key: toLocalIsoDate(date),
+      label: formatDayLabel(date),
     };
   }
 

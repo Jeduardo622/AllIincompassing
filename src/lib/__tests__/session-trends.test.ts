@@ -77,6 +77,36 @@ describe('buildSessionTrendModel', () => {
     });
   });
 
+  it('computes daily buckets from per-session target trial percentages', () => {
+    const model = buildSessionTrendModel(
+      [
+        note('note-1', '2026-06-01', [{ target: 'lost in community', metric_value: 8, opportunities: 10 }]),
+        note('note-2', '2026-06-01', [{ target: 'lost in community', metric_value: 10, opportunities: 10 }]),
+        note('note-3', '2026-06-02', [{ target: 'lost in community', metric_value: 6, opportunities: 10 }]),
+      ],
+      [goal],
+      {
+        displayPeriod: 'day',
+        dateRange: { startDate: '2026-06-01', endDate: '2026-06-30' },
+      },
+    );
+
+    expect(model.buckets).toEqual([
+      expect.objectContaining({
+        bucketKey: '2026-06-01',
+        label: 'Jun 1',
+        median: 90,
+        sampleSize: 2,
+      }),
+      expect.objectContaining({
+        bucketKey: '2026-06-02',
+        label: 'Jun 2',
+        median: 60,
+        sampleSize: 1,
+      }),
+    ]);
+  });
+
   it('uses correct plus incorrect trials when opportunities are not captured', () => {
     const model = buildSessionTrendModel(
       [

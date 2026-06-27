@@ -385,7 +385,7 @@ async function run(): Promise<void> {
       }
     });
 
-    await withStepTimeout("cleanup-cancel-session", () => cancelSession(activePage, token, booked.sessionId));
+    await withStepTimeout("cleanup-cancel-session", () => cancelSession(activePage, token, booked.sessionId, booked));
 
     console.log(
       JSON.stringify({

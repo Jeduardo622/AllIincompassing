@@ -10,6 +10,10 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import type { Page } from "playwright";
 
+import {
+  buildLifecycleTargetPairs,
+  type LifecycleTargetPair,
+} from "../../src/scripts/playwrightSessionLifecycleTargets";
 import { waitForSelectOptions } from "./playwright-smoke";
 
 export interface LifecycleIds {
@@ -21,6 +25,8 @@ export interface LifecycleIds {
   startIso?: string;
   endIso?: string;
   noteId?: string;
+  createdProgramId?: string;
+  createdGoalId?: string;
 }
 
 interface SessionStartPayload {
@@ -37,6 +43,7 @@ interface BrowserFetchResult<TBody> {
 }
 
 const EDGE_FETCH_TIMEOUT_MS = Number(process.env.PW_EDGE_FETCH_TIMEOUT_MS ?? "20000");
+const BOOKING_RETRY_DELAY_MS = Number(process.env.PW_BOOKING_RETRY_DELAY_MS ?? "250");
 
 const fetchWithTimeout = async (input: string | URL, init?: RequestInit): Promise<Response> => {
   const controller = new AbortController();
@@ -128,7 +135,7 @@ const createSessionViaServiceRole = async (params: {
   throw new Error("Service-role session fallback insert failed: unable to find a non-overlapping slot.");
 };
 
-const fetchAuthorizedClientIds = async (): Promise<Set<string>> => {
+const fetchAuthorizedTherapistClientPairs = async (): Promise<LifecycleTargetPair[]> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -141,19 +148,160 @@ const fetchAuthorizedClientIds = async (): Promise<Set<string>> => {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error } = await adminClient
     .from("authorizations")
-    .select("client_id")
+    .select("client_id,provider_id")
     .eq("status", "approved")
     .lte("start_date", today)
     .gte("end_date", today)
     .limit(500);
   if (error) {
-    return new Set<string>();
+    return [];
   }
-  return new Set(
+  return (
     (data ?? [])
-      .map((row) => row.client_id)
-      .filter((value): value is string => typeof value === "string" && value.length > 0),
+      .map((row) => ({ therapistId: row.provider_id, clientId: row.client_id }))
+      .filter(
+        (row): row is LifecycleTargetPair =>
+          typeof row.therapistId === "string" &&
+          row.therapistId.length > 0 &&
+          typeof row.clientId === "string" &&
+          row.clientId.length > 0,
+      )
   );
+};
+
+const resolveOrganizationIdForTherapist = async (
+  adminClient: ReturnType<typeof createClient>,
+  therapistId: string,
+): Promise<string> => {
+  const { data, error } = await adminClient
+    .from("therapists")
+    .select("organization_id")
+    .eq("id", therapistId)
+    .single();
+  if (error || !data?.organization_id) {
+    throw new Error(`Unable to resolve organization for in-progress target therapist: ${error?.message ?? "missing organization_id"}`);
+  }
+  return data.organization_id;
+};
+
+const ensureProgramAndGoalForPair = async (
+  therapistId: string,
+  clientId: string,
+): Promise<{ programId: string; goalId: string; createdProgramId?: string; createdGoalId?: string }> => {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const organizationId = await resolveOrganizationIdForTherapist(adminClient, therapistId);
+
+  const { data: existingProgramRows, error: existingProgramError } = await adminClient
+    .from("programs")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("client_id", clientId)
+    .eq("status", "active")
+    .limit(1);
+  if (existingProgramError) {
+    throw new Error(`Unable to query programs for in-progress target: ${existingProgramError.message}`);
+  }
+
+  let programId = existingProgramRows?.[0]?.id as string | undefined;
+  let createdProgramId: string | undefined;
+  if (!programId) {
+    const { data: createdProgram, error: createProgramError } = await adminClient
+      .from("programs")
+      .insert({
+        organization_id: organizationId,
+        client_id: clientId,
+        name: `Playwright In-Progress Program ${Date.now()}`,
+        description: "Auto-seeded by playwright-inprogress-session-setup",
+        status: "active",
+      })
+      .select("id")
+      .single();
+    if (createProgramError || !createdProgram?.id) {
+      throw new Error(`Unable to create in-progress target program: ${createProgramError?.message ?? "missing id"}`);
+    }
+    programId = createdProgram.id;
+    createdProgramId = createdProgram.id;
+  }
+
+  const { data: existingGoalRows, error: existingGoalError } = await adminClient
+    .from("goals")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("program_id", programId)
+    .eq("status", "active")
+    .limit(1);
+  if (existingGoalError) {
+    throw new Error(`Unable to query goals for in-progress target: ${existingGoalError.message}`);
+  }
+
+  let goalId = existingGoalRows?.[0]?.id as string | undefined;
+  let createdGoalId: string | undefined;
+  if (!goalId) {
+    const { data: createdGoal, error: createGoalError } = await adminClient
+      .from("goals")
+      .insert({
+        organization_id: organizationId,
+        client_id: clientId,
+        program_id: programId,
+        title: `Playwright In-Progress Goal ${Date.now()}`,
+        description: "Deterministic Playwright in-progress fixture goal",
+        original_text: "Deterministic Playwright in-progress fixture goal",
+        status: "active",
+      })
+      .select("id")
+      .single();
+    if (createGoalError || !createdGoal?.id) {
+      throw new Error(`Unable to create in-progress target goal: ${createGoalError?.message ?? "missing id"}`);
+    }
+    goalId = createdGoal.id;
+    createdGoalId = createdGoal.id;
+  }
+
+  return { programId, goalId, createdProgramId, createdGoalId };
+};
+
+const archiveCreatedProgramGoalFixtures = async (
+  ids: Pick<LifecycleIds, "createdProgramId" | "createdGoalId">,
+): Promise<void> => {
+  if (!ids.createdProgramId && !ids.createdGoalId) {
+    return;
+  }
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+
+  if (ids.createdGoalId) {
+    const { error } = await adminClient
+      .from("goals")
+      .update({ status: "archived" })
+      .eq("id", ids.createdGoalId);
+    if (error) {
+      throw new Error(`Unable to archive in-progress fixture goal ${ids.createdGoalId}: ${error.message}`);
+    }
+  }
+  if (ids.createdProgramId) {
+    const { error } = await adminClient
+      .from("programs")
+      .update({ status: "archived" })
+      .eq("id", ids.createdProgramId);
+    if (error) {
+      throw new Error(`Unable to archive in-progress fixture program ${ids.createdProgramId}: ${error.message}`);
+    }
+  }
 };
 
 /**
@@ -441,6 +589,33 @@ async function openSessionModal(page: Page) {
     .waitFor({ state: "visible", timeout: 10_000 });
 }
 
+const selectOptionWhenAvailable = async (
+  page: Page,
+  selector: string,
+  value: string,
+  timeoutMs = 8000,
+): Promise<boolean> => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const hasOption = await page.evaluate(
+      ({ targetSelector, targetValue }) => {
+        const select = document.querySelector(targetSelector) as HTMLSelectElement | null;
+        if (!select) {
+          return false;
+        }
+        return Array.from(select.options).some((option) => option.value === targetValue);
+      },
+      { targetSelector: selector, targetValue: value },
+    );
+    if (hasOption) {
+      await page.selectOption(selector, value);
+      return true;
+    }
+    await page.waitForTimeout(250);
+  }
+  return false;
+};
+
 async function chooseSessionTargets(
   page: Page,
   options?: { allowedTherapistIds?: Set<string> },
@@ -449,16 +624,30 @@ async function chooseSessionTargets(
   clientId: string;
   programId: string;
   goalId: string;
+  createdProgramId?: string;
+  createdGoalId?: string;
 }> {
   const therapistValues = await waitForSelectOptions(page, "#therapist-select");
   const clientValues = await waitForSelectOptions(page, "#client-select");
-  const authorizedClientIds = await fetchAuthorizedClientIds();
+  const authorizedPairs = await fetchAuthorizedTherapistClientPairs();
+  const candidatePairs = buildLifecycleTargetPairs({
+    therapistIds: therapistValues,
+    clientIds: clientValues,
+    authorizedPairs,
+  });
 
   if (therapistValues.length === 0 || clientValues.length === 0) {
     throw new Error("No therapist/client options available for in-progress session setup.");
   }
 
-  for (const therapistId of therapistValues) {
+  console.log("[in-progress-setup] target candidates", {
+    therapistOptionCount: therapistValues.length,
+    clientOptionCount: clientValues.length,
+    authorizedPairCount: authorizedPairs.length,
+    candidatePairCount: candidatePairs.length,
+  });
+
+  for (const { therapistId, clientId } of candidatePairs) {
     if (
       options?.allowedTherapistIds &&
       options.allowedTherapistIds.size > 0 &&
@@ -467,32 +656,26 @@ async function chooseSessionTargets(
       continue;
     }
     await page.selectOption("#therapist-select", therapistId);
-    for (const clientId of clientValues) {
-      if (authorizedClientIds.size > 0 && !authorizedClientIds.has(clientId)) {
-        continue;
-      }
-      await page.selectOption("#client-select", clientId);
-      const programValues = await waitForSelectOptions(page, "#program-select", {
-        timeoutMs: 8000,
-      }).catch(() => []);
-      if (programValues.length === 0) {
-        continue;
-      }
-      await page.selectOption("#program-select", programValues[0]);
-      const goalValues = await waitForSelectOptions(page, "#goal-select", {
-        timeoutMs: 8000,
-      }).catch(() => []);
-      if (goalValues.length === 0) {
-        continue;
-      }
-      await page.selectOption("#goal-select", goalValues[0]);
+    await page.selectOption("#client-select", "");
+    const seeded = await ensureProgramAndGoalForPair(therapistId, clientId);
+    await page.selectOption("#client-select", clientId);
+    const selectedProgram = await selectOptionWhenAvailable(page, "#program-select", seeded.programId);
+    if (!selectedProgram) {
+      await archiveCreatedProgramGoalFixtures(seeded);
+      continue;
+    }
+    const selectedGoal = await selectOptionWhenAvailable(page, "#goal-select", seeded.goalId);
+    if (selectedGoal) {
       return {
         therapistId,
         clientId,
-        programId: programValues[0],
-        goalId: goalValues[0],
+        programId: seeded.programId,
+        goalId: seeded.goalId,
+        createdProgramId: seeded.createdProgramId,
+        createdGoalId: seeded.createdGoalId,
       };
     }
+    await archiveCreatedProgramGoalFixtures(seeded);
   }
 
   throw new Error("Could not find therapist/client/program/goal combination for in-progress session setup.");
@@ -509,23 +692,28 @@ export async function bookSession(
   strictMode: boolean,
   bookOptions?: BookSessionOptions,
 ): Promise<LifecycleIds> {
+  console.log("[in-progress-setup] book-session goto-schedule");
   await page.goto(`${getEnv("PW_BASE_URL", "https://app.allincompassing.ai")}/schedule`, {
     waitUntil: "networkidle",
     timeout: 60000,
   });
   await page.waitForSelector("text=Schedule", { timeout: 15_000 }).catch(() => undefined);
+  console.log("[in-progress-setup] book-session open-modal");
   await openSessionModal(page);
 
   let allowedTherapistIds: Set<string> | undefined;
   const orgId = bookOptions?.restrictToOrganizationId?.trim();
   if (orgId) {
+    console.log("[in-progress-setup] book-session fetch-org-therapists");
     allowedTherapistIds = await fetchTherapistIdsForOrganization(orgId);
     if (allowedTherapistIds.size === 0) {
       throw new Error(`No therapists found for organization ${orgId}; cannot align booking with active org.`);
     }
   }
 
+  console.log("[in-progress-setup] book-session choose-targets");
   const selected = await chooseSessionTargets(page, { allowedTherapistIds });
+  console.log("[in-progress-setup] book-session selected-target");
 
   const timeZone = await resolveBrowserScheduleTimeZone(page);
   const start = buildVisibleScheduleBookingBaseStart(new Date(), undefined, timeZone);
@@ -546,49 +734,48 @@ export async function bookSession(
 
     await page.locator("#start-time-input").fill(toDatetimeLocal(attemptStart));
     await page.locator("#end-time-input").fill(toDatetimeLocal(attemptEnd));
+    console.log("[in-progress-setup] book-session attempt", {
+      attempt: attempt + 1,
+      startIso,
+    });
 
-    payload = (await page.evaluate(
-      async ({ apiToken, therapistId, clientId, programId, goalId, isoStart, isoEnd, startOffset, endOffset, tz }) => {
-        const response = await fetch("/api/book", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiToken}`,
-            "Idempotency-Key": `pw-inprogress-${Date.now()}`,
+    try {
+      const bookResponse = await fetchWithTimeout(`${getEnv("PW_BASE_URL", "https://app.allincompassing.ai").replace(/\/$/, "")}/api/book`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "Idempotency-Key": `pw-inprogress-${Date.now()}`,
+        },
+        body: JSON.stringify({
+          session: {
+            therapist_id: selected.therapistId,
+            client_id: selected.clientId,
+            program_id: selected.programId,
+            goal_id: selected.goalId,
+            goal_ids: [selected.goalId],
+            start_time: startIso,
+            end_time: endIso,
+            status: "scheduled",
           },
-          body: JSON.stringify({
-            session: {
-              therapist_id: therapistId,
-              client_id: clientId,
-              program_id: programId,
-              goal_id: goalId,
-              goal_ids: [goalId],
-              start_time: isoStart,
-              end_time: isoEnd,
-              status: "scheduled",
-            },
-            startTimeOffsetMinutes: startOffset,
-            endTimeOffsetMinutes: endOffset,
-            timeZone: tz,
-            holdSeconds: 300,
-          }),
-        });
-        const body = await response.json().catch(() => null);
-        return { status: response.status, ok: response.ok, body };
-      },
-      {
-        apiToken: token,
-        therapistId: selected.therapistId,
-        clientId: selected.clientId,
-        programId: selected.programId,
-        goalId: selected.goalId,
-        isoStart: startIso,
-        isoEnd: endIso,
-        startOffset: startOffsetMinutes,
-        endOffset: endOffsetMinutes,
-        tz: timeZone,
-      },
-    )) as BrowserFetchResult<Record<string, unknown>>;
+          startTimeOffsetMinutes: startOffsetMinutes,
+          endTimeOffsetMinutes: endOffsetMinutes,
+          timeZone,
+          holdSeconds: 300,
+        }),
+      });
+      payload = {
+        status: bookResponse.status,
+        ok: bookResponse.ok,
+        body: (await bookResponse.json().catch(() => null)) as Record<string, unknown> | null,
+      };
+    } catch (error) {
+      payload = {
+        status: 0,
+        ok: false,
+        body: { error: error instanceof Error ? error.message : String(error) },
+      };
+    }
 
     payloadBody = payload.body as
       | { success?: boolean; data?: { session?: { id?: string } } }
@@ -596,8 +783,12 @@ export async function bookSession(
     if (payload.ok && payloadBody?.success && payloadBody?.data?.session?.id) {
       break;
     }
-    if (payload.status === 409 || [500, 502, 503, 504].includes(payload.status)) {
-      await new Promise((resolve) => setTimeout(resolve, 500 + attempt * 250));
+    if (payload.status === 0 || payload.status === 409 || [500, 502, 503, 504].includes(payload.status)) {
+      console.log("[in-progress-setup] book-session retryable-response", {
+        attempt: attempt + 1,
+        status: payload.status,
+      });
+      await new Promise((resolve) => setTimeout(resolve, BOOKING_RETRY_DELAY_MS));
       continue;
     }
     break;
@@ -610,15 +801,21 @@ export async function bookSession(
       finalEndIso.length > 0 &&
       (payload?.status === 401 || payload?.status === 409);
     if (shouldFallbackToServiceRole) {
-      const fallbackSessionId = await createSessionViaServiceRole({
-        therapistId: selected.therapistId,
-        clientId: selected.clientId,
-        programId: selected.programId,
-        goalId: selected.goalId,
-        startIso: finalStartIso,
-        endIso: finalEndIso,
-        timeZone,
-      });
+      let fallbackSessionId = "";
+      try {
+        fallbackSessionId = await createSessionViaServiceRole({
+          therapistId: selected.therapistId,
+          clientId: selected.clientId,
+          programId: selected.programId,
+          goalId: selected.goalId,
+          startIso: finalStartIso,
+          endIso: finalEndIso,
+          timeZone,
+        });
+      } catch (error) {
+        await archiveCreatedProgramGoalFixtures(selected);
+        throw error;
+      }
       return {
         sessionId: fallbackSessionId,
         therapistId: selected.therapistId,
@@ -627,8 +824,11 @@ export async function bookSession(
         goalId: selected.goalId,
         startIso: finalStartIso,
         endIso: finalEndIso,
+        createdProgramId: selected.createdProgramId,
+        createdGoalId: selected.createdGoalId,
       };
     }
+    await archiveCreatedProgramGoalFixtures(selected);
     throw new Error(
       `Booking did not succeed. status=${payload?.status ?? "unknown"} payload=${JSON.stringify(payloadBody).slice(0, 2000)}`,
     );
@@ -642,6 +842,8 @@ export async function bookSession(
     goalId: selected.goalId,
     startIso: finalStartIso,
     endIso: finalEndIso,
+    createdProgramId: selected.createdProgramId,
+    createdGoalId: selected.createdGoalId,
   };
 }
 
@@ -728,38 +930,66 @@ export async function startSession(_page: Page, token: string, ids: LifecycleIds
   await runRpcFallback();
 }
 
-export async function cancelSession(_page: Page, token: string, sessionId: string): Promise<void> {
+export async function cancelSession(
+  _page: Page,
+  token: string,
+  sessionId: string,
+  createdFixtures?: Pick<LifecycleIds, "createdProgramId" | "createdGoalId">,
+): Promise<void> {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
-  const response = await fetchWithTimeout(`${supabaseUrl}/functions/v1/sessions-cancel`, {
-    method: "POST",
-    headers: buildEdgeAuthHeaders(token),
-    body: JSON.stringify({
-      session_ids: [sessionId],
-      reason: "Playwright blocked-close regression cleanup",
-    }),
-  });
+  let cancelError: unknown;
 
-  const payload = (await response.json().catch(() => null)) as { success?: boolean } | null;
-  if (!response.ok || payload?.success !== true) {
-    const shouldUseServiceRoleFallback =
-      response.status === 401 || [500, 502, 503, 504].includes(response.status);
-    if (shouldUseServiceRoleFallback) {
-      const adminClient = createClient(supabaseUrl, getEnv("SUPABASE_SERVICE_ROLE_KEY"), {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-          detectSessionInUrl: false,
-        },
-      });
-      const { error } = await adminClient
-        .from("sessions")
-        .update({ status: "cancelled" })
-        .eq("id", sessionId);
-      if (error) {
-        throw new Error(`sessions-cancel fallback failed: ${error.message}`);
+  try {
+    const response = await fetchWithTimeout(`${supabaseUrl}/functions/v1/sessions-cancel`, {
+      method: "POST",
+      headers: buildEdgeAuthHeaders(token),
+      body: JSON.stringify({
+        session_ids: [sessionId],
+        reason: "Playwright blocked-close regression cleanup",
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as { success?: boolean } | null;
+    if (!response.ok || payload?.success !== true) {
+      const shouldUseServiceRoleFallback =
+        response.status === 401 || [500, 502, 503, 504].includes(response.status);
+      if (shouldUseServiceRoleFallback) {
+        const adminClient = createClient(supabaseUrl, getEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+            detectSessionInUrl: false,
+          },
+        });
+        const { error } = await adminClient
+          .from("sessions")
+          .update({ status: "cancelled" })
+          .eq("id", sessionId);
+        if (error) {
+          throw new Error(`sessions-cancel fallback failed: ${error.message}`);
+        }
+        return;
       }
-      return;
+      throw new Error(`sessions-cancel failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
     }
-    throw new Error(`sessions-cancel failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
+  } catch (error) {
+    cancelError = error;
+  } finally {
+    try {
+      await archiveCreatedProgramGoalFixtures(createdFixtures ?? {});
+    } catch (archiveError) {
+      if (!cancelError) {
+        throw archiveError;
+      }
+      console.warn(
+        `[in-progress-setup] fixture archive failed after cancel failure: ${
+          archiveError instanceof Error ? archiveError.message : String(archiveError)
+        }`,
+      );
+    }
+  }
+
+  if (cancelError) {
+    throw cancelError;
   }
 }

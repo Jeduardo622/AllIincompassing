@@ -837,7 +837,7 @@ async function run(): Promise<void> {
       await activePage.getByText(String(updatedMetric), { exact: false }).first().waitFor({ state: "visible", timeout: 20_000 });
     });
 
-    await withStepTimeout("cleanup-cancel-session", () => cancelSession(activePage, token, booked.sessionId));
+    await withStepTimeout("cleanup-cancel-session", () => cancelSession(activePage, token, booked.sessionId, booked));
 
     console.log(
       JSON.stringify({

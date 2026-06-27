@@ -558,6 +558,315 @@ BEGIN
     session_type = EXCLUDED.session_type,
     duration_minutes = EXCLUDED.duration_minutes,
     location_type = EXCLUDED.location_type;
+
+  -- Seed a month of linked completed sessions with trial data so the
+  -- Client Details > Session Trends tab has graphable preview data.
+  INSERT INTO public.authorizations (
+    id,
+    authorization_number,
+    client_id,
+    provider_id,
+    diagnosis_code,
+    diagnosis_description,
+    start_date,
+    end_date,
+    status,
+    organization_id,
+    created_by
+  )
+  SELECT
+    '00000000-0000-0000-0000-000000000203'::uuid,
+    'SEED-AUTH-SESSION-TRENDS',
+    client_rec.id,
+    therapist_rec.id,
+    'F84.0',
+    'Autism spectrum disorder',
+    CURRENT_DATE - INTERVAL '45 days',
+    CURRENT_DATE + INTERVAL '45 days',
+    'approved',
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    therapist_rec.id
+  FROM public.clients AS client_rec
+  CROSS JOIN public.therapists AS therapist_rec
+  WHERE client_rec.email = 'client@test.com'
+    AND therapist_rec.email = 'therapist@test.com'
+  ON CONFLICT (id) DO UPDATE
+  SET
+    authorization_number = EXCLUDED.authorization_number,
+    client_id = EXCLUDED.client_id,
+    provider_id = EXCLUDED.provider_id,
+    diagnosis_code = EXCLUDED.diagnosis_code,
+    diagnosis_description = EXCLUDED.diagnosis_description,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    organization_id = EXCLUDED.organization_id,
+    created_by = EXCLUDED.created_by;
+
+  INSERT INTO public.authorization_services (
+    id,
+    authorization_id,
+    service_code,
+    service_description,
+    from_date,
+    to_date,
+    requested_units,
+    approved_units,
+    unit_type,
+    decision_status,
+    organization_id,
+    created_by
+  )
+  SELECT
+    '00000000-0000-0000-0000-000000000204'::uuid,
+    '00000000-0000-0000-0000-000000000203'::uuid,
+    '97153',
+    'Adaptive behavior treatment by protocol',
+    CURRENT_DATE - INTERVAL '45 days',
+    CURRENT_DATE + INTERVAL '45 days',
+    160,
+    160,
+    '15-minute units',
+    'approved',
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    therapist_rec.id
+  FROM public.therapists AS therapist_rec
+  WHERE therapist_rec.email = 'therapist@test.com'
+  ON CONFLICT (id) DO UPDATE
+  SET
+    authorization_id = EXCLUDED.authorization_id,
+    service_code = EXCLUDED.service_code,
+    service_description = EXCLUDED.service_description,
+    from_date = EXCLUDED.from_date,
+    to_date = EXCLUDED.to_date,
+    requested_units = EXCLUDED.requested_units,
+    approved_units = EXCLUDED.approved_units,
+    unit_type = EXCLUDED.unit_type,
+    decision_status = EXCLUDED.decision_status,
+    organization_id = EXCLUDED.organization_id,
+    created_by = EXCLUDED.created_by;
+
+  WITH trend_seed(idx, session_id, note_id, correct_trials) AS (
+    VALUES
+      (0, '00000000-0000-0000-0000-000000000301'::uuid, '00000000-0000-0000-0000-000000000401'::uuid, 5),
+      (1, '00000000-0000-0000-0000-000000000302'::uuid, '00000000-0000-0000-0000-000000000402'::uuid, 6),
+      (2, '00000000-0000-0000-0000-000000000303'::uuid, '00000000-0000-0000-0000-000000000403'::uuid, 7),
+      (3, '00000000-0000-0000-0000-000000000304'::uuid, '00000000-0000-0000-0000-000000000404'::uuid, 7),
+      (4, '00000000-0000-0000-0000-000000000305'::uuid, '00000000-0000-0000-0000-000000000405'::uuid, 8),
+      (5, '00000000-0000-0000-0000-000000000306'::uuid, '00000000-0000-0000-0000-000000000406'::uuid, 8),
+      (6, '00000000-0000-0000-0000-000000000307'::uuid, '00000000-0000-0000-0000-000000000407'::uuid, 9),
+      (7, '00000000-0000-0000-0000-000000000308'::uuid, '00000000-0000-0000-0000-000000000408'::uuid, 9),
+      (8, '00000000-0000-0000-0000-000000000309'::uuid, '00000000-0000-0000-0000-000000000409'::uuid, 10),
+      (9, '00000000-0000-0000-0000-000000000310'::uuid, '00000000-0000-0000-0000-000000000410'::uuid, 10),
+      (10, '00000000-0000-0000-0000-000000000311'::uuid, '00000000-0000-0000-0000-000000000411'::uuid, 11),
+      (11, '00000000-0000-0000-0000-000000000312'::uuid, '00000000-0000-0000-0000-000000000412'::uuid, 11)
+  ),
+  trend_rows AS (
+    SELECT
+      trend_seed.*,
+      (CURRENT_DATE - INTERVAL '27 days' + (trend_seed.idx * INTERVAL '2 days'))::date AS session_date
+    FROM trend_seed
+  )
+  INSERT INTO public.sessions (
+    id,
+    organization_id,
+    client_id,
+    therapist_id,
+    program_id,
+    goal_id,
+    session_date,
+    start_time,
+    end_time,
+    status,
+    notes,
+    has_transcription_consent,
+    rate_per_hour,
+    total_cost,
+    session_type,
+    duration_minutes,
+    location_type,
+    created_at
+  )
+  SELECT
+    trend_rows.session_id,
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    client_rec.id,
+    therapist_rec.id,
+    '00000000-0000-0000-0000-000000000201'::uuid,
+    '00000000-0000-0000-0000-000000000202'::uuid,
+    trend_rows.session_date,
+    ((trend_rows.session_date + TIME '15:00') AT TIME ZONE 'UTC'),
+    ((trend_rows.session_date + TIME '16:00') AT TIME ZONE 'UTC'),
+    'completed',
+    'Seeded session trend data for client@test.com.',
+    false,
+    120,
+    120,
+    'aba',
+    60,
+    'in_home',
+    NOW()
+  FROM trend_rows
+  CROSS JOIN public.clients AS client_rec
+  CROSS JOIN public.therapists AS therapist_rec
+  WHERE client_rec.email = 'client@test.com'
+    AND therapist_rec.email = 'therapist@test.com'
+  ON CONFLICT (id) DO UPDATE
+  SET
+    organization_id = EXCLUDED.organization_id,
+    client_id = EXCLUDED.client_id,
+    therapist_id = EXCLUDED.therapist_id,
+    program_id = EXCLUDED.program_id,
+    goal_id = EXCLUDED.goal_id,
+    session_date = EXCLUDED.session_date,
+    start_time = EXCLUDED.start_time,
+    end_time = EXCLUDED.end_time,
+    status = EXCLUDED.status,
+    notes = EXCLUDED.notes,
+    has_transcription_consent = EXCLUDED.has_transcription_consent,
+    rate_per_hour = EXCLUDED.rate_per_hour,
+    total_cost = EXCLUDED.total_cost,
+    session_type = EXCLUDED.session_type,
+    duration_minutes = EXCLUDED.duration_minutes,
+    location_type = EXCLUDED.location_type;
+
+  WITH trend_seed(idx, session_id, note_id, correct_trials) AS (
+    VALUES
+      (0, '00000000-0000-0000-0000-000000000301'::uuid, '00000000-0000-0000-0000-000000000401'::uuid, 5),
+      (1, '00000000-0000-0000-0000-000000000302'::uuid, '00000000-0000-0000-0000-000000000402'::uuid, 6),
+      (2, '00000000-0000-0000-0000-000000000303'::uuid, '00000000-0000-0000-0000-000000000403'::uuid, 7),
+      (3, '00000000-0000-0000-0000-000000000304'::uuid, '00000000-0000-0000-0000-000000000404'::uuid, 7),
+      (4, '00000000-0000-0000-0000-000000000305'::uuid, '00000000-0000-0000-0000-000000000405'::uuid, 8),
+      (5, '00000000-0000-0000-0000-000000000306'::uuid, '00000000-0000-0000-0000-000000000406'::uuid, 8),
+      (6, '00000000-0000-0000-0000-000000000307'::uuid, '00000000-0000-0000-0000-000000000407'::uuid, 9),
+      (7, '00000000-0000-0000-0000-000000000308'::uuid, '00000000-0000-0000-0000-000000000408'::uuid, 9),
+      (8, '00000000-0000-0000-0000-000000000309'::uuid, '00000000-0000-0000-0000-000000000409'::uuid, 10),
+      (9, '00000000-0000-0000-0000-000000000310'::uuid, '00000000-0000-0000-0000-000000000410'::uuid, 10),
+      (10, '00000000-0000-0000-0000-000000000311'::uuid, '00000000-0000-0000-0000-000000000411'::uuid, 11),
+      (11, '00000000-0000-0000-0000-000000000312'::uuid, '00000000-0000-0000-0000-000000000412'::uuid, 11)
+  ),
+  trend_rows AS (
+    SELECT
+      trend_seed.*,
+      (CURRENT_DATE - INTERVAL '27 days' + (trend_seed.idx * INTERVAL '2 days'))::date AS session_date,
+      12 - trend_seed.correct_trials AS incorrect_trials
+    FROM trend_seed
+  )
+  INSERT INTO public.client_session_notes (
+    id,
+    client_id,
+    authorization_id,
+    therapist_id,
+    created_by,
+    organization_id,
+    session_id,
+    service_code,
+    session_date,
+    start_time,
+    end_time,
+    session_duration,
+    goals_addressed,
+    goal_ids,
+    goal_notes,
+    goal_measurements,
+    narrative,
+    is_locked,
+    signed_at,
+    created_at,
+    updated_at
+  )
+  SELECT
+    trend_rows.note_id,
+    client_rec.id,
+    '00000000-0000-0000-0000-000000000203'::uuid,
+    therapist_rec.id,
+    therapist_rec.id,
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    trend_rows.session_id,
+    '97153',
+    trend_rows.session_date,
+    TIME '15:00',
+    TIME '16:00',
+    60,
+    ARRAY['Seed Goal'],
+    ARRAY['00000000-0000-0000-0000-000000000202'],
+    jsonb_build_object(
+      '00000000-0000-0000-0000-000000000202',
+      'Practiced functional communication requests with seeded trial opportunities.'
+    ),
+    jsonb_build_object(
+      '00000000-0000-0000-0000-000000000202',
+      jsonb_build_object(
+        'version',
+        1,
+        'data',
+        jsonb_build_object(
+          'measurement_type',
+          'trial_count',
+          'metric_label',
+          'Independent correct responses',
+          'metric_unit',
+          'opportunities',
+          'metric_value',
+          trend_rows.correct_trials,
+          'incorrect_trials',
+          trend_rows.incorrect_trials,
+          'opportunities',
+          12,
+          'target',
+          'Functional communication request',
+          'targets',
+          jsonb_build_array('Functional communication request'),
+          'target_trials',
+          jsonb_build_array(
+            jsonb_build_object(
+              'target',
+              'Functional communication request',
+              'metric_value',
+              trend_rows.correct_trials,
+              'incorrect_trials',
+              trend_rows.incorrect_trials,
+              'opportunities',
+              12
+            )
+          )
+        )
+      )
+    ),
+    format(
+      'Seeded session trend note: %s of 12 independent responses.',
+      trend_rows.correct_trials
+    ),
+    true,
+    ((trend_rows.session_date + TIME '16:05') AT TIME ZONE 'UTC'),
+    ((trend_rows.session_date + TIME '16:05') AT TIME ZONE 'UTC'),
+    NOW()
+  FROM trend_rows
+  CROSS JOIN public.clients AS client_rec
+  CROSS JOIN public.therapists AS therapist_rec
+  WHERE client_rec.email = 'client@test.com'
+    AND therapist_rec.email = 'therapist@test.com'
+  ON CONFLICT (id) DO UPDATE
+  SET
+    client_id = EXCLUDED.client_id,
+    authorization_id = EXCLUDED.authorization_id,
+    therapist_id = EXCLUDED.therapist_id,
+    created_by = EXCLUDED.created_by,
+    organization_id = EXCLUDED.organization_id,
+    session_id = EXCLUDED.session_id,
+    service_code = EXCLUDED.service_code,
+    session_date = EXCLUDED.session_date,
+    start_time = EXCLUDED.start_time,
+    end_time = EXCLUDED.end_time,
+    session_duration = EXCLUDED.session_duration,
+    goals_addressed = EXCLUDED.goals_addressed,
+    goal_ids = EXCLUDED.goal_ids,
+    goal_notes = EXCLUDED.goal_notes,
+    goal_measurements = EXCLUDED.goal_measurements,
+    narrative = EXCLUDED.narrative,
+    is_locked = EXCLUDED.is_locked,
+    signed_at = EXCLUDED.signed_at,
+    updated_at = NOW();
 END $$;
 
 COMMIT;

@@ -529,21 +529,56 @@ export const buildBookingCandidateStarts = (
   return candidates;
 };
 
+const selectScheduleFilterOptionIfPresent = async (
+  page: Page,
+  selector: string,
+  value: string,
+): Promise<boolean> => {
+  const filter = page.locator(`select${selector}`).first();
+  const exists = await filter
+    .waitFor({ state: "attached", timeout: 12_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) {
+    return false;
+  }
+
+  const deadline = Date.now() + 12_000;
+  while (Date.now() < deadline) {
+    const values = await filter.evaluate((select) =>
+      Array.from((select as HTMLSelectElement).options).map((option) => option.value),
+    );
+    if (values.includes(value)) {
+      await filter.selectOption(value);
+      return true;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  return false;
+};
+
 const openEditSessionModalFromCalendar = async (
   page: Page,
   scheduleUrl: string,
-  sessionId: string,
-  sessionStartIso: string,
+  ids: LifecycleIds,
 ): Promise<void> => {
   await page.goto(`${scheduleUrl}?_${Date.now()}`, {
     waitUntil: "networkidle",
     timeout: 60000,
   });
 
+  const selectedTherapist = await selectScheduleFilterOptionIfPresent(page, "#therapist-filter", ids.therapistId);
+  const selectedClient = await selectScheduleFilterOptionIfPresent(page, "#client-filter", ids.clientId);
+  if (selectedTherapist || selectedClient) {
+    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
+    await page.waitForTimeout(500);
+  }
+
   let visitedPeriods = 0;
   for (let periodAttempt = 0; periodAttempt < 8; periodAttempt += 1) {
     visitedPeriods = periodAttempt + 1;
-    const sessionCard = page.locator(`[data-session-id="${sessionId}"]`).first();
+    const sessionCard = page.locator(`[data-session-id="${ids.sessionId}"]`).first();
     const visible = await sessionCard
       .waitFor({ state: "visible", timeout: periodAttempt === 0 ? 12_000 : 5_000 })
       .then(() => true)
@@ -567,7 +602,7 @@ const openEditSessionModalFromCalendar = async (
   }
 
   throw new Error(
-    `Session modal (Edit Session / Live session) did not open from the rendered schedule card after ${visitedPeriods} schedule period(s). sessionStartIso=${sessionStartIso}`,
+    `Session modal (Edit Session / Live session) did not open from the rendered schedule card after ${visitedPeriods} schedule period(s). sessionStartIso=${ids.startIso}`,
   );
 };
 
@@ -1243,7 +1278,7 @@ async function startSessionViaScheduleModal(
   token: string,
   strictMode: boolean,
 ): Promise<void> {
-  await openEditSessionModalFromCalendar(page, scheduleUrl, ids.sessionId, ids.startIso);
+  await openEditSessionModalFromCalendar(page, scheduleUrl, ids);
   const startButton = page.getByRole("button", { name: /^Start Session$/i });
   await startButton.waitFor({ state: "visible", timeout: 20_000 });
   await expectStartButtonEnabled(page, startButton);
@@ -1291,7 +1326,7 @@ async function markTerminalViaScheduleModal(
   actorUserId: string,
   strictMode: boolean,
 ): Promise<void> {
-  await openEditSessionModalFromCalendar(page, scheduleUrl, sessionId, ids.startIso);
+  await openEditSessionModalFromCalendar(page, scheduleUrl, ids);
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
   await page.locator("#status-select").selectOption(terminalStatus);
   page.once("dialog", (dialog) => {

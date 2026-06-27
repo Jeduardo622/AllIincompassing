@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 
 import { cleanupAssessmentImportArtifacts } from './lib/assessment-import-cleanup';
@@ -18,9 +19,26 @@ type AssessmentDocumentRecord = {
   file_name: string;
   bucket_id?: string | null;
   object_path: string;
-  status: 'uploaded' | 'extracting' | 'extracted' | 'drafted' | 'approved' | 'rejected' | 'extraction_failed';
+  status: 'uploaded' | 'extracting' | 'extraction_running' | 'extracted' | 'drafted' | 'approved' | 'rejected' | 'extraction_failed';
   extraction_error?: string | null;
 };
+
+type PersistedAssessmentEvidence = {
+  checklistCount: number;
+  extractedChecklistCount: number;
+  extractionCount: number;
+  extractedExtractionCount: number;
+  structuredSectionCount: number;
+  structuredFieldKeys: string[];
+  draftProgramCount: number;
+  draftGoalCount: number;
+};
+
+export const REQUIRED_CALOPTIMA_STRUCTURED_KEYS = [
+  'CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS',
+  'CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS',
+  'CALOPTIMA_FBA_PARENT_GOALS',
+] as const;
 
 const DEFAULT_BASE_URL = 'https://app.allincompassing.ai';
 const DEFAULT_SAMPLE_FILE = path.resolve(
@@ -99,6 +117,63 @@ const fetchAssessmentDocuments = async (
   }
 
   return (await response.json()) as AssessmentDocumentRecord[];
+};
+
+const fetchPersistedAssessmentEvidence = async (
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+  accessToken: string,
+  assessmentDocumentId: string,
+): Promise<PersistedAssessmentEvidence> => {
+  const headers = {
+    apikey: supabaseAnonKey,
+    Authorization: `Bearer ${accessToken}`,
+  };
+  const byAssessment = `assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}`;
+  const fetchRows = async <T>(table: string, select: string): Promise<T[]> => {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${select}&${byAssessment}`, { headers });
+    if (!response.ok) {
+      throw new Error(`Failed to load ${table} evidence: ${response.status}`);
+    }
+    return (await response.json()) as T[];
+  };
+
+  const [checklist, extractions, structuredSections, draftPrograms, draftGoals] = await Promise.all([
+    fetchRows<{ status: string }>('assessment_checklist_items', 'id,status,placeholder_key'),
+    fetchRows<{ status: string }>('assessment_extractions', 'id,status,field_key'),
+    fetchRows<{ field_key: string }>('assessment_structured_sections', 'id,status,field_key,section_key'),
+    fetchRows<unknown>('assessment_draft_programs', 'id'),
+    fetchRows<unknown>('assessment_draft_goals', 'id'),
+  ]);
+
+  return {
+    checklistCount: checklist.length,
+    extractedChecklistCount: checklist.filter((item) => item.status !== 'not_started').length,
+    extractionCount: extractions.length,
+    extractedExtractionCount: extractions.filter((item) => item.status !== 'not_started').length,
+    structuredSectionCount: structuredSections.length,
+    structuredFieldKeys: [...new Set(structuredSections.map((section) => section.field_key))].sort(),
+    draftProgramCount: draftPrograms.length,
+    draftGoalCount: draftGoals.length,
+  };
+};
+
+export const assertPersistedAssessmentEvidence = (evidence: PersistedAssessmentEvidence): void => {
+  if (evidence.checklistCount === 0 || evidence.extractionCount === 0) {
+    throw new Error('Assessment import smoke did not persist checklist and extraction rows.');
+  }
+  if (evidence.extractedChecklistCount === 0 || evidence.extractedExtractionCount === 0) {
+    throw new Error('Assessment import smoke did not populate extracted checklist and extraction row statuses.');
+  }
+  if (evidence.structuredSectionCount === 0 || evidence.draftProgramCount === 0 || evidence.draftGoalCount === 0) {
+    throw new Error('Assessment import smoke did not persist structured sections and deterministic drafts.');
+  }
+  const missingStructuredKeys = REQUIRED_CALOPTIMA_STRUCTURED_KEYS.filter(
+    (key) => !evidence.structuredFieldKeys.includes(key),
+  );
+  if (missingStructuredKeys.length > 0) {
+    throw new Error(`Assessment import smoke missing structured field keys: ${missingStructuredKeys.join(', ')}`);
+  }
 };
 
 const selectClientForSmoke = async (
@@ -182,6 +257,7 @@ async function run() {
   let runFailure: Error | null = null;
   let cleanupFailureManifestPath: string | null = null;
   let cleanupFailureManifestError: Error | null = null;
+  let persistedEvidence: PersistedAssessmentEvidence | null = null;
 
   try {
     await loginAndAssertSession(page, baseUrl, credentials.email, credentials.password);
@@ -190,7 +266,7 @@ async function run() {
       timeout: 60_000,
     });
     await page.waitForLoadState('networkidle').catch(() => undefined);
-    await page.getByText('FBA Upload + AI Workflow').waitFor({ timeout: 20_000 });
+    await page.getByText(/CalOptima FBA Upload Workflow|FBA Upload \+ AI Workflow/i).waitFor({ timeout: 20_000 });
 
     await page.locator('#programs-goals-fba-file-upload').setInputFiles({
       name: uploadFileName,
@@ -204,7 +280,7 @@ async function run() {
     while (Date.now() < deadline) {
       const documents = await fetchAssessmentDocuments(baseUrl, accessToken, clientId);
       createdAssessment = documents.find((document) => document.file_name === uploadFileName) ?? null;
-      if (createdAssessment && !['uploaded', 'extracting'].includes(createdAssessment.status)) {
+      if (createdAssessment && !['uploaded', 'extracting', 'extraction_running'].includes(createdAssessment.status)) {
         break;
       }
       await pause(2_000);
@@ -213,13 +289,20 @@ async function run() {
     if (!createdAssessment) {
       throw new Error(`Uploaded assessment document ${uploadFileName} was not found in the queue.`);
     }
-    if (createdAssessment.status !== 'extracted') {
+    if (!['extracted', 'drafted'].includes(createdAssessment.status)) {
       throw new Error(
         `Assessment import smoke ended with ${createdAssessment.status}${
           createdAssessment.extraction_error ? `: ${createdAssessment.extraction_error}` : ''
         }`,
       );
     }
+    persistedEvidence = await fetchPersistedAssessmentEvidence(
+      supabaseUrl,
+      supabaseAnonKey,
+      accessToken,
+      createdAssessment.id,
+    );
+    assertPersistedAssessmentEvidence(persistedEvidence);
 
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForLoadState('networkidle').catch(() => undefined);
@@ -239,6 +322,7 @@ async function run() {
           assessmentDocumentId: createdAssessment.id,
           fileName: uploadFileName,
           status: createdAssessment.status,
+          persistedEvidence,
           screenshot: screenshotPath,
           url: page.url(),
         },
@@ -305,7 +389,9 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error('Playwright assessment import smoke failed', error);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  run().catch((error) => {
+    console.error('Playwright assessment import smoke failed', error);
+    process.exit(1);
+  });
+}

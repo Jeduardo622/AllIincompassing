@@ -47,3 +47,46 @@
 - residual risk:
   - local unit/Cypress coverage now exercises the requested routes and recovery behavior, but secret-backed Playwright auth/session smoke must run in CI or an environment with protected credentials
   - live CI has a persistent session-lifecycle booking timeout outside the route coverage diff that blocks merge until triaged or rerun successfully
+
+## Follow-up: auth-browser-smoke booking timeout
+
+- chosen task: triage `auth-browser-smoke` / `playwright:session-no-show` booking timeout
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- triggering paths:
+  - `scripts/playwright-session-lifecycle.ts`
+  - `tests/scripts/playwright-session-lifecycle.test.ts`
+- failing flow:
+  - PR #696 `auth-browser-smoke` passed `playwright:auth`
+  - `playwright:session-no-show` selected an authorized therapist/client pair with active program/goal
+  - `book-session` timed out after 300 seconds before creating a session
+- fix:
+  - keep the schedule modal booking attempt as the required signal
+  - wait for the `Create Session` button to become enabled before clicking it
+  - if the click does not emit `/api/book` or a visible blocking validation state within `PW_LIFECYCLE_UI_BOOK_RESPONSE_TIMEOUT_MS` (default 45000ms), fail fast with pair/time diagnostics instead of silently looping until the outer 300s timeout
+  - rejected an earlier direct `/api/book` fallback because reviewer found it would weaken the UI smoke and risk duplicate booking races
+  - PR #697 CI proved the no-show terminal flow now books and closes successfully; the completed terminal flow then exposed a dependent-select issue where client selection could clear the therapist select, leaving visible `Therapist is required` validation instead of submitting
+  - revised the harness to select client/therapist in a dependency-aware order, verify both selected values before using the pair, and include required-field validation in the blocking-state detector
+  - moved `/api/book` and blocking-validation waiters to start after the `Create Session` readiness wait, immediately before the click, so slow dependent-data loading does not consume the response/validation timeout before submit
+  - added best-effort, timeout-bounded cleanup of any seeded program/goal before the no-response fail-fast throw, preserving the original diagnostic if cleanup rejects or stalls
+- verification run:
+  - `npx vitest run --config vitest.config.ts tests/scripts/playwright-session-lifecycle.test.ts` passed: 1 file, 5 tests
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `npm run ci:check-focused` passed with expected local DB-backed skips
+  - `npm run build` passed with non-secret placeholder Supabase env
+  - `npm run test:ci` passed with non-secret placeholder Supabase env: 334 files, 2065 tests
+  - `npm run ci:verify-coverage` passed
+  - `npm run test:routes:tier0` passed: 112 tests
+- protected CI:
+  - PR #697 protected CI run `28339456372` failed before the dependent-select fix; `auth-browser-smoke` log showed no-show success and completed-flow booking failure at `Create Session clicked but no /api/book response or blocking validation appeared` with screenshot evidence showing `Therapist is required`
+  - PR #697 protected CI run `28339751797` passed after the dependent-select fix: `policy`, `lint-typecheck`, `unit-tests`, `auth-browser-smoke`, `iehp-assessment-import-smoke`, `build`, `tier0-browser`, and `ci-gate` all succeeded
+- locally blocked checks:
+  - `npm run ci:playwright` remains blocked locally at `playwright:preflight`; missing protected credentials, but the protected GitHub `auth-browser-smoke` gate passed on run `28339751797`
+- reviewer status:
+  - reviewer recheck found the cleanup-stall issue resolved after adding timeout-bounded cleanup and focused reject/stall regression tests
+  - reviewer requested the verification-count handoff correction; corrected in this update
+  - tester recheck found no additional session-flow-specific local checks; recommended coverage verification, which passed
+- residual risk:
+  - the dependency-aware select sequencing and required-field blocking branch are not directly unit-tested; protected `auth-browser-smoke` is the executable regression proof for that behavior
+  - critical-lane PR still requires human review/merge approval; Linear tracking could not be updated from this session because Linear auth returned `UNAUTHORIZED oauth_token_invalid_grant`

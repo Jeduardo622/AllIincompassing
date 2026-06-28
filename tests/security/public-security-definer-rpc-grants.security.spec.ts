@@ -10,6 +10,13 @@ describe('public SECURITY DEFINER RPC execute grants', () => {
     ),
     'utf-8',
   );
+  const serviceOnlyMigrationSql = readFileSync(
+    join(
+      process.cwd(),
+      'supabase/migrations/20260628171537_restrict_service_only_security_definer_rpc_grants.sql',
+    ),
+    'utf-8',
+  );
   const grantStatements = migrationSql.match(/grant execute on function[^;]+;/gi) ?? [];
 
   it('removes unauthenticated execute from every public SECURITY DEFINER function', () => {
@@ -53,5 +60,50 @@ describe('public SECURITY DEFINER RPC execute grants', () => {
       expect(grantees).not.toContain('anon');
       expect(grantees).not.toContain('authenticated');
     }
+  });
+
+  it('restricts high-confidence service-only RPCs away from direct signed-in callers', () => {
+    const serviceOnlyFunctions = [
+      'public.assign_admin_role(text, uuid, text)',
+      'public.assign_role_on_signup()',
+      'public.assign_therapist_role(text, uuid)',
+      'public.assign_therapist_role(uuid)',
+      'public.check_migration_status()',
+      'public.create_admin_invite_token_rate_limited(text, text, uuid, timestamp with time zone, uuid, role_type)',
+      'public.create_user_profile()',
+      'public.ensure_all_users_admin()',
+      'public.ensure_user_has_admin_role()',
+      'public.ensure_user_has_admin_role(uuid)',
+      'public.prune_admin_actions(integer)',
+      'public.prune_admin_invite_tokens()',
+      'public.prune_session_transcripts(integer)',
+      'public.sync_admin_roles_from_auth_metadata()',
+    ];
+
+    for (const functionSignature of serviceOnlyFunctions) {
+      expect(serviceOnlyMigrationSql).toContain(`'${functionSignature}'`);
+    }
+
+    expect(serviceOnlyMigrationSql).toMatch(
+      /revoke execute on function %s from public, anon, authenticated/i,
+    );
+    expect(serviceOnlyMigrationSql).toMatch(/grant execute on function %s to service_role/i);
+  });
+
+  it('asserts service-only RPCs remain service_role-only after migration', () => {
+    expect(serviceOnlyMigrationSql).toMatch(/has_function_privilege\('public', unsafe_function, 'EXECUTE'\)/i);
+    expect(serviceOnlyMigrationSql).toMatch(/has_function_privilege\('anon', unsafe_function, 'EXECUTE'\)/i);
+    expect(serviceOnlyMigrationSql).toMatch(/has_function_privilege\('authenticated', unsafe_function, 'EXECUTE'\)/i);
+    expect(serviceOnlyMigrationSql).toMatch(/not has_function_privilege\('service_role', unsafe_function, 'EXECUTE'\)/i);
+    expect(serviceOnlyMigrationSql).toMatch(/Service-only SECURITY DEFINER grant hardening failed/i);
+  });
+
+  it('does not grant service-only functions back to browser roles', () => {
+    expect(serviceOnlyMigrationSql).toMatch(
+      /execute format\(\s*'grant execute on function %s to service_role'/i,
+    );
+    expect(serviceOnlyMigrationSql).not.toMatch(
+      /execute format\(\s*'grant execute on function %s to (?:public|anon|authenticated)/i,
+    );
   });
 });

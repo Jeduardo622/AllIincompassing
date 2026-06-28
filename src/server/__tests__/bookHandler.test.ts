@@ -145,6 +145,7 @@ const ORIGINAL_ENV = {
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
   API_AUTHORITY_MODE: process.env.API_AUTHORITY_MODE,
+  BOOK_EDGE_AUTHORITY_TIMEOUT_MS: process.env.BOOK_EDGE_AUTHORITY_TIMEOUT_MS,
   DEFAULT_ORGANIZATION_ID: process.env.DEFAULT_ORGANIZATION_ID,
 };
 
@@ -165,6 +166,7 @@ beforeEach(async () => {
   delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
   delete process.env.API_AUTHORITY_MODE;
+  delete process.env.BOOK_EDGE_AUTHORITY_TIMEOUT_MS;
   process.env.DEFAULT_ORGANIZATION_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 
   server.use(
@@ -207,6 +209,11 @@ afterAll(() => {
     process.env.API_AUTHORITY_MODE = ORIGINAL_ENV.API_AUTHORITY_MODE;
   } else {
     delete process.env.API_AUTHORITY_MODE;
+  }
+  if (typeof ORIGINAL_ENV.BOOK_EDGE_AUTHORITY_TIMEOUT_MS === "string") {
+    process.env.BOOK_EDGE_AUTHORITY_TIMEOUT_MS = ORIGINAL_ENV.BOOK_EDGE_AUTHORITY_TIMEOUT_MS;
+  } else {
+    delete process.env.BOOK_EDGE_AUTHORITY_TIMEOUT_MS;
   }
   if (typeof ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID === "string") {
     process.env.DEFAULT_ORGANIZATION_ID = ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID;
@@ -1052,5 +1059,74 @@ describe("bookHandler", () => {
     const body = await response.json();
     expect(body.success).toBe(true);
     expect(body.data.session.id).toBe("session-edge-error-fallback");
+  });
+
+  it("falls back to legacy booking when edge authority does not answer before the booking timeout", async () => {
+    process.env.API_AUTHORITY_MODE = "edge";
+    process.env.BOOK_EDGE_AUTHORITY_TIMEOUT_MS = "25";
+    server.use(
+      http.post(`${TEST_SUPABASE_EDGE_URL.replace(/\/$/, "")}/sessions-book`, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        return HttpResponse.json({
+          success: true,
+          data: {
+            session: { id: "late-edge-session" },
+            sessions: [],
+            hold: { holdKey: "late", holdId: "late", expiresAt: "2026-03-30T05:05:00.000Z", holds: [] },
+            cpt: {},
+          },
+        });
+      }),
+    );
+    bookSessionMock.mockResolvedValueOnce({
+      session: {
+        id: "session-edge-timeout-fallback",
+        client_id: "client-1",
+        therapist_id: "therapist-1",
+        start_time: "2025-01-01T10:00:00Z",
+        end_time: "2025-01-01T11:00:00Z",
+        status: "scheduled",
+        notes: "",
+        created_at: "2025-01-01T09:00:00Z",
+        created_by: "user-1",
+        updated_at: "2025-01-01T09:00:00Z",
+        updated_by: "user-1",
+        duration_minutes: 60,
+      },
+      sessions: [],
+      hold: {
+        holdKey: "hold",
+        holdId: "1",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [],
+      },
+      cpt: {
+        code: "97153",
+        description: "Adaptive behavior treatment by protocol",
+        modifiers: [],
+        source: "fallback",
+        durationMinutes: 60,
+      },
+    });
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledTimes(1);
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      "Edge booking authority request failed; falling back to legacy booking",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          timedOut: true,
+          timeoutMs: 25,
+        }),
+      }),
+    );
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.data.session.id).toBe("session-edge-timeout-fallback");
   });
 });

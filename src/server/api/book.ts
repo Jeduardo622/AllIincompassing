@@ -27,8 +27,21 @@ const JSON_CONTENT_TYPE_HEADER: Record<string, string> = {
   "Content-Type": "application/json",
 };
 
+const DEFAULT_EDGE_AUTHORITY_TIMEOUT_MS = 15_000;
+
 function shouldFallbackToLegacyBooking(status: number): boolean {
   return status === 404 || status === 408 || status >= 500;
+}
+
+function getEdgeAuthorityTimeoutMs(): number {
+  const configured = getOptionalServerEnv("BOOK_EDGE_AUTHORITY_TIMEOUT_MS");
+  if (!configured) {
+    return DEFAULT_EDGE_AUTHORITY_TIMEOUT_MS;
+  }
+  const parsed = Number(configured);
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_EDGE_AUTHORITY_TIMEOUT_MS;
 }
 
 function normalizePayload(
@@ -284,6 +297,11 @@ export async function bookHandler(request: Request): Promise<Response> {
   }
 
   if (getApiAuthorityMode() === "edge") {
+    const edgeAuthorityTimeoutMs = getEdgeAuthorityTimeoutMs();
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => {
+      abortController.abort();
+    }, edgeAuthorityTimeoutMs);
     try {
       const edgePayload: BookSessionApiRequestBody = {
         ...body,
@@ -294,6 +312,7 @@ export async function bookHandler(request: Request): Promise<Response> {
         accessToken,
         method: "POST",
         body: JSON.stringify(edgePayload),
+        signal: abortController.signal,
       });
       const forwardedBody = await forwarded.text();
       if (!shouldFallbackToLegacyBooking(forwarded.status)) {
@@ -323,10 +342,17 @@ export async function bookHandler(request: Request): Promise<Response> {
         context: { handler: "bookHandler" },
       });
     } catch (error) {
+      const normalizedError = toError(error, "Edge booking authority request failed");
       logger.warn("Edge booking authority request failed; falling back to legacy booking", {
-        error: toError(error, "Edge booking authority request failed"),
+        error: normalizedError,
+        metadata: {
+          timedOut: normalizedError.name === "AbortError",
+          timeoutMs: edgeAuthorityTimeoutMs,
+        },
         context: { handler: "bookHandler" },
       });
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

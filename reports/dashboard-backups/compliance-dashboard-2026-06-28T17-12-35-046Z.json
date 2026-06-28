@@ -1,0 +1,87 @@
+{
+  "generatedAt": "2026-06-28T17:12:35.046Z",
+  "source": {
+    "routeAuditReport": "C:\\Users\\test\\Desktop\\AllIincompassing\\reports\\evidence\\route-audit-report-2026-06-28T16-46-34-251Z.json",
+    "previewSmokeLog": "C:\\Users\\test\\Desktop\\AllIincompassing\\reports\\evidence\\preview-smoke-log.txt"
+  },
+  "summary": {
+    "totalRoutes": 57,
+    "routeSuccessRate": 1,
+    "averageRenderTimeMs": 582.75,
+    "slowestRoute": {
+      "path": "/login",
+      "renderTime": 926
+    }
+  },
+  "metrics": [
+    {
+      "id": "route-success-rate",
+      "title": "Route success rate",
+      "category": "route",
+      "status": "pass",
+      "value": 100,
+      "target": ">= 99%",
+      "details": [
+        "57/57 routes succeeded"
+      ]
+    },
+    {
+      "id": "average-render-time",
+      "title": "Average route render time",
+      "category": "route",
+      "status": "pass",
+      "value": 583,
+      "target": "<= 2000ms",
+      "details": [
+        "Collected from 57 routes"
+      ]
+    },
+    {
+      "id": "slow-routes",
+      "title": "Routes exceeding render-time budget",
+      "category": "route",
+      "status": "pass",
+      "value": 0,
+      "target": "0 slow routes",
+      "details": [
+        "All routes within budget"
+      ]
+    },
+    {
+      "id": "api-coverage",
+      "title": "Unique API endpoints exercised",
+      "category": "api",
+      "status": "pass",
+      "value": 1,
+      "target": ">= 1 endpoint",
+      "details": [
+        "61 total calls recorded"
+      ]
+    },
+    {
+      "id": "preview-checks",
+      "title": "Preview smoke validations",
+      "category": "preview",
+      "status": "pass",
+      "value": "4/4",
+      "target": "All smoke checks pass",
+      "details": [
+        "No issues detected"
+      ]
+    },
+    {
+      "id": "preview-supabase-auth",
+      "title": "Supabase auth health (preview)",
+      "category": "preview",
+      "status": "pass",
+      "value": "healthy",
+      "target": "Auth + anonymous access healthy",
+      "details": [
+        "Auth check: OK",
+        "Anon check: OK",
+        "Preview URL: http://127.0.0.1:4173"
+      ]
+    }
+  ],
+  "alerts": []
+}

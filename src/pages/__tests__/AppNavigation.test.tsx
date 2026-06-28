@@ -61,6 +61,18 @@ vi.mock('../../pages/FamilyDashboard', () => ({
   FamilyDashboard: () => <div>FamilyDashboardPage</div>,
 }));
 
+vi.mock('../../pages/Login', () => ({
+  Login: () => <div>LoginPage</div>,
+}));
+
+vi.mock('../../pages/Signup', () => ({
+  Signup: () => <div>SignupPage</div>,
+}));
+
+vi.mock('../../pages/PasswordRecovery', () => ({
+  PasswordRecovery: () => <div>PasswordRecoveryPage</div>,
+}));
+
 vi.mock('../../pages/ClientOnboardingPage', () => ({
   ClientOnboardingPage: () => <div>ClientOnboardingPage</div>,
 }));
@@ -71,6 +83,22 @@ vi.mock('../../pages/ClientDetails', () => ({
 
 vi.mock('../../pages/TherapistOnboardingPage', () => ({
   TherapistOnboardingPage: () => <div>TherapistOnboardingPage</div>,
+}));
+
+vi.mock('../../pages/Settings', () => ({
+  Settings: () => <div>SettingsPage</div>,
+}));
+
+vi.mock('../../pages/SuperAdminFeatureFlags', () => ({
+  SuperAdminFeatureFlags: () => <div>SuperAdminFeatureFlagsPage</div>,
+}));
+
+vi.mock('../../pages/SuperAdminImpersonation', () => ({
+  SuperAdminImpersonation: () => <div>SuperAdminImpersonationPage</div>,
+}));
+
+vi.mock('../../pages/SuperAdminPrompts', () => ({
+  SuperAdminPrompts: () => <div>SuperAdminPromptsPage</div>,
 }));
 
 const renderApp = () => {
@@ -203,6 +231,83 @@ describe('App navigation landing', () => {
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/unauthorized');
+    });
+  });
+
+  it('renders password recovery as a public route outside the protected layout', async () => {
+    authRole = 'client';
+    window.history.pushState({}, '', '/auth/recovery?type=recovery#access_token=secret');
+    renderApp();
+
+    expect(await screen.findByText('PasswordRecoveryPage')).toBeInTheDocument();
+    expect(screen.queryByTestId('layout')).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe('/auth/recovery');
+  });
+
+  it('allows admins and super admins to open settings tabs', async () => {
+    for (const role of ['admin', 'super_admin'] as const) {
+      authRole = role;
+      window.history.pushState({}, '', '/settings/organization');
+      const view = renderApp();
+
+      expect(await screen.findByText('SettingsPage')).toBeInTheDocument();
+      expect(window.location.pathname).toBe('/settings/organization');
+
+      view.unmount();
+    }
+  });
+
+  it('blocks non-admin roles from settings tabs', async () => {
+    for (const role of ['client', 'therapist'] as const) {
+      authRole = role;
+      window.history.pushState({}, '', '/settings/admin');
+      const view = renderApp();
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/unauthorized');
+      });
+
+      view.unmount();
+    }
+  });
+
+  it.each([
+    ['/super-admin/feature-flags', 'SuperAdminFeatureFlagsPage'],
+    ['/super-admin/impersonation', 'SuperAdminImpersonationPage'],
+    ['/super-admin/prompts', 'SuperAdminPromptsPage'],
+  ])('allows only super admins to render %s', async (path, pageText) => {
+    authRole = 'super_admin';
+    window.history.pushState({}, '', path);
+    const allowedView = renderApp();
+
+    expect(await screen.findByText(pageText)).toBeInTheDocument();
+    expect(window.location.pathname).toBe(path);
+    allowedView.unmount();
+
+    for (const blockedRole of ['client', 'therapist', 'admin'] as const) {
+      authRole = blockedRole;
+      window.history.pushState({}, '', path);
+      const blockedView = renderApp();
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/unauthorized');
+      });
+
+      blockedView.unmount();
+    }
+  });
+
+  it.each([
+    ['/monitoringdashboard', '/monitoring'],
+    ['/superadminfeatureflags', '/settings'],
+    ['/superadminimpersonation', '/settings'],
+  ])('keeps legacy alias %s inside the protected shell and redirects to %s', async (aliasPath, expectedPath) => {
+    authRole = 'admin';
+    window.history.pushState({}, '', aliasPath);
+    renderApp();
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(expectedPath);
     });
   });
 });

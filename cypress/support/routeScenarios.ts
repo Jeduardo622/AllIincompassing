@@ -4,6 +4,8 @@ export type AppRole = "client" | "therapist" | "admin" | "super_admin";
 export type RouteScenario = {
   path: string;
   roles: readonly (AppRole | "public")[];
+  expectedPath?: string;
+  expectedPathByRole?: Partial<Record<AppRole | "public", string>>;
 };
 
 export const password = "password123";
@@ -18,6 +20,11 @@ export const routeGroups = {
   public: [
     { path: "/login", roles: ["public"] },
     { path: "/signup", roles: ["public"] },
+    {
+      path: "/auth/recovery?type=recovery&access_token=test-access-token&refresh_token=test-refresh-token",
+      roles: ["public"],
+      expectedPath: "/auth/recovery",
+    },
     { path: "/unauthorized", roles: ["public"] },
   ],
   client: [
@@ -42,8 +49,24 @@ export const routeGroups = {
     { path: "/therapists/new", roles: ["admin", "super_admin"] },
     { path: "/billing", roles: ["admin", "super_admin"] },
     { path: "/monitoring", roles: ["admin", "super_admin"] },
+    { path: "/monitoringdashboard", roles: ["admin", "super_admin"], expectedPath: "/monitoring" },
     { path: "/reports", roles: ["admin", "super_admin"] },
     { path: "/settings", roles: ["admin", "super_admin"] },
+    {
+      path: "/settings/feature-flags",
+      roles: ["admin", "super_admin"],
+      expectedPathByRole: { admin: "/settings", super_admin: "/settings/feature-flags" },
+    },
+    {
+      path: "/settings/impersonation",
+      roles: ["admin", "super_admin"],
+      expectedPathByRole: { admin: "/settings", super_admin: "/settings/impersonation" },
+    },
+    { path: "/superadminfeatureflags", roles: ["admin", "super_admin"], expectedPath: "/settings" },
+    { path: "/superadminimpersonation", roles: ["admin", "super_admin"], expectedPath: "/settings" },
+    { path: "/super-admin/feature-flags", roles: ["super_admin"] },
+    { path: "/super-admin/impersonation", roles: ["super_admin"] },
+    { path: "/super-admin/prompts", roles: ["super_admin"] },
   ],
 } satisfies Record<string, readonly RouteScenario[]>;
 
@@ -141,13 +164,14 @@ export const installRouteDataStubs = (): void => {
   });
 };
 
-export const assertVisibleRoute = (path: string): void => {
+export const assertVisibleRoute = (path: string, expectedPath = path): void => {
   cy.visit(path);
   cy.wait("@runtimeConfig");
   cy.get("body").should("be.visible");
   cy.get('[data-testid="error-boundary"]').should("not.exist");
   cy.url().should("not.include", "/login");
   cy.url().should("not.include", "/unauthorized");
+  cy.location("pathname").should("eq", expectedPath);
 };
 
 export const assertBlockedRoute = (path: string): void => {
@@ -170,11 +194,11 @@ export const runRoleMatrix = (title: string, scenarios: readonly RouteScenario[]
           cy.login(roleEmail(role), password);
         });
 
-        scenarios.forEach(({ path, roles: allowed }) => {
+        scenarios.forEach(({ path, roles: allowed, expectedPath, expectedPathByRole }) => {
           const shouldAllow = allowed.includes(role);
           it(`${shouldAllow ? "allows" : "blocks"} ${path}`, () => {
             if (shouldAllow) {
-              assertVisibleRoute(path);
+              assertVisibleRoute(path, expectedPathByRole?.[role] ?? expectedPath);
             } else {
               assertBlockedRoute(path);
             }

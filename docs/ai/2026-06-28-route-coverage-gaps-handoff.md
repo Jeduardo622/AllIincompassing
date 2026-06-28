@@ -47,3 +47,37 @@
 - residual risk:
   - local unit/Cypress coverage now exercises the requested routes and recovery behavior, but secret-backed Playwright auth/session smoke must run in CI or an environment with protected credentials
   - live CI has a persistent session-lifecycle booking timeout outside the route coverage diff that blocks merge until triaged or rerun successfully
+
+## Follow-up: auth-browser-smoke booking timeout
+
+- chosen task: triage `auth-browser-smoke` / `playwright:session-no-show` booking timeout
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- triggering paths:
+  - `scripts/playwright-session-lifecycle.ts`
+  - `tests/scripts/playwright-session-lifecycle.test.ts`
+- failing flow:
+  - PR #696 `auth-browser-smoke` passed `playwright:auth`
+  - `playwright:session-no-show` selected an authorized therapist/client pair with active program/goal
+  - `book-session` timed out after 300 seconds before creating a session
+- fix:
+  - keep the schedule modal booking attempt as the required signal
+  - wait for the `Create Session` button to become enabled before clicking it
+  - if the click does not emit `/api/book` or a visible blocking validation state within `PW_LIFECYCLE_UI_BOOK_RESPONSE_TIMEOUT_MS` (default 45000ms), fail fast with pair/time diagnostics instead of silently looping until the outer 300s timeout
+  - rejected an earlier direct `/api/book` fallback because reviewer found it would weaken the UI smoke and risk duplicate booking races
+- verification run:
+  - `npx vitest run --config vitest.config.ts tests/scripts/playwright-session-lifecycle.test.ts` passed: 1 file, 2 tests
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `npm run ci:check-focused` passed with expected local DB-backed skips
+  - `npm run build` passed with non-secret placeholder Supabase env
+  - `npm run test:ci` passed: 334 files, 2061 tests
+  - `npm run ci:verify-coverage` passed
+  - `npm run test:routes:tier0` passed: 112 tests
+- blocked checks:
+  - `npm run ci:playwright` remains blocked locally at `playwright:preflight`; missing protected credentials
+- reviewer status:
+  - reviewer recheck approved the revised fail-fast UI-submit approach with no findings
+  - tester recheck found no additional session-flow-specific local checks; recommended coverage verification, which passed
+- residual risk:
+  - CI with protected credentials is required to prove the live `auth-browser-smoke` gate now passes end to end

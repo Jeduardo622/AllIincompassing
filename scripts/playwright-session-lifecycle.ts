@@ -44,8 +44,9 @@ interface BrowserFetchResult<TBody> {
 }
 
 const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(value ?? "");
-/** UI wait (90s) + edge/RPC fallback can exceed 120s on cold paths. */
+/** UI wait + edge/RPC fallback can exceed 120s on cold paths. */
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
+const UI_BOOK_RESPONSE_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_UI_BOOK_RESPONSE_TIMEOUT_MS ?? "45000");
 
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
   console.log(`[lifecycle] start ${label}`);
@@ -498,6 +499,51 @@ const toDatetimeLocal = (date: Date): string => {
   return local.toISOString().slice(0, 16);
 };
 
+export const isCreateSessionButtonReady = ({
+  disabled,
+  ariaDisabled,
+}: {
+  disabled: string | null;
+  ariaDisabled: string | null;
+}): boolean => disabled === null && ariaDisabled !== "true";
+
+const expectCreateSessionButtonReady = async (
+  page: Page,
+  context: {
+    pairKey: string;
+    attempt: number;
+    startIso: string;
+  },
+): Promise<ReturnType<Page["getByRole"]>> => {
+  const createSessionButton = page.getByRole("button", { name: /Create Session/i });
+  await createSessionButton.waitFor({ state: "visible", timeout: 10_000 });
+
+  const deadline = Date.now() + 20_000;
+  let disabled: string | null = null;
+  let ariaDisabled: string | null = null;
+  while (Date.now() < deadline) {
+    disabled = await createSessionButton.getAttribute("disabled");
+    ariaDisabled = await createSessionButton.getAttribute("aria-disabled");
+    if (isCreateSessionButtonReady({ disabled, ariaDisabled })) {
+      return createSessionButton;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  const visibleErrors = await page
+    .locator('[role="alert"], .text-red-600, .text-red-700, .text-destructive')
+    .evaluateAll((nodes) =>
+      nodes
+        .map((node) => node.textContent?.replace(/\s+/g, " ").trim())
+        .filter((text): text is string => Boolean(text))
+        .slice(0, 5),
+    )
+    .catch(() => []);
+  throw new Error(
+    `Create Session stayed disabled for lifecycle booking. pair=${context.pairKey} attempt=${context.attempt} startIso=${context.startIso} disabled=${disabled ?? "null"} ariaDisabled=${ariaDisabled ?? "null"} visibleErrors=${JSON.stringify(visibleErrors)}`,
+  );
+};
+
 export const buildBookingCandidateStarts = (
   terminalStatus = process.env.PW_LIFECYCLE_TERMINAL_STATUS,
 ): Date[] => {
@@ -781,7 +827,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
       const responsePromise = page
         .waitForResponse(
           (res) => res.url().includes("/api/book") && res.request().method() === "POST",
-          { timeout: 90_000 },
+          { timeout: UI_BOOK_RESPONSE_TIMEOUT_MS },
         )
         .then((response) => ({ kind: "response" as const, response }))
         .catch(() => null);
@@ -795,10 +841,17 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
         .then(() => ({ kind: "blocked" as const }))
         .catch(() => new Promise<never>(() => undefined));
 
-      await page.getByRole("button", { name: /Create Session/i }).click();
+      const createSessionButton = await expectCreateSessionButtonReady(page, {
+        pairKey: selected.pairKey,
+        attempt: attempt + 1,
+        startIso,
+      });
+      await createSessionButton.click();
       const outcome = await Promise.race([responsePromise, blockedPromise]);
       if (!outcome) {
-        continue;
+        throw new Error(
+          `Create Session clicked but no /api/book response or blocking validation appeared. pair=${selected.pairKey} attempt=${attempt + 1} startIso=${startIso}`,
+        );
       }
       if (outcome.kind === "blocked") {
         responsePromise.catch(() => undefined);

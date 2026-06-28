@@ -504,6 +504,9 @@ export const buildBookingCandidateStarts = (
   const runSeed = Number(process.env.GITHUB_RUN_ID ?? Date.now());
   const daytimeHours = [9, 11, 13, 15];
   const terminalStatusOffset = terminalStatus?.trim().toLowerCase() === "completed" ? 1 : 0;
+  const safeFutureDayOffset = Number.isFinite(runSeed)
+    ? 21 + (Math.abs(Math.trunc(runSeed)) % 21)
+    : 21;
   const rotation = Number.isFinite(runSeed)
     ? (Math.abs(Math.trunc(runSeed)) + terminalStatusOffset) % daytimeHours.length
     : terminalStatusOffset;
@@ -511,7 +514,7 @@ export const buildBookingCandidateStarts = (
   const candidates: Date[] = [];
   const day = new Date();
   day.setHours(0, 0, 0, 0);
-  day.setDate(day.getDate() + 1);
+  day.setDate(day.getDate() + safeFutureDayOffset);
 
   for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
     const candidateDay = new Date(day);

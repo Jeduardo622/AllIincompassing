@@ -21,4 +21,16 @@ describe("playwright session lifecycle booking starts", () => {
     expect(completedStarts[0].getHours()).toBe(15);
     expect(completedStarts[0].toISOString()).not.toBe(noShowStarts[0].toISOString());
   });
+
+  it("starts in a seeded future window to avoid colliding with shared hosted sessions", () => {
+    process.env.GITHUB_RUN_ID = "28030829838";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const starts = buildBookingCandidateStarts("no-show");
+    const firstDayOffset = Math.round((starts[0].getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+
+    expect(firstDayOffset).toBeGreaterThanOrEqual(21);
+    expect(firstDayOffset).toBeLessThanOrEqual(41);
+  });
 });

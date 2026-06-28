@@ -88,9 +88,13 @@ describe('public SECURITY DEFINER RPC execute grants', () => {
       /revoke execute on function %s from public, anon, authenticated/i,
     );
     expect(serviceOnlyMigrationSql).toMatch(/grant execute on function %s to service_role/i);
+    expect(serviceOnlyMigrationSql).toMatch(/to_regprocedure\(service_only_function_signature\)/i);
+    expect(serviceOnlyMigrationSql).toMatch(/if service_only_function is null then[\s\S]+continue;/i);
   });
 
   it('asserts service-only RPCs remain service_role-only after migration', () => {
+    expect(serviceOnlyMigrationSql).toMatch(/to_regprocedure\(unsafe_function_signature\)/i);
+    expect(serviceOnlyMigrationSql).toMatch(/if unsafe_function is null then[\s\S]+continue;/i);
     expect(serviceOnlyMigrationSql).toMatch(/has_function_privilege\('public', unsafe_function, 'EXECUTE'\)/i);
     expect(serviceOnlyMigrationSql).toMatch(/has_function_privilege\('anon', unsafe_function, 'EXECUTE'\)/i);
     expect(serviceOnlyMigrationSql).toMatch(/has_function_privilege\('authenticated', unsafe_function, 'EXECUTE'\)/i);

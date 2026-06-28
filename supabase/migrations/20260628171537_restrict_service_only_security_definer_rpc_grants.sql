@@ -5,6 +5,7 @@
 do $$
 declare
   service_only_function regprocedure;
+  service_only_function_signature text;
   service_only_functions constant text[] := array[
     'public.assign_admin_role(text, uuid, text)',
     'public.assign_role_on_signup()',
@@ -22,7 +23,13 @@ declare
     'public.sync_admin_roles_from_auth_metadata()'
   ];
 begin
-  foreach service_only_function in array service_only_functions::regprocedure[] loop
+  foreach service_only_function_signature in array service_only_functions loop
+    service_only_function := to_regprocedure(service_only_function_signature);
+
+    if service_only_function is null then
+      continue;
+    end if;
+
     execute format(
       'revoke execute on function %s from public, anon, authenticated',
       service_only_function
@@ -37,6 +44,7 @@ end $$;
 do $$
 declare
   unsafe_function regprocedure;
+  unsafe_function_signature text;
   unsafe_functions text[];
   service_only_functions constant text[] := array[
     'public.assign_admin_role(text, uuid, text)',
@@ -55,7 +63,13 @@ declare
     'public.sync_admin_roles_from_auth_metadata()'
   ];
 begin
-  foreach unsafe_function in array service_only_functions::regprocedure[] loop
+  foreach unsafe_function_signature in array service_only_functions loop
+    unsafe_function := to_regprocedure(unsafe_function_signature);
+
+    if unsafe_function is null then
+      continue;
+    end if;
+
     if has_function_privilege('public', unsafe_function, 'EXECUTE')
       or has_function_privilege('anon', unsafe_function, 'EXECUTE')
       or has_function_privilege('authenticated', unsafe_function, 'EXECUTE')

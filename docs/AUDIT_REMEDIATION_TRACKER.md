@@ -142,6 +142,7 @@ Track remediation work from the executive audit report to close production-readi
   - `src/server/api/shared.ts` (local preview/Cypress origins allowlisted)
   - `src/server/__tests__/dashboardHandler.test.ts`, `src/server/__tests__/bookHandler.test.ts`
   - `cypress/e2e/routes_integrity.cy.ts`, `cypress/e2e/role_access.cy.ts`
+- Historical note: the Cypress route coverage named above has since moved into the `routes_public`, `routes_client`, `routes_schedule`, `routes_messages`, `routes_admin`, `routes_auth`, and `preauth_workflow` specs used by `npm run test:routes:tier0`.
 - Release contract alignment + guardrails:
   - `docs/PREVIEW_SMOKE.md`, `docs/ENVIRONMENT_MATRIX.md`, `docs/EXEC_OVERVIEW.md`
   - `scripts/ci/check-runbook-ci-alignment.mjs` integrated into `scripts/ci/run-policy-checks.mjs`
@@ -181,7 +182,7 @@ Track remediation work from the executive audit report to close production-readi
   - `scripts/ci/check-e2e-reliability-gates.mjs` added and wired into:
     - `scripts/ci/run-policy-checks.mjs`
     - `package.json` (`ci:check:e2e-reliability`)
-  - `cypress/e2e/role_access.cy.ts` now tracks and asserts route-level network stability (`0/5xx` guard).
+  - Historical `cypress/e2e/role_access.cy.ts` coverage now lives in the current route Cypress specs used by `npm run test:routes:tier0`, which track and assert route-level network stability (`0/5xx` guard).
 - Ops/release contract updates:
   - `docs/PREVIEW_SMOKE.md`
   - `docs/STAGING_OPERATIONS.md`

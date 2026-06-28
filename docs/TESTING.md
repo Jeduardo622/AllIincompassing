@@ -149,14 +149,17 @@ What it runs:
 
 - `cypress/e2e/routes_public.cy.ts`
 - `cypress/e2e/routes_client.cy.ts`
+- `cypress/e2e/preauth_workflow.cy.ts`
 - `cypress/e2e/routes_schedule.cy.ts`
+- `cypress/e2e/routes_messages.cy.ts`
 - `cypress/e2e/routes_admin.cy.ts`
 - `cypress/e2e/routes_auth.cy.ts`
 
 Local notes:
 
-- The script spins up a preview server from build artifacts; set `PREVIEW_OUTPUT_DIR=dist` when reusing `npm run build` output.
-- By default, `npm run test:routes` also runs these tier-0 specs unless you override `--spec`.
+- The script spins up a preview server from build artifacts. Run `npm run preview:build` first if the output directory is missing, or set `PREVIEW_OUTPUT_DIR=dist` when reusing `npm run build` output.
+- By default, `npm run test:routes` runs the same preview-backed route specs unless you override `--spec`.
+- `npm run test:routes:open` opens the route Cypress specs interactively; use `npm run test:routes:tier0` for CI-parity evidence.
 
 ## Test Reliability SLO Policy
 

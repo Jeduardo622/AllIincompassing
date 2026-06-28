@@ -92,7 +92,7 @@ The main CI workflow (`.github/workflows/ci.yml`) runs the following stages in o
 1. **Policy** – `npm run ci:deploy:session-edge-bundle` (push + pull request events), `npm run ci:secrets`, and `npm run ci:check-focused` (branch protection, adapter-vs-authority boundary, auth parity, and RLS policy gates).
 2. **Lint/typecheck + unit tests** – parallel quality jobs after policy passes.
 3. **Build canary** – `npm run build` compiles the production bundle so build regressions are caught before deploy previews.
-4. **Tier-0 browser regression gate** – `npm run test:routes:tier0` executes Cypress route integrity + role-access suites against a local preview server.
+4. **Tier-0 browser regression gate** – `npm run test:routes:tier0` executes the Cypress route-protection specs against a local preview server.
 5. **Auth browser smoke gate** – Playwright auth + session lifecycle smoke to block regressions in critical authentication/session paths.
 
 Required branch checks are enforced via CI policy and should include:
@@ -142,7 +142,7 @@ Lighthouse CI currently runs in advisory mode (non-blocking) while preview URL a
 
 ### Edge function & API workflows
 
-- Audit Supabase routes against expected edge and RPC functions: `npm run audit:routes`
+- Audit preview-backed app routes and expected backend dependencies: `npm run audit:routes` writes `reports/evidence/route-audit-report-<timestamp>.json`. Run `npm run preview:build` first when build artifacts are missing.
 - Generate stubs for missing routes and functions when scaffolding new APIs: `npm run fix:routes`
 - CI deploy bundle (`npm run ci:deploy:session-edge-bundle`) pushes session lifecycle, care-plan, email, and assessment extraction/generation functions to the linked Supabase project when `SUPABASE_ACCESS_TOKEN` and project ref secrets are present.
 - Deploy updates with the Supabase CLI: `supabase functions deploy <name> --project-ref wnnjeqheqxxyrgsjmygy`

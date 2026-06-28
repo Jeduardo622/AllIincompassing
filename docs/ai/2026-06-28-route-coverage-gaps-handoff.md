@@ -40,6 +40,10 @@
 - blocked checks:
   - `npm run ci:playwright` blocked locally at `playwright:preflight`; missing required protected credentials: `PW_SUPERADMIN_EMAIL` + `PW_SUPERADMIN_PASSWORD` or `PW_ADMIN_EMAIL` + `PW_ADMIN_PASSWORD`
   - Linear issue linkage blocked because the Linear app requires reauthentication
+- live PR checks:
+  - PR #696 CI passed `change-scope`, `policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `iehp-assessment-import-smoke`, Lighthouse, and Netlify checks
+  - PR #696 `auth-browser-smoke` failed twice after `playwright:auth` passed; both attempts timed out in existing `playwright:session-no-show` session lifecycle `book-session` after selecting an authorized therapist/client pair
 - reviewer status: no findings after alias expected-path fix
 - residual risk:
   - local unit/Cypress coverage now exercises the requested routes and recovery behavior, but secret-backed Playwright auth/session smoke must run in CI or an environment with protected credentials
+  - live CI has a persistent session-lifecycle booking timeout outside the route coverage diff that blocks merge until triaged or rerun successfully

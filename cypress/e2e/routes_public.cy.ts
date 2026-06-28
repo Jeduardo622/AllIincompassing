@@ -13,7 +13,7 @@ describe("Public route coverage", () => {
       cy.wait("@runtimeConfig");
       cy.get("body").should("be.visible");
       cy.get('[data-testid="error-boundary"]').should("not.exist");
-      cy.url().should("include", route.path);
+      cy.location("pathname").should("eq", route.expectedPath ?? route.path);
     });
   });
 });

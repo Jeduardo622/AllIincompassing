@@ -1,0 +1,49 @@
+# Route Coverage Gaps Handoff
+
+- chosen task: close Slice 2 route coverage gaps for React guard-layer launch checks
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- triggering paths:
+  - `src/pages/__tests__/AppNavigation.test.tsx`
+  - `src/pages/__tests__/PasswordRecovery.redirect.test.tsx`
+  - `src/pages/__tests__/Settings.test.tsx`
+  - `src/pages/Settings.tsx`
+  - `tests/edge/route-audit-policy.test.ts`
+  - `cypress/support/routeScenarios.ts`
+  - `scripts/route-audit.ts`
+- auth/routing boundary:
+  - super-admin route guards for `/super-admin/feature-flags`, `/super-admin/impersonation`, `/super-admin/prompts`
+  - settings deep links under `/settings/:tabId`
+  - legacy alias redirects for `/monitoringdashboard`, `/superadminfeatureflags`, `/superadminimpersonation`
+  - public `/auth/recovery` route and recovery callback sanitization
+- non-goals:
+  - no broad production guard refactor
+  - no Supabase schema, RLS, grants, or edge function changes
+  - no secret-backed Playwright credential changes
+- reviewer finding resolved:
+  - initial coverage blessed admin deep links to super-admin settings panels
+  - `Settings` now normalizes non-super-admin deep links for `/settings/feature-flags` and `/settings/impersonation` back to `/settings`
+  - unit and Cypress coverage now distinguish admin normalization from super-admin panel access
+- verification run:
+  - `npm ci` passed
+  - focused Vitest route suite passed: 6 files, 47 tests
+  - `npm run ci:check-focused` passed with DB-backed checks skipped because `SUPABASE_DB_URL` is not configured
+  - `npm run lint` passed
+  - `npm run typecheck` passed
+  - `npm run preview:build` passed with non-secret placeholder Supabase env
+  - `npm run test:routes -- --spec cypress/e2e/routes_public.cy.ts,cypress/e2e/routes_admin.cy.ts` passed: 64 tests
+  - after reviewer alias-matrix finding, `npm run test:routes -- --spec cypress/e2e/routes_admin.cy.ts` passed: 60 tests
+  - `npm run build` passed with non-secret placeholder Supabase env
+  - `npm run test:ci` passed: 334 files, 2060 tests
+  - `npm run ci:verify-coverage` passed
+  - `npm run test:routes:tier0` passed: 112 tests
+- blocked checks:
+  - `npm run ci:playwright` blocked locally at `playwright:preflight`; missing required protected credentials: `PW_SUPERADMIN_EMAIL` + `PW_SUPERADMIN_PASSWORD` or `PW_ADMIN_EMAIL` + `PW_ADMIN_PASSWORD`
+  - Linear issue linkage blocked because the Linear app requires reauthentication
+- live PR checks:
+  - PR #696 CI passed `change-scope`, `policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `iehp-assessment-import-smoke`, Lighthouse, and Netlify checks
+  - PR #696 `auth-browser-smoke` failed twice after `playwright:auth` passed; both attempts timed out in existing `playwright:session-no-show` session lifecycle `book-session` after selecting an authorized therapist/client pair
+- reviewer status: no findings after alias expected-path fix
+- residual risk:
+  - local unit/Cypress coverage now exercises the requested routes and recovery behavior, but secret-backed Playwright auth/session smoke must run in CI or an environment with protected credentials
+  - live CI has a persistent session-lifecycle booking timeout outside the route coverage diff that blocks merge until triaged or rerun successfully

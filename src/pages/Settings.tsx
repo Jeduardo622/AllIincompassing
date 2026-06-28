@@ -26,6 +26,8 @@ type Tab =
   | 'feature-flags'
   | 'impersonation';
 
+const SUPER_ADMIN_ONLY_TABS: readonly Tab[] = ['feature-flags', 'impersonation'];
+
 export function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -50,12 +52,26 @@ export function Settings() {
         'feature-flags',
         'impersonation',
       ];
-      if (allowed.includes(candidate)) return candidate;
+      if (allowed.includes(candidate)) {
+        if (SUPER_ADMIN_ONLY_TABS.includes(candidate) && !showSuperAdminTabs) {
+          return 'user';
+        }
+        return candidate;
+      }
     }
     return 'user';
-  }, [location.pathname]);
+  }, [location.pathname, showSuperAdminTabs]);
 
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+
+  useEffect(() => {
+    const path = location.pathname.toLowerCase();
+    const match = path.match(/\/settings\/(.+)$/);
+    const candidate = match?.[1] as Tab | undefined;
+    if (candidate && SUPER_ADMIN_ONLY_TABS.includes(candidate) && !showSuperAdminTabs) {
+      navigate('/settings', { replace: true });
+    }
+  }, [location.pathname, navigate, showSuperAdminTabs]);
 
   useEffect(() => {
     setActiveTab(initialTab);

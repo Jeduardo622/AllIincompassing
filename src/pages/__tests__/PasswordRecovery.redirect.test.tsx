@@ -236,4 +236,42 @@ describe('PasswordRecovery redirect guard', () => {
       expect(mockNavigate).not.toHaveBeenCalled();
     });
   });
+
+  it('sanitizes mixed recovery query and hash callbacks without dropping safe parameters', async () => {
+    mockLocation.search = '?type=recovery&code=secret-code&next=settings';
+    mockLocation.hash = '#access_token=secret-access-token&refresh_token=secret-refresh-token&tab=security';
+
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1', email: 'user@example.com' } as never,
+      profile: null,
+      session: null,
+      loading: false,
+      profileLoading: false,
+      metadataRole: null,
+      effectiveRole: 'client',
+      roleMismatch: false,
+      authFlow: 'password_recovery',
+      signIn: vi.fn(),
+      signUp: vi.fn(),
+      signOut: vi.fn(),
+      resetPassword: vi.fn(),
+      updateProfile: vi.fn(),
+      hasRole: vi.fn().mockReturnValue(false),
+      hasAnyRole: vi.fn().mockReturnValue(false),
+      isAdmin: vi.fn().mockReturnValue(false),
+      isSuperAdmin: vi.fn().mockReturnValue(false),
+    });
+
+    renderWithProviders(<PasswordRecovery />, { auth: false });
+
+    expect(screen.getByText('Set a new password')).toBeInTheDocument();
+    expect(replaceStateSpy).toHaveBeenCalledWith(
+      window.history.state,
+      document.title,
+      '/auth/recovery?next=settings#tab=security'
+    );
+    await waitFor(() => {
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+  });
 });

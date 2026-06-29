@@ -1,0 +1,37 @@
+# manage_admin_users Advisor Repair
+
+- classification: high-risk human-reviewed
+- lane: critical
+- live project: wnnjeqheqxxyrgsjmygy
+- scope: Repair live-proven `public.manage_admin_users` overload/grant drift only.
+- non-goals: Do not change `get_admin_users`, `get_admin_users_paged`, `assign_admin_role`, app auth code, RLS policies, or unrelated SECURITY DEFINER functions.
+- live evidence before repair:
+  - `public.manage_admin_users(operation text, target_user_id uuid)` existed as `SECURITY DEFINER` with `proconfig = null` and `authenticated_execute = true`.
+  - `public.manage_admin_users(operation text, target_user_id text, caller_organization_id uuid)` existed with `authenticated_execute = true` and `app_admin_executor_execute = true`.
+  - `public.manage_admin_users(operation text, target_user_id text)` existed with pinned `search_path=public, auth` and `authenticated_execute = true`; this remains intentional because current UI/server callers use it.
+- intended boundary:
+  - Authenticated browser/admin callers may use the current two-argument `manage_admin_users(text,text)` RPC, which performs its own active admin/super-admin checks.
+  - The explicit-organization three-argument overload remains callable only by `service_role` and `app_admin_executor`.
+  - Obsolete overloads are removed so stale search-path/security-definer state cannot remain exposed.
+- live evidence after repair:
+  - `public.manage_admin_users(operation text, target_user_id text)` remains `SECURITY DEFINER`, `search_path=public, auth`, `authenticated_execute = true`, `anon_execute = false`.
+  - `public.manage_admin_users(operation text, target_user_id text, caller_organization_id uuid)` remains `SECURITY DEFINER`, `search_path=public, auth`, `authenticated_execute = false`, `service_role_execute = true`, `app_admin_executor_execute = true`.
+  - No `public.manage_admin_users(operation text, target_user_id uuid)` row remains.
+- post-apply verification query:
+  - `select n.nspname as schema, p.proname, pg_get_function_identity_arguments(p.oid) as args, p.prosecdef as security_definer, p.proconfig, p.proacl, has_function_privilege('anon', p.oid, 'execute') as anon_execute, has_function_privilege('authenticated', p.oid, 'execute') as authenticated_execute, has_function_privilege('service_role', p.oid, 'execute') as service_role_execute, has_function_privilege('app_admin_executor', p.oid, 'execute') as app_admin_executor_execute from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'manage_admin_users' order by args;`
+- post-apply verification output:
+  - `manage_admin_users(operation text, target_user_id text)`: `security_definer=true`, `proconfig={search_path=public, auth}`, `anon_execute=false`, `authenticated_execute=true`, `service_role_execute=true`, `app_admin_executor_execute=false`.
+  - `manage_admin_users(operation text, target_user_id text, caller_organization_id uuid)`: `security_definer=true`, `proconfig={search_path=public, auth}`, `anon_execute=false`, `authenticated_execute=false`, `service_role_execute=true`, `app_admin_executor_execute=true`.
+- rollback:
+  - Dropped obsolete overloads have no automatic rollback because they were the stale advisor surface; recreate them only from the specific historical migration if a caller is deliberately reintroduced.
+  - To reopen the current explicit-org overload to authenticated callers: `grant execute on function public.manage_admin_users(text, text, uuid) to authenticated;`
+- required checks:
+  - `npm run ci:check-focused`
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test:ci`
+  - `npm run validate:tenant`
+  - `npm run build`
+  - `npm run verify:local` when local prerequisites allow it
+- reviewer: required before PR-ready state.
+- residual risk: Live migration touches privileged RPC grants and must receive human review before merge.

@@ -44,8 +44,10 @@ interface BrowserFetchResult<TBody> {
 }
 
 const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(value ?? "");
-/** UI wait (90s) + edge/RPC fallback can exceed 120s on cold paths. */
+/** UI wait + edge/RPC fallback can exceed 120s on cold paths. */
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
+const UI_BOOK_RESPONSE_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_UI_BOOK_RESPONSE_TIMEOUT_MS ?? "45000");
+const CLEANUP_BEFORE_FAILURE_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_CLEANUP_BEFORE_FAILURE_TIMEOUT_MS ?? "5000");
 
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
   console.log(`[lifecycle] start ${label}`);
@@ -498,6 +500,51 @@ const toDatetimeLocal = (date: Date): string => {
   return local.toISOString().slice(0, 16);
 };
 
+export const isCreateSessionButtonReady = ({
+  disabled,
+  ariaDisabled,
+}: {
+  disabled: string | null;
+  ariaDisabled: string | null;
+}): boolean => disabled === null && ariaDisabled !== "true";
+
+const expectCreateSessionButtonReady = async (
+  page: Page,
+  context: {
+    pairKey: string;
+    attempt: number;
+    startIso: string;
+  },
+): Promise<ReturnType<Page["getByRole"]>> => {
+  const createSessionButton = page.getByRole("button", { name: /Create Session/i });
+  await createSessionButton.waitFor({ state: "visible", timeout: 10_000 });
+
+  const deadline = Date.now() + 20_000;
+  let disabled: string | null = null;
+  let ariaDisabled: string | null = null;
+  while (Date.now() < deadline) {
+    disabled = await createSessionButton.getAttribute("disabled");
+    ariaDisabled = await createSessionButton.getAttribute("aria-disabled");
+    if (isCreateSessionButtonReady({ disabled, ariaDisabled })) {
+      return createSessionButton;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  const visibleErrors = await page
+    .locator('[role="alert"], .text-red-600, .text-red-700, .text-destructive')
+    .evaluateAll((nodes) =>
+      nodes
+        .map((node) => node.textContent?.replace(/\s+/g, " ").trim())
+        .filter((text): text is string => Boolean(text))
+        .slice(0, 5),
+    )
+    .catch(() => []);
+  throw new Error(
+    `Create Session stayed disabled for lifecycle booking. pair=${context.pairKey} attempt=${context.attempt} startIso=${context.startIso} disabled=${disabled ?? "null"} ariaDisabled=${ariaDisabled ?? "null"} visibleErrors=${JSON.stringify(visibleErrors)}`,
+  );
+};
+
 export const buildBookingCandidateStarts = (
   terminalStatus = process.env.PW_LIFECYCLE_TERMINAL_STATUS,
 ): Date[] => {
@@ -663,6 +710,72 @@ const selectOptionWhenAvailable = async (
   return false;
 };
 
+export const cleanupBeforeNoResponseFailure = async (
+  cleanup: () => Promise<void>,
+  warn: (message: string, error?: unknown) => void = console.warn,
+  timeoutMs = CLEANUP_BEFORE_FAILURE_TIMEOUT_MS,
+): Promise<void> => {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const cleanupResult = Promise.resolve()
+    .then(cleanup)
+    .then(() => ({ kind: "ok" as const }))
+    .catch((error) => ({ kind: "error" as const, error }));
+  const timeoutResult = new Promise<{ kind: "timeout" }>((resolve) => {
+    timeoutHandle = setTimeout(() => resolve({ kind: "timeout" }), Math.max(0, timeoutMs));
+    timeoutHandle.unref?.();
+  });
+
+  const result = await Promise.race([cleanupResult, timeoutResult]);
+  if (timeoutHandle) {
+    clearTimeout(timeoutHandle);
+  }
+  if (result.kind === "error") {
+    warn("[lifecycle] failed to clean up seeded program/goal before no-response failure", result.error);
+  } else if (result.kind === "timeout") {
+    warn(`[lifecycle] timed out cleaning up seeded program/goal before no-response failure (${timeoutMs}ms)`);
+  }
+};
+
+const selectTherapistClientPair = async (
+  page: Page,
+  therapistId: string,
+  clientId: string,
+): Promise<boolean> => {
+  const sequences: Array<Array<[string, string]>> = [
+    [
+      ["#client-select", clientId],
+      ["#therapist-select", therapistId],
+    ],
+    [
+      ["#therapist-select", therapistId],
+      ["#client-select", clientId],
+      ["#therapist-select", therapistId],
+    ],
+  ];
+
+  for (const sequence of sequences) {
+    let sequenceApplied = true;
+    for (const [selector, value] of sequence) {
+      sequenceApplied = (await selectOptionWhenAvailable(page, selector, value)) && sequenceApplied;
+      await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+      await page.waitForTimeout(250);
+    }
+    if (!sequenceApplied) {
+      continue;
+    }
+
+    const selectedValues = await page.evaluate(() => ({
+      therapistId: (document.querySelector("#therapist-select") as HTMLSelectElement | null)?.value ?? "",
+      clientId: (document.querySelector("#client-select") as HTMLSelectElement | null)?.value ?? "",
+    }));
+    if (selectedValues.therapistId === therapistId && selectedValues.clientId === clientId) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const lifecyclePairKey = (therapistId: string, clientId: string): string => `${therapistId}:${clientId}`;
 
 async function chooseSessionTargetsExcluding(page: Page, excludedPairKeys: Set<string>): Promise<{
@@ -698,9 +811,12 @@ async function chooseSessionTargetsExcluding(page: Page, excludedPairKeys: Set<s
     if (excludedPairKeys.has(pairKey)) {
       continue;
     }
-    await page.selectOption("#therapist-select", therapistId);
     const seeded = await ensureProgramAndGoalForPair(therapistId, clientId);
-    await page.selectOption("#client-select", clientId);
+    const selectedPair = await selectTherapistClientPair(page, therapistId, clientId);
+    if (!selectedPair) {
+      await cleanupCreatedProgramGoal(seeded);
+      continue;
+    }
     const selectedProgram = await selectOptionWhenAvailable(page, "#program-select", seeded.programId);
     if (!selectedProgram) {
       await cleanupCreatedProgramGoal(seeded);
@@ -778,10 +894,15 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
       page.once("dialog", (dialog) => {
         void dialog.accept().catch(() => undefined);
       });
+      const createSessionButton = await expectCreateSessionButtonReady(page, {
+        pairKey: selected.pairKey,
+        attempt: attempt + 1,
+        startIso,
+      });
       const responsePromise = page
         .waitForResponse(
           (res) => res.url().includes("/api/book") && res.request().method() === "POST",
-          { timeout: 90_000 },
+          { timeout: UI_BOOK_RESPONSE_TIMEOUT_MS },
         )
         .then((response) => ({ kind: "response" as const, response }))
         .catch(() => null);
@@ -791,14 +912,21 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
           timeout: 2500,
         }),
         page.getByText(/No active programs found/i).first().waitFor({ state: "visible", timeout: 2500 }),
+        page
+          .getByText(/Therapist is required|Client is required|Program is required|Primary goal is required/i)
+          .first()
+          .waitFor({ state: "visible", timeout: 2500 }),
       ])
         .then(() => ({ kind: "blocked" as const }))
         .catch(() => new Promise<never>(() => undefined));
 
-      await page.getByRole("button", { name: /Create Session/i }).click();
+      await createSessionButton.click();
       const outcome = await Promise.race([responsePromise, blockedPromise]);
       if (!outcome) {
-        continue;
+        await cleanupBeforeNoResponseFailure(() => cleanupCreatedProgramGoal(selected));
+        throw new Error(
+          `Create Session clicked but no /api/book response or blocking validation appeared. pair=${selected.pairKey} attempt=${attempt + 1} startIso=${startIso}`,
+        );
       }
       if (outcome.kind === "blocked") {
         responsePromise.catch(() => undefined);

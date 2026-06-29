@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildBookingCandidateStarts } from "../../scripts/playwright-session-lifecycle";
+import {
+  buildBookingCandidateStarts,
+  cleanupBeforeNoResponseFailure,
+  isCreateSessionButtonReady,
+} from "../../scripts/playwright-session-lifecycle";
 
 const originalGithubRunId = process.env.GITHUB_RUN_ID;
 const originalTerminalStatus = process.env.PW_LIFECYCLE_TERMINAL_STATUS;
@@ -32,5 +36,44 @@ describe("playwright session lifecycle booking starts", () => {
 
     expect(firstDayOffset).toBeGreaterThanOrEqual(21);
     expect(firstDayOffset).toBeLessThanOrEqual(41);
+  });
+
+  it("treats the Create Session button as ready only when enabled", () => {
+    expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: null })).toBe(true);
+    expect(isCreateSessionButtonReady({ disabled: "", ariaDisabled: null })).toBe(false);
+    expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: "true" })).toBe(false);
+  });
+
+  it("does not block the no-response failure when cleanup rejects", async () => {
+    const warnings: unknown[][] = [];
+
+    await expect(
+      cleanupBeforeNoResponseFailure(
+        () => Promise.reject(new Error("cleanup failed")),
+        (...args) => {
+          warnings.push(args);
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(warnings).toHaveLength(1);
+    expect(String(warnings[0][0])).toContain("failed to clean up");
+  });
+
+  it("does not block the no-response failure when cleanup stalls", async () => {
+    const warnings: unknown[][] = [];
+
+    await expect(
+      cleanupBeforeNoResponseFailure(
+        () => new Promise<void>(() => undefined),
+        (...args) => {
+          warnings.push(args);
+        },
+        1,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(warnings).toHaveLength(1);
+    expect(String(warnings[0][0])).toContain("timed out");
   });
 });

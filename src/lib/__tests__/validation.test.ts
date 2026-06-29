@@ -28,6 +28,13 @@ describe('sanitizeString', () => {
     expect(result).not.toMatch(/script|onerror|alert/i);
   });
 
+  it('strips markup while preserving safe text content', () => {
+    const result = sanitizeString('  <p>Hello <strong>care team</strong></p><a href="javascript:alert(1)">open</a>  ');
+
+    expect(result).toBe('Hello care teamopen');
+    expect(result).not.toMatch(/[<>]|javascript/i);
+  });
+
   it('trims whitespace and keeps plain text', () => {
     const result = sanitizeString('   Safe text   ');
     expect(result).toBe('Safe text');

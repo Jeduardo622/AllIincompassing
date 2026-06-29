@@ -1708,6 +1708,251 @@ describe('SessionModal', () => {
     });
   }, 15000);
 
+  it('shows trial controls for live plan goals without a configured target', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([
+          {
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-no-plan-target-trials',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-2',
+          goal_id: 'goal-2',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await screen.findByText(/No plan target is set for this goal/i);
+    expect(screen.getByText('No target selected')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
+      target: { value: 'Tracked without configured target' },
+    });
+    const increaseButton = await screen.findByRole('button', {
+      name: /Increase correct trials for target 1/i,
+    });
+
+    await userEvent.click(increaseButton);
+
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Increase incorrect or no-response trials for target 1/i }))
+      .toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_goal_notes: {
+          'goal-2': 'Tracked without configured target',
+        },
+        session_note_goal_measurements: {
+          'goal-2': {
+            version: 1,
+            data: expect.objectContaining({
+              metric_value: 1,
+              targets: null,
+              target: null,
+              target_trials: [
+                {
+                  target: null,
+                  metric_value: 1,
+                  incorrect_trials: null,
+                  opportunities: null,
+                  trial_prompt_note: null,
+                },
+              ],
+            }),
+          },
+        },
+      }));
+    });
+  });
+
+  it('preserves saved no-target plan goal labels and trials when resaving', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const savedTarget = 'Existing therapist focus';
+    const linkedSessionNote = {
+      id: 'linked-note-no-plan-target',
+      authorization_id: 'auth-1',
+      service_code: '97153',
+      narrative: '',
+      goal_notes: {
+        'goal-2': 'Observed saved no-target trials',
+      },
+      goal_measurements: {
+        'goal-2': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            targets: [savedTarget],
+            target: savedTarget,
+            target_trials: [
+              {
+                target: savedTarget,
+                metric_value: 3,
+                incorrect_trials: 1,
+                opportunities: 4,
+                trial_prompt_note: 'Saved no-target prompt note',
+              },
+            ],
+          },
+        },
+      },
+      goal_ids: ['goal-2'],
+      goals_addressed: ['Second Goal'],
+    };
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'linked-note-no-plan-target',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: linkedSessionNote.goals_addressed,
+      goal_ids: linkedSessionNote.goal_ids,
+      goal_measurements: linkedSessionNote.goal_measurements as Record<string, unknown>,
+      goal_notes: linkedSessionNote.goal_notes,
+      session_id: 'session-linked-no-plan-target',
+      narrative: linkedSessionNote.narrative,
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T09:00:00.000Z',
+    });
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([
+          {
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-linked-no-plan-target',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-2',
+          goal_id: 'goal-2',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await screen.findByText(/No plan target is set for this goal/i);
+    expect(await screen.findByText(savedTarget)).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_goal_measurements: {
+          'goal-2': {
+            version: 1,
+            data: expect.objectContaining({
+              metric_value: 3,
+              incorrect_trials: 1,
+              opportunities: 4,
+              targets: [savedTarget],
+              target: savedTarget,
+              target_trials: [
+                expect.objectContaining({
+                  target: savedTarget,
+                  metric_value: 3,
+                  incorrect_trials: 1,
+                  opportunities: 4,
+                  trial_prompt_note: 'Saved no-target prompt note',
+                }),
+              ],
+              trial_prompt_note: 'Saved no-target prompt note',
+            }),
+          },
+        },
+      }));
+    });
+  }, 10000);
+
   it('preserves remaining target trials when deleting an earlier target', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const buildChain = (rows: unknown[]) => {

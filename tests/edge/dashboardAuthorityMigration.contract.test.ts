@@ -9,9 +9,19 @@ const MIGRATION_PATH = path.join(
   "migrations",
   "20260429142000_dashboard_service_authority_rpc.sql",
 );
+const SEARCH_PATH_REPAIR_MIGRATION_PATH = path.join(
+  process.cwd(),
+  "supabase",
+  "migrations",
+  "20260629135957_repair_dashboard_data_search_path.sql",
+);
 
 function readMigration(): string {
   return fs.readFileSync(MIGRATION_PATH, "utf8");
+}
+
+function readSearchPathRepairMigration(): string {
+  return fs.readFileSync(SEARCH_PATH_REPAIR_MIGRATION_PATH, "utf8");
 }
 
 describe("dashboard authority migration", () => {
@@ -49,5 +59,20 @@ describe("dashboard authority migration", () => {
     expect(sql).toContain("t.organization_id = target_organization_id");
     expect(sql).toContain("c.organization_id = target_organization_id");
     expect(sql).toContain("br.organization_id = target_organization_id");
+  });
+
+  it("repairs legacy direct dashboard RPC search_path without widening execute grants", () => {
+    const sql = readSearchPathRepairMigration();
+
+    expect(sql).toContain("alter function public.get_dashboard_data()");
+    expect(sql).toContain("set search_path = public, app, auth;");
+    expect(sql).toContain("revoke execute on function public.get_dashboard_data() from public;");
+    expect(sql).toContain("revoke execute on function public.get_dashboard_data() from anon;");
+    expect(sql).toContain("revoke execute on function public.get_dashboard_data() from authenticated;");
+    expect(sql).toContain("grant execute on function public.get_dashboard_data() to dashboard_consumer;");
+    expect(sql).toContain("grant execute on function public.get_dashboard_data() to service_role;");
+    expect(sql).toContain("dashboard_search_path is distinct from 'search_path=public, app, auth'");
+    expect(sql).toContain("has_function_privilege('authenticated', dashboard_function, 'EXECUTE')");
+    expect(sql).not.toContain("grant execute on function public.get_dashboard_data() to authenticated;");
   });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Chart as ChartJS,
@@ -10,8 +10,8 @@ import {
   Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { BarChart3, Inbox, Loader2 } from 'lucide-react';
-import type { ChartData, ChartOptions } from 'chart.js';
+import { BarChart3, Download, Inbox, Loader2 } from 'lucide-react';
+import type { Chart as ChartInstance, ChartData, ChartOptions, PointStyle } from 'chart.js';
 import type { Goal } from '../../types';
 import { fetchClientSessionNotes } from '../../lib/session-notes';
 import { useActiveOrganizationId } from '../../lib/organization';
@@ -51,13 +51,39 @@ const todayDate = (): string => toLocalDateInputValue(new Date());
 const formatPercent = (value: number): string =>
   Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`;
 
+const targetSeriesColors = [
+  '#2563eb',
+  '#a855f7',
+  '#84cc16',
+  '#f97316',
+  '#14b8a6',
+  '#ef4444',
+  '#0891b2',
+  '#db2777',
+  '#65a30d',
+  '#7c3aed',
+];
+
+const targetPointStyles: PointStyle[] = [
+  'circle',
+  'rectRot',
+  'triangle',
+  'rect',
+  'star',
+  'crossRot',
+  'cross',
+  'dash',
+  'line',
+  'rectRounded',
+];
+
 export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) {
   const organizationId = useActiveOrganizationId();
   const [displayPeriod, setDisplayPeriod] = useState<SessionTrendDisplayPeriod>('month');
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(todayDate);
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
-  const [selectedTargetKey, setSelectedTargetKey] = useState<string | null>(null);
+  const chartRef = useRef<ChartInstance<'line', Array<number | null>, string> | undefined>(undefined);
 
   const {
     data: sessionNotes = [],
@@ -123,10 +149,9 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
 
   const trendModel = useMemo(() => buildSessionTrendModel(sessionNotes, goals, {
     selectedGoalId,
-    selectedTargetKey,
     displayPeriod,
     dateRange: { startDate, endDate },
-  }), [displayPeriod, endDate, goals, selectedGoalId, selectedTargetKey, sessionNotes, startDate]);
+  }), [displayPeriod, endDate, goals, selectedGoalId, sessionNotes, startDate]);
 
   useEffect(() => {
     if (trendModel.selectedGoalId !== selectedGoalId) {
@@ -134,30 +159,79 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
     }
   }, [selectedGoalId, trendModel.selectedGoalId]);
 
-  useEffect(() => {
-    if (trendModel.selectedTargetKey !== selectedTargetKey) {
-      setSelectedTargetKey(trendModel.selectedTargetKey);
-    }
-  }, [selectedTargetKey, trendModel.selectedTargetKey]);
-
   const isLoading = isLoadingSessionNotes || isLoadingGoals;
   const error = sessionNotesError ?? goalsError;
 
-  const chartData = useMemo<ChartData<'line'>>(() => ({
-    labels: trendModel.buckets.map((bucket) => bucket.label),
-    datasets: [
-      {
-        label: 'Median trial performance',
-        data: trendModel.buckets.map((bucket) => bucket.median),
-        borderColor: '#2563eb',
-        backgroundColor: 'rgba(37, 99, 235, 0.15)',
-        pointBackgroundColor: '#2563eb',
+  const targetSeries = useMemo(() => trendModel.targetOptions.map((target, index) => {
+    const model = buildSessionTrendModel(sessionNotes, goals, {
+      selectedGoalId: trendModel.selectedGoalId,
+      selectedTargetKey: target.key,
+      displayPeriod,
+      dateRange: { startDate, endDate },
+    });
+
+    return {
+      target,
+      buckets: model.buckets,
+      evidence: model.includedEvidence,
+      color: targetSeriesColors[(index + Math.floor(index / targetPointStyles.length)) % targetSeriesColors.length],
+      pointStyle: targetPointStyles[index % targetPointStyles.length],
+    };
+  }).filter((series) => series.buckets.length > 0), [
+    displayPeriod,
+    endDate,
+    goals,
+    sessionNotes,
+    startDate,
+    trendModel.selectedGoalId,
+    trendModel.targetOptions,
+  ]);
+
+  const chartBuckets = useMemo(() => {
+    const bucketsByKey = new Map<string, string>();
+    targetSeries.forEach((series) => {
+      series.buckets.forEach((bucket) => {
+        bucketsByKey.set(bucket.bucketKey, bucket.label);
+      });
+    });
+
+    return Array.from(bucketsByKey.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, label]) => ({ key, label }));
+  }, [targetSeries]);
+
+  const chartEvidence = useMemo(() => targetSeries.flatMap((series) => series.evidence), [targetSeries]);
+
+  const chartData = useMemo<ChartData<'line', Array<number | null>, string>>(() => ({
+    labels: chartBuckets.map((bucket) => bucket.label),
+    datasets: targetSeries.map((series) => {
+      const bucketsByKey = new Map(series.buckets.map((bucket) => [bucket.bucketKey, bucket]));
+      return {
+        label: series.target.label,
+        data: chartBuckets.map((bucket) => bucketsByKey.get(bucket.key)?.median ?? null),
+        borderColor: series.color,
+        backgroundColor: `${series.color}26`,
+        pointBackgroundColor: series.color,
         pointBorderColor: '#ffffff',
         pointRadius: 4,
+        pointStyle: series.pointStyle,
+        spanGaps: true,
         tension: 0.25,
-      },
-    ],
-  }), [trendModel.buckets]);
+      };
+    }),
+  }), [chartBuckets, targetSeries]);
+
+  const handleDownloadGraph = () => {
+    const imageUrl = chartRef.current?.toBase64Image('image/png', 1);
+    if (!imageUrl) {
+      return;
+    }
+
+    const anchor = document.createElement('a');
+    anchor.href = imageUrl;
+    anchor.download = `session-trends-${client.id}-${todayDate()}.png`;
+    anchor.click();
+  };
 
   const chartOptions = useMemo<ChartOptions<'line'>>(() => ({
     responsive: true,
@@ -171,7 +245,9 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
         callbacks: {
           label: (context) => ` Median: ${formatPercent(Number(context.parsed.y ?? 0))}`,
           afterLabel: (context) => {
-            const bucket = trendModel.buckets[context.dataIndex];
+            const series = targetSeries[context.datasetIndex];
+            const bucketKey = chartBuckets[context.dataIndex]?.key;
+            const bucket = series?.buckets.find((entry) => entry.bucketKey === bucketKey);
             return bucket ? `Sessions: ${bucket.sampleSize}` : '';
           },
         },
@@ -196,9 +272,9 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
         },
       },
     },
-  }), [displayPeriod, trendModel.buckets]);
+  }), [chartBuckets, displayPeriod, targetSeries]);
 
-  const recentEvidence = trendModel.includedEvidence
+  const recentEvidence = chartEvidence
     .slice()
     .sort((left, right) => right.sessionDate.localeCompare(left.sessionDate))
     .slice(0, 10);
@@ -235,7 +311,6 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
             value={selectedGoalId ?? ''}
             onChange={(event) => {
               setSelectedGoalId(event.target.value || null);
-              setSelectedTargetKey(null);
             }}
             className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-dark dark:text-white"
             disabled={trendModel.goalOptions.length === 0}
@@ -252,23 +327,14 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
           </select>
         </label>
 
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Target
-          <select
-            value={selectedTargetKey ?? ''}
-            onChange={(event) => setSelectedTargetKey(event.target.value || null)}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-dark dark:text-white"
-            disabled={trendModel.targetOptions.length === 0}
-          >
-            {trendModel.targetOptions.length === 0 ? (
-              <option value="">No target data</option>
-            ) : (
-              trendModel.targetOptions.map((target) => (
-                <option key={target.key} value={target.key}>{target.label}</option>
-              ))
-            )}
-          </select>
-        </label>
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Targets
+          <div className="mt-1 flex min-h-10 items-center rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-dark dark:text-gray-200">
+            {trendModel.targetOptions.length === 0
+              ? 'No target data'
+              : `${trendModel.targetOptions.length} separate target series`}
+          </div>
+        </div>
 
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
           Display
@@ -314,7 +380,7 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-100">
           {error instanceof Error ? error.message : 'Session trends failed to load.'}
         </div>
-      ) : trendModel.buckets.length === 0 ? (
+      ) : chartBuckets.length === 0 ? (
         <div className="rounded-md border border-dashed border-gray-300 p-8 text-center dark:border-gray-700">
           <Inbox className="mx-auto h-10 w-10 text-gray-400" />
           <h3 className="mt-3 text-sm font-semibold text-gray-900 dark:text-white">No graphable trial data</h3>
@@ -325,19 +391,29 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
       ) : (
         <>
           <div className="rounded-md border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-dark-lighter">
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={handleDownloadGraph}
+                className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-dark dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download graph
+              </button>
+            </div>
             <div className="h-80">
-              <Line options={chartOptions} data={chartData} />
+              <Line ref={chartRef} options={chartOptions} data={chartData} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
               <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Buckets</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{trendModel.buckets.length}</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{chartBuckets.length}</div>
             </div>
             <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
               <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Included session points</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{trendModel.includedEvidence.length}</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{chartEvidence.length}</div>
             </div>
             <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
               <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Excluded sessions</div>

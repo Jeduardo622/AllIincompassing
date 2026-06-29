@@ -13,10 +13,21 @@ describe('manage_admin_users advisor repair migration', () => {
     const sql = migrationSql();
 
     expect(sql).toMatch(/drop function if exists public\.manage_admin_users\(text,\s*uuid\)/i);
-    expect(sql).toMatch(/drop function if exists public\.manage_admin_users\(text,\s*text,\s*jsonb\)/i);
     expect(sql).toMatch(/drop function if exists public\.manage_admin_users\(text,\s*text,\s*jsonb,\s*text\)/i);
     expect(sql).toMatch(/drop function if exists public\.manage_admin_users\(text,\s*uuid,\s*jsonb\)/i);
     expect(sql).toMatch(/drop function if exists public\.manage_admin_users\(text,\s*uuid,\s*uuid\)/i);
+  });
+
+  it('keeps a metadata overload for documented server removeAdminUser callers', () => {
+    const sql = migrationSql();
+
+    expect(sql).not.toMatch(/drop function if exists public\.manage_admin_users\(text,\s*text,\s*jsonb\)/i);
+    expect(sql).toMatch(/create or replace function public\.manage_admin_users\(\s*operation text,\s*target_user_id text,\s*metadata jsonb/i);
+    expect(sql).toMatch(/perform public\.manage_admin_users\(operation,\s*target_user_id\)/i);
+    expect(sql).toMatch(/revoke execute on function public\.manage_admin_users\(text,\s*text,\s*jsonb\) from public/i);
+    expect(sql).toMatch(/revoke execute on function public\.manage_admin_users\(text,\s*text,\s*jsonb\) from anon/i);
+    expect(sql).toMatch(/revoke execute on function public\.manage_admin_users\(text,\s*text,\s*jsonb\) from authenticated/i);
+    expect(sql).toMatch(/grant execute on function public\.manage_admin_users\(text,\s*text,\s*jsonb\) to service_role/i);
   });
 
   it('keeps the explicit-org overload on executor/service-role grants only', () => {

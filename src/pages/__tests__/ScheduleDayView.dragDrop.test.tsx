@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { format } from "date-fns";
 import type { Session } from "../../types";
 import { createSessionSlotKey } from "../schedule-utils";
@@ -47,6 +47,7 @@ describe("ScheduleDayView drag and drop", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
@@ -277,6 +278,8 @@ describe("ScheduleDayView drag and drop", () => {
     });
 
     afterEach(() => {
+      cleanup();
+      vi.clearAllTimers();
       vi.useRealTimers();
       vi.restoreAllMocks();
     });
@@ -533,8 +536,25 @@ describe("ScheduleDayView drag and drop", () => {
       }) as HTMLElement | undefined;
       expect(targetSlot).toBeTruthy();
 
-      fireEvent.pointerDown(card, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
-      fireEvent.pointerMove(card, { clientX: 25, clientY: 10, pointerId: 1 });
+      fireEvent.pointerDown(card, {
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+        pointerId: 1,
+        pointerType: "touch",
+        isPrimary: true,
+      });
+      act(() => {
+        fireEvent.pointerMove(card, {
+          buttons: 1,
+          clientX: 25,
+          clientY: 10,
+          pointerId: 1,
+          pointerType: "touch",
+          isPrimary: true,
+        });
+      });
+      fireEvent.pointerLeave(card, { pointerId: 1, pointerType: "touch", isPrimary: true });
       act(() => {
         vi.advanceTimersByTime(480);
       });

@@ -92,3 +92,7 @@
 ## Handoff Summary
 
 This slice tightens authorization visibility so therapist and BT users can no longer reach the standalone `/authorizations` route and therapist viewers no longer see the client `Pre-Authorizations` tab. The change stays isolated to route guards, client tab filtering, matching audit/test fixtures, and the authorizations read-scope smoke. Focused vitest, route-audit parity, policy, tier-0 route, build, and deploy-preview `playwright:authorizations-read-scope` checks pass. Aggregate Playwright now runs with the supported env-loading path and reaches a different unrelated failure in `playwright:session-capture-adhoc-upsert`, so that broader blocker remains outside this PR's scope and should be triaged separately.
+
+## Supersession Note
+
+As of 2026-06-28 triage, the `playwright:session-capture-adhoc-upsert` blocker referenced above is stale. WIN-176 was fixed by merged PR #662 (`a9fbf589`), and merged PR #690 (`ace0426f`) later revalidated `npm run playwright:session-capture-adhoc-upsert` as passing after the smoke setup fix. Do not treat this handoff's old Playwright blocker as an open launch blocker unless a fresh current-main failure appears.

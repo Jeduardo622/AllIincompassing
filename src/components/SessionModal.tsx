@@ -154,6 +154,9 @@ const filterPlanGoalMeasurementToTargetCriteria = (
   }
 
   const planTarget = goal?.target_criteria?.trim() ?? '';
+  if (!planTarget) {
+    return entry;
+  }
   const sourceTargets = Array.isArray(entry.data.targets) ? entry.data.targets : [];
   const sourceTrials = Array.isArray(entry.data.target_trials) ? entry.data.target_trials : [];
   const hasSavedTargetData =
@@ -2662,6 +2665,7 @@ export function SessionModal({
                           const watchedTargetTrials = watch(targetTrialsFieldBaseKey) as unknown;
                           const isAdhocTarget = isAdhocSessionTargetId(selectedGoalId);
                           const planTargetText = isAdhocTarget ? '' : selectedGoal?.target_criteria?.trim() ?? '';
+                          const planGoalHasNoConfiguredTarget = !isAdhocTarget && Boolean(selectedGoal) && !planTargetText;
                           const sessionTargets = (() => {
                             if (Array.isArray(watchedTargets)) {
                               const normalizedWatchedTargets = watchedTargets
@@ -2707,7 +2711,7 @@ export function SessionModal({
                           const hasSelectedPlanTarget = Boolean(
                             planTargetText && selectedPlanTargets.length > 0,
                           );
-                          const visibleSessionTargetItems = isAdhocTarget
+                          const visibleSessionTargetItems = isAdhocTarget || planGoalHasNoConfiguredTarget
                             ? sessionTargets.map((targetValue, sourceIndex) => ({ targetValue, sourceIndex }))
                             : (selectedPlanTargets.length > 0 ? selectedPlanTargets : [{ targetValue: '', sourceIndex: 0 }]);
                           const correctDisplay = visibleSessionTargetItems.reduce(
@@ -2896,6 +2900,7 @@ export function SessionModal({
                                     const targetIncorrectDisplay = getTargetTrialValue(sourceIndex, 'incorrect_trials');
                                     const shouldRenderTargetTrialFields =
                                       isAdhocTarget ||
+                                      planGoalHasNoConfiguredTarget ||
                                       targetValue.trim().length > 0 ||
                                       targetCorrectDisplay > 0 ||
                                       targetIncorrectDisplay > 0 ||

@@ -63,6 +63,7 @@ WHITE BIBLE.pdf
 
 # Timestamped local test outputs (Playwright triage, etc.)
 artifacts/latest/
+output/
 # Root-level local Lighthouse exports (timestamped browser downloads)
 /example.com_*.report.html
 

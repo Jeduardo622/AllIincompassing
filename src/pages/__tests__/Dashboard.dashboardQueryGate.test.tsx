@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React from "react";
 import { render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -8,6 +8,27 @@ let capturedDashboardEnabled: boolean | undefined;
 let capturedActorScope:
   | { userId?: string | null; effectiveRole?: string | null; organizationId?: string | null }
   | undefined;
+
+const mockFetchPendingSupervisionSessionNoteRequests = vi.hoisted(() => vi.fn());
+const mockReconcilePendingSupervisionSessionNoteRequests = vi.hoisted(() => vi.fn());
+const mockUseQuery = vi.hoisted(() => vi.fn());
+
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQuery: mockUseQuery,
+  };
+});
+
+vi.mock("../../lib/supervision-session-notes", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/supervision-session-notes")>();
+  return {
+    ...actual,
+    fetchPendingSupervisionSessionNoteRequests: mockFetchPendingSupervisionSessionNoteRequests,
+    reconcilePendingSupervisionSessionNoteRequests: mockReconcilePendingSupervisionSessionNoteRequests,
+  };
+});
 
 vi.mock("../../lib/optimizedQueries", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/optimizedQueries")>();
@@ -69,7 +90,22 @@ describe("Dashboard staff dashboard query gate", () => {
   beforeEach(() => {
     capturedDashboardEnabled = undefined;
     capturedActorScope = undefined;
+    mockFetchPendingSupervisionSessionNoteRequests.mockReset();
+    mockFetchPendingSupervisionSessionNoteRequests.mockResolvedValue({ requests: [], template: null });
+    mockReconcilePendingSupervisionSessionNoteRequests.mockReset();
+    mockReconcilePendingSupervisionSessionNoteRequests.mockResolvedValue(undefined);
+    mockUseQuery.mockReset();
+    mockUseQuery.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
     mockUseAuth.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("disables useDashboardData until auth loading completes and a bearer exists", () => {
@@ -137,5 +173,39 @@ describe("Dashboard staff dashboard query gate", () => {
       effectiveRole: "admin",
       organizationId: "org-9",
     });
+  });
+
+  it("polls only read-only supervision note requests on the notification cadence", () => {
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "user-7" },
+        profile: { organization_id: "org-9" },
+        effectiveRole: "admin",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+        isAdmin: () => true,
+        isSuperAdmin: () => false,
+      }),
+    );
+
+    renderDashboard();
+
+    const queryConfigs = mockUseQuery.mock.calls.map(([config]) => config);
+    const listQuery = queryConfigs.find((config) =>
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "org-9"]),
+    );
+    const reconcileQuery = queryConfigs.find((config) =>
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "reconcile", "org-9"]),
+    );
+
+    expect(listQuery).toEqual(expect.objectContaining({
+      refetchInterval: 30_000,
+      staleTime: 30_000,
+    }));
+    expect(reconcileQuery).toEqual(expect.objectContaining({
+      staleTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+    }));
+    expect(reconcileQuery).not.toHaveProperty("refetchInterval");
   });
 });

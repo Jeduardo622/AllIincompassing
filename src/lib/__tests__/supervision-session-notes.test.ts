@@ -14,6 +14,7 @@ import {
   completeSupervisionSessionNote,
   fetchPendingSupervisionSessionNoteCount,
   fetchPendingSupervisionSessionNoteRequests,
+  reconcilePendingSupervisionSessionNoteRequests,
 } from '../supervision-session-notes';
 
 describe('supervision session note data access', () => {
@@ -79,7 +80,7 @@ describe('supervision session note data access', () => {
 
     const result = await fetchPendingSupervisionSessionNoteRequests('org-1');
 
-    expect(rpcMock).toHaveBeenCalledWith('reconcile_supervision_session_note_requests', {});
+    expect(rpcMock).not.toHaveBeenCalled();
     expect(fromMock).toHaveBeenCalledWith('supervision_session_note_requests');
     expect(fromMock).toHaveBeenCalledWith('session_note_templates');
     expect(result.template?.id).toBe('template-1');
@@ -91,6 +92,15 @@ describe('supervision session note data access', () => {
         btTherapistTitle: 'BT',
       }),
     ]);
+  });
+
+  it('reconciles pending supervision requests through a separate tenant-checked RPC', async () => {
+    rpcMock.mockResolvedValue({ data: 1, error: null });
+
+    await reconcilePendingSupervisionSessionNoteRequests('org-1');
+
+    expect(rpcMock).toHaveBeenCalledWith('reconcile_supervision_session_note_requests', {});
+    expect(fromMock).not.toHaveBeenCalled();
   });
 
   it('completes structured responses through the tenant-checked RPC', async () => {

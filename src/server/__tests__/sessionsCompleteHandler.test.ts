@@ -48,6 +48,7 @@ describe("sessionsCompleteHandler", () => {
     goalsStatus = 200,
     notesStatus = 200,
     auditStatus = 200,
+    supervisionRequestBody = { created: true } as unknown,
     edgeNetworkFailure = false,
   } = {}) => vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
@@ -83,6 +84,9 @@ describe("sessionsCompleteHandler", () => {
     }
     if (url.includes("/rest/v1/rpc/record_session_audit")) {
       return jsonResponse({ ok: auditStatus < 400 }, auditStatus);
+    }
+    if (url.includes("/rest/v1/rpc/create_supervision_session_note_request_for_completed_session")) {
+      return jsonResponse(supervisionRequestBody);
     }
 
     throw new Error(`Unexpected fetch call: ${method} ${url}`);
@@ -363,6 +367,52 @@ describe("sessionsCompleteHandler", () => {
       orgId: "org-1",
       outcome: "completed",
     });
+  });
+
+  it("runtime REST fallback asks Supabase to create a supervision request after completion", async () => {
+    const fetchMock = makeFallbackFetchMock();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await __TESTING__.completeSessionViaRuntimeRest({
+      request: new Request("http://localhost/api/sessions-complete", { method: "POST" }),
+      payload: { session_id: sessionId, outcome: "completed", notes: null },
+      accessToken: "token-123",
+      traceHeaders: {},
+    });
+
+    expect(response.status).toBe(200);
+    expect(getFetchBody(fetchMock, "/rest/v1/rpc/create_supervision_session_note_request_for_completed_session")).toEqual({
+      p_session_id: sessionId,
+    });
+    expectMetric(logSpy, "supervision_note_request_created_total", {
+      function: "sessions-complete",
+      orgId: "org-1",
+      surface: "runtime-rest",
+    });
+  });
+
+  it("runtime REST fallback does not count a skipped supervision request as created", async () => {
+    const fetchMock = makeFallbackFetchMock({ supervisionRequestBody: null });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await __TESTING__.completeSessionViaRuntimeRest({
+      request: new Request("http://localhost/api/sessions-complete", { method: "POST" }),
+      payload: { session_id: sessionId, outcome: "completed", notes: null },
+      accessToken: "token-123",
+      traceHeaders: {},
+    });
+
+    expect(response.status).toBe(200);
+    expect(getFetchBody(fetchMock, "/rest/v1/rpc/create_supervision_session_note_request_for_completed_session")).toEqual({
+      p_session_id: sessionId,
+    });
+    const payloads = logSpy.mock.calls.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>);
+    expect(payloads).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        level: "metric",
+        metric: "supervision_note_request_created_total",
+      }),
+    ]));
   });
 
   it("runtime REST fallback records no-show audit event", async () => {

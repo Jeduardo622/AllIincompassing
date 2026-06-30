@@ -12,6 +12,7 @@ import { showError, showSuccess } from '../lib/toast';
 import {
   completeSupervisionSessionNote,
   fetchPendingSupervisionSessionNoteRequests,
+  reconcilePendingSupervisionSessionNoteRequests,
   type PendingSupervisionSessionNoteRequest,
   type SupervisionSessionNoteTemplate,
   type SupervisionTemplateField,
@@ -771,12 +772,33 @@ const Dashboard = () => {
     refreshConfig: { isLiveRole: boolean; intervalMs: number };
   };
 
+  const supervisionRequestsQueryKey = useMemo(
+    () => ['supervision-session-note-requests', organizationId ?? 'MISSING_ORG'] as const,
+    [organizationId],
+  );
+
+  const supervisionReconcileQuery = useQuery({
+    queryKey: ['supervision-session-note-requests', 'reconcile', organizationId ?? 'MISSING_ORG'],
+    queryFn: () => reconcilePendingSupervisionSessionNoteRequests(organizationId!),
+    enabled: canViewStaffDashboard && Boolean(organizationId) && hasAccessToken && !authLoading,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const supervisionQuery = useQuery({
-    queryKey: ['supervision-session-note-requests', organizationId ?? 'MISSING_ORG'],
+    queryKey: supervisionRequestsQueryKey,
     queryFn: () => fetchPendingSupervisionSessionNoteRequests(organizationId!),
     enabled: canViewStaffDashboard && Boolean(organizationId) && hasAccessToken && !authLoading,
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
+
+  useEffect(() => {
+    if (!supervisionReconcileQuery.isSuccess) {
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: supervisionRequestsQueryKey });
+  }, [queryClient, supervisionReconcileQuery.isSuccess, supervisionRequestsQueryKey]);
 
   const completeSupervisionMutation = useMutation({
     mutationFn: async (input: {

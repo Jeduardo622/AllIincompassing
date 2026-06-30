@@ -110,11 +110,6 @@ export const fetchPendingSupervisionSessionNoteRequests = async (
     throw new Error('Organization context is required to load supervision note requests.');
   }
 
-  const reconcileResult = await callRpc('reconcile_supervision_session_note_requests', {});
-  if (reconcileResult.error) {
-    throw reconcileResult.error;
-  }
-
   const [requestsResult, templateResult] = await Promise.all([
     fromTable('supervision_session_note_requests')
       .select(`
@@ -151,6 +146,19 @@ export const fetchPendingSupervisionSessionNoteRequests = async (
     requests: ((requestsResult.data ?? []) as RequestRow[]).map(mapRequestRow),
     template: normalizeTemplate((templateResult.data ?? null) as TemplateRow | null),
   };
+};
+
+export const reconcilePendingSupervisionSessionNoteRequests = async (
+  organizationId: string,
+): Promise<void> => {
+  if (!organizationId) {
+    throw new Error('Organization context is required to reconcile supervision note requests.');
+  }
+
+  const reconcileResult = await callRpc('reconcile_supervision_session_note_requests', {});
+  if (reconcileResult.error) {
+    throw reconcileResult.error;
+  }
 };
 
 export type CompleteSupervisionSessionNoteInput = {

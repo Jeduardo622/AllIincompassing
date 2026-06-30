@@ -51,6 +51,8 @@ export type PendingSupervisionSessionNoteResult = {
   template: SupervisionSessionNoteTemplate | null;
 };
 
+export const SUPERVISION_SESSION_NOTES_QUERY_KEY = 'supervision-session-note-requests' as const;
+
 type RequestRow = {
   id: string;
   organization_id: string;
@@ -176,4 +178,23 @@ export const completeSupervisionSessionNote = async (
   }
 
   return { noteId: String(data) };
+};
+
+export const fetchPendingSupervisionSessionNoteCount = async (
+  organizationId: string,
+): Promise<number> => {
+  if (!organizationId) {
+    throw new Error('Organization context is required to load supervision note notifications.');
+  }
+
+  const { count, error } = await fromTable('supervision_session_note_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', organizationId)
+    .eq('status', 'pending');
+
+  if (error) {
+    throw error;
+  }
+
+  return count ?? 0;
 };

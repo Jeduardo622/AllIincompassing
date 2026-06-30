@@ -12,6 +12,7 @@ vi.mock('../supabase', () => ({
 
 import {
   completeSupervisionSessionNote,
+  fetchPendingSupervisionSessionNoteCount,
   fetchPendingSupervisionSessionNoteRequests,
 } from '../supervision-session-notes';
 
@@ -108,5 +109,22 @@ describe('supervision session note data access', () => {
       p_template_id: 'template-1',
       p_responses: { summary: 'Observed modeling and feedback.' },
     });
+  });
+
+  it('loads a lightweight pending supervision request count for navigation badges', async () => {
+    const statusEq = vi.fn().mockResolvedValue({ count: 2, error: null });
+    const orgEq = vi.fn().mockReturnValue({ eq: statusEq });
+    const select = vi.fn().mockReturnValue({ eq: orgEq });
+
+    fromMock.mockReturnValue({ select });
+
+    const result = await fetchPendingSupervisionSessionNoteCount('org-1');
+
+    expect(result).toBe(2);
+    expect(fromMock).toHaveBeenCalledWith('supervision_session_note_requests');
+    expect(select).toHaveBeenCalledWith('id', { count: 'exact', head: true });
+    expect(orgEq).toHaveBeenCalledWith('organization_id', 'org-1');
+    expect(statusEq).toHaveBeenCalledWith('status', 'pending');
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });

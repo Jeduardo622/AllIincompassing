@@ -11,6 +11,7 @@ const mockUseAuth = vi.fn();
 const mockUseTheme = vi.fn();
 const mockPreloadRouteModule = vi.fn();
 const mockFetchMessageThreads = vi.fn();
+const mockFetchPendingSupervisionSessionNoteCount = vi.fn();
 
 vi.mock("../../lib/authContext", () => ({
   useAuth: () => mockUseAuth(),
@@ -30,6 +31,12 @@ vi.mock("../../lib/organization", () => ({
 
 vi.mock("../../lib/messages/fetchers", () => ({
   fetchMessageThreads: (...args: unknown[]) => mockFetchMessageThreads(...args),
+}));
+
+vi.mock("../../lib/supervision-session-notes", () => ({
+  SUPERVISION_SESSION_NOTES_QUERY_KEY: "supervision-session-note-requests",
+  fetchPendingSupervisionSessionNoteCount: (...args: unknown[]) =>
+    mockFetchPendingSupervisionSessionNoteCount(...args),
 }));
 
 vi.mock("../ChatBot", () => ({
@@ -58,6 +65,7 @@ describe("Sidebar navigation active styling", () => {
     mockUseTheme.mockReset();
     mockPreloadRouteModule.mockReset();
     mockFetchMessageThreads.mockReset();
+    mockFetchPendingSupervisionSessionNoteCount.mockReset();
     mockUseAuth.mockReturnValue({
       signOut: vi.fn(),
       hasRole: vi.fn(() => true),
@@ -85,6 +93,7 @@ describe("Sidebar navigation active styling", () => {
       schemaUnavailable: false,
       unreadThreadCount: 0,
     });
+    mockFetchPendingSupervisionSessionNoteCount.mockResolvedValue(0);
   });
 
   it("keeps the clients link icon highlighted for nested routes", () => {
@@ -282,5 +291,64 @@ describe("Sidebar navigation active styling", () => {
     renderSidebar(["/"]);
 
     expect(await screen.findByTestId("sidebar-messages-unread-badge")).toHaveTextContent("3");
+  });
+
+  it("shows pending supervision notes on the dashboard nav item for admins", async () => {
+    const hasRole = vi.fn(
+      (role: "client" | "therapist" | "admin" | "super_admin") => role === "admin"
+    );
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole,
+      user: {
+        email: "admin@example.com",
+        user_metadata: {},
+      },
+      profile: {
+        id: "admin-user-1",
+        role: "admin",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
+        roles.some(role => hasRole(role))
+      ),
+      effectiveRole: "admin",
+    });
+    mockFetchPendingSupervisionSessionNoteCount.mockResolvedValueOnce(4);
+
+    renderSidebar(["/clients"]);
+
+    expect(await screen.findByTestId("sidebar-supervision-notes-badge")).toHaveTextContent("4");
+    expect(mockFetchPendingSupervisionSessionNoteCount).toHaveBeenCalledWith("org-1");
+  });
+
+  it("does not query supervision note notifications for therapists", () => {
+    const hasRole = vi.fn(
+      (role: "client" | "therapist" | "admin" | "super_admin") => role === "therapist"
+    );
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole,
+      user: {
+        email: "therapist@example.com",
+        user_metadata: {
+          therapist_id: "therapist-123",
+        },
+      },
+      profile: {
+        id: "therapist-user-1",
+        role: "therapist",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
+        roles.some(role => hasRole(role))
+      ),
+      effectiveRole: "therapist",
+    });
+
+    renderSidebar(["/schedule"]);
+
+    expect(mockFetchPendingSupervisionSessionNoteCount).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("sidebar-supervision-notes-badge")).not.toBeInTheDocument();
   });
 });

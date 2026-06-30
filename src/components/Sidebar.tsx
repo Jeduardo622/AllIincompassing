@@ -11,6 +11,10 @@ import { useAuth } from '../lib/authContext';
 import { useActiveOrganizationId } from '../lib/organization';
 import { MESSAGES_QUERY_KEY } from '../lib/messages/constants';
 import { fetchMessageThreads } from '../lib/messages/fetchers';
+import {
+  fetchPendingSupervisionSessionNoteCount,
+  SUPERVISION_SESSION_NOTES_QUERY_KEY,
+} from '../lib/supervision-session-notes';
 import { useTheme } from '../lib/theme';
 import { preloadRouteModule } from '../lib/routeModulePrefetch';
 // Theme is toggled directly via context; no hidden proxy button
@@ -216,11 +220,19 @@ export function Sidebar() {
     'super_admin'
   ]);
   const canAccessMessages = hasAnyRole(['therapist', 'admin', 'super_admin']);
+  const canViewSupervisionNotifications = hasAnyRole(['admin', 'super_admin']);
 
   const { data: unreadMessagesData } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],
     queryFn: () => fetchMessageThreads(organizationId!, profile!.id),
     enabled: canAccessMessages && Boolean(organizationId && profile?.id),
+    refetchInterval: 30_000,
+  });
+
+  const { data: pendingSupervisionNoteCount = 0 } = useQuery({
+    queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'pending-count', organizationId],
+    queryFn: () => fetchPendingSupervisionSessionNoteCount(organizationId!),
+    enabled: canViewSupervisionNotifications && Boolean(organizationId),
     refetchInterval: 30_000,
   });
 
@@ -347,6 +359,15 @@ export function Sidebar() {
                     />
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate">{label}</span>
+                      {path === '/' && pendingSupervisionNoteCount > 0 ? (
+                        <span
+                          className="inline-flex min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[11px] font-semibold text-white dark:bg-amber-400 dark:text-gray-950"
+                          data-testid="sidebar-supervision-notes-badge"
+                          title={`${pendingSupervisionNoteCount} supervision session note${pendingSupervisionNoteCount === 1 ? '' : 's'} due`}
+                        >
+                          {pendingSupervisionNoteCount}
+                        </span>
+                      ) : null}
                       {path === '/messages' && (unreadMessagesData?.unreadThreadCount ?? 0) > 0 ? (
                         <span
                           className="inline-flex min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5 text-[11px] font-semibold text-white dark:bg-blue-500"

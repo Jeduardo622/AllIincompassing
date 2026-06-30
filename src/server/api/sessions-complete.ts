@@ -269,6 +269,62 @@ const recordRuntimeSessionAuditEvent = async ({
   }
 };
 
+const createRuntimeSupervisionSessionNoteRequest = async ({
+  sessionId,
+  organizationId,
+  supabaseUrl,
+  headers,
+}: {
+  sessionId: string;
+  organizationId: string;
+  supabaseUrl: string;
+  headers: Record<string, string>;
+}): Promise<void> => {
+  try {
+    const result = await fetchJson(`${supabaseUrl}/rest/v1/rpc/create_supervision_session_note_request_for_completed_session`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ p_session_id: sessionId }),
+    });
+
+    if (!result.ok) {
+      incrementRuntimeMetric("supervision_note_request_failure_total", {
+        function: "sessions-complete",
+        orgId: organizationId,
+        surface: "runtime-rest",
+        reason: "rpc_error",
+      });
+      console.warn(JSON.stringify({
+        level: "warn",
+        message: "supervision-note.request.persist_failed",
+        sessionId,
+      }));
+      return;
+    }
+
+    if (result.data !== null) {
+      incrementRuntimeMetric("supervision_note_request_created_total", {
+        function: "sessions-complete",
+        orgId: organizationId,
+        surface: "runtime-rest",
+      });
+    }
+  } catch (error) {
+    incrementRuntimeMetric("supervision_note_request_failure_total", {
+      function: "sessions-complete",
+      orgId: organizationId,
+      surface: "runtime-rest",
+      reason: "exception",
+    });
+    console.warn(JSON.stringify({
+      level: "warn",
+      message: "supervision-note.request.exception",
+      sessionId,
+      error: error instanceof Error ? error.message : "unknown",
+    }));
+  }
+};
+
 const completeSessionViaRuntimeRest = async ({
   request,
   payload,
@@ -466,6 +522,15 @@ const completeSessionViaRuntimeRest = async ({
       trace: traceMeta,
     },
   });
+
+  if (payload.outcome === "completed") {
+    await createRuntimeSupervisionSessionNoteRequest({
+      sessionId: payload.session_id,
+      organizationId,
+      supabaseUrl,
+      headers,
+    });
+  }
 
   incrementRuntimeMetric("session_complete_success_total", {
     function: "sessions-complete",

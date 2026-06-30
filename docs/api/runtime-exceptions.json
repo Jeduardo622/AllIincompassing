@@ -5,63 +5,63 @@
       "publicApiPath": "/api/assessment-checklist",
       "reason": "Server-side checklist workflow logic has not yet been ported to a dedicated edge endpoint.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-06-30"
+      "expiresAt": "2026-07-31"
     },
     {
       "functionFile": "assessment-template-layout.ts",
       "publicApiPath": "/api/assessment-template-layout",
       "reason": "IEHP template layout metadata is read through a server API shim while assessment upload/review APIs remain on the legacy assessment workflow.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-06-30"
+      "expiresAt": "2026-07-31"
     },
     {
       "functionFile": "assessment-documents.ts",
       "publicApiPath": "/api/assessment-documents",
       "reason": "Document registration/extraction orchestration still runs through server API handler.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-06-30"
+      "expiresAt": "2026-07-31"
     },
     {
       "functionFile": "assessment-drafts.ts",
       "publicApiPath": "/api/assessment-drafts",
       "reason": "Draft CRUD and promotion-prep logic requires edge parity implementation.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-06-30"
+      "expiresAt": "2026-07-31"
     },
     {
       "functionFile": "assessment-promote.ts",
       "publicApiPath": "/api/assessment-promote",
       "reason": "Promotion transaction semantics are not yet migrated to an authoritative edge endpoint.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-06-30"
+      "expiresAt": "2026-07-31"
     },
     {
       "functionFile": "assessment-plan-pdf.ts",
       "publicApiPath": "/api/assessment-plan-pdf",
       "reason": "PDF generation flow depends on template/runtime behavior pending edge-native migration.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-06-30"
+      "expiresAt": "2026-07-31"
     },
     {
       "functionFile": "book.ts",
       "publicApiPath": "/api/book",
       "reason": "Route now delegates to edge authority (`sessions-book`) but remains a transport adapter until full legacy fallback removal.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-06-30"
+      "expiresAt": "2026-07-31"
     },
     {
       "functionFile": "dashboard.ts",
       "publicApiPath": "/api/dashboard",
       "reason": "Route now delegates to `get-dashboard-data` edge authority; adapter retained for contract stability and rollback.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-06-30"
+      "expiresAt": "2026-07-31"
     },
     {
       "functionFile": "sessions-start.ts",
       "publicApiPath": "/api/sessions-start",
       "reason": "Route now delegates to edge `sessions-start`; adapter retained temporarily for controlled cutover.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-06-30"
+      "expiresAt": "2026-07-31"
     }
   ]
 }

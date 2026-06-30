@@ -141,6 +141,8 @@ export const TimeSlot = React.memo(
       longPressOriginRef.current = null;
     }, []);
 
+    useEffect(() => clearLongPressTimer, [clearLongPressTimer]);
+
     const enableSlotCreateChrome = allowCreateInEmptySlot;
 
     const handleSlotClick = useCallback(() => {
@@ -285,7 +287,7 @@ export const TimeSlot = React.memo(
               return;
             }
             clearLongPressTimer();
-            longPressOriginRef.current = { x: event.clientX, y: event.clientY };
+            longPressOriginRef.current = { x: Number(event.clientX), y: Number(event.clientY) };
             longPressTimerRef.current = setTimeout(() => {
               longPressTimerRef.current = null;
               longPressOriginRef.current = null;
@@ -305,8 +307,19 @@ export const TimeSlot = React.memo(
             if (longPressTimerRef.current === null || !longPressOriginRef.current) {
               return;
             }
-            const dx = event.clientX - longPressOriginRef.current.x;
-            const dy = event.clientY - longPressOriginRef.current.y;
+            const currentX = Number(event.clientX);
+            const currentY = Number(event.clientY);
+            if (
+              !Number.isFinite(longPressOriginRef.current.x) ||
+              !Number.isFinite(longPressOriginRef.current.y) ||
+              !Number.isFinite(currentX) ||
+              !Number.isFinite(currentY)
+            ) {
+              clearLongPressTimer();
+              return;
+            }
+            const dx = currentX - longPressOriginRef.current.x;
+            const dy = currentY - longPressOriginRef.current.y;
             if (dx * dx + dy * dy > 100) {
               clearLongPressTimer();
             }

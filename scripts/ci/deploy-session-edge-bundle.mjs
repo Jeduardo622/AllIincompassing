@@ -20,6 +20,7 @@ const REQUIRED_FUNCTIONS = [
 ];
 
 const EXPECT_VERIFY_JWT = String(process.env.CI_EXPECT_VERIFY_JWT ?? "true").toLowerCase() !== "false";
+const DOCKER_RATE_LIMIT_PATTERN = /(toomanyrequests|rate exceeded|public\.ecr\.aws\/supabase\/edge-runtime)/i;
 
 const parseProjectRef = (value) => {
   if (typeof value !== "string") {
@@ -45,12 +46,12 @@ const parseProjectRef = (value) => {
 };
 
 const runSupabase = (args) => {
-  const result = spawnSync("supabase", args, {
-    stdio: "inherit",
+  return spawnSync("supabase", args, {
+    stdio: "pipe",
+    encoding: "utf8",
     shell: process.platform === "win32",
     env: process.env,
   });
-  return result.status ?? 1;
 };
 
 const runSupabaseJson = (args) => {
@@ -61,6 +62,21 @@ const runSupabaseJson = (args) => {
     env: process.env,
   });
   return result;
+};
+
+const writeResultOutput = (result) => {
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+};
+
+const looksLikeDockerRateLimit = (result) => {
+  const output = [result.stdout, result.stderr, result.error?.message].filter(Boolean).join("\n");
+  return DOCKER_RATE_LIMIT_PATTERN.test(output);
 };
 
 const projectRef = parseProjectRef(process.env.SUPABASE_PROJECT_REF) ||
@@ -78,10 +94,19 @@ if (!process.env.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN.trim
 
 console.log(`Deploying required edge function bundle to project ${projectRef}...`);
 for (const fn of REQUIRED_FUNCTIONS) {
-  const status = runSupabase(["functions", "deploy", fn, "--project-ref", projectRef]);
-  if (status !== 0) {
+  const deployArgs = ["functions", "deploy", fn, "--project-ref", projectRef];
+  let result = runSupabase(deployArgs);
+  writeResultOutput(result);
+
+  if ((result.status ?? 1) !== 0 && looksLikeDockerRateLimit(result)) {
+    console.warn(`⚠️ Docker bundle rate limit hit while deploying ${fn}; retrying with --use-api.`);
+    result = runSupabase([...deployArgs, "--use-api"]);
+    writeResultOutput(result);
+  }
+
+  if ((result.status ?? 1) !== 0) {
     console.error(`❌ Failed to deploy ${fn}.`);
-    process.exit(status);
+    process.exit(result.status ?? 1);
   }
 }
 

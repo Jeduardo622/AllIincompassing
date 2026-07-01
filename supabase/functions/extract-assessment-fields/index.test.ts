@@ -1825,3 +1825,38 @@ Deno.test("mergeDeterministicFieldWithStructuredSummary keeps empty-only placeho
   });
   expect(merged.review_notes).toContain("empty template placeholder");
 });
+
+Deno.test("mergeDeterministicFieldWithStructuredSummary keeps real scalar values when structured payloads share the same key", () => {
+  const merged = __TESTING__.mergeDeterministicFieldWithStructuredSummary(
+    {
+      placeholder_key: "CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES",
+      value_text: "F84.0 Autism",
+      value_json: null,
+      confidence: 0.92,
+      mode: "AUTO",
+      status: "drafted",
+      source_span: { method: "caloptima_inline_pair" },
+      review_notes: "Deterministic scalar extracted from diagnostic table.",
+    },
+    {
+      count: 1,
+      firstPayload: {
+        field_key: "CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES",
+        section_key: "diagnostic_behavior_analysis",
+        rows: [{ code: "F84.0", description: "Autism" }],
+      },
+    },
+  );
+
+  expect(merged.value_text).toBe("F84.0 Autism");
+  expect(merged.value_json).toBeNull();
+  expect(merged.source_span).toMatchObject({
+    method: "caloptima_inline_pair",
+    structured_summary_count: 1,
+    structured_summary_payload: {
+      field_key: "CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES",
+      section_key: "diagnostic_behavior_analysis",
+    },
+  });
+  expect(merged.review_notes).toContain("Matching structured section payloads were also extracted");
+});

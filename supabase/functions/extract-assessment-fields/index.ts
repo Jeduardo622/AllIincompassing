@@ -2818,6 +2818,19 @@ const mergeDeterministicFieldWithStructuredSummary = (
     };
   }
 
+  if (hasExistingDeterministicValue(field)) {
+    return {
+      ...field,
+      source_span: {
+        ...(field.source_span ?? {}),
+        structured_summary_count: structuredSummary.count,
+        structured_summary_payload: structuredSummary.firstPayload,
+      },
+      review_notes:
+        `${field.review_notes ?? "Deterministic checklist value retained."} Matching structured section payloads were also extracted; review the structured section details before approval.`,
+    };
+  }
+
   return {
     ...field,
     value_text: `${structuredSummary.count} structured section${structuredSummary.count === 1 ? "" : "s"} extracted`,

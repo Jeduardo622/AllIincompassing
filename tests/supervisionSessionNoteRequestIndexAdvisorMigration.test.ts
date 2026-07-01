@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('supervision session note request advisor index migration', () => {
   const migrationsDir = join(process.cwd(), 'supabase/migrations');
-  const migrationFile = '20260701135040_repair_supervision_session_note_request_fk_covering_indexes.sql';
+  const migrationFile = '20260701135309_repair_supervision_session_note_request_fk_covering_indexes.sql';
   const migrationSql = readFileSync(join(migrationsDir, migrationFile), 'utf-8');
   const executableSql = migrationSql
     .split('\n')

@@ -1,0 +1,28 @@
+# Staff Messaging Policy Advisor Drift Handoff (2026-06-30)
+
+- chosen task: inspect the live Supabase performance-advisor surface for `message_thread_participants_self_update` and `messages_participant_insert`, and add the smallest migration-backed `(select auth...)` repair if those hosted policies still inline `auth.uid()`
+- exact issue key used, if any: `WIN-193`
+- route-task classification: `high-risk human-reviewed` / `critical`
+- tenant boundary: staff messaging remains participant-scoped within one organization; non-participants and cross-org users must continue to have no message read/write access
+- files in scope:
+  - `supabase/migrations/20260630211421_repair_live_staff_messaging_policy_advisor_drift.sql`
+  - `tests/integration/staff-messaging-policy-advisor-drift.test.ts`
+- live evidence captured before editing:
+  - hosted `pg_policies` on project `wnnjeqheqxxyrgsjmygy` still showed `user_id = auth.uid()` in `message_thread_participants_self_update`
+  - hosted `pg_policies` on project `wnnjeqheqxxyrgsjmygy` still showed `sender_id = auth.uid()` in `messages_participant_insert`
+- hosted apply evidence:
+  - Supabase MCP `apply_migration` succeeded with name `repair_live_staff_messaging_policy_advisor_drift`
+  - hosted migration ledger now includes version `20260630211421` with name `repair_live_staff_messaging_policy_advisor_drift`
+  - post-apply `pg_policies` now show `( SELECT auth.uid() AS uid)` in both repaired policy expressions
+- repair shape:
+  - recreate only those two policies
+  - replace raw `auth.uid()` with `(select auth.uid())`
+  - leave all participant-scope helper checks unchanged
+- 2026-07-01 live recheck:
+  - hosted `pg_policies` on project `wnnjeqheqxxyrgsjmygy` still show `( SELECT auth.uid() AS uid)` in both repaired policy expressions
+  - hosted migration ledger still includes version `20260630211421` with name `repair_live_staff_messaging_policy_advisor_drift`
+  - no follow-up DDL was needed; local repo scope stayed limited to the existing migration filename, direct test coverage, and this handoff note
+- non-goals:
+  - no changes to helper functions
+  - no broader messaging RLS cleanup
+  - no changes to unrelated advisor findings

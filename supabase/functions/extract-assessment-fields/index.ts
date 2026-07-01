@@ -1874,6 +1874,9 @@ const CALOPTIMA_NO_VALUE_MARKERS = [
 const looksLikeNoValueMarker = (value: string): boolean =>
   CALOPTIMA_NO_VALUE_MARKERS.includes(normalizeExtractedValue(value).toLowerCase() as typeof CALOPTIMA_NO_VALUE_MARKERS[number]);
 
+const CALOPTIMA_PHONE_PATTERN =
+  /((?:\(\d{3}\)\s*\d{3}[-\s]?\d{4})|(?:\d{3}[-\s]?\d{3}[-\s]?\d{4})|(?:X{3,}\s*\d{3,})|(?:\d{7,}))/i;
+
 const extractCaloptimaInlineGuardianAndPhone = (text: string): { guardianName: string | null; contactPhone: string | null } => {
   const compact = compactDocumentText(text);
   const match = compact.match(
@@ -1885,7 +1888,7 @@ const extractCaloptimaInlineGuardianAndPhone = (text: string): { guardianName: s
   }
 
   const phoneMatch = combined.match(
-    /((?:\(\d{3}\)\s*\d{3}[-\s]?\d{4})|(?:\d{3}[-\s]?\d{3}[-\s]?\d{4})|(?:X{3,}\s*\d{3,})|(?:\d{7,}))/i,
+    CALOPTIMA_PHONE_PATTERN,
   );
   const contactPhone = phoneMatch?.[1] ? normalizeExtractedValue(phoneMatch[1]) : null;
   const guardianCandidate = phoneMatch
@@ -1905,20 +1908,33 @@ const extractCaloptimaInlinePcpAndAllergies = (text: string): { pcp: string | nu
     return { pcp: null, allergies: null };
   }
 
-  const parts = combined.split(/\s{1,}/).filter(Boolean);
-  if (parts.length === 0) {
-    return { pcp: null, allergies: null };
-  }
-  const trailingMarker = parts[parts.length - 1] ?? "";
-  if (looksLikeNoValueMarker(trailingMarker)) {
-    const pcp = normalizeExtractedValue(parts.slice(0, -1).join(" "));
+  const phoneMatch = combined.match(CALOPTIMA_PHONE_PATTERN);
+  const trailingPhoneIndex = phoneMatch ? (phoneMatch.index ?? 0) + phoneMatch[0].length : -1;
+  const nameCandidate = phoneMatch
+    ? normalizeExtractedValue(combined.slice(0, phoneMatch.index ?? 0))
+    : combined;
+  const trailingValue = phoneMatch
+    ? normalizeExtractedValue(combined.slice(trailingPhoneIndex))
+    : "";
+  if (nameCandidate && trailingValue && looksLikeNoValueMarker(trailingValue)) {
     return {
-      pcp: pcp || null,
-      allergies: normalizeExtractedValue(trailingMarker),
+      pcp: nameCandidate,
+      allergies: trailingValue,
     };
   }
 
-  return { pcp: combined, allergies: null };
+  if (phoneMatch && nameCandidate) {
+    return { pcp: nameCandidate, allergies: null };
+  }
+
+  const parts = combined.split(/\s{1,}/).filter(Boolean);
+  const trailingMarker = parts[parts.length - 1] ?? "";
+  if (parts.length > 1 && looksLikeNoValueMarker(trailingMarker)) {
+    const pcp = normalizeExtractedValue(parts.slice(0, -1).join(" "));
+    return { pcp: pcp || null, allergies: normalizeExtractedValue(trailingMarker) };
+  }
+
+  return { pcp: nameCandidate || combined, allergies: null };
 };
 
 const extractCaloptimaInlineMedicationsAndDietary = (
@@ -1959,17 +1975,31 @@ const extractCaloptimaServiceDatePair = (
     return { serviceInitiationDate: null, dateAbaFirstBegan: null };
   }
 
-  const dateMatches = [...combined.matchAll(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g)].map((value) =>
-    normalizeExtractedValue(value[0] ?? "")
-  );
-  if (dateMatches.length >= 2) {
+  const orderedValues = combined
+    .split(/\s+/)
+    .map((value) => normalizeExtractedValue(value))
+    .filter((value) => value.length > 0)
+    .filter((value) => /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(value) || looksLikeNoValueMarker(value));
+
+  const normalizeDateLikeValue = (value: string | undefined): string | null => {
+    if (!value) return null;
+    if (looksLikeNoValueMarker(value)) {
+      return "N/A";
+    }
+    return normalizeExtractedValue(value);
+  };
+
+  if (orderedValues.length >= 2) {
     return {
-      serviceInitiationDate: dateMatches[0] ?? null,
-      dateAbaFirstBegan: dateMatches[1] ?? null,
+      serviceInitiationDate: normalizeDateLikeValue(orderedValues[0]),
+      dateAbaFirstBegan: normalizeDateLikeValue(orderedValues[1]),
     };
   }
-  if (dateMatches.length === 1) {
-    return { serviceInitiationDate: null, dateAbaFirstBegan: dateMatches[0] ?? null };
+  if (orderedValues.length === 1) {
+    return {
+      serviceInitiationDate: normalizeDateLikeValue(orderedValues[0]),
+      dateAbaFirstBegan: null,
+    };
   }
 
   return { serviceInitiationDate: null, dateAbaFirstBegan: null };
@@ -1997,6 +2027,15 @@ const extractCaloptimaCurrentDiagnosisCodes = (text: string): string | null => {
   const compact = compactDocumentText(text);
   const section = extractSectionText(text, [/IX\.\s+DIAGNOSTIC\s+INFORMATION/i], [/X\.\s+FUNCTIONAL\s+ASSESSMENT/i]);
   const sectionCompact = compactDocumentText(section ?? compact);
+  const tableMatch = sectionCompact.match(
+    /Current\s+diagnosis\s+code\s+Diagnosis\s+description\s+Date\s+of\s+diagnosis\/report\s+Diagnosed\s+by\s+\(Full\s+Name\s*&\s*credential\)\s+([A-Z]\d{1,2}(?:\.\d+)?)\s+(.+?)(?=\s+(?:Pending|N\/A|\d{1,2}(?:\/\d{1,2}\/\d{2,4})?|\d{1,2})\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\s+CIN#|\s+X\.\s+FUNCTIONAL\s+ASSESSMENT|$)/i,
+  );
+  if (tableMatch?.[1] && tableMatch[2]) {
+    const code = normalizeExtractedValue(tableMatch[1]);
+    const description = normalizeExtractedValue(tableMatch[2]);
+    const value = normalizeExtractedValue(`${code} ${description}`);
+    return value || null;
+  }
   const match = sectionCompact.match(
     /Current\s+diagnosis(?:\s+is)?\s+(.+?)(?=\.?\s+X\.\s+FUNCTIONAL\s+ASSESSMENT|$)/i,
   );

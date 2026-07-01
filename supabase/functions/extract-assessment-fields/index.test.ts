@@ -1278,6 +1278,92 @@ Deno.test("deterministicValueForRow extracts CalOptima filled-report scalars wit
   expect(byKey.get("CALOPTIMA_FBA_REPORT_COMPLETED_DATE")?.value_text).toBe("7/21/2025");
 });
 
+Deno.test("deterministicValueForRow keeps adjacent CalOptima inline labels aligned to source values", () => {
+  const rows = [
+    {
+      section: "identification_admin",
+      label: "Guardian Name",
+      placeholder_key: "CALOPTIMA_FBA_GUARDIAN_NAME",
+      required: true,
+      mode: "AUTO" as const,
+    },
+    {
+      section: "identification_admin",
+      label: "Phone (guardian/member)",
+      placeholder_key: "CALOPTIMA_FBA_CONTACT_PHONE",
+      required: true,
+      mode: "AUTO" as const,
+      extraction_aliases: ["Phone"],
+    },
+    {
+      section: "identification_admin",
+      label: "Primary Care Provider",
+      placeholder_key: "CALOPTIMA_FBA_PCP",
+      required: true,
+      mode: "ASSISTED" as const,
+    },
+    {
+      section: "identification_admin",
+      label: "Current Medications/Dosage",
+      placeholder_key: "CALOPTIMA_FBA_MEDICATIONS",
+      required: true,
+      mode: "ASSISTED" as const,
+    },
+    {
+      section: "identification_admin",
+      label: "Service Initiation Date",
+      placeholder_key: "CALOPTIMA_FBA_SERVICE_INITIATION_DATE",
+      required: true,
+      mode: "AUTO" as const,
+    },
+    {
+      section: "identification_admin",
+      label: "Date ABA first began",
+      placeholder_key: "CALOPTIMA_FBA_DATE_ABA_FIRST_BEGAN",
+      required: true,
+      mode: "ASSISTED" as const,
+    },
+    {
+      section: "background_school_history",
+      label: "Date of current IEP/equivalent",
+      placeholder_key: "CALOPTIMA_FBA_IEP_DATE",
+      required: true,
+      mode: "ASSISTED" as const,
+      extraction_aliases: ["Date of the current IEP/equivalent"],
+    },
+    {
+      section: "identification_admin",
+      label: "Diagnoses/with ICD Code",
+      placeholder_key: "CALOPTIMA_FBA_DIAGNOSES_ICD",
+      required: true,
+      mode: "AUTO" as const,
+    },
+    {
+      section: "diagnostic_behavior_analysis",
+      label: "Current diagnosis code(s)",
+      placeholder_key: "CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES",
+      required: true,
+      mode: "AUTO" as const,
+    },
+  ];
+
+  const byKey = new Map(rows.map((row) => [
+    row.placeholder_key,
+    __TESTING__.deterministicValueForRow(row, calOptimaRedactedStyleExcerpt, undefined, rows),
+  ]));
+
+  expect(byKey.get("CALOPTIMA_FBA_GUARDIAN_NAME")?.value_text).toBe("Sample Guardian");
+  expect(byKey.get("CALOPTIMA_FBA_CONTACT_PHONE")?.value_text).toBe("555-123-4567");
+  expect(byKey.get("CALOPTIMA_FBA_PCP")?.value_text).toBe("Dr. Sample Provider");
+  expect(byKey.get("CALOPTIMA_FBA_MEDICATIONS")?.value_text).toBe("N/A");
+  expect(byKey.get("CALOPTIMA_FBA_SERVICE_INITIATION_DATE")?.status).toBe("not_started");
+  expect(byKey.get("CALOPTIMA_FBA_SERVICE_INITIATION_DATE")?.value_text).toBeNull();
+  expect(byKey.get("CALOPTIMA_FBA_DATE_ABA_FIRST_BEGAN")?.value_text).toBe("7/1/2025");
+  expect(byKey.get("CALOPTIMA_FBA_IEP_DATE")?.value_text).toBe("6/1/2025");
+  expect(byKey.get("CALOPTIMA_FBA_DIAGNOSES_ICD")?.value_text).toBe("Autism F84.0");
+  expect(byKey.get("CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES")?.value_text).toBe("Autism Spectrum Disorder F84.0");
+});
+
 Deno.test("deterministicValueForRow preserves title-case parent involvement answer when agreement question is missing", () => {
   const value = __TESTING__.deterministicValueForRow(
     {

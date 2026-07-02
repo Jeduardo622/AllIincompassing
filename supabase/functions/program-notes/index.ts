@@ -2,7 +2,7 @@ import { z } from "npm:zod@3.23.8";
 import { createRequestClient } from "../_shared/database.ts";
 import { corsHeadersForRequest } from "../_shared/cors.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
-import { assertUserHasOrgRole, orgScopedQuery, requireOrg } from "../_shared/org.ts";
+import { currentUserCanManageProgramsGoals, orgScopedQuery, requireOrg } from "../_shared/org.ts";
 
 const noteSchema = z.object({
   program_id: z.string().uuid(),
@@ -19,15 +19,6 @@ const json = (req: Request, body: unknown, status = 200) =>
     },
   });
 
-const hasAllowedRole = async (orgId: string, userId: string, db: ReturnType<typeof createRequestClient>) => {
-  const [isTherapist, isAdmin, isSuperAdmin] = await Promise.all([
-    assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId }),
-    assertUserHasOrgRole(db, orgId, "admin"),
-    assertUserHasOrgRole(db, orgId, "super_admin"),
-  ]);
-  return isTherapist || isAdmin || isSuperAdmin;
-};
-
 export const handleProgramNotes = async (req: Request) => {
   const db = createRequestClient(req);
   const orgId = await requireOrg(db);
@@ -36,7 +27,7 @@ export const handleProgramNotes = async (req: Request) => {
     return json(req, { error: "Missing authorization token" }, 401);
   }
   const userId = authData.user.id;
-  const allowed = await hasAllowedRole(orgId, userId, db);
+  const allowed = await currentUserCanManageProgramsGoals(db, orgId);
   if (!allowed) return json(req, { error: "Forbidden" }, 403);
 
   if (req.method === "GET") {
@@ -88,7 +79,7 @@ export const handleProgramNotes = async (req: Request) => {
   return json(req, { error: "Method not allowed" }, 405);
 };
 
-const handler = createProtectedRoute((req) => handleProgramNotes(req), RouteOptions.therapist);
+const handler = createProtectedRoute((req) => handleProgramNotes(req), RouteOptions.programsGoals);
 
 Deno.serve(handler);
 

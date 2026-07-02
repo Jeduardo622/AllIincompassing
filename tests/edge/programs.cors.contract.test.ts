@@ -10,7 +10,7 @@ stubDenoEnv((key) => envValues.get(key) ?? '');
 
 const createRequestClientMock = vi.fn();
 const requireOrgMock = vi.fn();
-const assertUserHasOrgRoleMock = vi.fn();
+const currentUserCanManageProgramsGoalsMock = vi.fn();
 const orgScopedQueryMock = vi.fn();
 class MissingOrgContextError extends Error {
   status = 403;
@@ -26,7 +26,7 @@ async function loadProgramsModule() {
   }));
   vi.doMock('../../supabase/functions/_shared/org.ts', () => ({
     requireOrg: requireOrgMock,
-    assertUserHasOrgRole: assertUserHasOrgRoleMock,
+    currentUserCanManageProgramsGoals: currentUserCanManageProgramsGoalsMock,
     orgScopedQuery: orgScopedQueryMock,
     MissingOrgContextError,
   }));
@@ -40,7 +40,7 @@ function configureProgramsGetSuccessDb() {
     },
   });
   requireOrgMock.mockResolvedValue('org-1');
-  assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _orgId: string, role: string) => role === 'therapist');
+  currentUserCanManageProgramsGoalsMock.mockResolvedValue(true);
   orgScopedQueryMock.mockReturnValue({
     select: vi.fn(() => ({
       eq: vi.fn(() => ({
@@ -55,7 +55,7 @@ describe('programs route CORS contract', () => {
     vi.resetModules();
     createRequestClientMock.mockReset();
     requireOrgMock.mockReset();
-    assertUserHasOrgRoleMock.mockReset();
+    currentUserCanManageProgramsGoalsMock.mockReset();
     orgScopedQueryMock.mockReset();
   });
 
@@ -232,24 +232,25 @@ describe('programs route org-scope deny matrix', () => {
     vi.resetModules();
     createRequestClientMock.mockReset();
     requireOrgMock.mockReset();
-    assertUserHasOrgRoleMock.mockReset();
+    currentUserCanManageProgramsGoalsMock.mockReset();
     orgScopedQueryMock.mockReset();
   });
 
   const roleMatrix = [
     ['therapist'],
+    ['midtier'],
     ['admin'],
     ['super_admin'],
   ] as const;
 
-  it.each(roleMatrix)('denies out-of-scope client_id on POST for %s role', async (activeRole) => {
+  it.each(roleMatrix)('denies out-of-scope client_id on POST when %s has program-goal capability', async () => {
     createRequestClientMock.mockReturnValue({
       auth: {
         getUser: vi.fn(async () => ({ data: { user: { id: 'user-1' } }, error: null })),
       },
     });
     requireOrgMock.mockResolvedValue('org-1');
-    assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _orgId: string, role: string) => role === activeRole);
+    currentUserCanManageProgramsGoalsMock.mockResolvedValue(true);
     orgScopedQueryMock.mockImplementation((_db: unknown, table: string) => {
       if (table !== 'clients') {
         throw new Error(`Unexpected table lookup: ${table}`);
@@ -281,14 +282,14 @@ describe('programs route org-scope deny matrix', () => {
     expect(response.status).toBe(403);
   });
 
-  it.each(roleMatrix)('denies out-of-org program_id on PATCH for %s role', async (activeRole) => {
+  it.each(roleMatrix)('denies out-of-org program_id on PATCH when %s has program-goal capability', async () => {
     createRequestClientMock.mockReturnValue({
       auth: {
         getUser: vi.fn(async () => ({ data: { user: { id: 'user-1' } }, error: null })),
       },
     });
     requireOrgMock.mockResolvedValue('org-1');
-    assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _orgId: string, role: string) => role === activeRole);
+    currentUserCanManageProgramsGoalsMock.mockResolvedValue(true);
     orgScopedQueryMock.mockImplementation((_db: unknown, table: string) => {
       if (table !== 'programs') {
         throw new Error(`Unexpected table lookup: ${table}`);
@@ -322,14 +323,14 @@ describe('programs route org-scope deny matrix', () => {
     expect(response.status).toBe(403);
   });
 
-  it.each(roleMatrix)('denies out-of-scope PATCH client_id for %s role', async (activeRole) => {
+  it.each(roleMatrix)('denies out-of-scope PATCH client_id when %s has program-goal capability', async () => {
     createRequestClientMock.mockReturnValue({
       auth: {
         getUser: vi.fn(async () => ({ data: { user: { id: 'user-1' } }, error: null })),
       },
     });
     requireOrgMock.mockResolvedValue('org-1');
-    assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _orgId: string, role: string) => role === activeRole);
+    currentUserCanManageProgramsGoalsMock.mockResolvedValue(true);
     orgScopedQueryMock.mockImplementation((_db: unknown, table: string) => {
       if (table !== 'clients') {
         throw new Error(`Unexpected table lookup: ${table}`);
@@ -359,5 +360,85 @@ describe('programs route org-scope deny matrix', () => {
     );
 
     expect(response.status).toBe(403);
+  });
+
+  it('allows midtier through the handler role gate when the capability helper allows program-goal management', async () => {
+    const insertMock = vi.fn(() => ({
+      select: vi.fn(() => ({
+        limit: vi.fn(async () => ({ data: [{ id: 'program-1' }], error: null })),
+      })),
+    }));
+    const db = {
+      auth: {
+        getUser: vi.fn(async () => ({ data: { user: { id: 'midtier-1' } }, error: null })),
+      },
+      from: vi.fn((table: string) => {
+        if (table !== 'programs') {
+          throw new Error(`Unexpected table insert: ${table}`);
+        }
+        return { insert: insertMock };
+      }),
+    };
+    createRequestClientMock.mockReturnValue(db);
+    requireOrgMock.mockResolvedValue('org-1');
+    currentUserCanManageProgramsGoalsMock.mockResolvedValue(true);
+    orgScopedQueryMock.mockImplementation((_db: unknown, table: string) => {
+      if (table !== 'clients') {
+        throw new Error(`Unexpected table lookup: ${table}`);
+      }
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            limit: vi.fn(async () => ({ data: [{ id: 'client-1' }], error: null })),
+          })),
+        })),
+      };
+    });
+    const module = await loadProgramsModule();
+
+    const response = await module.handlePrograms(
+      new Request('https://edge.example.com/functions/v1/programs', {
+        method: 'POST',
+        headers: {
+          Origin: 'https://preview.example.com',
+          Authorization: 'Bearer token',
+        },
+        body: JSON.stringify({
+          client_id: '11111111-1111-4111-8111-111111111111',
+          name: 'Midtier Program',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(currentUserCanManageProgramsGoalsMock).toHaveBeenCalledWith(db, 'org-1');
+  });
+
+  it.each([['admin_schedule'], ['bt']])('denies %s when the capability helper rejects program-goal management', async () => {
+    createRequestClientMock.mockReturnValue({
+      auth: {
+        getUser: vi.fn(async () => ({ data: { user: { id: 'denied-user-1' } }, error: null })),
+      },
+    });
+    requireOrgMock.mockResolvedValue('org-1');
+    currentUserCanManageProgramsGoalsMock.mockResolvedValue(false);
+    const module = await loadProgramsModule();
+
+    const response = await module.handlePrograms(
+      new Request('https://edge.example.com/functions/v1/programs', {
+        method: 'POST',
+        headers: {
+          Origin: 'https://preview.example.com',
+          Authorization: 'Bearer token',
+        },
+        body: JSON.stringify({
+          client_id: '11111111-1111-4111-8111-111111111111',
+          name: 'Denied Program',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(orgScopedQueryMock).not.toHaveBeenCalled();
   });
 });

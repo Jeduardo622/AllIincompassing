@@ -10,7 +10,7 @@ stubDenoEnv((key) => envValues.get(key) ?? "");
 
 const createRequestClientMock = vi.fn();
 const requireOrgMock = vi.fn();
-const assertUserHasOrgRoleMock = vi.fn();
+const currentUserCanManageProgramsGoalsMock = vi.fn();
 const orgScopedQueryMock = vi.fn();
 
 class MissingOrgContextError extends Error {
@@ -27,7 +27,7 @@ async function loadGoalsModule() {
   }));
   vi.doMock("../../supabase/functions/_shared/org.ts", () => ({
     requireOrg: requireOrgMock,
-    assertUserHasOrgRole: assertUserHasOrgRoleMock,
+    currentUserCanManageProgramsGoals: currentUserCanManageProgramsGoalsMock,
     orgScopedQuery: orgScopedQueryMock,
     MissingOrgContextError,
   }));
@@ -41,7 +41,7 @@ function configureGoalsGetSuccessDb() {
     },
   });
   requireOrgMock.mockResolvedValue("org-1");
-  assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _orgId: string, role: string) => role === "therapist");
+  currentUserCanManageProgramsGoalsMock.mockResolvedValue(true);
   orgScopedQueryMock.mockImplementation((_db: unknown, table: string) => {
     if (table !== "goals") {
       throw new Error(`Unexpected table lookup: ${table}`);
@@ -56,14 +56,14 @@ function configureGoalsGetSuccessDb() {
   });
 }
 
-const roleMatrix = [["therapist"], ["admin"], ["super_admin"]] as const;
+const roleMatrix = [["therapist"], ["midtier"], ["admin"], ["super_admin"]] as const;
 
 describe("goals route organization context parity", () => {
   beforeEach(() => {
     vi.resetModules();
     createRequestClientMock.mockReset();
     requireOrgMock.mockReset();
-    assertUserHasOrgRoleMock.mockReset();
+    currentUserCanManageProgramsGoalsMock.mockReset();
     orgScopedQueryMock.mockReset();
   });
 
@@ -154,18 +154,18 @@ describe("goals route out-of-org PATCH deny matrix parity", () => {
     vi.resetModules();
     createRequestClientMock.mockReset();
     requireOrgMock.mockReset();
-    assertUserHasOrgRoleMock.mockReset();
+    currentUserCanManageProgramsGoalsMock.mockReset();
     orgScopedQueryMock.mockReset();
   });
 
-  it.each(roleMatrix)("denies out-of-org PATCH goal_id for %s role", async (activeRole) => {
+  it.each(roleMatrix)("denies out-of-org PATCH goal_id when %s has program-goal capability", async () => {
     createRequestClientMock.mockReturnValue({
       auth: {
         getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } }, error: null })),
       },
     });
     requireOrgMock.mockResolvedValue("org-1");
-    assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _orgId: string, role: string) => role === activeRole);
+    currentUserCanManageProgramsGoalsMock.mockResolvedValue(true);
     orgScopedQueryMock.mockImplementation((_db: unknown, table: string) => {
       if (table !== "goals") {
         throw new Error(`Unexpected table lookup: ${table}`);
@@ -202,7 +202,7 @@ describe("goals route org-scope deny matrix", () => {
     vi.resetModules();
     createRequestClientMock.mockReset();
     requireOrgMock.mockReset();
-    assertUserHasOrgRoleMock.mockReset();
+    currentUserCanManageProgramsGoalsMock.mockReset();
     orgScopedQueryMock.mockReset();
   });
 
@@ -214,14 +214,14 @@ describe("goals route org-scope deny matrix", () => {
     original_text: "Clinical text",
   });
 
-  it.each(roleMatrix)("denies out-of-org program_id on POST for %s role", async (activeRole) => {
+  it.each(roleMatrix)("denies out-of-org program_id on POST when %s has program-goal capability", async () => {
     createRequestClientMock.mockReturnValue({
       auth: {
         getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } }, error: null })),
       },
     });
     requireOrgMock.mockResolvedValue("org-1");
-    assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _orgId: string, role: string) => role === activeRole);
+    currentUserCanManageProgramsGoalsMock.mockResolvedValue(true);
     const goalsInsert = vi.fn(() => {
       throw new Error("goals insert should not run when program is out of scope");
     });
@@ -252,5 +252,73 @@ describe("goals route org-scope deny matrix", () => {
 
     expect(response.status).toBe(403);
     expect(goalsInsert).not.toHaveBeenCalled();
+  });
+
+  it("allows midtier through the handler role gate when the capability helper allows program-goal management", async () => {
+    const insertMock = vi.fn(() => ({
+      select: vi.fn(() => ({
+        limit: vi.fn(async () => ({ data: [{ id: "goal-1" }], error: null })),
+      })),
+    }));
+    const db = {
+      auth: {
+        getUser: vi.fn(async () => ({ data: { user: { id: "midtier-1" } }, error: null })),
+      },
+    };
+    createRequestClientMock.mockReturnValue(db);
+    requireOrgMock.mockResolvedValue("org-1");
+    currentUserCanManageProgramsGoalsMock.mockResolvedValue(true);
+    orgScopedQueryMock.mockImplementation((_db: unknown, table: string) => {
+      if (table === "programs") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              limit: vi.fn(async () => ({
+                data: [{ id: "program-1", client_id: "11111111-1111-4111-8111-111111111111" }],
+                error: null,
+              })),
+            })),
+          })),
+        };
+      }
+      if (table === "goals") {
+        return { insert: insertMock };
+      }
+      throw new Error(`Unexpected table lookup: ${table}`);
+    });
+    const module = await loadGoalsModule();
+
+    const response = await module.handleGoals(
+      new Request("https://edge.example.com/functions/v1/goals", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify(validGoalBody()),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(currentUserCanManageProgramsGoalsMock).toHaveBeenCalledWith(db, "org-1");
+  });
+
+  it.each([["admin_schedule"], ["bt"]])("denies %s when the capability helper rejects program-goal management", async () => {
+    createRequestClientMock.mockReturnValue({
+      auth: {
+        getUser: vi.fn(async () => ({ data: { user: { id: "denied-user-1" } }, error: null })),
+      },
+    });
+    requireOrgMock.mockResolvedValue("org-1");
+    currentUserCanManageProgramsGoalsMock.mockResolvedValue(false);
+    const module = await loadGoalsModule();
+
+    const response = await module.handleGoals(
+      new Request("https://edge.example.com/functions/v1/goals", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify(validGoalBody()),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(orgScopedQueryMock).not.toHaveBeenCalled();
   });
 });

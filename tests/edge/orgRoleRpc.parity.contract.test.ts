@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import { assertUserHasOrgRole, resolveOrgId } from "../../supabase/functions/_shared/org.ts";
+import {
+  assertUserHasOrgRole,
+  currentUserCanManageProgramsGoals,
+  resolveOrgId,
+} from "../../supabase/functions/_shared/org.ts";
 
 describe("P05 edge org RPC payload parity (untargeted)", () => {
   it("resolveOrgId invokes current_user_organization_id", async () => {
@@ -18,5 +22,20 @@ describe("P05 edge org RPC payload parity (untargeted)", () => {
       role_name: "therapist",
       target_organization_id: "org-1",
     });
+  });
+
+  it("currentUserCanManageProgramsGoals invokes the program-goal capability RPC with org scope", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: true, error: null });
+    const db = { rpc } as any;
+    await expect(currentUserCanManageProgramsGoals(db, "org-1")).resolves.toBe(true);
+    expect(rpc).toHaveBeenCalledWith("current_user_can_manage_programs_goals", {
+      target_organization_id: "org-1",
+    });
+  });
+
+  it("currentUserCanManageProgramsGoals fails closed on RPC errors", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: "permission denied" } });
+    const db = { rpc } as any;
+    await expect(currentUserCanManageProgramsGoals(db, "org-1")).resolves.toBe(false);
   });
 });

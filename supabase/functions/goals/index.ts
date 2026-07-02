@@ -2,7 +2,7 @@ import { z } from "npm:zod@3.23.8";
 import { createRequestClient } from "../_shared/database.ts";
 import { corsHeadersForRequest } from "../_shared/cors.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
-import { assertUserHasOrgRole, MissingOrgContextError, orgScopedQuery, requireOrg } from "../_shared/org.ts";
+import { currentUserCanManageProgramsGoals, MissingOrgContextError, orgScopedQuery, requireOrg } from "../_shared/org.ts";
 
 const goalSchema = z.object({
   client_id: z.string().uuid(),
@@ -37,15 +37,6 @@ const json = (req: Request, body: unknown, status = 200) =>
     },
   });
 
-const hasAllowedRole = async (orgId: string, userId: string, db: ReturnType<typeof createRequestClient>) => {
-  const [isTherapist, isAdmin, isSuperAdmin] = await Promise.all([
-    assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId }),
-    assertUserHasOrgRole(db, orgId, "admin"),
-    assertUserHasOrgRole(db, orgId, "super_admin"),
-  ]);
-  return isTherapist || isAdmin || isSuperAdmin;
-};
-
 const loadProgram = async (db: ReturnType<typeof createRequestClient>, orgId: string, programId: string) => {
   const { data, error } = await orgScopedQuery(db, "programs", orgId)
     .select("id,client_id")
@@ -70,8 +61,7 @@ export const handleGoals = async (req: Request) => {
   if (authError || !authData?.user) {
     return json(req, { error: "Missing authorization token" }, 401);
   }
-  const userId = authData.user.id;
-  const allowed = await hasAllowedRole(orgId, userId, db);
+  const allowed = await currentUserCanManageProgramsGoals(db, orgId);
   if (!allowed) return json(req, { error: "Forbidden" }, 403);
 
   if (req.method === "GET") {
@@ -174,7 +164,7 @@ export const handleGoals = async (req: Request) => {
   return json(req, { error: "Method not allowed" }, 405);
 };
 
-const handler = createProtectedRoute((req) => handleGoals(req), RouteOptions.therapist);
+const handler = createProtectedRoute((req) => handleGoals(req), RouteOptions.programsGoals);
 
 Deno.serve(handler);
 

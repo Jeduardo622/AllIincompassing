@@ -9,9 +9,16 @@ const MIGRATION_PATH = path.join(
   'migrations',
   '20260701150000_employee_role_capability_matrix.sql',
 );
+const EXPOSE_PROGRAM_GOAL_RPC_MIGRATION_PATH = path.join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260702194500_expose_program_goal_capability_rpc.sql',
+);
 const SMOKE_SQL_PATH = path.join(process.cwd(), 'tests', 'sql', 'employee_role_capability_smoke.sql');
 
 const sql = readFileSync(MIGRATION_PATH, 'utf8');
+const exposeProgramGoalRpcSql = readFileSync(EXPOSE_PROGRAM_GOAL_RPC_MIGRATION_PATH, 'utf8');
 const smokeSql = readFileSync(SMOKE_SQL_PATH, 'utf8');
 
 const extractFunction = (name: string): string => {
@@ -57,6 +64,20 @@ describe('employee role capability matrix migration', () => {
     expect(sql).toContain('CREATE POLICY authorizations_org_write');
     expect(sql).toContain('app.current_user_can_manage_staff_clients(organization_id)');
     expect(sql).toContain('app.current_user_can_manage_authorizations(organization_id)');
+  });
+
+  it('exposes the program-goal capability RPC through the public PostgREST schema only', () => {
+    expect(exposeProgramGoalRpcSql).toContain(
+      'CREATE OR REPLACE FUNCTION public.current_user_can_manage_programs_goals(target_organization_id uuid)',
+    );
+    expect(exposeProgramGoalRpcSql).toContain('SELECT app.current_user_can_manage_programs_goals(target_organization_id);');
+    expect(exposeProgramGoalRpcSql).toContain(
+      'REVOKE EXECUTE ON FUNCTION public.current_user_can_manage_programs_goals(uuid) FROM PUBLIC, anon;',
+    );
+    expect(exposeProgramGoalRpcSql).toContain(
+      'GRANT EXECUTE ON FUNCTION public.current_user_can_manage_programs_goals(uuid) TO authenticated, service_role;',
+    );
+    expect(exposeProgramGoalRpcSql).toContain("NOTIFY pgrst, 'reload schema';");
   });
 
   it('limits bt programs, goals, sessions, and data-taking paths to assigned clients', () => {

@@ -118,6 +118,20 @@ export async function assertUserHasOrgRole(
   return data === true;
 }
 
+export async function currentUserCanManageProgramsGoals(
+  db: SupabaseClient,
+  orgId: string,
+): Promise<boolean> {
+  const { data, error } = await db.rpc("current_user_can_manage_programs_goals", {
+    target_organization_id: orgId,
+  });
+  if (error) {
+    console.error("currentUserCanManageProgramsGoals rpc error", error);
+    return false;
+  }
+  return data === true;
+}
+
 export async function withOrg<T>(
   db: SupabaseClient,
   handler: (orgId: string) => Promise<T>,

@@ -55,7 +55,7 @@ export function Authorizations() {
   const queryClient = useQueryClient();
   const { effectiveRole, profile } = useAuth();
   const resolvedOrganizationId = useActiveOrganizationId();
-  const isTherapistViewer = effectiveRole === 'therapist';
+  const isTherapistViewer = effectiveRole === 'midtier';
 
   const { data: authorizations = [], isLoading } = useQuery({
     queryKey: ['authorizations'],

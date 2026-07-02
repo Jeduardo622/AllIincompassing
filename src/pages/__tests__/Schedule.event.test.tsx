@@ -47,6 +47,11 @@ function SearchProbe() {
   return <output data-testid="schedule-search">{location.search}</output>;
 }
 
+const getVisibleSessionModal = (): HTMLElement | undefined =>
+  screen
+    .queryAllByTestId("event-session-modal")
+    .find((element) => !element.closest('[style*="display: none"]'));
+
 describe("Schedule page event listener", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -80,10 +85,11 @@ describe("Schedule page event listener", () => {
 
     await waitFor(() => {
       window.dispatchEvent(new CustomEvent("openScheduleModal", { detail }));
-      expect(screen.getByText(/New Session/i)).toBeInTheDocument();
+      expect(getVisibleSessionModal()).toBeDefined();
     });
 
     // Modal should open with default start time populated
+    expect(getVisibleSessionModal()).toHaveTextContent(/New Session/i);
     const input = screen
       .getAllByLabelText(/Start Time/i)
       .find((element) => !element.closest('[style*="display: none"]')) as HTMLInputElement | undefined;
@@ -110,10 +116,11 @@ describe("Schedule page event listener", () => {
     );
     await screen.findByRole("heading", { name: /Schedule/i });
 
-    await waitFor(async () => {
-      expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getVisibleSessionModal()).toBeDefined();
       expect(localStorage.getItem("pendingSchedule")).toBeNull();
     });
+    expect(getVisibleSessionModal()).toHaveTextContent(/New Session/i);
   });
 
   it("opens create modal when query params request URL-addressable schedule state", async () => {
@@ -134,7 +141,10 @@ describe("Schedule page event listener", () => {
     );
 
     await screen.findByRole("heading", { name: /Schedule/i });
-    expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getVisibleSessionModal()).toBeDefined();
+    });
+    expect(getVisibleSessionModal()).toHaveTextContent(/New Session/i);
   });
 
   it("clears expired URL modal params without opening the modal", async () => {
@@ -179,7 +189,9 @@ describe("Schedule page event listener", () => {
     );
 
     await screen.findByRole("heading", { name: /Schedule/i });
-    await screen.findByText(/New Session/i);
+    await waitFor(() => {
+      expect(getVisibleSessionModal()).toBeDefined();
+    });
     await userEvent.click(screen.getByLabelText(/Close session modal/i));
     await waitFor(() => {
       expect(screen.getByTestId("schedule-search").textContent).toBe("");

@@ -35,7 +35,7 @@ export async function assertAdminOrSuperAdmin(db: SupabaseClient) {
       })
     : [];
 
-  const hasAdminAccess = roles.some(role => role === "admin" || role === "super_admin");
+  const hasAdminAccess = roles.some(role => role === "admin" || role === "bcba" || role === "super_admin");
 
   if (!hasAdminAccess) throw new Response("Forbidden", { status: 403 });
 }

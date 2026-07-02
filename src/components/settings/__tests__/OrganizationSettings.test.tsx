@@ -10,6 +10,7 @@ vi.mock('../../../lib/authContext', async () => {
     useAuth: () => ({
       profile: { role: 'super_admin' },
       effectiveRole: 'super_admin',
+      hasCapability: () => true,
     }),
   };
 });

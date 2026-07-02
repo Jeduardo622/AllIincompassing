@@ -27,8 +27,7 @@ const loadSupabaseModule = (): Promise<SupabaseModule> => {
   return supabaseModulePromise;
 };
 
-// Role hierarchy for authorization
-export type Role = 'client' | 'therapist' | 'admin' | 'super_admin';
+export type Role = 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
 
 export interface UserContext {
   user: {
@@ -220,24 +219,10 @@ export const authMiddlewareDeps = {
  * Check if user has required role
  */
 function hasRequiredRole(userRole: Role, allowedRoles: Role[]): boolean {
-  // Role hierarchy: super_admin > admin > therapist > client
-  const roleHierarchy: Record<Role, number> = {
-    'super_admin': 4,
-    'admin': 3,
-    'therapist': 2,
-    'client': 1,
-  };
-
-  const userLevel = roleHierarchy[userRole];
-  
-  // Check if user has exact role or higher level role
-  return allowedRoles.some(role => {
-    const requiredLevel = roleHierarchy[role];
-    return userLevel >= requiredLevel;
-  });
+  return allowedRoles.includes(userRole);
 }
 
-const roleOrder: ReadonlyArray<Role> = ['super_admin', 'admin', 'therapist', 'client'];
+const roleOrder: ReadonlyArray<Role> = ['super_admin', 'bcba', 'admin', 'admin_schedule', 'midtier', 'therapist', 'bt', 'client'];
 
 function parseRole(value: unknown): Role | null {
   if (typeof value !== 'string') {
@@ -245,7 +230,16 @@ function parseRole(value: unknown): Role | null {
   }
 
   const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (normalized === 'client' || normalized === 'therapist' || normalized === 'admin' || normalized === 'super_admin') {
+  if (
+    normalized === 'client'
+    || normalized === 'bt'
+    || normalized === 'therapist'
+    || normalized === 'midtier'
+    || normalized === 'admin_schedule'
+    || normalized === 'admin'
+    || normalized === 'bcba'
+    || normalized === 'super_admin'
+  ) {
     return normalized;
   }
 
@@ -320,6 +314,15 @@ async function resolveRoleForOrganization(
 
   if (
     await rpcBoolean(supabase, "user_has_role_for_org", {
+      role_name: "bcba",
+      target_organization_id: orgId,
+    })
+  ) {
+    return "bcba";
+  }
+
+  if (
+    await rpcBoolean(supabase, "user_has_role_for_org", {
       role_name: "org_super_admin",
       target_organization_id: orgId,
     })
@@ -347,11 +350,38 @@ async function resolveRoleForOrganization(
 
   if (
     await rpcBoolean(supabase, "user_has_role_for_org", {
+      role_name: "admin_schedule",
+      target_organization_id: orgId,
+    })
+  ) {
+    return "admin_schedule";
+  }
+
+  if (
+    await rpcBoolean(supabase, "user_has_role_for_org", {
+      role_name: "midtier",
+      target_organization_id: orgId,
+    })
+  ) {
+    return "midtier";
+  }
+
+  if (
+    await rpcBoolean(supabase, "user_has_role_for_org", {
       role_name: "therapist",
       target_organization_id: orgId,
     })
   ) {
     return "therapist";
+  }
+
+  if (
+    await rpcBoolean(supabase, "user_has_role_for_org", {
+      role_name: "bt",
+      target_organization_id: orgId,
+    })
+  ) {
+    return "bt";
   }
 
   if (
@@ -552,16 +582,16 @@ export function createPublicRoute(
 /**
  * Role-based route decorators
  */
-export const requireClient = (allowedRoles: Role[] = ['client']) => 
+export const requireClient = (allowedRoles: Role[] = ['client']) =>
   ({ allowedRoles });
 
-export const requireTherapist = (allowedRoles: Role[] = ['therapist']) => 
+export const requireTherapist = (allowedRoles: Role[] = ['therapist']) =>
   ({ allowedRoles });
 
-export const requireAdmin = (allowedRoles: Role[] = ['admin', 'super_admin']) => 
+export const requireAdmin = (allowedRoles: Role[] = ['admin', 'bcba', 'super_admin']) =>
   ({ allowedRoles });
 
-export const requireSuperAdmin = (allowedRoles: Role[] = ['super_admin']) => 
+export const requireSuperAdmin = (allowedRoles: Role[] = ['bcba', 'super_admin']) =>
   ({ allowedRoles });
 
 /**
@@ -570,10 +600,12 @@ export const requireSuperAdmin = (allowedRoles: Role[] = ['super_admin']) =>
 export const RouteOptions = {
   public: {},
   authenticated: { requireAuth: true },
-  client: { requireAuth: true, allowedRoles: ['client', 'therapist', 'admin', 'super_admin'] as Role[] },
-  therapist: { requireAuth: true, allowedRoles: ['therapist', 'admin', 'super_admin'] as Role[] },
-  admin: { requireAuth: true, allowedRoles: ['admin', 'super_admin'] as Role[] },
-  superAdmin: { requireAuth: true, allowedRoles: ['super_admin'] as Role[] },
+  client: { requireAuth: true, allowedRoles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as Role[] },
+  therapist: { requireAuth: true, allowedRoles: ['bt', 'therapist', 'midtier', 'admin', 'bcba', 'super_admin'] as Role[] },
+  staffAdmin: { requireAuth: true, allowedRoles: ['admin_schedule', 'admin', 'bcba', 'super_admin'] as Role[] },
+  admin: { requireAuth: true, allowedRoles: ['admin', 'bcba', 'super_admin'] as Role[] },
+  programsGoals: { requireAuth: true, allowedRoles: ['bt', 'therapist', 'midtier', 'admin', 'bcba', 'super_admin'] as Role[] },
+  superAdmin: { requireAuth: true, allowedRoles: ['bcba', 'super_admin'] as Role[] },
 };
 
 export const __TESTING__ = {

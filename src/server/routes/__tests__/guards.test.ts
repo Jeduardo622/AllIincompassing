@@ -81,26 +81,33 @@ describe('route guard access controls', () => {
     expect(requiresPermission('/family', 'guardian_access')).toBe(true);
   });
 
-  it('route guard enforces role hierarchy for therapist routes', () => {
+  it('route guard enforces explicit role access for staff routes', () => {
     expect(hasRoleAccess('/therapists', 'admin')).toBe(true);
+    expect(hasRoleAccess('/therapists', 'admin_schedule')).toBe(true);
     expect(hasRoleAccess('/therapists', 'therapist')).toBe(false);
+    expect(hasRoleAccess('/therapists', 'bcba')).toBe(true);
     expect(hasRoleAccess('/therapists/new', 'super_admin')).toBe(true);
   });
 
   it('restricts client onboarding to admin roles', () => {
     expect(hasRoleAccess('/clients/new', 'therapist')).toBe(false);
+    expect(hasRoleAccess('/clients/new', 'admin_schedule')).toBe(true);
     expect(hasRoleAccess('/clients/new', 'admin')).toBe(true);
     expect(hasRoleAccess('/clients/new', 'super_admin')).toBe(true);
   });
 
-  it('route guard allows elevated roles to inherit lower privileges', () => {
+  it('route guard allows only explicitly listed roles', () => {
+    expect(hasRoleAccess('/clients', 'bt')).toBe(true);
     expect(hasRoleAccess('/clients', 'super_admin')).toBe(true);
     expect(hasRoleAccess('/clients', 'client')).toBe(false);
   });
 
-  it('restricts schedule access to therapist roles and above', () => {
+  it('restricts schedule access to schedule-capable roles', () => {
     expect(hasRoleAccess('/schedule', 'client')).toBe(false);
+    expect(hasRoleAccess('/schedule', 'bt')).toBe(false);
     expect(hasRoleAccess('/schedule', 'therapist')).toBe(true);
+    expect(hasRoleAccess('/schedule', 'midtier')).toBe(true);
+    expect(hasRoleAccess('/schedule', 'admin_schedule')).toBe(true);
     expect(hasRoleAccess('/schedule', 'admin')).toBe(true);
   });
 

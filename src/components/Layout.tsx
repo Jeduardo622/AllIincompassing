@@ -7,8 +7,8 @@ import { preloadRouteModule } from '../lib/routeModulePrefetch';
 import { RouteLoadingSkeleton } from './RouteLoadingSkeleton';
 
 export function Layout() {
-  const { user, effectiveRole, profileLoading, hasAnyRole, isGuardian } = useAuth();
-  const invalidateIndexStaffQueries = !profileLoading && hasAnyRole(['therapist', 'admin', 'super_admin']);
+  const { user, effectiveRole, profileLoading, hasCapability, isGuardian } = useAuth();
+  const invalidateIndexStaffQueries = !profileLoading && hasCapability('viewClients');
   useRouteQueryRefetch({ invalidateIndexStaffQueries });
 
   useEffect(() => {

@@ -14,6 +14,7 @@ import type { Note, Issue } from '../../types';
 import { useClientIssues, useClientNotes } from '../../lib/clients/hooks';
 import { useAuth } from '../../lib/authContext';
 import { useActiveOrganizationId } from '../../lib/organization';
+import type { AppRole } from '../../lib/roles';
 
 interface ProfileTabProps {
   client: {
@@ -31,7 +32,7 @@ interface ProfileTabProps {
     gender?: string;
     cin_number?: string;
   };
-  viewerRole?: 'client' | 'therapist' | 'admin' | 'super_admin';
+  viewerRole?: AppRole;
 }
 
 export function ProfileTab({ client, viewerRole }: ProfileTabProps) {

@@ -32,6 +32,7 @@ describe('SuperAdminFeatureFlags', () => {
     useAuthSpy.mockReturnValue({
       profile: { role: 'admin' },
       effectiveRole: 'admin',
+      hasCapability: () => false,
     } as unknown as ReturnType<typeof authContext.useAuth>);
 
     renderWithProviders(<SuperAdminFeatureFlags />);
@@ -43,6 +44,7 @@ describe('SuperAdminFeatureFlags', () => {
     useAuthSpy.mockReturnValue({
       profile: { role: 'super_admin' },
       effectiveRole: 'super_admin',
+      hasCapability: () => true,
     } as unknown as ReturnType<typeof authContext.useAuth>);
 
     invokeSpy.mockImplementation(async (_path: string, options?: { body?: Record<string, unknown> }) => {
@@ -143,6 +145,7 @@ describe('SuperAdminFeatureFlags', () => {
     useAuthSpy.mockReturnValue({
       profile: { role: 'super_admin' },
       effectiveRole: 'super_admin',
+      hasCapability: () => true,
     } as unknown as ReturnType<typeof authContext.useAuth>);
 
     invokeSpy.mockImplementation(async (_path: string, options?: { body?: Record<string, unknown> }) => {
@@ -199,6 +202,7 @@ describe('SuperAdminFeatureFlags', () => {
     useAuthSpy.mockReturnValue({
       profile: { role: 'super_admin' },
       effectiveRole: 'super_admin',
+      hasCapability: () => true,
     } as unknown as ReturnType<typeof authContext.useAuth>);
 
     invokeSpy.mockResolvedValueOnce({

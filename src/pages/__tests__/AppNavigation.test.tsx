@@ -5,7 +5,10 @@ import { Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from '../../App';
 
-let authRole: 'client' | 'therapist' | 'admin' | 'super_admin' = 'client';
+type TestRole = 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
+type TestCapability = 'staffDashboard' | 'viewSchedule';
+
+let authRole: TestRole = 'client';
 let authIsGuardian = false;
 const { mockLoggerInfo } = vi.hoisted(() => ({
   mockLoggerInfo: vi.fn(),
@@ -22,6 +25,10 @@ vi.mock('../../lib/logger/logger', () => ({
 
 vi.mock('../../lib/authContext', () => {
   const signOut = vi.fn();
+  const capabilityRoles: Record<TestCapability, TestRole[]> = {
+    staffDashboard: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
+    viewSchedule: ['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
+  };
   return {
     useAuth: () => ({
       profile: { role: authRole, is_active: true },
@@ -30,8 +37,10 @@ vi.mock('../../lib/authContext', () => {
       profileLoading: false,
       isGuardian: authIsGuardian,
       effectiveRole: authRole,
-      hasRole: (role: 'client' | 'therapist' | 'admin' | 'super_admin') => authRole === role,
-      hasAnyRole: (roles: ('client' | 'therapist' | 'admin' | 'super_admin')[]) => roles.includes(authRole),
+      hasRole: (role: TestRole) => authRole === role,
+      hasAnyRole: (roles: TestRole[]) => roles.includes(authRole),
+      hasCapability: (capability: TestCapability) => capabilityRoles[capability]?.includes(authRole) ?? false,
+      hasAnyCapability: (capabilities: TestCapability[]) => capabilities.some((capability) => capabilityRoles[capability]?.includes(authRole)),
       signOut,
       signIn: vi.fn(),
       signUp: vi.fn(),

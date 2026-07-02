@@ -6,6 +6,16 @@ import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
 import { readStubAuthState, STUB_AUTH_STORAGE_KEY } from './authStubSession';
 import { getDefaultOrganizationId } from './runtimeConfig';
+import {
+  APP_ROLES,
+  ROLE_RANK,
+  normalizeRole,
+  roleHasCapability,
+  roleHasAnyCapability,
+  roleMeetsOrExceeds,
+  type AppCapability,
+  type AppRole,
+} from './roles';
 
 const normalizeOrgId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -38,7 +48,7 @@ const resolveAuthFlowForEvent = (event: AuthChangeEvent): 'normal' | 'password_r
 export interface UserProfile {
   id: string;
   email: string;
-  role: 'client' | 'therapist' | 'admin' | 'super_admin';
+  role: AppRole;
   organization_id?: string | null;
   first_name?: string;
   last_name?: string;
@@ -57,29 +67,10 @@ type Role = UserProfile['role'];
 type RoleRow = { is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null };
 
 const toRole = (value: unknown): Role | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, '_');
-
-  switch (normalized) {
-    case 'client':
-    case 'therapist':
-    case 'admin':
-      return normalized;
-    case 'super_admin':
-    case 'superadmin':
-      return 'super_admin';
-    default:
-      return null;
-  }
+  return normalizeRole(value);
 };
 
-const roleOrder: readonly Role[] = ['super_admin', 'admin', 'therapist', 'client'];
+const roleOrder: readonly Role[] = [...APP_ROLES].sort((left, right) => ROLE_RANK[right] - ROLE_RANK[left]);
 
 const roleRowIsActive = (isActive: unknown, expiresAt: unknown): boolean => {
   if (isActive === false) {
@@ -208,8 +199,10 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: Error | null }>;
-  hasRole: (role: 'client' | 'therapist' | 'admin' | 'super_admin') => boolean;
-  hasAnyRole: (roles: ('client' | 'therapist' | 'admin' | 'super_admin')[]) => boolean;
+  hasRole: (role: AppRole) => boolean;
+  hasAnyRole: (roles: AppRole[]) => boolean;
+  hasCapability: (capability: AppCapability) => boolean;
+  hasAnyCapability: (capabilities: AppCapability[]) => boolean;
   isAdmin: () => boolean;
   isSuperAdmin: () => boolean;
 }
@@ -257,17 +250,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const profileRole = profile?.role ?? null;
 
-  const rolePriority: Record<Role, number> = {
-    client: 1,
-    therapist: 2,
-    admin: 3,
-    super_admin: 4,
-  };
-
   const effectiveRole = useMemo<Role>(() => {
     if (profileRole && roleFromAssignments) {
       // Prefer the highest role granted by authoritative role assignments.
-      return rolePriority[roleFromAssignments] > rolePriority[profileRole] ? roleFromAssignments : profileRole;
+      return ROLE_RANK[roleFromAssignments] > ROLE_RANK[profileRole] ? roleFromAssignments : profileRole;
     }
     if (roleFromAssignments) return roleFromAssignments;
     if (profileRole) return profileRole;
@@ -941,31 +927,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return effectiveRole;
   }, [effectiveRole]);
 
-  const roleHierarchy: Record<Role, number> = {
-    super_admin: 4,
-    admin: 3,
-    therapist: 2,
-    client: 1,
-  } as const;
-
   const hasRole = useCallback((role: Role) => {
     const currentRole = resolveRoleForComparison();
-    return roleHierarchy[currentRole] >= roleHierarchy[role];
+    return roleMeetsOrExceeds(currentRole, role);
   }, [resolveRoleForComparison]);
 
   const hasAnyRole = useCallback((roles: Role[]) => {
     const currentRole = resolveRoleForComparison();
-    const userLevel = roleHierarchy[currentRole];
-    return roles.some((r) => userLevel >= roleHierarchy[r]);
+    return roles.some((r) => roleMeetsOrExceeds(currentRole, r));
   }, [resolveRoleForComparison]);
 
-  const isAdmin = useCallback(() => {
-    return effectiveRole === 'admin' || effectiveRole === 'super_admin';
+  const hasCapability = useCallback((capability: AppCapability) => {
+    return roleHasCapability(effectiveRole, capability);
   }, [effectiveRole]);
 
-  const isSuperAdmin = useCallback(() => {
-    return effectiveRole === 'super_admin';
+  const hasAnyCapability = useCallback((capabilities: AppCapability[]) => {
+    return roleHasAnyCapability(effectiveRole, capabilities);
   }, [effectiveRole]);
+
+  const isAdmin = useCallback(() => {
+    return hasCapability('staffDashboard');
+  }, [hasCapability]);
+
+  const isSuperAdmin = useCallback(() => {
+    return hasCapability('accessSuperAdminTools');
+  }, [hasCapability]);
 
   const value = {
     user,
@@ -985,6 +971,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateProfile,
     hasRole,
     hasAnyRole,
+    hasCapability,
+    hasAnyCapability,
     isAdmin,
     isSuperAdmin,
   };

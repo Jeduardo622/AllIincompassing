@@ -1,7 +1,7 @@
 import { supabase } from '../supabase';
 import type { StaffRecipient } from './types';
 
-const STAFF_ROLES = new Set(['therapist', 'admin', 'super_admin']);
+const STAFF_ROLES = new Set(['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']);
 
 type RpcStaffRow = {
   user_id: string;

@@ -14,9 +14,9 @@ import { showError, showSuccess } from '../../lib/toast';
 
 export function MessagesNew() {
   const navigate = useNavigate();
-  const { profile, effectiveRole } = useAuth();
+  const { profile, hasCapability } = useAuth();
   const organizationId = useActiveOrganizationId();
-  const canCreateGroup = effectiveRole === 'admin' || effectiveRole === 'super_admin';
+  const canCreateGroup = hasCapability('staffDashboard');
   const [subject, setSubject] = useState('');
   const [threadType, setThreadType] = useState<MessageThreadType>('direct');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

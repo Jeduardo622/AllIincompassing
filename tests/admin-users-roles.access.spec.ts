@@ -364,4 +364,56 @@ describe('admin-users-roles access control', () => {
       is_active: true,
     });
   });
+
+  it('accepts a target user id in the request body for direct edge invokes', async () => {
+    rpcRoles = ['super_admin'];
+
+    const superAdminContext: TestUserContext = {
+      user: { id: 'super-admin-4', email: 'super4@example.com' },
+      profile: {
+        id: 'super-admin-profile-4',
+        email: 'super4@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    };
+
+    userContexts.set('super4', superAdminContext);
+    adminUsers.set('super-admin-4', {
+      id: 'super-admin-4',
+      email: 'super4@example.com',
+      user_metadata: { organization_id: 'org-123' },
+    });
+    adminUsers.set(existingProfile.id, {
+      id: existingProfile.id,
+      email: existingProfile.email,
+      user_metadata: { organization_id: 'org-999' },
+    });
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+          'x-test-user': 'super4',
+        },
+        body: JSON.stringify({
+          target_user_id: '11111111-1111-1111-1111-111111111111',
+          role: 'admin_schedule',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(userRolesUpsertPayload).toMatchObject({
+      user_id: existingProfile.id,
+      role_id: 'rid-admin-schedule',
+      granted_by: 'super-admin-4',
+      is_active: true,
+    });
+    expect(latestUpdatePayload).toEqual({ role: 'admin_schedule' });
+  });
 });

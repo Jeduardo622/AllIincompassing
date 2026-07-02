@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderWithProviders, screen, waitFor, userEvent, within } from '../../../test/utils';
 import { AdminSettings } from '../AdminSettings';
 import { supabase } from '../../../lib/supabase';
+import * as supabaseModule from '../../../lib/supabase';
 import { logger } from '../../../lib/logger/logger';
 import { useAuth } from '../../../lib/authContext';
 import { showError, showSuccess } from '../../../lib/toast';
@@ -64,6 +65,20 @@ const mockTherapist = {
   id: 'therapist-1',
   full_name: 'Therapist One',
   email: 'therapist@example.com',
+};
+
+const mockEmployeeUser = {
+  id: '22222222-2222-2222-2222-222222222222',
+  email: 'midtier@example.com',
+  first_name: 'Mira',
+  last_name: 'Midtier',
+  full_name: 'Mira Midtier',
+  title: 'Clinical Supervisor',
+  role: 'midtier',
+  is_active: true,
+  organization_id: '11111111-1111-1111-1111-111111111111',
+  created_at: new Date('2025-02-01T00:00:00Z').toISOString(),
+  last_login_at: null,
 };
 
 const buildTherapistQuery = (data = [mockTherapist], error: Error | null = null) => {
@@ -729,6 +744,7 @@ describe('Admin therapist links', () => {
 describe('AdminSettings super admin access', () => {
   let fromSpy: ReturnType<typeof vi.spyOn> | null = null;
   let invokeSpy: ReturnType<typeof vi.spyOn> | null = null;
+  let callEdgeSpy: ReturnType<typeof vi.spyOn> | null = null;
 
   beforeEach(() => {
     const authStub = {
@@ -760,6 +776,9 @@ describe('AdminSettings super admin access', () => {
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
       if (functionName === 'get_admin_users_paged') {
         return { data: [mockAdminUser], error: null };
+      }
+      if (functionName === 'get_employee_users_paged') {
+        return { data: [mockEmployeeUser], error: null };
       }
       if (functionName === 'get_admin_therapist_links') {
         return { data: [], error: null };
@@ -802,6 +821,9 @@ describe('AdminSettings super admin access', () => {
     invokeSpy = vi
       .spyOn(supabase.functions, 'invoke')
       .mockResolvedValue({ data: null, error: null });
+    callEdgeSpy = vi
+      .spyOn(supabaseModule, 'callEdge')
+      .mockResolvedValue(new Response(JSON.stringify({ message: 'ok' }), { status: 200 }));
   });
 
   afterEach(() => {
@@ -810,6 +832,8 @@ describe('AdminSettings super admin access', () => {
     fromSpy = null;
     invokeSpy?.mockRestore();
     invokeSpy = null;
+    callEdgeSpy?.mockRestore();
+    callEdgeSpy = null;
     confirmSpy?.mockRestore();
     confirmSpy = null;
   });
@@ -824,7 +848,7 @@ describe('AdminSettings super admin access', () => {
     expect(initialAdminCalls[0]?.[1]).toMatchObject({ organization_id: null });
 
     await screen.findByText('Ada Admin');
-    await screen.findByText('11111111-1111-1111-1111-111111111111');
+    expect(screen.getAllByText('11111111-1111-1111-1111-111111111111').length).toBeGreaterThan(0);
 
     await userEvent.selectOptions(filterSelect, 'org-1');
 
@@ -832,6 +856,26 @@ describe('AdminSettings super admin access', () => {
       const adminCalls = rpcMock.mock.calls.filter(([fnName]) => fnName === 'get_admin_users_paged');
       expect(adminCalls.some(([, params]) => params && (params as Record<string, unknown>).organization_id === 'org-1')).toBe(true);
     });
+  });
+
+  it('allows super admins to update employee roles through the role editor', async () => {
+    renderWithProviders(<AdminSettings />);
+
+    const roleSelect = await screen.findByLabelText('Role for midtier@example.com');
+    expect(roleSelect).toHaveValue('midtier');
+
+    await userEvent.selectOptions(roleSelect, 'admin_schedule');
+
+    await waitFor(() => {
+      expect(callEdgeSpy).toHaveBeenCalledWith(
+        'admin-users-roles/admin/users/22222222-2222-2222-2222-222222222222/roles',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ role: 'admin_schedule' }),
+        }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith('Employee role updated successfully');
   });
 
   it('keeps therapist link RPCs disabled for All organizations until a concrete org is selected', async () => {

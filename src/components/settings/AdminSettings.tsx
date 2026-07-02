@@ -1,14 +1,25 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Shield, Mail, Calendar, Key, Users, Link2, CheckCircle2, Building2 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { Plus, Trash2, Shield, Mail, Calendar, Key, Users, Link2, CheckCircle2, Building2, UserCog } from 'lucide-react';
+import { callEdge, supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
 import { logger } from '../../lib/logger/logger';
 import { useAuth } from '../../lib/authContext';
 import { Modal } from '../common/Modal';
 import type { PostgrestError } from '@supabase/supabase-js';
+import { ROLE_LABELS, type AppRole } from '../../lib/roles';
 
 const ADMIN_USER_FETCH_LIMIT = 200;
+const EMPLOYEE_USER_FETCH_LIMIT = 200;
+const EMPLOYEE_ROLE_OPTIONS = [
+  'bt',
+  'therapist',
+  'midtier',
+  'admin_schedule',
+  'admin',
+  'bcba',
+  'super_admin',
+] as const satisfies readonly AppRole[];
 
 interface AdminUser {
   id: string;
@@ -22,6 +33,20 @@ interface AdminUser {
     organization_id?: string;
     organizationId?: string;
   } | null;
+}
+
+interface EmployeeUser {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  title: string | null;
+  role: AppRole;
+  is_active: boolean | null;
+  organization_id: string | null;
+  created_at: string | null;
+  last_login_at: string | null;
 }
 
 interface AdminFormData {
@@ -160,6 +185,38 @@ export function AdminSettings() {
       return (data as AdminUser[] | null) ?? [];
     },
     enabled: isSuperAdmin || Boolean(organizationId),
+    retry: false,
+  });
+
+  const {
+    data: employeeUsers = [],
+    isLoading: isEmployeeUsersLoading,
+    error: employeeUsersError,
+  } = useQuery<EmployeeUser[], Error>({
+    queryKey: ['employee-users', selectedOrganizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_employee_users_paged', {
+        p_organization_id: activeOrganizationId ?? null,
+        p_limit: EMPLOYEE_USER_FETCH_LIMIT,
+        p_offset: 0,
+      });
+
+      if (error) {
+        const rpcError = error as PostgrestError & { status?: number };
+        const mappedError = new Error(
+          rpcError.code === '42501'
+            ? 'Only super administrators can view employee users.'
+            : error.message || 'Failed to load employee users.'
+        );
+        (mappedError as Error & { status?: number }).status = rpcError.code === '42501' ? 403 : 500;
+        throw mappedError;
+      }
+
+      return ((data as EmployeeUser[] | null) ?? []).filter((employee) =>
+        EMPLOYEE_ROLE_OPTIONS.includes(employee.role)
+      );
+    },
+    enabled: isSuperAdmin,
     retry: false,
   });
 
@@ -373,6 +430,14 @@ export function AdminSettings() {
 
     showError(organizationOptionsError);
   }, [organizationOptionsError]);
+
+  useEffect(() => {
+    if (!employeeUsersError) {
+      return;
+    }
+
+    showError(employeeUsersError);
+  }, [employeeUsersError]);
 
   useEffect(() => {
     if (!therapistOptionsError) {
@@ -623,6 +688,36 @@ export function AdminSettings() {
     },
   });
 
+  const updateEmployeeRoleMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
+      const response = await callEdge(`admin-users-roles/admin/users/${userId}/roles`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: unknown } | null;
+        const message = typeof payload?.error === 'string'
+          ? payload.error
+          : `Failed to update employee role (${response.status})`;
+        throw new Error(message);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employee-users', selectedOrganizationId] });
+      queryClient.invalidateQueries({
+        queryKey: ['admins', isSuperAdmin ? selectedOrganizationId : organizationId],
+      });
+      showSuccess('Employee role updated successfully');
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       email: '',
@@ -680,6 +775,22 @@ export function AdminSettings() {
     }
 
     unlinkAdminTherapistMutation.mutate({ userId, therapistId });
+  };
+
+  const handleEmployeeRoleChange = (employee: EmployeeUser, nextRole: AppRole) => {
+    if (employee.role === nextRole) {
+      return;
+    }
+
+    const displayName = employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(' ') || employee.email;
+    const shouldUpdate = window.confirm(
+      `Change ${displayName}'s role from ${ROLE_LABELS[employee.role]} to ${ROLE_LABELS[nextRole]}?`
+    );
+    if (!shouldUpdate) {
+      return;
+    }
+
+    updateEmployeeRoleMutation.mutate({ userId: employee.id, role: nextRole });
   };
 
   const getMetadataValue = (entry: GuardianQueueEntry, key: string) => {
@@ -811,6 +922,88 @@ export function AdminSettings() {
             )}
           </div>
         </div>
+      )}
+
+      {isSuperAdmin && (
+        <section className="rounded-lg border border-blue-100 bg-white p-4 shadow-sm dark:border-blue-900/40 dark:bg-dark-lighter">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
+                <UserCog className="h-5 w-5 text-blue-600 dark:text-blue-300" />
+                Employee Role Access
+              </h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Super admins can update employee app roles. Client roles are intentionally excluded from this editor.
+              </p>
+            </div>
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+              {activeOrganizationId ? 'Organization scoped' : 'All organizations'}
+            </span>
+          </div>
+
+          {isEmployeeUsersLoading ? (
+            <div className="py-4 text-sm text-gray-500 dark:text-gray-400">Loading employee users…</div>
+          ) : employeeUsers.length === 0 ? (
+            <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-dark dark:text-gray-300">
+              No employee users found.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                <thead>
+                  <tr>
+                    <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Employee</th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Organization</th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Role</th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {employeeUsers.map((employee) => {
+                    const displayName = employee.full_name
+                      || [employee.first_name, employee.last_name].filter(Boolean).join(' ')
+                      || employee.email;
+                    return (
+                      <tr key={employee.id}>
+                        <td className="px-3 py-3">
+                          <div className="font-medium text-gray-900 dark:text-gray-100">{displayName}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{employee.email}</div>
+                        </td>
+                        <td className="px-3 py-3 text-gray-600 dark:text-gray-300">
+                          {employee.organization_id ?? 'No organization'}
+                        </td>
+                        <td className="px-3 py-3">
+                          <select
+                            aria-label={`Role for ${employee.email}`}
+                            className="rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-dark dark:text-gray-100"
+                            value={employee.role}
+                            disabled={updateEmployeeRoleMutation.isPending}
+                            onChange={(event) => handleEmployeeRoleChange(employee, event.target.value as AppRole)}
+                          >
+                            {EMPLOYEE_ROLE_OPTIONS.map((role) => (
+                              <option key={role} value={role}>
+                                {ROLE_LABELS[role]}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                            employee.is_active === false
+                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'
+                              : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-200'
+                          }`}>
+                            {employee.is_active === false ? 'Inactive' : 'Active'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
 
       {isLoading || (isSuperAdmin && isOrganizationOptionsLoading) ? (

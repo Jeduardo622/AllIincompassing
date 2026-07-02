@@ -6343,6 +6343,22 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_employee_users_paged: {
+        Args: { p_organization_id?: string; p_limit?: number; p_offset?: number }
+        Returns: {
+          created_at: string | null
+          email: string | null
+          first_name: string | null
+          full_name: string | null
+          id: string | null
+          is_active: boolean | null
+          last_login_at: string | null
+          last_name: string | null
+          organization_id: string | null
+          role: Database["public"]["Enums"]["role_type"] | null
+          title: string | null
+        }[]
+      }
       get_admin_linkable_therapists: {
         Args: { p_organization_id: string }
         Returns: {

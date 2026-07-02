@@ -15,10 +15,17 @@ const EXPOSE_PROGRAM_GOAL_RPC_MIGRATION_PATH = path.join(
   'migrations',
   '20260702194500_expose_program_goal_capability_rpc.sql',
 );
+const EMPLOYEE_ROLE_LISTING_MIGRATION_PATH = path.join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260702120000_super_admin_employee_role_listing.sql',
+);
 const SMOKE_SQL_PATH = path.join(process.cwd(), 'tests', 'sql', 'employee_role_capability_smoke.sql');
 
 const sql = readFileSync(MIGRATION_PATH, 'utf8');
 const exposeProgramGoalRpcSql = readFileSync(EXPOSE_PROGRAM_GOAL_RPC_MIGRATION_PATH, 'utf8');
+const employeeRoleListingSql = readFileSync(EMPLOYEE_ROLE_LISTING_MIGRATION_PATH, 'utf8');
 const smokeSql = readFileSync(SMOKE_SQL_PATH, 'utf8');
 
 const extractFunction = (name: string): string => {
@@ -119,5 +126,17 @@ describe('employee role capability matrix migration', () => {
     expect(smokeSql).toContain('midtier_schedule_write_allowed');
     expect(smokeSql).toContain('bt_schedule_write_denied');
     expect(smokeSql).toContain('bcba_super_admin_equivalence_helpers');
+  });
+
+  it('lists editable employee roles from active unexpired junction grants only', () => {
+    expect(employeeRoleListingSql).toContain('is_super_admin boolean := public.current_user_is_super_admin();');
+    expect(employeeRoleListingSql).not.toContain("app.user_has_role('super_admin')");
+    expect(employeeRoleListingSql).not.toContain("app.user_has_role('bcba')");
+    expect(employeeRoleListingSql).toContain('FROM public.user_roles ur');
+    expect(employeeRoleListingSql).toContain('JOIN public.roles r ON r.id = ur.role_id');
+    expect(employeeRoleListingSql).toContain('COALESCE(ur.is_active, true) = true');
+    expect(employeeRoleListingSql).toContain('(ur.expires_at IS NULL OR ur.expires_at > now())');
+    expect(employeeRoleListingSql).toContain('effective_role.role');
+    expect(employeeRoleListingSql).not.toContain('WHERE p.role <>');
   });
 });

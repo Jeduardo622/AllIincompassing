@@ -2,7 +2,7 @@ import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from ".
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
-interface RoleUpdateRequest { role: 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin'; is_active?: boolean; }
+interface RoleUpdateRequest { target_user_id?: string; role: 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin'; is_active?: boolean; }
 
 type AppRole = RoleUpdateRequest["role"];
 
@@ -121,17 +121,23 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     const adminClient = createRequestClient(req);
     await assertAdminOrSuperAdmin(adminClient);
 
+    const body = await req.json().catch(() => null) as RoleUpdateRequest | null;
+    if (!body || typeof body !== "object") return new Response(JSON.stringify({ error: 'Valid role update request is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
     const url = new URL(req.url);
     const pathSegments = url.pathname.split('/');
     const userIdIndex = pathSegments.findIndex(segment => segment === 'users') + 1;
-    const userId = pathSegments[userIdIndex];
+    const pathUserId = userIdIndex > 0 ? pathSegments[userIdIndex] : "";
+    const bodyUserId = typeof body.target_user_id === "string" ? body.target_user_id.trim() : "";
+    const userId = pathUserId || bodyUserId;
 
     if (!userId) return new Response(JSON.stringify({ error: 'User ID is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (pathUserId && bodyUserId && pathUserId !== bodyUserId) return new Response(JSON.stringify({ error: 'Target user ID mismatch' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) return new Response(JSON.stringify({ error: 'Invalid user ID format' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    const { role, is_active }: RoleUpdateRequest = await req.json();
+    const { role, is_active } = body;
     const validRoles = CANONICAL_ROLE_NAMES;
     if (!role || !validRoles.includes(role)) return new Response(JSON.stringify({ error: 'Valid role is required', validRoles }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 

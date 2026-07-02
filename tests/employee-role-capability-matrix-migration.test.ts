@@ -21,11 +21,18 @@ const EMPLOYEE_ROLE_LISTING_MIGRATION_PATH = path.join(
   'migrations',
   '20260702120000_super_admin_employee_role_listing.sql',
 );
+const EMPLOYEE_ROLE_LISTING_GRANTS_MIGRATION_PATH = path.join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260702222500_restrict_employee_users_paged_execute_grants.sql',
+);
 const SMOKE_SQL_PATH = path.join(process.cwd(), 'tests', 'sql', 'employee_role_capability_smoke.sql');
 
 const sql = readFileSync(MIGRATION_PATH, 'utf8');
 const exposeProgramGoalRpcSql = readFileSync(EXPOSE_PROGRAM_GOAL_RPC_MIGRATION_PATH, 'utf8');
 const employeeRoleListingSql = readFileSync(EMPLOYEE_ROLE_LISTING_MIGRATION_PATH, 'utf8');
+const employeeRoleListingGrantsSql = readFileSync(EMPLOYEE_ROLE_LISTING_GRANTS_MIGRATION_PATH, 'utf8');
 const smokeSql = readFileSync(SMOKE_SQL_PATH, 'utf8');
 
 const extractFunction = (name: string): string => {
@@ -138,5 +145,19 @@ describe('employee role capability matrix migration', () => {
     expect(employeeRoleListingSql).toContain('(ur.expires_at IS NULL OR ur.expires_at > now())');
     expect(employeeRoleListingSql).toContain('effective_role.role');
     expect(employeeRoleListingSql).not.toContain('WHERE p.role <>');
+  });
+
+  it('restricts employee listing RPC execution to authenticated callers', () => {
+    expect(employeeRoleListingGrantsSql).toContain(
+      'REVOKE EXECUTE ON FUNCTION public.get_employee_users_paged(uuid, integer, integer) FROM PUBLIC, anon;',
+    );
+    expect(employeeRoleListingGrantsSql).toContain(
+      'GRANT EXECUTE ON FUNCTION public.get_employee_users_paged(uuid, integer, integer) TO authenticated, service_role;',
+    );
+    expect(employeeRoleListingGrantsSql).toContain(
+      '-- @migration-rollback: GRANT EXECUTE ON FUNCTION public.get_employee_users_paged(uuid, integer, integer) TO authenticated;',
+    );
+    expect(employeeRoleListingGrantsSql).not.toContain('TO anon;');
+    expect(employeeRoleListingGrantsSql).toContain("NOTIFY pgrst, 'reload schema';");
   });
 });

@@ -104,6 +104,10 @@ const DashboardLanding: React.FC = () => {
     return <Navigate to="/schedule" replace />;
   }
 
+  if (hasCapability('viewClients')) {
+    return <Navigate to="/clients" replace />;
+  }
+
   // Plain clients should land on family-safe docs, not the admin dashboard shell.
   return <Navigate to="/documentation" replace />;
 };

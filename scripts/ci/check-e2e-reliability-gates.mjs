@@ -158,9 +158,9 @@ const run = async () => {
     }
   }
 
-  const scheduleRoleContract = 'roles: ["therapist", "admin", "super_admin"]';
+  const scheduleRoleContract = 'roles: ["therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"]';
   if (!routeScenarios.includes(scheduleRoleContract)) {
-    errors.push("cypress/support/routeScenarios.ts must align /schedule role coverage to therapist/admin/super_admin.");
+    errors.push("cypress/support/routeScenarios.ts must align /schedule role coverage to therapist/midtier/admin_schedule/admin/bcba/super_admin.");
   }
   if (!combinedRouteSpecs.includes("runRoleMatrix")) {
     errors.push("split Cypress route specs must use runRoleMatrix for deterministic role coverage.");

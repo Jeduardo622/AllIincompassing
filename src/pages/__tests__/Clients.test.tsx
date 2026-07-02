@@ -27,6 +27,8 @@ vi.mock('@tanstack/react-query', async () => {
 vi.mock('../../lib/authContext', () => ({
   useAuth: () => ({
     isSuperAdmin: isSuperAdminMock,
+    effectiveRole: isSuperAdminMock() ? 'super_admin' : 'admin',
+    hasCapability: () => true,
   }),
 }));
 

@@ -341,7 +341,7 @@ export const Schedule = React.memo(() => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   useCapturePendingScheduleEvent();
-  const { user, profile, effectiveRole } = useAuth();
+  const { user, profile, effectiveRole, hasCapability } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [view, setView] = useState<"day" | "week">("week");
@@ -920,7 +920,7 @@ export const Schedule = React.memo(() => {
   const weekForwardDisplayedWeekSignature = `${weekStart.toISOString()}|${weekEnd.toISOString()}`;
   const weekForwardHasScheduledSessions = weekForwardSourceSessions.length > 0;
   const weekForwardHasSelectedSourceSessions = weekForwardSelectedSourceSessions.length > 0;
-  const weekForwardRequiresOrgContext = effectiveRole === "super_admin" && !activeOrganizationId;
+  const weekForwardRequiresOrgContext = hasCapability("accessSuperAdminTools") && !activeOrganizationId;
   const weekForwardAvailableInCurrentView = view === "week";
   const weekForwardSourceSummary = `${format(weekStart, "MMM d")} - ${format(weekEnd, "MMM d, yyyy")}`;
   const weekForwardCanPreview =

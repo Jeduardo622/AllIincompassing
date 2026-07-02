@@ -1,4 +1,4 @@
-export type AppRole = 'client' | 'therapist' | 'admin' | 'super_admin';
+import type { AppRole } from '../../lib/roles';
 
 export type RouteGuardDefinition = {
   readonly path: string;
@@ -24,32 +24,32 @@ const createGuard = (definition: RouteGuardDefinition): GuardWithMatcher => ({
 const guardDefinitions: readonly GuardWithMatcher[] = [
   createGuard({
     path: '/',
-    allowedRoles: ['client', 'therapist', 'admin', 'super_admin'],
+    allowedRoles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.sessions: sessions_scoped_access'],
   }),
   createGuard({
     path: '/schedule',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    allowedRoles: ['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.sessions: sessions_scoped_access'],
   }),
   createGuard({
     path: '/clients',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: ['view_clients'],
     supabasePolicies: ['public.clients: role_scoped_select'],
   }),
   // Static segment must precede `/clients/:clientId` or `new` is treated as a UUID-like id.
   createGuard({
     path: '/clients/new',
-    allowedRoles: ['admin', 'super_admin'],
+    allowedRoles: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['app.set_client_archive_state: admin_super_admin_execute'],
   }),
   createGuard({
     path: '/clients/:clientId',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: ['view_clients'],
     supabasePolicies: [
       'public.clients: role_scoped_select',
@@ -58,56 +58,56 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/therapists',
-    allowedRoles: ['admin', 'super_admin'],
+    allowedRoles: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.therapists: role_scoped_select'],
   }),
   createGuard({
     path: '/therapists/:therapistId',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.therapists: role_scoped_select'],
   }),
   createGuard({
     path: '/therapists/new',
-    allowedRoles: ['admin', 'super_admin'],
+    allowedRoles: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.therapists: role_scoped_select'],
   }),
   createGuard({
     path: '/documentation',
-    allowedRoles: ['client', 'therapist', 'admin', 'super_admin'],
+    allowedRoles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.profiles: role_scoped_select'],
   }),
   createGuard({
     path: '/fill-docs',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    allowedRoles: ['therapist', 'midtier', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.sessions: sessions_scoped_access'],
   }),
   createGuard({
     path: '/authorizations',
-    allowedRoles: ['admin', 'super_admin'],
+    allowedRoles: ['midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.authorizations: authorizations_org_read'],
   }),
   createGuard({
     path: '/messages',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.message_threads: participant_scoped_select'],
   }),
   // Static segment must precede `/messages/:threadId` or `new` is treated as a thread id.
   createGuard({
     path: '/messages/new',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.message_threads: participant_scoped_insert'],
   }),
   createGuard({
     path: '/messages/:threadId',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: [
       'public.message_threads: participant_scoped_select',
@@ -116,19 +116,19 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/billing',
-    allowedRoles: ['admin', 'super_admin'],
+    allowedRoles: ['admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.billing_records: scoped_access'],
   }),
   createGuard({
     path: '/monitoring',
-    allowedRoles: ['admin', 'super_admin'],
+    allowedRoles: ['admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['app.get_session_metrics: admin_super_admin_execute'],
   }),
   createGuard({
     path: '/reports',
-    allowedRoles: ['admin', 'super_admin'],
+    allowedRoles: ['admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['supabase.functions.generate_report: admin_super_admin_execute'],
   }),
@@ -141,7 +141,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/settings',
-    allowedRoles: ['admin', 'super_admin'],
+    allowedRoles: ['admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: [
       'supabase.functions.admin_users: admin_super_admin_execute',
@@ -150,7 +150,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/settings/:tabId',
-    allowedRoles: ['admin', 'super_admin'],
+    allowedRoles: ['admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: [
       'supabase.functions.admin_users: admin_super_admin_execute',
@@ -159,19 +159,19 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/super-admin/feature-flags',
-    allowedRoles: ['super_admin'],
+    allowedRoles: ['bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.feature_flags: super_admin_manage'],
   }),
   createGuard({
     path: '/super-admin/impersonation',
-    allowedRoles: ['super_admin'],
+    allowedRoles: ['bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['supabase.functions.super-admin-impersonate: super_admin_execute'],
   }),
   createGuard({
     path: '/super-admin/prompts',
-    allowedRoles: ['super_admin'],
+    allowedRoles: ['bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.agent_prompt_tool_versions: admin_read'],
   }),
@@ -183,13 +183,6 @@ export const findGuardForPath = (pathname: string): RouteGuardDefinition | undef
   return guardDefinitions.find((guard) => guard.matcher.test(pathname));
 };
 
-const roleHierarchy: Record<AppRole, number> = {
-  client: 1,
-  therapist: 2,
-  admin: 3,
-  super_admin: 4,
-};
-
 export const hasRoleAccess = (pathname: string, role: AppRole): boolean => {
   const guard = findGuardForPath(pathname);
   if (!guard) {
@@ -198,11 +191,7 @@ export const hasRoleAccess = (pathname: string, role: AppRole): boolean => {
   if (guard.requiresGuardian) {
     return guard.allowedRoles.includes(role);
   }
-  if (guard.allowedRoles.includes(role)) {
-    return true;
-  }
-  const roleRank = roleHierarchy[role];
-  return guard.allowedRoles.some((allowed) => roleRank >= roleHierarchy[allowed]);
+  return guard.allowedRoles.includes(role);
 };
 
 export const requiresPermission = (pathname: string, permission: string): boolean => {

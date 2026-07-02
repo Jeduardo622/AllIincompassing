@@ -146,15 +146,15 @@ describe('Authorizations page query scope', () => {
     ]);
   });
 
-  it('uses scoped client fetch and bounded therapist fetch for therapist role', async () => {
+  it('uses scoped client fetch and bounded therapist fetch for midtier role', async () => {
     const therapistUserId = 'therapist-user-uuid';
 
     useAuthMock.mockReturnValue({
       user: null,
-      effectiveRole: 'therapist',
+      effectiveRole: 'midtier',
       profile: baseProfile({
         id: therapistUserId,
-        role: 'therapist',
+        role: 'midtier',
         organization_id: 'org-therapist-1',
       }),
     });

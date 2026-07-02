@@ -4,8 +4,8 @@ import { useAuth } from '../../lib/authContext';
 import { getDefaultOrganizationId } from '../../lib/runtimeConfig';
 
 export function OrganizationSettings() {
-  const { effectiveRole, profile } = useAuth();
-  const isSuperAdmin = effectiveRole === 'super_admin';
+  const { effectiveRole, profile, hasCapability } = useAuth();
+  const isSuperAdmin = hasCapability('accessSuperAdminTools');
   const isAdmin = effectiveRole === 'admin';
 
   const defaultOrganizationId = useMemo(() => {

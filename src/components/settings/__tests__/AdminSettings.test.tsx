@@ -44,6 +44,9 @@ const originalFrom = supabase.from.bind(supabase);
 
 let confirmSpy: ReturnType<typeof vi.spyOn> | null = null;
 
+const hasAdminCapability = vi.fn((capability: string) => capability !== 'accessSuperAdminTools');
+const hasSuperAdminCapability = vi.fn(() => true);
+
 const mockAdminUser = {
   id: 'admin-id',
   user_id: 'user-123',
@@ -103,6 +106,8 @@ describe('AdminSettings logging', () => {
       updateProfile: vi.fn(),
       hasRole: vi.fn(() => true),
       hasAnyRole: vi.fn(() => true),
+      hasCapability: hasAdminCapability,
+      hasAnyCapability: vi.fn(() => true),
       isAdmin: vi.fn(() => true),
       isSuperAdmin: vi.fn(() => false)
     } as unknown as ReturnType<typeof useAuth>;
@@ -332,6 +337,8 @@ describe('Guardian approvals', () => {
       updateProfile: vi.fn(),
       hasRole: vi.fn(() => true),
       hasAnyRole: vi.fn(() => true),
+      hasCapability: hasAdminCapability,
+      hasAnyCapability: vi.fn(() => true),
       isAdmin: vi.fn(() => true),
       isSuperAdmin: vi.fn(() => false),
     } as unknown as ReturnType<typeof useAuth>;
@@ -518,6 +525,8 @@ describe('Admin therapist links', () => {
       updateProfile: vi.fn(),
       hasRole: vi.fn(() => true),
       hasAnyRole: vi.fn(() => true),
+      hasCapability: hasAdminCapability,
+      hasAnyCapability: vi.fn(() => true),
       isAdmin: vi.fn(() => true),
       isSuperAdmin: vi.fn(() => false),
     } as unknown as ReturnType<typeof useAuth>;
@@ -737,6 +746,8 @@ describe('AdminSettings super admin access', () => {
       updateProfile: vi.fn(),
       hasRole: vi.fn(() => true),
       hasAnyRole: vi.fn(() => true),
+      hasCapability: hasSuperAdminCapability,
+      hasAnyCapability: vi.fn(() => true),
       isAdmin: vi.fn(() => false),
       isSuperAdmin: vi.fn(() => true),
     } as unknown as ReturnType<typeof useAuth>;
@@ -939,6 +950,8 @@ describe('AdminSettings accessibility', () => {
       updateProfile: vi.fn(),
       hasRole: vi.fn(() => true),
       hasAnyRole: vi.fn(() => true),
+      hasCapability: hasAdminCapability,
+      hasAnyCapability: vi.fn(() => true),
       isAdmin: vi.fn(() => true),
       isSuperAdmin: vi.fn(() => false)
     } as unknown as ReturnType<typeof useAuth>;

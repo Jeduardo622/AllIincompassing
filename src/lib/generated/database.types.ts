@@ -7052,10 +7052,14 @@ export type Database = {
     Enums: {
       role_type:
         | "client"
+        | "bt"
         | "therapist"
+        | "midtier"
+        | "admin_schedule"
         | "staff"
         | "supervisor"
         | "admin"
+        | "bcba"
         | "super_admin"
     }
     CompositeTypes: {
@@ -7192,10 +7196,14 @@ export const Constants = {
     Enums: {
       role_type: [
         "client",
+        "bt",
         "therapist",
+        "midtier",
+        "admin_schedule",
         "staff",
         "supervisor",
         "admin",
+        "bcba",
         "super_admin",
       ],
     },

@@ -9,12 +9,16 @@ const envValues = new Map<string, string>([
 
 const CANONICAL_TEST_ROLES = [
   { id: 'rid-super', name: 'super_admin' },
+  { id: 'rid-bcba', name: 'bcba' },
   { id: 'rid-admin', name: 'admin' },
+  { id: 'rid-admin-schedule', name: 'admin_schedule' },
+  { id: 'rid-midtier', name: 'midtier' },
   { id: 'rid-therapist', name: 'therapist' },
+  { id: 'rid-bt', name: 'bt' },
   { id: 'rid-client', name: 'client' },
 ] as const;
 
-type TestRole = 'client' | 'therapist' | 'admin' | 'super_admin';
+type TestRole = 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
 
 type TestUser = {
   id: string;
@@ -309,6 +313,54 @@ describe('admin-users-roles access control', () => {
       user_id: existingProfile.id,
       role_id: 'rid-super',
       granted_by: 'super-admin-2',
+      is_active: true,
+    });
+  });
+
+  it('syncs user_roles when assigning bcba', async () => {
+    rpcRoles = ['super_admin'];
+
+    const superAdminContext: TestUserContext = {
+      user: { id: 'super-admin-3', email: 'super3@example.com' },
+      profile: {
+        id: 'super-admin-profile-3',
+        email: 'super3@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    };
+
+    userContexts.set('super3', superAdminContext);
+    adminUsers.set('super-admin-3', {
+      id: 'super-admin-3',
+      email: 'super3@example.com',
+      user_metadata: { organization_id: 'org-123' },
+    });
+    adminUsers.set(existingProfile.id, {
+      id: existingProfile.id,
+      email: existingProfile.email,
+      user_metadata: { organization_id: 'org-999' },
+    });
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin/users/11111111-1111-1111-1111-111111111111/roles', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+          'x-test-user': 'super3',
+        },
+        body: JSON.stringify({ role: 'bcba' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(userRolesUpsertPayload).toMatchObject({
+      user_id: existingProfile.id,
+      role_id: 'rid-bcba',
+      granted_by: 'super-admin-3',
       is_active: true,
     });
   });

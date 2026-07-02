@@ -13,7 +13,7 @@ import {
   type PreviewServerHandle,
 } from './lib/preview-runtime';
 
-type Role = 'public' | 'client' | 'therapist' | 'admin' | 'super_admin';
+type Role = 'public' | 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
 
 type ApiCallRecord = {
   readonly url: string;
@@ -98,47 +98,47 @@ export const ROUTES: readonly RouteDefinition[] = [
   { path: '/unauthorized', component: 'Unauthorized', roles: ['public'], permissions: [] },
 
   // Protected routes
-  { path: '/', component: 'Dashboard', roles: ['client', 'therapist', 'admin', 'super_admin'], permissions: [] },
-  { path: '/schedule', component: 'Schedule', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
-  { path: '/clients', component: 'Clients', roles: ['therapist', 'admin', 'super_admin'], permissions: ['view_clients'] },
+  { path: '/', component: 'Dashboard', roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/schedule', component: 'Schedule', roles: ['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/clients', component: 'Clients', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: ['view_clients'] },
   {
     path: '/clients/:clientId',
     component: 'ClientDetails',
-    roles: ['therapist', 'admin', 'super_admin'],
+    roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     permissions: ['view_clients'],
   },
-  { path: '/clients/new', component: 'ClientOnboarding', roles: ['admin', 'super_admin'], permissions: [] },
-  { path: '/therapists', component: 'Therapists', roles: ['admin', 'super_admin'], permissions: [] },
+  { path: '/clients/new', component: 'ClientOnboarding', roles: ['admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/therapists', component: 'Therapists', roles: ['admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
   {
     path: '/therapists/:therapistId',
     component: 'TherapistDetails',
-    roles: ['therapist', 'admin', 'super_admin'],
+    roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     permissions: [],
   },
-  { path: '/therapists/new', component: 'TherapistOnboarding', roles: ['admin', 'super_admin'], permissions: [] },
-  { path: '/documentation', component: 'Documentation', roles: ['client', 'therapist', 'admin', 'super_admin'], permissions: [] },
-  { path: '/fill-docs', component: 'FillDocs', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
-  { path: '/authorizations', component: 'Authorizations', roles: ['admin', 'super_admin'], permissions: [] },
-  { path: '/messages', component: 'MessagesInbox', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
-  { path: '/messages/new', component: 'MessagesNew', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
+  { path: '/therapists/new', component: 'TherapistOnboarding', roles: ['admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/documentation', component: 'Documentation', roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/fill-docs', component: 'FillDocs', roles: ['therapist', 'midtier', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/authorizations', component: 'Authorizations', roles: ['midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/messages', component: 'MessagesInbox', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/messages/new', component: 'MessagesNew', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
   {
     path: '/messages/:threadId',
     component: 'MessageThread',
-    roles: ['therapist', 'admin', 'super_admin'],
+    roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     permissions: [],
   },
-  { path: '/billing', component: 'Billing', roles: ['admin', 'super_admin'], permissions: [] },
-  { path: '/monitoring', component: 'MonitoringDashboard', roles: ['admin', 'super_admin'], permissions: [] },
-  { path: '/reports', component: 'Reports', roles: ['admin', 'super_admin'], permissions: [] },
+  { path: '/billing', component: 'Billing', roles: ['admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/monitoring', component: 'MonitoringDashboard', roles: ['admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/reports', component: 'Reports', roles: ['admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/family', component: 'FamilyDashboard', roles: ['client'], permissions: [] },
-  { path: '/settings', component: 'Settings', roles: ['admin', 'super_admin'], permissions: [] },
-  { path: '/settings/:tabId', component: 'Settings', roles: ['admin', 'super_admin'], permissions: [] },
-  { path: '/super-admin/feature-flags', component: 'SuperAdminFeatureFlags', roles: ['super_admin'], permissions: [] },
-  { path: '/super-admin/impersonation', component: 'SuperAdminImpersonation', roles: ['super_admin'], permissions: [] },
-  { path: '/super-admin/prompts', component: 'SuperAdminPrompts', roles: ['super_admin'], permissions: [] },
+  { path: '/settings', component: 'Settings', roles: ['admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/settings/:tabId', component: 'Settings', roles: ['admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/super-admin/feature-flags', component: 'SuperAdminFeatureFlags', roles: ['bcba', 'super_admin'], permissions: [] },
+  { path: '/super-admin/impersonation', component: 'SuperAdminImpersonation', roles: ['bcba', 'super_admin'], permissions: [] },
+  { path: '/super-admin/prompts', component: 'SuperAdminPrompts', roles: ['bcba', 'super_admin'], permissions: [] },
 ];
 
-const TEST_ROLES: readonly Role[] = ['client', 'therapist', 'admin', 'super_admin'];
+const TEST_ROLES: readonly Role[] = ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'];
 
 type ApiEndpointEntry = {
   readonly type: 'table' | 'function' | 'edge_function';

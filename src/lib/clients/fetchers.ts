@@ -4,6 +4,7 @@ import { fetchLinkedClientIdsForTherapist } from './therapistClientScope';
 import type { Database } from '../generated/database.types';
 import { supabase } from '../supabase';
 import { CLIENT_DETAIL_SELECT, CLIENT_LIST_SELECT } from './select';
+import type { AppRole } from '../roles';
 
 export type ClientsSupabaseClient = SupabaseClient<Database>;
 
@@ -176,7 +177,7 @@ interface FetchClientsOptions {
   allowAll?: boolean;
 }
 
-type ClientRecordViewerRole = 'client' | 'therapist' | 'admin' | 'super_admin';
+type ClientRecordViewerRole = AppRole;
 
 interface FetchClientByIdForViewerOptions {
   readonly clientId: string;
@@ -318,7 +319,7 @@ export const fetchClientByIdForViewer = async ({
 
   const clientRef = overrideClient ?? supabase;
 
-  if (viewerRole !== 'therapist') {
+  if (viewerRole !== 'therapist' && viewerRole !== 'bt' && viewerRole !== 'midtier') {
     return fetchClientById(clientId, organizationId, clientRef);
   }
 

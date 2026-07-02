@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/authContext';
+import type { AppRole } from '../lib/roles';
 import { logger } from '../lib/logger/logger';
 import { RouteGuardPending } from './RouteGuardPending';
 
 interface RoleGuardProps {
   children: React.ReactNode;
-  roles: ('client' | 'therapist' | 'admin' | 'super_admin')[];
+  roles: AppRole[];
   fallback?: React.ReactNode;
   requireGuardian?: boolean;
 }
@@ -17,7 +18,7 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
   fallback,
   requireGuardian = false,
 }) => {
-  const { user, loading, profileLoading, hasAnyRole, profile, isGuardian, signOut } = useAuth();
+  const { user, loading, profileLoading, effectiveRole, profile, isGuardian, signOut } = useAuth();
   const location = useLocation();
   const inactiveSignOutRequestedRef = useRef(false);
 
@@ -61,12 +62,12 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
   }
 
   // Check if user has any of the required roles
-  if (!hasAnyRole(roles)) {
+  if (!roles.includes(effectiveRole)) {
     logger.warn('Route access denied', {
       context: {
         route: location.pathname,
         requiredRoles: roles,
-        userRole: profile?.role,
+        userRole: effectiveRole,
         userId: user.id,
       }
     });

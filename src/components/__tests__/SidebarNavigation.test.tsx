@@ -13,6 +13,16 @@ const mockPreloadRouteModule = vi.fn();
 const mockFetchMessageThreads = vi.fn();
 const mockFetchPendingSupervisionSessionNoteCount = vi.fn();
 
+const capabilityForRole = (role: string) => (capability: string) => {
+  const matrix: Record<string, string[]> = {
+    viewSchedule: ["therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"],
+    dataTaking: ["bt", "therapist", "midtier"],
+    viewMessages: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"],
+    staffDashboard: ["admin_schedule", "admin", "bcba", "super_admin"],
+  };
+  return matrix[capability]?.includes(role) ?? false;
+};
+
 vi.mock("../../lib/authContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
@@ -82,6 +92,8 @@ describe("Sidebar navigation active styling", () => {
       isGuardian: false,
       hasAnyRole: vi.fn(() => true),
       effectiveRole: "therapist",
+      hasCapability: vi.fn(capabilityForRole("therapist")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("therapist"))),
     });
 
     mockUseTheme.mockReturnValue({
@@ -131,13 +143,16 @@ describe("Sidebar navigation active styling", () => {
       hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
         roles.some(role => hasRole(role))
       ),
+      effectiveRole: "therapist",
+      hasCapability: vi.fn(capabilityForRole("therapist")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("therapist"))),
     });
 
     renderSidebar(["/schedule"]);
 
     expect(screen.queryByRole("link", { name: /authorizations/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /documentation/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /fill docs/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /documentation/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /fill docs/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /schedule/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /messages/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /clients/i })).toBeInTheDocument();
@@ -164,6 +179,9 @@ describe("Sidebar navigation active styling", () => {
       hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
         roles.some(role => hasRole(role))
       ),
+      effectiveRole: "super_admin",
+      hasCapability: vi.fn(capabilityForRole("super_admin")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("super_admin"))),
     });
 
     renderSidebar(["/"]);
@@ -195,6 +213,9 @@ describe("Sidebar navigation active styling", () => {
       hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
         roles.some(role => hasRole(role))
       ),
+      effectiveRole: "client",
+      hasCapability: vi.fn(capabilityForRole("client")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("client"))),
     });
 
     renderSidebar(["/"]);
@@ -261,6 +282,9 @@ describe("Sidebar navigation active styling", () => {
       hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
         roles.some(role => hasRole(role))
       ),
+      effectiveRole: "client",
+      hasCapability: vi.fn(capabilityForRole("client")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("client"))),
     });
 
     renderSidebar(["/"]);
@@ -313,6 +337,8 @@ describe("Sidebar navigation active styling", () => {
         roles.some(role => hasRole(role))
       ),
       effectiveRole: "admin",
+      hasCapability: vi.fn(capabilityForRole("admin")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("admin"))),
     });
     mockFetchPendingSupervisionSessionNoteCount.mockResolvedValueOnce(4);
 
@@ -344,6 +370,8 @@ describe("Sidebar navigation active styling", () => {
         roles.some(role => hasRole(role))
       ),
       effectiveRole: "therapist",
+      hasCapability: vi.fn(capabilityForRole("therapist")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("therapist"))),
     });
 
     renderSidebar(["/schedule"]);

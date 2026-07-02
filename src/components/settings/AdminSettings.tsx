@@ -94,7 +94,8 @@ export function AdminSettings() {
   const resetPasswordInputRef = useRef<HTMLInputElement>(null);
 
   const queryClient = useQueryClient();
-  const { user, effectiveRole } = useAuth();
+  const { user, hasCapability } = useAuth();
+  const isSuperAdmin = hasCapability('accessSuperAdminTools');
 
   const organizationId = useMemo(() => {
     const metadata = user?.user_metadata ?? {};
@@ -103,7 +104,6 @@ export function AdminSettings() {
     return snake || camel || null;
   }, [user]);
 
-  const isSuperAdmin = effectiveRole === 'super_admin';
   const canOpenAddAdminModal = isSuperAdmin || Boolean(organizationId);
 
   const activeOrganizationId = useMemo(() => {

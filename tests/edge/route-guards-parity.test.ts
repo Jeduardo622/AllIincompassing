@@ -25,7 +25,7 @@ type AppGuardExpectation = {
 const parseGuardedRoutesFromApp = (source: string): Map<string, AppGuardExpectation> => {
   const routeMap = new Map<string, AppGuardExpectation>();
   routeMap.set('/', {
-    roles: normalizeRoles(['client', 'therapist', 'admin', 'super_admin']),
+    roles: normalizeRoles(['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']),
     requiresGuardian: false,
   });
 
@@ -51,7 +51,7 @@ const parseGuardedRoutesFromApp = (source: string): Map<string, AppGuardExpectat
     const rolesMatch = snippet.match(/RoleGuard[\s\S]*?roles=\{\[([^\]]+)\]\}/);
     const roles = rolesMatch
       ? parseRoleList(rolesMatch[1])
-      : normalizeRoles(['client', 'therapist', 'admin', 'super_admin']);
+      : normalizeRoles(['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']);
     const requiresGuardian = snippet.includes('requireGuardian');
 
     routeMap.set(`/${entry.path.replace(/^\//, '')}`, { roles, requiresGuardian });

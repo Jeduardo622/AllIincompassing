@@ -14,6 +14,7 @@ vi.mock('../../lib/authContext', () => ({
     effectiveRole: 'admin',
     profileLoading: false,
     hasAnyRole: (roles: string[]) => roles.includes('admin'),
+    hasCapability: (capability: string) => capability === 'viewClients',
     isGuardian: false,
   }),
 }));

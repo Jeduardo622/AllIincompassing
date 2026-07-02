@@ -34,7 +34,7 @@ export function ClientDetails() {
   const location = useLocation();
   const initialTab = useMemo<TabType>(() => parseTabFromSearch(location.search), [location.search]);
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
-  const { profile, effectiveRole, loading: authLoading, profileLoading } = useAuth();
+  const { profile, effectiveRole, loading: authLoading, profileLoading, hasCapability } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
 
   useEffect(() => {
@@ -57,10 +57,10 @@ export function ClientDetails() {
     enabled: Boolean(clientId && activeOrganizationId),
   });
 
-  const isTherapistViewer = effectiveRole === 'therapist';
+  const isTherapistViewer = effectiveRole === 'therapist' || effectiveRole === 'bt' || effectiveRole === 'midtier';
   const isClientViewer = effectiveRole === 'client';
-  const isAuthorizationAdminViewer = effectiveRole === 'admin' || effectiveRole === 'super_admin';
-  const canViewSessionTrends = effectiveRole === 'admin' || effectiveRole === 'super_admin';
+  const isAuthorizationAdminViewer = hasCapability('viewAuthorizations');
+  const canViewSessionTrends = hasCapability('viewSessionTrends');
   const viewingOwnClientRecord = Boolean(isClientViewer && client?.id === profile?.id);
   const canViewClientRecord = Boolean(
     client &&
@@ -167,9 +167,12 @@ export function ClientDetails() {
       if (tab.id === 'session-trends') {
         return canViewSessionTrends;
       }
+      if (tab.id === 'programs-goals') {
+        return hasCapability('viewProgramsGoals');
+      }
       return true;
     }),
-    [canViewSessionTrends, isAuthorizationAdminViewer, tabs],
+    [canViewSessionTrends, hasCapability, isAuthorizationAdminViewer, tabs],
   );
 
   useEffect(() => {

@@ -11,6 +11,7 @@ vi.mock('../../../lib/authContext', async () => {
     useAuth: () => ({
       user: { id: 'user-1', user_metadata: {} },
       profile: { role: 'admin' },
+      hasCapability: () => false,
     }),
   };
 });

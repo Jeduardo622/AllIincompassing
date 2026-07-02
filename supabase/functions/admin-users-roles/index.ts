@@ -2,16 +2,29 @@ import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from ".
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
-interface RoleUpdateRequest { role: 'client' | 'therapist' | 'admin' | 'super_admin'; is_active?: boolean; }
+interface RoleUpdateRequest { role: 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin'; is_active?: boolean; }
 
 type AppRole = RoleUpdateRequest["role"];
 
-const CANONICAL_ROLE_NAMES: AppRole[] = ["super_admin", "admin", "therapist", "client"];
+const CANONICAL_ROLE_NAMES: AppRole[] = [
+  "super_admin",
+  "bcba",
+  "admin",
+  "admin_schedule",
+  "midtier",
+  "therapist",
+  "bt",
+  "client",
+];
 
 const ROLE_RANK: Record<AppRole, number> = {
-  super_admin: 4,
-  admin: 3,
-  therapist: 2,
+  super_admin: 8,
+  bcba: 8,
+  admin: 7,
+  admin_schedule: 6,
+  midtier: 5,
+  therapist: 4,
+  bt: 3,
   client: 1,
 };
 
@@ -119,13 +132,17 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     if (!uuidRegex.test(userId)) return new Response(JSON.stringify({ error: 'Invalid user ID format' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const { role, is_active }: RoleUpdateRequest = await req.json();
-    const validRoles = ['client', 'therapist', 'admin', 'super_admin'];
+    const validRoles = CANONICAL_ROLE_NAMES;
     if (!role || !validRoles.includes(role)) return new Response(JSON.stringify({ error: 'Valid role is required', validRoles }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const { data: existingUser } = await adminClient.from('profiles').select('id, email, role, is_active').eq('id', userId).single();
     if (!existingUser) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    if (userId === userContext.user.id && userContext.profile.role === 'super_admin' && role !== 'super_admin') return new Response(JSON.stringify({ error: 'Cannot demote yourself from super_admin role' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (
+      userId === userContext.user.id
+      && (userContext.profile.role === 'super_admin' || userContext.profile.role === 'bcba')
+      && role !== userContext.profile.role
+    ) return new Response(JSON.stringify({ error: `Cannot demote yourself from ${userContext.profile.role} role` }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     if (userId === userContext.user.id && is_active === false) return new Response(JSON.stringify({ error: 'Cannot deactivate your own account' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const updateData: any = { role }; if (is_active !== undefined) updateData.is_active = is_active;

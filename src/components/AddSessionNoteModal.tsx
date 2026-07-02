@@ -88,8 +88,8 @@ export function AddSessionNoteModal({
   isSaving = false,
   existingNote = null,
 }: AddSessionNoteModalProps) {
-  const { profile } = useAuth();
-  const canLockSessionNotes = profile?.role === 'admin' || profile?.role === 'super_admin';
+  const { hasCapability } = useAuth();
+  const canLockSessionNotes = hasCapability('lockSessionNotes');
   const organizationId = useActiveOrganizationId();
   const isMinWidthSm = useMinWidthSm();
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);

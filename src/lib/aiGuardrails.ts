@@ -1,6 +1,7 @@
 import { logger } from './logger/logger';
+import { APP_ROLES, ROLE_RANK, roleHasCapability, type AppRole } from './roles';
 
-export type AssistantRole = 'client' | 'therapist' | 'admin' | 'super_admin';
+export type AssistantRole = AppRole;
 
 export type AssistantTool =
   | 'schedule_session'
@@ -55,10 +56,12 @@ export class AssistantGuardrailError extends Error {
 const MAX_MESSAGE_LENGTH = 4000;
 const CONTROL_CHARACTERS = /[\p{C}]/gu;
 
-const ROLE_ORDER: AssistantRole[] = ['client', 'therapist', 'admin', 'super_admin'];
-
 const ROLE_BASE_TOOLS: Record<AssistantRole, AssistantTool[]> = {
   client: [],
+  bt: [
+    'start_session',
+    'get_monthly_session_count',
+  ],
   therapist: [
     'schedule_session',
     'cancel_sessions',
@@ -67,7 +70,30 @@ const ROLE_BASE_TOOLS: Record<AssistantRole, AssistantTool[]> = {
     'suggest_optimal_times',
     'get_monthly_session_count',
   ],
+  midtier: [
+    'schedule_session',
+    'cancel_sessions',
+    'start_session',
+    'predict_conflicts',
+    'suggest_optimal_times',
+    'get_monthly_session_count',
+  ],
+  admin_schedule: [
+    'schedule_session',
+    'cancel_sessions',
+    'predict_conflicts',
+    'suggest_optimal_times',
+    'get_monthly_session_count',
+  ],
   admin: [
+    'schedule_session',
+    'cancel_sessions',
+    'start_session',
+    'predict_conflicts',
+    'suggest_optimal_times',
+    'get_monthly_session_count',
+  ],
+  bcba: [
     'schedule_session',
     'cancel_sessions',
     'start_session',
@@ -155,20 +181,25 @@ export const getRoleAllowedTools = (role: AssistantRole): AssistantTool[] => {
     return roleToolCache.get(role) ?? [];
   }
 
-  const roleIndex = ROLE_ORDER.indexOf(role);
-  if (roleIndex === -1) {
+  if (!APP_ROLES.includes(role)) {
     roleToolCache.set(role, []);
     return [];
   }
 
   const allowed = new Set<AssistantTool>();
-  for (let index = 0; index <= roleIndex; index += 1) {
-    const inheritedRole = ROLE_ORDER[index];
+  const inheritedRoles = APP_ROLES.filter((candidateRole) => ROLE_RANK[candidateRole] <= ROLE_RANK[role]);
+  for (const inheritedRole of inheritedRoles) {
     const tools = ROLE_BASE_TOOLS[inheritedRole] ?? [];
     tools.forEach((tool) => allowed.add(tool));
   }
+  if (!roleHasCapability(role, 'viewSchedule')) {
+    allowed.delete('schedule_session');
+    allowed.delete('cancel_sessions');
+    allowed.delete('predict_conflicts');
+    allowed.delete('suggest_optimal_times');
+  }
 
-  const result = Array.from(allowed.values());
+  const result = (ROLE_BASE_TOOLS[role] ?? []).filter((tool) => allowed.has(tool));
   roleToolCache.set(role, result);
   return result;
 };

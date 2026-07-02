@@ -34,7 +34,7 @@ const parseAppRouteRoles = (source: string): Map<string, string[]> => {
   routeMap.set('/signup', ['public']);
   routeMap.set('/auth/recovery', ['public']);
   routeMap.set('/unauthorized', ['public']);
-  routeMap.set('/', normalizeRoles(['client', 'therapist', 'admin', 'super_admin']));
+  routeMap.set('/', normalizeRoles(['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']));
 
   const routeEntries: Array<{ readonly index: number; readonly path: string }> = [];
   const routePathRegex = /<Route\b[\s\S]*?path="([^"]+)"/g;
@@ -59,7 +59,7 @@ const parseAppRouteRoles = (source: string): Map<string, string[]> => {
     const rolesMatch = snippet.match(/RoleGuard[\s\S]*?roles=\{\[([^\]]+)\]\}/);
     const roles = rolesMatch
       ? parseRoleList(rolesMatch[1])
-      : normalizeRoles(['client', 'therapist', 'admin', 'super_admin']);
+      : normalizeRoles(['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']);
 
     routeMap.set(`/${entry.path.replace(/^\//, '')}`, roles);
   }

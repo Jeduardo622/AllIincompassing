@@ -48,11 +48,12 @@ const Clients = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [archivedFilter, setArchivedFilter] = useState<'all' | 'active' | 'archived'>('active');
   const queryClient = useQueryClient();
-  const { isSuperAdmin, profile, effectiveRole } = useAuth();
+  const { isSuperAdmin, profile, effectiveRole, hasCapability } = useAuth();
   const navigate = useNavigate();
   const activeOrganizationId = useActiveOrganizationId();
   const isSuperAdminUser = isSuperAdmin();
-  const isTherapistViewer = effectiveRole === 'therapist';
+  const isTherapistViewer = effectiveRole === 'bt' || effectiveRole === 'therapist' || effectiveRole === 'midtier';
+  const canManageClients = hasCapability('manageClients');
   const resolvedOrganizationId = activeOrganizationId ?? null;
   const loadAllClients = isSuperAdminUser && !resolvedOrganizationId;
 
@@ -387,7 +388,7 @@ const Clients = () => {
       )}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Clients</h1>
-        {!isTherapistViewer ? (
+        {canManageClients ? (
           <div className="flex space-x-3">
             <button
               onClick={() => setIsImportModalOpen(true)}
@@ -645,7 +646,7 @@ const Clients = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">
-                        {client.deleted_at ? (
+                        {canManageClients && client.deleted_at ? (
                           <button
                             onClick={() => handleRestoreClient(client)}
                             className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
@@ -655,7 +656,7 @@ const Clients = () => {
                           >
                             <ArchiveRestore aria-hidden="true" className="w-4 h-4" />
                           </button>
-                        ) : (
+                        ) : canManageClients ? (
                           <button
                             onClick={() => handleArchiveClient(client)}
                             className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
@@ -665,7 +666,7 @@ const Clients = () => {
                           >
                             <Archive aria-hidden="true" className="w-4 h-4" />
                           </button>
-                        )}
+                        ) : null}
                         {isSuperAdmin() && (
                           <button
                             onClick={() => handleDeleteClient(client)}

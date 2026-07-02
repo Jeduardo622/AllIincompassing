@@ -65,7 +65,7 @@ const createFixture = (
     root,
     "cypress/support/routeScenarios.ts",
     [
-      'roles: ["therapist", "admin", "super_admin"]',
+      'roles: ["therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"]',
       'cy.intercept("GET", "**/api/runtime-config").as("runtimeConfig");',
       'cy.wait("@runtimeConfig");',
     ].join("\n"),

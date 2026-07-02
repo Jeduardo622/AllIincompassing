@@ -80,7 +80,7 @@ const LoadingSpinner = () => (
 );
 
 const DashboardLanding: React.FC = () => {
-  const { user, profile, loading, profileLoading, isGuardian, effectiveRole } = useAuth();
+  const { user, profile, loading, profileLoading, isGuardian, effectiveRole, hasCapability } = useAuth();
 
   if (loading || (user && profileLoading && !profile)) {
     return (
@@ -100,7 +100,7 @@ const DashboardLanding: React.FC = () => {
     return <Dashboard />;
   }
 
-  if (effectiveRole === 'therapist') {
+  if (hasCapability('viewSchedule')) {
     return <Navigate to="/schedule" replace />;
   }
 
@@ -173,49 +173,49 @@ function App() {
 
                     {/* Schedule - accessible to therapists and above */}
                     <Route path="schedule" element={
-                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                      <RoleGuard roles={['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <Schedule />
                       </RoleGuard>
                     } />
 
                     {/* Clients - accessible to therapists and above */}
                     <Route path="clients" element={
-                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                      <RoleGuard roles={['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <Clients />
                       </RoleGuard>
                     } />
                     
                     {/* Client Onboarding - admin and super_admin only */}
                     <Route path="clients/new" element={
-                      <RoleGuard roles={['admin', 'super_admin']}>
+                      <RoleGuard roles={['admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <ClientOnboardingPage />
                       </RoleGuard>
                     } />
 
                     {/* Client Details - accessible to therapists and above */}
                     <Route path="clients/:clientId" element={
-                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                      <RoleGuard roles={['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <ClientDetails />
                       </RoleGuard>
                     } />
 
                     {/* Therapists - admin and super_admin only */}
                     <Route path="therapists" element={
-                      <RoleGuard roles={['admin', 'super_admin']}>
+                      <RoleGuard roles={['admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <Therapists />
                       </RoleGuard>
                     } />
 
                     {/* Therapist Details - accessible to admins and the therapist themselves */}
                     <Route path="therapists/:therapistId" element={
-                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                      <RoleGuard roles={['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <TherapistDetails />
                       </RoleGuard>
                     } />
 
                     {/* Therapist Onboarding - admin and super_admin only */}
                     <Route path="therapists/new" element={
-                      <RoleGuard roles={['admin', 'super_admin']}>
+                      <RoleGuard roles={['admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <TherapistOnboardingPage />
                       </RoleGuard>
                     } />
@@ -227,7 +227,7 @@ function App() {
                     <Route
                       path="fill-docs"
                       element={(
-                        <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <RoleGuard roles={['therapist', 'midtier', 'admin', 'bcba', 'super_admin']}>
                           <FillDocs />
                         </RoleGuard>
                       )}
@@ -235,7 +235,7 @@ function App() {
 
                     {/* Authorizations - accessible to admins and above */}
                     <Route path="authorizations" element={
-                      <RoleGuard roles={['admin', 'super_admin']}>
+                      <RoleGuard roles={['midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <Authorizations />
                       </RoleGuard>
                     } />
@@ -244,7 +244,7 @@ function App() {
                     <Route
                       path="messages"
                       element={(
-                        <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <RoleGuard roles={['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                           <MessagesInbox />
                         </RoleGuard>
                       )}
@@ -252,7 +252,7 @@ function App() {
                     <Route
                       path="messages/new"
                       element={(
-                        <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <RoleGuard roles={['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                           <MessagesNew />
                         </RoleGuard>
                       )}
@@ -260,7 +260,7 @@ function App() {
                     <Route
                       path="messages/:threadId"
                       element={(
-                        <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <RoleGuard roles={['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                           <MessageThread />
                         </RoleGuard>
                       )}
@@ -268,14 +268,14 @@ function App() {
 
                     {/* Billing - admin and super_admin only */}
                     <Route path="billing" element={
-                      <RoleGuard roles={['admin', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'bcba', 'super_admin']}>
                         <Billing />
                       </RoleGuard>
                     } />
 
                     {/* Monitoring Dashboard - admin and super_admin only */}
                     <Route path="monitoring" element={
-                      <RoleGuard roles={['admin', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'bcba', 'super_admin']}>
                         <MonitoringDashboard />
                       </RoleGuard>
                     } />
@@ -286,7 +286,7 @@ function App() {
                     
                     {/* Reports - admin and super_admin only */}
                     <Route path="reports" element={
-                      <RoleGuard roles={['admin', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'bcba', 'super_admin']}>
                         <Reports />
                       </RoleGuard>
                     } />
@@ -303,12 +303,12 @@ function App() {
 
                     {/* Settings - admin and super_admin only */}
                     <Route path="settings" element={
-                      <RoleGuard roles={['admin', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'bcba', 'super_admin']}>
                         <Settings />
                       </RoleGuard>
                     } />
                     <Route path="settings/:tabId" element={
-                      <RoleGuard roles={['admin', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'bcba', 'super_admin']}>
                         <Settings />
                       </RoleGuard>
                     } />
@@ -317,7 +317,7 @@ function App() {
                     <Route
                       path="super-admin/feature-flags"
                       element={
-                        <RoleGuard roles={['super_admin']}>
+                        <RoleGuard roles={['bcba', 'super_admin']}>
                           <SuperAdminFeatureFlags />
                         </RoleGuard>
                       }
@@ -325,7 +325,7 @@ function App() {
                     <Route
                       path="super-admin/impersonation"
                       element={
-                        <RoleGuard roles={['super_admin']}>
+                        <RoleGuard roles={['bcba', 'super_admin']}>
                           <SuperAdminImpersonation />
                         </RoleGuard>
                       }
@@ -333,7 +333,7 @@ function App() {
                     <Route
                       path="super-admin/prompts"
                       element={
-                        <RoleGuard roles={['super_admin']}>
+                        <RoleGuard roles={['bcba', 'super_admin']}>
                           <SuperAdminPrompts />
                         </RoleGuard>
                       }

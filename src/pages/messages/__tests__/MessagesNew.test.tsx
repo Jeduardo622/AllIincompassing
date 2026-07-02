@@ -12,6 +12,7 @@ vi.mock('../../../lib/authContext', () => ({
   useAuth: () => ({
     profile: { id: 'user-1' },
     effectiveRole: 'therapist',
+    hasCapability: () => false,
   }),
 }));
 

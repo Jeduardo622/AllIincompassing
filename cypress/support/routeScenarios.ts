@@ -1,6 +1,6 @@
 /// <reference types="cypress" />
 
-export type AppRole = "client" | "therapist" | "admin" | "super_admin";
+export type AppRole = "client" | "bt" | "therapist" | "midtier" | "admin_schedule" | "admin" | "bcba" | "super_admin";
 export type RouteScenario = {
   path: string;
   roles: readonly (AppRole | "public")[];
@@ -14,7 +14,16 @@ export const roleEmail = (role: AppRole): string => (
   role === "super_admin" ? "superadmin@test.com" : `${role}@test.com`
 );
 
-export const roles: readonly AppRole[] = ["client", "therapist", "admin", "super_admin"];
+export const roles: readonly AppRole[] = [
+  "client",
+  "bt",
+  "therapist",
+  "midtier",
+  "admin_schedule",
+  "admin",
+  "bcba",
+  "super_admin",
+];
 
 export const routeGroups = {
   public: [
@@ -28,45 +37,45 @@ export const routeGroups = {
     { path: "/unauthorized", roles: ["public"] },
   ],
   client: [
-    { path: "/", roles: ["client", "therapist", "admin", "super_admin"] },
-    { path: "/clients", roles: ["therapist", "admin", "super_admin"] },
-    { path: "/clients/client-1", roles: ["therapist", "admin", "super_admin"] },
-    { path: "/documentation", roles: ["client", "therapist", "admin", "super_admin"] },
-    { path: "/authorizations", roles: ["admin", "super_admin"] },
+    { path: "/", roles: ["client", "bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/clients", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/clients/client-1", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/documentation", roles: ["client", "bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/authorizations", roles: ["midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/family", roles: [] },
   ],
   schedule: [
-    { path: "/schedule", roles: ["therapist", "admin", "super_admin"] },
+    { path: "/schedule", roles: ["therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
   ],
   messages: [
-    { path: "/messages", roles: ["therapist", "admin", "super_admin"] },
-    { path: "/messages/new", roles: ["therapist", "admin", "super_admin"] },
-    { path: "/messages/thread-1", roles: ["therapist", "admin", "super_admin"] },
+    { path: "/messages", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/messages/new", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/messages/thread-1", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
   ],
   admin: [
-    { path: "/therapists", roles: ["admin", "super_admin"] },
-    { path: "/therapists/therapist-1", roles: ["therapist", "admin", "super_admin"] },
-    { path: "/therapists/new", roles: ["admin", "super_admin"] },
-    { path: "/billing", roles: ["admin", "super_admin"] },
-    { path: "/monitoring", roles: ["admin", "super_admin"] },
-    { path: "/monitoringdashboard", roles: ["admin", "super_admin"], expectedPath: "/monitoring" },
-    { path: "/reports", roles: ["admin", "super_admin"] },
-    { path: "/settings", roles: ["admin", "super_admin"] },
+    { path: "/therapists", roles: ["admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/therapists/therapist-1", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/therapists/new", roles: ["admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/billing", roles: ["admin", "bcba", "super_admin"] },
+    { path: "/monitoring", roles: ["admin", "bcba", "super_admin"] },
+    { path: "/monitoringdashboard", roles: ["admin", "bcba", "super_admin"], expectedPath: "/monitoring" },
+    { path: "/reports", roles: ["admin", "bcba", "super_admin"] },
+    { path: "/settings", roles: ["admin", "bcba", "super_admin"] },
     {
       path: "/settings/feature-flags",
-      roles: ["admin", "super_admin"],
-      expectedPathByRole: { admin: "/settings", super_admin: "/settings/feature-flags" },
+      roles: ["admin", "bcba", "super_admin"],
+      expectedPathByRole: { admin: "/settings", bcba: "/settings/feature-flags", super_admin: "/settings/feature-flags" },
     },
     {
       path: "/settings/impersonation",
-      roles: ["admin", "super_admin"],
-      expectedPathByRole: { admin: "/settings", super_admin: "/settings/impersonation" },
+      roles: ["admin", "bcba", "super_admin"],
+      expectedPathByRole: { admin: "/settings", bcba: "/settings/impersonation", super_admin: "/settings/impersonation" },
     },
-    { path: "/superadminfeatureflags", roles: ["admin", "super_admin"], expectedPath: "/settings" },
-    { path: "/superadminimpersonation", roles: ["admin", "super_admin"], expectedPath: "/settings" },
-    { path: "/super-admin/feature-flags", roles: ["super_admin"] },
-    { path: "/super-admin/impersonation", roles: ["super_admin"] },
-    { path: "/super-admin/prompts", roles: ["super_admin"] },
+    { path: "/superadminfeatureflags", roles: ["admin", "bcba", "super_admin"], expectedPath: "/settings" },
+    { path: "/superadminimpersonation", roles: ["admin", "bcba", "super_admin"], expectedPath: "/settings" },
+    { path: "/super-admin/feature-flags", roles: ["bcba", "super_admin"] },
+    { path: "/super-admin/impersonation", roles: ["bcba", "super_admin"] },
+    { path: "/super-admin/prompts", roles: ["bcba", "super_admin"] },
   ],
 } satisfies Record<string, readonly RouteScenario[]>;
 

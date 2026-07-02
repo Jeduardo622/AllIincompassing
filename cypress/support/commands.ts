@@ -19,9 +19,23 @@ declare global {
 }
 
 // Custom login command for route testing
-const roleFromEmail = (email: string): 'client' | 'therapist' | 'admin' | 'super_admin' => {
+type AppRole = 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
+
+const roleFromEmail = (email: string): AppRole => {
   if (email.includes('superadmin')) {
     return 'super_admin';
+  }
+  if (email.includes('admin_schedule')) {
+    return 'admin_schedule';
+  }
+  if (email.includes('midtier')) {
+    return 'midtier';
+  }
+  if (email.includes('bcba')) {
+    return 'bcba';
+  }
+  if (email.includes('bt')) {
+    return 'bt';
   }
   if (email.includes('therapist')) {
     return 'therapist';
@@ -32,7 +46,7 @@ const roleFromEmail = (email: string): 'client' | 'therapist' | 'admin' | 'super
   return 'client';
 };
 
-const buildSupabaseUser = (params: { id: string; email: string; role: 'client' | 'therapist' | 'admin' | 'super_admin'; nowIso: string }) => {
+const buildSupabaseUser = (params: { id: string; email: string; role: AppRole; nowIso: string }) => {
   const { id, email, role, nowIso } = params;
 
   return {

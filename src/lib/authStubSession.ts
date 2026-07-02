@@ -1,11 +1,12 @@
 import type { Session, User } from '@supabase/supabase-js';
 import type { UserProfile } from './authContext';
+import { APP_ROLES, normalizeRole, type AppRole } from './roles';
 
 export const STUB_AUTH_STORAGE_KEY = 'auth-storage';
 
-type Role = 'client' | 'therapist' | 'admin' | 'super_admin';
+type Role = AppRole;
 
-const VALID_ROLES = new Set<Role>(['client', 'therapist', 'admin', 'super_admin']);
+const VALID_ROLES = new Set<Role>(APP_ROLES);
 
 type StubPayload = {
   readonly user?: {
@@ -146,10 +147,11 @@ export interface StubAuthState {
 
 const normaliseRole = (payload: StubPayload): Role | null => {
   const role = toOptionalString(payload.user?.role) ?? toOptionalString(payload.role);
-  if (!role || !VALID_ROLES.has(role as Role)) {
+  const normalizedRole = normalizeRole(role);
+  if (!normalizedRole || !VALID_ROLES.has(normalizedRole)) {
     return null;
   }
-  return role as Role;
+  return normalizedRole;
 };
 
 const normaliseStubPayload = (payload: StubPayload, now: number): StubAuthState | null => {

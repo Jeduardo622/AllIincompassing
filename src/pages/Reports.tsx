@@ -140,9 +140,9 @@ const ReportMetrics = React.memo(({
 ReportMetrics.displayName = 'ReportMetrics';
 
 const Reports = React.memo(() => {
-  const { hasAnyRole, effectiveRole } = useAuth();
+  const { hasCapability, effectiveRole } = useAuth();
   const [reportType, setReportType] = useState<ReportType>('sessions');
-  const canExportReports = hasAnyRole(['therapist', 'admin', 'super_admin']);
+  const canExportReports = hasCapability('viewReports');
 
   const [filters, setFilters] = useState<ReportFilters>({
     dateRange: 'current_month',

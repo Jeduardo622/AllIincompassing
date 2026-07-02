@@ -17,6 +17,7 @@ import {
 } from '../lib/supervision-session-notes';
 import { useTheme } from '../lib/theme';
 import { preloadRouteModule } from '../lib/routeModulePrefetch';
+import type { AppRole } from '../lib/roles';
 // Theme is toggled directly via context; no hidden proxy button
 import { logger } from '../lib/logger/logger';
 
@@ -35,7 +36,7 @@ const ChatAssistantFallback = () => (
 );
 
 export function Sidebar() {
-  const { signOut, hasRole, hasAnyRole, user, profile, isGuardian, effectiveRole } = useAuth();
+  const { signOut, hasRole, user, profile, isGuardian, effectiveRole, hasCapability } = useAuth();
   const organizationId = useActiveOrganizationId();
   const { isDark, toggleTheme } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -107,91 +108,91 @@ export function Sidebar() {
       icon: UserCircle2,
       label: 'Family',
       path: '/family',
-      roles: ['client'],
+      roles: ['client'] as AppRole[],
       requiresGuardian: true,
     },
     {
       icon: LayoutDashboard,
       label: 'Dashboard',
       path: '/',
-      roles: ['admin', 'super_admin'],
+      roles: ['admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     { 
       icon: Calendar, 
       label: 'Schedule', 
       path: '/schedule',
-      roles: ['therapist', 'admin', 'super_admin'],
+      roles: ['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: Mail,
       label: 'Messages',
       path: '/messages',
-      roles: ['therapist', 'admin', 'super_admin'],
+      roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: Users,
       label: 'Clients',
       path: '/clients',
-      roles: ['therapist', 'admin', 'super_admin'],
+      roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: UserCog,
       label: 'Therapists',
       path: '/therapists',
-      roles: ['admin', 'super_admin'],
+      roles: ['admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: FileCheck,
       label: 'Authorizations',
       path: '/authorizations',
-      roles: ['admin', 'super_admin'],
+      roles: ['midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     { 
       icon: FileText, 
       label: 'Documentation', 
       path: '/documentation',
-      roles: ['client', 'admin', 'super_admin'], // therapist view excludes docs navigation
+      roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: FileText,
       label: 'Fill Docs',
       path: '/fill-docs',
-      roles: ['admin', 'super_admin'],
+      roles: ['therapist', 'midtier', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: CreditCard,
       label: 'Billing',
       path: '/billing',
-      roles: ['admin', 'super_admin'],
+      roles: ['admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: BarChart,
       label: 'Reports',
       path: '/reports',
-      roles: ['admin', 'super_admin'],
+      roles: ['admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: Activity,
       label: 'Monitoring',
       path: '/monitoring',
-      roles: ['admin', 'super_admin'],
+      roles: ['admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: Settings,
       label: 'Settings',
       path: '/settings',
-      roles: ['admin', 'super_admin'],
+      roles: ['admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
   ];
@@ -214,13 +215,9 @@ export function Sidebar() {
     </button>
   );
 
-  const canAccessChatAssistant = hasAnyRole([
-    'therapist',
-    'admin',
-    'super_admin'
-  ]);
-  const canAccessMessages = hasAnyRole(['therapist', 'admin', 'super_admin']);
-  const canViewSupervisionNotifications = hasAnyRole(['admin', 'super_admin']);
+  const canAccessChatAssistant = hasCapability('viewSchedule') || hasCapability('dataTaking');
+  const canAccessMessages = hasCapability('viewMessages');
+  const canViewSupervisionNotifications = hasCapability('staffDashboard');
 
   const { data: unreadMessagesData } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],
@@ -324,7 +321,7 @@ export function Sidebar() {
               return null;
             }
             // Skip if roles are specified and user doesn't have any of them
-            if (roles.length > 0 && !roles.some(role => hasRole(role as 'client' | 'therapist' | 'admin' | 'super_admin'))) {
+            if (roles.length > 0 && !roles.includes(effectiveRole)) {
               return null;
             }
 

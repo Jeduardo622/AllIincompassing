@@ -9,6 +9,7 @@ type MockAuthValue = {
   readonly loading: boolean;
   readonly profileLoading?: boolean;
   readonly profile?: unknown;
+  readonly effectiveRole?: 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
   readonly isGuardian?: boolean;
   readonly signOut?: () => Promise<void> | void;
   readonly hasAnyRole?: (roles: readonly string[]) => boolean;
@@ -61,6 +62,7 @@ describe('RoleGuard route guard behaviour', () => {
       loading: false,
       profileLoading: false,
       profile: { role: 'client' },
+      effectiveRole: 'client',
       hasAnyRole: vi.fn().mockReturnValue(false),
     });
 
@@ -75,6 +77,7 @@ describe('RoleGuard route guard behaviour', () => {
       loading: false,
       profileLoading: false,
       profile: { role: 'admin' },
+      effectiveRole: 'admin',
       hasAnyRole: vi.fn().mockReturnValue(true),
     });
 
@@ -89,6 +92,7 @@ describe('RoleGuard route guard behaviour', () => {
       loading: false,
       profileLoading: true,
       profile: null,
+      effectiveRole: 'client',
       hasAnyRole: vi.fn().mockReturnValue(false),
     });
 
@@ -105,6 +109,7 @@ describe('RoleGuard route guard behaviour', () => {
       loading: false,
       profileLoading: false,
       profile: { role: 'client', is_active: true },
+      effectiveRole: 'client',
       isGuardian: false,
       signOut: vi.fn(),
       hasAnyRole: vi.fn().mockReturnValue(true),
@@ -136,6 +141,7 @@ describe('RoleGuard route guard behaviour', () => {
       loading: false,
       profileLoading: false,
       profile: { role: 'admin', is_active: false },
+      effectiveRole: 'admin',
       isGuardian: false,
       signOut,
       hasAnyRole: vi.fn().mockReturnValue(true),

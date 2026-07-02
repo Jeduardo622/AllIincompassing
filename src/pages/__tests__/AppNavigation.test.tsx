@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from '../../App';
 
 type TestRole = 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
-type TestCapability = 'staffDashboard' | 'viewSchedule';
+type TestCapability = 'staffDashboard' | 'viewClients' | 'viewSchedule';
 
 let authRole: TestRole = 'client';
 let authIsGuardian = false;
@@ -27,6 +27,7 @@ vi.mock('../../lib/authContext', () => {
   const signOut = vi.fn();
   const capabilityRoles: Record<TestCapability, TestRole[]> = {
     staffDashboard: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
+    viewClients: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     viewSchedule: ['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
   };
   return {
@@ -171,12 +172,34 @@ describe('App navigation landing', () => {
     });
   });
 
-  it('keeps admins on the dashboard', async () => {
-    authRole = 'admin';
+  it('redirects midtier users to schedule from dashboard landing', async () => {
+    authRole = 'midtier';
     window.history.pushState({}, '', '/');
     renderApp();
 
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/schedule');
+    });
+  });
+
+  it('redirects BT users to clients from dashboard landing', async () => {
+    authRole = 'bt';
+    window.history.pushState({}, '', '/');
+    renderApp();
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/clients');
+    });
+  });
+
+  it.each(['admin_schedule', 'admin', 'bcba', 'super_admin'] as const)('keeps %s on the dashboard', async (role) => {
+    authRole = role;
+    window.history.pushState({}, '', '/');
+    const view = renderApp();
+
     expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+    view.unmount();
   });
 
   it('does not log raw search/hash in route telemetry', async () => {
@@ -284,16 +307,18 @@ describe('App navigation landing', () => {
     ['/super-admin/feature-flags', 'SuperAdminFeatureFlagsPage'],
     ['/super-admin/impersonation', 'SuperAdminImpersonationPage'],
     ['/super-admin/prompts', 'SuperAdminPromptsPage'],
-  ])('allows only super admins to render %s', async (path, pageText) => {
-    authRole = 'super_admin';
-    window.history.pushState({}, '', path);
-    const allowedView = renderApp();
+  ])('allows BCBA and super admins to render %s', async (path, pageText) => {
+    for (const allowedRole of ['bcba', 'super_admin'] as const) {
+      authRole = allowedRole;
+      window.history.pushState({}, '', path);
+      const allowedView = renderApp();
 
-    expect(await screen.findByText(pageText)).toBeInTheDocument();
-    expect(window.location.pathname).toBe(path);
-    allowedView.unmount();
+      expect(await screen.findByText(pageText)).toBeInTheDocument();
+      expect(window.location.pathname).toBe(path);
+      allowedView.unmount();
+    }
 
-    for (const blockedRole of ['client', 'therapist', 'admin'] as const) {
+    for (const blockedRole of ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin'] as const) {
       authRole = blockedRole;
       window.history.pushState({}, '', path);
       const blockedView = renderApp();

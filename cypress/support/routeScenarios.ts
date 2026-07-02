@@ -37,7 +37,20 @@ export const routeGroups = {
     { path: "/unauthorized", roles: ["public"] },
   ],
   client: [
-    { path: "/", roles: ["client", "bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    {
+      path: "/",
+      roles: ["client", "bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"],
+      expectedPathByRole: {
+        client: "/documentation",
+        bt: "/clients",
+        therapist: "/schedule",
+        midtier: "/schedule",
+        admin_schedule: "/",
+        admin: "/",
+        bcba: "/",
+        super_admin: "/",
+      },
+    },
     { path: "/clients", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/clients/client-1", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/documentation", roles: ["client", "bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },

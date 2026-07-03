@@ -23,11 +23,13 @@ describe("goal targets and trial events migration", () => {
     expect(sql).toMatch(
       /create index if not exists sessions_appointment_id_idx[\s\S]*on public\.sessions \(appointment_id\)[\s\S]*where appointment_id is not null/,
     );
+    expect(sql).toContain("v_has_appointment_id := (p_session ? 'appointment_id') or (p_session ? 'appointmentId')");
+    expect(sql).toContain("v_has_metadata := p_session ? 'metadata'");
     expect(sql).toMatch(/v_appointment_id := coalesce\(nullif\(p_session->>'appointment_id', ''\)::uuid, nullif\(p_session->>'appointmentId', ''\)::uuid\)/);
-    expect(sql).toContain("v_metadata := coalesce(p_session->'metadata', '{}'::jsonb)");
+    expect(sql).toMatch(/v_metadata := case[\s\S]*when v_has_metadata then p_session->'metadata'[\s\S]*else '\{\}'::jsonb[\s\S]*end/);
     expect(sql).toContain("return jsonb_build_object('success', false, 'error_code', 'INVALID_METADATA'");
     expect(sql).toMatch(/insert into public\.sessions \([\s\S]*appointment_id[\s\S]*metadata[\s\S]*\)[\s\S]*values \([\s\S]*v_appointment_id[\s\S]*v_metadata/s);
-    expect(sql).toMatch(/update public\.sessions[\s\S]*appointment_id = v_appointment_id[\s\S]*metadata = v_metadata/s);
+    expect(sql).toMatch(/update public\.sessions[\s\S]*appointment_id = case when v_has_appointment_id then v_appointment_id else appointment_id end[\s\S]*metadata = case when v_has_metadata then v_metadata else metadata end/s);
   });
 
   it("creates normalized target and trial-event tables with tenant scope", () => {

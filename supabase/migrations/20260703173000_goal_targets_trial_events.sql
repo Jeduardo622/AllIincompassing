@@ -55,6 +55,8 @@ declare
   v_duration integer;
   v_expected_total numeric;
   v_metadata jsonb;
+  v_has_appointment_id boolean;
+  v_has_metadata boolean;
   v_cpt_increment constant integer := 15;
   v_org uuid;
 begin
@@ -74,6 +76,8 @@ begin
   v_org := v_hold.organization_id;
 
   v_session_id := nullif(p_session->>'id', '')::uuid;
+  v_has_appointment_id := (p_session ? 'appointment_id') or (p_session ? 'appointmentId');
+  v_has_metadata := p_session ? 'metadata';
   v_appointment_id := coalesce(nullif(p_session->>'appointment_id', '')::uuid, nullif(p_session->>'appointmentId', '')::uuid);
   v_therapist_id := nullif(p_session->>'therapist_id', '')::uuid;
   v_client_id := nullif(p_session->>'client_id', '')::uuid;
@@ -87,13 +91,16 @@ begin
   v_session_type := nullif(p_session->>'session_type', '');
   v_rate := nullif(p_session->>'rate_per_hour', '')::numeric;
   v_total := nullif(p_session->>'total_cost', '')::numeric;
-  v_metadata := coalesce(p_session->'metadata', '{}'::jsonb);
+  v_metadata := case
+    when v_has_metadata then p_session->'metadata'
+    else '{}'::jsonb
+  end;
   v_raw_duration := coalesce(
     nullif(p_session->>'duration_minutes', '')::numeric,
     (extract(epoch from (v_end - v_start)) / 60)::numeric
   );
 
-  if jsonb_typeof(v_metadata) <> 'object' then
+  if v_has_metadata and jsonb_typeof(v_metadata) <> 'object' then
     delete from public.session_holds where id = v_hold.id;
     return jsonb_build_object('success', false, 'error_code', 'INVALID_METADATA', 'error_message', 'Session metadata must be a JSON object.');
   end if;
@@ -232,7 +239,7 @@ begin
   else
     update public.sessions
     set
-      appointment_id = v_appointment_id,
+      appointment_id = case when v_has_appointment_id then v_appointment_id else appointment_id end,
       organization_id = v_org,
       therapist_id = v_therapist_id,
       client_id = v_client_id,
@@ -247,7 +254,7 @@ begin
       rate_per_hour = v_rate,
       total_cost = v_total,
       duration_minutes = v_duration,
-      metadata = v_metadata
+      metadata = case when v_has_metadata then v_metadata else metadata end
     where id = v_session_id
       and organization_id = v_org
     returning * into v_session;

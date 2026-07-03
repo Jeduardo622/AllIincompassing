@@ -11,6 +11,7 @@ import { ROLE_LABELS, type AppRole } from '../../lib/roles';
 
 const ADMIN_USER_FETCH_LIMIT = 200;
 const EMPLOYEE_USER_FETCH_LIMIT = 200;
+const EMPLOYEE_ROLE_UPDATE_TIMEOUT_MS = 20_000;
 const EMPLOYEE_ROLE_OPTIONS = [
   'bt',
   'therapist',
@@ -690,13 +691,29 @@ export function AdminSettings() {
 
   const updateEmployeeRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
-      const response = await callEdge(`admin-users-roles/admin/users/${userId}/roles`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ role }),
-      });
+      const controller = new AbortController();
+      const timeoutId = globalThis.setTimeout(() => {
+        controller.abort();
+      }, EMPLOYEE_ROLE_UPDATE_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await callEdge('admin-users-roles', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+          body: JSON.stringify({ target_user_id: userId, role }),
+        });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          throw new Error('Timed out updating employee role. Please retry.');
+        }
+        throw error;
+      } finally {
+        globalThis.clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null) as { error?: unknown } | null;
@@ -963,6 +980,10 @@ export function AdminSettings() {
                     const displayName = employee.full_name
                       || [employee.first_name, employee.last_name].filter(Boolean).join(' ')
                       || employee.email;
+                    const isRoleUpdatePending =
+                      updateEmployeeRoleMutation.isPending
+                      && updateEmployeeRoleMutation.variables?.userId === employee.id;
+
                     return (
                       <tr key={employee.id}>
                         <td className="px-3 py-3">
@@ -975,9 +996,10 @@ export function AdminSettings() {
                         <td className="px-3 py-3">
                           <select
                             aria-label={`Role for ${employee.email}`}
+                            aria-busy={isRoleUpdatePending ? 'true' : undefined}
                             className="rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-dark dark:text-gray-100"
                             value={employee.role}
-                            disabled={updateEmployeeRoleMutation.isPending}
+                            disabled={isRoleUpdatePending}
                             onChange={(event) => handleEmployeeRoleChange(employee, event.target.value as AppRole)}
                           >
                             {EMPLOYEE_ROLE_OPTIONS.map((role) => (
@@ -986,6 +1008,11 @@ export function AdminSettings() {
                               </option>
                             ))}
                           </select>
+                          {isRoleUpdatePending && (
+                            <div className="mt-1 text-xs text-blue-600 dark:text-blue-300" role="status">
+                              Saving role…
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-3">
                           <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${

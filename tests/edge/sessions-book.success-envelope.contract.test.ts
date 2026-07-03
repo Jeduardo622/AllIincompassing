@@ -148,6 +148,78 @@ describe('sessions-book success envelope vs bookSessionEnvelopeSchema', () => {
     expect(parsed.success, parsed.success ? '' : JSON.stringify(parsed.error.format())).toBe(true);
   });
 
+  it('forwards goal-free bookings to confirm without clinical links', async () => {
+    const sessionRow = {
+      id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      therapist_id: '11111111-1111-1111-1111-111111111111',
+      client_id: '22222222-2222-2222-2222-222222222222',
+      program_id: null,
+      goal_id: null,
+      start_time: '2026-03-30T05:00:00.000Z',
+      end_time: '2026-03-30T05:30:00.000Z',
+      status: 'scheduled',
+    };
+    const goalFreeSession = {
+      therapist_id: validSessionPayload.therapist_id,
+      client_id: validSessionPayload.client_id,
+      start_time: validSessionPayload.start_time,
+      end_time: validSessionPayload.end_time,
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              holdKey: 'hold-goal-free',
+              holdId: 'hold-id-goal-free',
+              expiresAt: '2026-03-30T05:05:00.000Z',
+              holds: [],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              session: sessionRow,
+              sessions: [sessionRow],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/functions/v1/sessions-book', {
+        method: 'POST',
+        headers: {
+          Origin: 'https://preview.example.com',
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...validRequestPayload,
+          session: goalFreeSession,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const confirmBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(confirmBody.session).not.toHaveProperty('program_id');
+    expect(confirmBody.session).not.toHaveProperty('goal_id');
+    expect(confirmBody.goal_ids).toEqual([]);
+  });
+
   it('returns 400 for invalid top-level session.start_time without calling hold or confirm', async () => {
     const handler = await loadHandler();
 

@@ -222,6 +222,72 @@ describe("bookSession", () => {
     );
   });
 
+  it("forwards appointment identity and session metadata to confirmation", async () => {
+    const bookSession = await importBookSession();
+    mockedRequestSessionHold.mockResolvedValueOnce({
+      holdKey: "hold-key",
+      holdId: "hold-id",
+      startTime: basePayload.session.start_time,
+      endTime: basePayload.session.end_time,
+      expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-key",
+          holdId: "hold-id",
+          startTime: basePayload.session.start_time,
+          endTime: basePayload.session.end_time,
+          expiresAt: "2025-01-01T00:05:00Z",
+        },
+      ],
+    });
+
+    const confirmedSession: Session = {
+      id: "session-with-appointment",
+      appointment_id: "11111111-1111-4111-8111-111111111111",
+      appointmentId: "11111111-1111-4111-8111-111111111111",
+      client_id: basePayload.session.client_id,
+      therapist_id: basePayload.session.therapist_id,
+      program_id: basePayload.session.program_id,
+      goal_id: basePayload.session.goal_id,
+      start_time: basePayload.session.start_time,
+      end_time: basePayload.session.end_time,
+      status: "scheduled",
+      notes: "",
+      metadata: { source: "schedule-modal", externalAppointmentId: "apt-123" },
+      created_at: "2025-01-01T09:00:00Z",
+      created_by: "user-1",
+      updated_at: "2025-01-01T09:00:00Z",
+      updated_by: "user-1",
+      duration_minutes: 60,
+    };
+
+    mockedConfirmSessionBooking.mockResolvedValueOnce({
+      session: confirmedSession,
+      sessions: [confirmedSession],
+      roundedDurationMinutes: confirmedSession.duration_minutes ?? null,
+    });
+
+    await bookSession({
+      ...basePayload,
+      session: {
+        ...basePayload.session,
+        appointment_id: "11111111-1111-4111-8111-111111111111",
+        appointmentId: "11111111-1111-4111-8111-111111111111",
+        metadata: { source: "schedule-modal", externalAppointmentId: "apt-123" },
+      },
+    });
+
+    expect(mockedConfirmSessionBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: expect.objectContaining({
+          appointment_id: "11111111-1111-4111-8111-111111111111",
+          appointmentId: "11111111-1111-4111-8111-111111111111",
+          metadata: { source: "schedule-modal", externalAppointmentId: "apt-123" },
+        }),
+      }),
+    );
+  });
+
   it("releases the hold when confirmation fails", async () => {
     const bookSession = await importBookSession();
     mockedRequestSessionHold.mockResolvedValueOnce({

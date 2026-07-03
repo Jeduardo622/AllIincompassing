@@ -162,6 +162,8 @@ export interface Client {
 
 export interface Session {
   id: string;
+  appointment_id?: string | null;
+  appointmentId?: string | null;
   client_id: string;
   therapist_id: string;
   program_id: string | null;
@@ -170,6 +172,7 @@ export interface Session {
   end_time: string;
   status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'no-show';
   notes: string;
+  metadata?: Record<string, unknown>;
   created_at: string;
   created_by: string | null;
   updated_at: string;

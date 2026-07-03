@@ -11,7 +11,16 @@ vi.mock("../api/shared", async () => {
   };
 });
 
-import { getSupabaseConfig, resolveOrgAndRoleWithStatus, resolveSchedulingOrgAndRoleWithStatus } from "../api/shared";
+import {
+  currentUserCanManageLockedTrialEvent,
+  currentUserCanManageProgramsGoals,
+  currentUserCanTakeClientData,
+  getSupabaseConfig,
+  resolveOrgAndRoleWithStatus,
+  resolveSchedulingOrgAndRoleWithStatus,
+  sessionHasLockedNote,
+} from "../api/shared";
+import type { Database } from "../../lib/generated/database.types";
 
 const accessToken = "header.payload.signature";
 const originalServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -76,6 +85,94 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       role_name: "org_member",
       target_organization_id: "org-1",
     });
+  });
+
+  it("checks program-goal management through the exposed capability RPC, not broad role aliases", async () => {
+    fetchSpy.mockResolvedValueOnce(jsonResponse(true));
+
+    await expect(currentUserCanManageProgramsGoals(accessToken, "org-1")).resolves.toEqual({
+      allowed: true,
+      upstreamError: false,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/rest/v1/rpc/current_user_can_manage_programs_goals");
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ target_organization_id: "org-1" });
+  });
+
+  it("checks trial-event capture and lock helpers through exposed public RPC wrappers", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(jsonResponse(true))
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(true));
+
+    await expect(currentUserCanTakeClientData(accessToken, "org-1", "client-1")).resolves.toEqual({
+      allowed: true,
+      upstreamError: false,
+    });
+    await expect(currentUserCanManageLockedTrialEvent(accessToken, "org-1")).resolves.toEqual({
+      allowed: false,
+      upstreamError: false,
+    });
+    await expect(sessionHasLockedNote(accessToken, "session-1")).resolves.toEqual({
+      locked: true,
+      upstreamError: false,
+    });
+
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/rest/v1/rpc/current_user_can_take_client_data");
+    expect(JSON.parse(String((fetchSpy.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+      target_organization_id: "org-1",
+      target_client_id: "client-1",
+    });
+    expect(String(fetchSpy.mock.calls[1]?.[0])).toContain("/rest/v1/rpc/current_user_can_manage_locked_trial_event");
+    expect(JSON.parse(String((fetchSpy.mock.calls[1]?.[1] as RequestInit).body))).toEqual({
+      target_organization_id: "org-1",
+    });
+    expect(String(fetchSpy.mock.calls[2]?.[0])).toContain("/rest/v1/rpc/session_has_locked_note");
+    expect(JSON.parse(String((fetchSpy.mock.calls[2]?.[1] as RequestInit).body))).toEqual({
+      target_session_id: "session-1",
+    });
+  });
+
+  it("treats non-OK capability and lock RPC responses as upstream validation failures", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "PGRST202" }), { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "42501" }), { status: 403 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "PGRST202" }), { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "42501" }), { status: 403 }));
+
+    await expect(currentUserCanManageProgramsGoals(accessToken, "org-1")).resolves.toEqual({
+      allowed: false,
+      upstreamError: true,
+    });
+    await expect(currentUserCanTakeClientData(accessToken, "org-1", "client-1")).resolves.toEqual({
+      allowed: false,
+      upstreamError: true,
+    });
+    await expect(currentUserCanManageLockedTrialEvent(accessToken, "org-1")).resolves.toEqual({
+      allowed: false,
+      upstreamError: true,
+    });
+    await expect(sessionHasLockedNote(accessToken, "session-1")).resolves.toEqual({
+      locked: true,
+      upstreamError: true,
+    });
+  });
+
+  it("keeps generated database types in sync with public trial-event helper RPC wrappers", () => {
+    type PublicFunctions = keyof Database["public"]["Functions"];
+    const requiredFunctions: PublicFunctions[] = [
+      "current_user_can_take_client_data",
+      "current_user_can_manage_locked_trial_event",
+      "session_has_locked_note",
+    ];
+
+    expect(requiredFunctions).toEqual([
+      "current_user_can_take_client_data",
+      "current_user_can_manage_locked_trial_event",
+      "session_has_locked_note",
+    ]);
   });
 
   it("returns therapist + admin flags from user_has_role_for_org truth table", async () => {

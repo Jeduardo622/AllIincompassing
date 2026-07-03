@@ -227,6 +227,91 @@ export async function fetchJson<T = unknown>(url: string, init: RequestInit): Pr
   }
 }
 
+export async function currentUserCanManageProgramsGoals(
+  accessToken: string,
+  organizationId: string,
+): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/current_user_can_manage_programs_goals`, {
+    method: "POST",
+    headers: {
+      ...JSON_HEADERS,
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ target_organization_id: organizationId }),
+  });
+
+  if (!result.ok) {
+    return { allowed: false, upstreamError: true };
+  }
+  return { allowed: result.data === true, upstreamError: false };
+}
+
+export async function currentUserCanTakeClientData(
+  accessToken: string,
+  organizationId: string,
+  clientId: string,
+): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/current_user_can_take_client_data`, {
+    method: "POST",
+    headers: {
+      ...JSON_HEADERS,
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ target_organization_id: organizationId, target_client_id: clientId }),
+  });
+
+  if (!result.ok) {
+    return { allowed: false, upstreamError: true };
+  }
+  return { allowed: result.data === true, upstreamError: false };
+}
+
+export async function currentUserCanManageLockedTrialEvent(
+  accessToken: string,
+  organizationId: string,
+): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/current_user_can_manage_locked_trial_event`, {
+    method: "POST",
+    headers: {
+      ...JSON_HEADERS,
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ target_organization_id: organizationId }),
+  });
+
+  if (!result.ok) {
+    return { allowed: false, upstreamError: true };
+  }
+  return { allowed: result.data === true, upstreamError: false };
+}
+
+export async function sessionHasLockedNote(
+  accessToken: string,
+  sessionId: string,
+): Promise<{ locked: boolean; upstreamError: boolean }> {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/session_has_locked_note`, {
+    method: "POST",
+    headers: {
+      ...JSON_HEADERS,
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ target_session_id: sessionId }),
+  });
+
+  if (!result.ok) {
+    return { locked: true, upstreamError: true };
+  }
+  return { locked: result.data === true, upstreamError: false };
+}
+
 export async function resolveOrgAndRole(accessToken: string): Promise<{
   organizationId: string | null;
   isTherapist: boolean;

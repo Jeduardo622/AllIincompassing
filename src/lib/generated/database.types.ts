@@ -3293,12 +3293,15 @@ export type Database = {
       }
       goals: {
         Row: {
+          baseline: string | null
           baseline_data: string | null
           client_id: string
+          clinical_goal_type: string | null
           clinical_context: string | null
           created_at: string
           created_by: string | null
           description: string
+          domain_id: string | null
           generalization_criteria: string | null
           goal_type: string
           id: string
@@ -3309,20 +3312,26 @@ export type Database = {
           organization_id: string
           original_text: string
           program_id: string
+          source: string
           status: string
           target_behavior: string | null
           target_criteria: string | null
+          teaching_strategies: string | null
           title: string
+          operational_definition: string | null
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          baseline?: string | null
           baseline_data?: string | null
           client_id: string
+          clinical_goal_type?: string | null
           clinical_context?: string | null
           created_at?: string
           created_by?: string | null
           description: string
+          domain_id?: string | null
           generalization_criteria?: string | null
           goal_type?: string
           id?: string
@@ -3333,20 +3342,26 @@ export type Database = {
           organization_id: string
           original_text: string
           program_id: string
+          source?: string
           status?: string
           target_behavior?: string | null
           target_criteria?: string | null
+          teaching_strategies?: string | null
           title: string
+          operational_definition?: string | null
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          baseline?: string | null
           baseline_data?: string | null
           client_id?: string
+          clinical_goal_type?: string | null
           clinical_context?: string | null
           created_at?: string
           created_by?: string | null
           description?: string
+          domain_id?: string | null
           generalization_criteria?: string | null
           goal_type?: string
           id?: string
@@ -3357,10 +3372,13 @@ export type Database = {
           organization_id?: string
           original_text?: string
           program_id?: string
+          source?: string
           status?: string
           target_behavior?: string | null
           target_criteria?: string | null
+          teaching_strategies?: string | null
           title?: string
+          operational_definition?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -3384,6 +3402,175 @@ export type Database = {
             columns: ["program_id"]
             isOneToOne: false
             referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goal_targets: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          goal_id: string
+          graph_config: Json
+          id: string
+          measurement_type: string
+          name: string
+          organization_id: string
+          sort_order: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          goal_id: string
+          graph_config?: Json
+          id?: string
+          measurement_type: string
+          name: string
+          organization_id?: string
+          sort_order?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          goal_id?: string
+          graph_config?: Json
+          id?: string
+          measurement_type?: string
+          name?: string
+          organization_id?: string
+          sort_order?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_targets_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_targets_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_targets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trial_events: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          event_timestamp: string
+          goal_id: string
+          id: string
+          metadata: Json
+          organization_id: string
+          prompt_level: string | null
+          prompt_type: string | null
+          response: string | null
+          session_id: string
+          target_id: string
+          therapist_id: string
+          trial_number: number
+          updated_at: string
+          updated_by: string | null
+          value: number | null
+        }
+        Insert: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          event_timestamp?: string
+          goal_id?: string
+          id?: string
+          metadata?: Json
+          organization_id?: string
+          prompt_level?: string | null
+          prompt_type?: string | null
+          response?: string | null
+          session_id: string
+          target_id: string
+          therapist_id?: string
+          trial_number: number
+          updated_at?: string
+          updated_by?: string | null
+          value?: number | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          event_timestamp?: string
+          goal_id?: string
+          id?: string
+          metadata?: Json
+          organization_id?: string
+          prompt_level?: string | null
+          prompt_type?: string | null
+          response?: string | null
+          session_id?: string
+          target_id?: string
+          therapist_id?: string
+          trial_number?: number
+          updated_at?: string
+          updated_by?: string | null
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trial_events_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trial_events_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trial_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trial_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trial_events_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "goal_targets"
             referencedColumns: ["id"]
           },
         ]
@@ -6268,6 +6455,14 @@ export type Database = {
       }
       create_super_admin: { Args: { user_email: string }; Returns: undefined }
       current_org_id: { Args: never; Returns: string }
+      current_user_can_manage_locked_trial_event: {
+        Args: { target_organization_id: string }
+        Returns: boolean
+      }
+      current_user_can_take_client_data: {
+        Args: { target_client_id: string; target_organization_id: string }
+        Returns: boolean
+      }
       current_user_is_super_admin: { Args: never; Returns: boolean }
       current_user_organization_id: { Args: never; Returns: string }
       detect_scheduling_conflicts: {
@@ -7062,6 +7257,10 @@ export type Database = {
       validate_session_note_compliance: {
         Args: { p_note_id: string }
         Returns: Json
+      }
+      session_has_locked_note: {
+        Args: { target_session_id: string }
+        Returns: boolean
       }
       validate_time_interval_new: { Args: { t: string }; Returns: boolean }
     }

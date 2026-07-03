@@ -204,20 +204,73 @@ export interface Goal {
   organization_id: string;
   client_id: string;
   program_id: string;
+  domain_id?: string | null;
   title: string;
   description: string;
   goal_type?: 'child' | 'parent';
+  clinical_goal_type?: 'behavior' | 'skill' | null;
   target_behavior?: string | null;
   measurement_type?: string | null;
   original_text: string;
   clinical_context?: string | null;
   baseline_data?: string | null;
+  baseline?: string | null;
   target_criteria?: string | null;
   mastery_criteria?: string | null;
   maintenance_criteria?: string | null;
   generalization_criteria?: string | null;
+  teaching_strategies?: string | null;
+  operational_definition?: string | null;
   objective_data_points?: Array<Record<string, unknown>> | null;
-  status: 'active' | 'paused' | 'mastered' | 'archived';
+  source?: 'manual' | 'fba_extraction' | null;
+  status: 'draft' | 'active' | 'paused' | 'mastered' | 'archived';
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TargetMeasurementType =
+  | 'correctIncorrect'
+  | 'frequency'
+  | 'rate'
+  | 'duration'
+  | 'timeSample'
+  | 'taskAnalysis'
+  | 'latency'
+  | 'IRT';
+
+export interface GoalTarget {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  goal_id: string;
+  name: string;
+  measurement_type: TargetMeasurementType;
+  graph_config: Record<string, unknown>;
+  status: 'draft' | 'active' | 'mastered' | 'archived';
+  sort_order: number;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TrialEvent {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  session_id: string;
+  target_id: string;
+  goal_id: string;
+  therapist_id: string;
+  trial_number: number;
+  response?: 'correct' | 'incorrect' | 'noResponse' | 'independent' | 'prompted' | 'notObserved' | null;
+  prompt_type?: string | null;
+  prompt_level?: string | null;
+  value?: number | null;
+  event_timestamp: string;
+  metadata: Record<string, unknown>;
   created_by?: string | null;
   updated_by?: string | null;
   created_at: string;

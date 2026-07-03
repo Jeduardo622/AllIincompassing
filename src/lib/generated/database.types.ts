@@ -5422,6 +5422,7 @@ export type Database = {
       }
       sessions: {
         Row: {
+          appointment_id: string | null
           client_id: string
           created_at: string | null
           created_by: string | null
@@ -5431,6 +5432,7 @@ export type Database = {
           has_transcription_consent: boolean
           id: string
           location_type: string | null
+          metadata: Json
           notes: string | null
           organization_id: string
           program_id: string | null
@@ -5446,6 +5448,7 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          appointment_id?: string | null
           client_id: string
           created_at?: string | null
           created_by?: string | null
@@ -5455,6 +5458,7 @@ export type Database = {
           has_transcription_consent?: boolean
           id?: string
           location_type?: string | null
+          metadata?: Json
           notes?: string | null
           organization_id: string
           program_id?: string | null
@@ -5470,6 +5474,7 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          appointment_id?: string | null
           client_id?: string
           created_at?: string | null
           created_by?: string | null
@@ -5479,6 +5484,7 @@ export type Database = {
           has_transcription_consent?: boolean
           id?: string
           location_type?: string | null
+          metadata?: Json
           notes?: string | null
           organization_id?: string
           program_id?: string | null

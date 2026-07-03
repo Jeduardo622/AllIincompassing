@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { getOptionalServerEnv } from "../env";
 import {
   CORS_HEADERS,
+  currentUserCanCaptureTrialEvent,
   currentUserCanManageLockedTrialEvent,
-  currentUserCanTakeClientData,
   fetchAuthenticatedUserIdWithStatus,
   fetchJson,
   getAccessToken,
@@ -53,11 +54,27 @@ type SessionScope = {
   therapist_id: string;
 };
 
+type TrialEventReadScope = {
+  clientId: string;
+};
+
 const buildHeaders = (anonKey: string, accessToken: string): Record<string, string> => ({
   "Content-Type": "application/json",
   apikey: anonKey,
   Authorization: `Bearer ${accessToken}`,
 });
+
+const buildServiceRoleHeaders = (): Record<string, string> | null => {
+  const serviceRoleKey = getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  if (!serviceRoleKey) {
+    return null;
+  }
+  return {
+    "Content-Type": "application/json",
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+  };
+};
 
 const validateMeasurementPayload = (
   measurementType: string,
@@ -83,6 +100,55 @@ const validateMeasurementPayload = (
   }
 
   return null;
+};
+
+const resolveTrialEventReadScope = async (
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  organizationId: string,
+  sessionId: string | null,
+  targetId: string | null,
+): Promise<{ scope: TrialEventReadScope | null; response?: Response }> => {
+  let clientId: string | null = null;
+
+  if (targetId) {
+    const targetResult = await fetchJson<TargetScope[]>(
+      `${supabaseUrl}/rest/v1/goal_targets?select=id,organization_id,client_id,goal_id,measurement_type&id=eq.${encodeURIComponent(
+        targetId,
+      )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+      { method: "GET", headers },
+    );
+    if (!targetResult.ok) {
+      return { scope: null, response: json({ error: "Unable to validate trial-event target access" }, targetResult.status || 500) };
+    }
+    const target = Array.isArray(targetResult.data) ? targetResult.data[0] ?? null : null;
+    if (!target) {
+      return { scope: null, response: json({ error: "target_id is not in scope for this organization" }, 403) };
+    }
+    clientId = target.client_id;
+  }
+
+  if (sessionId) {
+    const sessionResult = await fetchJson<SessionScope[]>(
+      `${supabaseUrl}/rest/v1/sessions?select=id,organization_id,client_id,therapist_id&id=eq.${encodeURIComponent(
+        sessionId,
+      )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+      { method: "GET", headers },
+    );
+    if (!sessionResult.ok) {
+      return { scope: null, response: json({ error: "Unable to validate trial-event session access" }, sessionResult.status || 500) };
+    }
+    const session = Array.isArray(sessionResult.data) ? sessionResult.data[0] ?? null : null;
+    if (!session) {
+      return { scope: null, response: json({ error: "session_id is not in scope for this organization" }, 403) };
+    }
+    if (clientId && session.client_id !== clientId) {
+      return { scope: null, response: json({ error: "session_id and target_id must belong to the same client" }, 400) };
+    }
+    clientId = session.client_id;
+  }
+
+  return clientId ? { scope: { clientId } } : { scope: null, response: json({ error: "session_id or target_id is required" }, 400) };
 };
 
 export async function trialEventsHandler(request: Request): Promise<Response> {
@@ -113,6 +179,7 @@ export async function trialEventsHandler(request: Request): Promise<Response> {
 
   const { supabaseUrl, anonKey } = getSupabaseConfig();
   const headers = buildHeaders(anonKey, accessToken);
+  const serviceRoleHeaders = buildServiceRoleHeaders();
   const organizationId = role.organizationId;
 
   if (request.method === "GET") {
@@ -127,6 +194,22 @@ export async function trialEventsHandler(request: Request): Promise<Response> {
     }
     if (targetId && !isUuid(targetId)) {
       return json({ error: "target_id must be a valid UUID" }, 400);
+    }
+
+    if (!serviceRoleHeaders) {
+      return json({ error: "Unable to validate trial-event read scope" }, 502);
+    }
+
+    const readScope = await resolveTrialEventReadScope(supabaseUrl, serviceRoleHeaders, organizationId, sessionId, targetId);
+    if (!readScope.scope) {
+      return readScope.response ?? json({ error: "Forbidden" }, 403);
+    }
+    const canRead = await currentUserCanCaptureTrialEvent(accessToken, organizationId, readScope.scope.clientId);
+    if (canRead.upstreamError) {
+      return json({ error: "Unable to validate trial-event read access" }, 502);
+    }
+    if (!canRead.allowed) {
+      return json({ error: "Forbidden" }, 403);
     }
 
     const filters = [
@@ -157,13 +240,19 @@ export async function trialEventsHandler(request: Request): Promise<Response> {
     if (!parsed.success) {
       return json({ error: "Invalid request body" }, 400);
     }
+    if (!serviceRoleHeaders) {
+      return json({ error: "Unable to validate trial-event scope" }, 502);
+    }
 
     const targetResult = await fetchJson<TargetScope[]>(
       `${supabaseUrl}/rest/v1/goal_targets?select=id,organization_id,client_id,goal_id,measurement_type&id=eq.${encodeURIComponent(
         parsed.data.target_id,
       )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
-      { method: "GET", headers },
+      { method: "GET", headers: serviceRoleHeaders },
     );
+    if (!targetResult.ok) {
+      return json({ error: "Unable to validate trial-event target access" }, targetResult.status || 500);
+    }
     const target = targetResult.ok && Array.isArray(targetResult.data) ? targetResult.data[0] ?? null : null;
     if (!target) {
       return json({ error: "target_id is not in scope for this organization" }, 403);
@@ -173,8 +262,11 @@ export async function trialEventsHandler(request: Request): Promise<Response> {
       `${supabaseUrl}/rest/v1/sessions?select=id,organization_id,client_id,therapist_id&id=eq.${encodeURIComponent(
         parsed.data.session_id,
       )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
-      { method: "GET", headers },
+      { method: "GET", headers: serviceRoleHeaders },
     );
+    if (!sessionResult.ok) {
+      return json({ error: "Unable to validate trial-event session access" }, sessionResult.status || 500);
+    }
     const session = sessionResult.ok && Array.isArray(sessionResult.data) ? sessionResult.data[0] ?? null : null;
     if (!session) {
       return json({ error: "session_id is not in scope for this organization" }, 403);
@@ -187,7 +279,7 @@ export async function trialEventsHandler(request: Request): Promise<Response> {
       return json({ error: measurementPayloadError }, 400);
     }
 
-    const canCapture = await currentUserCanTakeClientData(accessToken, organizationId, session.client_id);
+    const canCapture = await currentUserCanCaptureTrialEvent(accessToken, organizationId, session.client_id);
     if (canCapture.upstreamError) {
       return json({ error: "Unable to validate trial-event capture access" }, 502);
     }

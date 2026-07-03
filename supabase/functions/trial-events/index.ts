@@ -1,5 +1,5 @@
 import { z } from "npm:zod@3.23.8";
-import { createRequestClient } from "../_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { corsHeadersForRequest } from "../_shared/cors.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
 
@@ -38,6 +38,10 @@ type SessionScope = {
   id: string;
   client_id: string;
   therapist_id: string;
+};
+
+type TrialEventReadScope = {
+  clientId: string;
 };
 
 const json = (req: Request, body: unknown, status = 200) =>
@@ -88,17 +92,17 @@ const requireOrg = async (db: ReturnType<typeof createRequestClient>): Promise<s
   return data;
 };
 
-const canTakeClientData = async (
+const canCaptureTrialEvent = async (
   db: ReturnType<typeof createRequestClient>,
   orgId: string,
   clientId: string,
 ): Promise<CapabilityResult> => {
-  const { data, error } = await db.rpc("current_user_can_take_client_data", {
+  const { data, error } = await db.rpc("current_user_can_capture_trial_event", {
     target_organization_id: orgId,
     target_client_id: clientId,
   });
   if (error) {
-    console.error("current_user_can_take_client_data rpc error", error);
+    console.error("current_user_can_capture_trial_event rpc error", error);
     return { allowed: false, upstreamError: true };
   }
   return { allowed: data === true, upstreamError: false };
@@ -132,8 +136,50 @@ const sessionHasLockedNote = async (
   return { locked: data === true, upstreamError: false };
 };
 
+const resolveTrialEventReadScope = async (
+  db: ReturnType<typeof createRequestClient>,
+  orgId: string,
+  req: Request,
+  sessionId: string | null,
+  targetId: string | null,
+): Promise<{ scope: TrialEventReadScope | null; response?: Response }> => {
+  let clientId: string | null = null;
+
+  if (targetId) {
+    const { data: targets, error: targetError } = await db
+      .from("goal_targets")
+      .select("id,client_id,goal_id,measurement_type")
+      .eq("organization_id", orgId)
+      .eq("id", targetId)
+      .limit(1);
+    const target = !targetError && targets && targets.length > 0 ? targets[0] as unknown as TargetScope : null;
+    if (targetError) return { scope: null, response: json(req, { error: "Unable to validate trial-event target access" }, 500) };
+    if (!target) return { scope: null, response: json(req, { error: "target_id is not in scope for this organization" }, 403) };
+    clientId = target.client_id;
+  }
+
+  if (sessionId) {
+    const { data: sessions, error: sessionError } = await db
+      .from("sessions")
+      .select("id,client_id,therapist_id")
+      .eq("organization_id", orgId)
+      .eq("id", sessionId)
+      .limit(1);
+    const session = !sessionError && sessions && sessions.length > 0 ? sessions[0] as unknown as SessionScope : null;
+    if (sessionError) return { scope: null, response: json(req, { error: "Unable to validate trial-event session access" }, 500) };
+    if (!session) return { scope: null, response: json(req, { error: "session_id is not in scope for this organization" }, 403) };
+    if (clientId && session.client_id !== clientId) {
+      return { scope: null, response: json(req, { error: "session_id and target_id must belong to the same client" }, 400) };
+    }
+    clientId = session.client_id;
+  }
+
+  return clientId ? { scope: { clientId } } : { scope: null, response: json(req, { error: "session_id or target_id is required" }, 400) };
+};
+
 export const handleTrialEvents = async (req: Request) => {
   const db = createRequestClient(req);
+  const scopeDb = supabaseAdmin;
   const orgId = await requireOrg(db);
   if (!orgId) {
     return json(req, { error: "Forbidden" }, 403);
@@ -151,6 +197,12 @@ export const handleTrialEvents = async (req: Request) => {
     if (!sessionId && !targetId) return json(req, { error: "session_id or target_id is required" }, 400);
     if (sessionId && !isUuid(sessionId)) return json(req, { error: "session_id must be a valid UUID" }, 400);
     if (targetId && !isUuid(targetId)) return json(req, { error: "target_id must be a valid UUID" }, 400);
+
+    const readScope = await resolveTrialEventReadScope(scopeDb, orgId, req, sessionId, targetId);
+    if (!readScope.scope) return readScope.response ?? json(req, { error: "Forbidden" }, 403);
+    const canRead = await canCaptureTrialEvent(db, orgId, readScope.scope.clientId);
+    if (canRead.upstreamError) return json(req, { error: "Unable to validate trial-event read access" }, 502);
+    if (!canRead.allowed) return json(req, { error: "Forbidden" }, 403);
 
     let query = db
       .from("trial_events")
@@ -176,7 +228,7 @@ export const handleTrialEvents = async (req: Request) => {
     const parsed = createTrialEventSchema.safeParse(payload);
     if (!parsed.success) return json(req, { error: "Invalid request body" }, 400);
 
-    const { data: targets, error: targetError } = await db
+    const { data: targets, error: targetError } = await scopeDb
       .from("goal_targets")
       .select("id,client_id,goal_id,measurement_type")
       .eq("organization_id", orgId)
@@ -185,7 +237,7 @@ export const handleTrialEvents = async (req: Request) => {
     const target = !targetError && targets && targets.length > 0 ? targets[0] as unknown as TargetScope : null;
     if (!target) return json(req, { error: "target_id is not in scope for this organization" }, 403);
 
-    const { data: sessions, error: sessionError } = await db
+    const { data: sessions, error: sessionError } = await scopeDb
       .from("sessions")
       .select("id,client_id,therapist_id")
       .eq("organization_id", orgId)
@@ -201,7 +253,7 @@ export const handleTrialEvents = async (req: Request) => {
       return json(req, { error: measurementPayloadError }, 400);
     }
 
-    const canCapture = await canTakeClientData(db, orgId, session.client_id);
+    const canCapture = await canCaptureTrialEvent(db, orgId, session.client_id);
     if (canCapture.upstreamError) return json(req, { error: "Unable to validate trial-event capture access" }, 502);
     if (!canCapture.allowed) return json(req, { error: "Forbidden" }, 403);
 

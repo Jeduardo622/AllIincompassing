@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { formatInTimeZone } from "date-fns-tz";
 
 import {
+  BOOKING_ATTEMPTS_PER_TARGET_PAIR,
+  buildInProgressSessionBookingBaseStart,
   buildVisibleScheduleBookingAttemptStart,
   buildVisibleScheduleBookingBaseStart,
   resolveBrowserScheduleTimeZone,
@@ -62,6 +64,21 @@ describe("playwright in-progress session setup", () => {
       expect(isoWeekday).toBeGreaterThanOrEqual(1);
       expect(isoWeekday).toBeLessThanOrEqual(6);
     }
+  });
+
+  it("uses a bounded future booking window for hosted in-progress smoke setup", () => {
+    const timeZone = "America/Los_Angeles";
+    const now = new Date("2026-06-18T16:30:00.000Z");
+    const seed = 28_636_957_641;
+
+    const immediateBase = buildVisibleScheduleBookingBaseStart(now, seed, timeZone);
+    const smokeBase = buildInProgressSessionBookingBaseStart(now, seed, timeZone);
+    const dayDelta = Math.round((smokeBase.getTime() - immediateBase.getTime()) / (24 * 60 * 60 * 1000));
+
+    expect(dayDelta).toBeGreaterThanOrEqual(21);
+    expect(dayDelta).toBeLessThanOrEqual(50);
+    expect(formatInTimeZone(smokeBase, timeZone, "H")).toBe(formatInTimeZone(immediateBase, timeZone, "H"));
+    expect(BOOKING_ATTEMPTS_PER_TARGET_PAIR).toBeLessThan(48);
   });
 
   it("uses the browser timezone as the schedule grid timezone source", async () => {

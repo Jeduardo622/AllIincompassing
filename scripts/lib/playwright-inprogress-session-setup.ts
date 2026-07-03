@@ -501,6 +501,7 @@ const toDatetimeLocal = (date: Date): string => {
 };
 
 const VISIBLE_SCHEDULE_START_HOURS = [8, 10, 12, 14, 16] as const;
+export const BOOKING_ATTEMPTS_PER_TARGET_PAIR = 12;
 
 const addCalendarDays = (localDate: string, days: number): string => {
   const [year, month, day] = localDate.split("-").map(Number);
@@ -543,6 +544,19 @@ export const buildVisibleScheduleBookingBaseStart = (
     start = toZonedGridStart(addRenderedScheduleDays(localDate, 1, timeZone), visibleHour, timeZone);
   }
   return start;
+};
+
+export const buildInProgressSessionBookingBaseStart = (
+  now = new Date(),
+  seed = Number(process.env.GITHUB_RUN_ID ?? Date.now()),
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+): Date => {
+  const seedNumber = Number.isFinite(seed) ? Math.abs(Math.trunc(seed)) : 0;
+  const safeFutureDayOffset = 21 + (seedNumber % 21);
+  const visibleBase = buildVisibleScheduleBookingBaseStart(now, seed, timeZone);
+  const localDate = formatInTimeZone(visibleBase, timeZone, "yyyy-MM-dd");
+  const localHour = Number(formatInTimeZone(visibleBase, timeZone, "H"));
+  return toZonedGridStart(addRenderedScheduleDays(localDate, safeFutureDayOffset, timeZone), localHour, timeZone);
 };
 
 export const buildVisibleScheduleBookingAttemptStart = (
@@ -618,7 +632,7 @@ const selectOptionWhenAvailable = async (
 
 async function chooseSessionTargets(
   page: Page,
-  options?: { allowedTherapistIds?: Set<string> },
+  options?: { allowedTherapistIds?: Set<string>; excludedPairKeys?: Set<string> },
 ): Promise<{
   therapistId: string;
   clientId: string;
@@ -626,6 +640,7 @@ async function chooseSessionTargets(
   goalId: string;
   createdProgramId?: string;
   createdGoalId?: string;
+  pairKey: string;
 }> {
   const therapistValues = await waitForSelectOptions(page, "#therapist-select");
   const clientValues = await waitForSelectOptions(page, "#client-select");
@@ -648,6 +663,10 @@ async function chooseSessionTargets(
   });
 
   for (const { therapistId, clientId } of candidatePairs) {
+    const pairKey = `${therapistId}:${clientId}`;
+    if (options?.excludedPairKeys?.has(pairKey)) {
+      continue;
+    }
     if (
       options?.allowedTherapistIds &&
       options.allowedTherapistIds.size > 0 &&
@@ -673,6 +692,7 @@ async function chooseSessionTargets(
         goalId: seeded.goalId,
         createdProgramId: seeded.createdProgramId,
         createdGoalId: seeded.createdGoalId,
+        pairKey,
       };
     }
     await archiveCreatedProgramGoalFixtures(seeded);
@@ -711,95 +731,138 @@ export async function bookSession(
     }
   }
 
-  console.log("[in-progress-setup] book-session choose-targets");
-  const selected = await chooseSessionTargets(page, { allowedTherapistIds });
-  console.log("[in-progress-setup] book-session selected-target");
-
   const timeZone = await resolveBrowserScheduleTimeZone(page);
-  const start = buildVisibleScheduleBookingBaseStart(new Date(), undefined, timeZone);
-  let finalStartIso = "";
-  let finalEndIso = "";
-  let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
-  let payloadBody: { success?: boolean; data?: { session?: { id?: string } } } | null = null;
+  const start = buildInProgressSessionBookingBaseStart(new Date(), undefined, timeZone);
+  const excludedPairKeys = new Set<string>();
+  let lastFailure: {
+    selected: Awaited<ReturnType<typeof chooseSessionTargets>>;
+    finalStartIso: string;
+    finalEndIso: string;
+    payload: BrowserFetchResult<Record<string, unknown>> | null;
+    payloadBody: { success?: boolean; data?: { session?: { id?: string } } } | null;
+  } | null = null;
 
-  for (let attempt = 0; attempt < 48; attempt += 1) {
-    const attemptStart = buildVisibleScheduleBookingAttemptStart(start, attempt, timeZone);
-    const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
-    const startIso = attemptStart.toISOString();
-    const endIso = attemptEnd.toISOString();
-    finalStartIso = startIso;
-    finalEndIso = endIso;
-    const startOffsetMinutes = Math.round(getTimezoneOffset(timeZone, attemptStart) / 60000);
-    const endOffsetMinutes = Math.round(getTimezoneOffset(timeZone, attemptEnd) / 60000);
-
-    await page.locator("#start-time-input").fill(toDatetimeLocal(attemptStart));
-    await page.locator("#end-time-input").fill(toDatetimeLocal(attemptEnd));
-    console.log("[in-progress-setup] book-session attempt", {
-      attempt: attempt + 1,
-      startIso,
-    });
-
+  while (true) {
+    console.log("[in-progress-setup] book-session choose-targets");
+    let selected: Awaited<ReturnType<typeof chooseSessionTargets>>;
     try {
-      const bookResponse = await fetchWithTimeout(`${getEnv("PW_BASE_URL", "https://app.allincompassing.ai").replace(/\/$/, "")}/api/book`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "Idempotency-Key": `pw-inprogress-${Date.now()}`,
-        },
-        body: JSON.stringify({
-          session: {
-            therapist_id: selected.therapistId,
-            client_id: selected.clientId,
-            program_id: selected.programId,
-            goal_id: selected.goalId,
-            goal_ids: [selected.goalId],
-            start_time: startIso,
-            end_time: endIso,
-            status: "scheduled",
-          },
-          startTimeOffsetMinutes: startOffsetMinutes,
-          endTimeOffsetMinutes: endOffsetMinutes,
-          timeZone,
-          holdSeconds: 300,
-        }),
-      });
-      payload = {
-        status: bookResponse.status,
-        ok: bookResponse.ok,
-        body: (await bookResponse.json().catch(() => null)) as Record<string, unknown> | null,
-      };
+      selected = await chooseSessionTargets(page, { allowedTherapistIds, excludedPairKeys });
     } catch (error) {
-      payload = {
-        status: 0,
-        ok: false,
-        body: { error: error instanceof Error ? error.message : String(error) },
-      };
+      if (lastFailure) {
+        break;
+      }
+      throw error;
     }
+    console.log("[in-progress-setup] book-session selected-target", { pairKey: selected.pairKey });
 
-    payloadBody = payload.body as
-      | { success?: boolean; data?: { session?: { id?: string } } }
-      | null;
-    if (payload.ok && payloadBody?.success && payloadBody?.data?.session?.id) {
+    let finalStartIso = "";
+    let finalEndIso = "";
+    let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
+    let payloadBody: { success?: boolean; data?: { session?: { id?: string } } } | null = null;
+
+    for (let attempt = 0; attempt < BOOKING_ATTEMPTS_PER_TARGET_PAIR; attempt += 1) {
+      const attemptStart = buildVisibleScheduleBookingAttemptStart(start, attempt, timeZone);
+      const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
+      const startIso = attemptStart.toISOString();
+      const endIso = attemptEnd.toISOString();
+      finalStartIso = startIso;
+      finalEndIso = endIso;
+      const startOffsetMinutes = Math.round(getTimezoneOffset(timeZone, attemptStart) / 60000);
+      const endOffsetMinutes = Math.round(getTimezoneOffset(timeZone, attemptEnd) / 60000);
+
+      await page.locator("#start-time-input").fill(toDatetimeLocal(attemptStart));
+      await page.locator("#end-time-input").fill(toDatetimeLocal(attemptEnd));
+      console.log("[in-progress-setup] book-session attempt", {
+        pairKey: selected.pairKey,
+        attempt: attempt + 1,
+        startIso,
+      });
+
+      try {
+        const bookResponse = await fetchWithTimeout(`${getEnv("PW_BASE_URL", "https://app.allincompassing.ai").replace(/\/$/, "")}/api/book`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "Idempotency-Key": `pw-inprogress-${Date.now()}`,
+          },
+          body: JSON.stringify({
+            session: {
+              therapist_id: selected.therapistId,
+              client_id: selected.clientId,
+              program_id: selected.programId,
+              goal_id: selected.goalId,
+              goal_ids: [selected.goalId],
+              start_time: startIso,
+              end_time: endIso,
+              status: "scheduled",
+            },
+            startTimeOffsetMinutes: startOffsetMinutes,
+            endTimeOffsetMinutes: endOffsetMinutes,
+            timeZone,
+            holdSeconds: 300,
+          }),
+        });
+        payload = {
+          status: bookResponse.status,
+          ok: bookResponse.ok,
+          body: (await bookResponse.json().catch(() => null)) as Record<string, unknown> | null,
+        };
+      } catch (error) {
+        payload = {
+          status: 0,
+          ok: false,
+          body: { error: error instanceof Error ? error.message : String(error) },
+        };
+      }
+
+      payloadBody = payload.body as
+        | { success?: boolean; data?: { session?: { id?: string } } }
+        | null;
+      if (payload.ok && payloadBody?.success && payloadBody?.data?.session?.id) {
+        return {
+          sessionId: payloadBody.data!.session!.id as string,
+          therapistId: selected.therapistId,
+          clientId: selected.clientId,
+          programId: selected.programId,
+          goalId: selected.goalId,
+          startIso: finalStartIso,
+          endIso: finalEndIso,
+          createdProgramId: selected.createdProgramId,
+          createdGoalId: selected.createdGoalId,
+        };
+      }
+      if (payload.status === 0 || payload.status === 409 || [500, 502, 503, 504].includes(payload.status)) {
+        console.log("[in-progress-setup] book-session retryable-response", {
+          pairKey: selected.pairKey,
+          attempt: attempt + 1,
+          status: payload.status,
+        });
+        await new Promise((resolve) => setTimeout(resolve, BOOKING_RETRY_DELAY_MS));
+        continue;
+      }
       break;
     }
-    if (payload.status === 0 || payload.status === 409 || [500, 502, 503, 504].includes(payload.status)) {
-      console.log("[in-progress-setup] book-session retryable-response", {
-        attempt: attempt + 1,
-        status: payload.status,
+
+    lastFailure = { selected, finalStartIso, finalEndIso, payload, payloadBody };
+    if (payload?.status === 409) {
+      console.warn("[in-progress-setup] booking conflict exhausted candidate starts; trying next therapist-client pair", {
+        pairKey: selected.pairKey,
       });
-      await new Promise((resolve) => setTimeout(resolve, BOOKING_RETRY_DELAY_MS));
+      await archiveCreatedProgramGoalFixtures(selected);
+      excludedPairKeys.add(selected.pairKey);
       continue;
     }
     break;
   }
 
-  if (!payload || !payloadBody?.success || !payloadBody?.data?.session?.id) {
+  if (lastFailure) {
+    const { selected, finalStartIso, finalEndIso, payload, payloadBody } = lastFailure;
     const shouldFallbackToServiceRole =
       !strictMode &&
       finalStartIso.length > 0 &&
       finalEndIso.length > 0 &&
-      (payload?.status === 401 || payload?.status === 409);
+      payload?.status === 401;
     if (shouldFallbackToServiceRole) {
       let fallbackSessionId = "";
       try {
@@ -834,17 +897,7 @@ export async function bookSession(
     );
   }
 
-  return {
-    sessionId: payloadBody.data!.session!.id as string,
-    therapistId: selected.therapistId,
-    clientId: selected.clientId,
-    programId: selected.programId,
-    goalId: selected.goalId,
-    startIso: finalStartIso,
-    endIso: finalEndIso,
-    createdProgramId: selected.createdProgramId,
-    createdGoalId: selected.createdGoalId,
-  };
+  throw new Error("Booking did not succeed. No therapist-client pair was attempted.");
 }
 
 export async function startSession(_page: Page, token: string, ids: LifecycleIds, strictMode: boolean): Promise<void> {

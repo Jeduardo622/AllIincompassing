@@ -1177,7 +1177,7 @@ export function AddSessionNoteModal({
               value={selectedSessionId}
               onChange={(e) => setSelectedSessionId(e.target.value)}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-              disabled={isLoadingSessions || !hasSessions}
+              disabled={isLoadingSessions || !hasSessions || isBtDataOnly}
             >
               <option value="">
                 {isLoadingSessions ? 'Loading sessions...' : hasSessions ? 'Select a session' : 'No sessions available'}

@@ -25,12 +25,20 @@ describe("goal targets and trial events migration", () => {
 
   it("preserves trial history by preventing authenticated target deletes and target cascade deletes", () => {
     expect(sql).toContain("target_id uuid not null references public.goal_targets(id),");
+    expect(sql).toContain("goal_id uuid not null references public.goals(id),");
     expect(sql).not.toContain("target_id uuid not null references public.goal_targets(id) on delete cascade");
+    expect(sql).not.toContain("goal_id uuid not null references public.goals(id) on delete cascade");
     expect(sql).toContain("grant select, insert, update on table public.goal_targets to authenticated;");
     expect(sql).toContain("revoke delete on table public.goal_targets from authenticated;");
     expect(sql).not.toContain("grant select, insert, update, delete on table public.goal_targets to authenticated;");
     expect(sql).toMatch(
+      /alter table public\.goal_targets[\s\S]*drop constraint if exists goal_targets_goal_id_fkey[\s\S]*add constraint goal_targets_goal_id_fkey[\s\S]*foreign key \(goal_id\) references public\.goals\(id\)/,
+    );
+    expect(sql).toMatch(
       /alter table public\.trial_events[\s\S]*drop constraint if exists trial_events_target_id_fkey[\s\S]*add constraint trial_events_target_id_fkey[\s\S]*foreign key \(target_id\) references public\.goal_targets\(id\)/,
+    );
+    expect(sql).toMatch(
+      /alter table public\.trial_events[\s\S]*drop constraint if exists trial_events_goal_id_fkey[\s\S]*add constraint trial_events_goal_id_fkey[\s\S]*foreign key \(goal_id\) references public\.goals\(id\)/,
     );
     expect(sql).toMatch(
       /alter table public\.trial_events[\s\S]*drop constraint if exists trial_events_value_nonnegative[\s\S]*add constraint trial_events_value_nonnegative[\s\S]*check \(value is null or value >= 0\)/,
@@ -55,8 +63,16 @@ describe("goal targets and trial events migration", () => {
     expect(sql).toContain("app.current_user_can_manage_programs_goals(organization_id)");
     expect(sql).toContain("app.current_user_can_capture_trial_event(organization_id, client_id)");
     expect(sql).toContain("app.current_user_can_take_client_data(target_organization_id, target_client_id)");
+    expect(sql).toContain("app.current_user_has_exact_role_for_org(target_organization_id, array['bcba']::text[])");
     expect(sql).toContain("app.current_user_can_manage_locked_trial_event(organization_id)");
     expect(sql).not.toMatch(/current_user_can_manage_programs_goals[\s\S]*admin_schedule/);
+  });
+
+  it("enforces measurement-specific response and value semantics", () => {
+    expect(sql).toContain("v_target.measurement_type in ('correctIncorrect', 'taskAnalysis') and new.response is null");
+    expect(sql).toContain("v_target.measurement_type in ('correctIncorrect', 'taskAnalysis') and new.value is not null");
+    expect(sql).toContain("v_target.measurement_type in ('frequency', 'rate', 'duration', 'timeSample', 'latency', 'IRT') and new.value is null");
+    expect(sql).toContain("v_target.measurement_type in ('frequency', 'rate', 'duration', 'timeSample', 'latency', 'IRT') and new.response is not null");
   });
 
   it("does not allow org-level locked-session managers to delete trial events outside client capture scope", () => {

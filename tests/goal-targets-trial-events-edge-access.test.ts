@@ -29,4 +29,11 @@ describe("goal target and trial event edge access boundaries", () => {
   it("rejects negative trial-event values at the edge boundary", () => {
     expect(trialEventsSource).toContain("value: z.number().nonnegative().optional().nullable()");
   });
+
+  it("keeps response-based and value-based trial-event payloads mutually exclusive", () => {
+    expect(trialEventsSource).toContain("const valueRequiredMeasurementTypes = new Set([\"frequency\", \"rate\", \"duration\", \"timeSample\", \"latency\", \"IRT\"]);");
+    expect(trialEventsSource).toContain("return \"value is not allowed for this target measurement type\";");
+    expect(trialEventsSource).toContain("return \"value is required for this target measurement type\";");
+    expect(trialEventsSource).toContain("return \"response is not allowed for this target measurement type\";");
+  });
 });

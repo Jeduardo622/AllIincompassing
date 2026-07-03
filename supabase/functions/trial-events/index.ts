@@ -13,6 +13,7 @@ const responseSchema = z.enum([
 ]);
 
 const responseRequiredMeasurementTypes = new Set(["correctIncorrect", "taskAnalysis"]);
+const valueRequiredMeasurementTypes = new Set(["frequency", "rate", "duration", "timeSample", "latency", "IRT"]);
 
 const createTrialEventSchema = z.object({
   session_id: z.string().uuid(),
@@ -52,6 +53,32 @@ const isUuid = (value: string): boolean => z.string().uuid().safeParse(value).su
 
 type CapabilityResult = { allowed: boolean; upstreamError: boolean };
 type LockStateResult = { locked: boolean; upstreamError: boolean };
+
+const validateMeasurementPayload = (
+  measurementType: string,
+  payload: z.infer<typeof createTrialEventSchema>,
+): string | null => {
+  if (responseRequiredMeasurementTypes.has(measurementType)) {
+    if (!payload.response) {
+      return "response is required for this target measurement type";
+    }
+    if (typeof payload.value === "number") {
+      return "value is not allowed for this target measurement type";
+    }
+    return null;
+  }
+
+  if (valueRequiredMeasurementTypes.has(measurementType)) {
+    if (typeof payload.value !== "number") {
+      return "value is required for this target measurement type";
+    }
+    if (payload.response) {
+      return "response is not allowed for this target measurement type";
+    }
+  }
+
+  return null;
+};
 
 const requireOrg = async (db: ReturnType<typeof createRequestClient>): Promise<string | null> => {
   const { data, error } = await db.rpc("current_user_organization_id");
@@ -169,8 +196,9 @@ export const handleTrialEvents = async (req: Request) => {
     if (session.client_id !== target.client_id) {
       return json(req, { error: "session_id and target_id must belong to the same client" }, 400);
     }
-    if (responseRequiredMeasurementTypes.has(target.measurement_type) && !parsed.data.response) {
-      return json(req, { error: "response is required for this target measurement type" }, 400);
+    const measurementPayloadError = validateMeasurementPayload(target.measurement_type, parsed.data);
+    if (measurementPayloadError) {
+      return json(req, { error: measurementPayloadError }, 400);
     }
 
     const canCapture = await canTakeClientData(db, orgId, session.client_id);

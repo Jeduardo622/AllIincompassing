@@ -36,7 +36,7 @@ create table if not exists public.goal_targets (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   client_id uuid not null references public.clients(id) on delete cascade,
-  goal_id uuid not null references public.goals(id) on delete cascade,
+  goal_id uuid not null references public.goals(id),
   name text not null check (char_length(btrim(name)) > 0),
   measurement_type text not null check (
     measurement_type in (
@@ -65,6 +65,11 @@ create index if not exists goal_targets_goal_status_idx
 
 create index if not exists goal_targets_org_client_idx
   on public.goal_targets (organization_id, client_id, status);
+
+alter table public.goal_targets
+  drop constraint if exists goal_targets_goal_id_fkey,
+  add constraint goal_targets_goal_id_fkey
+  foreign key (goal_id) references public.goals(id);
 
 revoke all on table public.goal_targets from anon;
 grant select, insert, update on table public.goal_targets to authenticated;
@@ -122,7 +127,7 @@ create table if not exists public.trial_events (
   client_id uuid not null references public.clients(id) on delete cascade,
   session_id uuid not null references public.sessions(id) on delete cascade,
   target_id uuid not null references public.goal_targets(id),
-  goal_id uuid not null references public.goals(id) on delete cascade,
+  goal_id uuid not null references public.goals(id),
   therapist_id uuid not null,
   trial_number integer not null check (trial_number > 0),
   response text check (
@@ -151,6 +156,11 @@ alter table public.trial_events
   drop constraint if exists trial_events_target_id_fkey,
   add constraint trial_events_target_id_fkey
   foreign key (target_id) references public.goal_targets(id);
+
+alter table public.trial_events
+  drop constraint if exists trial_events_goal_id_fkey,
+  add constraint trial_events_goal_id_fkey
+  foreign key (goal_id) references public.goals(id);
 
 alter table public.trial_events
   drop constraint if exists trial_events_value_nonnegative,
@@ -210,6 +220,18 @@ begin
     raise exception using errcode = '23514', message = 'response is required for this target measurement type';
   end if;
 
+  if v_target.measurement_type in ('correctIncorrect', 'taskAnalysis') and new.value is not null then
+    raise exception using errcode = '23514', message = 'value is not allowed for this target measurement type';
+  end if;
+
+  if v_target.measurement_type in ('frequency', 'rate', 'duration', 'timeSample', 'latency', 'IRT') and new.value is null then
+    raise exception using errcode = '23514', message = 'value is required for this target measurement type';
+  end if;
+
+  if v_target.measurement_type in ('frequency', 'rate', 'duration', 'timeSample', 'latency', 'IRT') and new.response is not null then
+    raise exception using errcode = '23514', message = 'response is not allowed for this target measurement type';
+  end if;
+
   new.organization_id := v_target.organization_id;
   new.client_id := v_target.client_id;
   new.goal_id := v_target.goal_id;
@@ -267,7 +289,9 @@ stable
 security definer
 set search_path = public, app
 as $$
-  select app.current_user_can_take_client_data(target_organization_id, target_client_id);
+  select
+    app.current_user_can_take_client_data(target_organization_id, target_client_id)
+    or app.current_user_has_exact_role_for_org(target_organization_id, array['bcba']::text[]);
 $$;
 
 create or replace function public.session_has_locked_note(target_session_id uuid)

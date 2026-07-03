@@ -868,14 +868,41 @@ describe('AdminSettings super admin access', () => {
 
     await waitFor(() => {
       expect(callEdgeSpy).toHaveBeenCalledWith(
-        'admin-users-roles/admin/users/22222222-2222-2222-2222-222222222222/roles',
+        'admin-users-roles',
         expect.objectContaining({
           method: 'PATCH',
-          body: JSON.stringify({ role: 'admin_schedule' }),
+          body: JSON.stringify({
+            target_user_id: '22222222-2222-2222-2222-222222222222',
+            role: 'admin_schedule',
+          }),
+          signal: expect.any(AbortSignal),
         }),
       );
     });
     expect(showSuccess).toHaveBeenCalledWith('Employee role updated successfully');
+  });
+
+  it('shows row-level saving feedback while an employee role update is pending', async () => {
+    callEdgeSpy?.mockReturnValue(new Promise<Response>(() => {}));
+    renderWithProviders(<AdminSettings />);
+
+    const roleSelect = await screen.findByLabelText('Role for midtier@example.com');
+    await userEvent.selectOptions(roleSelect, 'admin_schedule');
+
+    await waitFor(() => {
+      expect(callEdgeSpy).toHaveBeenCalledWith(
+        'admin-users-roles',
+        expect.objectContaining({
+          body: JSON.stringify({
+            target_user_id: '22222222-2222-2222-2222-222222222222',
+            role: 'admin_schedule',
+          }),
+        }),
+      );
+    });
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Saving role');
+    expect(roleSelect).toBeDisabled();
   });
 
   it('keeps therapist link RPCs disabled for All organizations until a concrete org is selected', async () => {

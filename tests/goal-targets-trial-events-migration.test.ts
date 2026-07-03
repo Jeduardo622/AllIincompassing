@@ -13,6 +13,23 @@ const MIGRATION_PATH = path.join(
 const sql = readFileSync(MIGRATION_PATH, "utf8");
 
 describe("goal targets and trial events migration", () => {
+  it("represents session appointment metadata used by trial-event capture", () => {
+    expect(sql).toContain("alter table public.sessions");
+    expect(sql).toContain("add column if not exists appointment_id uuid");
+    expect(sql).toContain("add column if not exists metadata jsonb not null default '{}'::jsonb");
+    expect(sql).toMatch(
+      /alter table public\.sessions[\s\S]*drop constraint if exists sessions_metadata_object_chk[\s\S]*add constraint sessions_metadata_object_chk[\s\S]*check \(jsonb_typeof\(metadata\) = 'object'\)/,
+    );
+    expect(sql).toMatch(
+      /create index if not exists sessions_appointment_id_idx[\s\S]*on public\.sessions \(appointment_id\)[\s\S]*where appointment_id is not null/,
+    );
+    expect(sql).toMatch(/v_appointment_id := coalesce\(nullif\(p_session->>'appointment_id', ''\)::uuid, nullif\(p_session->>'appointmentId', ''\)::uuid\)/);
+    expect(sql).toContain("v_metadata := coalesce(p_session->'metadata', '{}'::jsonb)");
+    expect(sql).toContain("return jsonb_build_object('success', false, 'error_code', 'INVALID_METADATA'");
+    expect(sql).toMatch(/insert into public\.sessions \([\s\S]*appointment_id[\s\S]*metadata[\s\S]*\)[\s\S]*values \([\s\S]*v_appointment_id[\s\S]*v_metadata/s);
+    expect(sql).toMatch(/update public\.sessions[\s\S]*appointment_id = v_appointment_id[\s\S]*metadata = v_metadata/s);
+  });
+
   it("creates normalized target and trial-event tables with tenant scope", () => {
     expect(sql).toContain("create table if not exists public.goal_targets");
     expect(sql).toContain("create table if not exists public.trial_events");

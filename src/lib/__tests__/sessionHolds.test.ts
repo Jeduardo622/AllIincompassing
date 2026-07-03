@@ -349,6 +349,57 @@ describe("session holds API helpers", () => {
     });
   });
 
+  it("serializes appointment identity and session metadata in confirmation requests", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          session: {
+            id: "session-appointment",
+            appointment_id: "11111111-1111-4111-8111-111111111111",
+            therapist_id: "therapist",
+            client_id: "client",
+            start_time: "2025-01-01T00:00:00Z",
+            end_time: "2025-01-01T01:00:00Z",
+            status: "scheduled",
+            notes: null,
+            metadata: { source: "schedule-modal" },
+            created_at: "2025-01-01T00:00:00Z",
+            created_by: "user-1",
+            updated_at: "2025-01-01T00:00:00Z",
+            updated_by: "user-1",
+          },
+          roundedDurationMinutes: 60,
+        },
+      }),
+    );
+
+    await confirmSessionBooking({
+      holdKey: "hold-key",
+      session: {
+        appointment_id: "11111111-1111-4111-8111-111111111111",
+        appointmentId: "11111111-1111-4111-8111-111111111111",
+        therapist_id: "therapist",
+        client_id: "client",
+        start_time: "2025-01-01T00:00:00Z",
+        end_time: "2025-01-01T01:00:00Z",
+        metadata: { source: "schedule-modal", externalAppointmentId: "apt-123" },
+      },
+      startTimeOffsetMinutes: 0,
+      endTimeOffsetMinutes: 0,
+      timeZone: "UTC",
+      accessToken: ACCESS_TOKEN,
+    });
+
+    const edgeRequest = mockedCallEdge.mock.calls[0]?.[1];
+    const body = JSON.parse(String(edgeRequest?.body));
+    expect(body.session).toMatchObject({
+      appointment_id: "11111111-1111-4111-8111-111111111111",
+      appointmentId: "11111111-1111-4111-8111-111111111111",
+      metadata: { source: "schedule-modal", externalAppointmentId: "apt-123" },
+    });
+  });
+
   it("normalizes duration_minutes using roundedDurationMinutes when provided", async () => {
     mockedCallEdge.mockResolvedValueOnce(
       jsonResponse({

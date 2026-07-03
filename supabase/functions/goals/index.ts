@@ -7,20 +7,26 @@ import { currentUserCanManageProgramsGoals, MissingOrgContextError, orgScopedQue
 const goalSchema = z.object({
   client_id: z.string().uuid(),
   program_id: z.string().uuid(),
+  domain_id: z.string().uuid().optional().nullable(),
   title: z.string().trim().min(1),
   description: z.string().trim().min(1),
   target_behavior: z.string().optional(),
   measurement_type: z.string().optional(),
   original_text: z.string().trim().min(1),
   goal_type: z.enum(["child", "parent"]).optional(),
+  clinical_goal_type: z.enum(["behavior", "skill"]).optional().nullable(),
   clinical_context: z.string().optional(),
   baseline_data: z.string().optional(),
+  baseline: z.string().optional(),
   target_criteria: z.string().optional(),
   mastery_criteria: z.string().optional(),
   maintenance_criteria: z.string().optional(),
   generalization_criteria: z.string().optional(),
+  teaching_strategies: z.string().optional(),
+  operational_definition: z.string().optional(),
   objective_data_points: z.array(z.record(z.unknown())).optional(),
-  status: z.enum(["active", "paused", "mastered", "archived"]).optional(),
+  source: z.enum(["manual", "fba_extraction"]).optional(),
+  status: z.enum(["draft", "active", "paused", "mastered", "archived"]).optional(),
 });
 
 const goalUpdateSchema = goalSchema.partial().extend({
@@ -61,8 +67,6 @@ export const handleGoals = async (req: Request) => {
   if (authError || !authData?.user) {
     return json(req, { error: "Missing authorization token" }, 401);
   }
-  const allowed = await currentUserCanManageProgramsGoals(db, orgId);
-  if (!allowed) return json(req, { error: "Forbidden" }, 403);
 
   if (req.method === "GET") {
     const url = new URL(req.url);
@@ -72,7 +76,7 @@ export const handleGoals = async (req: Request) => {
 
     const { data, error } = await orgScopedQuery(db, "goals", orgId)
       .select(
-        "id,organization_id,client_id,program_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_context,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,status,created_at,updated_at",
+        "id,organization_id,client_id,program_id,domain_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_goal_type,clinical_context,baseline_data,baseline,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,teaching_strategies,operational_definition,objective_data_points,source,status,created_at,updated_at",
       )
       .eq("program_id", programId)
       .order("created_at", { ascending: false });
@@ -89,6 +93,9 @@ export const handleGoals = async (req: Request) => {
   }
 
   if (req.method === "POST") {
+    const allowed = await currentUserCanManageProgramsGoals(db, orgId);
+    if (!allowed) return json(req, { error: "Forbidden" }, 403);
+
     let payload: unknown;
     try {
       payload = await req.json();
@@ -119,6 +126,9 @@ export const handleGoals = async (req: Request) => {
   }
 
   if (req.method === "PATCH") {
+    const allowed = await currentUserCanManageProgramsGoals(db, orgId);
+    if (!allowed) return json(req, { error: "Forbidden" }, 403);
+
     const url = new URL(req.url);
     const goalId = url.searchParams.get("goal_id");
     if (!goalId) return json(req, { error: "goal_id is required" }, 400);

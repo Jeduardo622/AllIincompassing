@@ -1,4 +1,5 @@
 import type { AssessmentDocumentRecord, AssessmentTemplateType } from "../../lib/assessment-documents";
+import type { GoalTarget, TargetMeasurementType } from "../../types";
 
 export interface AssessmentChecklistItem {
   id: string;
@@ -99,6 +100,40 @@ export const EMPTY_CHECKLIST_RESPONSE: AssessmentChecklistResponse = {
 export const EMPTY_ASSESSMENT_DRAFTS: AssessmentDraftResponse = { programs: [], goals: [] };
 export const ENABLE_CHECKLIST_MAPPING_UI = true;
 export const ENABLE_PROGRAMS_GOALS_AI_PROPOSALS = false;
+
+export const TARGET_MEASUREMENT_TYPES: ReadonlyArray<TargetMeasurementType> = [
+  "correctIncorrect",
+  "frequency",
+  "rate",
+  "duration",
+  "timeSample",
+  "taskAnalysis",
+  "latency",
+  "IRT",
+];
+
+export const TARGET_MEASUREMENT_TYPE_LABELS: Record<TargetMeasurementType, string> = {
+  correctIncorrect: "Correct / incorrect",
+  frequency: "Frequency",
+  rate: "Rate",
+  duration: "Duration",
+  timeSample: "Time sample",
+  taskAnalysis: "Task analysis",
+  latency: "Latency",
+  IRT: "Inter-response time",
+};
+
+export const buildTargetsByGoalId = (targets: GoalTarget[]): Record<string, GoalTarget[]> =>
+  targets.reduce<Record<string, GoalTarget[]>>((groups, target) => {
+    const currentTargets = groups[target.goal_id] ?? [];
+    groups[target.goal_id] = [...currentTargets, target].sort((left, right) => {
+      if (left.sort_order !== right.sort_order) {
+        return left.sort_order - right.sort_order;
+      }
+      return left.created_at.localeCompare(right.created_at);
+    });
+    return groups;
+  }, {});
 
 export const TEMPLATE_LABELS: Record<AssessmentTemplateType, string> = {
   caloptima_fba: "CalOptima FBA",

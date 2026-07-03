@@ -246,6 +246,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       if (method === "GET" && path.startsWith("/api/goals?")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
+      if (method === "GET" && path.startsWith("/api/goal-targets?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
       if (method === "GET" && path.startsWith("/api/program-notes?")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
@@ -745,6 +748,211 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
             (init?.method ?? "GET").toUpperCase() === "GET",
         ),
     ).toHaveLength(noteFetchCountBeforeCreate);
+  });
+
+  it("renders goal-level details with target-level measurement and graph configuration", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "goal-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              program_id: "program-1",
+              domain_id: "communication-domain",
+              title: "Increase functional communication",
+              description: "Client uses functional communication across routines.",
+              original_text: "Original clinical wording",
+              measurement_type: "percent opportunities",
+              baseline: "2 requests per session",
+              mastery_criteria: "80% across three sessions",
+              generalization_criteria: "Two settings and two adults",
+              teaching_strategies: "DTT, NET, prompt fading",
+              operational_definition: "Independent request within 5 seconds",
+              objective_data_points: ["trial response", "prompt level"],
+              clinical_goal_type: "skill",
+              source: "manual",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goal-targets?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "target-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              goal_id: "goal-1",
+              name: "Mands for help",
+              measurement_type: "frequency",
+              graph_config: { defaultChart: "bar", source: "trial_events" },
+              status: "active",
+              sort_order: 0,
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findAllByText("Increase functional communication")).not.toHaveLength(0);
+    expect(screen.getByText("Baseline: 2 requests per session")).toBeInTheDocument();
+    expect(screen.getByText("Operational definition: Independent request within 5 seconds")).toBeInTheDocument();
+    expect(screen.getByText("Teaching strategy: DTT, NET, prompt fading")).toBeInTheDocument();
+    expect(screen.getByText("Mastery: 80% across three sessions")).toBeInTheDocument();
+    expect(screen.getByText("Generalization: Two settings and two adults")).toBeInTheDocument();
+
+    expect(await screen.findByText("Mands for help")).toBeInTheDocument();
+    expect(screen.getByText("Measurement: Frequency")).toBeInTheDocument();
+    expect(screen.getByText(/Graph: bar from/i)).toBeInTheDocument();
+  });
+
+  it("creates a target under an existing goal with independent measurement status and graph defaults", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "goal-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              program_id: "program-1",
+              title: "Increase functional communication",
+              description: "Client uses functional communication.",
+              original_text: "Original clinical wording",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goal-targets?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "POST" && path === "/api/goal-targets") {
+        return new Response(
+          JSON.stringify({
+            id: "target-1",
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            goal_id: "goal-1",
+            name: "Duration of engagement",
+            measurement_type: "duration",
+            graph_config: { defaultChart: "line", source: "trial_events", aggregation: "session_summary" },
+            status: "draft",
+            sort_order: 0,
+            created_at: "2026-02-11T00:00:00.000Z",
+            updated_at: "2026-02-11T00:00:00.000Z",
+          }),
+          { status: 201 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findAllByText("Increase functional communication")).not.toHaveLength(0);
+    fireEvent.change(screen.getByLabelText(/Target name/i), { target: { value: "Duration of engagement" } });
+    fireEvent.change(screen.getByLabelText(/Measurement type/i), { target: { value: "duration" } });
+    fireEvent.change(screen.getByLabelText("Target status"), { target: { value: "draft" } });
+
+    await user.click(screen.getByRole("button", { name: "Create Target" }));
+
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goal-targets",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("\"measurement_type\":\"duration\""),
+        }),
+      );
+    });
+    expect(
+      vi
+        .mocked(callEdgeFunctionHttp)
+        .mock.calls.some(
+          ([path, init]) =>
+            path === "goal-targets" &&
+            init?.method === "POST" &&
+            typeof init.body === "string" &&
+            init.body.includes("\"goal_id\":\"goal-1\"") &&
+            init.body.includes("\"status\":\"draft\"") &&
+            init.body.includes("\"source\":\"trial_events\""),
+        ),
+    ).toBe(true);
+    expect(showSuccess).toHaveBeenCalledWith("Target created");
   });
 
   it("renders three goal fields and serializes them into target_criteria on create", async () => {
@@ -2538,7 +2746,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    expect(await screen.findByText("structured review ready")).toBeInTheDocument();
+    expect((await screen.findAllByText("structured review ready")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).not.toBeInTheDocument();
     expect(
       screen.queryByText("Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."),

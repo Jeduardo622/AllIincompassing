@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { CORS_HEADERS, fetchJson, getAccessToken, getSupabaseConfig, json, resolveOrgAndRole } from "./shared";
+import {
+  CORS_HEADERS,
+  currentUserCanManageProgramsGoals,
+  fetchJson,
+  getAccessToken,
+  getSupabaseConfig,
+  json,
+  resolveOrgAndRoleWithStatus,
+} from "./shared";
 
 type PostgrestErrorPayload = {
   code?: string;
@@ -11,20 +19,26 @@ type PostgrestErrorPayload = {
 const goalSchema = z.object({
   client_id: z.string().uuid(),
   program_id: z.string().uuid(),
+  domain_id: z.string().uuid().optional().nullable(),
   title: z.string().trim().min(1),
   description: z.string().trim().min(1),
   target_behavior: z.string().optional(),
   measurement_type: z.string().optional(),
   original_text: z.string().trim().min(1),
   goal_type: z.enum(["child", "parent"]).optional(),
+  clinical_goal_type: z.enum(["behavior", "skill"]).optional().nullable(),
   clinical_context: z.string().optional(),
   baseline_data: z.string().optional(),
+  baseline: z.string().optional(),
   target_criteria: z.string().optional(),
   mastery_criteria: z.string().optional(),
   maintenance_criteria: z.string().optional(),
   generalization_criteria: z.string().optional(),
+  teaching_strategies: z.string().optional(),
+  operational_definition: z.string().optional(),
   objective_data_points: z.array(z.record(z.unknown())).optional(),
-  status: z.enum(["active", "paused", "mastered", "archived"]).optional(),
+  source: z.enum(["manual", "fba_extraction"]).optional(),
+  status: z.enum(["draft", "active", "paused", "mastered", "archived"]).optional(),
 });
 
 const goalUpdateSchema = goalSchema.partial().extend({
@@ -55,8 +69,12 @@ export async function goalsHandler(request: Request): Promise<Response> {
     return json({ error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
   }
 
-  const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
-  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+  const role = await resolveOrgAndRoleWithStatus(accessToken);
+  if (role.upstreamError) {
+    return json({ error: "Unable to validate organization access" }, 502);
+  }
+  const organizationId = role.organizationId;
+  if (!organizationId) {
     return json({ error: "Forbidden" }, 403);
   }
 
@@ -90,7 +108,7 @@ export async function goalsHandler(request: Request): Promise<Response> {
     }
 
     const baseSelect =
-      "id,organization_id,client_id,program_id,title,description,target_behavior,measurement_type,original_text,clinical_context,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,status,created_at,updated_at";
+      "id,organization_id,client_id,program_id,domain_id,title,description,target_behavior,measurement_type,original_text,clinical_goal_type,clinical_context,baseline_data,baseline,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,teaching_strategies,operational_definition,objective_data_points,source,status,created_at,updated_at";
     const goalsUrlWithType = `${supabaseUrl}/rest/v1/goals?select=${baseSelect},goal_type&organization_id=eq.${organizationId}&program_id=eq.${programId}&order=created_at.desc`;
     const result = await fetchJson(goalsUrlWithType, { method: "GET", headers });
     if (!result.ok && isMissingGoalTypeColumnError(result.data)) {
@@ -108,17 +126,20 @@ export async function goalsHandler(request: Request): Promise<Response> {
       return json(withDefaultGoalType);
     }
     if (!result.ok) {
-      if (result.status === 400) {
-        // Backward-compatible fallback for transient schema/select mismatches:
-        // keep Programs & Goals usable instead of failing the entire tab.
-        return json([]);
-      }
       return json({ error: "Failed to load goals" }, result.status || 500);
     }
     return json(result.data ?? []);
   }
 
   if (request.method === "POST") {
+    const canManage = await currentUserCanManageProgramsGoals(accessToken, organizationId);
+    if (canManage.upstreamError) {
+      return json({ error: "Unable to validate program-goal access" }, 502);
+    }
+    if (!canManage.allowed) {
+      return json({ error: "Forbidden" }, 403);
+    }
+
     let payload: unknown;
     try {
       payload = await request.json();
@@ -158,6 +179,14 @@ export async function goalsHandler(request: Request): Promise<Response> {
   }
 
   if (request.method === "PATCH") {
+    const canManage = await currentUserCanManageProgramsGoals(accessToken, organizationId);
+    if (canManage.upstreamError) {
+      return json({ error: "Unable to validate program-goal access" }, 502);
+    }
+    if (!canManage.allowed) {
+      return json({ error: "Forbidden" }, 403);
+    }
+
     const url = new URL(request.url);
     const goalId = url.searchParams.get("goal_id");
     if (!goalId) {

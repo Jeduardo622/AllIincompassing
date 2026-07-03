@@ -6,13 +6,21 @@ vi.mock("../api/shared", async () => {
   return {
     ...actual,
     getAccessToken: vi.fn(),
+    currentUserCanManageProgramsGoals: vi.fn(),
     resolveOrgAndRole: vi.fn(),
+    resolveOrgAndRoleWithStatus: vi.fn(),
     getSupabaseConfig: vi.fn(),
     fetchJson: vi.fn(),
   };
 });
 
-import { fetchJson, getAccessToken, getSupabaseConfig, resolveOrgAndRole } from "../api/shared";
+import {
+  currentUserCanManageProgramsGoals,
+  fetchJson,
+  getAccessToken,
+  getSupabaseConfig,
+  resolveOrgAndRoleWithStatus,
+} from "../api/shared";
 
 describe("goalsHandler", () => {
   beforeEach(() => {
@@ -44,11 +52,13 @@ describe("goalsHandler", () => {
 
   it("returns 400 when GET program_id is not a UUID", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      isOrgMember: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -67,12 +77,15 @@ describe("goalsHandler", () => {
 
   it("returns 400 when program_id does not belong to client_id on POST", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      isOrgMember: false,
+      upstreamError: false,
     });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
       anonKey: "anon",
@@ -100,14 +113,48 @@ describe("goalsHandler", () => {
     expect(response.status).toBe(400);
   });
 
-  it("creates a goal with structured criteria and objective data points", async () => {
+  it("does not mask generic goal read 400 failures as an empty success", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      isOrgMember: false,
+      upstreamError: false,
     });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      data: { code: "PGRST100", message: "bad request" },
+    });
+
+    const response = await goalsHandler(
+      new Request("http://localhost/api/goals?program_id=11111111-1111-4111-8111-111111111111", {
+        method: "GET",
+        headers: { Authorization: "Bearer token" },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({ error: "Failed to load goals" });
+    expect(response.status).toBe(400);
+  });
+
+  it("creates a goal with structured criteria and objective data points", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+      isOrgMember: false,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
       anonKey: "anon",
@@ -152,10 +199,13 @@ describe("goalsHandler", () => {
 
   it.each(roleMatrix)("returns 403 for out-of-org goal PATCH as $label", async ({ role }) => {
     vi.mocked(getAccessToken).mockReturnValue("token");
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       ...role,
+      isOrgMember: false,
+      upstreamError: false,
     });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
       anonKey: "anon",

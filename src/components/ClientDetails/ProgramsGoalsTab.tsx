@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, Loader2, Plus, Trash2, UploadCloud } from "lucide-react";
-import type { Client, Goal, Program, ProgramNote } from "../../types";
+import type { Client, Goal, GoalTarget, Program, ProgramNote, TargetMeasurementType } from "../../types";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { useActiveOrganizationId } from "../../lib/organization";
@@ -19,6 +19,9 @@ import {
   EMPTY_CHECKLIST_RESPONSE,
   ENABLE_CHECKLIST_MAPPING_UI,
   ENABLE_PROGRAMS_GOALS_AI_PROPOSALS,
+  TARGET_MEASUREMENT_TYPE_LABELS,
+  TARGET_MEASUREMENT_TYPES,
+  buildTargetsByGoalId,
   formatGoalTimelineCriteria,
   parseApiErrorMessage,
   parseGoalTimelineCriteria,
@@ -317,6 +320,7 @@ const withTimeout = async <T,>(
 const PROGRAMS_EDGE_PATH = "programs";
 const GOALS_EDGE_PATH = "goals";
 const PROGRAM_NOTES_EDGE_PATH = "program-notes";
+const GOAL_TARGETS_EDGE_PATH = "goal-targets";
 
 const buildProgramsQueryPath = (clientId: string): string =>
   `${PROGRAMS_EDGE_PATH}?client_id=${encodeURIComponent(clientId)}`;
@@ -338,6 +342,12 @@ const buildProgramGoalsQueryKey = (programId: string | null, organizationId?: st
 
 const buildProgramNotesQueryKey = (programId: string | null, organizationId?: string | null) =>
   ["program-notes", programId, organizationId ?? "MISSING_ORG"] as const;
+
+const buildGoalTargetsQueryKey = (
+  clientId: string,
+  goalIds: ReadonlyArray<string>,
+  organizationId?: string | null,
+) => ["goal-targets", clientId, organizationId ?? "MISSING_ORG", goalIds.join(",")] as const;
 
 const upsertById = <T extends { id: string }>(current: T[] | undefined, nextItem: T): T[] => {
   const existingItems = Array.isArray(current) ? current : [];
@@ -444,7 +454,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [goalDescription, setGoalDescription] = useState("");
   const [goalOriginalText, setGoalOriginalText] = useState("");
   const [goalMeasurementType, setGoalMeasurementType] = useState("");
+  const [goalClinicalGoalType, setGoalClinicalGoalType] = useState<Goal["clinical_goal_type"]>("skill");
+  const [goalDomainId, setGoalDomainId] = useState("");
+  const [goalSource, setGoalSource] = useState<NonNullable<Goal["source"]>>("manual");
   const [goalBaselineData, setGoalBaselineData] = useState("");
+  const [goalTeachingStrategies, setGoalTeachingStrategies] = useState("");
+  const [goalOperationalDefinition, setGoalOperationalDefinition] = useState("");
   const [goalShortTermGoal, setGoalShortTermGoal] = useState("");
   const [goalIntermediateGoal, setGoalIntermediateGoal] = useState("");
   const [goalLongTermGoal, setGoalLongTermGoal] = useState("");
@@ -452,6 +467,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [goalMaintenanceCriteria, setGoalMaintenanceCriteria] = useState("");
   const [goalGeneralizationCriteria, setGoalGeneralizationCriteria] = useState("");
   const [goalObjectiveDataPoints, setGoalObjectiveDataPoints] = useState("[]");
+  const [targetGoalId, setTargetGoalId] = useState("");
+  const [targetName, setTargetName] = useState("");
+  const [targetMeasurementType, setTargetMeasurementType] = useState<TargetMeasurementType>("correctIncorrect");
+  const [targetStatus, setTargetStatus] = useState<GoalTarget["status"]>("active");
   const [checklistEdits, setChecklistEdits] = useState<
     Record<string, { status: AssessmentChecklistItem["status"]; reviewNotes: string; valueText: string }>
   >({});
@@ -580,7 +599,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           const { data, error } = await supabase
             .from("goals")
             .select(
-              "id,organization_id,client_id,program_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_context,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,status,created_at,updated_at",
+              "id,organization_id,client_id,program_id,domain_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_goal_type,clinical_context,baseline_data,baseline,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,teaching_strategies,operational_definition,objective_data_points,source,status,created_at,updated_at",
             )
             .eq("organization_id", organizationId ?? "")
             .eq("program_id", resolvedProgramId)
@@ -608,6 +627,53 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     () => goals.filter((goal) => goal.status !== "archived"),
     [goals],
   );
+  const targetNameValue = targetName.trim();
+  const createTargetDisabledReason = liveGoals.length === 0
+    ? "Create a goal before adding targets."
+    : !targetGoalId
+      ? "Select a goal before adding a target."
+      : !targetNameValue
+        ? "Target name is required."
+        : null;
+
+  const goalIdsForTargets = useMemo(() => liveGoals.map((goal) => goal.id).sort(), [liveGoals]);
+  const goalTargetsQueryKey = buildGoalTargetsQueryKey(client.id, goalIdsForTargets, organizationId);
+
+  const {
+    data: goalTargets = [],
+    isLoading: goalTargetsLoading,
+    error: goalTargetsQueryError,
+  } = useQuery({
+    queryKey: goalTargetsQueryKey,
+    queryFn: async () => {
+      if (goalIdsForTargets.length === 0) {
+        return [];
+      }
+      const targetSets = await Promise.all(
+        goalIdsForTargets.map(async (goalId) => {
+          const response = await callEdgeFunctionHttp(`${GOAL_TARGETS_EDGE_PATH}?goal_id=${encodeURIComponent(goalId)}`);
+          if (!response.ok) {
+            throw new Error(await parseApiErrorMessage(response, "Failed to load goal targets."));
+          }
+          return parseJson<GoalTarget[]>(response);
+        }),
+      );
+      return targetSets.flat();
+    },
+    enabled: Boolean(organizationId && goalIdsForTargets.length > 0),
+    retry: false,
+    staleTime: TAB_QUERY_STALE_TIME_MS,
+    refetchOnReconnect: true,
+  });
+
+  const targetsByGoalId = useMemo(() => buildTargetsByGoalId(goalTargets), [goalTargets]);
+
+  useEffect(() => {
+    if (targetGoalId && goalIdsForTargets.includes(targetGoalId)) {
+      return;
+    }
+    setTargetGoalId(goalIdsForTargets[0] ?? "");
+  }, [goalIdsForTargets, targetGoalId]);
 
   const { data: programNotes = [] } = useQuery({
     queryKey: programNotesQueryKey,
@@ -1354,7 +1420,13 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         description: goalDescriptionValue,
         original_text: goalOriginalTextValue,
         measurement_type: goalMeasurementType || undefined,
+        clinical_goal_type: goalClinicalGoalType || undefined,
+        domain_id: goalDomainId.trim() || undefined,
+        source: goalSource,
         baseline_data: goalBaselineData || undefined,
+        baseline: goalBaselineData || undefined,
+        teaching_strategies: goalTeachingStrategies || undefined,
+        operational_definition: goalOperationalDefinition || undefined,
         target_criteria: targetCriteria || undefined,
         mastery_criteria: goalMasteryCriteria || undefined,
         maintenance_criteria: goalMaintenanceCriteria || undefined,
@@ -1378,7 +1450,13 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 description: goalDescriptionValue,
                 original_text: goalOriginalTextValue,
                 measurement_type: goalMeasurementType || null,
+                clinical_goal_type: goalClinicalGoalType || null,
+                domain_id: goalDomainId.trim() || null,
+                source: goalSource,
                 baseline_data: goalBaselineData || null,
+                baseline: goalBaselineData || null,
+                teaching_strategies: goalTeachingStrategies || null,
+                operational_definition: goalOperationalDefinition || null,
                 target_criteria: targetCriteria || null,
                 mastery_criteria: goalMasteryCriteria || null,
                 maintenance_criteria: goalMaintenanceCriteria || null,
@@ -1387,7 +1465,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               },
             ])
             .select(
-              "id,organization_id,client_id,program_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_context,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,status,created_at,updated_at",
+              "id,organization_id,client_id,program_id,domain_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_goal_type,clinical_context,baseline_data,baseline,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,teaching_strategies,operational_definition,objective_data_points,source,status,created_at,updated_at",
             )
             .single();
           if (error) {
@@ -1413,7 +1491,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setGoalDescription("");
       setGoalOriginalText("");
       setGoalMeasurementType("");
+      setGoalClinicalGoalType("skill");
+      setGoalDomainId("");
+      setGoalSource("manual");
       setGoalBaselineData("");
+      setGoalTeachingStrategies("");
+      setGoalOperationalDefinition("");
       setGoalShortTermGoal("");
       setGoalIntermediateGoal("");
       setGoalLongTermGoal("");
@@ -1424,6 +1507,38 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.setQueryData<Goal[]>(buildProgramGoalsQueryKey(created.program_id, organizationId), (current) =>
         upsertById(current, created),
       );
+    },
+    onError: showError,
+  });
+
+  const createGoalTarget = useMutation({
+    mutationFn: async () => {
+      const response = await callEdgeFunctionHttp(GOAL_TARGETS_EDGE_PATH, {
+        method: "POST",
+        body: JSON.stringify({
+          goal_id: targetGoalId,
+          name: targetNameValue,
+          measurement_type: targetMeasurementType,
+          status: targetStatus,
+          graph_config: {
+            defaultChart: "line",
+            source: "trial_events",
+            aggregation: targetMeasurementType === "frequency" ? "sum" : "session_summary",
+          },
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to create target."));
+      }
+      return parseJson<GoalTarget>(response);
+    },
+    onSuccess: (created) => {
+      showSuccess("Target created");
+      setTargetName("");
+      setTargetMeasurementType("correctIncorrect");
+      setTargetStatus("active");
+      queryClient.setQueryData<GoalTarget[]>(goalTargetsQueryKey, (current) => upsertById(current, created));
+      queryClient.invalidateQueries({ queryKey: goalTargetsQueryKey });
     },
     onError: showError,
   });
@@ -2554,7 +2669,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 {liveGoals.length === 0 && (
                   <p className="text-sm text-gray-500">No goals in this program yet.</p>
                 )}
-                {liveGoals.map((goal) => (
+                {liveGoals.map((goal) => {
+                  const goalTargetsForGoal = targetsByGoalId[goal.id] ?? [];
+                  return (
                   <div key={goal.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
@@ -2586,8 +2703,13 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       </button>
                     </div>
                     <div className="mt-2 space-y-1 text-xs text-gray-500">
+                      {goal.clinical_goal_type && <p>Goal type: {goal.clinical_goal_type}</p>}
+                      {goal.source && <p>Source: {goal.source === "fba_extraction" ? "FBA extraction" : "Manual"}</p>}
+                      {goal.domain_id && <p>Domain: {goal.domain_id}</p>}
                       {goal.measurement_type && <p>Measurement: {goal.measurement_type}</p>}
-                      {goal.baseline_data && <p>Baseline: {goal.baseline_data}</p>}
+                      {(goal.baseline ?? goal.baseline_data) && <p>Baseline: {goal.baseline ?? goal.baseline_data}</p>}
+                      {goal.operational_definition && <p>Operational definition: {goal.operational_definition}</p>}
+                      {goal.teaching_strategies && <p>Teaching strategy: {goal.teaching_strategies}</p>}
                       {goal.target_criteria && <p>Target: {goal.target_criteria}</p>}
                       {goal.mastery_criteria && <p>Mastery: {goal.mastery_criteria}</p>}
                       {goal.maintenance_criteria && <p>Maintenance: {goal.maintenance_criteria}</p>}
@@ -2596,10 +2718,130 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         Objective data points: {Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0}
                       </p>
                     </div>
+                    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/30">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                          Targets
+                        </p>
+                        <span className="text-xs text-slate-500">{goalTargetsForGoal.length} configured</span>
+                      </div>
+                      {goalTargetsLoading ? (
+                        <p className="text-xs text-slate-500">Loading targets...</p>
+                      ) : goalTargetsForGoal.length === 0 ? (
+                        <p className="text-xs text-slate-500">No target-level measurement definitions yet.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {goalTargetsForGoal.map((target) => (
+                            <div key={target.id} className="rounded border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-dark">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-medium text-slate-800 dark:text-slate-100">{target.name}</span>
+                                <span className="uppercase text-slate-500">{target.status}</span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-slate-500">
+                                <span>
+                                  Measurement: {TARGET_MEASUREMENT_TYPE_LABELS[target.measurement_type] ?? target.measurement_type}
+                                </span>
+                                <span>
+                                  Graph: {String(target.graph_config?.defaultChart ?? "line")} from{" "}
+                                  {String(target.graph_config?.source ?? "trial_events")}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {goalTargetsQueryError instanceof Error && (
+                        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                          Could not load targets: {goalTargetsQueryError.message}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
+          </div>
+
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Target</h3>
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-300">
+                Targets sit under a goal and define the measurement type and graph source used by trial-level data.
+              </p>
+              <label htmlFor="target-goal" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                Parent goal
+              </label>
+              <select
+                id="target-goal"
+                value={targetGoalId}
+                onChange={(event) => setTargetGoalId(event.target.value)}
+                disabled={liveGoals.length === 0}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              >
+                {liveGoals.length === 0 ? (
+                  <option value="">No goals available</option>
+                ) : (
+                  liveGoals.map((goal) => (
+                    <option key={goal.id} value={goal.id}>
+                      {goal.title}
+                    </option>
+                  ))
+                )}
+              </select>
+              <label htmlFor="target-name" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                Target name *
+              </label>
+              <input
+                id="target-name"
+                type="text"
+                value={targetName}
+                onChange={(event) => setTargetName(event.target.value)}
+                placeholder="Target name"
+                aria-required="true"
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Measurement type
+                  <select
+                    value={targetMeasurementType}
+                    onChange={(event) => setTargetMeasurementType(event.target.value as TargetMeasurementType)}
+                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                  >
+                    {TARGET_MEASUREMENT_TYPES.map((measurementType) => (
+                      <option key={measurementType} value={measurementType}>
+                        {TARGET_MEASUREMENT_TYPE_LABELS[measurementType]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Target status
+                  <select
+                    value={targetStatus}
+                    onChange={(event) => setTargetStatus(event.target.value as GoalTarget["status"])}
+                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="active">Active</option>
+                    <option value="mastered">Mastered</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </label>
+              </div>
+              <button
+                type="button"
+                onClick={() => createGoalTarget.mutate()}
+                disabled={Boolean(createTargetDisabledReason) || createGoalTarget.isLoading}
+                className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {createGoalTarget.isLoading ? "Creating..." : "Create Target"}
+              </button>
+              {createTargetDisabledReason && !createGoalTarget.isLoading && (
+                <p className="text-xs text-gray-500 dark:text-gray-300">{createTargetDisabledReason}</p>
+              )}
+            </div>
           </div>
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
@@ -2653,6 +2895,40 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <p id="goal-original-text-help" className="text-xs text-gray-500 dark:text-gray-300">
                 Paste the original clinical wording from the assessment or care-plan source so the goal stays audit-friendly.
               </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Goal type
+                  <select
+                    value={goalClinicalGoalType ?? ""}
+                    onChange={(event) => setGoalClinicalGoalType(event.target.value as Goal["clinical_goal_type"])}
+                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                  >
+                    <option value="skill">Skill</option>
+                    <option value="behavior">Behavior</option>
+                  </select>
+                </label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Source
+                  <select
+                    value={goalSource}
+                    onChange={(event) => setGoalSource(event.target.value as NonNullable<Goal["source"]>)}
+                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                  >
+                    <option value="manual">Manual</option>
+                    <option value="fba_extraction">FBA extraction</option>
+                  </select>
+                </label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Domain ID
+                  <input
+                    type="text"
+                    value={goalDomainId}
+                    onChange={(event) => setGoalDomainId(event.target.value)}
+                    placeholder="Optional domain UUID"
+                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                  />
+                </label>
+              </div>
               <input
                 type="text"
                 value={goalMeasurementType}
@@ -2664,6 +2940,20 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 value={goalBaselineData}
                 onChange={(event) => setGoalBaselineData(event.target.value)}
                 placeholder="Baseline data (optional)"
+                rows={2}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <textarea
+                value={goalOperationalDefinition}
+                onChange={(event) => setGoalOperationalDefinition(event.target.value)}
+                placeholder="Operational definition (optional)"
+                rows={2}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <textarea
+                value={goalTeachingStrategies}
+                onChange={(event) => setGoalTeachingStrategies(event.target.value)}
+                placeholder="Teaching strategies (optional)"
                 rows={2}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
               />

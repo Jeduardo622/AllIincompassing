@@ -164,8 +164,8 @@ export interface Session {
   id: string;
   client_id: string;
   therapist_id: string;
-  program_id: string;
-  goal_id: string;
+  program_id: string | null;
+  goal_id: string | null;
   start_time: string;
   end_time: string;
   status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'no-show';

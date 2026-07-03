@@ -169,10 +169,35 @@ describe('SessionModal', () => {
     await waitFor(() => {
       expect(screen.getByText(/Therapist is required/)).toBeInTheDocument();
       expect(screen.getByText(/Client is required/)).toBeInTheDocument();
-      expect(screen.getByText(/Program is required/)).toBeInTheDocument();
-      expect(screen.getByText(/Primary goal is required/)).toBeInTheDocument();
+      expect(screen.queryByText(/Program is required/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Primary goal is required/)).not.toBeInTheDocument();
     });
   });
+
+  it('creates scheduled sessions without selecting program or goal links', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2025-03-18T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2025-03-18T11:00' } });
+
+    await userEvent.click(screen.getByRole('button', { name: /Create Session/i }));
+
+    await waitFor(() => {
+      expect(defaultProps.onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        therapist_id: 'test-therapist-1',
+        client_id: 'test-client-1',
+        start_time: '2025-03-18T14:00:00.000Z',
+        end_time: '2025-03-18T15:00:00.000Z',
+        status: 'scheduled',
+      }));
+    });
+    expect(defaultProps.onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      program_id: '',
+      goal_id: '',
+    }));
+  }, 15000);
 
   it('calls onSubmit with form data when valid', async () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
@@ -1335,10 +1360,13 @@ describe('SessionModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /Create Session/i }));
 
     await waitFor(() => {
-      expect(onSubmit).not.toHaveBeenCalled();
-      expect(screen.getByText(/Program is required/i)).toBeInTheDocument();
-      expect(screen.getByText(/Primary goal is required/i)).toBeInTheDocument();
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        program_id: '',
+        goal_id: '',
+      }));
     });
+    expect(screen.queryByText(/Program is required/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Primary goal is required/i)).not.toBeInTheDocument();
   });
 
   it('shows saved state after successful update for edit sessions', async () => {

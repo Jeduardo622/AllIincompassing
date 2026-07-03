@@ -993,8 +993,6 @@ export const Schedule = React.memo(() => {
       if (
         !newSession.therapist_id ||
         !newSession.client_id ||
-        !newSession.program_id ||
-        !newSession.goal_id ||
         !newSession.start_time ||
         !newSession.end_time
       ) {

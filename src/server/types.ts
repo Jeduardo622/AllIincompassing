@@ -24,11 +24,13 @@ export interface BookingOverrides {
 
 export type RequiredSessionFields = Pick<
   Session,
-  "therapist_id" | "client_id" | "program_id" | "goal_id" | "start_time" | "end_time"
+  "therapist_id" | "client_id" | "start_time" | "end_time"
 >;
 
 export type BookableSession = RequiredSessionFields &
-  Partial<Omit<Session, keyof RequiredSessionFields>> & {
+  Partial<Omit<Session, keyof RequiredSessionFields | "program_id" | "goal_id">> & {
+    program_id?: string | null;
+    goal_id?: string | null;
     recurrence?: SessionRecurrence | null;
   };
 
@@ -94,8 +96,8 @@ const sessionSchema = z
   .object({
     therapist_id: nonEmptyString,
     client_id: nonEmptyString,
-    program_id: nonEmptyString,
-    goal_id: nonEmptyString,
+    program_id: nonEmptyString.nullable().optional(),
+    goal_id: nonEmptyString.nullable().optional(),
     start_time: isoDateTime,
     end_time: isoDateTime,
     id: nonEmptyString.optional(),
@@ -112,6 +114,16 @@ const sessionSchema = z
   })
   .passthrough()
   .superRefine((session, ctx) => {
+    const hasProgramId = typeof session.program_id === "string" && session.program_id.trim().length > 0;
+    const hasGoalId = typeof session.goal_id === "string" && session.goal_id.trim().length > 0;
+    if (hasProgramId !== hasGoalId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: hasProgramId ? ["goal_id"] : ["program_id"],
+        message: "program_id and goal_id must be provided together when clinical goals are attached",
+      });
+    }
+
     if (
       typeof session.rate_per_hour === "number" &&
       typeof session.total_cost === "number" &&

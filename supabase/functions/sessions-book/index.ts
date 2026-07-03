@@ -9,12 +9,22 @@ const sessionSchema = z.object({
   start_time: isoDateTime,
   end_time: isoDateTime,
   id: z.string().uuid().optional(),
-  program_id: z.string().uuid(),
-  goal_id: z.string().uuid(),
+  program_id: z.string().uuid().nullable().optional(),
+  goal_id: z.string().uuid().nullable().optional(),
   goal_ids: z.array(z.string().uuid()).optional(),
   status: z.string().optional(),
   recurrence: z.unknown().optional(),
-}).passthrough();
+}).passthrough().superRefine((session, ctx) => {
+  const hasProgramId = typeof session.program_id === "string" && session.program_id.trim().length > 0;
+  const hasGoalId = typeof session.goal_id === "string" && session.goal_id.trim().length > 0;
+  if (hasProgramId !== hasGoalId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: hasProgramId ? ["goal_id"] : ["program_id"],
+      message: "program_id and goal_id must be provided together when clinical goals are attached",
+    });
+  }
+});
 
 const requestSchema = z.object({
   session: sessionSchema,

@@ -155,9 +155,15 @@ describe('employee role capability matrix migration', () => {
       'GRANT EXECUTE ON FUNCTION public.get_employee_users_paged(uuid, integer, integer) TO authenticated, service_role;',
     );
     expect(employeeRoleListingGrantsSql).toContain(
+      '-- @migration-rollback: GRANT EXECUTE ON FUNCTION public.get_employee_users_paged(uuid, integer, integer) TO PUBLIC, anon;',
+    );
+    expect(employeeRoleListingGrantsSql).toContain(
+      '-- @migration-rollback: REVOKE EXECUTE ON FUNCTION public.get_employee_users_paged(uuid, integer, integer) FROM service_role;',
+    );
+    expect(employeeRoleListingGrantsSql).toContain("-- @migration-rollback: NOTIFY pgrst, 'reload schema';");
+    expect(employeeRoleListingGrantsSql).not.toContain(
       '-- @migration-rollback: GRANT EXECUTE ON FUNCTION public.get_employee_users_paged(uuid, integer, integer) TO authenticated;',
     );
-    expect(employeeRoleListingGrantsSql).not.toContain('TO anon;');
     expect(employeeRoleListingGrantsSql).toContain("NOTIFY pgrst, 'reload schema';");
   });
 });

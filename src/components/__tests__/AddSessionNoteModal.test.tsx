@@ -374,6 +374,68 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     expect(screen.getByLabelText(/measurement note/i)).toBeInTheDocument();
   });
 
+  it('locks BT session metadata and goal structure while leaving data collection editable', async () => {
+    renderWithProviders(
+      <AddSessionNoteModal
+        {...defaultProps}
+        therapists={[mockTherapist] as any}
+        existingNote={{
+          id: 'note-1',
+          client_id: 'client-1',
+          date: '2026-03-31',
+          start_time: '10:00',
+          end_time: '11:00',
+          service_code: '97153',
+          therapist_id: 'therapist-1',
+          therapist_name: 'Test Therapist',
+          goals_addressed: ['Default Goal'],
+          goal_ids: ['goal-1'],
+          goal_notes: { 'goal-1': 'Existing goal note' },
+          goal_measurements: {
+            'goal-1': {
+              version: 1,
+              data: {
+                measurement_type: 'frequency',
+                metric_label: 'Count',
+                metric_unit: 'responses',
+                metric_value: 2,
+                opportunities: 4,
+                incorrect_trials: null,
+                prompt_level: 'Gestural',
+                note: 'Existing measurement note',
+                targets: ['Existing target'],
+                target: 'Existing target',
+                trial_prompt_note: null,
+              },
+            },
+          },
+          session_id: 'session-1',
+          narrative: 'Existing narrative',
+          is_locked: false,
+        }}
+      />,
+      { auth: { role: 'bt' } },
+    );
+
+    expect(await screen.findByLabelText(/session date/i)).toBeDisabled();
+    expect(screen.getByLabelText(/service code/i)).toBeDisabled();
+    expect(screen.getByLabelText(/start time/i)).toBeDisabled();
+    expect(screen.getByLabelText(/end time/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^therapist$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/link to session/i)).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: /default goal/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /add target/i })).toBeDisabled();
+    expect(screen.getByLabelText(/^target$/i)).toBeDisabled();
+
+    const note = screen.getByLabelText(/note for this goal/i);
+    fireEvent.change(note, { target: { value: 'BT observed accurate responding.' } });
+    expect(note).toHaveValue('BT observed accurate responding.');
+
+    const count = screen.getByLabelText(/count \(responses\)/i);
+    fireEvent.change(count, { target: { value: '5' } });
+    expect(count).toHaveValue(5);
+  });
+
   it('submits normalized goal_measurements when provided', async () => {
     const onSubmit = vi.fn();
 

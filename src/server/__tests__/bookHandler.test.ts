@@ -406,6 +406,52 @@ describe("bookHandler", () => {
     expect(bookSessionMock).not.toHaveBeenCalled();
   });
 
+  it("allows scheduling bookings without clinical program or goal links", async () => {
+    bookSessionMock.mockResolvedValueOnce({
+      session: {
+        id: "session-1",
+        client_id: "client-1",
+        therapist_id: "therapist-1",
+        program_id: null,
+        goal_id: null,
+        start_time: "2025-01-01T10:00:00Z",
+        end_time: "2025-01-01T11:00:00Z",
+        status: "scheduled",
+        notes: "",
+        created_at: "2025-01-01T09:00:00Z",
+        created_by: "user-1",
+        updated_at: "2025-01-01T09:00:00Z",
+        updated_by: "user-1",
+        duration_minutes: 60,
+      },
+      sessions: [],
+      hold: {
+        holdKey: "hold",
+        holdId: "1",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [],
+      },
+      cpt: { code: "97153", description: "Adaptive behavior treatment by protocol", modifiers: [], source: "fallback", durationMinutes: 60 },
+    });
+    const { program_id: _programId, goal_id: _goalId, ...sessionWithoutGoals } = validPayload.session;
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest({
+      ...validPayload,
+      session: sessionWithoutGoals,
+    }));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+      session: expect.not.objectContaining({
+        program_id: expect.anything(),
+        goal_id: expect.anything(),
+      }),
+    }));
+  });
+
   it("forbids org-member-equivalent therapist role from booking for a different therapist", async () => {
     server.use(
       http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/user_has_role_for_org`, async ({ request }) => {

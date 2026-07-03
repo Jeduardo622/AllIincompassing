@@ -673,9 +673,16 @@ export function SessionModal({
     const activeProgramIdsSet = new Set(
       programs.filter((program) => program.status === 'active').map((program) => program.id)
     );
+    if (!session?.id) {
+      if (programId && !activeProgramIdsSet.has(programId)) {
+        setValue('program_id', '');
+      }
+      setSelectedProgramIds((current) => current.filter((id) => activeProgramIdsSet.has(id)));
+      return;
+    }
     const nextProgram = programs.find((program) => program.status === 'active');
     if (!programId || !activeProgramIdsSet.has(programId)) {
-      if (session?.id && programId && !activeProgramIdsSet.has(programId)) {
+      if (programId && !activeProgramIdsSet.has(programId)) {
         return;
       }
       if (nextProgram?.id) {
@@ -714,6 +721,12 @@ export function SessionModal({
       activeGoals;
     const activeGoalIdsSet = new Set(activeGoals.map((goal) => goal.id));
     if (session?.id && goalId && !activeGoalIdsSet.has(goalId)) {
+      return;
+    }
+    if (!session?.id) {
+      if (goalId && !activeGoalIdsSet.has(goalId)) {
+        setValue('goal_id', '');
+      }
       return;
     }
     if (!goalId || !activeGoalIdsSet.has(goalId)) {
@@ -2081,7 +2094,7 @@ export function SessionModal({
                 </label>
                 <select
                   id="program-select"
-                  {...register('program_id', { required: session ? false : 'Program is required' })}
+                  {...register('program_id')}
                   disabled={isProgramsFetching || !clientId}
                   onChange={(event) => {
                     const nextProgramId = event.target.value;
@@ -2137,7 +2150,7 @@ export function SessionModal({
                 </label>
                 <select
                   id="goal-select"
-                  {...register('goal_id', { required: session ? false : 'Primary goal is required' })}
+                  {...register('goal_id')}
                   disabled={isGoalsFetching || selectedProgramGoals.length === 0}
                   className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >

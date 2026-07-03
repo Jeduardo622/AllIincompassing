@@ -28,6 +28,49 @@ describe("booking domain payload builder", () => {
     expect(payload.session.status).toBe("scheduled");
   });
 
+  it("allows scheduling payloads without clinical program or goal links", () => {
+    const payload = buildBookSessionApiPayload(
+      {
+        therapist_id: "11111111-1111-1111-1111-111111111111",
+        client_id: "22222222-2222-2222-2222-222222222222",
+        start_time: "2026-03-20T15:00:00.000Z",
+        end_time: "2026-03-20T16:00:00.000Z",
+      } as never,
+      {
+        startOffsetMinutes: -240,
+        endOffsetMinutes: -240,
+        timeZone: "America/New_York",
+      },
+    );
+
+    const parsed = bookSessionApiRequestBodySchema.safeParse(payload);
+    expect(parsed.success).toBe(true);
+    expect(payload.session.program_id).toBeUndefined();
+    expect(payload.session.goal_id).toBeUndefined();
+  });
+
+  it("strips blank clinical links from scheduling payloads", () => {
+    const payload = buildBookSessionApiPayload(
+      {
+        therapist_id: "11111111-1111-1111-1111-111111111111",
+        client_id: "22222222-2222-2222-2222-222222222222",
+        program_id: "",
+        goal_id: "",
+        start_time: "2026-03-20T15:00:00.000Z",
+        end_time: "2026-03-20T16:00:00.000Z",
+      } as never,
+      {
+        startOffsetMinutes: -240,
+        endOffsetMinutes: -240,
+        timeZone: "America/New_York",
+      },
+    );
+
+    expect(payload.session.program_id).toBeUndefined();
+    expect(payload.session.goal_id).toBeUndefined();
+    expect(bookSessionApiRequestBodySchema.safeParse(payload).success).toBe(true);
+  });
+
   it("computes booking time metadata for valid session times", () => {
     const metadata = buildBookingTimeMetadata(
       {

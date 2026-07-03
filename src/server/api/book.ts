@@ -141,20 +141,29 @@ async function assertBookRequestScope(
   const encodedOrgId = encodeURIComponent(organizationId);
   const encodedTherapistId = encodeURIComponent(body.session.therapist_id);
   const encodedClientId = encodeURIComponent(body.session.client_id);
-  const encodedProgramId = encodeURIComponent(body.session.program_id);
-  const encodedGoalId = encodeURIComponent(body.session.goal_id);
+  const programId = typeof body.session.program_id === "string" ? body.session.program_id.trim() : "";
+  const goalId = typeof body.session.goal_id === "string" ? body.session.goal_id.trim() : "";
+  const hasClinicalGoalLink = programId.length > 0 && goalId.length > 0;
 
   const therapistUrl = `${supabaseUrl}/rest/v1/therapists?select=id&organization_id=eq.${encodedOrgId}&id=eq.${encodedTherapistId}`;
   const clientUrl = `${supabaseUrl}/rest/v1/clients?select=id&organization_id=eq.${encodedOrgId}&id=eq.${encodedClientId}`;
-  const programUrl = `${supabaseUrl}/rest/v1/programs?select=id,client_id&organization_id=eq.${encodedOrgId}&id=eq.${encodedProgramId}`;
-  const goalUrl = `${supabaseUrl}/rest/v1/goals?select=id,program_id&organization_id=eq.${encodedOrgId}&id=eq.${encodedGoalId}`;
 
   const queryEntities = async (headers: Record<string, string>) => {
     const [therapistResult, clientResult, programResult, goalResult] = await Promise.all([
       fetchJson<Array<{ id: string }>>(therapistUrl, { method: "GET", headers }),
       fetchJson<Array<{ id: string }>>(clientUrl, { method: "GET", headers }),
-      fetchJson<Array<{ id: string; client_id: string }>>(programUrl, { method: "GET", headers }),
-      fetchJson<Array<{ id: string; program_id: string }>>(goalUrl, { method: "GET", headers }),
+      hasClinicalGoalLink
+        ? fetchJson<Array<{ id: string; client_id: string }>>(
+            `${supabaseUrl}/rest/v1/programs?select=id,client_id&organization_id=eq.${encodedOrgId}&id=eq.${encodeURIComponent(programId)}`,
+            { method: "GET", headers },
+          )
+        : Promise.resolve({ ok: true, status: 200, data: [] }),
+      hasClinicalGoalLink
+        ? fetchJson<Array<{ id: string; program_id: string }>>(
+            `${supabaseUrl}/rest/v1/goals?select=id,program_id&organization_id=eq.${encodedOrgId}&id=eq.${encodeURIComponent(goalId)}`,
+            { method: "GET", headers },
+          )
+        : Promise.resolve({ ok: true, status: 200, data: [] }),
     ]);
     return {
       therapistResult,
@@ -186,11 +195,11 @@ async function assertBookRequestScope(
   const program = Array.isArray(programResult.data) ? programResult.data[0] : null;
   const goal = Array.isArray(goalResult.data) ? goalResult.data[0] : null;
 
-  if (!therapistExists || !clientExists || !program || !goal) {
+  if (!therapistExists || !clientExists || (hasClinicalGoalLink && (!program || !goal))) {
     return errorResponse(request, "not_found", "Booking entities not found", { status: 404 });
   }
 
-  if (program.client_id !== body.session.client_id || goal.program_id !== body.session.program_id) {
+  if (hasClinicalGoalLink && program && goal && (program.client_id !== body.session.client_id || goal.program_id !== programId)) {
     return errorResponse(request, "validation_error", "Invalid booking relationships", { status: 400 });
   }
 

@@ -66,6 +66,11 @@ export function buildBookSessionApiPayload(
   if (normalizedSession.notes === null) {
     delete normalizedSession.notes;
   }
+  for (const optionalClinicalKey of ["program_id", "goal_id"] as const) {
+    if (normalizedSession[optionalClinicalKey] === "") {
+      delete normalizedSession[optionalClinicalKey];
+    }
+  }
 
   return {
     session: normalizedSession,

@@ -88,8 +88,9 @@ export function AddSessionNoteModal({
   isSaving = false,
   existingNote = null,
 }: AddSessionNoteModalProps) {
-  const { hasCapability } = useAuth();
+  const { effectiveRole, hasCapability } = useAuth();
   const canLockSessionNotes = hasCapability('lockSessionNotes');
+  const isBtDataOnly = effectiveRole === 'bt';
   const organizationId = useActiveOrganizationId();
   const isMinWidthSm = useMinWidthSm();
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -273,6 +274,9 @@ export function AddSessionNoteModal({
   }, [goals, isSessionGoalsFetched, selectedSessionId, sessionGoalsData, sessions]);
 
   const toggleGoalSelection = (goalId: string) => {
+    if (isBtDataOnly) {
+      return;
+    }
     setSelectedGoalIds((prev) => {
       if (prev.includes(goalId)) {
         // Remove the per-goal note when the goal is deselected.
@@ -337,6 +341,9 @@ export function AddSessionNoteModal({
   };
 
   const updateGoalTargets = (goal: Goal, nextTargets: string[]) => {
+    if (isBtDataOnly) {
+      return;
+    }
     setGoalMeasurements((prev) => {
       const draftEntry = createDraftGoalMeasurementEntry(goal, prev[goal.id]);
       return {
@@ -373,11 +380,17 @@ export function AddSessionNoteModal({
   };
 
   const addGoalTarget = (goal: Goal) => {
+    if (isBtDataOnly) {
+      return;
+    }
     const currentTargets = getEditableGoalTargets(goal, goalMeasurements[goal.id]);
     updateGoalTargets(goal, [...currentTargets, '']);
   };
 
   const changeGoalTarget = (goal: Goal, targetIndex: number, nextValue: string) => {
+    if (isBtDataOnly) {
+      return;
+    }
     const currentTargets = getEditableGoalTargets(goal, goalMeasurements[goal.id]);
     const nextTargets = currentTargets.slice();
     nextTargets[targetIndex] = nextValue;
@@ -385,6 +398,9 @@ export function AddSessionNoteModal({
   };
 
   const removeGoalTarget = (goal: Goal, targetIndex: number) => {
+    if (isBtDataOnly) {
+      return;
+    }
     const currentTargets = getEditableGoalTargets(goal, goalMeasurements[goal.id]);
     const nextTargets = currentTargets.filter((_, index) => index !== targetIndex);
     updateGoalTargets(goal, nextTargets.length > 0 ? nextTargets : ['']);
@@ -634,6 +650,7 @@ export function AddSessionNoteModal({
                       <input
                         type="checkbox"
                         checked={isSelected}
+                        disabled={isBtDataOnly}
                         onChange={() => toggleGoalSelection(goal.id)}
                         className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         aria-label={goal.title}
@@ -676,6 +693,7 @@ export function AddSessionNoteModal({
                             <button
                               type="button"
                               onClick={() => addGoalTarget(goal)}
+                              disabled={isBtDataOnly}
                               className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark dark:text-indigo-200 dark:hover:bg-indigo-950/40"
                             >
                               <Plus className="h-3.5 w-3.5" />
@@ -689,6 +707,7 @@ export function AddSessionNoteModal({
                                   id={`goal-target-${goal.id}-${targetIndex}`}
                                   aria-label={targetIndex === 0 ? 'Target' : `Target ${targetIndex + 1}`}
                                   value={targetValue}
+                                  disabled={isBtDataOnly}
                                   onChange={(e) => changeGoalTarget(goal, targetIndex, e.target.value)}
                                   rows={2}
                                   placeholder={goal.target_criteria?.trim() || `Record the target for "${goal.title}"…`}
@@ -698,6 +717,7 @@ export function AddSessionNoteModal({
                                   <button
                                     type="button"
                                     onClick={() => removeGoalTarget(goal, targetIndex)}
+                                    disabled={isBtDataOnly}
                                     aria-label={`Remove target ${targetIndex + 1}`}
                                     className="mt-1 shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-rose-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-rose-300"
                                   >
@@ -845,6 +865,7 @@ export function AddSessionNoteModal({
                     <input
                       type="checkbox"
                       checked={isSelected}
+                      disabled={isBtDataOnly}
                       onChange={() => toggleGoalSelection(goal.id)}
                       className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       aria-label={goal.title}
@@ -884,6 +905,7 @@ export function AddSessionNoteModal({
                           <button
                             type="button"
                             onClick={() => addGoalTarget(goal)}
+                            disabled={isBtDataOnly}
                             className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark dark:text-indigo-200 dark:hover:bg-indigo-950/40"
                           >
                             <Plus className="h-3.5 w-3.5" />
@@ -897,6 +919,7 @@ export function AddSessionNoteModal({
                                 id={`goal-target-${goal.id}-${targetIndex}`}
                                 aria-label={targetIndex === 0 ? 'Target' : `Target ${targetIndex + 1}`}
                                 value={targetValue}
+                                disabled={isBtDataOnly}
                                 onChange={(e) => changeGoalTarget(goal, targetIndex, e.target.value)}
                                 rows={2}
                                 placeholder={goal.target_criteria?.trim() || `Record the target for "${goal.title}"…`}
@@ -906,6 +929,7 @@ export function AddSessionNoteModal({
                                 <button
                                   type="button"
                                   onClick={() => removeGoalTarget(goal, targetIndex)}
+                                  disabled={isBtDataOnly}
                                   aria-label={`Remove target ${targetIndex + 1}`}
                                   className="mt-1 shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-rose-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-rose-300"
                                 >
@@ -1061,6 +1085,7 @@ export function AddSessionNoteModal({
                 id="session-date"
                 type="date"
                 value={date}
+                disabled={isBtDataOnly}
                 onChange={(e) => setDate(e.target.value)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               />
@@ -1074,6 +1099,7 @@ export function AddSessionNoteModal({
               <select
                 id="service-code"
                 value={serviceCode}
+                disabled={isBtDataOnly}
                 onChange={(e) => setServiceCode(e.target.value)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               >
@@ -1100,6 +1126,7 @@ export function AddSessionNoteModal({
                 id="start-time"
                 type="time"
                 value={startTime}
+                disabled={isBtDataOnly}
                 onChange={(e) => setStartTime(e.target.value)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               />
@@ -1114,6 +1141,7 @@ export function AddSessionNoteModal({
                 id="end-time"
                 type="time"
                 value={endTime}
+                disabled={isBtDataOnly}
                 onChange={(e) => setEndTime(e.target.value)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               />
@@ -1127,6 +1155,7 @@ export function AddSessionNoteModal({
             <select
               id="therapist-select"
               value={therapistId}
+              disabled={isBtDataOnly}
               onChange={(e) => setTherapistId(e.target.value)}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
             >
@@ -1148,7 +1177,7 @@ export function AddSessionNoteModal({
               value={selectedSessionId}
               onChange={(e) => setSelectedSessionId(e.target.value)}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-              disabled={isLoadingSessions || !hasSessions}
+              disabled={isLoadingSessions || !hasSessions || isBtDataOnly}
             >
               <option value="">
                 {isLoadingSessions ? 'Loading sessions...' : hasSessions ? 'Select a session' : 'No sessions available'}

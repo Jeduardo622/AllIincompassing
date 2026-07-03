@@ -5240,13 +5240,13 @@ export type Database = {
           created_by: string | null
           duration_minutes: number | null
           end_time: string
-          goal_id: string
+          goal_id: string | null
           has_transcription_consent: boolean
           id: string
           location_type: string | null
           notes: string | null
           organization_id: string
-          program_id: string
+          program_id: string | null
           rate_per_hour: number | null
           session_date: string | null
           session_type: string | null
@@ -5264,13 +5264,13 @@ export type Database = {
           created_by?: string | null
           duration_minutes?: number | null
           end_time: string
-          goal_id: string
+          goal_id?: string | null
           has_transcription_consent?: boolean
           id?: string
           location_type?: string | null
           notes?: string | null
           organization_id: string
-          program_id: string
+          program_id?: string | null
           rate_per_hour?: number | null
           session_date?: string | null
           session_type?: string | null
@@ -5288,13 +5288,13 @@ export type Database = {
           created_by?: string | null
           duration_minutes?: number | null
           end_time?: string
-          goal_id?: string
+          goal_id?: string | null
           has_transcription_consent?: boolean
           id?: string
           location_type?: string | null
           notes?: string | null
           organization_id?: string
-          program_id?: string
+          program_id?: string | null
           rate_per_hour?: number | null
           session_date?: string | null
           session_type?: string | null

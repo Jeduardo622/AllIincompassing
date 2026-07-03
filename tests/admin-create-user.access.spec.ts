@@ -21,10 +21,8 @@ const userContexts = new Map<string, TestUserContext>();
 const createUserSpy = vi.fn();
 const assignAdminRoleSpy = vi.fn();
 const getUserByIdSpy = vi.fn();
-const profilesUpdateSpy = vi.fn();
-const profilesEqSpy = vi.fn();
-const profilesIsSpy = vi.fn();
 const profilesSelectSpy = vi.fn();
+const profilesEqSpy = vi.fn();
 const profilesMaybeSingleSpy = vi.fn();
 
 vi.mock('../supabase/functions/_shared/auth-middleware.ts', () => ({
@@ -79,7 +77,7 @@ vi.mock('../supabase/functions/_shared/database.ts', () => ({
         throw new Error(`Unexpected table ${table}`);
       }
       return {
-        update: profilesUpdateSpy,
+        select: profilesSelectSpy,
       };
     },
   },
@@ -92,10 +90,8 @@ describe('admin-create-user access control', () => {
     createUserSpy.mockReset();
     assignAdminRoleSpy.mockReset();
     getUserByIdSpy.mockReset();
-    profilesUpdateSpy.mockReset();
-    profilesEqSpy.mockReset();
-    profilesIsSpy.mockReset();
     profilesSelectSpy.mockReset();
+    profilesEqSpy.mockReset();
     profilesMaybeSingleSpy.mockReset();
 
     createUserSpy.mockResolvedValue({
@@ -103,10 +99,8 @@ describe('admin-create-user access control', () => {
       error: null,
     });
     assignAdminRoleSpy.mockResolvedValue({ error: null });
-    profilesUpdateSpy.mockReturnValue({ eq: profilesEqSpy });
-    profilesEqSpy.mockReturnValue({ is: profilesIsSpy });
-    profilesIsSpy.mockReturnValue({ select: profilesSelectSpy });
-    profilesSelectSpy.mockReturnValue({ maybeSingle: profilesMaybeSingleSpy });
+    profilesSelectSpy.mockReturnValue({ eq: profilesEqSpy });
+    profilesEqSpy.mockReturnValue({ maybeSingle: profilesMaybeSingleSpy });
     profilesMaybeSingleSpy.mockResolvedValue({
       data: {
         id: 'new-admin-user-id',
@@ -159,12 +153,8 @@ describe('admin-create-user access control', () => {
       organization_id: '22222222-2222-2222-2222-222222222222',
       reason: 'Coverage for the selected organization.',
     });
-    expect(profilesUpdateSpy).toHaveBeenCalledWith({
-      organization_id: '22222222-2222-2222-2222-222222222222',
-    });
-    expect(profilesEqSpy).toHaveBeenCalledWith('id', 'new-admin-user-id');
-    expect(profilesIsSpy).toHaveBeenCalledWith('organization_id', null);
     expect(profilesSelectSpy).toHaveBeenCalledWith('id, organization_id');
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', 'new-admin-user-id');
     expect(profilesMaybeSingleSpy).toHaveBeenCalled();
   }, 20_000);
 
@@ -211,7 +201,7 @@ describe('admin-create-user access control', () => {
     await expect(response.json()).resolves.toMatchObject({ error: 'Caller organization mismatch.' });
     expect(createUserSpy).not.toHaveBeenCalled();
     expect(assignAdminRoleSpy).not.toHaveBeenCalled();
-    expect(profilesUpdateSpy).not.toHaveBeenCalled();
+    expect(profilesSelectSpy).not.toHaveBeenCalled();
   });
 
   it('denies non-admin roles from creating admins', async () => {
@@ -247,11 +237,11 @@ describe('admin-create-user access control', () => {
     expect(response.status).toBe(403);
     expect(createUserSpy).not.toHaveBeenCalled();
     expect(assignAdminRoleSpy).not.toHaveBeenCalled();
-    expect(profilesUpdateSpy).not.toHaveBeenCalled();
+    expect(profilesSelectSpy).not.toHaveBeenCalled();
   });
 
-  it('continues when profile organization sync is rejected by the immutability guard', async () => {
-    userContexts.set('super-profile-org-immutable', {
+  it('fails when the created admin profile organization is still unavailable', async () => {
+    userContexts.set('super-profile-org-missing', {
       user: { id: 'super-user-id', email: 'super@example.com' },
       profile: {
         id: 'super-profile-id',
@@ -262,7 +252,7 @@ describe('admin-create-user access control', () => {
     });
     profilesMaybeSingleSpy.mockResolvedValue({
       data: null,
-      error: { code: '42501', message: 'organization_id is immutable for this role' },
+      error: null,
     });
 
     const { default: handler } = await import('../supabase/functions/admin-create-user/index.ts');
@@ -272,7 +262,7 @@ describe('admin-create-user access control', () => {
       headers: {
         'Content-Type': 'application/json',
         Authorization: 'Bearer test-token',
-        'x-test-user': 'super-profile-org-immutable',
+        'x-test-user': 'super-profile-org-missing',
       },
       body: JSON.stringify({
         email: 'new.admin@example.com',
@@ -280,19 +270,18 @@ describe('admin-create-user access control', () => {
         first_name: 'New',
         last_name: 'Admin',
         organization_id: '22222222-2222-2222-2222-222222222222',
-        reason: 'Coverage for immutable profile organization guard.',
+        reason: 'Coverage for missing profile organization context.',
       }),
     }));
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({
-      user_id: 'new-admin-user-id',
-      organization_id: '22222222-2222-2222-2222-222222222222',
+      error: 'User created, but organization context is unavailable.',
     });
   });
 
-  it('continues when profile organization sync is a no-op', async () => {
-    userContexts.set('super-profile-org-noop', {
+  it('fails when the created admin profile organization resolves to the wrong organization', async () => {
+    userContexts.set('super-profile-org-mismatch', {
       user: { id: 'super-user-id', email: 'super@example.com' },
       profile: {
         id: 'super-profile-id',
@@ -301,7 +290,13 @@ describe('admin-create-user access control', () => {
         is_active: true,
       },
     });
-    profilesMaybeSingleSpy.mockResolvedValue({ data: null, error: null });
+    profilesMaybeSingleSpy.mockResolvedValue({
+      data: {
+        id: 'new-admin-user-id',
+        organization_id: '33333333-3333-3333-3333-333333333333',
+      },
+      error: null,
+    });
 
     const { default: handler } = await import('../supabase/functions/admin-create-user/index.ts');
 
@@ -310,7 +305,7 @@ describe('admin-create-user access control', () => {
       headers: {
         'Content-Type': 'application/json',
         Authorization: 'Bearer test-token',
-        'x-test-user': 'super-profile-org-noop',
+        'x-test-user': 'super-profile-org-mismatch',
       },
       body: JSON.stringify({
         email: 'new.admin@example.com',
@@ -318,14 +313,13 @@ describe('admin-create-user access control', () => {
         first_name: 'New',
         last_name: 'Admin',
         organization_id: '22222222-2222-2222-2222-222222222222',
-        reason: 'Coverage for profile organization no-op.',
+        reason: 'Coverage for mismatched profile organization context.',
       }),
     }));
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({
-      user_id: 'new-admin-user-id',
-      organization_id: '22222222-2222-2222-2222-222222222222',
+      error: 'User created, but organization context is unavailable.',
     });
   });
 });

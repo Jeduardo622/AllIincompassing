@@ -35,17 +35,6 @@ const normalizeUuid = (value: unknown) => {
   return normalized && /^[0-9a-fA-F-]{36}$/.test(normalized) ? normalized : null;
 };
 
-const isProfileOrgImmutableError = (error: unknown) => {
-  if (!error || typeof error !== "object") return false;
-  const maybeCode = "code" in error ? (error as { code?: unknown }).code : null;
-  const maybeMessage = "message" in error ? (error as { message?: unknown }).message : null;
-  return (
-    maybeCode === "42501" &&
-    typeof maybeMessage === "string" &&
-    maybeMessage.includes("organization_id is immutable for this role")
-  );
-};
-
 const parseOrganizationFromMetadata = (metadata: Record<string, unknown> | null | undefined) => {
   if (!metadata || typeof metadata !== "object") return null;
   const snake = metadata["organization_id"];
@@ -188,28 +177,21 @@ const handler = createProtectedRoute(
         return respond(500, { error: "User created, but assigning admin role failed." });
       }
 
-      // Auth metadata + user_roles are authoritative; this profile sync only supports
-      // older readers that still surface profiles.organization_id directly.
-      const { data: profileOrgUpdate, error: profileOrgError } = await supabaseAdmin
+      const { data: profileOrgState, error: profileOrgError } = await supabaseAdmin
         .from("profiles")
-        .update({ organization_id: resolvedOrganization })
-        .eq("id", createResult.data.user.id)
-        .is("organization_id", null)
         .select("id, organization_id")
+        .eq("id", createResult.data.user.id)
         .maybeSingle();
 
-      if (profileOrgError) {
-        const logMethod = isProfileOrgImmutableError(profileOrgError) ? console.warn : console.error;
-        logMethod("Admin profile organization sync skipped", {
+      if (profileOrgError || profileOrgState?.organization_id !== resolvedOrganization) {
+        console.error("Admin profile organization verification failed", {
           error: profileOrgError,
           userId: createResult.data.user.id,
           organizationId: resolvedOrganization,
+          profileOrganizationId: profileOrgState?.organization_id ?? null,
         });
-      } else if (profileOrgUpdate?.organization_id !== resolvedOrganization) {
-        console.warn("Admin profile organization sync was a no-op", {
-          userId: createResult.data.user.id,
-          organizationId: resolvedOrganization,
-        });
+        logApiAccess("POST", "/admin/create-user", userContext, 500);
+        return respond(500, { error: "User created, but organization context is unavailable." });
       }
 
       logApiAccess("POST", "/admin/create-user", userContext, 200);

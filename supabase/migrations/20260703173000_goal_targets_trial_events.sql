@@ -68,6 +68,7 @@ create index if not exists goal_targets_org_client_idx
 
 revoke all on table public.goal_targets from anon;
 grant select, insert, update on table public.goal_targets to authenticated;
+revoke delete on table public.goal_targets from authenticated;
 grant select, insert, update, delete on table public.goal_targets to service_role;
 
 create or replace function app.set_goal_target_scope()
@@ -136,7 +137,7 @@ create table if not exists public.trial_events (
   ),
   prompt_type text,
   prompt_level text,
-  value numeric check (value is null or value >= 0),
+  value numeric constraint trial_events_value_nonnegative check (value is null or value >= 0),
   event_timestamp timestamptz not null default timezone('utc', now()),
   metadata jsonb not null default '{}'::jsonb,
   created_by uuid,
@@ -145,6 +146,16 @@ create table if not exists public.trial_events (
   updated_at timestamptz not null default timezone('utc', now()),
   constraint trial_events_metadata_object_chk check (jsonb_typeof(metadata) = 'object')
 );
+
+alter table public.trial_events
+  drop constraint if exists trial_events_target_id_fkey,
+  add constraint trial_events_target_id_fkey
+  foreign key (target_id) references public.goal_targets(id);
+
+alter table public.trial_events
+  drop constraint if exists trial_events_value_nonnegative,
+  add constraint trial_events_value_nonnegative
+  check (value is null or value >= 0);
 
 create unique index if not exists trial_events_session_target_trial_uidx
   on public.trial_events (session_id, target_id, trial_number);

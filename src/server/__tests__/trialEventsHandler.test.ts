@@ -109,6 +109,24 @@ describe("trialEventsHandler", () => {
     expect(fetchJson).toHaveBeenCalledTimes(2);
   });
 
+  it("rejects negative measurement values before scope lookups", async () => {
+    const response = await trialEventsHandler(
+      new Request("http://localhost/api/trial-events", {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: SESSION_ID,
+          target_id: TARGET_ID,
+          trial_number: 1,
+          value: -1,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid request body" });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
   it("returns 502 when trial-event capture access cannot be validated", async () => {
     mockTargetAndSessionLookups();
     vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: false, upstreamError: true });

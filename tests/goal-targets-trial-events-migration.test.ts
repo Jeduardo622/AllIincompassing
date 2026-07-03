@@ -20,6 +20,18 @@ describe("goal targets and trial events migration", () => {
     expect(sql).toContain("client_id uuid not null references public.clients(id)");
     expect(sql).toContain("target_id uuid not null references public.goal_targets(id)");
     expect(sql).toContain("trial_number integer not null check (trial_number > 0)");
+    expect(sql).toContain("value numeric check (value is null or value >= 0)");
+  });
+
+  it("preserves trial history by preventing authenticated target deletes and target cascade deletes", () => {
+    expect(sql).toContain("target_id uuid not null references public.goal_targets(id),");
+    expect(sql).not.toContain("target_id uuid not null references public.goal_targets(id) on delete cascade");
+    expect(sql).toContain("grant select, insert, update on table public.goal_targets to authenticated;");
+    expect(sql).not.toContain("grant select, insert, update, delete on table public.goal_targets to authenticated;");
+    expect(sql).toContain("create policy goal_targets_org_insert");
+    expect(sql).toContain("create policy goal_targets_org_update");
+    expect(sql).toContain("drop policy if exists goal_targets_org_manage on public.goal_targets;");
+    expect(sql).not.toContain("create policy goal_targets_org_manage");
   });
 
   it("prevents duplicate trial numbers for the same target within a session", () => {
@@ -65,7 +77,7 @@ describe("goal targets and trial events migration", () => {
 
   it("grants Data API access explicitly and denies anon access", () => {
     expect(sql).toContain("revoke all on table public.goal_targets from anon;");
-    expect(sql).toContain("grant select, insert, update, delete on table public.goal_targets to authenticated;");
+    expect(sql).toContain("grant select, insert, update on table public.goal_targets to authenticated;");
     expect(sql).toContain("grant select, insert, update, delete on table public.goal_targets to service_role;");
     expect(sql).toContain("revoke all on table public.trial_events from anon;");
     expect(sql).toContain("grant select, insert, update, delete on table public.trial_events to authenticated;");

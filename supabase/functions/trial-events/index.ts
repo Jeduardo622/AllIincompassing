@@ -21,7 +21,7 @@ const createTrialEventSchema = z.object({
   response: responseSchema.optional().nullable(),
   prompt_type: z.string().trim().optional().nullable(),
   prompt_level: z.string().trim().optional().nullable(),
-  value: z.number().optional().nullable(),
+  value: z.number().nonnegative().optional().nullable(),
   timestamp: z.string().datetime().optional(),
   metadata: z.record(z.unknown()).optional(),
 });

@@ -25,4 +25,8 @@ describe("goal target and trial event edge access boundaries", () => {
     expect(trialEventsSource).toContain("if (lockState.upstreamError) return json(req, { error: \"Unable to validate session lock state\" }, 502);");
     expect(trialEventsSource).toContain("if (canManageLocked.upstreamError) return json(req, { error: \"Unable to validate locked-session trial-event access\" }, 502);");
   });
+
+  it("rejects negative trial-event values at the edge boundary", () => {
+    expect(trialEventsSource).toContain("value: z.number().nonnegative().optional().nullable()");
+  });
 });

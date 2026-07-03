@@ -67,7 +67,7 @@ create index if not exists goal_targets_org_client_idx
   on public.goal_targets (organization_id, client_id, status);
 
 revoke all on table public.goal_targets from anon;
-grant select, insert, update, delete on table public.goal_targets to authenticated;
+grant select, insert, update on table public.goal_targets to authenticated;
 grant select, insert, update, delete on table public.goal_targets to service_role;
 
 create or replace function app.set_goal_target_scope()
@@ -120,7 +120,7 @@ create table if not exists public.trial_events (
   organization_id uuid not null references public.organizations(id) on delete cascade,
   client_id uuid not null references public.clients(id) on delete cascade,
   session_id uuid not null references public.sessions(id) on delete cascade,
-  target_id uuid not null references public.goal_targets(id) on delete cascade,
+  target_id uuid not null references public.goal_targets(id),
   goal_id uuid not null references public.goals(id) on delete cascade,
   therapist_id uuid not null,
   trial_number integer not null check (trial_number > 0),
@@ -136,7 +136,7 @@ create table if not exists public.trial_events (
   ),
   prompt_type text,
   prompt_level text,
-  value numeric,
+  value numeric check (value is null or value >= 0),
   event_timestamp timestamptz not null default timezone('utc', now()),
   metadata jsonb not null default '{}'::jsonb,
   created_by uuid,
@@ -328,9 +328,20 @@ create policy goal_targets_org_read
   );
 
 drop policy if exists goal_targets_org_manage on public.goal_targets;
-create policy goal_targets_org_manage
+drop policy if exists goal_targets_org_insert on public.goal_targets;
+create policy goal_targets_org_insert
   on public.goal_targets
-  for all
+  for insert
+  to authenticated
+  with check (
+    organization_id = app.current_user_organization_id()
+    and app.current_user_can_manage_programs_goals(organization_id)
+  );
+
+drop policy if exists goal_targets_org_update on public.goal_targets;
+create policy goal_targets_org_update
+  on public.goal_targets
+  for update
   to authenticated
   using (
     organization_id = app.current_user_organization_id()

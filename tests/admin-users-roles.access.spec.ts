@@ -52,6 +52,7 @@ let existingProfile: TestProfile & {
 let adminActionInserts: Array<Record<string, unknown>> = [];
 let userRolesUpsertPayload: Record<string, unknown> | null = null;
 let stallAuditUserLookup = false;
+let failLegacyRoleRpc = false;
 
 type AdminUserRecord = {
   id: string;
@@ -69,10 +70,13 @@ vi.mock('../supabase/functions/_shared/auth-middleware.ts', () => ({
     'Access-Control-Max-Age': '86400',
   },
   RouteOptions: {
-    superAdmin: {},
+    superAdmin: { allowedRoles: ['super_admin'] },
   },
   logApiAccess,
-  createProtectedRoute: (handler: (req: Request, userContext: TestUserContext) => Promise<Response>) => {
+  createProtectedRoute: (
+    handler: (req: Request, userContext: TestUserContext) => Promise<Response>,
+    options?: { allowedRoles?: TestRole[] },
+  ) => {
     return async (req: Request) => {
       const contextKey = req.headers.get('x-test-user') ?? 'default';
       const context = userContexts.get(contextKey);
@@ -80,6 +84,12 @@ vi.mock('../supabase/functions/_shared/auth-middleware.ts', () => ({
         return new Response(
           JSON.stringify({ error: 'Authentication required' }),
           { status: 401, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (options?.allowedRoles?.length && !options.allowedRoles.includes(context.profile.role)) {
+        return new Response(
+          JSON.stringify({ error: 'Insufficient permissions' }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } },
         );
       }
       return handler(req, context);
@@ -170,6 +180,9 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
     createRequestClient: () => ({
       rpc: vi.fn(async (functionName: string) => {
         if (functionName === 'get_user_roles') {
+          if (failLegacyRoleRpc) {
+            return { data: null, error: { message: 'hosted RPC shape mismatch' } };
+          }
           return { data: [{ roles: rpcRoles }], error: null };
         }
         return { data: null, error: { message: `Unexpected RPC ${functionName}` } };
@@ -191,6 +204,8 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
 
 describe('admin-users-roles access control', () => {
   beforeEach(() => {
+    envValues.delete('CORS_ALLOWED_ORIGINS');
+    envValues.delete('API_ALLOWED_ORIGINS');
     userContexts.clear();
     logApiAccess.mockClear();
     rpcRoles = [];
@@ -210,6 +225,7 @@ describe('admin-users-roles access control', () => {
     adminUsers.clear();
     userRolesUpsertPayload = null;
     stallAuditUserLookup = false;
+    failLegacyRoleRpc = false;
   });
 
   it('allows a super admin to demote another admin user', async () => {
@@ -424,6 +440,183 @@ describe('admin-users-roles access control', () => {
     expect(latestUpdatePayload).toEqual({ role: 'admin_schedule' });
   });
 
+  it('uses the protected-route super-admin context instead of the legacy role RPC', async () => {
+    failLegacyRoleRpc = true;
+
+    const superAdminContext: TestUserContext = {
+      user: { id: 'super-admin-rpc-drift', email: 'super-rpc@example.com' },
+      profile: {
+        id: 'super-admin-rpc-drift-profile',
+        email: 'super-rpc@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    };
+
+    userContexts.set('super-rpc', superAdminContext);
+    adminUsers.set('super-admin-rpc-drift', {
+      id: 'super-admin-rpc-drift',
+      email: 'super-rpc@example.com',
+      user_metadata: { organization_id: 'org-123' },
+    });
+    adminUsers.set(existingProfile.id, {
+      id: existingProfile.id,
+      email: existingProfile.email,
+      user_metadata: { organization_id: 'org-999' },
+    });
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+          'x-test-user': 'super-rpc',
+        },
+        body: JSON.stringify({
+          target_user_id: '11111111-1111-1111-1111-111111111111',
+          role: 'therapist',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(userRolesUpsertPayload).toMatchObject({
+      user_id: existingProfile.id,
+      role_id: 'rid-therapist',
+      granted_by: 'super-admin-rpc-drift',
+      is_active: true,
+    });
+    expect(latestUpdatePayload).toEqual({ role: 'therapist' });
+  });
+
+  it('uses request CORS headers on protected PATCH responses', async () => {
+    const previewOrigin = 'https://deploy-preview-725--velvety-cendol-dae4d6.netlify.app';
+
+    const superAdminContext: TestUserContext = {
+      user: { id: 'super-admin-cors', email: 'super-cors@example.com' },
+      profile: {
+        id: 'super-admin-cors-profile',
+        email: 'super-cors@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    };
+
+    userContexts.set('super-cors', superAdminContext);
+    adminUsers.set('super-admin-cors', {
+      id: 'super-admin-cors',
+      email: 'super-cors@example.com',
+      user_metadata: { organization_id: 'org-123' },
+    });
+    adminUsers.set(existingProfile.id, {
+      id: existingProfile.id,
+      email: existingProfile.email,
+      user_metadata: { organization_id: 'org-999' },
+    });
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'PATCH',
+        headers: {
+          Origin: previewOrigin,
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+          'x-test-user': 'super-cors',
+        },
+        body: JSON.stringify({
+          target_user_id: '11111111-1111-1111-1111-111111111111',
+          role: 'therapist',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(previewOrigin);
+    expect(response.headers.get('Vary')).toBe('Origin');
+    expect(userRolesUpsertPayload).toMatchObject({
+      user_id: existingProfile.id,
+      role_id: 'rid-therapist',
+      granted_by: 'super-admin-cors',
+      is_active: true,
+    });
+  });
+
+  it('preserves middleware error responses while applying request CORS headers', async () => {
+    const previewOrigin = 'https://deploy-preview-725--velvety-cendol-dae4d6.netlify.app';
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'PATCH',
+        headers: {
+          Origin: previewOrigin,
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({
+          target_user_id: '11111111-1111-1111-1111-111111111111',
+          role: 'therapist',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(previewOrigin);
+    expect(response.headers.get('Vary')).toBe('Origin');
+    expect(response.headers.get('Content-Type')).toBe('application/json');
+    await expect(response.json()).resolves.toEqual({ error: 'Authentication required' });
+    expect(userRolesUpsertPayload).toBeNull();
+    expect(latestUpdatePayload).toBeNull();
+    expect(adminActionInserts).toEqual([]);
+  });
+
+  it('denies non-super-admin callers before role update side effects', async () => {
+    failLegacyRoleRpc = true;
+    const previewOrigin = 'https://deploy-preview-725--velvety-cendol-dae4d6.netlify.app';
+
+    const adminContext: TestUserContext = {
+      user: { id: 'admin-rpc-drift', email: 'admin-rpc@example.com' },
+      profile: {
+        id: 'admin-rpc-profile',
+        email: 'admin-rpc@example.com',
+        role: 'admin',
+        is_active: true,
+      },
+    };
+
+    userContexts.set('admin-rpc', adminContext);
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'PATCH',
+        headers: {
+          Origin: previewOrigin,
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+          'x-test-user': 'admin-rpc',
+        },
+        body: JSON.stringify({
+          target_user_id: '11111111-1111-1111-1111-111111111111',
+          role: 'therapist',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(previewOrigin);
+    expect(userRolesUpsertPayload).toBeNull();
+    expect(latestUpdatePayload).toBeNull();
+    expect(adminActionInserts).toEqual([]);
+    expect(logApiAccess).not.toHaveBeenCalled();
+  });
+
   it('returns success when audit metadata lookup stalls after the role write', async () => {
     vi.useFakeTimers();
     try {
@@ -475,5 +668,42 @@ describe('admin-users-roles access control', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('preserves shared CORS origins on browser preflight', async () => {
+    envValues.set('CORS_ALLOWED_ORIGINS', 'https://custom-preview.example.com');
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const deployPreviewResponse = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://deploy-preview-724--velvety-cendol-dae4d6.netlify.app',
+          'Access-Control-Request-Method': 'PATCH',
+        },
+      }),
+    );
+
+    expect(deployPreviewResponse.status).toBe(204);
+    expect(deployPreviewResponse.headers.get('Access-Control-Allow-Origin')).toBe(
+      'https://deploy-preview-724--velvety-cendol-dae4d6.netlify.app',
+    );
+    expect(deployPreviewResponse.headers.get('Access-Control-Allow-Methods')).toContain('PATCH');
+
+    const configuredOriginResponse = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://custom-preview.example.com',
+          'Access-Control-Request-Method': 'PATCH',
+        },
+      }),
+    );
+
+    expect(configuredOriginResponse.status).toBe(204);
+    expect(configuredOriginResponse.headers.get('Access-Control-Allow-Origin')).toBe(
+      'https://custom-preview.example.com',
+    );
   });
 });

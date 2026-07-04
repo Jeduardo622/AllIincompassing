@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildBookingCandidateStarts,
+  buildBookingConflictWindowFilters,
   cleanupBeforeNoResponseFailure,
+  filterNonOverlappingBookingStarts,
   isCreateSessionButtonReady,
 } from "../../scripts/playwright-session-lifecycle";
 
@@ -42,6 +44,71 @@ describe("playwright session lifecycle booking starts", () => {
     expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: null })).toBe(true);
     expect(isCreateSessionButtonReady({ disabled: "", ariaDisabled: null })).toBe(false);
     expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: "true" })).toBe(false);
+  });
+
+  it("filters booking starts that overlap occupied sessions or holds", () => {
+    const starts = [
+      new Date("2026-08-06T16:00:00.000Z"),
+      new Date("2026-08-06T18:00:00.000Z"),
+      new Date("2026-08-06T20:00:00.000Z"),
+    ];
+
+    const available = filterNonOverlappingBookingStarts(starts, 60 * 60 * 1000, [
+      {
+        start_time: "2026-08-06T16:30:00.000Z",
+        end_time: "2026-08-06T17:30:00.000Z",
+      },
+      {
+        start_time: "2026-08-06T19:00:00.000Z",
+        end_time: "2026-08-06T20:30:00.000Z",
+      },
+    ]);
+
+    expect(available.map((start) => start.toISOString())).toEqual(["2026-08-06T18:00:00.000Z"]);
+  });
+
+  it("keeps adjacent booking starts and ignores malformed occupied ranges", () => {
+    const starts = [
+      new Date("2026-08-06T16:00:00.000Z"),
+      new Date("2026-08-06T17:00:00.000Z"),
+    ];
+
+    const available = filterNonOverlappingBookingStarts(starts, 60 * 60 * 1000, [
+      {
+        start_time: "2026-08-06T15:00:00.000Z",
+        end_time: "2026-08-06T16:00:00.000Z",
+      },
+      {
+        start_time: "not-a-date",
+        end_time: "2026-08-06T17:30:00.000Z",
+      },
+      {
+        start_time: "2026-08-06T18:00:00.000Z",
+        end_time: "2026-08-06T19:00:00.000Z",
+      },
+    ]);
+
+    expect(available.map((start) => start.toISOString())).toEqual([
+      "2026-08-06T16:00:00.000Z",
+      "2026-08-06T17:00:00.000Z",
+    ]);
+  });
+
+  it("builds the hosted conflict preflight filters used for sessions and active holds", () => {
+    expect(
+      buildBookingConflictWindowFilters({
+        therapistId: "therapist-123",
+        clientId: "client-456",
+        minStartIso: "2026-08-06T16:00:00.000Z",
+        maxEndIso: "2026-08-20T21:00:00.000Z",
+        nowIso: "2026-07-04T22:00:00.000Z",
+      }),
+    ).toEqual({
+      participantFilter: "therapist_id.eq.therapist-123,client_id.eq.client-456",
+      minStartIso: "2026-08-06T16:00:00.000Z",
+      maxEndIso: "2026-08-20T21:00:00.000Z",
+      activeHoldExpiresAfterIso: "2026-07-04T22:00:00.000Z",
+    });
   });
 
   it("does not block the no-response failure when cleanup rejects", async () => {

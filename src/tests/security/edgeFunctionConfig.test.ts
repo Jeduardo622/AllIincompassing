@@ -12,6 +12,9 @@ describe('edge function config', () => {
       'auth-signup',
       // Token-based automation endpoints (no JWT required)
       'admin-actions-retention',
+      // Browser PATCH preflight must reach the function CORS handler; the route
+      // still enforces super-admin authorization in createProtectedRoute.
+      'admin-users-roles',
     ]);
 
     const functionsRoot = join(process.cwd(), 'supabase', 'functions');

@@ -1,7 +1,3 @@
-import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
-import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
-import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
-
 interface RoleUpdateRequest { target_user_id?: string; role: 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin'; is_active?: boolean; }
 
 type AppRole = RoleUpdateRequest["role"];
@@ -30,6 +26,35 @@ const ROLE_RANK: Record<AppRole, number> = {
   client: 1,
 };
 
+const STATIC_ALLOWED_ORIGINS = [
+  "https://app.allincompassing.ai",
+  "https://allincompassing.ai",
+  "https://www.allincompassing.ai",
+  "https://preview.allincompassing.ai",
+  "https://staging.allincompassing.ai",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:4173",
+  "http://localhost:4173",
+  "http://localhost:3000",
+  "http://localhost:5173",
+] as const;
+
+const corsHeadersForPreflight = (req: Request): Record<string, string> => {
+  const requestOrigin = req.headers.get("origin");
+  const origin = requestOrigin && STATIC_ALLOWED_ORIGINS.includes(requestOrigin as typeof STATIC_ALLOWED_ORIGINS[number])
+    ? requestOrigin
+    : "https://app.allincompassing.ai";
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "PATCH, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "Authorization, Content-Type, X-Client-Info, x-client-info, apikey, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id, x-supabase-authorization",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+};
+
 /**
  * `profiles.role` is not authoritative: middleware and RLS use `user_roles` + helpers
  * (`current_user_is_super_admin`, `get_user_role_from_junction`). Authenticated clients
@@ -38,6 +63,7 @@ const ROLE_RANK: Record<AppRole, number> = {
  * authorized the caller.
  */
 async function syncCanonicalUserRoles(
+  supabaseAdmin: any,
   targetUserId: string,
   role: AppRole,
   grantedBy: string,
@@ -139,9 +165,19 @@ async function runBestEffortAudit(work: () => Promise<void>): Promise<void> {
   }
 }
 
-export default createProtectedRoute(async (req: Request, userContext) => {
+async function loadAdminRoleDeps() {
+  const [{ createRequestClient, supabaseAdmin }, { assertAdminOrSuperAdmin }] = await Promise.all([
+    import("../_shared/database.ts"),
+    import("../_shared/auth.ts"),
+  ]);
+
+  return { createRequestClient, supabaseAdmin, assertAdminOrSuperAdmin };
+}
+
+async function handleRoleUpdate(req: Request, userContext: any, corsHeaders: Record<string, string>, logApiAccess: any) {
   if (req.method !== 'PATCH') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
+    const { createRequestClient, supabaseAdmin, assertAdminOrSuperAdmin } = await loadAdminRoleDeps();
     const adminClient = createRequestClient(req);
     await assertAdminOrSuperAdmin(adminClient);
 
@@ -177,7 +213,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
     const updateData: any = { role }; if (is_active !== undefined) updateData.is_active = is_active;
 
-    const junctionError = await syncCanonicalUserRoles(userId, role, userContext.user.id);
+    const junctionError = await syncCanonicalUserRoles(supabaseAdmin, userId, role, userContext.user.id);
     if (junctionError) {
       return new Response(JSON.stringify({ error: junctionError }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -231,4 +267,36 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     logApiAccess('PATCH', '/admin/users/:id/roles', userContext, 500);
     return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
-}, RouteOptions.superAdmin);
+}
+
+let protectedHandlerPromise: Promise<(req: Request) => Promise<Response>> | null = null;
+
+async function getProtectedHandler(): Promise<(req: Request) => Promise<Response>> {
+  if (!protectedHandlerPromise) {
+    protectedHandlerPromise = import("../_shared/auth-middleware.ts").then((auth) =>
+      auth.createProtectedRoute(
+        (req: Request, userContext) => handleRoleUpdate(req, userContext, auth.corsHeaders, auth.logApiAccess),
+        auth.RouteOptions.superAdmin,
+      )
+    );
+  }
+  return protectedHandlerPromise;
+}
+
+export async function handler(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeadersForPreflight(req),
+    });
+  }
+
+  const protectedHandler = await getProtectedHandler();
+  return protectedHandler(req);
+}
+
+if (typeof Deno !== "undefined" && typeof Deno.serve === "function") {
+  Deno.serve(handler);
+}
+
+export default handler;

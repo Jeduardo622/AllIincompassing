@@ -6,6 +6,8 @@ interface RoleUpdateRequest { target_user_id?: string; role: 'client' | 'bt' | '
 
 type AppRole = RoleUpdateRequest["role"];
 
+const ADMIN_ROLE_AUDIT_TIMEOUT_MS = 2_500;
+
 const CANONICAL_ROLE_NAMES: AppRole[] = [
   "super_admin",
   "bcba",
@@ -116,6 +118,27 @@ async function syncCanonicalUserRoles(
   return null;
 }
 
+async function runBestEffortAudit(work: () => Promise<void>): Promise<void> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const audit = work().catch((error) => {
+    console.error("Failed to enrich admin action metadata:", error);
+  });
+
+  try {
+    await Promise.race([
+      audit,
+      new Promise<void>((resolve) => {
+        timeoutId = setTimeout(() => {
+          console.error("Admin role audit enrichment timed out");
+          resolve();
+        }, ADMIN_ROLE_AUDIT_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 export default createProtectedRoute(async (req: Request, userContext) => {
   if (req.method !== 'PATCH') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
@@ -168,7 +191,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       return new Response(JSON.stringify({ error: 'Failed to update user role' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    try {
+    await runBestEffortAudit(async () => {
       const [actorResponse, targetResponse] = await Promise.all([
         supabaseAdmin.auth.admin.getUserById(userContext.user.id),
         supabaseAdmin.auth.admin.getUserById(userId),
@@ -198,9 +221,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       if (actionLogError) {
         console.error('Failed to record admin action:', actionLogError);
       }
-    } catch (logError) {
-      console.error('Failed to enrich admin action metadata:', logError);
-    }
+    });
 
     logApiAccess('PATCH', `/admin/users/${userId}/roles`, userContext, 200);
 

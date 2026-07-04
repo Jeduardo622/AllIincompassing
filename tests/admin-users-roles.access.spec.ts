@@ -155,6 +155,9 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
             }),
           };
         }
+        if (table === 'profiles') {
+          return createProfilesQuery();
+        }
         throw new Error(`Unexpected supabaseAdmin table: ${table}`);
       }),
     },
@@ -166,18 +169,15 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
         return { data: null, error: { message: `Unexpected RPC ${functionName}` } };
       }),
       from: vi.fn((table: string) => {
-        if (table !== 'profiles') {
-          if (table === 'admin_actions') {
-            return {
-              insert: vi.fn(async (payload: Record<string, unknown>) => {
-                adminActionInserts.push(payload);
-                return { error: null };
-              }),
-            };
-          }
-          throw new Error(`Unexpected table: ${table}`);
+        if (table === 'admin_actions') {
+          return {
+            insert: vi.fn(async (payload: Record<string, unknown>) => {
+              adminActionInserts.push(payload);
+              return { error: null };
+            }),
+          };
         }
-        return createProfilesQuery();
+        throw new Error(`Unexpected request-scoped table access: ${table}`);
       }),
     }),
   };

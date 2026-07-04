@@ -425,6 +425,13 @@ jobs:
         if: steps.browser_scope.outputs.auth_smoke_required == 'true'
         run: npm ci
 
+      - name: Provision auth smoke admin
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/provision-ci-smoke-admin.ts
+
       - name: Install Playwright browser
         if: steps.browser_scope.outputs.auth_smoke_required == 'true'
         run: npx playwright install --with-deps chromium
@@ -443,8 +450,51 @@ jobs:
           PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_SUPERADMIN_EMAIL: ${{ secrets.PW_SUPERADMIN_EMAIL }}
-          PW_SUPERADMIN_PASSWORD: ${{ secrets.PW_SUPERADMIN_PASSWORD }}
+          PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
+          PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
+          PW_SCHEDULE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
+          PW_SCHEDULE_PASSWORD: ${{ secrets.PW_SCHEDULE_PASSWORD }}
+          PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
+          PW_FOREIGN_THERAPIST_ID: ${{ secrets.PW_FOREIGN_THERAPIST_ID }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+        run: |
+          required=(
+            PW_BASE_URL
+            PW_THERAPIST_EMAIL
+            PW_THERAPIST_PASSWORD
+            PW_FOREIGN_CLIENT_ID
+            PW_FOREIGN_THERAPIST_ID
+            VITE_SUPABASE_URL
+            VITE_SUPABASE_ANON_KEY
+          )
+          missing=()
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+              echo "::warning::Missing auth smoke secrets on pull_request; skipping browser smoke gate: ${missing[*]}"
+              exit 0
+            fi
+            echo "Missing required secrets for auth browser smoke gate: ${missing[*]}"
+            exit 1
+          fi
+          export CI_SESSION_PARITY_REQUIRED=true
+          echo "Running auth browser smoke."
+          npm run playwright:auth
+
+      - name: Session browser smoke gate
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
+          PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
+          PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
           PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
           PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_SCHEDULE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
@@ -477,17 +527,15 @@ jobs:
 
           if [ "${#missing[@]}" -gt 0 ]; then
             if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-              echo "::warning::Missing auth smoke secrets on pull_request; skipping browser smoke gate: ${missing[*]}"
+              echo "::warning::Missing session smoke secrets on pull_request; skipping session browser smoke gate: ${missing[*]}"
               exit 0
             fi
-            echo "Missing required secrets for auth browser smoke gate: ${missing[*]}"
+            echo "Missing required secrets for session browser smoke gate: ${missing[*]}"
             exit 1
           fi
           export CI_SESSION_PARITY_REQUIRED=true
-          echo "Running non-AI sessions browser gates (preflight -> auth -> terminal:no-show -> terminal:completed -> blocked-close -> session-note-measurement-roundtrip)"
+          echo "Running non-AI session preflight."
           npm run playwright:preflight
-          echo "Preflight passed. Running auth smoke."
-          npm run playwright:auth
           echo "Running terminal flow regression: no-show"
           npm run playwright:session-no-show
           echo "Running terminal flow regression: completed"
@@ -496,6 +544,13 @@ jobs:
           npm run playwright:schedule-blocked-close
           echo "Running session note measurement roundtrip regression"
           npm run playwright:session-note-measurement-roundtrip
+
+      - name: Cleanup auth smoke admin
+        if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/provision-ci-smoke-admin.ts --cleanup
 
       - name: Record auth smoke evidence
         if: always()
@@ -530,14 +585,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Provision IEHP smoke admin
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/provision-ci-smoke-admin.ts
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
       - name: IEHP assessment import smoke gate
         env:
           PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
-          PW_ADMIN_EMAIL: ${{ secrets.PW_SUPERADMIN_EMAIL || secrets.PW_ADMIN_EMAIL }}
-          PW_ADMIN_PASSWORD: ${{ secrets.PW_SUPERADMIN_PASSWORD || secrets.PW_ADMIN_PASSWORD }}
           PW_ASSESSMENT_CLIENT_ID: ${{ secrets.PW_ASSESSMENT_CLIENT_ID || secrets.W_ASSESSMENT_CLIENT_ID }}
           PW_ASSESSMENT_SAMPLE_FILE: ${{ secrets.PW_ASSESSMENT_SAMPLE_FILE }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -547,8 +606,8 @@ jobs:
         run: |
           required=(
             PW_BASE_URL
-            PW_ADMIN_EMAIL
-            PW_ADMIN_PASSWORD
+            PW_SUPERADMIN_EMAIL
+            PW_SUPERADMIN_PASSWORD
             PW_ASSESSMENT_CLIENT_ID
             PW_ASSESSMENT_SAMPLE_FILE
             VITE_SUPABASE_URL
@@ -567,6 +626,13 @@ jobs:
           fi
 
           npm run playwright:iehp-assessment-import-smoke
+
+      - name: Cleanup IEHP smoke admin
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/provision-ci-smoke-admin.ts --cleanup
 
       - name: Record IEHP import smoke evidence
         if: always()

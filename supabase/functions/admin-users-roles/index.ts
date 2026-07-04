@@ -1,3 +1,5 @@
+import { corsHeadersForRequest } from "../_shared/cors.ts";
+
 interface RoleUpdateRequest { target_user_id?: string; role: 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin'; is_active?: boolean; }
 
 type AppRole = RoleUpdateRequest["role"];
@@ -24,35 +26,6 @@ const ROLE_RANK: Record<AppRole, number> = {
   therapist: 4,
   bt: 3,
   client: 1,
-};
-
-const STATIC_ALLOWED_ORIGINS = [
-  "https://app.allincompassing.ai",
-  "https://allincompassing.ai",
-  "https://www.allincompassing.ai",
-  "https://preview.allincompassing.ai",
-  "https://staging.allincompassing.ai",
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:4173",
-  "http://localhost:4173",
-  "http://localhost:3000",
-  "http://localhost:5173",
-] as const;
-
-const corsHeadersForPreflight = (req: Request): Record<string, string> => {
-  const requestOrigin = req.headers.get("origin");
-  const origin = requestOrigin && STATIC_ALLOWED_ORIGINS.includes(requestOrigin as typeof STATIC_ALLOWED_ORIGINS[number])
-    ? requestOrigin
-    : "https://app.allincompassing.ai";
-
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "PATCH, OPTIONS",
-    "Access-Control-Allow-Headers":
-      "Authorization, Content-Type, X-Client-Info, x-client-info, apikey, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id, x-supabase-authorization",
-    "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
-  };
 };
 
 /**
@@ -166,20 +139,16 @@ async function runBestEffortAudit(work: () => Promise<void>): Promise<void> {
 }
 
 async function loadAdminRoleDeps() {
-  const [{ createRequestClient, supabaseAdmin }, { assertAdminOrSuperAdmin }] = await Promise.all([
-    import("../_shared/database.ts"),
-    import("../_shared/auth.ts"),
-  ]);
+  const { createRequestClient, supabaseAdmin } = await import("../_shared/database.ts");
 
-  return { createRequestClient, supabaseAdmin, assertAdminOrSuperAdmin };
+  return { createRequestClient, supabaseAdmin };
 }
 
 async function handleRoleUpdate(req: Request, userContext: any, corsHeaders: Record<string, string>, logApiAccess: any) {
   if (req.method !== 'PATCH') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
-    const { createRequestClient, supabaseAdmin, assertAdminOrSuperAdmin } = await loadAdminRoleDeps();
+    const { createRequestClient, supabaseAdmin } = await loadAdminRoleDeps();
     const adminClient = createRequestClient(req);
-    await assertAdminOrSuperAdmin(adminClient);
 
     const body = await req.json().catch(() => null) as RoleUpdateRequest | null;
     if (!body || typeof body !== "object") return new Response(JSON.stringify({ error: 'Valid role update request is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -271,11 +240,24 @@ async function handleRoleUpdate(req: Request, userContext: any, corsHeaders: Rec
 
 let protectedHandlerPromise: Promise<(req: Request) => Promise<Response>> | null = null;
 
+function withRequestCors(response: Response, req: Request): Response {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(corsHeadersForRequest(req))) {
+    headers.set(key, value);
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function getProtectedHandler(): Promise<(req: Request) => Promise<Response>> {
   if (!protectedHandlerPromise) {
     protectedHandlerPromise = import("../_shared/auth-middleware.ts").then((auth) =>
       auth.createProtectedRoute(
-        (req: Request, userContext) => handleRoleUpdate(req, userContext, auth.corsHeaders, auth.logApiAccess),
+        (req: Request, userContext) => handleRoleUpdate(req, userContext, corsHeadersForRequest(req), auth.logApiAccess),
         auth.RouteOptions.superAdmin,
       )
     );
@@ -287,12 +269,13 @@ export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: corsHeadersForPreflight(req),
+      headers: corsHeadersForRequest(req),
     });
   }
 
   const protectedHandler = await getProtectedHandler();
-  return protectedHandler(req);
+  const response = await protectedHandler(req);
+  return withRequestCors(response, req);
 }
 
 if (typeof Deno !== "undefined" && typeof Deno.serve === "function") {

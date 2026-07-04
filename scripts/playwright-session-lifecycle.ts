@@ -43,6 +43,11 @@ interface BrowserFetchResult<TBody> {
   body: TBody | null;
 }
 
+interface BookingOccupiedRange {
+  start_time: string | null;
+  end_time: string | null;
+}
+
 const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(value ?? "");
 /** UI wait + edge/RPC fallback can exceed 120s on cold paths. */
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
@@ -239,6 +244,93 @@ const createSessionViaServiceRole = async (params: {
   }
 
   throw new Error("Service-role session fallback insert failed: unable to find a non-overlapping slot.");
+};
+
+export const filterNonOverlappingBookingStarts = (
+  candidates: Date[],
+  durationMs: number,
+  occupiedRanges: BookingOccupiedRange[],
+): Date[] =>
+  candidates.filter((candidateStart) => {
+    const candidateEndMs = candidateStart.getTime() + durationMs;
+    return !occupiedRanges.some((range) => {
+      if (!range.start_time || !range.end_time) {
+        return false;
+      }
+      const occupiedStartMs = new Date(range.start_time).getTime();
+      const occupiedEndMs = new Date(range.end_time).getTime();
+      if (!Number.isFinite(occupiedStartMs) || !Number.isFinite(occupiedEndMs)) {
+        return false;
+      }
+      return occupiedStartMs < candidateEndMs && occupiedEndMs > candidateStart.getTime();
+    });
+  });
+
+export const buildBookingConflictWindowFilters = (params: {
+  therapistId: string;
+  clientId: string;
+  minStartIso: string;
+  maxEndIso: string;
+  nowIso: string;
+}): {
+  participantFilter: string;
+  minStartIso: string;
+  maxEndIso: string;
+  activeHoldExpiresAfterIso: string;
+} => ({
+  participantFilter: `therapist_id.eq.${params.therapistId},client_id.eq.${params.clientId}`,
+  minStartIso: params.minStartIso,
+  maxEndIso: params.maxEndIso,
+  activeHoldExpiresAfterIso: params.nowIso,
+});
+
+const fetchOccupiedBookingRanges = async (params: {
+  therapistId: string;
+  clientId: string;
+  minStartIso: string;
+  maxEndIso: string;
+}): Promise<BookingOccupiedRange[]> => {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const conflictFilters = buildBookingConflictWindowFilters({
+    therapistId: params.therapistId,
+    clientId: params.clientId,
+    minStartIso: params.minStartIso,
+    maxEndIso: params.maxEndIso,
+    nowIso: new Date().toISOString(),
+  });
+  const windowFilters = (query: ReturnType<typeof adminClient.from>) =>
+    query
+      .select("start_time,end_time")
+      .or(conflictFilters.participantFilter)
+      .lt("start_time", conflictFilters.maxEndIso)
+      .gt("end_time", conflictFilters.minStartIso)
+      .limit(1000);
+
+  const { data: sessionRows, error: sessionError } = await windowFilters(adminClient.from("sessions")).neq(
+    "status",
+    "cancelled",
+  );
+  if (sessionError) {
+    throw new Error(`Unable to preflight lifecycle booking session conflicts: ${sessionError.message}`);
+  }
+
+  const { data: holdRows, error: holdError } = await windowFilters(adminClient.from("session_holds")).gt(
+    "expires_at",
+    conflictFilters.activeHoldExpiresAfterIso,
+  );
+  if (holdError) {
+    throw new Error(`Unable to preflight lifecycle booking hold conflicts: ${holdError.message}`);
+  }
+
+  return [...(sessionRows ?? []), ...(holdRows ?? [])];
 };
 
 const fetchAuthorizedTherapistClientPairs = async (): Promise<LifecycleTargetPair[]> => {
@@ -855,6 +947,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
   await openSessionModal(page);
 
   const candidateStarts = buildBookingCandidateStarts();
+  const bookingDurationMs = 60 * 60 * 1000;
   const excludedPairKeys = new Set<string>();
   let lastFailure: {
     selected: Awaited<ReturnType<typeof chooseSessionTargetsExcluding>>;
@@ -875,14 +968,41 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
       }
       throw error;
     }
+    const minStartIso = candidateStarts[0]?.toISOString();
+    const maxEndIso = candidateStarts.length > 0
+      ? new Date(candidateStarts[candidateStarts.length - 1].getTime() + bookingDurationMs).toISOString()
+      : "";
+    const occupiedRanges = minStartIso && maxEndIso
+      ? await fetchOccupiedBookingRanges({
+          therapistId: selected.therapistId,
+          clientId: selected.clientId,
+          minStartIso,
+          maxEndIso,
+        })
+      : [];
+    const availableCandidateStarts = filterNonOverlappingBookingStarts(
+      candidateStarts,
+      bookingDurationMs,
+      occupiedRanges,
+    );
+    if (availableCandidateStarts.length === 0) {
+      console.warn("[lifecycle] no conflict-free candidate starts for therapist-client pair; trying next pair", {
+        pairKey: selected.pairKey,
+        occupiedRangeCount: occupiedRanges.length,
+      });
+      await cleanupCreatedProgramGoal(selected);
+      excludedPairKeys.add(selected.pairKey);
+      continue;
+    }
+
     let finalStartIso = "";
     let finalEndIso = "";
     let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
     let payloadBody: { success?: boolean; data?: { session?: { id?: string } }; code?: string } | null = null;
 
-    for (let attempt = 0; attempt < candidateStarts.length; attempt += 1) {
-      const attemptStart = candidateStarts[attempt];
-      const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
+    for (let attempt = 0; attempt < availableCandidateStarts.length; attempt += 1) {
+      const attemptStart = availableCandidateStarts[attempt];
+      const attemptEnd = new Date(attemptStart.getTime() + bookingDurationMs);
       const startIso = attemptStart.toISOString();
       const endIso = attemptEnd.toISOString();
       finalStartIso = startIso;

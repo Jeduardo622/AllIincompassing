@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 
 import { cleanupAssessmentImportArtifacts } from './lib/assessment-import-cleanup';
@@ -35,6 +36,14 @@ type AssessmentDraftsResponse = {
 
 const DEFAULT_BASE_URL = 'https://app.allincompassing.ai';
 const EXTRACTION_TIMEOUT_MS = 120_000;
+
+type SupabaseClientFactory = typeof createClient;
+type SmokeAuthResult = { accessToken: string };
+type CredentialCandidate = {
+  email?: string;
+  password?: string;
+  label: string;
+};
 
 const getRequiredEnv = (name: string): string => {
   const value = process.env[name]?.trim();
@@ -134,28 +143,91 @@ const fetchAssessmentDraftCounts = async (
   };
 };
 
-const selectConfiguredSmokeClient = async (
-  supabaseUrl: string,
-  supabaseAnonKey: string,
+const isInvalidCredentialsError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const candidate = error as { code?: unknown };
+  return candidate.code === 'invalid_credentials';
+};
+
+const signInSmokeUser = async (
+  supabase: ReturnType<SupabaseClientFactory>,
   email: string,
   password: string,
-): Promise<{ accessToken: string; clientId: string }> => {
-  const configuredClientId = getRequiredEnv('PW_ASSESSMENT_CLIENT_ID');
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+): Promise<SmokeAuthResult> => {
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
   if (authError || !authData.session || !authData.user) {
     throw authError ?? new Error('Could not authenticate IEHP assessment import smoke user.');
   }
 
-  const { data: client, error } = await supabase.from('clients').select('id').eq('id', configuredClientId).maybeSingle();
-  if (error || !client) {
-    throw error ?? new Error('Configured PW_ASSESSMENT_CLIENT_ID is not accessible.');
-  }
-
   return {
     accessToken: authData.session.access_token,
-    clientId: client.id,
   };
+};
+
+export const selectConfiguredSmokeClient = async (
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+  credentialCandidates: CredentialCandidate[],
+  options: {
+    clientFactory?: SupabaseClientFactory;
+    env?: NodeJS.ProcessEnv;
+  } = {},
+): Promise<{ accessToken: string; clientId: string; credentials: { email: string; password: string; label: string } }> => {
+  const env = options.env ?? process.env;
+  const configuredClientId = env.PW_ASSESSMENT_CLIENT_ID?.trim();
+  if (!configuredClientId) {
+    throw new Error('PW_ASSESSMENT_CLIENT_ID is required for IEHP assessment import smoke.');
+  }
+  const clientFactory = options.clientFactory ?? createClient;
+  const supabase = clientFactory(supabaseUrl, supabaseAnonKey);
+  const availableCredentials = credentialCandidates.filter((candidate) => candidate.email && candidate.password);
+
+  if (availableCredentials.length === 0) {
+    const labels = credentialCandidates.map((candidate) => candidate.label).join(' | ');
+    throw new Error(`Missing required credentials. Provide one of: ${labels}`);
+  }
+
+  for (const candidate of availableCredentials) {
+    const email = candidate.email!;
+    const password = candidate.password!;
+    try {
+      const authResult = await signInSmokeUser(supabase, email, password);
+      const { data: client, error } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('id', configuredClientId)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!client) {
+        throw new Error(
+          `Configured PW_ASSESSMENT_CLIENT_ID is not accessible for authenticated credential: ${candidate.label}.`,
+        );
+      }
+
+      return {
+        accessToken: authResult.accessToken,
+        clientId: client.id,
+        credentials: {
+          email,
+          password,
+          label: candidate.label,
+        },
+      };
+    } catch (error) {
+      if (!isInvalidCredentialsError(error)) {
+        throw error;
+      }
+      console.warn(`IEHP assessment import smoke credential failed: ${candidate.label}. Trying next configured credential.`);
+    }
+  }
+
+  throw new Error('Could not authenticate any configured IEHP assessment import smoke credential.');
 };
 
 async function run() {
@@ -167,18 +239,18 @@ async function run() {
   const sampleFilePath = resolveIehpSmokeSampleFile({ cwd: process.cwd() });
   const sourceFileBuffer = readFileSync(sampleFilePath);
   const uploadFileName = buildIehpSmokeUploadFileName();
-  const credentials = preflightCredentials([
+  const credentialCandidates = [
     {
-      email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
-      password: process.env.PW_ADMIN_PASSWORD ?? process.env.PLAYWRIGHT_ADMIN_PASSWORD,
-      label: 'PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD',
+      email: process.env.PW_SUPERADMIN_EMAIL,
+      password: process.env.PW_SUPERADMIN_PASSWORD,
+      label: 'PW_SUPERADMIN_EMAIL + PW_SUPERADMIN_PASSWORD',
     },
-  ]);
-  const { accessToken, clientId } = await selectConfiguredSmokeClient(
+  ];
+  preflightCredentials(credentialCandidates);
+  const { accessToken, clientId, credentials } = await selectConfiguredSmokeClient(
     supabaseUrl,
     supabaseAnonKey,
-    credentials.email,
-    credentials.password,
+    credentialCandidates,
   );
 
   const browser = await chromium.launch({ headless: process.env.HEADLESS !== 'false' });
@@ -329,7 +401,12 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error('Playwright IEHP assessment import smoke failed', error);
-  process.exit(1);
-});
+const isDirectRun =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href && process.env.VITEST !== 'true';
+
+if (isDirectRun) {
+  run().catch((error) => {
+    console.error('Playwright IEHP assessment import smoke failed', error);
+    process.exit(1);
+  });
+}

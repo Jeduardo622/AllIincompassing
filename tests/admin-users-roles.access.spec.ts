@@ -51,6 +51,7 @@ let existingProfile: TestProfile & {
 };
 let adminActionInserts: Array<Record<string, unknown>> = [];
 let userRolesUpsertPayload: Record<string, unknown> | null = null;
+let stallAuditUserLookup = false;
 
 type AdminUserRecord = {
   id: string;
@@ -125,10 +126,15 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
     supabaseAdmin: {
       auth: {
         admin: {
-          getUserById: vi.fn(async (userId: string) => ({
-            data: { user: adminUsers.get(userId) ?? null },
-            error: null,
-          })),
+          getUserById: vi.fn(async (userId: string) => {
+            if (stallAuditUserLookup) {
+              return await new Promise(() => {});
+            }
+            return {
+              data: { user: adminUsers.get(userId) ?? null },
+              error: null,
+            };
+          }),
         },
       },
       from: vi.fn((table: string) => {
@@ -203,6 +209,7 @@ describe('admin-users-roles access control', () => {
     adminActionInserts = [];
     adminUsers.clear();
     userRolesUpsertPayload = null;
+    stallAuditUserLookup = false;
   });
 
   it('allows a super admin to demote another admin user', async () => {
@@ -415,5 +422,58 @@ describe('admin-users-roles access control', () => {
       is_active: true,
     });
     expect(latestUpdatePayload).toEqual({ role: 'admin_schedule' });
+  });
+
+  it('returns success when audit metadata lookup stalls after the role write', async () => {
+    vi.useFakeTimers();
+    try {
+      rpcRoles = ['super_admin'];
+      stallAuditUserLookup = true;
+
+      const superAdminContext: TestUserContext = {
+        user: { id: 'super-admin-5', email: 'super5@example.com' },
+        profile: {
+          id: 'super-admin-profile-5',
+          email: 'super5@example.com',
+          role: 'super_admin',
+          is_active: true,
+        },
+      };
+
+      userContexts.set('super5', superAdminContext);
+
+      const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+      const responsePromise = handler(
+        new Request('http://localhost/functions/v1/admin-users-roles', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer test-token',
+            'x-test-user': 'super5',
+          },
+          body: JSON.stringify({
+            target_user_id: '11111111-1111-1111-1111-111111111111',
+            role: 'therapist',
+          }),
+        }),
+      );
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      const response = await responsePromise;
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.user.role).toBe('therapist');
+      expect(userRolesUpsertPayload).toMatchObject({
+        user_id: existingProfile.id,
+        role_id: 'rid-therapist',
+        granted_by: 'super-admin-5',
+        is_active: true,
+      });
+      expect(latestUpdatePayload).toEqual({ role: 'therapist' });
+      expect(adminActionInserts).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

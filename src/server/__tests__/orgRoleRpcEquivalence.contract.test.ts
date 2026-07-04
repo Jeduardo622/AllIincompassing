@@ -12,6 +12,7 @@ vi.mock("../api/shared", async () => {
 });
 
 import {
+  currentUserCanCaptureTrialEvent,
   currentUserCanManageLockedTrialEvent,
   currentUserCanManageProgramsGoals,
   currentUserCanTakeClientData,
@@ -104,10 +105,15 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
   it("checks trial-event capture and lock helpers through exposed public RPC wrappers", async () => {
     fetchSpy
       .mockResolvedValueOnce(jsonResponse(true))
+      .mockResolvedValueOnce(jsonResponse(true))
       .mockResolvedValueOnce(jsonResponse(false))
       .mockResolvedValueOnce(jsonResponse(true));
 
     await expect(currentUserCanTakeClientData(accessToken, "org-1", "client-1")).resolves.toEqual({
+      allowed: true,
+      upstreamError: false,
+    });
+    await expect(currentUserCanCaptureTrialEvent(accessToken, "org-1", "client-1")).resolves.toEqual({
       allowed: true,
       upstreamError: false,
     });
@@ -125,12 +131,17 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       target_organization_id: "org-1",
       target_client_id: "client-1",
     });
-    expect(String(fetchSpy.mock.calls[1]?.[0])).toContain("/rest/v1/rpc/current_user_can_manage_locked_trial_event");
+    expect(String(fetchSpy.mock.calls[1]?.[0])).toContain("/rest/v1/rpc/current_user_can_capture_trial_event");
     expect(JSON.parse(String((fetchSpy.mock.calls[1]?.[1] as RequestInit).body))).toEqual({
       target_organization_id: "org-1",
+      target_client_id: "client-1",
     });
-    expect(String(fetchSpy.mock.calls[2]?.[0])).toContain("/rest/v1/rpc/session_has_locked_note");
+    expect(String(fetchSpy.mock.calls[2]?.[0])).toContain("/rest/v1/rpc/current_user_can_manage_locked_trial_event");
     expect(JSON.parse(String((fetchSpy.mock.calls[2]?.[1] as RequestInit).body))).toEqual({
+      target_organization_id: "org-1",
+    });
+    expect(String(fetchSpy.mock.calls[3]?.[0])).toContain("/rest/v1/rpc/session_has_locked_note");
+    expect(JSON.parse(String((fetchSpy.mock.calls[3]?.[1] as RequestInit).body))).toEqual({
       target_session_id: "session-1",
     });
   });
@@ -140,6 +151,7 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: "PGRST202" }), { status: 404 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: "42501" }), { status: 403 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: "PGRST202" }), { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "PGRST202" }), { status: 404 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: "42501" }), { status: 403 }));
 
     await expect(currentUserCanManageProgramsGoals(accessToken, "org-1")).resolves.toEqual({
@@ -147,6 +159,10 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       upstreamError: true,
     });
     await expect(currentUserCanTakeClientData(accessToken, "org-1", "client-1")).resolves.toEqual({
+      allowed: false,
+      upstreamError: true,
+    });
+    await expect(currentUserCanCaptureTrialEvent(accessToken, "org-1", "client-1")).resolves.toEqual({
       allowed: false,
       upstreamError: true,
     });
@@ -163,12 +179,14 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
   it("keeps generated database types in sync with public trial-event helper RPC wrappers", () => {
     type PublicFunctions = keyof Database["public"]["Functions"];
     const requiredFunctions: PublicFunctions[] = [
+      "current_user_can_capture_trial_event",
       "current_user_can_take_client_data",
       "current_user_can_manage_locked_trial_event",
       "session_has_locked_note",
     ];
 
     expect(requiredFunctions).toEqual([
+      "current_user_can_capture_trial_event",
       "current_user_can_take_client_data",
       "current_user_can_manage_locked_trial_event",
       "session_has_locked_note",

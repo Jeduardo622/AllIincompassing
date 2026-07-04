@@ -6461,6 +6461,10 @@ export type Database = {
       }
       create_super_admin: { Args: { user_email: string }; Returns: undefined }
       current_org_id: { Args: never; Returns: string }
+      current_user_can_capture_trial_event: {
+        Args: { target_client_id: string; target_organization_id: string }
+        Returns: boolean
+      }
       current_user_can_manage_locked_trial_event: {
         Args: { target_organization_id: string }
         Returns: boolean

@@ -107,13 +107,17 @@ describe("goal targets and trial events migration", () => {
     expect(sql).toContain("return app.session_has_locked_note(target_session_id);");
     expect(sql).toContain("create or replace function public.current_user_can_manage_locked_trial_event(target_organization_id uuid)");
     expect(sql).toContain("select app.current_user_can_manage_locked_trial_event(target_organization_id);");
+    expect(sql).toContain("create or replace function public.current_user_can_capture_trial_event(target_organization_id uuid, target_client_id uuid)");
+    expect(sql).toContain("select app.current_user_can_capture_trial_event(target_organization_id, target_client_id);");
     expect(sql).toContain("create or replace function public.current_user_can_take_client_data(target_organization_id uuid, target_client_id uuid)");
     expect(sql).toContain("select app.current_user_can_take_client_data(target_organization_id, target_client_id);");
     expect(sql).toContain("grant execute on function public.session_has_locked_note(uuid) to authenticated, service_role;");
     expect(sql).toContain("grant execute on function public.current_user_can_manage_locked_trial_event(uuid) to authenticated, service_role;");
+    expect(sql).toContain("grant execute on function public.current_user_can_capture_trial_event(uuid, uuid) to authenticated, service_role;");
     expect(sql).toContain("grant execute on function public.current_user_can_take_client_data(uuid, uuid) to authenticated, service_role;");
     expect(sql).toContain("revoke execute on function public.session_has_locked_note(uuid) from public, anon;");
     expect(sql).toContain("revoke execute on function public.current_user_can_manage_locked_trial_event(uuid) from public, anon;");
+    expect(sql).toContain("revoke execute on function public.current_user_can_capture_trial_event(uuid, uuid) from public, anon;");
     expect(sql).toContain("revoke execute on function public.current_user_can_take_client_data(uuid, uuid) from public, anon;");
   });
 

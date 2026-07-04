@@ -814,9 +814,66 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
               created_at: "2026-02-11T00:00:00.000Z",
               updated_at: "2026-02-11T00:00:00.000Z",
             },
+            {
+              id: "target-2",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              goal_id: "goal-1",
+              name: "Sustained engagement",
+              measurement_type: "duration",
+              graph_config: { defaultChart: "line", source: "trial_events" },
+              status: "draft",
+              sort_order: 1,
+              created_at: "2026-02-11T00:01:00.000Z",
+              updated_at: "2026-02-11T00:01:00.000Z",
+            },
           ]),
           { status: 200 },
         );
+      }
+      if (method === "GET" && path.startsWith("/api/trial-events?target_id=target-1")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "trial-event-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              session_id: "session-1",
+              target_id: "target-1",
+              goal_id: "goal-1",
+              therapist_id: "therapist-1",
+              trial_number: 1,
+              response: null,
+              value: 3,
+              event_timestamp: "2026-02-11T17:00:00.000Z",
+              metadata: {},
+              created_at: "2026-02-11T17:00:00.000Z",
+              updated_at: "2026-02-11T17:00:00.000Z",
+            },
+            {
+              id: "trial-event-2",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              session_id: "session-1",
+              target_id: "target-1",
+              goal_id: "goal-1",
+              therapist_id: "therapist-1",
+              trial_number: 2,
+              response: null,
+              value: 5,
+              event_timestamp: "2026-02-11T17:05:00.000Z",
+              metadata: {},
+              created_at: "2026-02-11T17:05:00.000Z",
+              updated_at: "2026-02-11T17:05:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/trial-events?target_id=target-2")) {
+        return new Promise<Response>(() => {
+          // Keep this target pending to prove one slow graph does not block sibling targets.
+        });
       }
       if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -845,6 +902,24 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(await screen.findByText("Mands for help")).toBeInTheDocument();
     expect(screen.getByText("Measurement: Frequency")).toBeInTheDocument();
     expect(screen.getByText(/Graph: bar from/i)).toBeInTheDocument();
+    const mandsGraph = await screen.findByLabelText("Trial-event graph for Mands for help");
+    expect(within(mandsGraph).getByText("2 trials")).toBeInTheDocument();
+    expect(within(mandsGraph).getByText("Trial 1")).toBeInTheDocument();
+    expect(within(mandsGraph).getByText("Trial 2")).toBeInTheDocument();
+    expect(within(mandsGraph).getByText("5")).toBeInTheDocument();
+
+    expect(await screen.findByText("Sustained engagement")).toBeInTheDocument();
+    const engagementGraph = await screen.findByLabelText("Trial-event graph for Sustained engagement");
+    expect(within(engagementGraph).getByText("Loading trial-level data...")).toBeInTheDocument();
+    expect(
+      await within(engagementGraph).findByText(
+        "Could not load trial-level data: Trial-event graph request timed out. Please retry.",
+        {},
+        { timeout: 10_000 },
+      ),
+    ).toBeInTheDocument();
+    expect(callEdgeFunctionHttp).toHaveBeenCalledWith("trial-events?target_id=target-1");
+    expect(callEdgeFunctionHttp).toHaveBeenCalledWith("trial-events?target_id=target-2");
   });
 
   it("creates a target under an existing goal with independent measurement status and graph defaults", async () => {

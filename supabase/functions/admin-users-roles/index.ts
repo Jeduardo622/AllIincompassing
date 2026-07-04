@@ -31,8 +31,9 @@ const ROLE_RANK: Record<AppRole, number> = {
 /**
  * `profiles.role` is not authoritative: middleware and RLS use `user_roles` + helpers
  * (`current_user_is_super_admin`, `get_user_role_from_junction`). Authenticated clients
- * cannot mutate another user's `user_roles` rows (RLS), so apply junction changes with the
- * service role after this super-admin-only route has authorized the caller.
+ * cannot reliably mutate another user's `user_roles` or `profiles` rows across org scopes (RLS),
+ * so apply target-user changes with the service role after this super-admin-only route has
+ * authorized the caller.
  */
 async function syncCanonicalUserRoles(
   targetUserId: string,
@@ -141,7 +142,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     const validRoles = CANONICAL_ROLE_NAMES;
     if (!role || !validRoles.includes(role)) return new Response(JSON.stringify({ error: 'Valid role is required', validRoles }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    const { data: existingUser } = await adminClient.from('profiles').select('id, email, role, is_active').eq('id', userId).single();
+    const { data: existingUser } = await supabaseAdmin.from('profiles').select('id, email, role, is_active').eq('id', userId).single();
     if (!existingUser) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     if (
@@ -158,7 +159,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       return new Response(JSON.stringify({ error: junctionError }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { data: updatedUser, error: updateError } = await adminClient
+    const { data: updatedUser, error: updateError } = await supabaseAdmin
       .from('profiles').update(updateData).eq('id', userId)
       .select('id, email, role, first_name, last_name, full_name, is_active, updated_at').single();
 

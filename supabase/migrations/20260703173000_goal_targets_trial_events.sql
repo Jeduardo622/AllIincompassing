@@ -593,6 +593,16 @@ as $$
   select app.current_user_can_manage_locked_trial_event(target_organization_id);
 $$;
 
+create or replace function public.current_user_can_capture_trial_event(target_organization_id uuid, target_client_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, app
+as $$
+  select app.current_user_can_capture_trial_event(target_organization_id, target_client_id);
+$$;
+
 create or replace function public.current_user_can_take_client_data(target_organization_id uuid, target_client_id uuid)
 returns boolean
 language sql
@@ -719,12 +729,14 @@ grant execute on function app.current_user_can_manage_locked_trial_event(uuid) t
 grant execute on function app.current_user_can_capture_trial_event(uuid, uuid) to authenticated, service_role;
 grant execute on function public.session_has_locked_note(uuid) to authenticated, service_role;
 grant execute on function public.current_user_can_manage_locked_trial_event(uuid) to authenticated, service_role;
+grant execute on function public.current_user_can_capture_trial_event(uuid, uuid) to authenticated, service_role;
 grant execute on function public.current_user_can_take_client_data(uuid, uuid) to authenticated, service_role;
 revoke execute on function app.session_has_locked_note(uuid) from public, anon;
 revoke execute on function app.current_user_can_manage_locked_trial_event(uuid) from public, anon;
 revoke execute on function app.current_user_can_capture_trial_event(uuid, uuid) from public, anon;
 revoke execute on function public.session_has_locked_note(uuid) from public, anon;
 revoke execute on function public.current_user_can_manage_locked_trial_event(uuid) from public, anon;
+revoke execute on function public.current_user_can_capture_trial_event(uuid, uuid) from public, anon;
 revoke execute on function public.current_user_can_take_client_data(uuid, uuid) from public, anon;
 
 notify pgrst, 'reload schema';

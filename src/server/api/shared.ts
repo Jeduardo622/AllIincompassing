@@ -270,6 +270,28 @@ export async function currentUserCanTakeClientData(
   return { allowed: result.data === true, upstreamError: false };
 }
 
+export async function currentUserCanCaptureTrialEvent(
+  accessToken: string,
+  organizationId: string,
+  clientId: string,
+): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/current_user_can_capture_trial_event`, {
+    method: "POST",
+    headers: {
+      ...JSON_HEADERS,
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ target_organization_id: organizationId, target_client_id: clientId }),
+  });
+
+  if (!result.ok) {
+    return { allowed: false, upstreamError: true };
+  }
+  return { allowed: result.data === true, upstreamError: false };
+}
+
 export async function currentUserCanManageLockedTrialEvent(
   accessToken: string,
   organizationId: string,

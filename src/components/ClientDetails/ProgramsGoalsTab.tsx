@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, Loader2, Plus, Trash2, UploadCloud } from "lucide-react";
-import type { Client, Goal, GoalTarget, Program, ProgramNote, TargetMeasurementType } from "../../types";
+import type { Client, Goal, GoalTarget, Program, ProgramNote, TargetMeasurementType, TrialEvent } from "../../types";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { useActiveOrganizationId } from "../../lib/organization";
@@ -54,6 +54,8 @@ const ACTIVE_ASSESSMENT_POLL_STATUSES: ReadonlySet<AssessmentDocumentRecord["sta
   "extracting",
   "extraction_running",
 ]);
+const TRIAL_EVENT_GRAPH_POINT_LIMIT = 6;
+const TRIAL_EVENTS_REQUEST_TIMEOUT_MS = 8_000;
 
 const detectAssessmentTemplateTypeFromFileName = (fileName: string): AssessmentTemplateType | null => {
   const normalized = fileName.toLowerCase();
@@ -178,6 +180,38 @@ const hasMeaningfulAdaptiveBlocks = (payload: Record<string, unknown>): boolean 
     );
   });
 };
+
+const responseGraphScores: Record<NonNullable<TrialEvent["response"]>, number> = {
+  correct: 1,
+  independent: 1,
+  prompted: 0.5,
+  incorrect: 0,
+  noResponse: 0,
+  notObserved: 0,
+};
+
+const formatTrialEventValue = (event: TrialEvent): string => {
+  if (typeof event.value === "number") {
+    return Number.isInteger(event.value) ? String(event.value) : event.value.toFixed(2);
+  }
+  return event.response ? event.response.replace(/([A-Z])/g, " $1").toLowerCase() : "not scored";
+};
+
+const trialEventGraphScore = (event: TrialEvent): number => {
+  if (typeof event.value === "number") {
+    return event.value;
+  }
+  return event.response ? responseGraphScores[event.response] ?? 0 : 0;
+};
+
+const sortTrialEvents = (events: TrialEvent[]): TrialEvent[] =>
+  [...events].sort((left, right) => {
+    const timestampComparison = left.event_timestamp.localeCompare(right.event_timestamp);
+    return timestampComparison === 0 ? left.trial_number - right.trial_number : timestampComparison;
+  });
+
+const latestTrialEventsForGraph = (events: TrialEvent[]): TrialEvent[] =>
+  events.slice(Math.max(0, events.length - TRIAL_EVENT_GRAPH_POINT_LIMIT));
 
 const hasLegacySignaturePayload = (payload: Record<string, unknown>): boolean => {
   const hasTransferSignatureFields = ["report_completed_date", "credentials", "agency"].some((key) =>
@@ -321,6 +355,7 @@ const PROGRAMS_EDGE_PATH = "programs";
 const GOALS_EDGE_PATH = "goals";
 const PROGRAM_NOTES_EDGE_PATH = "program-notes";
 const GOAL_TARGETS_EDGE_PATH = "goal-targets";
+const TRIAL_EVENTS_EDGE_PATH = "trial-events";
 
 const buildProgramsQueryPath = (clientId: string): string =>
   `${PROGRAMS_EDGE_PATH}?client_id=${encodeURIComponent(clientId)}`;
@@ -435,6 +470,83 @@ interface AssessmentPromoteResponse {
   promoted_program_count?: number;
   promoted_goal_count?: number;
   completion_mode?: "assessment_only" | "live_program_goals";
+}
+
+interface TargetTrialEventGraphProps {
+  clientId: string;
+  organizationId: string | null;
+  target: GoalTarget;
+}
+
+function TargetTrialEventGraph({ clientId, organizationId, target }: TargetTrialEventGraphProps) {
+  const {
+    data: trialEvents = [],
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["trial-events", clientId, organizationId ?? "no-org", target.id] as const,
+    queryFn: async () => {
+      const response = await withTimeout(
+        callEdgeFunctionHttp(`${TRIAL_EVENTS_EDGE_PATH}?target_id=${encodeURIComponent(target.id)}`),
+        TRIAL_EVENTS_REQUEST_TIMEOUT_MS,
+        "Trial-event graph request timed out. Please retry.",
+      );
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to load trial events."));
+      }
+      return sortTrialEvents(await parseJson<TrialEvent[]>(response));
+    },
+    enabled: Boolean(organizationId && target.id),
+    retry: false,
+    staleTime: TAB_QUERY_STALE_TIME_MS,
+    refetchOnReconnect: true,
+  });
+  const graphEvents = latestTrialEventsForGraph(trialEvents);
+  const maxGraphScore = Math.max(1, ...graphEvents.map(trialEventGraphScore));
+
+  return (
+    <div
+      className="mt-2 rounded border border-slate-100 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/40"
+      aria-label={`Trial-event graph for ${target.name}`}
+    >
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="font-medium text-slate-700 dark:text-slate-200">Target graph</span>
+        <span className="text-slate-500">
+          {trialEvents.length} trial{trialEvents.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {error instanceof Error ? (
+        <p className="text-amber-700 dark:text-amber-300">
+          Could not load trial-level data: {error.message}
+        </p>
+      ) : isLoading ? (
+        <p className="text-slate-500">Loading trial-level data...</p>
+      ) : graphEvents.length === 0 ? (
+        <p className="text-slate-500">No trial-level data yet.</p>
+      ) : (
+        <div className="space-y-1">
+          {graphEvents.map((event) => {
+            const score = trialEventGraphScore(event);
+            const widthPercent = Math.max(8, Math.round((score / maxGraphScore) * 100));
+            return (
+              <div key={event.id} className="grid grid-cols-[5rem_1fr_5rem] items-center gap-2">
+                <span className="text-slate-500">Trial {event.trial_number}</span>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                  <div
+                    className="h-full rounded-full bg-blue-500"
+                    style={{ width: `${widthPercent}%` }}
+                  />
+                </div>
+                <span className="text-right text-slate-600 dark:text-slate-300">
+                  {formatTrialEventValue(event)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
@@ -667,7 +779,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   });
 
   const targetsByGoalId = useMemo(() => buildTargetsByGoalId(goalTargets), [goalTargets]);
-
   useEffect(() => {
     if (targetGoalId && goalIdsForTargets.includes(targetGoalId)) {
       return;
@@ -2746,6 +2857,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                   {String(target.graph_config?.source ?? "trial_events")}
                                 </span>
                               </div>
+                              <TargetTrialEventGraph clientId={client.id} organizationId={organizationId} target={target} />
                             </div>
                           ))}
                         </div>

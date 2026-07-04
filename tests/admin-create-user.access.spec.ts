@@ -322,4 +322,45 @@ describe('admin-create-user access control', () => {
       error: 'User created, but organization context is unavailable.',
     });
   });
+
+  it('fails closed when created admin profile verification has a non-immutability database error', async () => {
+    userContexts.set('super-profile-db-error', {
+      user: { id: 'super-user-id', email: 'super@example.com' },
+      profile: {
+        id: 'super-profile-id',
+        email: 'super@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    });
+    profilesMaybeSingleSpy.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST202', message: 'profile lookup failed' },
+    });
+
+    const { default: handler } = await import('../supabase/functions/admin-create-user/index.ts');
+
+    const response = await handler(new Request('http://localhost/functions/v1/admin-create-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer test-token',
+        'x-test-user': 'super-profile-db-error',
+      },
+      body: JSON.stringify({
+        email: 'new.admin@example.com',
+        password: 'StrongPass123!',
+        first_name: 'New',
+        last_name: 'Admin',
+        organization_id: '22222222-2222-2222-2222-222222222222',
+        reason: 'Coverage for profile verification database errors.',
+      }),
+    }));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'User created, but organization context is unavailable.',
+    });
+    expect(logApiAccess).toHaveBeenCalledWith('POST', '/admin/create-user', expect.anything(), 500);
+  });
 });

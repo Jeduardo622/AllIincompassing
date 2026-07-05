@@ -117,6 +117,27 @@ async function syncCanonicalUserRoles(
   return null;
 }
 
+async function resolvePriorRoleFromJunction(
+  supabaseAdmin: any,
+  targetUserId: string,
+): Promise<{ role: string | null; error: string | null }> {
+  const { data, error } = await supabaseAdmin.rpc("get_user_role_from_junction", {
+    p_user_id: targetUserId,
+  });
+
+  if (error) {
+    console.error("resolvePriorRoleFromJunction: failed to load active junction role", error);
+    return { role: null, error: "Failed to resolve current role assignment" };
+  }
+
+  if (typeof data !== "string" || data.trim().length === 0) {
+    console.error("resolvePriorRoleFromJunction: RPC returned an invalid role", data);
+    return { role: null, error: "Failed to resolve current role assignment" };
+  }
+
+  return { role: data.trim(), error: null };
+}
+
 async function runBestEffortAudit(work: () => Promise<void>): Promise<void> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const audit = work().catch((error) => {
@@ -182,6 +203,11 @@ async function handleRoleUpdate(req: Request, userContext: any, corsHeaders: Rec
 
     const updateData: any = { role }; if (is_active !== undefined) updateData.is_active = is_active;
 
+    const priorRole = await resolvePriorRoleFromJunction(supabaseAdmin, userId);
+    if (priorRole.error || !priorRole.role) {
+      return new Response(JSON.stringify({ error: priorRole.error ?? "Failed to resolve current role assignment" }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const junctionError = await syncCanonicalUserRoles(supabaseAdmin, userId, role, userContext.user.id);
     if (junctionError) {
       return new Response(JSON.stringify({ error: junctionError }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -218,7 +244,7 @@ async function handleRoleUpdate(req: Request, userContext: any, corsHeaders: Rec
           organization_id: organizationId,
           action_type: 'role_update',
           action_details: {
-            old_role: existingUser.role,
+            old_role: priorRole.role,
             new_role: role,
             old_is_active: existingUser.is_active,
             is_active: updateData.is_active ?? existingUser.is_active,

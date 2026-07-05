@@ -53,6 +53,10 @@ let adminActionInserts: Array<Record<string, unknown>> = [];
 let userRolesUpsertPayload: Record<string, unknown> | null = null;
 let stallAuditUserLookup = false;
 let failLegacyRoleRpc = false;
+let priorJunctionRole: TestRole = 'admin';
+let priorJunctionRoleError = false;
+let priorJunctionRoleData: unknown | undefined;
+let roleMutationEvents: string[] = [];
 
 type AdminUserRecord = {
   id: string;
@@ -114,6 +118,7 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
         return { data: null, error: { message: 'User not found' } };
       }),
       update: vi.fn((values: Record<string, unknown>) => {
+        roleMutationEvents.push('update-profile');
         latestUpdatePayload = values;
         const updatedUser = {
           ...existingProfile,
@@ -147,6 +152,17 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
           }),
         },
       },
+      rpc: vi.fn(async (functionName: string, payload?: Record<string, unknown>) => {
+        if (functionName === 'get_user_role_from_junction') {
+          roleMutationEvents.push('resolve-prior-role');
+          expect(payload).toEqual({ p_user_id: existingProfile.id });
+          if (priorJunctionRoleError) {
+            return { data: null, error: { message: 'junction role unavailable' } };
+          }
+          return { data: priorJunctionRoleData ?? priorJunctionRole, error: null };
+        }
+        return { data: null, error: { message: `Unexpected admin RPC ${functionName}` } };
+      }),
       from: vi.fn((table: string) => {
         if (table === 'roles') {
           return {
@@ -162,10 +178,14 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
           return {
             delete: vi.fn(() => ({
               eq: vi.fn(() => ({
-                in: vi.fn(async () => ({ error: null })),
+                in: vi.fn(async () => {
+                  roleMutationEvents.push('delete-user-roles');
+                  return { error: null };
+                }),
               })),
             })),
             upsert: vi.fn((payload: Record<string, unknown>) => {
+              roleMutationEvents.push('upsert-user-role');
               userRolesUpsertPayload = payload;
               return Promise.resolve({ error: null });
             }),
@@ -226,6 +246,10 @@ describe('admin-users-roles access control', () => {
     userRolesUpsertPayload = null;
     stallAuditUserLookup = false;
     failLegacyRoleRpc = false;
+    priorJunctionRole = 'admin';
+    priorJunctionRoleError = false;
+    priorJunctionRoleData = undefined;
+    roleMutationEvents = [];
   });
 
   it('allows a super admin to demote another admin user', async () => {
@@ -492,6 +516,158 @@ describe('admin-users-roles access control', () => {
       is_active: true,
     });
     expect(latestUpdatePayload).toEqual({ role: 'therapist' });
+  });
+
+  it('records the authoritative prior junction role when profiles.role has drifted', async () => {
+    existingProfile.role = 'client';
+    priorJunctionRole = 'admin';
+
+    const superAdminContext: TestUserContext = {
+      user: { id: 'super-admin-profile-drift', email: 'super-drift@example.com' },
+      profile: {
+        id: 'super-admin-profile-drift-profile',
+        email: 'super-drift@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    };
+
+    userContexts.set('super-drift', superAdminContext);
+    adminUsers.set('super-admin-profile-drift', {
+      id: 'super-admin-profile-drift',
+      email: 'super-drift@example.com',
+      user_metadata: { organization_id: 'org-123' },
+    });
+    adminUsers.set(existingProfile.id, {
+      id: existingProfile.id,
+      email: existingProfile.email,
+      user_metadata: { organization_id: 'org-999' },
+    });
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+          'x-test-user': 'super-drift',
+        },
+        body: JSON.stringify({
+          target_user_id: existingProfile.id,
+          role: 'therapist',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(adminActionInserts).toEqual([
+      expect.objectContaining({
+        action_details: expect.objectContaining({
+          old_role: 'admin',
+          new_role: 'therapist',
+        }),
+      }),
+    ]);
+    expect(adminActionInserts[0]).not.toEqual(
+      expect.objectContaining({
+        action_details: expect.objectContaining({ old_role: 'client' }),
+      }),
+    );
+    expect(roleMutationEvents.indexOf('resolve-prior-role')).toBeLessThan(
+      roleMutationEvents.indexOf('delete-user-roles'),
+    );
+    expect(roleMutationEvents.indexOf('resolve-prior-role')).toBeLessThan(
+      roleMutationEvents.indexOf('upsert-user-role'),
+    );
+    expect(roleMutationEvents.indexOf('resolve-prior-role')).toBeLessThan(
+      roleMutationEvents.indexOf('update-profile'),
+    );
+  });
+
+  it('fails closed before mutating roles when the prior junction role cannot be resolved', async () => {
+    priorJunctionRoleError = true;
+
+    const superAdminContext: TestUserContext = {
+      user: { id: 'super-admin-prior-role-error', email: 'super-prior-error@example.com' },
+      profile: {
+        id: 'super-admin-prior-role-error-profile',
+        email: 'super-prior-error@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    };
+
+    userContexts.set('super-prior-error', superAdminContext);
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+          'x-test-user': 'super-prior-error',
+        },
+        body: JSON.stringify({
+          target_user_id: existingProfile.id,
+          role: 'therapist',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Failed to resolve current role assignment',
+    });
+    expect(roleMutationEvents).toEqual(['resolve-prior-role']);
+    expect(latestUpdatePayload).toBeNull();
+    expect(userRolesUpsertPayload).toBeNull();
+    expect(adminActionInserts).toEqual([]);
+  });
+
+  it('fails closed before mutating roles when the prior junction role payload is invalid', async () => {
+    priorJunctionRoleData = '';
+
+    const superAdminContext: TestUserContext = {
+      user: { id: 'super-admin-prior-role-invalid', email: 'super-prior-invalid@example.com' },
+      profile: {
+        id: 'super-admin-prior-role-invalid-profile',
+        email: 'super-prior-invalid@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    };
+
+    userContexts.set('super-prior-invalid', superAdminContext);
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin-users-roles', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+          'x-test-user': 'super-prior-invalid',
+        },
+        body: JSON.stringify({
+          target_user_id: existingProfile.id,
+          role: 'therapist',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Failed to resolve current role assignment',
+    });
+    expect(roleMutationEvents).toEqual(['resolve-prior-role']);
+    expect(latestUpdatePayload).toBeNull();
+    expect(userRolesUpsertPayload).toBeNull();
+    expect(adminActionInserts).toEqual([]);
   });
 
   it('uses request CORS headers on protected PATCH responses', async () => {

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { SessionGoalMeasurementEntry, SessionNote } from "../../types";
 import { mergeUniqueGoalIds, normalizeGoalMeasurementEntry } from "../../lib/goal-measurements";
 import { isAdhocSessionTargetId, isValidSessionNoteGoalKey } from "../../lib/session-adhoc-targets";
+import { getOptionalServerEnv } from "../env";
 import {
   corsHeadersForRequest,
   currentUserCanCaptureTrialEvent,
@@ -132,6 +133,18 @@ type SessionScope = {
 
 const responseRequiredMeasurementTypes = new Set(["correctIncorrect", "taskAnalysis"]);
 const valueRequiredMeasurementTypes = new Set(["frequency", "rate", "duration", "timeSample", "latency", "IRT"]);
+
+const buildServiceRoleHeaders = (): Record<string, string> | null => {
+  const serviceRoleKey = getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  if (!serviceRoleKey) {
+    return null;
+  }
+  return {
+    "Content-Type": "application/json",
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+  };
+};
 
 const normalizeTime = (value: string): string => {
   if (!value) {
@@ -680,14 +693,11 @@ const writeSessionTrialEventRows = async (args: {
     return null;
   }
 
-  const writeResult = await fetchJson(
-    `${args.supabaseUrl}/rest/v1/trial_events?on_conflict=session_id%2Ctarget_id%2Ctrial_number`,
-    {
-      method: "POST",
-      headers: { ...args.headers, Prefer: "return=minimal,resolution=merge-duplicates" },
-      body: JSON.stringify(args.rows),
-    },
-  );
+  const writeResult = await fetchJson(`${args.supabaseUrl}/rest/v1/trial_events`, {
+    method: "POST",
+    headers: { ...args.headers, Prefer: "return=minimal" },
+    body: JSON.stringify(args.rows),
+  });
   if (!writeResult.ok) {
     return errorResponse(args.request, "upstream_error", "Unable to save trial events", {
       status: writeResult.status || 502,
@@ -699,6 +709,18 @@ const writeSessionTrialEventRows = async (args: {
 
 const trialEventRowKey = (row: { target_id: unknown; trial_number: unknown }): string =>
   `${String(row.target_id ?? "")}:${String(row.trial_number ?? "")}`;
+
+const findDuplicateTrialEventRowKey = (rows: readonly Record<string, unknown>[]): string | null => {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const key = trialEventRowKey(row);
+    if (seen.has(key)) {
+      return key;
+    }
+    seen.add(key);
+  }
+  return null;
+};
 
 const fetchExistingSessionTrialEventKeys = async (args: {
   request: Request;
@@ -970,6 +992,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (trialEventBuild.response) {
     return trialEventBuild.response;
   }
+  const duplicateTrialEventRowKey = findDuplicateTrialEventRowKey(trialEventBuild.rows);
+  if (duplicateTrialEventRowKey) {
+    return errorResponse(request, "conflict", "Duplicate trial event submitted for this session target and trial number.", {
+      status: 409,
+    });
+  }
 
   const writePayload = {
     authorization_id: payload.authorizationId,
@@ -1001,9 +1029,15 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (existingTrialEventKeyBuild.response) {
     return existingTrialEventKeyBuild.response;
   }
-  const rollbackTrialEventRows = trialEventBuild.rows.filter(
-    (row) => !existingTrialEventKeyBuild.keys.has(trialEventRowKey(row)),
-  );
+  if (existingTrialEventKeyBuild.keys.size > 0) {
+    return errorResponse(request, "conflict", "Trial event already exists for this session target and trial number.", {
+      status: 409,
+    });
+  }
+  const rollbackHeaders = trialEventBuild.rows.length > 0 ? buildServiceRoleHeaders() : null;
+  if (trialEventBuild.rows.length > 0 && !rollbackHeaders) {
+    return errorResponse(request, "upstream_error", "Trial event rollback is not configured", { status: 500 });
+  }
 
   const trialEventError = await writeSessionTrialEventRows({
     request,
@@ -1044,7 +1078,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
       }
     }
     if (!insertResult.ok || !insertResult.data || insertResult.data.length === 0) {
-      await rollbackSessionTrialEventRows({ supabaseUrl, headers, organizationId, rows: rollbackTrialEventRows });
+      await rollbackSessionTrialEventRows({
+        supabaseUrl,
+        headers: rollbackHeaders ?? headers,
+        organizationId,
+        rows: trialEventBuild.rows,
+      });
       return errorResponse(request, "upstream_error", "Unable to create session note", {
         status: insertResult.status || 502,
       });
@@ -1072,7 +1111,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
       }
     }
     if (!updateResult.ok || !updateResult.data || updateResult.data.length === 0) {
-      await rollbackSessionTrialEventRows({ supabaseUrl, headers, organizationId, rows: rollbackTrialEventRows });
+      await rollbackSessionTrialEventRows({
+        supabaseUrl,
+        headers: rollbackHeaders ?? headers,
+        organizationId,
+        rows: trialEventBuild.rows,
+      });
       return errorResponse(request, "upstream_error", "Unable to update session note", {
         status: updateResult.status || 502,
       });
@@ -1081,7 +1125,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
 
   const savedRow = await fetchSessionNoteById(supabaseUrl, headers, organizationId, noteId);
   if (!savedRow) {
-    await rollbackSessionTrialEventRows({ supabaseUrl, headers, organizationId, rows: rollbackTrialEventRows });
+    await rollbackSessionTrialEventRows({
+      supabaseUrl,
+      headers: rollbackHeaders ?? headers,
+      organizationId,
+      rows: trialEventBuild.rows,
+    });
     return errorResponse(request, "upstream_error", "Unable to load saved session note", { status: 502 });
   }
 

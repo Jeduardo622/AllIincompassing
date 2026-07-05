@@ -1629,6 +1629,12 @@ export function SessionModal({
       configuredTarget?: GoalTarget | null,
     ) => {
       if (configuredTarget) {
+        const dirtyPath =
+          `session_note_goal_measurements.${goalId}.data.target_trials.${targetIndex}.${field}` as const;
+        const nextDisplayedCount = Math.max(
+          0,
+          getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, field) + delta,
+        );
         if (delta > 0) {
           const startTrialNumber = getNextRawTrialNumber(configuredTarget.id);
           const newEvents = Array.from({ length: delta }, (_, index): SessionCaptureTrialEventInput => {
@@ -1644,6 +1650,7 @@ export function SessionModal({
             };
           });
           setPendingTrialEvents((current) => [...current, ...newEvents]);
+          setValue(dirtyPath, nextDisplayedCount, { shouldDirty: true, shouldTouch: true });
         } else if (delta < 0) {
           const removeCount = Math.abs(delta);
           setPendingTrialEvents((current) => {
@@ -1669,6 +1676,7 @@ export function SessionModal({
             }
             return next;
           });
+          setValue(dirtyPath, nextDisplayedCount, { shouldDirty: true, shouldTouch: true });
         }
         return;
       }
@@ -1683,7 +1691,7 @@ export function SessionModal({
       const safe = Number.isFinite(cur) ? cur : 0;
       setValue(path, Math.max(0, safe + delta), { shouldDirty: true, shouldTouch: true });
     },
-    [getNextRawTrialNumber, getValues, setValue],
+    [getNextRawTrialNumber, getRawTrialCount, getValues, setValue],
   );
 
   const updateGoalTargets = useCallback(

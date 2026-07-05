@@ -1857,10 +1857,16 @@ describe('SessionModal', () => {
     );
 
     await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
+    expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent('Unsaved changes.');
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await userEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+    expect(confirmSpy).toHaveBeenCalled();
+    confirmSpy.mockRestore();
+
     fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
       target: { value: 'Observed steady progress' },
     });
-    await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
     await userEvent.click(screen.getByRole('button', { name: /Increase incorrect or no-response trials for target 1/i }));
     await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
 

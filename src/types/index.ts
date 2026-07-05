@@ -280,6 +280,17 @@ export interface TrialEvent {
   updated_at: string;
 }
 
+export interface SessionCaptureTrialEventInput {
+  target_id: string;
+  trial_number: number;
+  response?: TrialEvent['response'];
+  prompt_type?: string | null;
+  prompt_level?: string | null;
+  value?: number | null;
+  timestamp?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ProgramNote {
   id: string;
   organization_id: string;

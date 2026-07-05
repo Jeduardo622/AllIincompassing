@@ -18,6 +18,7 @@ vi.mock('../../lib/session-note-linked-fetch', () => ({
 type SupabaseQueryChain = {
   select: () => SupabaseQueryChain;
   eq: () => SupabaseQueryChain;
+  neq: () => SupabaseQueryChain;
   order: () => Promise<{ data: unknown[]; error: null }>;
   maybeSingle: () => Promise<{ data: unknown; error: null }>;
   limit: () => Promise<{ data: unknown[]; error: null }>;
@@ -87,6 +88,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -474,6 +476,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -571,6 +574,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -632,6 +636,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -686,10 +691,12 @@ describe('SessionModal', () => {
 
   it('submits completed status when Close Session is clicked', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderWithProviders(
       <SessionModal
         {...defaultProps}
         onSubmit={onSubmit}
+        existingSessions={[]}
         session={{
           id: 'session-close-action',
           therapist_id: 'test-therapist-1',
@@ -709,13 +716,16 @@ describe('SessionModal', () => {
       />
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /^Close Session$/i }));
+    const closeSessionButton = screen.getByRole('button', { name: /^Close Session$/i });
+    await waitFor(() => expect(closeSessionButton).not.toBeDisabled());
+    await userEvent.click(closeSessionButton);
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
         status: 'completed',
       }));
     });
+    confirmSpy.mockRestore();
   });
 
   it('closes an in-progress historical session even when stored program and goal are no longer active', async () => {
@@ -723,6 +733,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -794,6 +805,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -901,6 +913,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -970,6 +983,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -1043,6 +1057,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -1109,6 +1124,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -1167,6 +1183,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -1308,6 +1325,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -1638,6 +1656,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -1736,12 +1755,285 @@ describe('SessionModal', () => {
     });
   }, 15000);
 
+  it('submits configured plan target trials as raw trial events', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const targetId = '88888888-8888-4888-8888-888888888888';
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([
+          {
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          },
+        ]);
+      }
+      if (table === 'goal_targets') {
+        return buildChain([
+          {
+            id: targetId,
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            goal_id: 'goal-1',
+            name: 'Match peer greeting in 4/5 trials',
+            measurement_type: 'correctIncorrect',
+            graph_config: {},
+            status: 'active',
+            sort_order: 0,
+            created_by: null,
+            updated_by: null,
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+          },
+        ]);
+      }
+      if (table === 'trial_events') {
+        return buildChain([
+          {
+            id: 'trial-existing',
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            session_id: 'session-raw-trials',
+            target_id: targetId,
+            goal_id: 'goal-1',
+            therapist_id: 'test-therapist-1',
+            trial_number: 2,
+            response: 'correct',
+            prompt_type: null,
+            prompt_level: null,
+            value: null,
+            event_timestamp: '2026-03-01T10:05:00.000Z',
+            metadata: {},
+            created_by: null,
+            updated_by: null,
+            created_at: '2026-03-01T10:05:00.000Z',
+            updated_at: '2026-03-01T10:05:00.000Z',
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        existingSessions={[]}
+        session={{
+          id: 'session-raw-trials',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
+    fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
+      target: { value: 'Observed steady progress' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Increase incorrect or no-response trials for target 1/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_trial_events: [
+          expect.objectContaining({
+            target_id: targetId,
+            trial_number: 3,
+            response: 'correct',
+            metadata: expect.objectContaining({ source: 'schedule_capture', goal_id: 'goal-1' }),
+          }),
+          expect.objectContaining({
+            target_id: targetId,
+            trial_number: 4,
+            response: 'incorrect',
+          }),
+        ],
+      }));
+    });
+    const submitted = onSubmit.mock.calls[0]?.[0] as {
+      session_note_goal_measurements?: Record<string, SessionGoalMeasurementEntry>;
+    };
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.target_trials).toBeNull();
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.metric_value).toBeNull();
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.incorrect_trials).toBeNull();
+  }, 15000);
+
+  it('keeps aggregate counts nulled when reopening a raw-trial-backed target without new trial clicks', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const targetId = '88888888-8888-4888-8888-888888888889';
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([
+          {
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          },
+        ]);
+      }
+      if (table === 'goal_targets') {
+        return buildChain([
+          {
+            id: targetId,
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            goal_id: 'goal-1',
+            name: 'Match peer greeting in 4/5 trials',
+            measurement_type: 'correctIncorrect',
+            graph_config: {},
+            status: 'active',
+            sort_order: 0,
+            created_by: null,
+            updated_by: null,
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+          },
+        ]);
+      }
+      if (table === 'trial_events') {
+        return buildChain([
+          {
+            id: 'trial-existing-correct',
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            session_id: 'session-raw-trials-reopen',
+            target_id: targetId,
+            goal_id: 'goal-1',
+            therapist_id: 'test-therapist-1',
+            trial_number: 1,
+            response: 'correct',
+            prompt_type: null,
+            prompt_level: null,
+            value: null,
+            event_timestamp: '2026-03-01T10:05:00.000Z',
+            metadata: {},
+            created_by: null,
+            updated_by: null,
+            created_at: '2026-03-01T10:05:00.000Z',
+            updated_at: '2026-03-01T10:05:00.000Z',
+          },
+          {
+            id: 'trial-existing-incorrect',
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            session_id: 'session-raw-trials-reopen',
+            target_id: targetId,
+            goal_id: 'goal-1',
+            therapist_id: 'test-therapist-1',
+            trial_number: 2,
+            response: 'incorrect',
+            prompt_type: null,
+            prompt_level: null,
+            value: null,
+            event_timestamp: '2026-03-01T10:06:00.000Z',
+            metadata: {},
+            created_by: null,
+            updated_by: null,
+            created_at: '2026-03-01T10:06:00.000Z',
+            updated_at: '2026-03-01T10:06:00.000Z',
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        existingSessions={[]}
+        session={{
+          id: 'session-raw-trials-reopen',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
+    fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
+      target: { value: 'Reopened note update' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const submitted = onSubmit.mock.calls[0]?.[0] as {
+      session_note_goal_measurements?: Record<string, SessionGoalMeasurementEntry>;
+      session_note_trial_events?: unknown[];
+    };
+    expect(submitted.session_note_trial_events).toBeUndefined();
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.target_trials).toBeNull();
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.metric_value).toBeNull();
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.incorrect_trials).toBeNull();
+  }, 15000);
+
   it('shows trial controls for live plan goals without a configured target', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const buildChain = (rows: unknown[]) => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -1874,6 +2166,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -1987,6 +2280,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2113,6 +2407,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2202,6 +2497,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2355,6 +2651,7 @@ describe('SessionModal', () => {
         const chain: SupabaseQueryChain = {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
           order: vi.fn(async () => ({ data: mockPrograms, error: null })),
           maybeSingle: vi.fn(async () => ({ data: null, error: null })),
           limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2365,6 +2662,7 @@ describe('SessionModal', () => {
         const chain: SupabaseQueryChain = {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
           order: vi.fn(async () => ({ data: mockGoals, error: null })),
           maybeSingle: vi.fn(async () => ({ data: null, error: null })),
           limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2375,6 +2673,7 @@ describe('SessionModal', () => {
         const chain: SupabaseQueryChain = {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
           order: vi.fn(async () => ({
             data: [{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }],
             error: null,
@@ -2387,6 +2686,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: [], error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2514,6 +2814,7 @@ describe('SessionModal', () => {
         const chain: SupabaseQueryChain = {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
           order: vi.fn(async () => ({ data: mockPrograms, error: null })),
           maybeSingle: vi.fn(async () => ({ data: null, error: null })),
           limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2524,6 +2825,7 @@ describe('SessionModal', () => {
         const chain: SupabaseQueryChain = {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
           order: vi.fn(async () => ({ data: mockGoals, error: null })),
           maybeSingle: vi.fn(async () => ({ data: null, error: null })),
           limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2534,6 +2836,7 @@ describe('SessionModal', () => {
         const chain: SupabaseQueryChain = {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
           order: vi.fn(async () => ({
             data: [{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }],
             error: null,
@@ -2546,6 +2849,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: [], error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2680,6 +2984,7 @@ describe('SessionModal', () => {
         const chain: SupabaseQueryChain = {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
           order: vi.fn(async () => ({ data: mockPrograms, error: null })),
           maybeSingle: vi.fn(async () => ({ data: null, error: null })),
           limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2690,6 +2995,7 @@ describe('SessionModal', () => {
         const chain: SupabaseQueryChain = {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
           order: vi.fn(async () => ({ data: mockGoals, error: null })),
           maybeSingle: vi.fn(async () => ({ data: null, error: null })),
           limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2700,6 +3006,7 @@ describe('SessionModal', () => {
         const chain: SupabaseQueryChain = {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
           order: vi.fn(async () => ({
             data: [{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }],
             error: null,
@@ -2712,6 +3019,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: [], error: null })),
         maybeSingle: vi.fn(async () => ({ data: null, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),
@@ -2779,6 +3087,7 @@ describe('SessionModal', () => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
         maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
         limit: vi.fn(async () => ({ data: [], error: null })),

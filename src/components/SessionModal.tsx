@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import {
   X,
@@ -17,7 +17,10 @@ import {
 } from 'lucide-react';
 import type {
   Session,
+  GoalTarget,
+  SessionCaptureTrialEventInput,
   SessionGoalMeasurementEntry,
+  TrialEvent,
   Therapist,
   Client,
   Goal,
@@ -79,7 +82,11 @@ export interface SessionModalClinicalNotesPayload {
   session_note_persist_requested?: boolean;
   /** When set, POST /api/session-notes/upsert merges only these goal keys from this payload (server-authoritative). */
   session_note_capture_merge_goal_ids?: string[];
+  /** Raw trial-level events generated from configured goal targets during Schedule capture. */
+  session_note_trial_events?: SessionCaptureTrialEventInput[];
 }
+
+const responseRequiredMeasurementTypes = new Set(['correctIncorrect', 'taskAnalysis']);
 
 export type SessionModalSubmitData = Partial<Session> & SessionModalClinicalNotesPayload;
 
@@ -255,6 +262,7 @@ export function SessionModal({
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
+  const [pendingTrialEvents, setPendingTrialEvents] = useState<SessionCaptureTrialEventInput[]>([]);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const sessionCaptureSectionRef = useRef<HTMLElement | null>(null);
@@ -269,6 +277,7 @@ export function SessionModal({
   const retryHintHeadingId = 'session-modal-retry-heading';
   const conflictDescriptionId = 'session-modal-conflicts-description';
   const conflictHeadingId = 'session-modal-conflicts-heading';
+  const queryClient = useQueryClient();
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
 
@@ -424,6 +433,52 @@ export function SessionModal({
       return (data ?? []) as Goal[];
     },
     enabled: Boolean(clientId && activeOrganizationId),
+  });
+
+  const { data: goalTargets = [] } = useQuery({
+    queryKey: ['client-goal-targets', clientId, activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!clientId || !activeOrganizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('goal_targets')
+        .select('id, organization_id, client_id, goal_id, name, measurement_type, graph_config, status, sort_order, created_by, updated_by, created_at, updated_at')
+        .eq('client_id', clientId)
+        .eq('organization_id', activeOrganizationId)
+        .neq('status', 'archived')
+        .order('sort_order', { ascending: true });
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as GoalTarget[];
+    },
+    enabled: Boolean(clientId && activeOrganizationId),
+  });
+
+  const sessionTrialEventsQueryKey = useMemo(
+    () => ['session-trial-events', session?.id, activeOrganizationId ?? 'MISSING_ORG'] as const,
+    [activeOrganizationId, session?.id],
+  );
+
+  const { data: existingTrialEvents = [] } = useQuery({
+    queryKey: sessionTrialEventsQueryKey,
+    queryFn: async () => {
+      if (!session?.id || !activeOrganizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('trial_events')
+        .select('*')
+        .eq('session_id', session.id)
+        .eq('organization_id', activeOrganizationId)
+        .order('trial_number', { ascending: true });
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as TrialEvent[];
+    },
+    enabled: Boolean(session?.id && activeOrganizationId),
   });
 
   const captureBillingRelaxed = isSessionCaptureBillingGateRelaxed();
@@ -609,6 +664,10 @@ export function SessionModal({
     setSelectedProgramIds([]);
     setMobileProgramsExpanded(false);
   }, [clientId, setValue]);
+
+  useEffect(() => {
+    setPendingTrialEvents([]);
+  }, [session?.id, clientId]);
 
   useEffect(() => {
     if (!sessionDetails) {
@@ -1111,6 +1170,26 @@ export function SessionModal({
           working.session_note_goals_addressed?.[index]?.trim() ?? null,
         ]),
       );
+      const mergeGoalIds = options?.captureMergeGoalIds?.filter((id) => id.trim().length > 0) ?? [];
+      const isPartialCaptureSave = mergeGoalIds.length > 0;
+      const trialEventsForSubmit = pendingTrialEvents.filter((event) => {
+        if (!isPartialCaptureSave) {
+          return true;
+        }
+        const target = goalTargetsById.get(event.target_id);
+        return Boolean(target && mergeGoalIds.includes(target.goal_id));
+      });
+      const rawTrialBackedGoalIds = new Set(
+        [...existingTrialEvents, ...trialEventsForSubmit]
+          .map((event) => goalTargetsById.get(event.target_id)?.goal_id)
+          .filter((id): id is string => Boolean(id))
+          .filter((id) => !isPartialCaptureSave || mergeGoalIds.includes(id)),
+      );
+      const submittedTrialGoalIds = new Set(
+        trialEventsForSubmit
+          .map((event) => goalTargetsById.get(event.target_id)?.goal_id)
+          .filter((id): id is string => Boolean(id)),
+      );
       const normalizedGoalMeasurementMap = Object.fromEntries(
         mergedGoalIds
           .map((goalEntryId) => {
@@ -1123,7 +1202,26 @@ export function SessionModal({
               goal,
               goalEntryId,
             );
-            return entry ? [goalEntryId, entry] : null;
+            if (!entry) {
+              return null;
+            }
+            if (!rawTrialBackedGoalIds.has(goalEntryId)) {
+              return [goalEntryId, entry];
+            }
+            const rawEventBackedEntry: SessionGoalMeasurementEntry = {
+              version: entry.version,
+              data: {
+                ...entry.data,
+                metric_value: null,
+                incorrect_trials: null,
+                opportunities: null,
+                target_trials: null,
+                trial_prompt_note: null,
+              },
+            };
+            return hasMeaningfulGoalMeasurementEntry(rawEventBackedEntry)
+              ? [goalEntryId, rawEventBackedEntry]
+              : null;
           })
           .filter((entry): entry is [string, SessionGoalMeasurementEntry] => Boolean(entry)),
       );
@@ -1141,8 +1239,6 @@ export function SessionModal({
       ) {
         resolvedServiceCode = SESSION_CAPTURE_RELAXED_FALLBACK_SERVICE_CODE;
       }
-      const mergeGoalIds = options?.captureMergeGoalIds?.filter((id) => id.trim().length > 0) ?? [];
-      const isPartialCaptureSave = mergeGoalIds.length > 0;
       const hasCaptureInputFromSubmit = isPartialCaptureSave
         ? mergeGoalIds.some((goalKey) => {
             const noteText = (working.session_note_goal_notes?.[goalKey] ?? '').trim();
@@ -1157,7 +1253,7 @@ export function SessionModal({
                 goalKey,
               ),
             );
-          })
+          }) || submittedTrialGoalIds.size > 0
         : Object.values(working.session_note_goal_notes ?? {}).some(
             (value) => typeof value === 'string' && value.trim().length > 0,
           ) ||
@@ -1169,7 +1265,8 @@ export function SessionModal({
                 goalKey,
               ),
             ),
-          );
+          ) ||
+          submittedTrialGoalIds.size > 0;
       const goalIdsRequiringNotes = isPartialCaptureSave
         ? mergedGoalIds.filter((id) => mergeGoalIds.includes(id))
         : mergedGoalIds;
@@ -1219,14 +1316,68 @@ export function SessionModal({
         session_note_authorization_id: resolvedAuthorizationId,
         session_note_service_code: resolvedServiceCode,
         session_note_persist_requested:
-          isPartialCaptureSave || hasDirtySessionCaptureFields || isInProgressSession,
+          isPartialCaptureSave || hasDirtySessionCaptureFields || isInProgressSession || trialEventsForSubmit.length > 0,
         ...(isPartialCaptureSave ? { session_note_capture_merge_goal_ids: mergeGoalIds } : {}),
+        ...(trialEventsForSubmit.length > 0 ? { session_note_trial_events: trialEventsForSubmit } : {}),
         goal_ids: sessionGoalIds,
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
         start_time: timeZone ? toUtcSessionIsoString(working.start_time, resolvedTimeZone) : working.start_time,
         end_time: timeZone ? toUtcSessionIsoString(working.end_time, resolvedTimeZone) : working.end_time,
       };
       await onSubmit(transformed);
+      if (trialEventsForSubmit.length > 0 && session?.id) {
+        const submittedAt = new Date().toISOString();
+        queryClient.setQueryData<TrialEvent[]>(sessionTrialEventsQueryKey, (current = []) => {
+          const existingKeys = new Set(
+            current.map((event) => `${event.session_id}:${event.target_id}:${event.trial_number}`),
+          );
+          const appended = trialEventsForSubmit
+            .map((event): TrialEvent | null => {
+              const target = goalTargetsById.get(event.target_id);
+              if (!target) {
+                return null;
+              }
+              return {
+                id: `pending-${session.id}-${event.target_id}-${event.trial_number}`,
+                organization_id: activeOrganizationId ?? target.organization_id,
+                client_id: target.client_id,
+                session_id: session.id,
+                target_id: event.target_id,
+                goal_id: target.goal_id,
+                therapist_id: working.therapist_id ?? session.therapist_id,
+                trial_number: event.trial_number,
+                response: event.response ?? null,
+                prompt_type: event.prompt_type ?? null,
+                prompt_level: event.prompt_level ?? null,
+                value: typeof event.value === 'number' ? event.value : null,
+                event_timestamp: event.timestamp ?? submittedAt,
+                metadata: event.metadata ?? {},
+                created_by: null,
+                updated_by: null,
+                created_at: submittedAt,
+                updated_at: submittedAt,
+              };
+            })
+            .filter((event): event is TrialEvent => Boolean(event))
+            .filter((event) => {
+              const key = `${event.session_id}:${event.target_id}:${event.trial_number}`;
+              if (existingKeys.has(key)) {
+                return false;
+              }
+              existingKeys.add(key);
+              return true;
+            });
+          return [...current, ...appended];
+        });
+        void queryClient.invalidateQueries({ queryKey: sessionTrialEventsQueryKey });
+      }
+      setPendingTrialEvents((current) =>
+        trialEventsForSubmit.length > 0
+          ? current.filter((event) => !trialEventsForSubmit.some((saved) => (
+              saved.target_id === event.target_id && saved.trial_number === event.trial_number
+            )))
+          : current,
+      );
       reset(getValues());
       setSaveState('saved');
     } catch (error) {
@@ -1401,8 +1552,126 @@ export function SessionModal({
     return sessionCaptureBxGoalIds;
   }, [sessionCaptureBxGoalIds, sessionCaptureSkillGoalIds, sessionCaptureTab]);
 
+  const goalTargetsByGoalId = useMemo(() => {
+    const grouped = new Map<string, GoalTarget[]>();
+    goalTargets.forEach((target) => {
+      const list = grouped.get(target.goal_id) ?? [];
+      list.push(target);
+      grouped.set(target.goal_id, list);
+    });
+    return grouped;
+  }, [goalTargets]);
+
+  const goalTargetsById = useMemo(
+    () => new Map(goalTargets.map((target) => [target.id, target])),
+    [goalTargets],
+  );
+
+  const resolveConfiguredGoalTarget = useCallback(
+    (goalId: string, targetValue: string): GoalTarget | null => {
+      if (isAdhocSessionTargetId(goalId)) {
+        return null;
+      }
+      const trimmedTarget = targetValue.trim();
+      if (!trimmedTarget) {
+        return null;
+      }
+      return goalTargetsByGoalId
+        .get(goalId)
+        ?.find((target) => target.name.trim() === trimmedTarget) ?? null;
+    },
+    [goalTargetsByGoalId],
+  );
+
+  const getRawTrialCount = useCallback(
+    (
+      targetId: string,
+      measurementType: string,
+      field: 'metric_value' | 'incorrect_trials',
+      scope: 'all' | 'pending' = 'all',
+    ) => {
+      const sourceEvents = scope === 'pending'
+        ? pendingTrialEvents
+        : [...existingTrialEvents, ...pendingTrialEvents];
+      return sourceEvents.filter((event) => {
+        if (event.target_id !== targetId) {
+          return false;
+        }
+        if (responseRequiredMeasurementTypes.has(measurementType)) {
+          return field === 'metric_value'
+            ? event.response === 'correct'
+            : event.response === 'incorrect' || event.response === 'noResponse';
+        }
+        return field === 'metric_value'
+          ? typeof event.value === 'number' && event.value > 0
+          : event.value === 0;
+      }).length;
+    },
+    [existingTrialEvents, pendingTrialEvents],
+  );
+
+  const getNextRawTrialNumber = useCallback(
+    (targetId: string): number => {
+      const maxTrialNumber = [...existingTrialEvents, ...pendingTrialEvents]
+        .filter((event) => event.target_id === targetId)
+        .reduce((max, event) => Math.max(max, Number(event.trial_number) || 0), 0);
+      return maxTrialNumber + 1;
+    },
+    [existingTrialEvents, pendingTrialEvents],
+  );
+
   const bumpTrialCount = useCallback(
-    (goalId: string, targetIndex: number, field: 'metric_value' | 'incorrect_trials', delta: number) => {
+    (
+      goalId: string,
+      targetIndex: number,
+      field: 'metric_value' | 'incorrect_trials',
+      delta: number,
+      configuredTarget?: GoalTarget | null,
+    ) => {
+      if (configuredTarget) {
+        if (delta > 0) {
+          const startTrialNumber = getNextRawTrialNumber(configuredTarget.id);
+          const newEvents = Array.from({ length: delta }, (_, index): SessionCaptureTrialEventInput => {
+            const trialNumber = startTrialNumber + index;
+            const usesResponse = responseRequiredMeasurementTypes.has(configuredTarget.measurement_type);
+            return {
+              target_id: configuredTarget.id,
+              trial_number: trialNumber,
+              ...(usesResponse
+                ? { response: field === 'metric_value' ? 'correct' : 'incorrect' }
+                : { value: field === 'metric_value' ? 1 : 0 }),
+              metadata: { source: 'schedule_capture', goal_id: goalId, target_index: targetIndex },
+            };
+          });
+          setPendingTrialEvents((current) => [...current, ...newEvents]);
+        } else if (delta < 0) {
+          const removeCount = Math.abs(delta);
+          setPendingTrialEvents((current) => {
+            let remainingToRemove = removeCount;
+            const next = current.slice();
+            for (let index = next.length - 1; index >= 0 && remainingToRemove > 0; index -= 1) {
+              const event = next[index];
+              if (event.target_id !== configuredTarget.id) {
+                continue;
+              }
+              const matchesField = responseRequiredMeasurementTypes.has(configuredTarget.measurement_type)
+                ? (field === 'metric_value'
+                    ? event.response === 'correct'
+                    : event.response === 'incorrect' || event.response === 'noResponse')
+                : (field === 'metric_value'
+                    ? typeof event.value === 'number' && event.value > 0
+                    : event.value === 0);
+              if (!matchesField) {
+                continue;
+              }
+              next.splice(index, 1);
+              remainingToRemove -= 1;
+            }
+            return next;
+          });
+        }
+        return;
+      }
       const path = `session_note_goal_measurements.${goalId}.data.target_trials.${targetIndex}.${field}` as const;
       const raw = getValues(path);
       const cur =
@@ -1414,7 +1683,7 @@ export function SessionModal({
       const safe = Number.isFinite(cur) ? cur : 0;
       setValue(path, Math.max(0, safe + delta), { shouldDirty: true, shouldTouch: true });
     },
-    [getValues, setValue],
+    [getNextRawTrialNumber, getValues, setValue],
   );
 
   const updateGoalTargets = useCallback(
@@ -2727,12 +2996,21 @@ export function SessionModal({
                           const visibleSessionTargetItems = isAdhocTarget || planGoalHasNoConfiguredTarget
                             ? sessionTargets.map((targetValue, sourceIndex) => ({ targetValue, sourceIndex }))
                             : (selectedPlanTargets.length > 0 ? selectedPlanTargets : [{ targetValue: '', sourceIndex: 0 }]);
+                          const getDisplayedTargetTrialValue = (
+                            item: { targetValue: string; sourceIndex: number },
+                            field: 'metric_value' | 'incorrect_trials',
+                          ) => {
+                            const configuredTarget = resolveConfiguredGoalTarget(selectedGoalId, item.targetValue);
+                            return configuredTarget
+                              ? getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, field)
+                              : getTargetTrialValue(item.sourceIndex, field);
+                          };
                           const correctDisplay = visibleSessionTargetItems.reduce(
-                            (sum, item) => sum + getTargetTrialValue(item.sourceIndex, 'metric_value'),
+                            (sum, item) => sum + getDisplayedTargetTrialValue(item, 'metric_value'),
                             0,
                           );
                           const incorrectDisplay = visibleSessionTargetItems.reduce(
-                            (sum, item) => sum + getTargetTrialValue(item.sourceIndex, 'incorrect_trials'),
+                            (sum, item) => sum + getDisplayedTargetTrialValue(item, 'incorrect_trials'),
                             0,
                           );
                           const captureDetailsOpen =
@@ -2909,8 +3187,19 @@ export function SessionModal({
                                       `${targetTrialsFieldBaseKey}.${sourceIndex}.trial_prompt_note` as const;
                                     const targetTrialTargetFieldKey =
                                       `${targetTrialsFieldBaseKey}.${sourceIndex}.target` as const;
-                                    const targetCorrectDisplay = getTargetTrialValue(sourceIndex, 'metric_value');
-                                    const targetIncorrectDisplay = getTargetTrialValue(sourceIndex, 'incorrect_trials');
+                                    const configuredTarget = resolveConfiguredGoalTarget(selectedGoalId, targetValue);
+                                    const targetCorrectDisplay = configuredTarget
+                                      ? getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'metric_value')
+                                      : getTargetTrialValue(sourceIndex, 'metric_value');
+                                    const targetIncorrectDisplay = configuredTarget
+                                      ? getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'incorrect_trials')
+                                      : getTargetTrialValue(sourceIndex, 'incorrect_trials');
+                                    const pendingCorrectDisplay = configuredTarget
+                                      ? getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'metric_value', 'pending')
+                                      : targetCorrectDisplay;
+                                    const pendingIncorrectDisplay = configuredTarget
+                                      ? getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'incorrect_trials', 'pending')
+                                      : targetIncorrectDisplay;
                                     const shouldRenderTargetTrialFields =
                                       isAdhocTarget ||
                                       planGoalHasNoConfiguredTarget ||
@@ -2991,7 +3280,7 @@ export function SessionModal({
                                                 type="button"
                                                 aria-label={`Increase correct trials for target ${targetIndex + 1}`}
                                                 className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-lg font-bold text-white shadow-sm hover:bg-emerald-700"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', 1)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', 1, configuredTarget)}
                                               >
                                                 +
                                               </button>
@@ -3001,8 +3290,9 @@ export function SessionModal({
                                               <button
                                                 type="button"
                                                 aria-label={`Decrease correct trials for target ${targetIndex + 1}`}
+                                                disabled={pendingCorrectDisplay < 1}
                                                 className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-700 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-400 dark:text-emerald-200"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -1)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -1, configuredTarget)}
                                               >
                                                 −
                                               </button>
@@ -3010,16 +3300,16 @@ export function SessionModal({
                                                 type="button"
                                                 aria-label={`Add 5 correct trials for target ${targetIndex + 1}`}
                                                 className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', 5)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', 5, configuredTarget)}
                                               >
                                                 +5
                                               </button>
                                               <button
                                                 type="button"
                                                 aria-label={`Subtract 5 correct trials for target ${targetIndex + 1}`}
-                                                disabled={targetCorrectDisplay < 5}
+                                                disabled={pendingCorrectDisplay < 5}
                                                 className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -5)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -5, configuredTarget)}
                                               >
                                                 −5
                                               </button>
@@ -3030,7 +3320,7 @@ export function SessionModal({
                                                 type="button"
                                                 aria-label={`Increase incorrect or no-response trials for target ${targetIndex + 1}`}
                                                 className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 text-lg font-bold text-white shadow-sm hover:bg-rose-700"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', 1)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', 1, configuredTarget)}
                                               >
                                                 +
                                               </button>
@@ -3040,8 +3330,9 @@ export function SessionModal({
                                               <button
                                                 type="button"
                                                 aria-label={`Decrease incorrect trials for target ${targetIndex + 1}`}
+                                                disabled={pendingIncorrectDisplay < 1}
                                                 className="flex h-10 w-10 items-center justify-center rounded-full border border-rose-700 text-rose-700 hover:bg-rose-50 dark:border-rose-400 dark:text-rose-200"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -1)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -1, configuredTarget)}
                                               >
                                                 −
                                               </button>
@@ -3049,16 +3340,16 @@ export function SessionModal({
                                                 type="button"
                                                 aria-label={`Add 5 incorrect or no-response trials for target ${targetIndex + 1}`}
                                                 className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', 5)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', 5, configuredTarget)}
                                               >
                                                 +5
                                               </button>
                                               <button
                                                 type="button"
                                                 aria-label={`Subtract 5 incorrect trials for target ${targetIndex + 1}`}
-                                                disabled={targetIncorrectDisplay < 5}
+                                                disabled={pendingIncorrectDisplay < 5}
                                                 className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -5)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -5, configuredTarget)}
                                               >
                                                 −5
                                               </button>

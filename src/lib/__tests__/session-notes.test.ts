@@ -497,6 +497,42 @@ describe('session note write helpers', () => {
     expect(callApiMock).not.toHaveBeenCalled();
   });
 
+  it('upsertClientSessionNoteForSession forwards explicit trial events to the API', async () => {
+    await upsertClientSessionNoteForSession({
+      sessionId: '77777777-7777-4777-8777-777777777777',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      authorizationId: '22222222-2222-4222-8222-222222222222',
+      therapistId: '33333333-3333-4333-8333-333333333333',
+      organizationId: 'org-1',
+      actorUserId: 'user-1',
+      serviceCode: '97153',
+      sessionDate: '2025-06-01',
+      startTime: '09:00',
+      endTime: '10:00',
+      goalsAddressed: ['Goal A'],
+      goalIds: ['44444444-4444-4444-8444-444444444444'],
+      goalMeasurements: null,
+      goalNotes: { '44444444-4444-4444-8444-444444444444': 'Progress captured' },
+      narrative: 'Narrative text',
+      trialEvents: [{
+        target_id: '88888888-8888-4888-8888-888888888888',
+        trial_number: 1,
+        response: 'correct',
+        prompt_level: 'independent',
+        metadata: { source: 'schedule_capture' },
+      }],
+    });
+
+    const payload = JSON.parse(callApiMock.mock.calls[0][1].body) as Record<string, unknown>;
+    expect(payload.trialEvents).toEqual([{
+      target_id: '88888888-8888-4888-8888-888888888888',
+      trial_number: 1,
+      response: 'correct',
+      prompt_level: 'independent',
+      metadata: { source: 'schedule_capture' },
+    }]);
+  });
+
   it('throws server error message when API request fails', async () => {
     callApiMock.mockResolvedValueOnce({
       ok: false,

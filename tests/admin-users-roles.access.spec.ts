@@ -285,7 +285,9 @@ describe('admin-users-roles access control', () => {
         organization_id: 'org-999',
         action_type: 'role_update',
         action_details: {
+          old_role: 'admin',
           new_role: 'therapist',
+          old_is_active: true,
           is_active: true,
         },
       },

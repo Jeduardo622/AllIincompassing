@@ -1,5 +1,5 @@
 import type { PostgrestError } from '@supabase/supabase-js';
-import type { SessionGoalMeasurementEntry, SessionNote } from '../types';
+import type { SessionCaptureTrialEventInput, SessionGoalMeasurementEntry, SessionNote } from '../types';
 import type { Database } from './generated/database.types';
 import { normalizeGoalMeasurementEntry } from './goal-measurements';
 import { callApi } from './api';
@@ -256,6 +256,7 @@ export interface UpsertClientSessionNoteForSessionInput {
   readonly goalNotes: Record<string, string>;
   readonly narrative: string;
   readonly captureMergeGoalIds?: string[];
+  readonly trialEvents?: SessionCaptureTrialEventInput[];
 }
 
 export interface UpdateClientSessionNoteInput {
@@ -297,6 +298,7 @@ export interface SessionNoteUpsertApiPayload {
   readonly isLocked: boolean;
   /** Server merges only these goal keys from the request into the existing session note. */
   readonly captureMergeGoalIds?: string[];
+  readonly trialEvents?: SessionCaptureTrialEventInput[];
 }
 
 /**
@@ -400,6 +402,7 @@ export const upsertClientSessionNoteForSession = async (
     narrative: payload.narrative,
     isLocked: false,
     ...(payload.captureMergeGoalIds?.length ? { captureMergeGoalIds: payload.captureMergeGoalIds } : {}),
+    ...(payload.trialEvents?.length ? { trialEvents: payload.trialEvents } : {}),
   });
 };
 

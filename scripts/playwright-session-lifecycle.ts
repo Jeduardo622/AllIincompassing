@@ -53,6 +53,7 @@ const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
 const UI_BOOK_RESPONSE_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_UI_BOOK_RESPONSE_TIMEOUT_MS ?? "45000");
 const CLEANUP_BEFORE_FAILURE_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_CLEANUP_BEFORE_FAILURE_TIMEOUT_MS ?? "5000");
+const MAX_LIFECYCLE_PAIR_ATTEMPTS = Number(process.env.PW_LIFECYCLE_MAX_PAIR_ATTEMPTS ?? "3");
 
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
   console.log(`[lifecycle] start ${label}`);
@@ -600,6 +601,26 @@ export const isCreateSessionButtonReady = ({
   ariaDisabled: string | null;
 }): boolean => disabled === null && ariaDisabled !== "true";
 
+export const shouldTryNextLifecyclePairAfterAttempts = ({
+  attemptedStartCount,
+  blockedAttemptCount,
+  payloadStatus,
+}: {
+  attemptedStartCount: number;
+  blockedAttemptCount: number;
+  payloadStatus: number | null;
+}): boolean =>
+  payloadStatus === 409 ||
+  (attemptedStartCount > 0 && blockedAttemptCount >= attemptedStartCount);
+
+export const hasReachedLifecyclePairAttemptLimit = ({
+  attemptedPairCount,
+  maxPairAttempts = MAX_LIFECYCLE_PAIR_ATTEMPTS,
+}: {
+  attemptedPairCount: number;
+  maxPairAttempts?: number;
+}): boolean => attemptedPairCount >= Math.max(1, maxPairAttempts);
+
 const expectCreateSessionButtonReady = async (
   page: Page,
   context: {
@@ -958,6 +979,9 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
   } | null = null;
 
   while (true) {
+    if (hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: excludedPairKeys.size })) {
+      break;
+    }
     await ensureSessionModalOpen(page);
     let selected: Awaited<ReturnType<typeof chooseSessionTargetsExcluding>>;
     try {
@@ -999,6 +1023,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
     let finalEndIso = "";
     let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
     let payloadBody: { success?: boolean; data?: { session?: { id?: string } }; code?: string } | null = null;
+    let blockedAttemptCount = 0;
 
     for (let attempt = 0; attempt < availableCandidateStarts.length; attempt += 1) {
       const attemptStart = availableCandidateStarts[attempt];
@@ -1049,6 +1074,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
         );
       }
       if (outcome.kind === "blocked") {
+        blockedAttemptCount += 1;
         responsePromise.catch(() => undefined);
         continue;
       }
@@ -1087,9 +1113,18 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
     }
 
     lastFailure = { selected, finalStartIso, finalEndIso, payload, payloadBody };
-    if (payload?.status === 409) {
-      console.warn("[lifecycle] booking conflict exhausted candidate starts; trying next therapist-client pair", {
+    if (
+      shouldTryNextLifecyclePairAfterAttempts({
+        attemptedStartCount: availableCandidateStarts.length,
+        blockedAttemptCount,
+        payloadStatus: payload?.status ?? null,
+      })
+    ) {
+      console.warn("[lifecycle] booking attempts exhausted for therapist-client pair; trying next pair", {
         pairKey: selected.pairKey,
+        blockedAttemptCount,
+        attemptedStartCount: availableCandidateStarts.length,
+        payloadStatus: payload?.status ?? null,
       });
       await cleanupCreatedProgramGoal(selected);
       excludedPairKeys.add(selected.pairKey);

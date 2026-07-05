@@ -131,6 +131,7 @@ const stripClinicalNoteFields = (data: ScheduleSubmitData): Partial<Session> => 
     session_note_service_code: _sessionNoteServiceCode,
     session_note_persist_requested: _sessionNotePersistRequested,
     session_note_capture_merge_goal_ids: _sessionNoteCaptureMergeGoalIds,
+    session_note_trial_events: _sessionNoteTrialEvents,
     ...sessionPayload
   } = data;
   return sessionPayload;
@@ -147,6 +148,7 @@ const buildClinicalNoteDraft = (
   goalsAddressed: string[];
   authorizationId: string;
   serviceCode: string;
+  trialEvents: NonNullable<SessionModalClinicalNotesPayload["session_note_trial_events"]>;
 } | null => {
   if (data.session_note_persist_requested !== true) {
     return null;
@@ -165,6 +167,7 @@ const buildClinicalNoteDraft = (
     data.session_note_goal_measurements && typeof data.session_note_goal_measurements === "object"
       ? (data.session_note_goal_measurements as Record<string, SessionGoalMeasurementEntry>)
       : {};
+  const trialEvents = Array.isArray(data.session_note_trial_events) ? data.session_note_trial_events : [];
   const rawGoalLabels = Array.isArray(data.session_note_goals_addressed) ? data.session_note_goals_addressed : [];
   const goalsAddressed = goalIds.map((goalId, index) => {
     const label = (rawGoalLabels[index] ?? "").trim();
@@ -189,7 +192,7 @@ const buildClinicalNoteDraft = (
         const raw = data.session_note_goal_measurements?.[id];
         return hasMeaningfulGoalMeasurementEntry(
           normalizeGoalMeasurementEntry(raw, undefined, { fallbackMetricUnit: null }),
-        );
+        ) || trialEvents.some((event) => typeof event.target_id === "string");
       });
     if (!scopeHasContent) {
       return null;
@@ -197,7 +200,8 @@ const buildClinicalNoteDraft = (
   } else if (
     narrative.length === 0 &&
     Object.keys(goalNotes).length === 0 &&
-    Object.keys(goalMeasurements).length === 0
+    Object.keys(goalMeasurements).length === 0 &&
+    trialEvents.length === 0
   ) {
     return null;
   }
@@ -209,6 +213,7 @@ const buildClinicalNoteDraft = (
     goalsAddressed,
     authorizationId,
     serviceCode,
+    trialEvents,
   };
 };
 
@@ -1682,6 +1687,7 @@ export const Schedule = React.memo(() => {
               goalNotes: clinicalNoteDraft.goalNotes,
               narrative: clinicalNoteDraft.narrative,
               ...(mergeCaptureIds?.length ? { captureMergeGoalIds: mergeCaptureIds } : {}),
+              ...(clinicalNoteDraft.trialEvents.length ? { trialEvents: clinicalNoteDraft.trialEvents } : {}),
             });
           }
           await updateSessionMutation.mutateAsync(sessionPayload);

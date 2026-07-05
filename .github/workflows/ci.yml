@@ -534,16 +534,9 @@ jobs:
             exit 1
           fi
           export CI_SESSION_PARITY_REQUIRED=true
-          echo "Running non-AI session preflight."
-          npm run playwright:preflight
-          echo "Running terminal flow regression: no-show"
-          npm run playwright:session-no-show
-          echo "Running terminal flow regression: completed"
-          npm run playwright:session-complete
-          echo "Running blocked-close notes-required regression"
-          npm run playwright:schedule-blocked-close
-          echo "Running session note measurement roundtrip regression"
-          npm run playwright:session-note-measurement-roundtrip
+          export PW_CI_CHILD_TIMEOUT_MS=480000
+          echo "Running non-AI session browser smoke suite."
+          npm run ci:playwright:session-smoke
 
       - name: Cleanup auth smoke admin
         if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true'

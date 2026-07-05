@@ -2,8 +2,10 @@ import { z } from "zod";
 import type { SessionGoalMeasurementEntry, SessionNote } from "../../types";
 import { mergeUniqueGoalIds, normalizeGoalMeasurementEntry } from "../../lib/goal-measurements";
 import { isAdhocSessionTargetId, isValidSessionNoteGoalKey } from "../../lib/session-adhoc-targets";
+import { getOptionalServerEnv } from "../env";
 import {
   corsHeadersForRequest,
+  currentUserCanCaptureTrialEvent,
   errorResponse,
   fetchAuthenticatedUserIdWithStatus,
   fetchJson,
@@ -89,7 +91,60 @@ const upsertSchema = z.object({
     .array(z.string().min(1).refine((id) => isValidSessionNoteGoalKey(id)))
     .max(200)
     .optional(),
+  trialEvents: z
+    .array(z.object({
+      target_id: z.string().uuid(),
+      trial_number: z.number().int().positive(),
+      response: z.enum([
+        "correct",
+        "incorrect",
+        "noResponse",
+        "independent",
+        "prompted",
+        "notObserved",
+      ]).optional().nullable(),
+      prompt_type: z.string().trim().optional().nullable(),
+      prompt_level: z.string().trim().optional().nullable(),
+      value: z.number().nonnegative().optional().nullable(),
+      timestamp: z.string().datetime().optional(),
+      metadata: z.record(z.unknown()).optional(),
+    }))
+    .max(500)
+    .optional()
+    .default([]),
 });
+
+type SessionCaptureTrialEventInput = z.infer<typeof upsertSchema>["trialEvents"][number];
+
+type GoalTargetScope = {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  goal_id: string;
+  measurement_type: string;
+};
+
+type SessionScope = {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  therapist_id: string;
+};
+
+const responseRequiredMeasurementTypes = new Set(["correctIncorrect", "taskAnalysis"]);
+const valueRequiredMeasurementTypes = new Set(["frequency", "rate", "duration", "timeSample", "latency", "IRT"]);
+
+const buildServiceRoleHeaders = (): Record<string, string> | null => {
+  const serviceRoleKey = getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  if (!serviceRoleKey) {
+    return null;
+  }
+  return {
+    "Content-Type": "application/json",
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+  };
+};
 
 const normalizeTime = (value: string): string => {
   if (!value) {
@@ -447,6 +502,312 @@ const fetchSessionNoteById = async (
   return null;
 };
 
+const validateTrialEventMeasurementPayload = (
+  measurementType: string,
+  event: SessionCaptureTrialEventInput,
+): string | null => {
+  if (responseRequiredMeasurementTypes.has(measurementType)) {
+    if (!event.response) {
+      return "response is required for this target measurement type";
+    }
+    if (typeof event.value === "number") {
+      return "value is not allowed for this target measurement type";
+    }
+    return null;
+  }
+
+  if (valueRequiredMeasurementTypes.has(measurementType)) {
+    if (typeof event.value !== "number") {
+      return "value is required for this target measurement type";
+    }
+    if (event.response) {
+      return "response is not allowed for this target measurement type";
+    }
+  }
+
+  return null;
+};
+
+const buildSessionTrialEventRows = async (args: {
+  request: Request;
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  accessToken: string;
+  clientId: string;
+  sessionId: string | null | undefined;
+  therapistId: string;
+  actorUserId: string;
+  goalIds: readonly string[];
+  captureMergeGoalIds: readonly string[];
+  trialEvents: readonly SessionCaptureTrialEventInput[];
+}): Promise<{ rows: Array<Record<string, unknown>>; response: Response | null }> => {
+  if (args.trialEvents.length === 0) {
+    return { rows: [], response: null };
+  }
+
+  if (!args.sessionId) {
+    return {
+      rows: [],
+      response: errorResponse(args.request, "validation_error", "sessionId is required when saving trial events."),
+    };
+  }
+
+  const sessionUrl =
+    `${args.supabaseUrl}/rest/v1/sessions?select=id,organization_id,client_id,therapist_id` +
+    `&id=eq.${encodeURIComponent(args.sessionId)}` +
+    `&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`;
+  const sessionResult = await fetchJson<SessionScope[]>(sessionUrl, {
+    method: "GET",
+    headers: args.headers,
+  });
+  if (!sessionResult.ok) {
+    return {
+      rows: [],
+      response: errorResponse(args.request, "upstream_error", "Unable to validate trial-event session access", {
+        status: sessionResult.status || 502,
+      }),
+    };
+  }
+  const session = Array.isArray(sessionResult.data) ? sessionResult.data[0] ?? null : null;
+  if (!session) {
+    return {
+      rows: [],
+      response: errorResponse(args.request, "forbidden", "sessionId is not in scope for this organization.", { status: 403 }),
+    };
+  }
+  if (session.client_id !== args.clientId) {
+    return {
+      rows: [],
+      response: errorResponse(args.request, "validation_error", "Session does not match the selected client."),
+    };
+  }
+  if (session.therapist_id !== args.therapistId) {
+    return {
+      rows: [],
+      response: errorResponse(args.request, "validation_error", "Session does not match the selected therapist."),
+    };
+  }
+
+  const canCapture = await currentUserCanCaptureTrialEvent(args.accessToken, args.organizationId, session.client_id);
+  if (canCapture.upstreamError) {
+    return {
+      rows: [],
+      response: errorResponse(args.request, "upstream_error", "Unable to validate trial-event capture access", {
+        status: 502,
+      }),
+    };
+  }
+  if (!canCapture.allowed) {
+    return {
+      rows: [],
+      response: errorResponse(args.request, "forbidden", "Forbidden", { status: 403 }),
+    };
+  }
+
+  const targetIds = Array.from(new Set(args.trialEvents.map((event) => event.target_id)));
+  const targetFilter = targetIds.map((id) => encodeURIComponent(id)).join(",");
+  const targetUrl =
+    `${args.supabaseUrl}/rest/v1/goal_targets?select=id,organization_id,client_id,goal_id,measurement_type` +
+    `&id=in.(${targetFilter})` +
+    `&organization_id=eq.${encodeURIComponent(args.organizationId)}`;
+  const targetResult = await fetchJson<GoalTargetScope[]>(targetUrl, {
+    method: "GET",
+    headers: args.headers,
+  });
+  if (!targetResult.ok) {
+    return {
+      rows: [],
+      response: errorResponse(args.request, "upstream_error", "Unable to validate trial-event target access", {
+        status: targetResult.status || 502,
+      }),
+    };
+  }
+
+  const targetsById = new Map(
+    (Array.isArray(targetResult.data) ? targetResult.data : []).map((target) => [target.id, target]),
+  );
+  const submittedGoalIds = new Set(args.goalIds.filter((id) => id.trim().length > 0));
+  const scopedCaptureGoalIds = new Set(args.captureMergeGoalIds.filter((id) => id.trim().length > 0));
+  const allowedRawTrialGoalIds = scopedCaptureGoalIds.size > 0 ? scopedCaptureGoalIds : submittedGoalIds;
+  for (const event of args.trialEvents) {
+    const target = targetsById.get(event.target_id);
+    if (!target) {
+      return {
+        rows: [],
+        response: errorResponse(args.request, "forbidden", "target_id is not in scope for this organization.", { status: 403 }),
+      };
+    }
+    if (target.client_id !== args.clientId || target.client_id !== session.client_id) {
+      return {
+        rows: [],
+        response: errorResponse(args.request, "validation_error", "Trial-event target does not match the selected client."),
+      };
+    }
+    if (!allowedRawTrialGoalIds.has(target.goal_id)) {
+      return {
+        rows: [],
+        response: errorResponse(args.request, "validation_error", "Trial-event target is outside the saved goal scope."),
+      };
+    }
+    const measurementPayloadError = validateTrialEventMeasurementPayload(target.measurement_type, event);
+    if (measurementPayloadError) {
+      return {
+        rows: [],
+        response: errorResponse(args.request, "validation_error", measurementPayloadError),
+      };
+    }
+  }
+
+  const now = new Date().toISOString();
+  const rows = args.trialEvents.map((event) => {
+    const target = targetsById.get(event.target_id);
+    return {
+      organization_id: args.organizationId,
+      client_id: session.client_id,
+      session_id: session.id,
+      target_id: event.target_id,
+      goal_id: target?.goal_id ?? null,
+      therapist_id: session.therapist_id,
+      trial_number: event.trial_number,
+      response: event.response ?? null,
+      prompt_type: event.prompt_type ?? null,
+      prompt_level: event.prompt_level ?? null,
+      value: typeof event.value === "number" ? event.value : null,
+      event_timestamp: event.timestamp ?? now,
+      metadata: event.metadata ?? {},
+      created_by: args.actorUserId,
+    };
+  });
+
+  return { rows, response: null };
+};
+
+const writeSessionTrialEventRows = async (args: {
+  request: Request;
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  rows: readonly Record<string, unknown>[];
+}): Promise<Response | null> => {
+  if (args.rows.length === 0) {
+    return null;
+  }
+
+  const writeResult = await fetchJson(`${args.supabaseUrl}/rest/v1/trial_events`, {
+    method: "POST",
+    headers: { ...args.headers, Prefer: "return=minimal" },
+    body: JSON.stringify(args.rows),
+  });
+  if (!writeResult.ok) {
+    return errorResponse(args.request, "upstream_error", "Unable to save trial events", {
+      status: writeResult.status || 502,
+    });
+  }
+
+  return null;
+};
+
+const trialEventRowKey = (row: { target_id: unknown; trial_number: unknown }): string =>
+  `${String(row.target_id ?? "")}:${String(row.trial_number ?? "")}`;
+
+const findDuplicateTrialEventRowKey = (rows: readonly Record<string, unknown>[]): string | null => {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const key = trialEventRowKey(row);
+    if (seen.has(key)) {
+      return key;
+    }
+    seen.add(key);
+  }
+  return null;
+};
+
+const fetchExistingSessionTrialEventKeys = async (args: {
+  request: Request;
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  rows: readonly Record<string, unknown>[];
+}): Promise<{ keys: Set<string>; response: Response | null }> => {
+  if (args.rows.length === 0) {
+    return { keys: new Set(), response: null };
+  }
+
+  const sessionId = String(args.rows[0]?.session_id ?? "");
+  const targetIds = Array.from(new Set(args.rows.map((row) => String(row.target_id ?? "")).filter(Boolean)));
+  const trialNumbers = Array.from(new Set(args.rows.map((row) => Number(row.trial_number)).filter(Number.isFinite)));
+  if (!sessionId || targetIds.length === 0 || trialNumbers.length === 0) {
+    return { keys: new Set(), response: null };
+  }
+
+  const result = await fetchJson<Array<{ target_id: string; trial_number: number }>>(
+    `${args.supabaseUrl}/rest/v1/trial_events?select=target_id,trial_number` +
+      `&organization_id=eq.${encodeURIComponent(args.organizationId)}` +
+      `&session_id=eq.${encodeURIComponent(sessionId)}` +
+      `&target_id=in.(${targetIds.map(encodeURIComponent).join(",")})` +
+      `&trial_number=in.(${trialNumbers.map((value) => encodeURIComponent(String(value))).join(",")})`,
+    {
+      method: "GET",
+      headers: args.headers,
+    },
+  );
+  if (!result.ok) {
+    return {
+      keys: new Set(),
+      response: errorResponse(args.request, "upstream_error", "Unable to validate existing trial events", {
+        status: result.status || 502,
+      }),
+    };
+  }
+
+  return {
+    keys: new Set((result.data ?? []).map((row) => trialEventRowKey(row))),
+    response: null,
+  };
+};
+
+const rollbackSessionTrialEventRows = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  rows: readonly Record<string, unknown>[];
+}): Promise<void> => {
+  if (args.rows.length === 0) {
+    return;
+  }
+
+  const sessionId = String(args.rows[0]?.session_id ?? "");
+  if (!sessionId) {
+    return;
+  }
+
+  const predicates = args.rows
+    .map((row) => {
+      const targetId = String(row.target_id ?? "");
+      const trialNumber = Number(row.trial_number);
+      if (!targetId || !Number.isFinite(trialNumber)) {
+        return null;
+      }
+      return `and(target_id.eq.${encodeURIComponent(targetId)},trial_number.eq.${encodeURIComponent(String(trialNumber))})`;
+    })
+    .filter((predicate): predicate is string => Boolean(predicate));
+
+  if (predicates.length === 0) {
+    return;
+  }
+
+  await fetchJson(
+    `${args.supabaseUrl}/rest/v1/trial_events` +
+      `?organization_id=eq.${encodeURIComponent(args.organizationId)}` +
+      `&session_id=eq.${encodeURIComponent(sessionId)}` +
+      `&or=(${predicates.join(",")})`,
+    {
+      method: "DELETE",
+      headers: { ...args.headers, Prefer: "return=minimal" },
+    },
+  );
+};
+
 export async function sessionNotesUpsertHandler(request: Request): Promise<Response> {
   if (isDisallowedOriginRequest(request)) {
     return errorResponse(request, "forbidden", "Origin not allowed", { status: 403 });
@@ -614,6 +975,30 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     goalMeasurements: normalizedGoalMeasurements,
   });
 
+  const trialEventBuild = await buildSessionTrialEventRows({
+    request,
+    supabaseUrl,
+    headers,
+    organizationId,
+    accessToken,
+    clientId: payload.clientId,
+    sessionId: payload.sessionId,
+    therapistId: payload.therapistId,
+    actorUserId,
+    goalIds: alignedGoals.goalIds,
+    captureMergeGoalIds: mergeGoalIds,
+    trialEvents: payload.trialEvents,
+  });
+  if (trialEventBuild.response) {
+    return trialEventBuild.response;
+  }
+  const duplicateTrialEventRowKey = findDuplicateTrialEventRowKey(trialEventBuild.rows);
+  if (duplicateTrialEventRowKey) {
+    return errorResponse(request, "conflict", "Duplicate trial event submitted for this session target and trial number.", {
+      status: 409,
+    });
+  }
+
   const writePayload = {
     authorization_id: payload.authorizationId,
     client_id: payload.clientId,
@@ -633,6 +1018,36 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     signed_at: payload.isLocked ? new Date().toISOString() : null,
     session_id: payload.sessionId ?? null,
   };
+
+  const existingTrialEventKeyBuild = await fetchExistingSessionTrialEventKeys({
+    request,
+    supabaseUrl,
+    headers,
+    organizationId,
+    rows: trialEventBuild.rows,
+  });
+  if (existingTrialEventKeyBuild.response) {
+    return existingTrialEventKeyBuild.response;
+  }
+  if (existingTrialEventKeyBuild.keys.size > 0) {
+    return errorResponse(request, "conflict", "Trial event already exists for this session target and trial number.", {
+      status: 409,
+    });
+  }
+  const rollbackHeaders = trialEventBuild.rows.length > 0 ? buildServiceRoleHeaders() : null;
+  if (trialEventBuild.rows.length > 0 && !rollbackHeaders) {
+    return errorResponse(request, "upstream_error", "Trial event rollback is not configured", { status: 500 });
+  }
+
+  const trialEventError = await writeSessionTrialEventRows({
+    request,
+    supabaseUrl,
+    headers,
+    rows: trialEventBuild.rows,
+  });
+  if (trialEventError) {
+    return trialEventError;
+  }
 
   let noteId = existingNote?.id ?? null;
   if (!noteId) {
@@ -663,6 +1078,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
       }
     }
     if (!insertResult.ok || !insertResult.data || insertResult.data.length === 0) {
+      await rollbackSessionTrialEventRows({
+        supabaseUrl,
+        headers: rollbackHeaders ?? headers,
+        organizationId,
+        rows: trialEventBuild.rows,
+      });
       return errorResponse(request, "upstream_error", "Unable to create session note", {
         status: insertResult.status || 502,
       });
@@ -690,6 +1111,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
       }
     }
     if (!updateResult.ok || !updateResult.data || updateResult.data.length === 0) {
+      await rollbackSessionTrialEventRows({
+        supabaseUrl,
+        headers: rollbackHeaders ?? headers,
+        organizationId,
+        rows: trialEventBuild.rows,
+      });
       return errorResponse(request, "upstream_error", "Unable to update session note", {
         status: updateResult.status || 502,
       });
@@ -698,6 +1125,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
 
   const savedRow = await fetchSessionNoteById(supabaseUrl, headers, organizationId, noteId);
   if (!savedRow) {
+    await rollbackSessionTrialEventRows({
+      supabaseUrl,
+      headers: rollbackHeaders ?? headers,
+      organizationId,
+      rows: trialEventBuild.rows,
+    });
     return errorResponse(request, "upstream_error", "Unable to load saved session note", { status: 502 });
   }
 

@@ -138,6 +138,9 @@ describe('provision-ci-smoke-admin safeguards', () => {
 
   it('keeps service-role credentials out of the auth login smoke step', () => {
     const workflow = readFileSync(path.join(process.cwd(), '.github/workflows/ci.yml'), 'utf8');
+    const packageJson = JSON.parse(readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
     const authStep = workflow.slice(
       workflow.indexOf('- name: Auth browser smoke gate'),
       workflow.indexOf('- name: Session browser smoke gate'),
@@ -151,7 +154,8 @@ describe('provision-ci-smoke-admin safeguards', () => {
     expect(authStep).not.toContain('npm run playwright:preflight');
     expect(authStep).not.toContain('SUPABASE_SECRET_KEY');
     expect(authStep).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
-    expect(sessionStep).toContain('npm run playwright:preflight');
+    expect(sessionStep).toContain('npm run ci:playwright:session-smoke');
+    expect(packageJson.scripts?.['ci:playwright:session-smoke']).toContain('playwright:preflight');
     expect(sessionStep).toContain('SUPABASE_SERVICE_ROLE_KEY');
   });
 

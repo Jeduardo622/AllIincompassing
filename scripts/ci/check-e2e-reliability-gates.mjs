@@ -48,7 +48,9 @@ const childIndex = (children, scriptName) => children.indexOf(scriptName);
 const ciPlaywrightRunnerHasChild = (runner, scriptName) => childIndex(runner.children, scriptName) !== -1;
 
 const ciWorkflowRunsPlaywrightScript = (workflow, scriptName) =>
-  workflow.includes(`npm run ${scriptName}`) || workflow.includes("npm run ci:playwright");
+  workflow.includes(`npm run ${scriptName}`) ||
+  workflow.includes("npm run ci:playwright") ||
+  workflow.includes("npm run ci:playwright:session-smoke");
 
 const workflowJobTimeoutMinutes = (workflow) => {
   const match = workflow.match(/^\s+timeout-minutes:\s*(\d+)\s*$/m);
@@ -102,11 +104,53 @@ const run = async () => {
   const scripts = packageJson?.scripts ?? {};
   const ciPlaywright = String(scripts["ci:playwright"] ?? "");
   const ciPlaywrightRunner = parseCiPlaywrightRunner(ciPlaywright);
+  const ciPlaywrightSessionSmoke = String(scripts["ci:playwright:session-smoke"] ?? "");
+  const ciPlaywrightSessionSmokeRunner = parseCiPlaywrightRunner(ciPlaywrightSessionSmoke);
   if (ciPlaywrightRunner.runnerIndex < 0 || ciPlaywrightRunner.runnerCommand !== "tsx") {
     errors.push("package.json script ci:playwright must invoke scripts/playwright-ci-runner.ts through tsx.");
   }
   if (ciPlaywrightRunner.tokens.includes("&&") || ciPlaywrightRunner.tokens.includes("npm")) {
     errors.push("package.json script ci:playwright must use the attributed runner, not an npm shell chain.");
+  }
+  if (ciPlaywrightSessionSmokeRunner.runnerIndex < 0 || ciPlaywrightSessionSmokeRunner.runnerCommand !== "tsx") {
+    errors.push("package.json script ci:playwright:session-smoke must invoke scripts/playwright-ci-runner.ts through tsx.");
+  }
+  if (
+    ciPlaywrightSessionSmokeRunner.tokens.includes("&&") ||
+    ciPlaywrightSessionSmokeRunner.tokens.includes("npm")
+  ) {
+    errors.push("package.json script ci:playwright:session-smoke must use the attributed runner, not an npm shell chain.");
+  }
+  if (ciPlaywrightSessionSmokeRunner.children[0] !== "playwright:preflight") {
+    errors.push("package.json script ci:playwright:session-smoke runner arguments must start with playwright:preflight.");
+  }
+  for (const scriptName of [
+    "playwright:session-no-show",
+    "playwright:session-complete",
+    "playwright:schedule-blocked-close",
+    "playwright:session-note-measurement-roundtrip",
+  ]) {
+    if (childIndex(ciPlaywrightSessionSmokeRunner.children, scriptName) === -1) {
+      errors.push(`package.json script ci:playwright:session-smoke runner arguments must include ${scriptName}.`);
+    }
+  }
+  if (
+    childIndex(ciPlaywrightSessionSmokeRunner.children, "playwright:session-no-show") !== -1 &&
+    childIndex(ciPlaywrightSessionSmokeRunner.children, "playwright:session-complete") !== -1 &&
+    childIndex(ciPlaywrightSessionSmokeRunner.children, "playwright:session-complete") <
+      childIndex(ciPlaywrightSessionSmokeRunner.children, "playwright:session-no-show")
+  ) {
+    errors.push("package.json script ci:playwright:session-smoke must run playwright:session-no-show before playwright:session-complete.");
+  }
+  if (
+    childIndex(ciPlaywrightSessionSmokeRunner.children, "playwright:schedule-blocked-close") !== -1 &&
+    childIndex(ciPlaywrightSessionSmokeRunner.children, "playwright:session-note-measurement-roundtrip") !== -1 &&
+    childIndex(ciPlaywrightSessionSmokeRunner.children, "playwright:session-note-measurement-roundtrip") <
+      childIndex(ciPlaywrightSessionSmokeRunner.children, "playwright:schedule-blocked-close")
+  ) {
+    errors.push(
+      "package.json script ci:playwright:session-smoke must run playwright:schedule-blocked-close before playwright:session-note-measurement-roundtrip.",
+    );
   }
   if (ciPlaywrightRunner.runnerIndex !== 1 || ciPlaywrightRunner.tokens[0] !== "tsx") {
     errors.push("package.json script ci:playwright must start with tsx scripts/playwright-ci-runner.ts.");

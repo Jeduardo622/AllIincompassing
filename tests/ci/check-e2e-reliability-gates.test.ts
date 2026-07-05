@@ -18,6 +18,13 @@ const runnerChildren = [
   "playwright:session-note-measurement-roundtrip",
   "playwright:session-capture-adhoc-upsert",
 ];
+const sessionSmokeRunnerChildren = [
+  "playwright:preflight",
+  "playwright:session-no-show",
+  "playwright:session-complete",
+  "playwright:schedule-blocked-close",
+  "playwright:session-note-measurement-roundtrip",
+];
 
 const write = (root: string, relativePath: string, content: string) => {
   const target = path.join(root, relativePath);
@@ -57,6 +64,7 @@ const createFixture = (
     JSON.stringify({
       scripts: {
         "ci:playwright": ciPlaywright,
+        "ci:playwright:session-smoke": `tsx scripts/playwright-ci-runner.ts ${sessionSmokeRunnerChildren.join(" ")}`,
         "playwright:preflight": "tsx scripts/playwright-preflight.ts",
       },
     }),
@@ -168,6 +176,18 @@ describe("check-e2e-reliability-gates", () => {
     const fixtureRoot = createFixture(
       `tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`,
       ["npm run ci:playwright"],
+    );
+
+    const result = spawnSync("node", [gatePath], { cwd: fixtureRoot, encoding: "utf8" });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("E2E reliability gate check passed.");
+  });
+
+  test("accepts workflow aggregate session smoke runner semantics", () => {
+    const fixtureRoot = createFixture(
+      `tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`,
+      ["npm run ci:playwright:session-smoke"],
     );
 
     const result = spawnSync("node", [gatePath], { cwd: fixtureRoot, encoding: "utf8" });

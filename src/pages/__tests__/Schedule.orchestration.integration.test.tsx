@@ -192,6 +192,12 @@ vi.mock("../../components/SessionModal", () => ({
               session_note_authorization_id: "auth-1",
               session_note_service_code: "97153",
               session_note_persist_requested: true,
+              session_note_trial_events: [{
+                target_id: "88888888-8888-4888-8888-888888888888",
+                trial_number: 1,
+                response: "correct",
+                metadata: { source: "schedule_capture" },
+              }],
               session_note_capture_merge_goal_ids: [
                 "goal-1",
                 "adhoc-skill-550e8400-e29b-41d4-a716-446655440000",
@@ -532,6 +538,12 @@ describe("Schedule orchestration integration hardening", () => {
       goalNotes: expect.objectContaining({
         "adhoc-skill-550e8400-e29b-41d4-a716-446655440000": "Adhoc note",
       }),
+      trialEvents: [{
+        target_id: "88888888-8888-4888-8888-888888888888",
+        trial_number: 1,
+        response: "correct",
+        metadata: { source: "schedule_capture" },
+      }],
     }));
     expect(bookSessionViaApiMock.mock.calls[0][1]).toBeUndefined();
     expect(showErrorMock).not.toHaveBeenCalled();

@@ -218,7 +218,9 @@ async function handleRoleUpdate(req: Request, userContext: any, corsHeaders: Rec
           organization_id: organizationId,
           action_type: 'role_update',
           action_details: {
+            old_role: existingUser.role,
             new_role: role,
+            old_is_active: existingUser.is_active,
             is_active: updateData.is_active ?? existingUser.is_active,
           },
         });

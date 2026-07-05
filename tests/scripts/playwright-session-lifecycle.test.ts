@@ -5,7 +5,9 @@ import {
   buildBookingConflictWindowFilters,
   cleanupBeforeNoResponseFailure,
   filterNonOverlappingBookingStarts,
+  hasReachedLifecyclePairAttemptLimit,
   isCreateSessionButtonReady,
+  shouldTryNextLifecyclePairAfterAttempts,
 } from "../../scripts/playwright-session-lifecycle";
 
 const originalGithubRunId = process.env.GITHUB_RUN_ID;
@@ -109,6 +111,30 @@ describe("playwright session lifecycle booking starts", () => {
       maxEndIso: "2026-08-20T21:00:00.000Z",
       activeHoldExpiresAfterIso: "2026-07-04T22:00:00.000Z",
     });
+  });
+
+  it("tries the next lifecycle target pair when every available start was blocked in the UI", () => {
+    expect(
+      shouldTryNextLifecyclePairAfterAttempts({
+        attemptedStartCount: 3,
+        blockedAttemptCount: 3,
+        payloadStatus: null,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldTryNextLifecyclePairAfterAttempts({
+        attemptedStartCount: 3,
+        blockedAttemptCount: 2,
+        payloadStatus: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("bounds hosted lifecycle target pair attempts", () => {
+    expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 2, maxPairAttempts: 3 })).toBe(false);
+    expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 3, maxPairAttempts: 3 })).toBe(true);
+    expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 1, maxPairAttempts: 0 })).toBe(true);
   });
 
   it("does not block the no-response failure when cleanup rejects", async () => {

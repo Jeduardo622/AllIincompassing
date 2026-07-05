@@ -54,6 +54,15 @@ const terminateChild = (child: ChildProcess, signal: NodeJS.Signals = "SIGTERM")
     return;
   }
 
+  if (child.pid) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall back to the direct child if process-group signaling is unavailable.
+    }
+  }
+
   child.kill(signal);
 };
 
@@ -70,6 +79,7 @@ const runScript = (scriptName: string, index: number, total: number): Promise<Ru
     );
 
     const child = spawn(npmCommand, ["run", scriptName], {
+      detached: process.platform !== "win32",
       stdio: "inherit",
       shell: useShell,
       windowsHide: true,

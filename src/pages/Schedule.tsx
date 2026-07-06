@@ -1531,6 +1531,12 @@ export const Schedule = React.memo(() => {
         selectedSession: effectiveSelectedSession,
         data: sessionPayload,
       });
+      const isBtDataCollectionOnlySession = effectiveRole === "bt" && Boolean(effectiveSelectedSession?.id);
+
+      if (isBtDataCollectionOnlySession && decision.kind !== "edit-update") {
+        showError("BT users can only save data collection for existing sessions.");
+        return;
+      }
 
       switch (decision.kind) {
         case "edit-cancel": {
@@ -1652,6 +1658,10 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-update": {
+          if (isBtDataCollectionOnlySession && !clinicalNoteDraft) {
+            showError("No data collection changes to save.");
+            return;
+          }
           if (effectiveSelectedSession && clinicalNoteDraft) {
             if (!activeOrganizationId) {
               throw new Error("Organization context is required to save session capture.");
@@ -1689,6 +1699,19 @@ export const Schedule = React.memo(() => {
               ...(mergeCaptureIds?.length ? { captureMergeGoalIds: mergeCaptureIds } : {}),
               ...(clinicalNoteDraft.trialEvents.length ? { trialEvents: clinicalNoteDraft.trialEvents } : {}),
             });
+            if (isBtDataCollectionOnlySession) {
+              invalidateSessionNoteCachesAfterSessionWrite(queryClient, {
+                sessionId: effectiveSelectedSession.id,
+                clientId: effectiveSelectedSession.client_id,
+                organizationId: activeOrganizationId,
+              });
+              showSuccess("Session data collection saved");
+              applyScheduleResetBranch(
+                { kind: "update-success" },
+                scheduleResetSetters,
+              );
+              return;
+            }
           }
           await updateSessionMutation.mutateAsync(sessionPayload);
           return;
@@ -1717,6 +1740,8 @@ export const Schedule = React.memo(() => {
       updateSessionMutation,
       createSessionMutation,
       displayData.sessions,
+      effectiveRole,
+      queryClient,
     ],
   );
 
@@ -1852,6 +1877,7 @@ export const Schedule = React.memo(() => {
         clients={visibleClients}
         existingSessions={displayData.sessions}
         timeZone={userTimeZone}
+        dataCollectionOnly={effectiveRole === "bt" && Boolean(selectedSession?.id)}
         defaultTherapistId={selectedTherapist}
         defaultClientId={selectedClient}
         retryHint={retryHint}

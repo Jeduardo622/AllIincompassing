@@ -77,18 +77,18 @@ export const routeGroups = {
     {
       path: "/settings/feature-flags",
       roles: ["admin", "bcba", "super_admin"],
-      expectedPathByRole: { admin: "/settings", bcba: "/settings/feature-flags", super_admin: "/settings/feature-flags" },
+      expectedPathByRole: { admin: "/settings", bcba: "/settings", super_admin: "/settings/feature-flags" },
     },
     {
       path: "/settings/impersonation",
       roles: ["admin", "bcba", "super_admin"],
-      expectedPathByRole: { admin: "/settings", bcba: "/settings/impersonation", super_admin: "/settings/impersonation" },
+      expectedPathByRole: { admin: "/settings", bcba: "/settings", super_admin: "/settings/impersonation" },
     },
     { path: "/superadminfeatureflags", roles: ["admin", "bcba", "super_admin"], expectedPath: "/settings" },
     { path: "/superadminimpersonation", roles: ["admin", "bcba", "super_admin"], expectedPath: "/settings" },
-    { path: "/super-admin/feature-flags", roles: ["bcba", "super_admin"] },
-    { path: "/super-admin/impersonation", roles: ["bcba", "super_admin"] },
-    { path: "/super-admin/prompts", roles: ["bcba", "super_admin"] },
+    { path: "/super-admin/feature-flags", roles: ["super_admin"] },
+    { path: "/super-admin/impersonation", roles: ["super_admin"] },
+    { path: "/super-admin/prompts", roles: ["super_admin"] },
   ],
 } satisfies Record<string, readonly RouteScenario[]>;
 

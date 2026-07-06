@@ -117,4 +117,16 @@ describe('route guard access controls', () => {
     expect(hasRoleAccess('/family', 'admin')).toBe(false);
     expect(hasRoleAccess('/family', 'super_admin')).toBe(false);
   });
+
+  it('restricts super-admin tool routes to super admins only', () => {
+    for (const path of [
+      '/super-admin/feature-flags',
+      '/super-admin/impersonation',
+      '/super-admin/prompts',
+    ]) {
+      expect(hasRoleAccess(path, 'super_admin')).toBe(true);
+      expect(hasRoleAccess(path, 'bcba')).toBe(false);
+      expect(hasRoleAccess(path, 'admin')).toBe(false);
+    }
+  });
 });

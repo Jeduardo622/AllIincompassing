@@ -1318,6 +1318,51 @@ describe('SessionModal', () => {
       const select = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
       expect(select.value).toBe('in_progress');
     });
+
+    it('locks session metadata while allowing data-only save in edit mode', async () => {
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+      const lockedSession: Session = {
+        ...editSession,
+        status: 'in_progress',
+        notes: 'Original schedule note',
+        started_at: '2026-03-31T10:05:00.000Z',
+      };
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          onSubmit={onSubmit}
+          session={lockedSession}
+          dataCollectionOnly
+        />
+      );
+
+      expect(screen.getByRole('combobox', { name: /Therapist/i })).toBeDisabled();
+      expect(screen.getByRole('combobox', { name: /Client/i })).toBeDisabled();
+      expect(screen.getByRole('combobox', { name: /Program/i })).toBeDisabled();
+      expect(screen.getByRole('combobox', { name: /Primary Goal/i })).toBeDisabled();
+      expect(screen.getByRole('combobox', { name: /Status/i })).toBeDisabled();
+      expect(screen.getByLabelText(/Start Time/i)).toBeDisabled();
+      expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
+      expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
+      expect(screen.queryByRole('button', { name: /^Close Session$/i })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+          id: 'session-edit',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-31T10:00:00.000Z',
+          end_time: '2026-03-31T11:00:00.000Z',
+          status: 'in_progress',
+          notes: 'Original schedule note',
+        }));
+      });
+    });
   });
 
   it('does not preselect inactive published programs or paused goals for a new session', async () => {

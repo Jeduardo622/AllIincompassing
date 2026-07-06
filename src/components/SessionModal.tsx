@@ -233,6 +233,7 @@ interface SessionModalProps {
   retryActionLabel?: string | null;
   onRetryAction?: (() => void) | undefined;
   onSessionStarted?: () => void | Promise<void>;
+  dataCollectionOnly?: boolean;
 }
 
 export function SessionModal({
@@ -253,6 +254,7 @@ export function SessionModal({
   retryActionLabel,
   onRetryAction,
   onSessionStarted,
+  dataCollectionOnly = false,
 }: SessionModalProps) {
   const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
   const [selectedProgramIds, setSelectedProgramIds] = useState<string[]>(() =>
@@ -278,6 +280,7 @@ export function SessionModal({
   const conflictDescriptionId = 'session-modal-conflicts-description';
   const conflictHeadingId = 'session-modal-conflicts-heading';
   const queryClient = useQueryClient();
+  const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
 
@@ -902,15 +905,21 @@ export function SessionModal({
 
   const toggleProgramSelection = useCallback(
     (targetProgramId: string) => {
+      if (isDataCollectionOnly) {
+        return;
+      }
       const nextProgramIds = selectedProgramSet.has(targetProgramId)
         ? selectedProgramIds.filter((id) => id !== targetProgramId)
         : [...selectedProgramIds, targetProgramId];
       updateProgramSelection(nextProgramIds);
     },
-    [selectedProgramIds, selectedProgramSet, updateProgramSelection],
+    [isDataCollectionOnly, selectedProgramIds, selectedProgramSet, updateProgramSelection],
   );
 
   const toggleGoalSelection = (targetId: string) => {
+    if (isDataCollectionOnly) {
+      return;
+    }
     const nextGoalIds = Array.isArray(goalIds) ? [...goalIds] : [];
     if (nextGoalIds.includes(targetId)) {
       if (targetId === goalId) {
@@ -1098,7 +1107,7 @@ export function SessionModal({
     data: SessionModalFormValues,
     options?: { captureMergeGoalIds?: string[] },
   ) => {
-    if (conflicts.length > 0) {
+    if (!isDataCollectionOnly && conflicts.length > 0) {
       if (!window.confirm('There are scheduling conflicts. Do you want to proceed anyway?')) {
         return;
       }
@@ -1107,14 +1116,14 @@ export function SessionModal({
       Boolean(session?.id) &&
       !hasStartedSession &&
       data.status === 'scheduled';
-    if (isSavingUnstartedScheduledSession && hasProgramValue && !hasProgramOptionForValue) {
+    if (!isDataCollectionOnly && isSavingUnstartedScheduledSession && hasProgramValue && !hasProgramOptionForValue) {
       setError('program_id', {
         type: 'validate',
         message: 'Select an active program before saving this scheduled session.',
       });
       return;
     }
-    if (isSavingUnstartedScheduledSession && hasGoalValue && !hasGoalOptionForValue) {
+    if (!isDataCollectionOnly && isSavingUnstartedScheduledSession && hasGoalValue && !hasGoalOptionForValue) {
       setError('goal_id', {
         type: 'validate',
         message: 'Select an active primary goal before saving this scheduled session.',
@@ -1300,6 +1309,20 @@ export function SessionModal({
           }
         }
       }
+      const lockedSessionFields: Partial<Session> = isDataCollectionOnly && session
+        ? {
+            id: session.id,
+            therapist_id: session.therapist_id,
+            client_id: session.client_id,
+            program_id: session.program_id,
+            goal_id: session.goal_id,
+            goal_ids: session.goal_ids ?? [],
+            start_time: session.start_time,
+            end_time: session.end_time,
+            status: session.status,
+            notes: session.notes ?? '',
+          }
+        : {};
       const transformed: SessionModalSubmitData = {
         ...working,
         ...(session?.id ? { id: session.id } : {}),
@@ -1323,6 +1346,7 @@ export function SessionModal({
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
         start_time: timeZone ? toUtcSessionIsoString(working.start_time, resolvedTimeZone) : working.start_time,
         end_time: timeZone ? toUtcSessionIsoString(working.end_time, resolvedTimeZone) : working.end_time,
+        ...lockedSessionFields,
       };
       await onSubmit(transformed);
       if (trialEventsForSubmit.length > 0 && session?.id) {
@@ -1407,6 +1431,9 @@ export function SessionModal({
   }, [isDirty, isSubmitting, onClose]);
 
   const handleStartSession = async () => {
+    if (isDataCollectionOnly) {
+      return;
+    }
     if (!session?.id) {
       return;
     }
@@ -1434,6 +1461,9 @@ export function SessionModal({
   };
 
   const handleCloseSession = () => {
+    if (isDataCollectionOnly) {
+      return;
+    }
     setValue('status', 'completed', { shouldDirty: true });
     void handleSubmit(async (formData) => {
       await handleFormSubmit({
@@ -2158,7 +2188,9 @@ export function SessionModal({
               >
                 <p className="font-medium">Session in progress</p>
                 <p className="mt-1">
-                  You can adjust program and goals while active; save to keep the plan in sync with the schedule.
+                  {isDataCollectionOnly
+                    ? 'Session details are read-only. Save progress to sync data collection.'
+                    : 'You can adjust program and goals while active; save to keep the plan in sync with the schedule.'}
                 </p>
               </div>
             )}
@@ -2227,6 +2259,7 @@ export function SessionModal({
                 <select
                   id="therapist-select"
                   {...register('therapist_id', { required: 'Therapist is required' })}
+                  disabled={isDataCollectionOnly}
                   className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a therapist</option>
@@ -2251,6 +2284,7 @@ export function SessionModal({
                 <select
                   id="client-select"
                   {...register('client_id', { required: 'Client is required' })}
+                  disabled={isDataCollectionOnly}
                   className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a client</option>
@@ -2372,8 +2406,11 @@ export function SessionModal({
                 <select
                   id="program-select"
                   {...register('program_id')}
-                  disabled={isProgramsFetching || !clientId}
+                  disabled={isDataCollectionOnly || isProgramsFetching || !clientId}
                   onChange={(event) => {
+                    if (isDataCollectionOnly) {
+                      return;
+                    }
                     const nextProgramId = event.target.value;
                     setValue('program_id', nextProgramId, { shouldDirty: true, shouldTouch: true });
                     if (!nextProgramId) {
@@ -2428,7 +2465,7 @@ export function SessionModal({
                 <select
                   id="goal-select"
                   {...register('goal_id')}
-                  disabled={isGoalsFetching || selectedProgramGoals.length === 0}
+                  disabled={isDataCollectionOnly || isGoalsFetching || selectedProgramGoals.length === 0}
                   className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a goal</option>
@@ -2521,12 +2558,13 @@ export function SessionModal({
                           key={`mobile-program-${program.id}`}
                           className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300"
                         >
-                          <input
-                            type="checkbox"
-                            checked={selectedProgramSet.has(program.id)}
-                            onChange={() => toggleProgramSelection(program.id)}
-                            className="h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
+                        <input
+                          type="checkbox"
+                          checked={selectedProgramSet.has(program.id)}
+                          onChange={() => toggleProgramSelection(program.id)}
+                          disabled={isDataCollectionOnly}
+                          className="h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
                           <span className="min-w-0 flex-1 truncate">{program.name}</span>
                           <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
                             {groupedGoals.length} goals
@@ -2577,6 +2615,7 @@ export function SessionModal({
                                   type="checkbox"
                                   checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
                                   onChange={() => toggleGoalSelection(goal.id)}
+                                  disabled={isDataCollectionOnly}
                                   className="h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                 />
                                 <span className="min-w-0 flex-1 truncate">{goal.title}</span>
@@ -2626,6 +2665,7 @@ export function SessionModal({
                                   type="checkbox"
                                   checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
                                   onChange={() => toggleGoalSelection(goal.id)}
+                                  disabled={isDataCollectionOnly}
                                   className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                 />
                                 <span className="truncate">{goal.title}</span>
@@ -2680,6 +2720,7 @@ export function SessionModal({
                     type="datetime-local"
                     id="start-time-input"
                     {...register('start_time', { required: 'Start time is required' })}
+                    disabled={isDataCollectionOnly}
                     className="min-h-11 w-full rounded-md border-gray-300 bg-white pl-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                     onChange={(e) => handleTimeChange(e, 'start_time')}
                     step="900" // 15 minutes in seconds
@@ -2703,6 +2744,7 @@ export function SessionModal({
                     type="datetime-local"
                     id="end-time-input"
                     {...register('end_time', { required: 'End time is required' })}
+                    disabled={isDataCollectionOnly}
                     className="min-h-11 w-full rounded-md border-gray-300 bg-white pl-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                     onChange={(e) => handleTimeChange(e, 'end_time')}
                     step="900" // 15 minutes in seconds
@@ -2733,6 +2775,7 @@ export function SessionModal({
               <select
                 id="status-select"
                 {...register('status')}
+                disabled={isDataCollectionOnly}
                 className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
               >
                 <option value="scheduled">Scheduled</option>
@@ -2762,6 +2805,7 @@ export function SessionModal({
               <textarea
                 id="notes-input"
                 {...register('notes')}
+                disabled={isDataCollectionOnly}
                 rows={3}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 placeholder="Add any session notes here..."
@@ -3475,7 +3519,7 @@ export function SessionModal({
               >
                 Cancel
               </button>
-              {session?.id && session.status === 'scheduled' && !hasStartedSession ? (
+              {session?.id && session.status === 'scheduled' && !hasStartedSession && !isDataCollectionOnly ? (
                 <button
                   type="button"
                   onClick={handleStartSession}
@@ -3485,7 +3529,7 @@ export function SessionModal({
                   Start Session
                 </button>
               ) : null}
-              {session?.id && isInProgressSession ? (
+              {session?.id && isInProgressSession && !isDataCollectionOnly ? (
                 <button
                   type="button"
                   onClick={handleCloseSession}

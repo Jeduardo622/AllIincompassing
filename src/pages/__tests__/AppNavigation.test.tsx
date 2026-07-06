@@ -307,8 +307,8 @@ describe('App navigation landing', () => {
     ['/super-admin/feature-flags', 'SuperAdminFeatureFlagsPage'],
     ['/super-admin/impersonation', 'SuperAdminImpersonationPage'],
     ['/super-admin/prompts', 'SuperAdminPromptsPage'],
-  ])('allows BCBA and super admins to render %s', async (path, pageText) => {
-    for (const allowedRole of ['bcba', 'super_admin'] as const) {
+  ])('allows only super admins to render %s', async (path, pageText) => {
+    for (const allowedRole of ['super_admin'] as const) {
       authRole = allowedRole;
       window.history.pushState({}, '', path);
       const allowedView = renderApp();
@@ -318,7 +318,7 @@ describe('App navigation landing', () => {
       allowedView.unmount();
     }
 
-    for (const blockedRole of ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin'] as const) {
+    for (const blockedRole of ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba'] as const) {
       authRole = blockedRole;
       window.history.pushState({}, '', path);
       const blockedView = renderApp();

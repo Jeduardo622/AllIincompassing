@@ -63,7 +63,7 @@ export const ROLE_RANK: Record<AppRole, number> = {
   admin_schedule: 5,
   admin: 6,
   bcba: 7,
-  super_admin: 7,
+  super_admin: 8,
 };
 
 const allCapabilities: readonly AppCapability[] = [
@@ -164,7 +164,30 @@ export const ROLE_CAPABILITIES: Record<AppRole, readonly AppCapability[]> = {
     'viewStaff',
     'viewStaffProfile',
   ],
-  bcba: allCapabilities,
+  bcba: [
+    'assignClientsToStaff',
+    'dataTaking',
+    'lockSessionNotes',
+    'manageAuthorizations',
+    'manageClients',
+    'manageProgramsGoals',
+    'manageStaff',
+    'staffDashboard',
+    'viewAuthorizations',
+    'viewBilling',
+    'viewClients',
+    'viewDocumentation',
+    'viewFillDocs',
+    'viewMessages',
+    'viewMonitoring',
+    'viewProgramsGoals',
+    'viewReports',
+    'viewSchedule',
+    'viewSessionTrends',
+    'viewSettings',
+    'viewStaff',
+    'viewStaffProfile',
+  ],
   super_admin: allCapabilities,
 };
 

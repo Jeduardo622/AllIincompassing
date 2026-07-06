@@ -213,6 +213,79 @@ const sortTrialEvents = (events: TrialEvent[]): TrialEvent[] =>
 const latestTrialEventsForGraph = (events: TrialEvent[]): TrialEvent[] =>
   events.slice(Math.max(0, events.length - TRIAL_EVENT_GRAPH_POINT_LIMIT));
 
+const formatReadableToken = (value: string): string =>
+  value
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const formatGoalSource = (source: Goal["source"]): string =>
+  source === "fba_extraction" ? "FBA extraction" : source ? formatReadableToken(source) : "Source not set";
+
+const formatGoalClinicalType = (goal: Goal): string => {
+  if (goal.clinical_goal_type === "behavior") return "Behavior";
+  if (goal.clinical_goal_type === "skill") return "Skill";
+  return "Unspecified";
+};
+
+const formatDomainLabel = (domainId: string | null | undefined): string =>
+  domainId?.trim() ? `Domain ${domainId.trim()}` : "No domain assigned";
+
+const formatTrialTimestamp = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Time unavailable";
+  return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+};
+
+const formatPromptSummary = (event: TrialEvent): string => {
+  const parts = [event.prompt_type, event.prompt_level].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  return parts.length > 0 ? parts.join(" / ") : "None recorded";
+};
+
+type GoalDisplaySection = {
+  key: "behavior" | "skill" | "other";
+  title: string;
+  description: string;
+  goals: Goal[];
+};
+
+const buildGoalDisplaySections = (goals: Goal[]): GoalDisplaySection[] => {
+  const sections: GoalDisplaySection[] = [
+    {
+      key: "behavior",
+      title: "Behavior Reduction",
+      description: "Behavior goals and replacement targets from the care plan.",
+      goals: [],
+    },
+    {
+      key: "skill",
+      title: "Skill Acquisition",
+      description: "Skill-building goals and teaching targets from the care plan.",
+      goals: [],
+    },
+    {
+      key: "other",
+      title: "Other Goals",
+      description: "Goals that need clinical type or domain review.",
+      goals: [],
+    },
+  ];
+  const byKey = new Map(sections.map((section) => [section.key, section]));
+
+  goals.forEach((goal) => {
+    const sectionKey =
+      goal.clinical_goal_type === "behavior" || goal.clinical_goal_type === "skill"
+        ? goal.clinical_goal_type
+        : "other";
+    byKey.get(sectionKey)?.goals.push(goal);
+  });
+
+  return sections.filter((section) => section.goals.length > 0);
+};
+
 const hasLegacySignaturePayload = (payload: Record<string, unknown>): boolean => {
   const hasTransferSignatureFields = ["report_completed_date", "credentials", "agency"].some((key) =>
     Object.prototype.hasOwnProperty.call(payload, key)
@@ -478,7 +551,7 @@ interface TargetTrialEventGraphProps {
   target: GoalTarget;
 }
 
-function TargetTrialEventGraph({ clientId, organizationId, target }: TargetTrialEventGraphProps) {
+function TargetProgressPanel({ clientId, organizationId, target }: TargetTrialEventGraphProps) {
   const {
     data: trialEvents = [],
     isLoading,
@@ -506,12 +579,13 @@ function TargetTrialEventGraph({ clientId, organizationId, target }: TargetTrial
 
   return (
     <div
-      className="mt-2 rounded border border-slate-100 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/40"
-      aria-label={`Trial-event graph for ${target.name}`}
+      className="mt-3 rounded-md border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40"
+      role="region"
+      aria-label={`Trial-event progress for ${target.name}`}
     >
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="font-medium text-slate-700 dark:text-slate-200">Target graph</span>
-        <span className="text-slate-500">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-slate-700 dark:text-slate-200">Target progress</span>
+        <span className="rounded-full bg-white px-2 py-0.5 text-slate-500 dark:bg-dark">
           {trialEvents.length} trial{trialEvents.length === 1 ? "" : "s"}
         </span>
       </div>
@@ -524,27 +598,230 @@ function TargetTrialEventGraph({ clientId, organizationId, target }: TargetTrial
       ) : graphEvents.length === 0 ? (
         <p className="text-slate-500">No trial-level data yet.</p>
       ) : (
-        <div className="space-y-1">
-          {graphEvents.map((event) => {
-            const score = trialEventGraphScore(event);
-            const widthPercent = Math.max(8, Math.round((score / maxGraphScore) * 100));
-            return (
-              <div key={event.id} className="grid grid-cols-[5rem_1fr_5rem] items-center gap-2">
-                <span className="text-slate-500">Trial {event.trial_number}</span>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                  <div
-                    className="h-full rounded-full bg-blue-500"
-                    style={{ width: `${widthPercent}%` }}
-                  />
+        <div className="space-y-3">
+          <div className="space-y-1" aria-label={`Recent graph points for ${target.name}`}>
+            {graphEvents.map((event) => {
+              const score = trialEventGraphScore(event);
+              const widthPercent = Math.max(8, Math.round((score / maxGraphScore) * 100));
+              return (
+                <div key={event.id} className="grid grid-cols-[5rem_minmax(0,1fr)_5rem] items-center gap-2">
+                  <span className="text-slate-500">Trial {event.trial_number}</span>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                    <div
+                      className="h-full rounded-full bg-blue-500"
+                      style={{ width: `${widthPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-right text-slate-600 dark:text-slate-300">
+                    {formatTrialEventValue(event)}
+                  </span>
                 </div>
-                <span className="text-right text-slate-600 dark:text-slate-300">
-                  {formatTrialEventValue(event)}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+          <div className="overflow-x-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-dark">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-xs dark:divide-slate-700">
+              <caption className="sr-only">Raw trial events for {target.name}</caption>
+              <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900/50 dark:text-slate-300">
+                <tr>
+                  <th scope="col" className="px-2 py-1.5 font-medium">Trial</th>
+                  <th scope="col" className="px-2 py-1.5 font-medium">Date</th>
+                  <th scope="col" className="px-2 py-1.5 font-medium">Result</th>
+                  <th scope="col" className="px-2 py-1.5 font-medium">Prompt</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {trialEvents.map((event) => (
+                  <tr key={event.id}>
+                    <td className="whitespace-nowrap px-2 py-1.5 font-medium text-slate-700 dark:text-slate-200">
+                      {event.trial_number}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-slate-500">
+                      {formatTrialTimestamp(event.event_timestamp)}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-slate-700 dark:text-slate-200">
+                      {formatTrialEventValue(event)}
+                    </td>
+                    <td className="min-w-[9rem] px-2 py-1.5 text-slate-500">
+                      {formatPromptSummary(event)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function GoalFieldList({ goal }: { goal: Goal }) {
+  const objectiveCount = Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0;
+  const fields = [
+    { label: "Goal", value: goal.description },
+    { label: "Baseline", value: goal.baseline ?? goal.baseline_data },
+    { label: "Operational definition", value: goal.operational_definition },
+    { label: "Teaching strategies", value: goal.teaching_strategies },
+    { label: "Target criteria", value: goal.target_criteria },
+    { label: "Mastery criteria", value: goal.mastery_criteria },
+    { label: "Generalization criteria", value: goal.generalization_criteria },
+    { label: "Maintenance criteria", value: goal.maintenance_criteria },
+  ].filter((field) => typeof field.value === "string" && field.value.trim().length > 0);
+
+  return (
+    <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+      <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/30">
+        <dt className="font-medium uppercase text-slate-500">Type / domain</dt>
+        <dd className="mt-1 text-slate-800 dark:text-slate-100">
+          {formatGoalClinicalType(goal)} · {formatDomainLabel(goal.domain_id)}
+        </dd>
+      </div>
+      <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/30">
+        <dt className="font-medium uppercase text-slate-500">Source / measurement</dt>
+        <dd className="mt-1 text-slate-800 dark:text-slate-100">
+          {formatGoalSource(goal.source)} · {goal.measurement_type || "Measurement not set"}
+        </dd>
+      </div>
+      {fields.map((field) => (
+        <div
+          key={field.label}
+          className="rounded border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/30"
+        >
+          <dt className="font-medium uppercase text-slate-500">{field.label}</dt>
+          <dd className="mt-1 whitespace-pre-wrap text-slate-800 dark:text-slate-100">{field.value}</dd>
+        </div>
+      ))}
+      <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/30">
+        <dt className="font-medium uppercase text-slate-500">Targets</dt>
+        <dd className="mt-1 text-slate-800 dark:text-slate-100">
+          {objectiveCount} objective data point{objectiveCount === 1 ? "" : "s"}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
+function GoalTargetCard({
+  clientId,
+  goalTargetsLoading,
+  organizationId,
+  target,
+}: {
+  clientId: string;
+  goalTargetsLoading: boolean;
+  organizationId: string | null;
+  target: GoalTarget;
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white px-3 py-3 text-xs dark:border-slate-700 dark:bg-dark">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-slate-800 dark:text-slate-100">{target.name}</span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+          {target.status}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-slate-500">
+        <span>
+          Measurement: {TARGET_MEASUREMENT_TYPE_LABELS[target.measurement_type] ?? target.measurement_type}
+        </span>
+        <span>
+          Graph: {String(target.graph_config?.defaultChart ?? "line")} from{" "}
+          {String(target.graph_config?.source ?? "trial_events")}
+        </span>
+      </div>
+      {goalTargetsLoading ? (
+        <p className="mt-3 text-slate-500">Loading target progress...</p>
+      ) : (
+        <TargetProgressPanel clientId={clientId} organizationId={organizationId} target={target} />
+      )}
+    </div>
+  );
+}
+
+function GoalCard({
+  archivingGoalId,
+  archiveGoal,
+  clientId,
+  goal,
+  goalTargetsForGoal,
+  goalTargetsLoading,
+  organizationId,
+}: {
+  archivingGoalId: string | null;
+  archiveGoal: {
+    isLoading: boolean;
+    mutate: (goal: Goal) => void;
+  };
+  clientId: string;
+  goal: Goal;
+  goalTargetsForGoal: GoalTarget[];
+  goalTargetsLoading: boolean;
+  organizationId: string | null;
+}) {
+  return (
+    <div className="rounded-md border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter/30">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="font-medium text-gray-800 dark:text-gray-200">{goal.title}</div>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs uppercase text-gray-500 dark:bg-gray-800">
+              {goal.status}
+            </span>
+          </div>
+          {goal.original_text && (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-300">
+              Original: {goal.original_text}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          aria-label={`Remove ${goal.title}`}
+          title="Remove from active care plan"
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              const confirmed = window.confirm(
+                `Remove goal "${goal.title}" from the active care plan?`,
+              );
+              if (!confirmed) {
+                return;
+              }
+            }
+            archiveGoal.mutate(goal);
+          }}
+          disabled={archivingGoalId === goal.id && archiveGoal.isLoading}
+          className="shrink-0 rounded-md border border-transparent p-1.5 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
+      <GoalFieldList goal={goal} />
+      <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/30">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+            Targets
+          </p>
+          <span className="text-xs text-slate-500">{goalTargetsForGoal.length} configured</span>
+        </div>
+        {goalTargetsLoading ? (
+          <p className="text-xs text-slate-500">Loading targets...</p>
+        ) : goalTargetsForGoal.length === 0 ? (
+          <p className="text-xs text-slate-500">No target-level measurement definitions yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {goalTargetsForGoal.map((target) => (
+              <GoalTargetCard
+                key={target.id}
+                clientId={clientId}
+                goalTargetsLoading={goalTargetsLoading}
+                organizationId={organizationId}
+                target={target}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -779,6 +1056,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   });
 
   const targetsByGoalId = useMemo(() => buildTargetsByGoalId(goalTargets), [goalTargets]);
+  const goalDisplaySections = useMemo(() => buildGoalDisplaySections(liveGoals), [liveGoals]);
   useEffect(() => {
     if (targetGoalId && goalIdsForTargets.includes(targetGoalId)) {
       return;
@@ -2780,97 +3058,47 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 {liveGoals.length === 0 && (
                   <p className="text-sm text-gray-500">No goals in this program yet.</p>
                 )}
-                {liveGoals.map((goal) => {
-                  const goalTargetsForGoal = targetsByGoalId[goal.id] ?? [];
-                  return (
-                  <div key={goal.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium text-gray-800 dark:text-gray-200">{goal.title}</div>
-                          <span className="text-xs uppercase text-gray-500 shrink-0">{goal.status}</span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">{goal.description}</p>
+                {goalDisplaySections.map((section) => (
+                  <section
+                    key={section.key}
+                    className="rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-dark-lighter/20"
+                    aria-labelledby={`goal-section-${section.key}`}
+                  >
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <h4
+                          id={`goal-section-${section.key}`}
+                          className="text-sm font-semibold text-gray-800 dark:text-gray-100"
+                        >
+                          {section.title}
+                        </h4>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-300">{section.description}</p>
                       </div>
-                      <button
-                        type="button"
-                        aria-label={`Remove ${goal.title}`}
-                        title="Remove from active care plan"
-                        onClick={() => {
-                          if (typeof window !== "undefined") {
-                            const confirmed = window.confirm(
-                              `Remove goal "${goal.title}" from the active care plan?`,
-                            );
-                            if (!confirmed) {
-                              return;
-                            }
-                          }
-                          archiveGoal.mutate(goal);
-                        }}
-                        disabled={archivingGoalId === goal.id && archiveGoal.isLoading}
-                        className="shrink-0 rounded-md border border-transparent p-1.5 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </button>
+                      <span className="rounded-full bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-dark">
+                        {section.goals.length} goal{section.goals.length === 1 ? "" : "s"}
+                      </span>
                     </div>
-                    <div className="mt-2 space-y-1 text-xs text-gray-500">
-                      {goal.clinical_goal_type && <p>Goal type: {goal.clinical_goal_type}</p>}
-                      {goal.source && <p>Source: {goal.source === "fba_extraction" ? "FBA extraction" : "Manual"}</p>}
-                      {goal.domain_id && <p>Domain: {goal.domain_id}</p>}
-                      {goal.measurement_type && <p>Measurement: {goal.measurement_type}</p>}
-                      {(goal.baseline ?? goal.baseline_data) && <p>Baseline: {goal.baseline ?? goal.baseline_data}</p>}
-                      {goal.operational_definition && <p>Operational definition: {goal.operational_definition}</p>}
-                      {goal.teaching_strategies && <p>Teaching strategy: {goal.teaching_strategies}</p>}
-                      {goal.target_criteria && <p>Target: {goal.target_criteria}</p>}
-                      {goal.mastery_criteria && <p>Mastery: {goal.mastery_criteria}</p>}
-                      {goal.maintenance_criteria && <p>Maintenance: {goal.maintenance_criteria}</p>}
-                      {goal.generalization_criteria && <p>Generalization: {goal.generalization_criteria}</p>}
-                      <p>
-                        Objective data points: {Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0}
-                      </p>
+                    <div className="space-y-3">
+                      {section.goals.map((goal) => (
+                        <GoalCard
+                          key={goal.id}
+                          archiveGoal={archiveGoal}
+                          archivingGoalId={archivingGoalId}
+                          clientId={client.id}
+                          goal={goal}
+                          goalTargetsForGoal={targetsByGoalId[goal.id] ?? []}
+                          goalTargetsLoading={goalTargetsLoading}
+                          organizationId={organizationId}
+                        />
+                      ))}
                     </div>
-                    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/30">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                          Targets
-                        </p>
-                        <span className="text-xs text-slate-500">{goalTargetsForGoal.length} configured</span>
-                      </div>
-                      {goalTargetsLoading ? (
-                        <p className="text-xs text-slate-500">Loading targets...</p>
-                      ) : goalTargetsForGoal.length === 0 ? (
-                        <p className="text-xs text-slate-500">No target-level measurement definitions yet.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {goalTargetsForGoal.map((target) => (
-                            <div key={target.id} className="rounded border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-dark">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="font-medium text-slate-800 dark:text-slate-100">{target.name}</span>
-                                <span className="uppercase text-slate-500">{target.status}</span>
-                              </div>
-                              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-slate-500">
-                                <span>
-                                  Measurement: {TARGET_MEASUREMENT_TYPE_LABELS[target.measurement_type] ?? target.measurement_type}
-                                </span>
-                                <span>
-                                  Graph: {String(target.graph_config?.defaultChart ?? "line")} from{" "}
-                                  {String(target.graph_config?.source ?? "trial_events")}
-                                </span>
-                              </div>
-                              <TargetTrialEventGraph clientId={client.id} organizationId={organizationId} target={target} />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {goalTargetsQueryError instanceof Error && (
-                        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                          Could not load targets: {goalTargetsQueryError.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  );
-                })}
+                  </section>
+                ))}
+                {goalTargetsQueryError instanceof Error && (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                    Could not load targets: {goalTargetsQueryError.message}
+                  </p>
+                )}
               </div>
             )}
           </div>

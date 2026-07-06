@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, Loader2, Plus, Trash2, UploadCloud } from "lucide-react";
-import type { Client, Goal, GoalTarget, Program, ProgramNote, TargetMeasurementType, TrialEvent } from "../../types";
+import type { Client, Goal, GoalDomain, GoalTarget, Program, ProgramNote, TargetMeasurementType, TrialEvent } from "../../types";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { useActiveOrganizationId } from "../../lib/organization";
@@ -56,6 +56,7 @@ const ACTIVE_ASSESSMENT_POLL_STATUSES: ReadonlySet<AssessmentDocumentRecord["sta
 ]);
 const TRIAL_EVENT_GRAPH_POINT_LIMIT = 6;
 const TRIAL_EVENTS_REQUEST_TIMEOUT_MS = 8_000;
+const CREATE_NEW_DOMAIN_VALUE = "__create_new_domain__";
 
 const detectAssessmentTemplateTypeFromFileName = (fileName: string): AssessmentTemplateType | null => {
   const normalized = fileName.toLowerCase();
@@ -229,8 +230,20 @@ const formatGoalClinicalType = (goal: Goal): string => {
   return "Unspecified";
 };
 
-const formatDomainLabel = (domainId: string | null | undefined): string =>
-  domainId?.trim() ? `Domain ${domainId.trim()}` : "No domain assigned";
+const buildGoalDomainLookup = (domains: GoalDomain[]): Record<string, GoalDomain> =>
+  domains.reduce<Record<string, GoalDomain>>((lookup, domain) => {
+    lookup[domain.id] = domain;
+    return lookup;
+  }, {});
+
+const formatDomainLabel = (
+  domainId: string | null | undefined,
+  domainsById: Record<string, GoalDomain>,
+): string => {
+  const normalizedDomainId = domainId?.trim();
+  if (!normalizedDomainId) return "No domain assigned";
+  return domainsById[normalizedDomainId]?.name ?? "Unknown domain";
+};
 
 const formatTrialTimestamp = (value: string): string => {
   const parsed = new Date(value);
@@ -249,41 +262,73 @@ type GoalDisplaySection = {
   key: "behavior" | "skill" | "other";
   title: string;
   description: string;
-  goals: Goal[];
+  domainGroups: Array<{
+    key: string;
+    title: string;
+    goals: Goal[];
+  }>;
 };
 
-const buildGoalDisplaySections = (goals: Goal[]): GoalDisplaySection[] => {
+const buildGoalDisplaySections = (
+  goals: Goal[],
+  domainsById: Record<string, GoalDomain>,
+): GoalDisplaySection[] => {
   const sections: GoalDisplaySection[] = [
     {
       key: "behavior",
       title: "Behavior Reduction",
       description: "Behavior goals and replacement targets from the care plan.",
-      goals: [],
+      domainGroups: [],
     },
     {
       key: "skill",
       title: "Skill Acquisition",
       description: "Skill-building goals and teaching targets from the care plan.",
-      goals: [],
+      domainGroups: [],
     },
     {
       key: "other",
-      title: "Other Goals",
+      title: "Needs Review",
       description: "Goals that need clinical type or domain review.",
-      goals: [],
+      domainGroups: [],
     },
   ];
   const byKey = new Map(sections.map((section) => [section.key, section]));
+  const domainGroupsBySection = new Map<string, Map<string, GoalDisplaySection["domainGroups"][number]>>();
 
   goals.forEach((goal) => {
     const sectionKey =
       goal.clinical_goal_type === "behavior" || goal.clinical_goal_type === "skill"
         ? goal.clinical_goal_type
         : "other";
-    byKey.get(sectionKey)?.goals.push(goal);
+    const section = byKey.get(sectionKey);
+    if (!section) return;
+    const domainKey = goal.domain_id?.trim() || "unassigned";
+    const groupKey = `${sectionKey}:${domainKey}`;
+    let sectionDomainGroups = domainGroupsBySection.get(sectionKey);
+    if (!sectionDomainGroups) {
+      sectionDomainGroups = new Map();
+      domainGroupsBySection.set(sectionKey, sectionDomainGroups);
+    }
+    let domainGroup = sectionDomainGroups.get(groupKey);
+    if (!domainGroup) {
+      domainGroup = {
+        key: groupKey,
+        title: formatDomainLabel(goal.domain_id, domainsById),
+        goals: [],
+      };
+      sectionDomainGroups.set(groupKey, domainGroup);
+      section.domainGroups.push(domainGroup);
+    }
+    domainGroup.goals.push(goal);
   });
 
-  return sections.filter((section) => section.goals.length > 0);
+  return sections
+    .map((section) => ({
+      ...section,
+      domainGroups: [...section.domainGroups].sort((left, right) => left.title.localeCompare(right.title)),
+    }))
+    .filter((section) => section.domainGroups.length > 0);
 };
 
 const hasLegacySignaturePayload = (payload: Record<string, unknown>): boolean => {
@@ -447,6 +492,9 @@ const GOAL_TIMELINE_INPUTS: ReadonlyArray<{
 
 const buildProgramGoalsQueryKey = (programId: string | null, organizationId?: string | null) =>
   ["program-goals", programId, organizationId ?? "MISSING_ORG"] as const;
+
+const buildGoalDomainsQueryKey = (organizationId?: string | null) =>
+  ["goal-domains", organizationId ?? "MISSING_ORG"] as const;
 
 const buildProgramNotesQueryKey = (programId: string | null, organizationId?: string | null) =>
   ["program-notes", programId, organizationId ?? "MISSING_ORG"] as const;
@@ -656,7 +704,13 @@ function TargetProgressPanel({ clientId, organizationId, target }: TargetTrialEv
   );
 }
 
-function GoalFieldList({ goal }: { goal: Goal }) {
+function GoalFieldList({
+  domainsById,
+  goal,
+}: {
+  domainsById: Record<string, GoalDomain>;
+  goal: Goal;
+}) {
   const objectiveCount = Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0;
   const fields = [
     { label: "Goal", value: goal.description },
@@ -674,7 +728,7 @@ function GoalFieldList({ goal }: { goal: Goal }) {
       <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/30">
         <dt className="font-medium uppercase text-slate-500">Type / domain</dt>
         <dd className="mt-1 text-slate-800 dark:text-slate-100">
-          {formatGoalClinicalType(goal)} · {formatDomainLabel(goal.domain_id)}
+          {formatGoalClinicalType(goal)} · {formatDomainLabel(goal.domain_id, domainsById)}
         </dd>
       </div>
       <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/30">
@@ -743,6 +797,7 @@ function GoalCard({
   archivingGoalId,
   archiveGoal,
   clientId,
+  domainsById,
   goal,
   goalTargetsForGoal,
   goalTargetsLoading,
@@ -754,6 +809,7 @@ function GoalCard({
     mutate: (goal: Goal) => void;
   };
   clientId: string;
+  domainsById: Record<string, GoalDomain>;
   goal: Goal;
   goalTargetsForGoal: GoalTarget[];
   goalTargetsLoading: boolean;
@@ -796,7 +852,7 @@ function GoalCard({
           <Trash2 className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
-      <GoalFieldList goal={goal} />
+      <GoalFieldList domainsById={domainsById} goal={goal} />
       <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/30">
         <div className="mb-2 flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -833,6 +889,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const publishSectionRef = useRef<HTMLDivElement | null>(null);
   const assessmentDocumentsQueryKey = ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"] as const;
   const clientProgramsQueryKey = buildClientProgramsQueryKey(client.id, organizationId);
+  const goalDomainsQueryKey = buildGoalDomainsQueryKey(organizationId);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
   const [assessmentFile, setAssessmentFile] = useState<File | null>(null);
@@ -845,6 +902,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [goalMeasurementType, setGoalMeasurementType] = useState("");
   const [goalClinicalGoalType, setGoalClinicalGoalType] = useState<Goal["clinical_goal_type"]>("skill");
   const [goalDomainId, setGoalDomainId] = useState("");
+  const [newGoalDomainName, setNewGoalDomainName] = useState("");
   const [goalSource, setGoalSource] = useState<NonNullable<Goal["source"]>>("manual");
   const [goalBaselineData, setGoalBaselineData] = useState("");
   const [goalTeachingStrategies, setGoalTeachingStrategies] = useState("");
@@ -937,6 +995,38 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     refetchOnReconnect: true,
   });
 
+  const {
+    data: goalDomains = [],
+    isLoading: goalDomainsLoading,
+    error: goalDomainsQueryError,
+  } = useQuery({
+    queryKey: goalDomainsQueryKey,
+    queryFn: async () => {
+      if (!organizationId) {
+        throw new Error("Organization context is required to load goal domains.");
+      }
+      const { data, error } = await supabase
+        .from("goal_domains")
+        .select("id,organization_id,name,description,status,created_at,updated_at")
+        .eq("organization_id", organizationId)
+        .order("name", { ascending: true });
+      if (error) {
+        throw new Error(error.message);
+      }
+      return (data ?? []) as GoalDomain[];
+    },
+    enabled: Boolean(organizationId),
+    retry: false,
+    staleTime: TAB_QUERY_STALE_TIME_MS,
+    refetchOnReconnect: true,
+  });
+
+  const goalDomainsById = useMemo(() => buildGoalDomainLookup(goalDomains), [goalDomains]);
+  const activeGoalDomains = useMemo(
+    () => goalDomains.filter((domain) => domain.status === "active"),
+    [goalDomains],
+  );
+
   const livePrograms = useMemo(
     () => programs.filter((program) => program.status !== "archived"),
     [programs],
@@ -952,6 +1042,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const goalTitleValue = goalTitle.trim();
   const goalDescriptionValue = goalDescription.trim();
   const goalOriginalTextValue = goalOriginalText.trim();
+  const newGoalDomainNameValue = newGoalDomainName.trim();
   const hasResolvedProgram = Boolean(resolvedProgramId);
   const noProgramHelperText = programsLoading
     ? "Programs are still loading. You can create one now, or wait for an existing program before adding goals or notes."
@@ -964,7 +1055,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         ? "Goal description is required."
         : !goalOriginalTextValue
           ? "Original clinical wording is required."
-          : null;
+          : goalDomainId === CREATE_NEW_DOMAIN_VALUE
+            ? "Create or select a domain before creating the goal."
+            : null;
   const noteContentValue = noteContent.trim();
   const createNoteDisabledReason = !hasResolvedProgram
     ? noProgramHelperText
@@ -1056,7 +1149,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   });
 
   const targetsByGoalId = useMemo(() => buildTargetsByGoalId(goalTargets), [goalTargets]);
-  const goalDisplaySections = useMemo(() => buildGoalDisplaySections(liveGoals), [liveGoals]);
+  const goalDisplaySections = useMemo(
+    () => buildGoalDisplaySections(liveGoals, goalDomainsById),
+    [goalDomainsById, liveGoals],
+  );
   useEffect(() => {
     if (targetGoalId && goalIdsForTargets.includes(targetGoalId)) {
       return;
@@ -1791,6 +1887,41 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
   });
 
+  const createGoalDomain = useMutation({
+    mutationFn: async () => {
+      if (!organizationId) {
+        throw new Error("Organization context is required to create a goal domain.");
+      }
+      if (!newGoalDomainNameValue) {
+        throw new Error("New domain name is required.");
+      }
+      const { data, error } = await supabase
+        .from("goal_domains")
+        .insert([
+          {
+            organization_id: organizationId,
+            name: newGoalDomainNameValue,
+            status: "active",
+          },
+        ])
+        .select("id,organization_id,name,description,status,created_at,updated_at")
+        .single();
+      if (error) {
+        throw new Error(error.message);
+      }
+      return data as GoalDomain;
+    },
+    onSuccess: (createdDomain) => {
+      queryClient.setQueryData<GoalDomain[]>(goalDomainsQueryKey, (current) =>
+        upsertById(current, createdDomain).sort((left, right) => left.name.localeCompare(right.name)),
+      );
+      setGoalDomainId(createdDomain.id);
+      setNewGoalDomainName("");
+      showSuccess("Goal domain created");
+    },
+    onError: showError,
+  });
+
   const createGoal = useMutation({
     mutationFn: async () => {
       if (!resolvedProgramId) {
@@ -1802,6 +1933,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         intermediateGoal: goalIntermediateGoal,
         longTermGoal: goalLongTermGoal,
       });
+      const resolvedDomainId = goalDomainId.trim() || undefined;
       const payload = JSON.stringify({
         client_id: client.id,
         program_id: resolvedProgramId,
@@ -1810,7 +1942,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         original_text: goalOriginalTextValue,
         measurement_type: goalMeasurementType || undefined,
         clinical_goal_type: goalClinicalGoalType || undefined,
-        domain_id: goalDomainId.trim() || undefined,
+        domain_id: resolvedDomainId,
         source: goalSource,
         baseline_data: goalBaselineData || undefined,
         baseline: goalBaselineData || undefined,
@@ -1840,7 +1972,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 original_text: goalOriginalTextValue,
                 measurement_type: goalMeasurementType || null,
                 clinical_goal_type: goalClinicalGoalType || null,
-                domain_id: goalDomainId.trim() || null,
+                domain_id: resolvedDomainId ?? null,
                 source: goalSource,
                 baseline_data: goalBaselineData || null,
                 baseline: goalBaselineData || null,
@@ -1882,6 +2014,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setGoalMeasurementType("");
       setGoalClinicalGoalType("skill");
       setGoalDomainId("");
+      setNewGoalDomainName("");
       setGoalSource("manual");
       setGoalBaselineData("");
       setGoalTeachingStrategies("");
@@ -3075,21 +3208,40 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-300">{section.description}</p>
                       </div>
                       <span className="rounded-full bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-dark">
-                        {section.goals.length} goal{section.goals.length === 1 ? "" : "s"}
+                        {section.domainGroups.reduce((count, group) => count + group.goals.length, 0)} goal
+                        {section.domainGroups.reduce((count, group) => count + group.goals.length, 0) === 1 ? "" : "s"}
                       </span>
                     </div>
                     <div className="space-y-3">
-                      {section.goals.map((goal) => (
-                        <GoalCard
-                          key={goal.id}
-                          archiveGoal={archiveGoal}
-                          archivingGoalId={archivingGoalId}
-                          clientId={client.id}
-                          goal={goal}
-                          goalTargetsForGoal={targetsByGoalId[goal.id] ?? []}
-                          goalTargetsLoading={goalTargetsLoading}
-                          organizationId={organizationId}
-                        />
+                      {section.domainGroups.map((domainGroup) => (
+                        <div
+                          key={domainGroup.key}
+                          className="rounded-md border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark"
+                        >
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <h5 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-300">
+                              {domainGroup.title}
+                            </h5>
+                            <span className="text-xs text-gray-500">
+                              {domainGroup.goals.length} goal{domainGroup.goals.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                          <div className="space-y-3">
+                            {domainGroup.goals.map((goal) => (
+                              <GoalCard
+                                key={goal.id}
+                                archiveGoal={archiveGoal}
+                                archivingGoalId={archivingGoalId}
+                                clientId={client.id}
+                                domainsById={goalDomainsById}
+                                goal={goal}
+                                goalTargetsForGoal={targetsByGoalId[goal.id] ?? []}
+                                goalTargetsLoading={goalTargetsLoading}
+                                organizationId={organizationId}
+                              />
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </section>
@@ -3259,16 +3411,57 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                   </select>
                 </label>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                  Domain ID
-                  <input
-                    type="text"
+                  Domain
+                  <select
                     value={goalDomainId}
-                    onChange={(event) => setGoalDomainId(event.target.value)}
-                    placeholder="Optional domain UUID"
+                    onChange={(event) => {
+                      setGoalDomainId(event.target.value);
+                      if (event.target.value !== CREATE_NEW_DOMAIN_VALUE) {
+                        setNewGoalDomainName("");
+                      }
+                    }}
+                    disabled={goalDomainsLoading}
                     className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-                  />
+                  >
+                    <option value="">{goalDomainsLoading ? "Loading domains..." : "No domain assigned"}</option>
+                    {activeGoalDomains.map((domain) => (
+                      <option key={domain.id} value={domain.id}>
+                        {domain.name}
+                      </option>
+                    ))}
+                    <option value={CREATE_NEW_DOMAIN_VALUE}>Create new domain...</option>
+                  </select>
                 </label>
               </div>
+              {goalDomainId === CREATE_NEW_DOMAIN_VALUE && (
+                <div className="rounded-md border border-blue-100 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-900/20">
+                  <label htmlFor="new-goal-domain-name" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                    New domain name *
+                    <input
+                      id="new-goal-domain-name"
+                      type="text"
+                      value={newGoalDomainName}
+                      onChange={(event) => setNewGoalDomainName(event.target.value)}
+                      placeholder="Communication, Social, Behavior reduction..."
+                      aria-required="true"
+                      className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => createGoalDomain.mutate()}
+                    disabled={!newGoalDomainNameValue || createGoalDomain.isLoading}
+                    className="mt-2 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {createGoalDomain.isLoading ? "Creating domain..." : "Create Domain"}
+                  </button>
+                </div>
+              )}
+              {goalDomainsQueryError instanceof Error && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Could not load goal domains: {goalDomainsQueryError.message}
+                </p>
+              )}
               <input
                 type="text"
                 value={goalMeasurementType}

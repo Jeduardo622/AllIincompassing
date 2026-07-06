@@ -195,6 +195,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       const chain = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
         order: vi.fn().mockResolvedValue({ data: [], error: null }),
         insert: vi.fn().mockReturnThis(),
         single: vi.fn().mockResolvedValue({
@@ -222,6 +223,16 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
                     created_at: "2026-02-11T00:00:00.000Z",
                     updated_at: "2026-02-11T00:00:00.000Z",
                   }
+                : tableName === "goal_domains"
+                  ? {
+                      id: "domain-created",
+                      organization_id: ORG_ID,
+                      name: "Created Domain",
+                      description: null,
+                      status: "active",
+                      created_at: "2026-02-11T00:00:00.000Z",
+                      updated_at: "2026-02-11T00:00:00.000Z",
+                    }
                 : {
                     id: "note-1",
                     organization_id: ORG_ID,
@@ -607,6 +618,32 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
   it("creates a program and then creates a goal for the selected program", async () => {
     let hasProgram = false;
+    const goalDomainInsert = vi.fn().mockReturnThis();
+    vi.mocked(supabase.from).mockImplementation((tableName: string) => {
+      const chain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+        insert: tableName === "goal_domains" ? goalDomainInsert : vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({
+          data:
+            tableName === "goal_domains"
+              ? {
+                  id: "domain-created",
+                  organization_id: ORG_ID,
+                  name: "Social Communication",
+                  description: null,
+                  status: "active",
+                  created_at: "2026-02-11T00:00:00.000Z",
+                  updated_at: "2026-02-11T00:00:00.000Z",
+                }
+              : null,
+          error: null,
+        }),
+      };
+      return chain as unknown as ReturnType<typeof supabase.from>;
+    });
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) {
@@ -694,6 +731,23 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     fireEvent.change(await screen.findByPlaceholderText("Goal title"), { target: { value: "Goal A" } });
     fireEvent.change(await screen.findByPlaceholderText("Goal description"), { target: { value: "Goal description" } });
     fireEvent.change(await screen.findByPlaceholderText("Original clinical wording"), { target: { value: "Original wording" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Domain")).toBeEnabled();
+    });
+    await user.selectOptions(screen.getByLabelText("Domain"), "__create_new_domain__");
+    await user.type(screen.getByLabelText("New domain name *"), "Social Communication");
+    await user.click(screen.getByRole("button", { name: "Create Domain" }));
+
+    await waitFor(() => {
+      expect(goalDomainInsert).toHaveBeenCalledWith([
+        {
+          organization_id: ORG_ID,
+          name: "Social Communication",
+          status: "active",
+        },
+      ]);
+    });
+    expect(showSuccess).toHaveBeenCalledWith("Goal domain created");
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Create Goal" })).toBeEnabled();
@@ -723,7 +777,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         "goals",
         expect.objectContaining({
           method: "POST",
-          body: expect.stringContaining("\"program_id\":\"program-1\""),
+          body: expect.stringContaining("\"domain_id\":\"domain-created\""),
         }),
       );
     });
@@ -751,6 +805,57 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
   });
 
   it("renders goal-level details with target-level measurement and graph configuration", async () => {
+    vi.mocked(supabase.from).mockImplementation((tableName: string) => {
+      if (tableName === "goal_domains") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          neq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockResolvedValue({
+            data: [
+              {
+                id: "communication-domain",
+                organization_id: ORG_ID,
+                name: "Communication",
+                description: null,
+                status: "active",
+                created_at: "2026-02-11T00:00:00.000Z",
+                updated_at: "2026-02-11T00:00:00.000Z",
+              },
+              {
+                id: "behavior-domain",
+                organization_id: ORG_ID,
+                name: "Behavior Reduction",
+                description: null,
+                status: "active",
+                created_at: "2026-02-11T00:00:00.000Z",
+                updated_at: "2026-02-11T00:00:00.000Z",
+              },
+              {
+                id: "archived-domain",
+                organization_id: ORG_ID,
+                name: "Archived Clinical Domain",
+                description: null,
+                status: "archived",
+                created_at: "2026-02-10T00:00:00.000Z",
+                updated_at: "2026-02-10T00:00:00.000Z",
+              },
+            ],
+            error: null,
+          }),
+          insert: vi.fn().mockReturnThis(),
+          single: vi.fn(),
+        } as unknown as ReturnType<typeof supabase.from>;
+      }
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+        insert: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      } as unknown as ReturnType<typeof supabase.from>;
+    });
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) {
@@ -817,7 +922,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
               organization_id: ORG_ID,
               client_id: "client-1",
               program_id: "program-1",
-              domain_id: null,
+              domain_id: "archived-domain",
               title: "Caregiver participation",
               description: "Caregiver implements session carryover strategies.",
               original_text: "Caregiver will participate in treatment planning.",
@@ -930,8 +1035,11 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     expect(await screen.findAllByText("Increase functional communication")).not.toHaveLength(0);
     expect(screen.getByRole("heading", { name: "Skill Acquisition" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Behavior Reduction" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Other Goals" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Behavior Reduction" }).length).toBeGreaterThan(1);
+    expect(screen.getByRole("heading", { name: "Needs Review" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Communication" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Archived Clinical Domain" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Archived Clinical Domain" })).not.toBeInTheDocument();
     expect(screen.getAllByText("Reduce elopement").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Caregiver participation").length).toBeGreaterThan(0);
     expect(screen.getByText("2 requests per session")).toBeInTheDocument();
@@ -939,9 +1047,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(screen.getByText("DTT, NET, prompt fading")).toBeInTheDocument();
     expect(screen.getByText("80% across three sessions")).toBeInTheDocument();
     expect(screen.getByText("Two settings and two adults")).toBeInTheDocument();
-    expect(screen.getByText("Skill · Domain communication-domain")).toBeInTheDocument();
+    expect(screen.getByText("Skill · Communication")).toBeInTheDocument();
+    expect(screen.getByText("Behavior · Behavior Reduction")).toBeInTheDocument();
     expect(screen.getByText("Manual · percent opportunities")).toBeInTheDocument();
-    expect(screen.getByText("Unspecified · No domain assigned")).toBeInTheDocument();
+    expect(screen.getByText("Unspecified · Archived Clinical Domain")).toBeInTheDocument();
     expect(screen.getByText("Source not set · Measurement not set")).toBeInTheDocument();
 
     expect(await screen.findByText("Mands for help")).toBeInTheDocument();

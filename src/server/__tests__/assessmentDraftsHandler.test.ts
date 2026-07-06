@@ -33,13 +33,17 @@ const buildTypedGoals = (
     description: `Child goal description ${index + 1}`,
     original_text: `Child goal original text ${index + 1}`,
     goal_type: "child",
+    clinical_goal_type: "skill",
     target_behavior: "Functional communication response",
     measurement_type: "Frequency",
     baseline_data: "Baseline noted",
+    baseline: "Baseline noted",
     target_criteria: "Target criteria noted",
     mastery_criteria: "Mastery criteria noted",
     maintenance_criteria: "Maintenance criteria noted",
     generalization_criteria: "Generalization criteria noted",
+    teaching_strategies: "Modeling and least-to-most prompting",
+    operational_definition: "Independent functional communication response",
     objective_data_points: ["Point A", "Point B"],
     rationale: "Goal rationale",
     evidence_refs: [{ section_key: "assessment_summary", source_span: "Child evidence snippet" }],
@@ -51,13 +55,17 @@ const buildTypedGoals = (
     description: `Parent goal description ${index + 1}`,
     original_text: `Parent goal original text ${index + 1}`,
     goal_type: "parent",
+    clinical_goal_type: "skill",
     target_behavior: "Caregiver implementation fidelity",
     measurement_type: "Percent fidelity",
     baseline_data: "Baseline noted",
+    baseline: "Baseline noted",
     target_criteria: "Target criteria noted",
     mastery_criteria: "Mastery criteria noted",
     maintenance_criteria: "Maintenance criteria noted",
     generalization_criteria: "Generalization criteria noted",
+    teaching_strategies: "Behavior skills training",
+    operational_definition: "Caregiver completes intervention steps as written",
     objective_data_points: ["Point A", "Point B"],
     rationale: "Goal rationale",
     evidence_refs: [{ section_key: "parent_training", source_span: "Parent evidence snippet" }],
@@ -133,13 +141,17 @@ describe("assessmentDraftsHandler", () => {
               description: "Description A",
               original_text: "Original A",
               goal_type: "child",
+              clinical_goal_type: "skill",
               target_behavior: "Functional communication",
               measurement_type: "Frequency",
               baseline_data: "Baseline text",
+              baseline: "Baseline narrative",
               target_criteria: "Target text",
               mastery_criteria: "80% across 2 sessions",
               maintenance_criteria: "80% across 2 maintenance checks",
               generalization_criteria: "Across home and clinic",
+              teaching_strategies: "Modeling and prompting",
+              operational_definition: "Independent request for help",
               objective_data_points: ["Identify 4 emotions", "Track prompts used"],
               rationale: "Goal rationale",
               evidence_refs: [{ section_key: "goals_treatment_planning", source_span: "Evidence snippet" }],
@@ -203,6 +215,10 @@ describe("assessmentDraftsHandler", () => {
     const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
     expect(goalPayload[0]?.mastery_criteria).toBe("80% across 2 sessions");
     expect(goalPayload[0]?.goal_type).toBe("child");
+    expect(goalPayload[0]?.clinical_goal_type).toBe("skill");
+    expect(goalPayload[0]?.baseline).toBe("Baseline narrative");
+    expect(goalPayload[0]?.teaching_strategies).toBe("Modeling and prompting");
+    expect(goalPayload[0]?.operational_definition).toBe("Independent request for help");
     expect(Array.isArray(goalPayload[0]?.objective_data_points)).toBe(true);
     expect(Array.isArray(goalPayload[0]?.evidence_refs)).toBe(true);
     expect(Array.isArray(goalPayload[0]?.review_flags)).toBe(true);
@@ -431,6 +447,10 @@ describe("assessmentDraftsHandler", () => {
     expect(goalPayload[3]?.title).toBe("Transition Goal (2024)");
     expect(goalPayload[4]?.title).toBe("Transition Goal (2024) (2)");
     expect(goalPayload[0]?.mastery_criteria).toBe("Mastery criteria noted");
+    expect(goalPayload[0]?.clinical_goal_type).toBe("skill");
+    expect(goalPayload[0]?.baseline).toBe("Baseline noted");
+    expect(goalPayload[0]?.teaching_strategies).toBe("Modeling and least-to-most prompting");
+    expect(goalPayload[0]?.operational_definition).toBe("Independent functional communication response");
     expect(goalPayload[0]?.evidence_refs).toEqual([
       { section_key: "goals_treatment_planning", source_span: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS#0" },
     ]);
@@ -1249,6 +1269,93 @@ describe("assessmentDraftsHandler", () => {
       expect.stringContaining("/rest/v1/assessment_review_events"),
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("updates structured draft goal fields after validating domain scope", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "draft-goal-1",
+            assessment_document_id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            accept_state: "pending",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "drafted" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "22222222-2222-4222-8222-222222222222" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "draft-goal-1", title: "Edited Goal" }],
+      })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          draft_type: "goal",
+          id: "11111111-1111-1111-1111-111111111111",
+          accept_state: "edited",
+          title: "Edited Goal",
+          domain_id: "22222222-2222-4222-8222-222222222222",
+          clinical_goal_type: "behavior",
+          baseline: "Baseline narrative",
+          teaching_strategies: "DRA and prompting",
+          operational_definition: "Aggression includes hitting or kicking.",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/goal_domains?select=id&id=in.(22222222-2222-4222-8222-222222222222)&organization_id=eq.org-1"),
+      expect.objectContaining({ method: "GET" }),
+    );
+    const updateCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.includes("/rest/v1/assessment_draft_goals?id=eq.draft-goal-1") &&
+          init?.method === "PATCH",
+      );
+    expect(updateCall).toBeTruthy();
+    expect(JSON.parse(String((updateCall?.[1] as RequestInit).body))).toMatchObject({
+      accept_state: "edited",
+      title: "Edited Goal",
+      domain_id: "22222222-2222-4222-8222-222222222222",
+      clinical_goal_type: "behavior",
+      baseline: "Baseline narrative",
+      teaching_strategies: "DRA and prompting",
+      operational_definition: "Aggression includes hitting or kicking.",
+    });
   });
 
   it("blocks draft goal updates when the parent assessment is already promoted", async () => {

@@ -61,13 +61,18 @@ interface IehpLiveGoalCandidate {
   description: string;
   originalText: string;
   goalType: "child" | "parent";
+  domainId: string | null;
+  clinicalGoalType: "behavior" | "skill" | null;
   targetBehavior: string | null;
   measurementType: string | null;
   baselineData: string | null;
+  baseline: string | null;
   targetCriteria: string | null;
   masteryCriteria: string | null;
   maintenanceCriteria: string | null;
   generalizationCriteria: string | null;
+  teachingStrategies: string | null;
+  operationalDefinition: string | null;
   objectiveDataPoints: Array<Record<string, unknown> | string>;
 }
 
@@ -85,13 +90,18 @@ interface DraftGoalRow {
   description: string;
   original_text: string;
   goal_type: "child" | "parent";
+  domain_id: string | null;
+  clinical_goal_type: "behavior" | "skill" | null;
   target_behavior: string | null;
   measurement_type: string | null;
   baseline_data: string | null;
+  baseline: string | null;
   target_criteria: string | null;
   mastery_criteria: string | null;
   maintenance_criteria: string | null;
   generalization_criteria: string | null;
+  teaching_strategies: string | null;
+  operational_definition: string | null;
   objective_data_points: Array<Record<string, unknown> | string> | null;
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
@@ -102,6 +112,42 @@ const isMinGoalQuality = (goal: DraftGoalRow): boolean =>
   goal.title.trim().length >= 3 && goal.description.trim().length >= 10 && goal.original_text.trim().length >= 10;
 
 const buildInFilter = (ids: string[]): string => `in.(${ids.map((id) => encodeURIComponent(id)).join(",")})`;
+
+const toUuidOrNull = (value: unknown): string | null => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return z.string().uuid().safeParse(trimmed).success ? trimmed : null;
+};
+
+const assertGoalDomainsInOrg = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  domainIds: Array<string | null | undefined>;
+}): Promise<{ ok: true } | { ok: false; status: number; error: string }> => {
+  const uniqueDomainIds = Array.from(new Set(args.domainIds.filter((id): id is string => Boolean(id))));
+  if (uniqueDomainIds.length === 0) {
+    return { ok: true };
+  }
+
+  const lookup = await fetchJson<Array<{ id: string }>>(
+    `${args.supabaseUrl}/rest/v1/goal_domains?select=id&id=${buildInFilter(uniqueDomainIds)}&organization_id=eq.${encodeURIComponent(
+      args.organizationId,
+    )}`,
+    { method: "GET", headers: args.headers },
+  );
+  if (!lookup.ok || !Array.isArray(lookup.data)) {
+    return { ok: false, status: lookup.status || 500, error: "Failed to validate goal domain scope" };
+  }
+  const scopedDomainIds = new Set(lookup.data.map((row) => row.id));
+  const outOfScopeDomainId = uniqueDomainIds.find((id) => !scopedDomainIds.has(id));
+  if (outOfScopeDomainId) {
+    return { ok: false, status: 409, error: "Goal domain not found in organization scope" };
+  }
+  return { ok: true };
+};
 
 const toNumberOrNull = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -212,6 +258,25 @@ const hasDefaultRequiredStructuredValue = (payload: Record<string, unknown>): bo
 const normalizeIehpGoalType = (value: unknown): "child" | "parent" =>
   typeof value === "string" && value.trim().toLowerCase() === "parent" ? "parent" : "child";
 
+const normalizeClinicalGoalType = (value: unknown, fieldKey?: string): "behavior" | "skill" | null => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized.includes("behavior") || normalized === "bx") {
+      return "behavior";
+    }
+    if (normalized.includes("skill")) {
+      return "skill";
+    }
+  }
+  if (fieldKey === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS") {
+    return "behavior";
+  }
+  if (fieldKey === "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS") {
+    return "skill";
+  }
+  return null;
+};
+
 const toIehpGoalCandidate = (row: AssessmentRequiredStructuredReviewRow): IehpLiveGoalCandidate | null => {
   if (!IEHP_GOAL_SECTION_KEYS.has(row.field_key) || !row.payload || typeof row.payload !== "object") {
     return null;
@@ -230,13 +295,18 @@ const toIehpGoalCandidate = (row: AssessmentRequiredStructuredReviewRow): IehpLi
     description,
     originalText: rawText,
     goalType: normalizeIehpGoalType(payload.goal_type),
+    domainId: toUuidOrNull(payload.domain_id),
+    clinicalGoalType: normalizeClinicalGoalType(payload.clinical_goal_type ?? payload.goal_category ?? payload.category, row.field_key),
     targetBehavior: toStringOrNull(payload.target_behavior),
     measurementType: toStringOrNull(payload.measurement_type),
     baselineData: toStringOrNull(payload.baseline_data),
+    baseline: toStringOrNull(payload.baseline) ?? toStringOrNull(payload.baseline_data),
     targetCriteria: toStringOrNull(payload.target_criteria),
     masteryCriteria: toStringOrNull(payload.mastery_criteria),
     maintenanceCriteria: toStringOrNull(payload.maintenance_criteria),
     generalizationCriteria: toStringOrNull(payload.generalization_criteria),
+    teachingStrategies: toStringOrNull(payload.teaching_strategies) ?? toStringOrNull(payload.teaching_strategy),
+    operationalDefinition: toStringOrNull(payload.operational_definition) ?? toStringOrNull(payload.definition),
     objectiveDataPoints: Array.isArray(payload.objective_data_points)
       ? payload.objective_data_points.filter((point): point is Record<string, unknown> | string =>
         (typeof point === "string" && point.trim().length > 0) ||
@@ -468,6 +538,15 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     const now = new Date().toISOString();
     const actorId = getAccessTokenSubject(accessToken);
     const iehpLiveGoals = buildIehpLiveGoalCandidates(approvedStructuredRows);
+    const iehpDomainScope = await assertGoalDomainsInOrg({
+      supabaseUrl,
+      headers,
+      organizationId,
+      domainIds: iehpLiveGoals.map((goal) => goal.domainId),
+    });
+    if (!iehpDomainScope.ok) {
+      return json({ error: iehpDomainScope.error }, iehpDomainScope.status);
+    }
     const iehpProgramNames = Array.from(new Set(iehpLiveGoals.map((goal) => goal.programName)));
     const createdIehpProgramIds: string[] = [];
     const createdIehpProgramIdByName = new Map<string, string>();
@@ -599,14 +678,20 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       description: goal.description,
       original_text: goal.originalText,
       goal_type: goal.goalType,
+      domain_id: goal.domainId,
+      clinical_goal_type: goal.clinicalGoalType,
       target_behavior: goal.targetBehavior,
       measurement_type: goal.measurementType,
       baseline_data: goal.baselineData,
+      baseline: goal.baseline,
       target_criteria: goal.targetCriteria,
       mastery_criteria: goal.masteryCriteria,
       maintenance_criteria: goal.maintenanceCriteria,
       generalization_criteria: goal.generalizationCriteria,
+      teaching_strategies: goal.teachingStrategies,
+      operational_definition: goal.operationalDefinition,
       objective_data_points: goal.objectiveDataPoints,
+      source: "fba_extraction",
       status: "active",
     }));
 
@@ -703,7 +788,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       { method: "GET", headers },
     ),
     fetchJson<DraftGoalRow[]>(
-      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,draft_program_id,title,description,original_text,goal_type,target_behavior,measurement_type,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,accept_state&organization_id=eq.${encodeURIComponent(
+      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,draft_program_id,title,description,original_text,goal_type,domain_id,clinical_goal_type,target_behavior,measurement_type,baseline_data,baseline,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,teaching_strategies,operational_definition,objective_data_points,accept_state&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(parsed.data.assessment_document_id)}&order=created_at.asc`,
       { method: "GET", headers },
@@ -774,6 +859,16 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   const acceptedGoalsWithoutProgramLink = acceptedGoals.filter((goal) => !goal.draft_program_id);
   if (acceptedPrograms.length > 1 && acceptedGoalsWithoutProgramLink.length > 0) {
     return json({ error: "Accepted goals must keep their draft program link when promoting multiple programs." }, 409);
+  }
+
+  const domainScope = await assertGoalDomainsInOrg({
+    supabaseUrl,
+    headers,
+    organizationId,
+    domainIds: acceptedGoals.map((goal) => goal.domain_id),
+  });
+  if (!domainScope.ok) {
+    return json({ error: domainScope.error }, domainScope.status);
   }
 
   const actorId = getAccessTokenSubject(accessToken);
@@ -891,13 +986,18 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     description: goal.description,
     original_text: goal.original_text,
     goal_type: goal.goal_type,
+    domain_id: goal.domain_id,
+    clinical_goal_type: goal.clinical_goal_type,
     target_behavior: goal.target_behavior,
     measurement_type: goal.measurement_type,
     baseline_data: goal.baseline_data,
+    baseline: goal.baseline ?? goal.baseline_data,
     target_criteria: goal.target_criteria,
     mastery_criteria: goal.mastery_criteria,
     maintenance_criteria: goal.maintenance_criteria,
     generalization_criteria: goal.generalization_criteria,
+    teaching_strategies: goal.teaching_strategies,
+    operational_definition: goal.operational_definition,
     objective_data_points: goal.objective_data_points ?? [],
     status: "active",
   }));

@@ -732,10 +732,13 @@ export type Database = {
         Row: {
           accept_state: string
           assessment_document_id: string
+          baseline: string | null
           baseline_data: string | null
           client_id: string
+          clinical_goal_type: string | null
           created_at: string
           description: string
+          domain_id: string | null
           draft_program_id: string | null
           evidence_refs: Json
           generalization_criteria: string | null
@@ -755,16 +758,21 @@ export type Database = {
           reviewed_by: string | null
           target_behavior: string | null
           target_criteria: string | null
+          teaching_strategies: string | null
           title: string
+          operational_definition: string | null
           updated_at: string
         }
         Insert: {
           accept_state?: string
           assessment_document_id: string
+          baseline?: string | null
           baseline_data?: string | null
           client_id: string
+          clinical_goal_type?: string | null
           created_at?: string
           description: string
+          domain_id?: string | null
           draft_program_id?: string | null
           evidence_refs?: Json
           generalization_criteria?: string | null
@@ -784,16 +792,21 @@ export type Database = {
           reviewed_by?: string | null
           target_behavior?: string | null
           target_criteria?: string | null
+          teaching_strategies?: string | null
           title: string
+          operational_definition?: string | null
           updated_at?: string
         }
         Update: {
           accept_state?: string
           assessment_document_id?: string
+          baseline?: string | null
           baseline_data?: string | null
           client_id?: string
+          clinical_goal_type?: string | null
           created_at?: string
           description?: string
+          domain_id?: string | null
           draft_program_id?: string | null
           evidence_refs?: Json
           generalization_criteria?: string | null
@@ -813,7 +826,9 @@ export type Database = {
           reviewed_by?: string | null
           target_behavior?: string | null
           target_criteria?: string | null
+          teaching_strategies?: string | null
           title?: string
+          operational_definition?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -830,6 +845,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_goals_domain_id_fkey"
+            columns: ["domain_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "goal_domains"
+            referencedColumns: ["id", "organization_id"]
           },
           {
             foreignKeyName: "assessment_draft_goals_draft_program_id_fkey"
@@ -3291,6 +3313,50 @@ export type Database = {
           },
         ]
       }
+      goal_domains: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          organization_id: string
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_domains_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       goals: {
         Row: {
           baseline: string | null
@@ -3389,6 +3455,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_domain_id_fkey"
+            columns: ["domain_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "goal_domains"
+            referencedColumns: ["id", "organization_id"]
           },
           {
             foreignKeyName: "goals_organization_id_fkey"

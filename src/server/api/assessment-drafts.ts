@@ -30,13 +30,18 @@ const draftGoalSchema = z.object({
   description: z.string().trim().min(1),
   original_text: z.string().trim().min(1),
   goal_type: z.enum(["child", "parent"]),
+  domain_id: z.string().uuid().nullable().optional(),
+  clinical_goal_type: z.enum(["behavior", "skill"]).nullable().optional(),
   target_behavior: z.string().trim().min(1),
   measurement_type: z.string().trim().min(1),
   baseline_data: z.string().trim().min(1),
+  baseline: z.string().trim().nullable().optional(),
   target_criteria: z.string().trim().min(1),
   mastery_criteria: z.string().trim().min(1),
   maintenance_criteria: z.string().trim().min(1),
   generalization_criteria: z.string().trim().min(1),
+  teaching_strategies: z.string().trim().nullable().optional(),
+  operational_definition: z.string().trim().nullable().optional(),
   objective_data_points: z.array(z.string().trim().min(1)).min(1),
   rationale: z.string().trim().min(1),
   evidence_refs: z.array(evidenceRefSchema).min(1),
@@ -77,13 +82,18 @@ const draftUpdateSchema = z.object({
   title: z.string().trim().optional(),
   original_text: z.string().trim().optional(),
   goal_type: z.enum(["child", "parent"]).optional(),
+  domain_id: z.string().uuid().nullable().optional(),
+  clinical_goal_type: z.enum(["behavior", "skill"]).nullable().optional(),
   target_behavior: z.string().trim().optional(),
   measurement_type: z.string().trim().optional(),
   baseline_data: z.string().trim().optional(),
+  baseline: z.string().trim().nullable().optional(),
   target_criteria: z.string().trim().optional(),
   mastery_criteria: z.string().trim().optional(),
   maintenance_criteria: z.string().trim().optional(),
   generalization_criteria: z.string().trim().optional(),
+  teaching_strategies: z.string().trim().nullable().optional(),
+  operational_definition: z.string().trim().nullable().optional(),
   objective_data_points: z.array(z.record(z.unknown())).optional(),
   program_name: z.string().trim().optional(),
   evidence_refs: z.array(evidenceRefSchema).optional(),
@@ -114,6 +124,17 @@ const DRAFT_PARENT_GOAL_FIELD_KEYS = new Set([
 
 const resolveProgramNameFromGoalSection = (fieldKey: string, payload: Record<string, unknown>, isParentGoal: boolean): string => {
   return getPayloadString(payload, ["program_name", "program", "domain"], isParentGoal ? "Parent Training" : "Behavior Treatment");
+};
+
+const resolveClinicalGoalTypeFromGoalSection = (fieldKey: string, payload: Record<string, unknown>): "behavior" | "skill" => {
+  const explicit = getPayloadString(payload, ["clinical_goal_type", "goal_category", "category", "type"]).toLowerCase();
+  if (explicit.includes("behavior") || explicit === "bx") {
+    return "behavior";
+  }
+  if (explicit.includes("skill")) {
+    return "skill";
+  }
+  return fieldKey === "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS" ? "behavior" : "skill";
 };
 
 interface AssessmentDraftProgramRow {
@@ -179,13 +200,18 @@ export interface GeneratedDraftPayload {
     description: string;
     original_text: string;
     goal_type: "child" | "parent";
+    domain_id?: string | null;
+    clinical_goal_type?: "behavior" | "skill" | null;
     target_behavior: string;
     measurement_type: string;
     baseline_data: string;
+    baseline?: string | null;
     target_criteria: string;
     mastery_criteria: string;
     maintenance_criteria: string;
     generalization_criteria: string;
+    teaching_strategies?: string | null;
+    operational_definition?: string | null;
     objective_data_points: Array<Record<string, unknown>>;
     rationale: string;
     evidence_refs: Array<{ section_key: string; source_span: string }>;
@@ -324,13 +350,17 @@ export const buildDeterministicDraftPayload = (
       description,
       original_text: originalText,
       goal_type: isParentGoal ? ("parent" as const) : ("child" as const),
+      clinical_goal_type: resolveClinicalGoalTypeFromGoalSection(section.field_key, payload),
       target_behavior: getPayloadString(payload, ["target_behavior", "behavior", "skill"], title),
       measurement_type: getPayloadString(payload, ["measurement_type", "measure", "data_collection"], "frequency"),
       baseline_data: getPayloadString(payload, ["baseline_data", "baseline"], "Baseline pending staff review"),
+      baseline: getPayloadString(payload, ["baseline", "baseline_data"], "Baseline pending staff review"),
       target_criteria: getPayloadString(payload, ["target_criteria", "criteria", "objective"], description),
       mastery_criteria: getPayloadString(payload, ["mastery_criteria", "mastery"], "Mastery criteria pending staff review"),
       maintenance_criteria: getPayloadString(payload, ["maintenance_criteria", "maintenance"], "Maintenance criteria pending staff review"),
       generalization_criteria: getPayloadString(payload, ["generalization_criteria", "generalization"], "Generalization criteria pending staff review"),
+      teaching_strategies: getPayloadString(payload, ["teaching_strategies", "teaching_strategy", "intervention_strategies"]),
+      operational_definition: getPayloadString(payload, ["operational_definition", "definition"]),
       objective_data_points: getPayloadRows(payload, ["objective_data_points", "measurement_rows", "data_points"]),
       rationale: getPayloadString(payload, ["rationale"], "Derived deterministically from approved CalOptima structured section."),
       evidence_refs: [
@@ -400,6 +430,35 @@ const draftsAlreadyExistForDocument = async (args: {
   return hasPrograms || hasGoals;
 };
 
+const assertGoalDomainsInOrg = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  domainIds: Array<string | null | undefined>;
+  signal?: AbortSignal;
+}): Promise<{ ok: true } | { ok: false; status: number; error: string }> => {
+  const uniqueDomainIds = Array.from(new Set(args.domainIds.filter((id): id is string => Boolean(id))));
+  if (uniqueDomainIds.length === 0) {
+    return { ok: true };
+  }
+
+  const lookup = await fetchJson<Array<{ id: string }>>(
+    `${args.supabaseUrl}/rest/v1/goal_domains?select=id&id=in.(${uniqueDomainIds.map((id) => encodeURIComponent(id)).join(",")})&organization_id=eq.${encodeURIComponent(
+      args.organizationId,
+    )}`,
+    { method: "GET", headers: args.headers, signal: args.signal },
+  );
+  if (!lookup.ok || !Array.isArray(lookup.data)) {
+    return { ok: false, status: lookup.status || 500, error: "Failed to validate goal domain scope" };
+  }
+  const scopedDomainIds = new Set(lookup.data.map((row) => row.id));
+  const outOfScopeDomainId = uniqueDomainIds.find((id) => !scopedDomainIds.has(id));
+  if (outOfScopeDomainId) {
+    return { ok: false, status: 409, error: "Goal domain not found in organization scope" };
+  }
+  return { ok: true };
+};
+
 export const persistDraftRows = async (args: {
   supabaseUrl: string;
   headers: Record<string, string>;
@@ -412,6 +471,17 @@ export const persistDraftRows = async (args: {
   signal?: AbortSignal;
 }) => {
   const { supabaseUrl, headers, organizationId, actorId, document, assessmentDocumentId, payload, extractedAt, signal } = args;
+  const domainScope = await assertGoalDomainsInOrg({
+    supabaseUrl,
+    headers,
+    organizationId,
+    domainIds: payload.goals.map((goal) => goal.domain_id),
+    signal,
+  });
+  if (!domainScope.ok) {
+    return domainScope;
+  }
+
   const createProgramPayload = payload.programs.map((program) => ({
     assessment_document_id: assessmentDocumentId,
     organization_id: organizationId,
@@ -473,13 +543,18 @@ export const persistDraftRows = async (args: {
     description: goal.description,
     original_text: goal.original_text,
     goal_type: goal.goal_type,
+    domain_id: goal.domain_id ?? null,
+    clinical_goal_type: goal.clinical_goal_type ?? null,
     target_behavior: goal.target_behavior,
     measurement_type: goal.measurement_type,
     baseline_data: goal.baseline_data,
+    baseline: goal.baseline ?? goal.baseline_data,
     target_criteria: goal.target_criteria,
     mastery_criteria: goal.mastery_criteria,
     maintenance_criteria: goal.maintenance_criteria,
     generalization_criteria: goal.generalization_criteria,
+    teaching_strategies: goal.teaching_strategies ?? null,
+    operational_definition: goal.operational_definition ?? null,
     objective_data_points: goal.objective_data_points,
     rationale: goal.rationale,
     evidence_refs: goal.evidence_refs,
@@ -880,6 +955,23 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     if (parsed.data.goal_type !== undefined) {
       updatePayload.goal_type = parsed.data.goal_type;
     }
+    if (parsed.data.domain_id !== undefined) {
+      if (parsed.data.domain_id) {
+        const domainScope = await assertGoalDomainsInOrg({
+          supabaseUrl,
+          headers,
+          organizationId,
+          domainIds: [parsed.data.domain_id],
+        });
+        if (!domainScope.ok) {
+          return json({ error: domainScope.error }, domainScope.status);
+        }
+      }
+      updatePayload.domain_id = parsed.data.domain_id;
+    }
+    if (parsed.data.clinical_goal_type !== undefined) {
+      updatePayload.clinical_goal_type = parsed.data.clinical_goal_type;
+    }
     if (parsed.data.target_behavior !== undefined) {
       updatePayload.target_behavior = parsed.data.target_behavior;
     }
@@ -888,6 +980,9 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     }
     if (parsed.data.baseline_data !== undefined) {
       updatePayload.baseline_data = parsed.data.baseline_data;
+    }
+    if (parsed.data.baseline !== undefined) {
+      updatePayload.baseline = parsed.data.baseline;
     }
     if (parsed.data.target_criteria !== undefined) {
       updatePayload.target_criteria = parsed.data.target_criteria;
@@ -900,6 +995,12 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     }
     if (parsed.data.generalization_criteria !== undefined) {
       updatePayload.generalization_criteria = parsed.data.generalization_criteria;
+    }
+    if (parsed.data.teaching_strategies !== undefined) {
+      updatePayload.teaching_strategies = parsed.data.teaching_strategies;
+    }
+    if (parsed.data.operational_definition !== undefined) {
+      updatePayload.operational_definition = parsed.data.operational_definition;
     }
     if (parsed.data.objective_data_points !== undefined) {
       updatePayload.objective_data_points = parsed.data.objective_data_points;

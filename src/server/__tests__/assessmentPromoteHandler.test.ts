@@ -24,6 +24,15 @@ const buildAcceptedGoals = (
     description: `Child goal description ${index + 1} with enough detail.`,
     original_text: `Child goal original text ${index + 1} with enough detail for validation.`,
     goal_type: "child",
+    clinical_goal_type: "skill",
+    baseline_data: "Baseline noted",
+    baseline: "Baseline narrative",
+    target_criteria: "Target criteria noted",
+    mastery_criteria: "Mastery criteria noted",
+    maintenance_criteria: "Maintenance criteria noted",
+    generalization_criteria: "Generalization criteria noted",
+    teaching_strategies: "Modeling and least-to-most prompting",
+    operational_definition: "Independent functional communication response",
     objective_data_points: index === 0
       ? [{ metric_name: "baseline", metric_value: 2, metric_unit: "responses" }, "Legacy manual objective note"]
       : [],
@@ -35,6 +44,15 @@ const buildAcceptedGoals = (
     description: `Parent goal description ${index + 1} with enough detail.`,
     original_text: `Parent goal original text ${index + 1} with enough detail for validation.`,
     goal_type: "parent",
+    clinical_goal_type: "skill",
+    baseline_data: "Baseline noted",
+    baseline: "Baseline narrative",
+    target_criteria: "Target criteria noted",
+    mastery_criteria: "Mastery criteria noted",
+    maintenance_criteria: "Maintenance criteria noted",
+    generalization_criteria: "Generalization criteria noted",
+    teaching_strategies: "Behavior skills training",
+    operational_definition: "Caregiver completes intervention steps as written",
     objective_data_points: [],
     accept_state: "accepted",
   })),
@@ -133,6 +151,93 @@ describe("assessmentPromoteHandler", () => {
         created_goal_count: 0,
       },
     });
+  });
+
+  it("rejects out-of-scope IEHP structured goal domains before creating live records", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "extracted",
+            template_type: "iehp_fba",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=id,placeholder_key,label,value_text,value_json&")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?select=id,field_key,section_index,payload&")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "structured-goal-1",
+            field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+            section_index: 0,
+            payload: {
+              program_name: "Behavior Treatment",
+              title: "Decrease aggression",
+              description: "Decrease aggression with enough clinical detail.",
+              raw_text: "When denied access, aggression occurs.",
+              original_text: "When denied access, aggression occurs.",
+              target_behavior: "Aggression",
+              measurement_type: "frequency",
+              baseline_data: "3 incidents per hour",
+              target_criteria: "Fewer than 1 incident per week",
+              mastery_criteria: "80% reduction across 4 weeks",
+              domain_id: "22222222-2222-4222-8222-222222222222",
+            },
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/goal_domains?")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "Goal domain not found in organization scope" });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/programs"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/goals"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("blocks IEHP assessment publish until all required review rows are approved", async () => {
@@ -956,6 +1061,12 @@ describe("assessmentPromoteHandler", () => {
         body: expect.stringContaining('"status":"active"'),
       }),
     );
+    const createGoalsCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/goals") && init?.method === "POST");
+    expect(createGoalsCall).toBeTruthy();
+    const createGoalsPayload = JSON.parse(String((createGoalsCall?.[1] as RequestInit).body)) as Array<Record<string, unknown>>;
+    expect(createGoalsPayload.every((goal) => goal.source === "fba_extraction")).toBe(true);
     const reviewEventCall = vi
       .mocked(fetchJson)
       .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && init?.method === "POST");
@@ -1238,6 +1349,18 @@ describe("assessmentPromoteHandler", () => {
     expect(createGoalsCall).toBeTruthy();
     const createGoalsPayload = JSON.parse((createGoalsCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
     expect(createGoalsPayload[0]?.goal_type).toBe("child");
+    expect(createGoalsPayload[0]).toMatchObject({
+      clinical_goal_type: "skill",
+      baseline_data: "Baseline noted",
+      baseline: "Baseline narrative",
+      target_criteria: "Target criteria noted",
+      mastery_criteria: "Mastery criteria noted",
+      maintenance_criteria: "Maintenance criteria noted",
+      generalization_criteria: "Generalization criteria noted",
+      teaching_strategies: "Modeling and least-to-most prompting",
+      operational_definition: "Independent functional communication response",
+    });
+    expect(createGoalsPayload[0]).not.toHaveProperty("source");
     expect(createGoalsPayload.filter((goal) => goal.goal_type === "child")).toHaveLength(20);
     expect(createGoalsPayload.filter((goal) => goal.goal_type === "parent")).toHaveLength(6);
     expect(createGoalsPayload.slice(0, 13).every((goal) => goal.program_id === "prod-program-1")).toBe(true);
@@ -1269,6 +1392,68 @@ describe("assessmentPromoteHandler", () => {
     expect(JSON.parse(String((documentPatchCalls.at(-1)?.[1] as RequestInit | undefined)?.body))).toMatchObject({
       status: "approved",
     });
+  });
+
+  it("rejects out-of-scope draft goal domains before locking the assessment", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status")) {
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "drafted" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: "draft-program-1", name: "Draft Program 1", description: "x", accept_state: "accepted" }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: buildAcceptedGoals({ childCount: 1, parentCount: 0 }).map((goal) => ({
+            ...goal,
+            draft_program_id: "draft-program-1",
+            domain_id: "22222222-2222-4222-8222-222222222222",
+          })),
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/goal_domains?")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "Goal domain not found in organization scope" });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_documents?id=eq.doc-1&status=eq.drafted"),
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/programs"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("blocks promotion when accepted goals contain duplicate titles", async () => {

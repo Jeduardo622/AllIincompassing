@@ -197,6 +197,60 @@ describe("goalsHandler", () => {
     expect(Array.isArray(createPayload.objective_data_points)).toBe(true);
   });
 
+  it("rejects creating a goal with a domain outside the organization scope", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+      isOrgMember: false,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "program-1", client_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [],
+      });
+
+    const response = await goalsHandler(
+      new Request("http://localhost/api/goals", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          program_id: "11111111-1111-1111-1111-111111111111",
+          domain_id: "22222222-2222-4222-8222-222222222222",
+          title: "Goal A",
+          description: "Description",
+          original_text: "Original clinical language",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "domain_id is not in scope for this organization" });
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/goal_domains?select=id&id=eq.22222222-2222-4222-8222-222222222222&organization_id=eq.org-1&limit=1"),
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/goals"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it.each(roleMatrix)("returns 403 for out-of-org goal PATCH as $label", async ({ role }) => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({

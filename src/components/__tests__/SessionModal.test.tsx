@@ -1940,6 +1940,451 @@ describe('SessionModal', () => {
     expect(submitted.session_note_goal_measurements?.['goal-1']?.data.incorrect_trials).toBeNull();
   }, 15000);
 
+  it('submits configured duration target values as raw trial values with units', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const targetId = '88888888-8888-4888-8888-888888888881';
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals.map((goal) =>
+          goal.id === 'goal-1' ? { ...goal, measurement_type: 'duration' } : goal,
+        ));
+      }
+      if (table === 'authorizations') {
+        return buildChain([
+          {
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          },
+        ]);
+      }
+      if (table === 'goal_targets') {
+        return buildChain([
+          {
+            id: targetId,
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            goal_id: 'goal-1',
+            name: 'Match peer greeting in 4/5 trials',
+            measurement_type: 'duration',
+            graph_config: {},
+            status: 'active',
+            sort_order: 0,
+            created_by: null,
+            updated_by: null,
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+          },
+        ]);
+      }
+      if (table === 'trial_events') {
+        return buildChain([]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        existingSessions={[]}
+        session={{
+          id: 'session-duration-trials',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
+    fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
+      target: { value: 'Duration observed' },
+    });
+    fireEvent.change(screen.getByLabelText(/Duration value for target 1 \(minutes\)/i), {
+      target: { value: '12.5' },
+    });
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 1/i), {
+      target: { value: 'Timer started after verbal prompt' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Add duration trial for target 1/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_trial_events: [
+          expect.objectContaining({
+            target_id: targetId,
+            trial_number: 1,
+            value: 12.5,
+          }),
+        ],
+      }));
+    });
+    const submitted = onSubmit.mock.calls[0]?.[0] as {
+      session_note_goal_measurements?: Record<string, SessionGoalMeasurementEntry>;
+    };
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.measurement_type).toBe('duration');
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.target_trials).toBeNull();
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.trial_prompt_note)
+      .toBe('Timer started after verbal prompt');
+  }, 15000);
+
+  it('warns before closing when a numeric raw-trial value is typed but not added', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const targetId = '88888888-8888-4888-8888-888888888883';
+    const targetName = 'Match peer greeting in 4/5 trials';
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'linked-note-duration-draft',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Default Goal'],
+      goal_ids: ['goal-1'],
+      goal_measurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'duration',
+            metric_label: 'Duration',
+            metric_unit: 'minutes',
+            targets: [targetName],
+            target: targetName,
+            target_trials: [{
+              target: targetName,
+              metric_value: null,
+              incorrect_trials: null,
+              opportunities: null,
+              trial_prompt_note: null,
+            }],
+          },
+        },
+      },
+      goal_notes: { 'goal-1': '' },
+      session_id: 'session-duration-draft',
+      narrative: '',
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T09:00:00.000Z',
+    });
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals.map((goal) =>
+          goal.id === 'goal-1' ? { ...goal, measurement_type: 'duration' } : goal,
+        ));
+      }
+      if (table === 'authorizations') {
+        return buildChain([{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }]);
+      }
+      if (table === 'goal_targets') {
+        return buildChain([
+          {
+            id: targetId,
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            goal_id: 'goal-1',
+            name: targetName,
+            measurement_type: 'duration',
+            graph_config: {},
+            status: 'active',
+            sort_order: 0,
+            created_by: null,
+            updated_by: null,
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+          },
+        ]);
+      }
+      if (table === 'trial_events') {
+        return buildChain([]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        existingSessions={[]}
+        session={{
+          id: 'session-duration-draft',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />,
+    );
+
+    fireEvent.change(await screen.findByLabelText(/Duration value for target 1 \(minutes\)/i), {
+      target: { value: '12.5' },
+    });
+    expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent('Unsaved changes.');
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await userEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  }, 15000);
+
+  it('does not record blank numeric raw trials but accepts explicit zero values', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const targetId = '88888888-8888-4888-8888-888888888884';
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals.map((goal) =>
+          goal.id === 'goal-1' ? { ...goal, measurement_type: 'duration' } : goal,
+        ));
+      }
+      if (table === 'authorizations') {
+        return buildChain([{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }]);
+      }
+      if (table === 'goal_targets') {
+        return buildChain([
+          {
+            id: targetId,
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            goal_id: 'goal-1',
+            name: 'Match peer greeting in 4/5 trials',
+            measurement_type: 'duration',
+            graph_config: {},
+            status: 'active',
+            sort_order: 0,
+            created_by: null,
+            updated_by: null,
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+          },
+        ]);
+      }
+      if (table === 'trial_events') {
+        return buildChain([]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        existingSessions={[]}
+        session={{
+          id: 'session-duration-blank-trial',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Add duration trial for target 1/i }));
+    expect(screen.getByText('0 trials · total 0')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Duration value for target 1 \(minutes\)/i), {
+      target: { value: '0' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Add duration trial for target 1/i }));
+    expect(screen.getByText('1 trials · total 0')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  }, 15000);
+
+  it('submits task-analysis responses as raw trial events', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const targetId = '88888888-8888-4888-8888-888888888882';
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals.map((goal) =>
+          goal.id === 'goal-1' ? { ...goal, measurement_type: 'taskAnalysis' } : goal,
+        ));
+      }
+      if (table === 'authorizations') {
+        return buildChain([
+          {
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          },
+        ]);
+      }
+      if (table === 'goal_targets') {
+        return buildChain([
+          {
+            id: targetId,
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            goal_id: 'goal-1',
+            name: 'Match peer greeting in 4/5 trials',
+            measurement_type: 'taskAnalysis',
+            graph_config: {},
+            status: 'active',
+            sort_order: 0,
+            created_by: null,
+            updated_by: null,
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+          },
+        ]);
+      }
+      if (table === 'trial_events') {
+        return buildChain([]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        existingSessions={[]}
+        session={{
+          id: 'session-task-analysis-trials',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
+    fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
+      target: { value: 'Task analysis observed' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Record independent response for target 1/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Record prompted response for target 1/i }));
+    expect(screen.getByText('+2 · −0')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_trial_events: [
+          expect.objectContaining({
+            target_id: targetId,
+            trial_number: 1,
+            response: 'independent',
+          }),
+          expect.objectContaining({
+            target_id: targetId,
+            trial_number: 2,
+            response: 'prompted',
+          }),
+        ],
+      }));
+    });
+    const submitted = onSubmit.mock.calls[0]?.[0] as {
+      session_note_goal_measurements?: Record<string, SessionGoalMeasurementEntry>;
+    };
+    expect(submitted.session_note_goal_measurements?.['goal-1']?.data.measurement_type).toBe('taskAnalysis');
+  }, 15000);
+
   it('keeps aggregate counts nulled when reopening a raw-trial-backed target without new trial clicks', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const targetId = '88888888-8888-4888-8888-888888888889';

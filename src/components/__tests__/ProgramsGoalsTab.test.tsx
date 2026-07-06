@@ -794,11 +794,47 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
               created_at: "2026-02-11T00:00:00.000Z",
               updated_at: "2026-02-11T00:00:00.000Z",
             },
+            {
+              id: "goal-2",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              program_id: "program-1",
+              domain_id: "behavior-domain",
+              title: "Reduce elopement",
+              description: "Client remains with therapist during transitions.",
+              original_text: "Reduce elopement during transitions.",
+              clinical_goal_type: "behavior",
+              measurement_type: "frequency",
+              baseline_data: "4 incidents per week",
+              target_criteria: "0-1 incidents per week",
+              source: "fba_extraction",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+            {
+              id: "goal-3",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              program_id: "program-1",
+              domain_id: null,
+              title: "Caregiver participation",
+              description: "Caregiver implements session carryover strategies.",
+              original_text: "Caregiver will participate in treatment planning.",
+              clinical_goal_type: null,
+              measurement_type: null,
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
           ]),
           { status: 200 },
         );
       }
       if (method === "GET" && path.startsWith("/api/goal-targets?")) {
+        if (!path.includes("goal_id=goal-1")) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
         return new Response(
           JSON.stringify([
             {
@@ -845,10 +881,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
               trial_number: 1,
               response: null,
               value: 3,
-              event_timestamp: "2026-02-11T17:00:00.000Z",
+              event_timestamp: "2026-02-11T00:30:00.000Z",
               metadata: {},
-              created_at: "2026-02-11T17:00:00.000Z",
-              updated_at: "2026-02-11T17:00:00.000Z",
+              created_at: "2026-02-11T00:30:00.000Z",
+              updated_at: "2026-02-11T00:30:00.000Z",
             },
             {
               id: "trial-event-2",
@@ -893,23 +929,38 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     expect(await screen.findAllByText("Increase functional communication")).not.toHaveLength(0);
-    expect(screen.getByText("Baseline: 2 requests per session")).toBeInTheDocument();
-    expect(screen.getByText("Operational definition: Independent request within 5 seconds")).toBeInTheDocument();
-    expect(screen.getByText("Teaching strategy: DTT, NET, prompt fading")).toBeInTheDocument();
-    expect(screen.getByText("Mastery: 80% across three sessions")).toBeInTheDocument();
-    expect(screen.getByText("Generalization: Two settings and two adults")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Skill Acquisition" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Behavior Reduction" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Other Goals" })).toBeInTheDocument();
+    expect(screen.getAllByText("Reduce elopement").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Caregiver participation").length).toBeGreaterThan(0);
+    expect(screen.getByText("2 requests per session")).toBeInTheDocument();
+    expect(screen.getByText("Independent request within 5 seconds")).toBeInTheDocument();
+    expect(screen.getByText("DTT, NET, prompt fading")).toBeInTheDocument();
+    expect(screen.getByText("80% across three sessions")).toBeInTheDocument();
+    expect(screen.getByText("Two settings and two adults")).toBeInTheDocument();
+    expect(screen.getByText("Skill · Domain communication-domain")).toBeInTheDocument();
+    expect(screen.getByText("Manual · percent opportunities")).toBeInTheDocument();
+    expect(screen.getByText("Unspecified · No domain assigned")).toBeInTheDocument();
+    expect(screen.getByText("Source not set · Measurement not set")).toBeInTheDocument();
 
     expect(await screen.findByText("Mands for help")).toBeInTheDocument();
     expect(screen.getByText("Measurement: Frequency")).toBeInTheDocument();
     expect(screen.getByText(/Graph: bar from/i)).toBeInTheDocument();
-    const mandsGraph = await screen.findByLabelText("Trial-event graph for Mands for help");
-    expect(within(mandsGraph).getByText("2 trials")).toBeInTheDocument();
-    expect(within(mandsGraph).getByText("Trial 1")).toBeInTheDocument();
-    expect(within(mandsGraph).getByText("Trial 2")).toBeInTheDocument();
-    expect(within(mandsGraph).getByText("5")).toBeInTheDocument();
+    const mandsProgress = await screen.findByLabelText("Trial-event progress for Mands for help");
+    expect(within(mandsProgress).getByText("2 trials")).toBeInTheDocument();
+    expect(within(mandsProgress).getByLabelText("Recent graph points for Mands for help")).toBeInTheDocument();
+    const trialTable = within(mandsProgress).getByRole("table", { name: /Raw trial events for Mands for help/i });
+    expect(within(trialTable).getByRole("columnheader", { name: "Trial" })).toBeInTheDocument();
+    expect(within(trialTable).getByRole("columnheader", { name: "Result" })).toBeInTheDocument();
+    expect(within(trialTable).getByText("1")).toBeInTheDocument();
+    expect(within(trialTable).getByText("2")).toBeInTheDocument();
+    expect(within(trialTable).getAllByText("Feb 11")).toHaveLength(2);
+    expect(within(trialTable).getByText("5")).toBeInTheDocument();
+    expect(within(trialTable).getAllByText("None recorded")).toHaveLength(2);
 
     expect(await screen.findByText("Sustained engagement")).toBeInTheDocument();
-    const engagementGraph = await screen.findByLabelText("Trial-event graph for Sustained engagement");
+    const engagementGraph = await screen.findByLabelText("Trial-event progress for Sustained engagement");
     expect(within(engagementGraph).getByText("Loading trial-level data...")).toBeInTheDocument();
     expect(
       await within(engagementGraph).findByText(

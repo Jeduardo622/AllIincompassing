@@ -19,12 +19,12 @@ const CANONICAL_ROLE_NAMES: AppRole[] = [
 
 const ROLE_RANK: Record<AppRole, number> = {
   super_admin: 8,
-  bcba: 8,
-  admin: 7,
-  admin_schedule: 6,
-  midtier: 5,
-  therapist: 4,
-  bt: 3,
+  bcba: 7,
+  admin: 6,
+  admin_schedule: 5,
+  midtier: 4,
+  therapist: 3,
+  bt: 2,
   client: 1,
 };
 

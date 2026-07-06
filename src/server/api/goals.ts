@@ -97,6 +97,18 @@ export async function goalsHandler(request: Request): Promise<Response> {
     return lookupResult.data[0] ?? null;
   };
 
+  const loadDomain = async (domainId: string): Promise<{ id: string } | null> => {
+    const domainLookupUrl = `${supabaseUrl}/rest/v1/goal_domains?select=id&id=eq.${domainId}&organization_id=eq.${organizationId}&limit=1`;
+    const lookupResult = await fetchJson<Array<{ id: string }>>(domainLookupUrl, {
+      method: "GET",
+      headers,
+    });
+    if (!lookupResult.ok || !Array.isArray(lookupResult.data) || lookupResult.data.length === 0) {
+      return null;
+    }
+    return lookupResult.data[0] ?? null;
+  };
+
   if (request.method === "GET") {
     const url = new URL(request.url);
     const programId = url.searchParams.get("program_id");
@@ -157,6 +169,12 @@ export async function goalsHandler(request: Request): Promise<Response> {
     }
     if (program.client_id !== parsed.data.client_id) {
       return json({ error: "program_id does not belong to client_id" }, 400);
+    }
+    if (parsed.data.domain_id) {
+      const domain = await loadDomain(parsed.data.domain_id);
+      if (!domain) {
+        return json({ error: "domain_id is not in scope for this organization" }, 403);
+      }
     }
 
     const createPayload = {
@@ -230,6 +248,12 @@ export async function goalsHandler(request: Request): Promise<Response> {
       }
       if (program.client_id !== effectiveClientId) {
         return json({ error: "program_id does not belong to client_id" }, 400);
+      }
+    }
+    if (parsed.data.domain_id) {
+      const domain = await loadDomain(parsed.data.domain_id);
+      if (!domain) {
+        return json({ error: "domain_id is not in scope for this organization" }, 403);
       }
     }
 

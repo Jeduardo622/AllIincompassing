@@ -51,6 +51,7 @@ let existingProfile: TestProfile & {
 };
 let adminActionInserts: Array<Record<string, unknown>> = [];
 let userRolesUpsertPayload: Record<string, unknown> | null = null;
+let deletedUserRoleFilters: Array<{ userId: string; roleIds: string[] }> = [];
 let stallAuditUserLookup = false;
 let failLegacyRoleRpc = false;
 let priorJunctionRole: TestRole = 'admin';
@@ -177,8 +178,12 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
         if (table === 'user_roles') {
           return {
             delete: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                in: vi.fn(async () => {
+              eq: vi.fn((column: string, value: string) => ({
+                in: vi.fn(async (...args: unknown[]) => {
+                  const roleIds = args.length === 2 ? args[1] : args[0];
+                  if (column === 'user_id' && Array.isArray(roleIds)) {
+                    deletedUserRoleFilters.push({ userId: value, roleIds });
+                  }
                   roleMutationEvents.push('delete-user-roles');
                   return { error: null };
                 }),
@@ -244,6 +249,7 @@ describe('admin-users-roles access control', () => {
     adminActionInserts = [];
     adminUsers.clear();
     userRolesUpsertPayload = null;
+    deletedUserRoleFilters = [];
     stallAuditUserLookup = false;
     failLegacyRoleRpc = false;
     priorJunctionRole = 'admin';
@@ -300,6 +306,12 @@ describe('admin-users-roles access control', () => {
       granted_by: 'super-admin-1',
       is_active: true,
     });
+    expect(deletedUserRoleFilters).toEqual([
+      {
+        userId: existingProfile.id,
+        roleIds: ['rid-super', 'rid-bcba', 'rid-admin', 'rid-admin-schedule', 'rid-midtier'],
+      },
+    ]);
     expect(latestUpdatePayload).toEqual({ role: 'therapist' });
     expect(logApiAccess).toHaveBeenCalledWith('PATCH', '/admin/users/11111111-1111-1111-1111-111111111111/roles', superAdminContext, 200);
     expect(adminActionInserts).toEqual([
@@ -366,8 +378,10 @@ describe('admin-users-roles access control', () => {
     });
   });
 
-  it('syncs user_roles when assigning bcba', async () => {
+  it('syncs user_roles and revokes stale super_admin when downgrading to bcba', async () => {
     rpcRoles = ['super_admin'];
+    existingProfile.role = 'super_admin';
+    priorJunctionRole = 'super_admin';
 
     const superAdminContext: TestUserContext = {
       user: { id: 'super-admin-3', email: 'super3@example.com' },
@@ -412,6 +426,13 @@ describe('admin-users-roles access control', () => {
       granted_by: 'super-admin-3',
       is_active: true,
     });
+    expect(deletedUserRoleFilters).toEqual([
+      {
+        userId: existingProfile.id,
+        roleIds: ['rid-super'],
+      },
+    ]);
+    expect(latestUpdatePayload).toEqual({ role: 'bcba' });
   });
 
   it('accepts a target user id in the request body for direct edge invokes', async () => {

@@ -159,19 +159,19 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/super-admin/feature-flags',
-    allowedRoles: ['bcba', 'super_admin'],
+    allowedRoles: ['super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.feature_flags: super_admin_manage'],
   }),
   createGuard({
     path: '/super-admin/impersonation',
-    allowedRoles: ['bcba', 'super_admin'],
+    allowedRoles: ['super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['supabase.functions.super-admin-impersonate: super_admin_execute'],
   }),
   createGuard({
     path: '/super-admin/prompts',
-    allowedRoles: ['bcba', 'super_admin'],
+    allowedRoles: ['super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.agent_prompt_tool_versions: admin_read'],
   }),

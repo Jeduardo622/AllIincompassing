@@ -133,9 +133,9 @@ export const ROUTES: readonly RouteDefinition[] = [
   { path: '/family', component: 'FamilyDashboard', roles: ['client'], permissions: [] },
   { path: '/settings', component: 'Settings', roles: ['admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/settings/:tabId', component: 'Settings', roles: ['admin', 'bcba', 'super_admin'], permissions: [] },
-  { path: '/super-admin/feature-flags', component: 'SuperAdminFeatureFlags', roles: ['bcba', 'super_admin'], permissions: [] },
-  { path: '/super-admin/impersonation', component: 'SuperAdminImpersonation', roles: ['bcba', 'super_admin'], permissions: [] },
-  { path: '/super-admin/prompts', component: 'SuperAdminPrompts', roles: ['bcba', 'super_admin'], permissions: [] },
+  { path: '/super-admin/feature-flags', component: 'SuperAdminFeatureFlags', roles: ['super_admin'], permissions: [] },
+  { path: '/super-admin/impersonation', component: 'SuperAdminImpersonation', roles: ['super_admin'], permissions: [] },
+  { path: '/super-admin/prompts', component: 'SuperAdminPrompts', roles: ['super_admin'], permissions: [] },
 ];
 
 const TEST_ROLES: readonly Role[] = ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'];

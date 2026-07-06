@@ -27,21 +27,31 @@ const EMPLOYEE_ROLE_LISTING_GRANTS_MIGRATION_PATH = path.join(
   'migrations',
   '20260702222500_restrict_employee_users_paged_execute_grants.sql',
 );
+const BCBA_EXACT_CAPABILITY_MIGRATION_PATH = path.join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260706023600_bcba_exact_capability_matrix.sql',
+);
 const SMOKE_SQL_PATH = path.join(process.cwd(), 'tests', 'sql', 'employee_role_capability_smoke.sql');
 
 const sql = readFileSync(MIGRATION_PATH, 'utf8');
 const exposeProgramGoalRpcSql = readFileSync(EXPOSE_PROGRAM_GOAL_RPC_MIGRATION_PATH, 'utf8');
 const employeeRoleListingSql = readFileSync(EMPLOYEE_ROLE_LISTING_MIGRATION_PATH, 'utf8');
 const employeeRoleListingGrantsSql = readFileSync(EMPLOYEE_ROLE_LISTING_GRANTS_MIGRATION_PATH, 'utf8');
+const bcbaExactCapabilitySql = readFileSync(BCBA_EXACT_CAPABILITY_MIGRATION_PATH, 'utf8');
 const smokeSql = readFileSync(SMOKE_SQL_PATH, 'utf8');
 
-const extractFunction = (name: string): string => {
+const extractFunctionFrom = (sourceSql: string, name: string): string => {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(`CREATE OR REPLACE FUNCTION ${escapedName}\\([\\s\\S]*?\\n\\$\\$;`, 'i');
-  const match = sql.match(pattern);
+  const match = sourceSql.match(pattern);
   expect(match, `${name} function should exist`).not.toBeNull();
   return match?.[0] ?? '';
 };
+
+const extractFunction = (name: string): string => extractFunctionFrom(sql, name);
+const extractBcbaExactFunction = (name: string): string => extractFunctionFrom(bcbaExactCapabilitySql, name);
 
 describe('employee role capability matrix migration', () => {
   it('keeps bt and midtier out of broad therapist/org_member helper aliases', () => {
@@ -54,12 +64,41 @@ describe('employee role capability matrix migration', () => {
     expect(sql).not.toContain("WHEN 'therapist' THEN ARRAY['therapist', 'midtier', 'bt']::text[]");
   });
 
-  it('treats bcba as super-admin-equivalent in database helper paths', () => {
-    const currentUserSuperAdmin = extractFunction('app.current_user_is_super_admin');
-    const isSuperAdmin = extractFunction('app.is_super_admin');
+  it('removes BCBA from super-admin helper paths in the exact-capability follow-up', () => {
+    const currentUserSuperAdmin = extractBcbaExactFunction('app.current_user_is_super_admin');
+    const isSuperAdmin = extractBcbaExactFunction('app.is_super_admin');
+    const roleForOrg = extractBcbaExactFunction('app.user_has_role_for_org');
 
-    expect(currentUserSuperAdmin).toContain("r.name IN ('super_admin', 'bcba')");
-    expect(isSuperAdmin).toContain("r.name IN ('super_admin', 'bcba')");
+    expect(currentUserSuperAdmin).toContain("r.name = 'super_admin'");
+    expect(isSuperAdmin).toContain("r.name = 'super_admin'");
+    expect(currentUserSuperAdmin).not.toContain("'bcba'");
+    expect(isSuperAdmin).not.toContain("'bcba'");
+    expect(roleForOrg).toContain("r.name IN ('super_admin', 'org_super_admin')");
+    expect(roleForOrg).not.toContain("r.name IN ('super_admin', 'org_super_admin', 'bcba')");
+  });
+
+  it('keeps BCBA operational access explicit in the exact-capability follow-up', () => {
+    expect(extractBcbaExactFunction('app.current_user_can_manage_staff_clients')).toContain(
+      "ARRAY['admin', 'admin_schedule', 'bcba']::text[]",
+    );
+    expect(extractBcbaExactFunction('app.current_user_can_manage_authorizations')).toContain(
+      "ARRAY['admin', 'admin_schedule', 'midtier', 'bcba']::text[]",
+    );
+    expect(extractBcbaExactFunction('app.current_user_can_manage_schedule')).toContain(
+      "ARRAY['admin', 'admin_schedule', 'midtier', 'therapist', 'bcba']::text[]",
+    );
+    expect(extractBcbaExactFunction('app.current_user_can_manage_programs_goals')).toContain(
+      "ARRAY['admin', 'midtier', 'therapist', 'bcba']::text[]",
+    );
+    expect(extractBcbaExactFunction('app.current_user_can_take_client_data')).toContain(
+      "ARRAY['admin', 'midtier', 'bcba']::text[]",
+    );
+    expect(bcbaExactCapabilitySql).toContain(
+      "ARRAY['admin', 'admin_schedule', 'therapist', 'midtier', 'bcba']::text[]",
+    );
+    expect(bcbaExactCapabilitySql).toContain(
+      "ARRAY['admin', 'admin_schedule', 'therapist', 'midtier', 'bt', 'bcba']::text[]",
+    );
   });
 
   it('allows admin_schedule to manage staff, clients, assignments, and authorizations only through explicit helpers', () => {
@@ -132,7 +171,8 @@ describe('employee role capability matrix migration', () => {
     expect(smokeSql).toContain('admin_schedule_assignment_write_allowed');
     expect(smokeSql).toContain('midtier_schedule_write_allowed');
     expect(smokeSql).toContain('bt_schedule_write_denied');
-    expect(smokeSql).toContain('bcba_super_admin_equivalence_helpers');
+    expect(smokeSql).toContain('bcba_exact_capability_helpers');
+    expect(smokeSql).toContain('not app.current_user_is_super_admin()');
   });
 
   it('lists editable employee roles from active unexpired junction grants only', () => {

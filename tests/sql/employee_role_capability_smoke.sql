@@ -409,8 +409,8 @@ do $bcba$
 begin
   insert into role_smoke_results
   values (
-    'bcba_super_admin_equivalence_helpers',
-    app.current_user_is_super_admin()
+    'bcba_exact_capability_helpers',
+    not app.current_user_is_super_admin()
       and app.current_user_can_manage_staff_clients('00000000-0000-4000-8000-000000000001')
       and app.current_user_can_manage_schedule('00000000-0000-4000-8000-000000000001')
       and app.current_user_can_manage_programs_goals('00000000-0000-4000-8000-000000000001'),

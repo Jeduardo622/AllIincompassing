@@ -321,7 +321,7 @@ function App() {
                     <Route
                       path="super-admin/feature-flags"
                       element={
-                        <RoleGuard roles={['bcba', 'super_admin']}>
+                        <RoleGuard roles={['super_admin']}>
                           <SuperAdminFeatureFlags />
                         </RoleGuard>
                       }
@@ -329,7 +329,7 @@ function App() {
                     <Route
                       path="super-admin/impersonation"
                       element={
-                        <RoleGuard roles={['bcba', 'super_admin']}>
+                        <RoleGuard roles={['super_admin']}>
                           <SuperAdminImpersonation />
                         </RoleGuard>
                       }
@@ -337,7 +337,7 @@ function App() {
                     <Route
                       path="super-admin/prompts"
                       element={
-                        <RoleGuard roles={['bcba', 'super_admin']}>
+                        <RoleGuard roles={['super_admin']}>
                           <SuperAdminPrompts />
                         </RoleGuard>
                       }

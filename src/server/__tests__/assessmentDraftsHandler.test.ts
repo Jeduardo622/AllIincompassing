@@ -362,6 +362,13 @@ describe("assessmentDraftsHandler", () => {
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?")) {
         const structuredGoals = buildStructuredGoalSections();
+        structuredGoals[0] = {
+          ...structuredGoals[0],
+          payload: {
+            ...(structuredGoals[0]?.payload as Record<string, unknown>),
+            domain_id: "33333333-3333-4333-8333-333333333333",
+          },
+        };
         structuredGoals[1] = {
           ...structuredGoals[1],
           payload: {
@@ -395,6 +402,9 @@ describe("assessmentDraftsHandler", () => {
           status: 200,
           data: structuredGoals,
         };
+      }
+      if (method === "GET" && url.includes("/rest/v1/goal_domains?")) {
+        return { ok: true, status: 200, data: [{ id: "33333333-3333-4333-8333-333333333333" }] };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
         return { ok: true, status: 201, data: [{ id: "draft-program-2", name: "Communication Program" }] };
@@ -447,6 +457,7 @@ describe("assessmentDraftsHandler", () => {
     expect(goalPayload[3]?.title).toBe("Transition Goal (2024)");
     expect(goalPayload[4]?.title).toBe("Transition Goal (2024) (2)");
     expect(goalPayload[0]?.mastery_criteria).toBe("Mastery criteria noted");
+    expect(goalPayload[0]?.domain_id).toBe("33333333-3333-4333-8333-333333333333");
     expect(goalPayload[0]?.clinical_goal_type).toBe("skill");
     expect(goalPayload[0]?.baseline).toBe("Baseline noted");
     expect(goalPayload[0]?.teaching_strategies).toBe("Modeling and least-to-most prompting");
@@ -454,6 +465,10 @@ describe("assessmentDraftsHandler", () => {
     expect(goalPayload[0]?.evidence_refs).toEqual([
       { section_key: "goals_treatment_planning", source_span: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS#0" },
     ]);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/goal_domains?select=id&id=in.(33333333-3333-4333-8333-333333333333)&organization_id=eq.org-1"),
+      expect.objectContaining({ method: "GET" }),
+    );
     const liveProgramWrite = vi
       .mocked(fetchJson)
       .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/programs"));
@@ -462,6 +477,79 @@ describe("assessmentDraftsHandler", () => {
       .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/goals"));
     expect(liveProgramWrite).toBeUndefined();
     expect(liveGoalWrite).toBeUndefined();
+  });
+
+  it("rejects deterministic structured draft domains outside the organization before writing draft rows", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?")) {
+        const structuredGoals = buildStructuredGoalSections();
+        structuredGoals[0] = {
+          ...structuredGoals[0],
+          payload: {
+            ...(structuredGoals[0]?.payload as Record<string, unknown>),
+            domain_id: "44444444-4444-4444-8444-444444444444",
+          },
+        };
+        return { ok: true, status: 200, data: structuredGoals };
+      }
+      if (method === "GET" && url.includes("/rest/v1/goal_domains?")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          auto_generate: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "Goal domain not found in organization scope" });
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/goal_domains?select=id&id=in.(44444444-4444-4444-8444-444444444444)&organization_id=eq.org-1"),
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_programs"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_goals"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("blocks IEHP deterministic draft auto-generation at the drafts API", async () => {

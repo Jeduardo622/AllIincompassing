@@ -45,6 +45,42 @@ set baseline = baseline_data
 where baseline is null
   and baseline_data is not null;
 
+create temporary table legacy_goal_domain_backfill on commit drop as
+select
+  legacy_domains.organization_id,
+  legacy_domains.domain_id as legacy_domain_id,
+  case
+    when row_number() over (partition by legacy_domains.domain_id order by legacy_domains.organization_id) = 1
+      then legacy_domains.domain_id
+    else gen_random_uuid()
+  end as backfilled_domain_id
+from (
+  select distinct goals.organization_id, goals.domain_id
+  from public.goals
+  where goals.domain_id is not null
+    and goals.organization_id is not null
+) legacy_domains;
+
+insert into public.goal_domains (id, organization_id, name, description)
+select
+  backfilled_domain_id,
+  organization_id,
+  'Legacy domain ' || legacy_domain_id::text,
+  case
+    when backfilled_domain_id = legacy_domain_id
+      then 'Backfilled from goals.domain_id before goal domain catalog enforcement.'
+    else 'Backfilled from a duplicate legacy goals.domain_id before goal domain catalog enforcement.'
+  end
+from legacy_goal_domain_backfill
+on conflict (id) do nothing;
+
+update public.goals
+set domain_id = legacy_goal_domain_backfill.backfilled_domain_id
+from legacy_goal_domain_backfill
+where goals.organization_id = legacy_goal_domain_backfill.organization_id
+  and goals.domain_id = legacy_goal_domain_backfill.legacy_domain_id
+  and goals.domain_id is distinct from legacy_goal_domain_backfill.backfilled_domain_id;
+
 alter table public.assessment_draft_goals
   drop constraint if exists assessment_draft_goals_clinical_goal_type_chk,
   add constraint assessment_draft_goals_clinical_goal_type_chk

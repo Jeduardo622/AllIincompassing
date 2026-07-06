@@ -259,6 +259,11 @@ const getPayloadString = (payload: Record<string, unknown>, keys: string[], fall
   return fallback;
 };
 
+const getPayloadUuid = (payload: Record<string, unknown>, keys: string[]): string | null => {
+  const value = getPayloadString(payload, keys);
+  return value && isUuid(value) ? value : null;
+};
+
 const getPayloadRows = (payload: Record<string, unknown>, keys: string[]): Array<Record<string, unknown>> => {
   for (const key of keys) {
     const value = payload[key];
@@ -350,6 +355,7 @@ export const buildDeterministicDraftPayload = (
       description,
       original_text: originalText,
       goal_type: isParentGoal ? ("parent" as const) : ("child" as const),
+      domain_id: getPayloadUuid(payload, ["domain_id", "domainId"]),
       clinical_goal_type: resolveClinicalGoalTypeFromGoalSection(section.field_key, payload),
       target_behavior: getPayloadString(payload, ["target_behavior", "behavior", "skill"], title),
       measurement_type: getPayloadString(payload, ["measurement_type", "measure", "data_collection"], "frequency"),

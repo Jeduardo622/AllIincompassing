@@ -233,6 +233,18 @@ export interface Goal {
   updated_at: string;
 }
 
+export interface GoalDomain {
+  id: string;
+  organization_id: string;
+  name: string;
+  description?: string | null;
+  status: 'active' | 'inactive' | 'archived';
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type TargetMeasurementType =
   | 'correctIncorrect'
   | 'frequency'

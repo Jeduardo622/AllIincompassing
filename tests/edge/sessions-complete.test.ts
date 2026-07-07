@@ -96,6 +96,9 @@ const makeDb = (userTherapistLinks: Array<{ therapist_id: string }> = []) => ({
     if (table === "user_therapist_links") {
       return makeSelectBuilder(userTherapistLinks);
     }
+    if (table === "therapists") {
+      return makeSelectBuilder(userTherapistLinks.map((row) => ({ id: row.therapist_id })));
+    }
     return makeSelectBuilder([]);
   }),
 } as any);

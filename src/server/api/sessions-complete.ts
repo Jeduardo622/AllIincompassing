@@ -375,11 +375,11 @@ const completeSessionViaRuntimeRest = async ({
       headers: traceHeaders,
     });
   }
-  if (!roleResolution.organizationId || (!roleResolution.isTherapist && !roleResolution.isAdmin && !roleResolution.isSuperAdmin)) {
+  if (!roleResolution.organizationId) {
     incrementRuntimeMetric("tenant_denial_total", {
       function: "sessions-complete",
       orgId: roleResolution.organizationId ?? undefined,
-      reason: roleResolution.organizationId ? "role-denied" : "missing-org",
+      reason: "missing-org",
     });
     return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
   }
@@ -441,7 +441,7 @@ const completeSessionViaRuntimeRest = async ({
     });
   }
   const session = sessionResult.data[0];
-  if (roleResolution.isTherapist) {
+  if (!roleResolution.isAdmin && !roleResolution.isSuperAdmin) {
     const therapistAccess = await userCanAccessTherapistSession({
       supabaseUrl,
       headers,

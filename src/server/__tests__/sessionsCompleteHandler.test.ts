@@ -444,7 +444,7 @@ describe("sessionsCompleteHandler", () => {
 
   it("runtime REST fallback allows linked therapist users to complete sessions assigned to their therapist row id", async () => {
     const fetchMock = makeFallbackFetchMock({
-      roleName: "therapist",
+      roleName: "no-grant",
       authUserId: "auth-user-1",
       session: {
         id: sessionId,

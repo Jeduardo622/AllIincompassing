@@ -9,7 +9,7 @@
  * - Super admin routes: /admin/users/:id/roles (super_admin only)
  */
 import { errorEnvelope, getRequestId } from "../lib/http/error.ts";
-import { resolveOrgId } from "./org.ts";
+import { resolveOrgId, userHasTherapistLinkForOrg } from "./org.ts";
 import { corsHeadersForRequest as sharedCorsHeadersForRequest } from "./cors.ts";
 import { resolveSupabaseUrlFromEnv } from "./supabaseEnv.ts";
 import { extractBearerToken, resolvePublishableApiKeyForRequest } from "./requestAuthHeaders.ts";
@@ -191,6 +191,7 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
       supabase,
       orgId,
       roleRows as Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>,
+      user.id,
     );
 
     return {
@@ -303,6 +304,7 @@ async function resolveRoleForOrganization(
   supabase: ReturnType<SupabaseModule["createClient"]>,
   orgId: string | null,
   roleRows: Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>,
+  userId?: string | null,
 ): Promise<Role> {
   if (!orgId) {
     return resolveRoleFromRoleRows(roleRows);
@@ -381,6 +383,10 @@ async function resolveRoleForOrganization(
       target_organization_id: orgId,
     })
   ) {
+    return "bt";
+  }
+
+  if (userId && await userHasTherapistLinkForOrg(supabase, orgId, userId)) {
     return "bt";
   }
 

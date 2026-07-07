@@ -11,6 +11,7 @@ import {
   orgScopedQuery,
   MissingOrgContextError,
   ForbiddenError,
+  userHasTherapistLinkForOrg,
 } from "../_shared/org.ts";
 import { getLogger, type Logger } from "../_shared/logging.ts";
 import { increment } from "../_shared/metrics.ts";
@@ -139,6 +140,9 @@ export async function resolveCompletionRole(
     return "admin";
   }
   if (await assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId })) {
+    return "therapist";
+  }
+  if (await userHasTherapistLinkForOrg(db, orgId, userId)) {
     return "therapist";
   }
   return null;

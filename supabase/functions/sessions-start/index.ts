@@ -1,7 +1,13 @@
 import { z } from "npm:zod@3.23.8";
 import { createRequestClient } from "../_shared/database.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
-import { assertUserHasOrgRole, MissingOrgContextError, orgScopedQuery, requireOrg } from "../_shared/org.ts";
+import {
+  assertUserHasOrgRole,
+  MissingOrgContextError,
+  orgScopedQuery,
+  requireOrg,
+  userHasTherapistLinkForOrg,
+} from "../_shared/org.ts";
 
 const requestSchema = z.object({
   session_id: z.string().uuid(),
@@ -70,7 +76,12 @@ export const handleSessionsStart = async (req: Request) => {
     assertUserHasOrgRole(db, orgId, "super_admin"),
   ]);
 
-  if (!isTherapist && !isAdmin && !isSuperAdmin) {
+  const hasLinkedTherapistRole =
+    !isTherapist && !isAdmin && !isSuperAdmin
+      ? await userHasTherapistLinkForOrg(db, orgId, currentUserId)
+      : false;
+
+  if (!isTherapist && !isAdmin && !isSuperAdmin && !hasLinkedTherapistRole) {
     return json({ error: "Forbidden" }, 403);
   }
 
@@ -105,7 +116,7 @@ export const handleSessionsStart = async (req: Request) => {
   };
 
   if (
-    isTherapist &&
+    (isTherapist || hasLinkedTherapistRole) &&
     !isAdmin &&
     !isSuperAdmin &&
     !(await userCanAccessTherapistSession(db, currentUserId, session.therapist_id))

@@ -182,7 +182,7 @@ describe("sessionsStartHandler", () => {
     });
     vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
-      isTherapist: true,
+      isTherapist: false,
       isAdmin: false,
       isOrgMember: false,
       isSuperAdmin: false,

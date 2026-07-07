@@ -122,4 +122,42 @@ describe('auth middleware org-scoped admin role resolution', () => {
 
     expect(role).toBe('client');
   });
+
+  it('treats a same-org user_therapist_links row as BT-compatible access', async () => {
+    const module = await import('../../supabase/functions/_shared/auth-middleware.ts');
+    const rpc = vi.fn(async (fn: string) => {
+      if (fn === 'current_user_is_super_admin') {
+        return { data: false, error: null };
+      }
+      if (fn === 'user_has_role_for_org') {
+        return { data: false, error: null };
+      }
+      return { data: null, error: null };
+    });
+    const from = vi.fn((table: string) => {
+      const builder: any = {};
+      const chain = () => builder;
+      builder.select = vi.fn(() => chain());
+      builder.eq = vi.fn(() => chain());
+      builder.in = vi.fn(() => chain());
+      builder.limit = vi.fn(async () => ({
+        data: table === 'user_therapist_links'
+          ? [{ therapist_id: 'therapist-row-1' }]
+          : [{ id: 'therapist-row-1' }],
+        error: null,
+      }));
+      return builder;
+    });
+
+    const role = await module.__TESTING__.resolveRoleForOrganization(
+      { rpc, from } as never,
+      'org-1',
+      [],
+      'auth-user-1',
+    );
+
+    expect(role).toBe('bt');
+    expect(from).toHaveBeenCalledWith('user_therapist_links');
+    expect(from).toHaveBeenCalledWith('therapists');
+  });
 });

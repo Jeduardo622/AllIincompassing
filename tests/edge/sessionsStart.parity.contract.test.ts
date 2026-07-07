@@ -7,6 +7,7 @@ const createRequestClientMock = vi.fn();
 const requireOrgMock = vi.fn();
 const assertUserHasOrgRoleMock = vi.fn();
 const orgScopedQueryMock = vi.fn();
+const userHasTherapistLinkForOrgMock = vi.fn();
 
 class MissingOrgContextError extends Error {
   status = 403;
@@ -24,6 +25,7 @@ async function loadSessionsStartModule() {
     requireOrg: requireOrgMock,
     assertUserHasOrgRole: assertUserHasOrgRoleMock,
     orgScopedQuery: orgScopedQueryMock,
+    userHasTherapistLinkForOrg: userHasTherapistLinkForOrgMock,
     MissingOrgContextError,
   }));
   return import("../../supabase/functions/sessions-start/index.ts");
@@ -42,6 +44,17 @@ const makeUserTherapistLinksBuilder = (rows: Array<{ therapist_id: string }>) =>
   const chain = () => builder;
   builder.select = vi.fn(() => chain());
   builder.eq = vi.fn(() => chain());
+  builder.in = vi.fn(() => chain());
+  builder.limit = vi.fn(async () => ({ data: rows, error: null }));
+  return builder;
+};
+
+const makeTherapistRowsBuilder = (rows: Array<{ id: string }>) => {
+  const builder: any = {};
+  const chain = () => builder;
+  builder.select = vi.fn(() => chain());
+  builder.eq = vi.fn(() => chain());
+  builder.in = vi.fn(() => chain());
   builder.limit = vi.fn(async () => ({ data: rows, error: null }));
   return builder;
 };
@@ -53,6 +66,8 @@ describe("sessions-start organization context parity", () => {
     requireOrgMock.mockReset();
     assertUserHasOrgRoleMock.mockReset();
     orgScopedQueryMock.mockReset();
+    userHasTherapistLinkForOrgMock.mockReset();
+    userHasTherapistLinkForOrgMock.mockResolvedValue(false);
   });
 
   it("returns 403 when organization context is missing before auth.getUser", async () => {
@@ -128,7 +143,15 @@ describe("sessions-start organization context parity", () => {
       },
       error: null,
     }));
-    const fromMock = vi.fn(() => makeUserTherapistLinksBuilder([{ therapist_id: "therapist-row-1" }]));
+    const fromMock = vi.fn((table: string) => {
+      if (table === "user_therapist_links") {
+        return makeUserTherapistLinksBuilder([{ therapist_id: "therapist-row-1" }]);
+      }
+      if (table === "therapists") {
+        return makeTherapistRowsBuilder([{ id: "therapist-row-1" }]);
+      }
+      return makeUserTherapistLinksBuilder([]);
+    });
     createRequestClientMock.mockReturnValue({
       auth: {
         getUser: vi.fn(async () => ({ data: { user: { id: "auth-user-1" } }, error: null })),
@@ -137,7 +160,8 @@ describe("sessions-start organization context parity", () => {
       rpc: rpcMock,
     });
     requireOrgMock.mockResolvedValue("org-1");
-    assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _org: string, role: string) => role === "therapist");
+    assertUserHasOrgRoleMock.mockResolvedValue(false);
+    userHasTherapistLinkForOrgMock.mockResolvedValue(true);
     orgScopedQueryMock.mockImplementation(() => ({
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
@@ -207,6 +231,8 @@ describe("sessions-start RPC result mapping parity", () => {
     requireOrgMock.mockReset();
     assertUserHasOrgRoleMock.mockReset();
     orgScopedQueryMock.mockReset();
+    userHasTherapistLinkForOrgMock.mockReset();
+    userHasTherapistLinkForOrgMock.mockResolvedValue(false);
   });
 
   it("maps RPC failure FORBIDDEN to HTTP 403", async () => {

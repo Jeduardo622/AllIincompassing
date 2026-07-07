@@ -1,5 +1,5 @@
 import { z } from "npm:zod@3.23.8";
-import { createRequestClient } from "../_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
 import {
   assertUserHasOrgRole,
@@ -119,7 +119,7 @@ export const handleSessionsStart = async (req: Request) => {
     (isTherapist || hasLinkedTherapistRole) &&
     !isAdmin &&
     !isSuperAdmin &&
-    !(await userCanAccessTherapistSession(db, currentUserId, session.therapist_id))
+    !(await userCanAccessTherapistSession(supabaseAdmin, currentUserId, session.therapist_id))
   ) {
     return json({ error: "Forbidden" }, 403);
   }

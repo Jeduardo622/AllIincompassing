@@ -124,7 +124,6 @@ describe('auth middleware org-scoped admin role resolution', () => {
   });
 
   it('treats a same-org user_therapist_links row as BT-compatible access', async () => {
-    const module = await import('../../supabase/functions/_shared/auth-middleware.ts');
     const rpc = vi.fn(async (fn: string) => {
       if (fn === 'current_user_is_super_admin') {
         return { data: false, error: null };
@@ -148,6 +147,10 @@ describe('auth middleware org-scoped admin role resolution', () => {
       }));
       return builder;
     });
+    vi.doMock('../../supabase/functions/_shared/database.ts', () => ({
+      supabaseAdmin: { from },
+    }));
+    const module = await import('../../supabase/functions/_shared/auth-middleware.ts');
 
     const role = await module.__TESTING__.resolveRoleForOrganization(
       { rpc, from } as never,

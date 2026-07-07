@@ -379,7 +379,7 @@ async function handleSessionCompletionForRequest(
     role !== "therapist" ||
     session.therapist_id === userId ||
     (session.therapist_id
-      ? await userCanAccessTherapistSession(db, userId, session.therapist_id)
+      ? await userCanAccessTherapistSession(supabaseAdmin, userId, session.therapist_id)
       : false);
   if (!therapistOwnsSession) {
     logger.warn("session.scope.denied", {

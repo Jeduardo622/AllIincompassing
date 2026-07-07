@@ -8,6 +8,7 @@ const requireOrgMock = vi.fn();
 const assertUserHasOrgRoleMock = vi.fn();
 const orgScopedQueryMock = vi.fn();
 const userHasTherapistLinkForOrgMock = vi.fn();
+const supabaseAdminFromMock = vi.fn();
 
 class MissingOrgContextError extends Error {
   status = 403;
@@ -20,6 +21,7 @@ class MissingOrgContextError extends Error {
 async function loadSessionsStartModule() {
   vi.doMock("../../supabase/functions/_shared/database.ts", () => ({
     createRequestClient: createRequestClientMock,
+    supabaseAdmin: { from: supabaseAdminFromMock },
   }));
   vi.doMock("../../supabase/functions/_shared/org.ts", () => ({
     requireOrg: requireOrgMock,
@@ -68,6 +70,7 @@ describe("sessions-start organization context parity", () => {
     orgScopedQueryMock.mockReset();
     userHasTherapistLinkForOrgMock.mockReset();
     userHasTherapistLinkForOrgMock.mockResolvedValue(false);
+    supabaseAdminFromMock.mockReset();
   });
 
   it("returns 403 when organization context is missing before auth.getUser", async () => {
@@ -102,6 +105,7 @@ describe("sessions-start organization context parity", () => {
     });
     requireOrgMock.mockResolvedValue("org-1");
     assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _org: string, role: string) => role === "therapist");
+    supabaseAdminFromMock.mockReturnValue(makeUserTherapistLinksBuilder([]));
     orgScopedQueryMock.mockImplementation(() => ({
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
@@ -162,6 +166,7 @@ describe("sessions-start organization context parity", () => {
     requireOrgMock.mockResolvedValue("org-1");
     assertUserHasOrgRoleMock.mockResolvedValue(false);
     userHasTherapistLinkForOrgMock.mockResolvedValue(true);
+    supabaseAdminFromMock.mockReturnValue(makeUserTherapistLinksBuilder([{ therapist_id: "therapist-row-1" }]));
     orgScopedQueryMock.mockImplementation(() => ({
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
@@ -191,7 +196,7 @@ describe("sessions-start organization context parity", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(fromMock).toHaveBeenCalledWith("user_therapist_links");
+    expect(supabaseAdminFromMock).toHaveBeenCalledWith("user_therapist_links");
     expect(rpcMock).toHaveBeenCalled();
   });
 

@@ -232,9 +232,11 @@ describe("sessions-complete handler", () => {
     vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
       makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
     );
-    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockReturnValue(
-      makeUpdateBuilder(updatedRow),
-    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "user_therapist_links") return makeSelectBuilder([{ therapist_id: "therapist-row-1" }]);
+      if (table === "sessions") return makeUpdateBuilder(updatedRow);
+      return makeSelectBuilder([]);
+    });
 
     const response = await handleSessionCompletion(
       db,
@@ -248,7 +250,7 @@ describe("sessions-complete handler", () => {
     const body = await response.json() as { success: boolean };
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
-    expect(db.from).toHaveBeenCalledWith("user_therapist_links");
+    expect(database.supabaseAdmin.from).toHaveBeenCalledWith("user_therapist_links");
   });
 
   it("creates a pending supervision note request after a BT session is completed", async () => {
@@ -300,6 +302,10 @@ describe("sessions-complete handler", () => {
     vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
       makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
     );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "user_therapist_links") return makeSelectBuilder([]);
+      return makeSelectBuilder([]);
+    });
 
     const response = await handleSessionCompletion(
       makeDb(),

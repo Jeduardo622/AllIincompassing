@@ -119,11 +119,11 @@ export async function assertUserHasOrgRole(
 }
 
 export async function userHasTherapistLinkForOrg(
-  db: SupabaseClient,
+  _db: SupabaseClient,
   orgId: string,
   userId: string,
 ): Promise<boolean> {
-  const { data: linkRows, error: linkError } = await db
+  const { data: linkRows, error: linkError } = await supabaseAdmin
     .from("user_therapist_links")
     .select("therapist_id")
     .eq("user_id", userId)
@@ -143,7 +143,7 @@ export async function userHasTherapistLinkForOrg(
     return false;
   }
 
-  const { data: therapistRows, error: therapistError } = await db
+  const { data: therapistRows, error: therapistError } = await supabaseAdmin
     .from("therapists")
     .select("id")
     .eq("organization_id", orgId)

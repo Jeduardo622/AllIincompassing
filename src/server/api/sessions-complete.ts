@@ -88,6 +88,7 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
   organizationId: string | null;
   isTherapist: boolean;
   isAdmin: boolean;
+  isAdminSchedule: boolean;
   isSuperAdmin: boolean;
   upstreamError: boolean;
 }> => {
@@ -115,6 +116,7 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
       organizationId: null,
       isTherapist: false,
       isAdmin: false,
+      isAdminSchedule: false,
       isSuperAdmin,
       upstreamError: superAdminUpstreamError || orgUpstreamError,
     };
@@ -135,18 +137,25 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
     headers,
     body: JSON.stringify({ role_name: "super_admin", target_organization_id: organizationId }),
   });
+  const adminScheduleResult = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role_name: "admin_schedule", target_organization_id: organizationId }),
+  });
   const hasOrgSuperAdminRole = orgSuperAdminResult.ok && orgSuperAdminResult.data === true;
   return {
     organizationId,
     isTherapist: therapistResult.ok && therapistResult.data === true,
     isAdmin: adminResult.ok && adminResult.data === true,
+    isAdminSchedule: adminScheduleResult.ok && adminScheduleResult.data === true,
     isSuperAdmin: isSuperAdmin || hasOrgSuperAdminRole,
     upstreamError:
       superAdminUpstreamError ||
       orgUpstreamError ||
       (!therapistResult.ok && therapistResult.status >= 500) ||
       (!adminResult.ok && adminResult.status >= 500) ||
-      (!orgSuperAdminResult.ok && orgSuperAdminResult.status >= 500),
+      (!orgSuperAdminResult.ok && orgSuperAdminResult.status >= 500) ||
+      (!adminScheduleResult.ok && adminScheduleResult.status >= 500),
   };
 };
 
@@ -457,7 +466,7 @@ const completeSessionViaRuntimeRest = async ({
     });
   }
   const session = sessionResult.data[0];
-  if (!roleResolution.isAdmin && !roleResolution.isSuperAdmin) {
+  if (!roleResolution.isAdmin && !roleResolution.isAdminSchedule && !roleResolution.isSuperAdmin) {
     const therapistAccess = await userCanAccessTherapistSession({
       supabaseUrl,
       headers,

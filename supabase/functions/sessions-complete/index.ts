@@ -27,7 +27,7 @@ const COMPLETABLE_STATUSES = new Set(["scheduled", "in_progress"]);
 const TERMINAL_STATUSES = new Set(["completed", "cancelled", "no-show"]);
 
 type SessionOutcome = "completed" | "no-show";
-type CompletionRole = "super_admin" | "admin" | "therapist" | null;
+type CompletionRole = "super_admin" | "admin" | "admin_schedule" | "therapist" | null;
 
 interface CompletionPayload {
   session_id: string;
@@ -138,6 +138,9 @@ export async function resolveCompletionRole(
   }
   if (await assertUserHasOrgRole(db, orgId, "admin")) {
     return "admin";
+  }
+  if (await assertUserHasOrgRole(db, orgId, "admin_schedule")) {
+    return "admin_schedule";
   }
   if (await assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId })) {
     return "therapist";

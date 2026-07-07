@@ -158,6 +158,11 @@ describe("sessionsStartHandler", () => {
         ok: true,
         status: 200,
         data: [],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
       });
 
     const response = await sessionsStartHandler(
@@ -739,6 +744,77 @@ describe("sessionsStartHandler", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("allows scheduling staff to start in-org sessions without therapist links", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("schedule-actor"));
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "schedule-actor",
+      upstreamError: false,
+    });
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-2",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: true,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          success: true,
+          session: {
+            id: "session-1",
+            started_at: "2026-02-10T15:00:00.000Z",
+          },
+        },
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("schedule-actor")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/user_therapist_links"))).toBe(true);
   });
 
   it("returns upstream_error when a network exception is thrown", async () => {

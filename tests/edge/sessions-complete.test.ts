@@ -199,6 +199,43 @@ describe("sessions-complete handler", () => {
     });
   });
 
+  it("allows scheduling staff to close in-org sessions without therapist links", async () => {
+    const session = makeSession({ id: "session-schedule", status: "scheduled", therapist_id: "therapist-row-1" });
+    const updatedRow = { id: "session-schedule", status: "no-show", updated_at: "2026-03-31T10:05:00Z" };
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeSelectBuilder([]);
+      return makeUpdateBuilder(updatedRow);
+    });
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-schedule", outcome: "no-show", notes: null },
+      "schedule-actor",
+      "admin_schedule",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean; data: { outcome: string } };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.outcome).toBe("no-show");
+    expect(database.supabaseAdmin.from).not.toHaveBeenCalledWith("user_therapist_links");
+    expect(recordSessionAuditEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      sessionId: "session-schedule",
+      eventType: "session_no_show",
+      actorId: "schedule-actor",
+      required: false,
+      payload: expect.objectContaining({
+        outcome: "no-show",
+      }),
+    }));
+  });
+
   it("allows a therapist to complete their own session", async () => {
     const session = makeSession({ id: "session-3", status: "scheduled", therapist_id: "therapist-1" });
     const updatedRow = { id: "session-3", status: "completed", updated_at: "2026-03-31T10:05:00Z" };

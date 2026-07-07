@@ -200,6 +200,59 @@ describe("sessions-start organization context parity", () => {
     expect(rpcMock).toHaveBeenCalled();
   });
 
+  it("allows scheduling staff to start in-org sessions without therapist links", async () => {
+    const rpcMock = vi.fn(async () => ({
+      data: {
+        success: true,
+        session: { id: baseBody().session_id, started_at: "2026-02-10T15:00:00.000Z" },
+      },
+      error: null,
+    }));
+    createRequestClientMock.mockReturnValue({
+      auth: {
+        getUser: vi.fn(async () => ({ data: { user: { id: "schedule-actor" } }, error: null })),
+      },
+      rpc: rpcMock,
+    });
+    requireOrgMock.mockResolvedValue("org-1");
+    assertUserHasOrgRoleMock.mockImplementation(
+      async (_db: unknown, _org: string, role: string) => role === "admin_schedule",
+    );
+    userHasTherapistLinkForOrgMock.mockResolvedValue(false);
+    orgScopedQueryMock.mockImplementation(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          limit: vi.fn(async () => ({
+            data: [
+              {
+                id: baseBody().session_id,
+                client_id: "c1",
+                therapist_id: "therapist-row-1",
+                started_at: null,
+                status: "scheduled",
+              },
+            ],
+            error: null,
+          })),
+        })),
+      })),
+    }));
+    const mod = await loadSessionsStartModule();
+
+    const response = await mod.handleSessionsStart(
+      new Request(postUrl, {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify(baseBody()),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(userHasTherapistLinkForOrgMock).not.toHaveBeenCalled();
+    expect(supabaseAdminFromMock).not.toHaveBeenCalledWith("user_therapist_links");
+    expect(rpcMock).toHaveBeenCalled();
+  });
+
   it("returns 404 when session is not in org scope", async () => {
     createRequestClientMock.mockReturnValue({
       auth: {

@@ -444,6 +444,37 @@ describe("sessionsCompleteHandler", () => {
     }));
   });
 
+  it("runtime REST fallback allows scheduling staff to close in-org sessions without therapist links", async () => {
+    const fetchMock = makeFallbackFetchMock({
+      roleName: "admin_schedule",
+      authUserId: "schedule-actor",
+      updateRows: [{ id: sessionId, status: "no-show", updated_at: "2026-03-31T10:05:00Z" }],
+      session: {
+        id: sessionId,
+        status: "scheduled",
+        therapist_id: "therapist-row-1",
+        goal_id: "goal-primary",
+        start_time: "2026-03-31T09:00:00Z",
+        end_time: "2026-03-31T10:00:00Z",
+      },
+    });
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await __TESTING__.completeSessionViaRuntimeRest({
+      request: new Request("http://localhost/api/sessions-complete", { method: "POST" }),
+      payload: { session_id: sessionId, outcome: "no-show", notes: null },
+      accessToken: "token-123",
+      traceHeaders: {},
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/rest/v1/user_therapist_links"))).toBe(false);
+    expect(getFetchBody(fetchMock, "/rest/v1/rpc/record_session_audit")).toEqual(expect.objectContaining({
+      p_event_type: "session_no_show",
+      p_actor_id: "schedule-actor",
+    }));
+  });
+
   it("runtime REST fallback allows linked therapist users to complete sessions assigned to their therapist row id", async () => {
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-key");
     const fetchMock = makeFallbackFetchMock({

@@ -1,6 +1,6 @@
 import { z } from "npm:zod@3.23.8";
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
-import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
+import { createProtectedRoute, type Role } from "../_shared/auth-middleware.ts";
 import {
   assertUserHasOrgRole,
   MissingOrgContextError,
@@ -70,18 +70,19 @@ export const handleSessionsStart = async (req: Request) => {
   }
   const currentUserId = authData.user.id;
 
-  const [isTherapist, isAdmin, isSuperAdmin] = await Promise.all([
+  const [isTherapist, isAdminSchedule, isAdmin, isSuperAdmin] = await Promise.all([
     assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: currentUserId }),
+    assertUserHasOrgRole(db, orgId, "admin_schedule"),
     assertUserHasOrgRole(db, orgId, "admin"),
     assertUserHasOrgRole(db, orgId, "super_admin"),
   ]);
 
   const hasLinkedTherapistRole =
-    !isTherapist && !isAdmin && !isSuperAdmin
+    !isTherapist && !isAdminSchedule && !isAdmin && !isSuperAdmin
       ? await userHasTherapistLinkForOrg(db, orgId, currentUserId)
       : false;
 
-  if (!isTherapist && !isAdmin && !isSuperAdmin && !hasLinkedTherapistRole) {
+  if (!isTherapist && !isAdminSchedule && !isAdmin && !isSuperAdmin && !hasLinkedTherapistRole) {
     return json({ error: "Forbidden" }, 403);
   }
 
@@ -117,6 +118,7 @@ export const handleSessionsStart = async (req: Request) => {
 
   if (
     (isTherapist || hasLinkedTherapistRole) &&
+    !isAdminSchedule &&
     !isAdmin &&
     !isSuperAdmin &&
     !(await userCanAccessTherapistSession(supabaseAdmin, currentUserId, session.therapist_id))
@@ -161,4 +163,7 @@ export const handleSessionsStart = async (req: Request) => {
   return json(rpcResult.session ?? { id: session_id, started_at: started_at ?? new Date().toISOString() }, 200);
 };
 
-export default createProtectedRoute((req) => handleSessionsStart(req), RouteOptions.therapist);
+export default createProtectedRoute((req) => handleSessionsStart(req), {
+  requireAuth: true,
+  allowedRoles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] as Role[],
+});

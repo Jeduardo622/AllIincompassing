@@ -201,7 +201,20 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
         });
       }
       if (!therapistAccess.allowed) {
-        return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
+        const adminScheduleResult = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ role_name: "admin_schedule", target_organization_id: organizationId }),
+        });
+        if (!adminScheduleResult.ok && (adminScheduleResult.status >= 500 || adminScheduleResult.status === 0)) {
+          return errorResponse(request, "upstream_error", "Unable to validate scheduling staff access", {
+            status: 502,
+            headers: traceHeaders,
+          });
+        }
+        if (!(adminScheduleResult.ok && adminScheduleResult.data === true)) {
+          return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
+        }
       }
     }
 

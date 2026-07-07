@@ -447,7 +447,7 @@ jobs:
       - name: Auth browser smoke gate
         if: steps.browser_scope.outputs.auth_smoke_required == 'true'
         env:
-          PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
+          PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
           PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
@@ -492,7 +492,7 @@ jobs:
       - name: Session browser smoke gate
         if: steps.browser_scope.outputs.auth_smoke_required == 'true'
         env:
-          PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
+          PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
           PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}

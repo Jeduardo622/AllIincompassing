@@ -6,6 +6,7 @@ export interface UtilizationAuthorizationServiceRow {
   readonly service_code: string;
   readonly service_description: string | null;
   readonly approved_units: number | null;
+  readonly unit_type: string | null;
 }
 
 export interface UtilizationAuthorizationRow {
@@ -105,10 +106,20 @@ const isDateInRange = (
   return (start === null || timestamp >= start) && (end === null || timestamp <= end);
 };
 
-const unitsFromMinutes = (minutes: number | null): number =>
-  typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0
-    ? Math.round((minutes / 15) * 100) / 100
-    : 0;
+const unitsFromMinutes = (minutes: number, unitType: string | null | undefined): number => {
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return 0;
+  }
+
+  const normalizedUnitType = unitType?.toLowerCase() ?? "unit";
+  if (normalizedUnitType.includes("hour")) {
+    return Math.round((minutes / 60) * 100) / 100;
+  }
+  if (normalizedUnitType.includes("minute")) {
+    return Math.round(minutes * 100) / 100;
+  }
+  return Math.ceil(minutes / 15);
+};
 
 const roundPercent = (value: number): number => Math.round(value * 10) / 10;
 
@@ -137,6 +148,8 @@ const normalizeCancellationAttribution = (value: string | null): CancellationAtt
 
 export const buildUtilizationReport = (input: UtilizationReportInput): UtilizationReport => {
   const serviceRows = new Map<string, { description: string; authorized: number; used: number }>();
+  const serviceUnitsByAuthorization = new Map<string, string | null>();
+  const usageMinutesByAuthorizationService = new Map<string, number>();
   const authorizationIds = new Set<string>();
 
   input.authorizationRows
@@ -156,6 +169,7 @@ export const buildUtilizationReport = (input: UtilizationReportInput): Utilizati
         existing.description = existing.description || service.service_description || "";
         existing.authorized += service.approved_units ?? 0;
         serviceRows.set(service.service_code, existing);
+        serviceUnitsByAuthorization.set(`${authorization.id}:${service.service_code}`, service.unit_type);
       });
     });
 
@@ -167,14 +181,24 @@ export const buildUtilizationReport = (input: UtilizationReportInput): Utilizati
       isDateInRange(note.session_date, input.range)
     )
     .forEach((note) => {
-      const row = serviceRows.get(note.service_code) ?? {
-        description: "",
-        authorized: 0,
-        used: 0,
-      };
-      row.used += unitsFromMinutes(note.session_duration);
-      serviceRows.set(note.service_code, row);
+      const key = `${note.authorization_id}:${note.service_code}`;
+      usageMinutesByAuthorizationService.set(
+        key,
+        (usageMinutesByAuthorizationService.get(key) ?? 0) + (note.session_duration ?? 0),
+      );
     });
+
+  usageMinutesByAuthorizationService.forEach((minutes, key) => {
+    const separatorIndex = key.indexOf(":");
+    const serviceCode = separatorIndex >= 0 ? key.slice(separatorIndex + 1) : key;
+    const row = serviceRows.get(serviceCode) ?? {
+      description: "",
+      authorized: 0,
+      used: 0,
+    };
+    row.used += unitsFromMinutes(minutes, serviceUnitsByAuthorization.get(key));
+    serviceRows.set(serviceCode, row);
+  });
 
   const cancellations: Record<CancellationAttribution, number> = { staff: 0, client: 0, unknown: 0 };
   const locations: Record<LocationBucket, number> = { telehealth: 0, home: 0, community: 0, clinic: 0, other: 0 };
@@ -248,7 +272,7 @@ export const handleUtilizationReport = async (
 
   let authorizationsQuery = db
     .from("authorizations")
-    .select("id,client_id,organization_id,start_date,end_date,status,services:authorization_services(service_code,service_description,approved_units)")
+    .select("id,client_id,organization_id,start_date,end_date,status,services:authorization_services(service_code,service_description,approved_units,unit_type)")
     .eq("organization_id", organizationId)
     .eq("client_id", clientId)
     .eq("status", "approved");

@@ -20,8 +20,9 @@ const authorizationRows = [
     end_date: "2026-07-31",
     status: "approved",
     services: [
-      { service_code: "97153", service_description: "Adaptive behavior treatment", approved_units: 40 },
-      { service_code: "97155", service_description: "Protocol modification", approved_units: 8 },
+      { service_code: "97153", service_description: "Adaptive behavior treatment", approved_units: 40, unit_type: "Units" },
+      { service_code: "97155", service_description: "Protocol modification", approved_units: 8, unit_type: "Hours" },
+      { service_code: "0373T", service_description: "Adaptive behavior minute service", approved_units: 120, unit_type: "Minutes" },
     ],
   },
 ];
@@ -39,7 +40,23 @@ const sessionNotes = [
     id: "note-2",
     authorization_id: "auth-1",
     service_code: "97153",
-    session_duration: 30,
+    session_duration: 16,
+    session_date: "2026-07-09",
+    organization_id: ORG_ID,
+  },
+  {
+    id: "note-3",
+    authorization_id: "auth-1",
+    service_code: "97155",
+    session_duration: 90,
+    session_date: "2026-07-09",
+    organization_id: ORG_ID,
+  },
+  {
+    id: "note-4",
+    authorization_id: "auth-1",
+    service_code: "0373T",
+    session_duration: 45,
     session_date: "2026-07-09",
     organization_id: ORG_ID,
   },
@@ -154,6 +171,14 @@ describe("utilization-report edge function", () => {
 
     expect(report.serviceCodes).toEqual([
       {
+        serviceCode: "0373T",
+        description: "Adaptive behavior minute service",
+        authorized: 120,
+        used: 45,
+        available: 75,
+        utilizationPct: 37.5,
+      },
+      {
         serviceCode: "97153",
         description: "Adaptive behavior treatment",
         authorized: 40,
@@ -165,9 +190,9 @@ describe("utilization-report edge function", () => {
         serviceCode: "97155",
         description: "Protocol modification",
         authorized: 8,
-        used: 0,
-        available: 8,
-        utilizationPct: 0,
+        used: 1.5,
+        available: 6.5,
+        utilizationPct: 18.8,
       },
     ]);
     expect(report.cancellations).toEqual({ staff: 0, client: 1, unknown: 1 });
@@ -209,7 +234,7 @@ describe("utilization-report edge function", () => {
           end_date: "2026-07-31",
           status: "denied",
           services: [
-            { service_code: "97153", service_description: "Denied treatment", approved_units: 999 },
+            { service_code: "97153", service_description: "Denied treatment", approved_units: 999, unit_type: "Units" },
           ],
         },
       ],
@@ -249,6 +274,10 @@ describe("utilization-report edge function", () => {
       ]));
     }
     expect(callsByTable.get("authorizations")).toEqual(expect.arrayContaining([
+      {
+        op: "select",
+        value: "id,client_id,organization_id,start_date,end_date,status,services:authorization_services(service_code,service_description,approved_units,unit_type)",
+      },
       { op: "eq", column: "status", value: "approved" },
       { op: "gte", column: "end_date", value: "2026-07-01" },
       { op: "lte", column: "start_date", value: "2026-07-31" },

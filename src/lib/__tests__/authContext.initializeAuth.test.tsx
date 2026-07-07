@@ -70,12 +70,13 @@ vi.mock('../supabaseClient', () => {
 });
 
 const TestConsumer = () => {
-  const { user, loading, profile, authFlow, signOut } = useAuth();
+  const { user, loading, profile, authFlow, effectiveRole, signOut } = useAuth();
   return (
     <>
       <div data-testid="loading">{loading ? 'yes' : 'no'}</div>
       <div data-testid="user">{user?.id ?? 'none'}</div>
       <div data-testid="role">{profile?.role ?? 'none'}</div>
+      <div data-testid="effective-role">{effectiveRole}</div>
       <div data-testid="auth-flow">{authFlow}</div>
       <button type="button" data-testid="signout" onClick={() => void signOut()}>
         Sign out
@@ -161,6 +162,40 @@ describe('AuthProvider initializeAuth resilience', () => {
     await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('user-1'));
     expect(mockGetSession).toHaveBeenCalledTimes(2);
     expect(mockSignOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalizes legacy therapist profiles to BT effective role', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          user: {
+            id: 'user-1',
+            email: 'user@example.com',
+          },
+        },
+      },
+      error: null,
+    });
+
+    mockProfilesMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: 'user-1',
+        email: 'user@example.com',
+        role: 'therapist',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('effective-role')).toHaveTextContent('bt'));
   });
 
   it('keeps the existing profile when refresh-time profile fetch fails for same user', async () => {

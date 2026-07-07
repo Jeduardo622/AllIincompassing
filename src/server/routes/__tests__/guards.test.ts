@@ -104,7 +104,7 @@ describe('route guard access controls', () => {
 
   it('restricts schedule access to schedule-capable roles', () => {
     expect(hasRoleAccess('/schedule', 'client')).toBe(false);
-    expect(hasRoleAccess('/schedule', 'bt')).toBe(false);
+    expect(hasRoleAccess('/schedule', 'bt')).toBe(true);
     expect(hasRoleAccess('/schedule', 'therapist')).toBe(true);
     expect(hasRoleAccess('/schedule', 'midtier')).toBe(true);
     expect(hasRoleAccess('/schedule', 'admin_schedule')).toBe(true);

@@ -354,7 +354,7 @@ describe("Schedule", () => {
     });
   }, 15_000);
 
-  it("locks therapist scope and limits clients for therapist users", async () => {
+  it.each(["therapist", "bt"] as const)("locks therapist scope and limits clients for %s users", async (role) => {
     mockUseDropdownData.mockReturnValue({
       data: {
         therapists: scheduleFixtures.therapists,
@@ -367,7 +367,7 @@ describe("Schedule", () => {
     });
 
     renderWithProviders(<Schedule />, {
-      auth: { role: "therapist", userId: "therapist-1" },
+      auth: { role, userId: "therapist-1" },
     });
 
     expect(

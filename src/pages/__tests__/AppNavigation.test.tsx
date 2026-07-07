@@ -28,7 +28,7 @@ vi.mock('../../lib/authContext', () => {
   const capabilityRoles: Record<TestCapability, TestRole[]> = {
     staffDashboard: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
     viewClients: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
-    viewSchedule: ['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
+    viewSchedule: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
   };
   return {
     useAuth: () => ({
@@ -182,13 +182,13 @@ describe('App navigation landing', () => {
     });
   });
 
-  it('redirects BT users to clients from dashboard landing', async () => {
+  it('redirects BT users to schedule from dashboard landing', async () => {
     authRole = 'bt';
     window.history.pushState({}, '', '/');
     renderApp();
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/clients');
+      expect(window.location.pathname).toBe('/schedule');
     });
   });
 

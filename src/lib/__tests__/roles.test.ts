@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { roleHasCapability, roleMeetsOrExceeds, rolesForCapability } from '../roles';
+import { normalizeRole, roleHasCapability, roleMeetsOrExceeds, rolesForCapability } from '../roles';
 
 describe('role capability matrix', () => {
   it('keeps super-admin tooling exclusive to super_admin', () => {
@@ -26,8 +26,14 @@ describe('role capability matrix', () => {
 
     expect(roleHasCapability('bt', 'dataTaking')).toBe(true);
     expect(roleHasCapability('bt', 'viewClients')).toBe(true);
-    expect(roleHasCapability('bt', 'viewSchedule')).toBe(false);
+    expect(roleHasCapability('bt', 'viewSchedule')).toBe(true);
     expect(roleHasCapability('bt', 'manageClients')).toBe(false);
     expect(roleHasCapability('bt', 'manageProgramsGoals')).toBe(false);
+  });
+
+  it('normalizes the legacy therapist role to Behavioral Therapist', () => {
+    expect(normalizeRole('therapist')).toBe('bt');
+    expect(normalizeRole('Therapist')).toBe('bt');
+    expect(normalizeRole('bt')).toBe('bt');
   });
 });

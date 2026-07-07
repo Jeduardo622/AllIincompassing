@@ -730,7 +730,7 @@ export const Schedule = React.memo(() => {
     void refetchDropdowns();
   }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
 
-  const therapistScopedView = effectiveRole === "therapist";
+  const therapistScopedView = effectiveRole === "bt" || effectiveRole === "therapist";
 
   const showOrgDirectoryEmpty =
     displayData.therapists.length === 0 && displayData.clients.length === 0;

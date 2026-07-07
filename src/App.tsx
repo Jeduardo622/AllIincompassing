@@ -177,7 +177,7 @@ function App() {
 
                     {/* Schedule - accessible to therapists and above */}
                     <Route path="schedule" element={
-                      <RoleGuard roles={['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
+                      <RoleGuard roles={['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <Schedule />
                       </RoleGuard>
                     } />

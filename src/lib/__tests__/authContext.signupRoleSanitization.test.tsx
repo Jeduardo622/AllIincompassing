@@ -75,7 +75,7 @@ describe('AuthProvider signUp metadata hardening', () => {
     });
   });
 
-  it('preserves therapist self-signup intent for allowed role', async () => {
+  it('canonicalizes therapist self-signup intent to BT', async () => {
     render(
       <AuthProvider>
         <SignupProbe metadata={{ role: 'therapist', signup_role: 'therapist' }} />
@@ -88,8 +88,8 @@ describe('AuthProvider signUp metadata hardening', () => {
       options?: { data?: Record<string, unknown> };
     };
     expect(signUpPayload.options?.data).toMatchObject({
-      role: 'therapist',
-      signup_role: 'therapist',
+      role: 'bt',
+      signup_role: 'bt',
     });
   });
 });

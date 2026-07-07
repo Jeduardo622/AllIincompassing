@@ -15,7 +15,7 @@ const mockFetchPendingSupervisionSessionNoteCount = vi.fn();
 
 const capabilityForRole = (role: string) => (capability: string) => {
   const matrix: Record<string, string[]> = {
-    viewSchedule: ["therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"],
+    viewSchedule: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"],
     dataTaking: ["bt", "therapist", "midtier"],
     viewMessages: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"],
     staffDashboard: ["admin_schedule", "admin", "bcba", "super_admin"],
@@ -158,6 +158,37 @@ describe("Sidebar navigation active styling", () => {
     expect(screen.getByRole("link", { name: /clients/i })).toBeInTheDocument();
   });
 
+  it("shows schedule and client links for canonical BT users", () => {
+    const hasRole = vi.fn((role: string) => role === "bt");
+
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole,
+      user: {
+        email: "bt@example.com",
+        user_metadata: {
+          therapist_id: "therapist-123",
+        },
+      },
+      profile: {
+        id: "user-1",
+        role: "bt",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn((roles: string[]) => roles.some(role => hasRole(role))),
+      effectiveRole: "bt",
+      hasCapability: vi.fn(capabilityForRole("bt")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("bt"))),
+    });
+
+    renderSidebar(["/schedule"]);
+
+    expect(screen.getByRole("link", { name: /schedule/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /clients/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /messages/i })).toBeInTheDocument();
+    expect(screen.getByText("Behavioral Therapist Account")).toBeInTheDocument();
+  });
+
   it("shows admin navigation items for super admin users", () => {
     const hasRole = vi.fn(
       (role: "client" | "therapist" | "admin" | "super_admin") =>
@@ -186,7 +217,7 @@ describe("Sidebar navigation active styling", () => {
 
     renderSidebar(["/"]);
 
-    expect(screen.getByRole("link", { name: /therapists/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /bts/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /billing/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /reports/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /monitoring/i })).toBeInTheDocument();

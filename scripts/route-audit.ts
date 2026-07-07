@@ -99,7 +99,7 @@ export const ROUTES: readonly RouteDefinition[] = [
 
   // Protected routes
   { path: '/', component: 'Dashboard', roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
-  { path: '/schedule', component: 'Schedule', roles: ['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/schedule', component: 'Schedule', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/clients', component: 'Clients', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: ['view_clients'] },
   {
     path: '/clients/:clientId',

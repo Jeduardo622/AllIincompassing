@@ -175,7 +175,7 @@ describe('ClientDetails page', () => {
     expect(fetchClientByIdForViewer).toHaveBeenCalledWith({
       clientId: 'client-1',
       organizationId: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
-      viewerRole: 'therapist',
+      viewerRole: 'bt',
       userId: 'therapist-user-id',
     });
   });
@@ -231,7 +231,7 @@ describe('ClientDetails page', () => {
     expect(fetchClientByIdForViewer).toHaveBeenCalledWith({
       clientId: 'client-1',
       organizationId: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
-      viewerRole: 'therapist',
+      viewerRole: 'bt',
       userId: 'therapist-user-id',
     });
     expect(supabase.from).toHaveBeenCalledWith('sessions');

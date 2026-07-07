@@ -216,7 +216,7 @@ describe("sessions-complete handler", () => {
       "org-1",
       { session_id: "session-schedule", outcome: "no-show", notes: null },
       "schedule-actor",
-      "admin_schedule",
+      "schedule_staff",
       createStubLogger(),
     );
 

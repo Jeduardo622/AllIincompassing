@@ -6,6 +6,7 @@ stubDenoEnv(() => "");
 const createRequestClientMock = vi.fn();
 const requireOrgMock = vi.fn();
 const assertUserHasOrgRoleMock = vi.fn();
+const currentUserHasScheduleStaffAuthorityMock = vi.fn();
 const orgScopedQueryMock = vi.fn();
 const userHasTherapistLinkForOrgMock = vi.fn();
 const supabaseAdminFromMock = vi.fn();
@@ -26,6 +27,7 @@ async function loadSessionsStartModule() {
   vi.doMock("../../supabase/functions/_shared/org.ts", () => ({
     requireOrg: requireOrgMock,
     assertUserHasOrgRole: assertUserHasOrgRoleMock,
+    currentUserHasScheduleStaffAuthority: currentUserHasScheduleStaffAuthorityMock,
     orgScopedQuery: orgScopedQueryMock,
     userHasTherapistLinkForOrg: userHasTherapistLinkForOrgMock,
     MissingOrgContextError,
@@ -67,6 +69,8 @@ describe("sessions-start organization context parity", () => {
     createRequestClientMock.mockReset();
     requireOrgMock.mockReset();
     assertUserHasOrgRoleMock.mockReset();
+    currentUserHasScheduleStaffAuthorityMock.mockReset();
+    currentUserHasScheduleStaffAuthorityMock.mockResolvedValue(false);
     orgScopedQueryMock.mockReset();
     userHasTherapistLinkForOrgMock.mockReset();
     userHasTherapistLinkForOrgMock.mockResolvedValue(false);
@@ -215,9 +219,8 @@ describe("sessions-start organization context parity", () => {
       rpc: rpcMock,
     });
     requireOrgMock.mockResolvedValue("org-1");
-    assertUserHasOrgRoleMock.mockImplementation(
-      async (_db: unknown, _org: string, role: string) => role === "admin_schedule",
-    );
+    assertUserHasOrgRoleMock.mockResolvedValue(false);
+    currentUserHasScheduleStaffAuthorityMock.mockResolvedValue(true);
     userHasTherapistLinkForOrgMock.mockResolvedValue(false);
     orgScopedQueryMock.mockImplementation(() => ({
       select: vi.fn(() => ({

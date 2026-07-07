@@ -444,9 +444,9 @@ describe("sessionsCompleteHandler", () => {
     }));
   });
 
-  it("runtime REST fallback allows scheduling staff to close in-org sessions without therapist links", async () => {
+  it("runtime REST fallback allows midtier scheduling staff to close in-org sessions without therapist links", async () => {
     const fetchMock = makeFallbackFetchMock({
-      roleName: "admin_schedule",
+      roleName: "midtier",
       authUserId: "schedule-actor",
       updateRows: [{ id: sessionId, status: "no-show", updated_at: "2026-03-31T10:05:00Z" }],
       session: {

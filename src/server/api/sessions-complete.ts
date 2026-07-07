@@ -88,7 +88,7 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
   organizationId: string | null;
   isTherapist: boolean;
   isAdmin: boolean;
-  isAdminSchedule: boolean;
+  isScheduleStaff: boolean;
   isSuperAdmin: boolean;
   upstreamError: boolean;
 }> => {
@@ -116,7 +116,7 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
       organizationId: null,
       isTherapist: false,
       isAdmin: false,
-      isAdminSchedule: false,
+      isScheduleStaff: false,
       isSuperAdmin,
       upstreamError: superAdminUpstreamError || orgUpstreamError,
     };
@@ -142,12 +142,25 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
     headers,
     body: JSON.stringify({ role_name: "admin_schedule", target_organization_id: organizationId }),
   });
+  const midtierResult = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role_name: "midtier", target_organization_id: organizationId }),
+  });
+  const bcbaResult = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role_name: "bcba", target_organization_id: organizationId }),
+  });
   const hasOrgSuperAdminRole = orgSuperAdminResult.ok && orgSuperAdminResult.data === true;
   return {
     organizationId,
     isTherapist: therapistResult.ok && therapistResult.data === true,
     isAdmin: adminResult.ok && adminResult.data === true,
-    isAdminSchedule: adminScheduleResult.ok && adminScheduleResult.data === true,
+    isScheduleStaff:
+      (adminScheduleResult.ok && adminScheduleResult.data === true) ||
+      (midtierResult.ok && midtierResult.data === true) ||
+      (bcbaResult.ok && bcbaResult.data === true),
     isSuperAdmin: isSuperAdmin || hasOrgSuperAdminRole,
     upstreamError:
       superAdminUpstreamError ||
@@ -155,7 +168,9 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
       (!therapistResult.ok && therapistResult.status >= 500) ||
       (!adminResult.ok && adminResult.status >= 500) ||
       (!orgSuperAdminResult.ok && orgSuperAdminResult.status >= 500) ||
-      (!adminScheduleResult.ok && adminScheduleResult.status >= 500),
+      (!adminScheduleResult.ok && adminScheduleResult.status >= 500) ||
+      (!midtierResult.ok && midtierResult.status >= 500) ||
+      (!bcbaResult.ok && bcbaResult.status >= 500),
   };
 };
 
@@ -466,7 +481,7 @@ const completeSessionViaRuntimeRest = async ({
     });
   }
   const session = sessionResult.data[0];
-  if (!roleResolution.isAdmin && !roleResolution.isAdminSchedule && !roleResolution.isSuperAdmin) {
+  if (!roleResolution.isAdmin && !roleResolution.isScheduleStaff && !roleResolution.isSuperAdmin) {
     const therapistAccess = await userCanAccessTherapistSession({
       supabaseUrl,
       headers,

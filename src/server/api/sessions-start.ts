@@ -53,6 +53,31 @@ async function userCanAccessTherapistSession({
   };
 }
 
+async function userHasScheduleStaffAuthority({
+  supabaseUrl,
+  headers,
+  organizationId,
+}: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+}): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  for (const roleName of ["admin_schedule", "midtier", "bcba"]) {
+    const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ role_name: roleName, target_organization_id: organizationId }),
+    });
+    if (!result.ok && (result.status >= 500 || result.status === 0)) {
+      return { allowed: false, upstreamError: true };
+    }
+    if (result.ok && result.data === true) {
+      return { allowed: true, upstreamError: false };
+    }
+  }
+  return { allowed: false, upstreamError: false };
+}
+
 export async function sessionsStartHandler(request: Request): Promise<Response> {
   const traceHeaders: Record<string, string> = {};
   const requestId = request.headers.get("x-request-id")?.trim();
@@ -103,7 +128,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
       });
     }
 
-    const { organizationId, isAdmin, isOrgMember, isSuperAdmin, upstreamError: roleUpstreamError } =
+    const { organizationId, isTherapist, isAdmin, isOrgMember, isSuperAdmin, upstreamError: roleUpstreamError } =
       await resolveOrgAndRoleWithStatus(accessToken);
     if (roleUpstreamError) {
       return errorResponse(request, "upstream_error", "Unable to validate organization access", {
@@ -201,18 +226,20 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
         });
       }
       if (!therapistAccess.allowed) {
-        const adminScheduleResult = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ role_name: "admin_schedule", target_organization_id: organizationId }),
-        });
-        if (!adminScheduleResult.ok && (adminScheduleResult.status >= 500 || adminScheduleResult.status === 0)) {
-          return errorResponse(request, "upstream_error", "Unable to validate scheduling staff access", {
-            status: 502,
-            headers: traceHeaders,
+        const scheduleStaffAuthority = !isTherapist
+          ? await userHasScheduleStaffAuthority({
+            supabaseUrl,
+            headers,
+            organizationId,
+          })
+          : { allowed: false, upstreamError: false };
+        if (scheduleStaffAuthority.upstreamError) {
+          return errorResponse(request, "upstream_error", "Unable to validate schedule staff access", {
+              status: 502,
+              headers: traceHeaders,
           });
         }
-        if (!(adminScheduleResult.ok && adminScheduleResult.data === true)) {
+        if (!scheduleStaffAuthority.allowed) {
           return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
         }
       }

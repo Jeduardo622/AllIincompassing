@@ -171,6 +171,18 @@ export async function currentUserCanManageProgramsGoals(
   return data === true;
 }
 
+export async function currentUserHasScheduleStaffAuthority(
+  db: SupabaseClient,
+  orgId: string,
+): Promise<boolean> {
+  for (const role of ["admin_schedule", "midtier", "bcba"]) {
+    if (await assertUserHasOrgRole(db, orgId, role)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function withOrg<T>(
   db: SupabaseClient,
   handler: (orgId: string) => Promise<T>,

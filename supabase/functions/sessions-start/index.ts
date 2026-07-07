@@ -3,6 +3,7 @@ import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { createProtectedRoute, type Role } from "../_shared/auth-middleware.ts";
 import {
   assertUserHasOrgRole,
+  currentUserHasScheduleStaffAuthority,
   MissingOrgContextError,
   orgScopedQuery,
   requireOrg,
@@ -70,19 +71,19 @@ export const handleSessionsStart = async (req: Request) => {
   }
   const currentUserId = authData.user.id;
 
-  const [isTherapist, isAdminSchedule, isAdmin, isSuperAdmin] = await Promise.all([
+  const [isTherapist, hasScheduleStaffAuthority, isAdmin, isSuperAdmin] = await Promise.all([
     assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: currentUserId }),
-    assertUserHasOrgRole(db, orgId, "admin_schedule"),
+    currentUserHasScheduleStaffAuthority(db, orgId),
     assertUserHasOrgRole(db, orgId, "admin"),
     assertUserHasOrgRole(db, orgId, "super_admin"),
   ]);
 
   const hasLinkedTherapistRole =
-    !isTherapist && !isAdminSchedule && !isAdmin && !isSuperAdmin
+    !isTherapist && !hasScheduleStaffAuthority && !isAdmin && !isSuperAdmin
       ? await userHasTherapistLinkForOrg(db, orgId, currentUserId)
       : false;
 
-  if (!isTherapist && !isAdminSchedule && !isAdmin && !isSuperAdmin && !hasLinkedTherapistRole) {
+  if (!isTherapist && !hasScheduleStaffAuthority && !isAdmin && !isSuperAdmin && !hasLinkedTherapistRole) {
     return json({ error: "Forbidden" }, 403);
   }
 
@@ -118,7 +119,7 @@ export const handleSessionsStart = async (req: Request) => {
 
   if (
     (isTherapist || hasLinkedTherapistRole) &&
-    !isAdminSchedule &&
+    !hasScheduleStaffAuthority &&
     !isAdmin &&
     !isSuperAdmin &&
     !(await userCanAccessTherapistSession(supabaseAdmin, currentUserId, session.therapist_id))

@@ -746,7 +746,7 @@ describe("sessionsStartHandler", () => {
     expect(response.status).toBe(200);
   });
 
-  it("allows scheduling staff to start in-org sessions without therapist links", async () => {
+  it("allows midtier scheduling staff to start in-org sessions without therapist links", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("schedule-actor"));
     vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
       userId: "schedule-actor",
@@ -783,6 +783,11 @@ describe("sessionsStartHandler", () => {
         ok: true,
         status: 200,
         data: [],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
       })
       .mockResolvedValueOnce({
         ok: true,

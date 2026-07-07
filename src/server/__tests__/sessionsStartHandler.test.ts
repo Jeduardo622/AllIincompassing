@@ -29,6 +29,8 @@ const createAuthToken = (subject = "therapist-1") => {
 describe("sessionsStartHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    vi.stubEnv("SUPABASE_SECRET_KEY", "");
     vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
       userId: "therapist-1",
       upstreamError: false,
@@ -175,6 +177,7 @@ describe("sessionsStartHandler", () => {
   });
 
   it("allows linked therapist users to start sessions assigned to their therapist row id", async () => {
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-key");
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("auth-user-1"));
     vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
       userId: "auth-user-1",
@@ -240,6 +243,10 @@ describe("sessionsStartHandler", () => {
     expect(vi.mocked(fetchJson).mock.calls[1]?.[0]).toContain(
       "/user_therapist_links?select=therapist_id&user_id=eq.auth-user-1&therapist_id=eq.therapist-row-1",
     );
+    expect(vi.mocked(fetchJson).mock.calls[1]?.[1]?.headers).toEqual(expect.objectContaining({
+      apikey: "service-key",
+      Authorization: "Bearer service-key",
+    }));
     expect(vi.mocked(fetchJson).mock.calls[2]?.[0]).toContain("/rpc/start_session_with_goals");
   });
 

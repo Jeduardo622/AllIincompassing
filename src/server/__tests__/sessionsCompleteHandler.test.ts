@@ -122,6 +122,8 @@ describe("sessionsCompleteHandler", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    vi.stubEnv("SUPABASE_SECRET_KEY", "");
     vi.mocked(getRuntimeSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
       supabaseAnonKey: "anon-key",
@@ -443,6 +445,7 @@ describe("sessionsCompleteHandler", () => {
   });
 
   it("runtime REST fallback allows linked therapist users to complete sessions assigned to their therapist row id", async () => {
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-key");
     const fetchMock = makeFallbackFetchMock({
       roleName: "no-grant",
       authUserId: "auth-user-1",
@@ -467,6 +470,11 @@ describe("sessionsCompleteHandler", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/rest/v1/user_therapist_links"))).toBe(true);
+    const linkCall = fetchMock.mock.calls.find(([input]) => String(input).includes("/rest/v1/user_therapist_links"));
+    expect(linkCall?.[1]?.headers).toEqual(expect.objectContaining({
+      apikey: "service-key",
+      Authorization: "Bearer service-key",
+    }));
     expect(getFetchBody(fetchMock, "/rest/v1/rpc/record_session_audit")).toEqual(expect.objectContaining({
       p_actor_id: "auth-user-1",
     }));

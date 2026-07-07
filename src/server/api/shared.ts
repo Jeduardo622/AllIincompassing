@@ -178,6 +178,21 @@ export function getSupabaseConfig(): { supabaseUrl: string; anonKey: string } {
   return { supabaseUrl: supabaseUrl.replace(/\/$/, ""), anonKey };
 }
 
+export function getSupabaseServiceRoleHeaders(): Record<string, string> | null {
+  const serviceRoleKey =
+    getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY") ||
+    getOptionalServerEnv("SUPABASE_SECRET_KEY");
+  const trimmed = serviceRoleKey?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return {
+    ...JSON_HEADERS,
+    apikey: trimmed,
+    Authorization: `Bearer ${trimmed}`,
+  };
+}
+
 export async function fetchAuthenticatedUserId(accessToken: string): Promise<string | null> {
   const result = await fetchAuthenticatedUserIdWithStatus(accessToken);
   return result.userId;

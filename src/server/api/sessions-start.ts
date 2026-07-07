@@ -7,6 +7,7 @@ import {
   fetchJson,
   getAccessToken,
   getSupabaseConfig,
+  getSupabaseServiceRoleHeaders,
   isDisallowedOriginRequest,
   jsonForRequest,
   resolveOrgAndRoleWithStatus,
@@ -41,7 +42,7 @@ async function userCanAccessTherapistSession({
 
   const result = await fetchJson<Array<{ therapist_id?: string }>>(
     `${supabaseUrl}/rest/v1/user_therapist_links?select=therapist_id&user_id=eq.${encodeURIComponent(userId)}&therapist_id=eq.${encodeURIComponent(therapistId)}&limit=1`,
-    { method: "GET", headers },
+    { method: "GET", headers: getSupabaseServiceRoleHeaders() ?? headers },
   );
   if (!result.ok) {
     return { allowed: false, upstreamError: result.status >= 500 || result.status === 0 };

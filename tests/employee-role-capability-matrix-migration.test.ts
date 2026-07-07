@@ -33,6 +33,12 @@ const BCBA_EXACT_CAPABILITY_MIGRATION_PATH = path.join(
   'migrations',
   '20260706023600_bcba_exact_capability_matrix.sql',
 );
+const SUPER_ADMIN_PRECEDENCE_MIGRATION_PATH = path.join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260707121500_super_admin_bcba_role_precedence.sql',
+);
 const SMOKE_SQL_PATH = path.join(process.cwd(), 'tests', 'sql', 'employee_role_capability_smoke.sql');
 
 const sql = readFileSync(MIGRATION_PATH, 'utf8');
@@ -40,6 +46,7 @@ const exposeProgramGoalRpcSql = readFileSync(EXPOSE_PROGRAM_GOAL_RPC_MIGRATION_P
 const employeeRoleListingSql = readFileSync(EMPLOYEE_ROLE_LISTING_MIGRATION_PATH, 'utf8');
 const employeeRoleListingGrantsSql = readFileSync(EMPLOYEE_ROLE_LISTING_GRANTS_MIGRATION_PATH, 'utf8');
 const bcbaExactCapabilitySql = readFileSync(BCBA_EXACT_CAPABILITY_MIGRATION_PATH, 'utf8');
+const superAdminPrecedenceSql = readFileSync(SUPER_ADMIN_PRECEDENCE_MIGRATION_PATH, 'utf8');
 const smokeSql = readFileSync(SMOKE_SQL_PATH, 'utf8');
 
 const extractFunctionFrom = (sourceSql: string, name: string): string => {
@@ -52,6 +59,8 @@ const extractFunctionFrom = (sourceSql: string, name: string): string => {
 
 const extractFunction = (name: string): string => extractFunctionFrom(sql, name);
 const extractBcbaExactFunction = (name: string): string => extractFunctionFrom(bcbaExactCapabilitySql, name);
+const extractSuperAdminPrecedenceFunction = (name: string): string =>
+  extractFunctionFrom(superAdminPrecedenceSql, name);
 
 describe('employee role capability matrix migration', () => {
   it('keeps bt and midtier out of broad therapist/org_member helper aliases', () => {
@@ -185,6 +194,16 @@ describe('employee role capability matrix migration', () => {
     expect(employeeRoleListingSql).toContain('(ur.expires_at IS NULL OR ur.expires_at > now())');
     expect(employeeRoleListingSql).toContain('effective_role.role');
     expect(employeeRoleListingSql).not.toContain('WHERE p.role <>');
+  });
+
+  it('adds a follow-up migration that makes super_admin outrank bcba in junction and listing helpers', () => {
+    const junctionRoleFunction = extractSuperAdminPrecedenceFunction('public.get_user_role_from_junction');
+    const employeeListingFunction = extractSuperAdminPrecedenceFunction('public.get_employee_users_paged');
+
+    expect(junctionRoleFunction).toContain("WHEN 'super_admin' THEN 8");
+    expect(junctionRoleFunction).toContain("WHEN 'bcba' THEN 7");
+    expect(employeeListingFunction).toContain("WHEN 'super_admin' THEN 8");
+    expect(employeeListingFunction).toContain("WHEN 'bcba' THEN 7");
   });
 
   it('restricts employee listing RPC execution to authenticated callers', () => {

@@ -14,6 +14,24 @@ describe('auth middleware org-scoped admin role resolution', () => {
     vi.resetModules();
   });
 
+  it('keeps super-admin-only route options restricted to super_admin', async () => {
+    const module = await import('../../supabase/functions/_shared/auth-middleware.ts');
+
+    expect(module.RouteOptions.superAdmin.allowedRoles).toEqual(['super_admin']);
+    expect(module.requireSuperAdmin().allowedRoles).toEqual(['super_admin']);
+  });
+
+  it('prefers super_admin over bcba when both active canonical grants are present', async () => {
+    const module = await import('../../supabase/functions/_shared/auth-middleware.ts');
+
+    expect(
+      module.__TESTING__.resolveRoleFromRoleRows([
+        { is_active: true, roles: { name: 'bcba' } },
+        { is_active: true, roles: { name: 'super_admin' } },
+      ]),
+    ).toBe('super_admin');
+  });
+
   it('does not elevate org-scoped alias rows when organization context is missing', async () => {
     const module = await import('../../supabase/functions/_shared/auth-middleware.ts');
 

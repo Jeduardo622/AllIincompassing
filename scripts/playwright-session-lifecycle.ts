@@ -1728,7 +1728,14 @@ export async function run() {
   const terminalStatus = terminalStatusRaw as TerminalStatus;
   const credentialCandidates = assertNonAiSessionsEnvContract(
     `Session lifecycle (${terminalStatus}) Playwright regression`,
-  );
+  ).sort((left, right) => {
+    const leftIsAdmin = left.label.startsWith("PW_ADMIN_");
+    const rightIsAdmin = right.label.startsWith("PW_ADMIN_");
+    if (leftIsAdmin === rightIsAdmin) {
+      return 0;
+    }
+    return leftIsAdmin ? -1 : 1;
+  });
   console.log(
     JSON.stringify({
       ok: true,

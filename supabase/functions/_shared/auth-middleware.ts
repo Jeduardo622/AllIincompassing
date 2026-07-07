@@ -591,7 +591,7 @@ export const requireTherapist = (allowedRoles: Role[] = ['therapist']) =>
 export const requireAdmin = (allowedRoles: Role[] = ['admin', 'bcba', 'super_admin']) =>
   ({ allowedRoles });
 
-export const requireSuperAdmin = (allowedRoles: Role[] = ['bcba', 'super_admin']) =>
+export const requireSuperAdmin = (allowedRoles: Role[] = ['super_admin']) =>
   ({ allowedRoles });
 
 /**
@@ -605,7 +605,7 @@ export const RouteOptions = {
   staffAdmin: { requireAuth: true, allowedRoles: ['admin_schedule', 'admin', 'bcba', 'super_admin'] as Role[] },
   admin: { requireAuth: true, allowedRoles: ['admin', 'bcba', 'super_admin'] as Role[] },
   programsGoals: { requireAuth: true, allowedRoles: ['bt', 'therapist', 'midtier', 'admin', 'bcba', 'super_admin'] as Role[] },
-  superAdmin: { requireAuth: true, allowedRoles: ['bcba', 'super_admin'] as Role[] },
+  superAdmin: { requireAuth: true, allowedRoles: ['super_admin'] as Role[] },
 };
 
 export const __TESTING__ = {

@@ -77,7 +77,18 @@ describe('select-browser-checks', () => {
     expect(selection.authSmokeRequired).toBe(false);
     expect(selection.tier0Specs).toContain('cypress/e2e/preauth_workflow.cy.ts');
     expect(selection.reasons).toEqual([
-      'scripts/ci/select-browser-checks.mjs: browser check selector',
+      'scripts/ci/select-browser-checks.mjs: browser CI support script',
+    ]);
+  });
+
+  it('runs full tier-0 without hosted auth smoke when deploy bundle script changes', () => {
+    const selection = runSelector('--changed-file', 'scripts/ci/deploy-session-edge-bundle.mjs');
+
+    expect(selection.tier0Required).toBe(true);
+    expect(selection.authSmokeRequired).toBe(false);
+    expect(selection.tier0Specs).toContain('cypress/e2e/routes_schedule.cy.ts');
+    expect(selection.reasons).toEqual([
+      'scripts/ci/deploy-session-edge-bundle.mjs: browser CI support script',
     ]);
   });
 

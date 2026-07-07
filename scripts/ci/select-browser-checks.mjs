@@ -84,8 +84,9 @@ const matchAny = (file, patterns) => patterns.some((pattern) => pattern.test(fil
 const classifyFile = (file) => {
   if (matchAny(file, [
     /^scripts\/ci\/select-browser-checks\.mjs$/,
+    /^scripts\/ci\/deploy-session-edge-bundle\.mjs$/,
   ])) {
-    return { specs: allSpecKeys, authSmoke: false, reason: "browser check selector" };
+    return { specs: allSpecKeys, authSmoke: false, reason: "browser CI support script" };
   }
 
   if (matchAny(file, [

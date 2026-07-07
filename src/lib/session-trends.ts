@@ -22,6 +22,7 @@ export interface SessionTrendTargetOption {
 export interface SessionTrendEvidencePoint {
   readonly noteId: string;
   readonly sessionDate: string;
+  readonly therapistId: string | null;
   readonly therapistName: string;
   readonly goalId: string;
   readonly goalLabel: string;
@@ -44,8 +45,10 @@ export interface SessionTrendBucketPoint {
 export interface SessionTrendModel {
   readonly goalOptions: SessionTrendGoalOption[];
   readonly targetOptions: SessionTrendTargetOption[];
+  readonly therapistOptions: Array<{ readonly id: string; readonly label: string }>;
   readonly selectedGoalId: string | null;
   readonly selectedTargetKey: string | null;
+  readonly selectedTherapistId: string | null;
   readonly buckets: SessionTrendBucketPoint[];
   readonly includedEvidence: SessionTrendEvidencePoint[];
   readonly excludedSessionCount: number;
@@ -266,6 +269,7 @@ const extractEvidenceForNote = (
         points.push({
           noteId: note.id,
           sessionDate: note.date,
+          therapistId: note.therapist_id ?? null,
           therapistName: note.therapist_name,
           goalId,
           goalLabel,
@@ -293,6 +297,7 @@ const extractEvidenceForNote = (
         points.push({
           noteId: note.id,
           sessionDate: note.date,
+          therapistId: note.therapist_id ?? null,
           therapistName: note.therapist_name,
           goalId,
           goalLabel,
@@ -316,6 +321,7 @@ const extractEvidenceForNote = (
     points.push({
       noteId: note.id,
       sessionDate: note.date,
+      therapistId: note.therapist_id ?? null,
       therapistName: note.therapist_name,
       goalId,
       goalLabel,
@@ -348,6 +354,7 @@ export const buildSessionTrendModel = (
   options: {
     readonly selectedGoalId?: string | null;
     readonly selectedTargetKey?: string | null;
+    readonly selectedTherapistId?: string | null;
     readonly displayPeriod: SessionTrendDisplayPeriod;
     readonly dateRange?: SessionTrendDateRange;
   },
@@ -359,14 +366,33 @@ export const buildSessionTrendModel = (
   const allEvidence = evidenceByNote.flat();
   const excludedSessionCount = evidenceByNote.filter((points) => points.length === 0).length;
 
-  const goalIds = Array.from(new Set(allEvidence.map((point) => point.goalId)));
-  const goalOptions = goalIds.map((goalId) => ({
+  const therapistOptions = Array.from(
+    new Map(
+      allEvidence
+        .filter((point) => point.therapistId)
+        .map((point) => [point.therapistId as string, {
+          id: point.therapistId as string,
+          label: point.therapistName || `Therapist ${(point.therapistId ?? "").slice(0, 8)}`,
+        }]),
+    ).values(),
+  ).sort((left, right) => left.label.localeCompare(right.label));
+  const selectedTherapistId =
+    options.selectedTherapistId && therapistOptions.some((therapist) => therapist.id === options.selectedTherapistId)
+      ? options.selectedTherapistId
+      : null;
+  const therapistFilteredEvidence = selectedTherapistId
+    ? allEvidence.filter((point) => point.therapistId === selectedTherapistId)
+    : allEvidence;
+
+  const evidenceForOptions = therapistFilteredEvidence;
+  const filteredGoalIds = Array.from(new Set(evidenceForOptions.map((point) => point.goalId)));
+  const goalOptions = filteredGoalIds.map((goalId) => ({
     id: goalId,
     label: getGoalLabel(goalId, goalsById),
     programName: getProgramName(goalId, goalsById),
   }));
 
-  const selectedGoalId = options.selectedGoalId && goalIds.includes(options.selectedGoalId)
+  const selectedGoalId = options.selectedGoalId && filteredGoalIds.includes(options.selectedGoalId)
     ? options.selectedGoalId
     : goalOptions[0]?.id ?? null;
 
@@ -374,6 +400,7 @@ export const buildSessionTrendModel = (
     ? Array.from(
       new Map(
         allEvidence
+          .filter((point) => !selectedTherapistId || point.therapistId === selectedTherapistId)
           .filter((point) => point.goalId === selectedGoalId)
           .map((point) => [point.targetKey, {
             key: point.targetKey,
@@ -390,6 +417,7 @@ export const buildSessionTrendModel = (
       : targetOptions[0]?.key ?? null;
 
   const includedEvidence = allEvidence.filter((point) =>
+    (!selectedTherapistId || point.therapistId === selectedTherapistId) &&
     (!selectedGoalId || point.goalId === selectedGoalId) &&
     (!selectedTargetKey || point.targetKey === selectedTargetKey)
   );
@@ -418,8 +446,10 @@ export const buildSessionTrendModel = (
   return {
     goalOptions,
     targetOptions,
+    therapistOptions,
     selectedGoalId,
     selectedTargetKey,
+    selectedTherapistId,
     buckets,
     includedEvidence,
     excludedSessionCount,

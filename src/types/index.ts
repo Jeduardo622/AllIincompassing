@@ -164,6 +164,7 @@ export interface Session {
   id: string;
   appointment_id?: string | null;
   appointmentId?: string | null;
+  cancellation_attribution?: 'staff' | 'client' | 'unknown' | null;
   client_id: string;
   therapist_id: string;
   program_id: string | null;

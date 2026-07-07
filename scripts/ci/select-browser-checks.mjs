@@ -83,9 +83,15 @@ const matchAny = (file, patterns) => patterns.some((pattern) => pattern.test(fil
 
 const classifyFile = (file) => {
   if (matchAny(file, [
+    /^scripts\/ci\/select-browser-checks\.mjs$/,
+    /^scripts\/ci\/deploy-session-edge-bundle\.mjs$/,
+  ])) {
+    return { specs: allSpecKeys, authSmoke: false, reason: "browser CI support script" };
+  }
+
+  if (matchAny(file, [
     /^\.github\/workflows\//,
     /^scripts\/ci\//,
-    /^scripts\/ci\/select-browser-checks\.mjs$/,
     /^scripts\/run-cypress\.ts$/,
     /^package(-lock)?\.json$/,
     /^cypress\.config\.cjs$/,
@@ -108,6 +114,12 @@ const classifyFile = (file) => {
     /^src\/pages\/(Login|Signup|PasswordRecovery|Unauthorized)\.tsx$/,
   ])) {
     return { specs: ["public", "auth"], authSmoke: true, reason: "public auth route" };
+  }
+
+  if (matchAny(file, [
+    /^supabase\/functions\/sessions-cancel\//,
+  ])) {
+    return { specs: ["schedule", "auth"], authSmoke: false, reason: "session cancellation edge flow" };
   }
 
   if (matchAny(file, [

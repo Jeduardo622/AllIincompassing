@@ -6,6 +6,7 @@ export interface CancelSessionsPayload {
   timeZone?: string;
   therapistId?: string;
   reason?: string | null;
+  cancellationAttribution?: "staff" | "client" | "unknown";
   idempotencyKey?: string;
   agentOperationId?: string;
   requestId?: string;
@@ -81,6 +82,7 @@ export async function cancelSessions(payload: CancelSessionsPayload): Promise<Ca
   if (payload.reason !== undefined) {
     body.reason = payload.reason;
   }
+  body.cancellation_attribution = payload.cancellationAttribution ?? "staff";
   if (payload.agentOperationId) {
     body.agent_operation_id = payload.agentOperationId;
   }

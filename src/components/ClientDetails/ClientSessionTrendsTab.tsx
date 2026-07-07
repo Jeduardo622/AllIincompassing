@@ -83,6 +83,7 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(todayDate);
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+  const [selectedTherapistId, setSelectedTherapistId] = useState<string | null>(null);
   const chartRef = useRef<ChartInstance<'line', Array<number | null>, string> | undefined>(undefined);
 
   const {
@@ -149,9 +150,10 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
 
   const trendModel = useMemo(() => buildSessionTrendModel(sessionNotes, goals, {
     selectedGoalId,
+    selectedTherapistId,
     displayPeriod,
     dateRange: { startDate, endDate },
-  }), [displayPeriod, endDate, goals, selectedGoalId, sessionNotes, startDate]);
+  }), [displayPeriod, endDate, goals, selectedGoalId, selectedTherapistId, sessionNotes, startDate]);
 
   useEffect(() => {
     if (trendModel.selectedGoalId !== selectedGoalId) {
@@ -166,6 +168,7 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
     const model = buildSessionTrendModel(sessionNotes, goals, {
       selectedGoalId: trendModel.selectedGoalId,
       selectedTargetKey: target.key,
+      selectedTherapistId: trendModel.selectedTherapistId,
       displayPeriod,
       dateRange: { startDate, endDate },
     });
@@ -184,8 +187,13 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
     sessionNotes,
     startDate,
     trendModel.selectedGoalId,
+    trendModel.selectedTherapistId,
     trendModel.targetOptions,
   ]);
+
+  const selectedTherapistLabel = trendModel.selectedTherapistId
+    ? trendModel.therapistOptions.find((therapist) => therapist.id === trendModel.selectedTherapistId)?.label ?? null
+    : null;
 
   const chartBuckets = useMemo(() => {
     const bucketsByKey = new Map<string, string>();
@@ -304,7 +312,7 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 lg:col-span-2">
           Goal
           <select
@@ -324,6 +332,20 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
                 </option>
               ))
             )}
+          </select>
+        </label>
+
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Therapist
+          <select
+            value={selectedTherapistId ?? ''}
+            onChange={(event) => setSelectedTherapistId(event.target.value || null)}
+            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-dark dark:text-white"
+          >
+            <option value="">All therapists</option>
+            {trendModel.therapistOptions.map((therapist) => (
+              <option key={therapist.id} value={therapist.id}>{therapist.label}</option>
+            ))}
           </select>
         </label>
 
@@ -391,7 +413,10 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
       ) : (
         <>
           <div className="rounded-md border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-dark-lighter">
-            <div className="mb-3 flex justify-end">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {selectedTherapistLabel ? `Therapist: ${selectedTherapistLabel}` : 'All therapists'}
+              </div>
               <button
                 type="button"
                 onClick={handleDownloadGraph}

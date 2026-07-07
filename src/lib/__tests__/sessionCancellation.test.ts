@@ -70,6 +70,7 @@ describe("cancelSessions", () => {
 
     const body = JSON.parse(requestInit?.body as string);
     expect(body.session_ids).toEqual(["s1", "s2"]);
+    expect(body.cancellation_attribution).toBe("staff");
   });
 
   it("generates an idempotency key and forwards time_zone for date-based cancellation", async () => {
@@ -100,6 +101,33 @@ describe("cancelSessions", () => {
     const body = JSON.parse(requestInit?.body as string);
     expect(body.date).toBe("2025-03-18");
     expect(body.time_zone).toBe("America/Los_Angeles");
+    expect(body.cancellation_attribution).toBe("staff");
+  });
+
+  it("forwards explicit client cancellation attribution", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          success: true,
+          data: {
+            cancelledCount: 1,
+            alreadyCancelledCount: 0,
+            nonCancellableCount: 0,
+            totalCount: 1,
+            cancelledSessionIds: ["s1"],
+            alreadyCancelledSessionIds: [],
+            nonCancellableSessionIds: [],
+          },
+        },
+        200,
+      ),
+    );
+
+    await cancelSessions({ sessionIds: ["s1"], cancellationAttribution: "client" });
+
+    const requestInit = mockedCallEdge.mock.calls[0][1];
+    const body = JSON.parse(requestInit?.body as string);
+    expect(body.cancellation_attribution).toBe("client");
   });
 
   it("throws when the API responds with an error", async () => {

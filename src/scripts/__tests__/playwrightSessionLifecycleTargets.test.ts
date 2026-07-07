@@ -48,4 +48,33 @@ describe("buildLifecycleTargetPairs", () => {
 
     expect(result).toEqual([{ therapistId: "therapist-a", clientId: "client-1" }]);
   });
+
+  it("limits authorized pairs to allowed linked therapists when provided", () => {
+    const result = buildLifecycleTargetPairs({
+      therapistIds: ["therapist-a", "therapist-b", "therapist-c"],
+      clientIds: ["client-1", "client-2"],
+      authorizedPairs: [
+        { therapistId: "therapist-a", clientId: "client-1" },
+        { therapistId: "therapist-b", clientId: "client-2" },
+        { therapistId: "therapist-c", clientId: "client-1" },
+      ],
+      allowedTherapistIds: ["therapist-b"],
+    });
+
+    expect(result).toEqual([{ therapistId: "therapist-b", clientId: "client-2" }]);
+  });
+
+  it("limits fallback pairs to allowed linked therapists when no authorization pairs match", () => {
+    const result = buildLifecycleTargetPairs({
+      therapistIds: ["therapist-a", "therapist-b"],
+      clientIds: ["client-1", "client-2"],
+      authorizedPairs: [],
+      allowedTherapistIds: ["therapist-b"],
+    });
+
+    expect(result).toEqual([
+      { therapistId: "therapist-b", clientId: "client-1" },
+      { therapistId: "therapist-b", clientId: "client-2" },
+    ]);
+  });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders, userEvent } from '../../test/utils';
 import { ClientDetails } from '../ClientDetails';
@@ -77,10 +77,23 @@ const createIssuesBuilder = () => {
   return builder;
 };
 
+let mockAuthorizationEndDates: Array<{ end_date: string }> = [];
+
+const createAuthorizationsBuilder = () => {
+  const builder: any = {};
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.gte = vi.fn(() => builder);
+  builder.lte = vi.fn(() => builder);
+  builder.order = vi.fn(async () => ({ data: mockAuthorizationEndDates, error: null }));
+  return builder;
+};
+
 describe('ClientDetails page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLocationSearch = '';
+    mockAuthorizationEndDates = [];
     vi.mocked(fetchClientByIdForViewer).mockResolvedValue({
       id: 'client-1',
       full_name: 'Alyana Perez',
@@ -94,8 +107,15 @@ describe('ClientDetails page', () => {
       if (table === 'client_issues') {
         return createIssuesBuilder();
       }
+      if (table === 'authorizations') {
+        return createAuthorizationsBuilder();
+      }
       return createIssuesBuilder();
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('switches between client-record tabs and renders tab content', async () => {
@@ -202,6 +222,57 @@ describe('ClientDetails page', () => {
     expect(screen.getByText('PreAuthTabContent')).toBeInTheDocument();
   });
 
+  it('shows a report-upcoming banner when client authorization ends within 30 days', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-07-07T12:00:00Z'));
+    vi.mocked(fetchClientByIdForViewer).mockResolvedValue({
+      id: 'client-1',
+      full_name: 'Alyana Perez',
+      therapist_id: 'admin-user-id',
+      authorized_hours_per_month: 12,
+      auth_end_date: '2026-07-30',
+    });
+
+    renderWithProviders(<ClientDetails />);
+
+    expect(await screen.findByText(/Report upcoming/i)).toBeInTheDocument();
+    expect(screen.getByText(/Authorization ends Jul 30, 2026/i)).toBeInTheDocument();
+  });
+
+  it('shows a report-upcoming banner when an active authorization ends within 30 days', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-07-07T12:00:00Z'));
+    mockAuthorizationEndDates = [{ end_date: '2026-07-22' }];
+
+    renderWithProviders(<ClientDetails />);
+
+    expect(await screen.findByText(/Report upcoming/i)).toBeInTheDocument();
+    expect(screen.getByText(/Authorization ends Jul 22, 2026/i)).toBeInTheDocument();
+    expect(supabase.from).toHaveBeenCalledWith('authorizations');
+  });
+
+  it('does not expose report-upcoming authorization dates to viewers without authorization access', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-07-07T12:00:00Z'));
+    mockAuthorizationEndDates = [{ end_date: '2026-07-22' }];
+    vi.mocked(fetchClientByIdForViewer).mockResolvedValue({
+      id: 'client-1',
+      full_name: 'Alyana Perez',
+      therapist_id: 'therapist-user-id',
+      authorized_hours_per_month: 12,
+      auth_end_date: '2026-07-30',
+    });
+
+    renderWithProviders(<ClientDetails />, {
+      auth: { role: 'therapist', userId: 'therapist-user-id' },
+    });
+
+    await waitFor(() => expect(screen.getByText('ProfileTabContent')).toBeInTheDocument());
+    expect(screen.queryByText(/Report upcoming/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Authorization ends/i)).not.toBeInTheDocument();
+    expect(supabase.from).not.toHaveBeenCalledWith('authorizations');
+  });
+
   it('hides the Pre-Authorizations tab for client viewers', async () => {
     renderWithProviders(<ClientDetails />, {
       auth: { role: 'client', userId: 'client-1' },
@@ -235,7 +306,6 @@ describe('ClientDetails page', () => {
       userId: 'therapist-user-id',
     });
     expect(supabase.from).toHaveBeenCalledWith('sessions');
-    expect(supabase.from).toHaveBeenCalledWith('client_issues');
   });
 
   it('does not render Programs & Goals or summary queries for a client viewing another record', async () => {

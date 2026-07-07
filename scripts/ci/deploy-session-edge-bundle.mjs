@@ -17,6 +17,7 @@ const REQUIRED_FUNCTIONS = [
   "emails",
   "extract-assessment-fields",
   "generate-assessment-plan-docx",
+  "utilization-report",
 ];
 
 const EXPECT_VERIFY_JWT = String(process.env.CI_EXPECT_VERIFY_JWT ?? "true").toLowerCase() !== "false";

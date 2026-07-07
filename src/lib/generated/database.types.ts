@@ -5496,6 +5496,7 @@ export type Database = {
       sessions: {
         Row: {
           appointment_id: string | null
+          cancellation_attribution: string | null
           client_id: string
           created_at: string | null
           created_by: string | null
@@ -5522,6 +5523,7 @@ export type Database = {
         }
         Insert: {
           appointment_id?: string | null
+          cancellation_attribution?: string | null
           client_id: string
           created_at?: string | null
           created_by?: string | null
@@ -5548,6 +5550,7 @@ export type Database = {
         }
         Update: {
           appointment_id?: string | null
+          cancellation_attribution?: string | null
           client_id?: string
           created_at?: string | null
           created_by?: string | null

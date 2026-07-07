@@ -28,6 +28,7 @@ interface CancelPayload {
   time_zone?: unknown;
   therapist_id?: unknown;
   reason?: unknown;
+  cancellation_attribution?: unknown;
 }
 
 interface SessionRecord {
@@ -163,6 +164,7 @@ function parseCancelPayload(input: unknown): {
   dateRange: { start: string; end: string } | null;
   therapistId: string | null;
   reason: string | null;
+  cancellationAttribution: "staff" | "client" | "unknown";
 } {
   if (typeof input !== "object" || input === null) {
     throw new BadRequestError("Invalid request payload");
@@ -187,6 +189,10 @@ function parseCancelPayload(input: unknown): {
     typeof payload.reason === "string" && payload.reason.trim().length > 0
       ? payload.reason.trim()
       : null;
+  const cancellationAttribution =
+    payload.cancellation_attribution === "staff" || payload.cancellation_attribution === "client"
+      ? payload.cancellation_attribution
+      : "unknown";
 
   if (hasDateInput && hasTimeZoneInput && !dateRange) {
     throw new BadRequestError("Invalid date or time_zone for cancellation window");
@@ -196,7 +202,7 @@ function parseCancelPayload(input: unknown): {
     throw new BadRequestError("Must provide hold_key, session_ids, or date");
   }
 
-  return { holdKey, sessionIds, dateRange, therapistId, reason };
+  return { holdKey, sessionIds, dateRange, therapistId, reason, cancellationAttribution };
 }
 
 type CancellationRole = "super_admin" | "admin" | "therapist" | null;
@@ -446,6 +452,7 @@ async function handleSessionCancellationForRequest(
     dateRange: { start: string; end: string } | null;
     therapistId: string | null;
     reason: string | null;
+    cancellationAttribution?: "staff" | "client" | "unknown";
   },
   userId: string,
   role: CancellationRole,
@@ -527,6 +534,7 @@ async function handleSessionCancellationForRequest(
     const updates: Record<string, unknown> = {
       status: "cancelled",
       updated_by: userId,
+      cancellation_attribution: payload.cancellationAttribution ?? "unknown",
     };
     if (payload.reason) {
       updates.notes = payload.reason;
@@ -564,6 +572,7 @@ async function handleSessionCancellationForRequest(
         required: false,
         payload: {
           reason: payload.reason,
+          cancellationAttribution: payload.cancellationAttribution ?? "unknown",
           startTime: session.start_time,
           endTime: session.end_time,
           agentOperationId: traceMeta.agentOperationId,
@@ -616,6 +625,7 @@ async function handleSessionCancellation(
     dateRange: { start: string; end: string } | null;
     therapistId: string | null;
     reason: string | null;
+    cancellationAttribution?: "staff" | "client" | "unknown";
   },
   userId: string,
   role: CancellationRole,
@@ -741,6 +751,7 @@ Deno.serve(async (req) => {
           dateRange: payload.dateRange,
           therapistId: payload.therapistId,
           reason: payload.reason,
+          cancellationAttribution: payload.cancellationAttribution,
         },
         user.id,
         role,

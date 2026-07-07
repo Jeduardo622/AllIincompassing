@@ -278,6 +278,36 @@ describe('ClientSessionTrendsTab', () => {
     createElement.mockRestore();
   });
 
+  it('can filter the trend graph to a single therapist series', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([
+      {
+        ...createSessionNote('jane-note', '2025-06-01', [
+          { target: 'lost in community', metric_value: 8, opportunities: 10 },
+        ]),
+        therapist_id: 'therapist-jane',
+        therapist_name: 'Jane Analyst',
+      },
+      {
+        ...createSessionNote('pat-note', '2025-06-08', [
+          { target: 'lost in community', metric_value: 4, opportunities: 10 },
+        ]),
+        therapist_id: 'therapist-pat',
+        therapist_name: 'Pat BCBA',
+      },
+    ]);
+
+    renderWithProviders(<ClientSessionTrendsTab client={{ id: 'client-1' }} />, {
+      auth: { role: 'admin', userId: 'admin-user-id' },
+    });
+
+    await screen.findByTestId('session-trends-chart');
+    fireEvent.change(screen.getByLabelText('Therapist'), { target: { value: 'therapist-pat' } });
+
+    await waitFor(() => expect(screen.getByText('Therapist: Pat BCBA')).toBeInTheDocument());
+    expect(screen.getByTestId('session-trends-chart')).toHaveTextContent('lost in community:circle:40');
+    expect(screen.getByTestId('session-trends-chart')).not.toHaveTextContent('Jane Analyst');
+  });
+
   it('uses a stable month-start default range on month-end dates', async () => {
     vi.setSystemTime(new Date('2026-03-31T12:00:00Z'));
 

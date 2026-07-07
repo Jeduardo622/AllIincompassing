@@ -43,7 +43,7 @@ const START_SESSION_AUTHZ_MIGRATION_PATH = path.join(
   process.cwd(),
   'supabase',
   'migrations',
-  '20260707194500_start_session_employee_role_authz.sql',
+  '20260707193703_start_session_employee_role_authz.sql',
 );
 const SMOKE_SQL_PATH = path.join(process.cwd(), 'tests', 'sql', 'employee_role_capability_smoke.sql');
 

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import '@testing-library/jest-dom';
 import { installConsoleGuard } from './utils/consoleGuard';
 import { setRuntimeSupabaseConfig } from '../lib/runtimeConfig';
+import { handleUnhandledMswRequest } from './mswUnhandledRequest';
 
 const isTestRuntime =
   process.env.VITEST === 'true' ||
@@ -1397,8 +1398,9 @@ const isIntegrationTest = Boolean(process.env.VITEST_POOL_ID?.includes('Integrat
 // Start server before all tests
 beforeAll(() => {
   // Always error on unhandled to force explicit handlers per-domain.
-  // Integration tests should also declare handlers; avoid bypass to catch gaps.
-  server.listen({ onUnhandledRequest: 'error' });
+  // Live DB integration tests may call Supabase Auth admin endpoints directly.
+  // Keep every other unhandled request strict so mocked tests declare handlers.
+  server.listen({ onUnhandledRequest: handleUnhandledMswRequest });
 });
 
 // Reset handlers after each test

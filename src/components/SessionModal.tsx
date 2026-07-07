@@ -87,6 +87,38 @@ export interface SessionModalClinicalNotesPayload {
 }
 
 const responseRequiredMeasurementTypes = new Set(['correctIncorrect', 'taskAnalysis']);
+const valueRequiredMeasurementTypes = new Set(['frequency', 'rate', 'duration', 'timeSample', 'latency', 'IRT']);
+
+const valueMeasurementMeta: Record<string, { label: string; unit: string; step: number }> = {
+  frequency: { label: 'Frequency', unit: 'count', step: 1 },
+  rate: { label: 'Rate', unit: 'per hour', step: 0.1 },
+  duration: { label: 'Duration', unit: 'minutes', step: 0.1 },
+  timeSample: { label: 'Time sample', unit: 'intervals', step: 1 },
+  latency: { label: 'Latency', unit: 'seconds', step: 0.1 },
+  IRT: { label: 'IRT', unit: 'seconds', step: 0.1 },
+};
+
+const responseOptionsByMeasurementType: Record<string, Array<{ response: NonNullable<TrialEvent['response']>; label: string }>> = {
+  correctIncorrect: [
+    { response: 'correct', label: 'Correct' },
+    { response: 'incorrect', label: 'Incorrect' },
+    { response: 'noResponse', label: 'No response' },
+  ],
+  taskAnalysis: [
+    { response: 'independent', label: 'Independent' },
+    { response: 'prompted', label: 'Prompted' },
+    { response: 'incorrect', label: 'Incorrect' },
+    { response: 'noResponse', label: 'No response' },
+  ],
+};
+
+const getValueMeasurementMeta = (measurementType: string) =>
+  valueRequiredMeasurementTypes.has(measurementType)
+    ? valueMeasurementMeta[measurementType] ?? { label: 'Value', unit: 'value', step: 0.1 }
+    : null;
+
+const isPositiveResponse = (response: TrialEvent['response']): boolean =>
+  response === 'correct' || response === 'independent' || response === 'prompted';
 
 export type SessionModalSubmitData = Partial<Session> & SessionModalClinicalNotesPayload;
 
@@ -265,6 +297,7 @@ export function SessionModal({
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [pendingTrialEvents, setPendingTrialEvents] = useState<SessionCaptureTrialEventInput[]>([]);
+  const [pendingNumericTrialValues, setPendingNumericTrialValues] = useState<Record<string, string>>({});
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const sessionCaptureSectionRef = useRef<HTMLElement | null>(null);
@@ -627,15 +660,18 @@ export function SessionModal({
       hasNestedDirtyEntries(dirtyFields.session_note_goal_ids) ||
       hasNestedDirtyEntries(dirtyFields.session_note_goals_addressed) ||
       hasNestedDirtyEntries(dirtyFields.session_note_goal_notes) ||
-      hasNestedDirtyEntries(dirtyFields.session_note_goal_measurements),
+      hasNestedDirtyEntries(dirtyFields.session_note_goal_measurements) ||
+      Object.values(pendingNumericTrialValues).some((value) => value.trim().length > 0),
     [
       dirtyFields.session_note_goal_ids,
       dirtyFields.session_note_goals_addressed,
       dirtyFields.session_note_goal_measurements,
       dirtyFields.session_note_goal_notes,
       dirtyFields.session_note_narrative,
+      pendingNumericTrialValues,
     ],
   );
+  const hasUnsavedSessionChanges = isDirty || hasDirtySessionCaptureFields;
 
   useEffect(() => {
     if (session?.therapist_id) {
@@ -670,6 +706,7 @@ export function SessionModal({
 
   useEffect(() => {
     setPendingTrialEvents([]);
+    setPendingNumericTrialValues({});
   }, [session?.id, clientId]);
 
   useEffect(() => {
@@ -1225,7 +1262,7 @@ export function SessionModal({
                 incorrect_trials: null,
                 opportunities: null,
                 target_trials: null,
-                trial_prompt_note: null,
+                trial_prompt_note: entry.data.trial_prompt_note,
               },
             };
             return hasMeaningfulGoalMeasurementEntry(rawEventBackedEntry)
@@ -1418,7 +1455,7 @@ export function SessionModal({
     if (isSubmitting) {
       return;
     }
-    if (!isDirty) {
+    if (!hasUnsavedSessionChanges) {
       onClose();
       return;
     }
@@ -1428,7 +1465,7 @@ export function SessionModal({
     if (shouldDiscard) {
       onClose();
     }
-  }, [isDirty, isSubmitting, onClose]);
+  }, [hasUnsavedSessionChanges, isSubmitting, onClose]);
 
   const handleStartSession = async () => {
     if (isDataCollectionOnly) {
@@ -1629,13 +1666,31 @@ export function SessionModal({
         }
         if (responseRequiredMeasurementTypes.has(measurementType)) {
           return field === 'metric_value'
-            ? event.response === 'correct'
+            ? isPositiveResponse(event.response)
             : event.response === 'incorrect' || event.response === 'noResponse';
         }
         return field === 'metric_value'
           ? typeof event.value === 'number' && event.value > 0
           : event.value === 0;
       }).length;
+    },
+    [existingTrialEvents, pendingTrialEvents],
+  );
+
+  const getRawTrialNumericSummary = useCallback(
+    (targetId: string, scope: 'all' | 'pending' = 'all') => {
+      const sourceEvents = scope === 'pending'
+        ? pendingTrialEvents
+        : [...existingTrialEvents, ...pendingTrialEvents];
+      return sourceEvents
+        .filter((event) => event.target_id === targetId && typeof event.value === 'number')
+        .reduce(
+          (summary, event) => ({
+            count: summary.count + 1,
+            total: summary.total + (typeof event.value === 'number' ? event.value : 0),
+          }),
+          { count: 0, total: 0 },
+        );
     },
     [existingTrialEvents, pendingTrialEvents],
   );
@@ -1693,7 +1748,7 @@ export function SessionModal({
               }
               const matchesField = responseRequiredMeasurementTypes.has(configuredTarget.measurement_type)
                 ? (field === 'metric_value'
-                    ? event.response === 'correct'
+                    ? isPositiveResponse(event.response)
                     : event.response === 'incorrect' || event.response === 'noResponse')
                 : (field === 'metric_value'
                     ? typeof event.value === 'number' && event.value > 0
@@ -1722,6 +1777,66 @@ export function SessionModal({
       setValue(path, Math.max(0, safe + delta), { shouldDirty: true, shouldTouch: true });
     },
     [getNextRawTrialNumber, getRawTrialCount, getValues, setValue],
+  );
+
+  const recordResponseTrial = useCallback(
+    (
+      goalId: string,
+      targetIndex: number,
+      configuredTarget: GoalTarget,
+      response: NonNullable<TrialEvent['response']>,
+    ) => {
+      const field = isPositiveResponse(response) ? 'metric_value' : 'incorrect_trials';
+      const dirtyPath =
+        `session_note_goal_measurements.${goalId}.data.target_trials.${targetIndex}.${field}` as const;
+      const nextDisplayedCount = getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, field) + 1;
+      const newEvent: SessionCaptureTrialEventInput = {
+        target_id: configuredTarget.id,
+        trial_number: getNextRawTrialNumber(configuredTarget.id),
+        response,
+        metadata: { source: 'schedule_capture', goal_id: goalId, target_index: targetIndex },
+      };
+      setPendingTrialEvents((current) => [...current, newEvent]);
+      setValue(dirtyPath, nextDisplayedCount, { shouldDirty: true, shouldTouch: true });
+    },
+    [getNextRawTrialNumber, getRawTrialCount, setValue],
+  );
+
+  const recordNumericTrial = useCallback(
+    (goalId: string, targetIndex: number, configuredTarget: GoalTarget, rawValue: string) => {
+      if (rawValue.trim().length === 0) {
+        showError('Enter a non-negative value before adding the trial.');
+        return;
+      }
+      const value = Number(rawValue);
+      if (!Number.isFinite(value) || value < 0) {
+        showError('Enter a non-negative value before adding the trial.');
+        return;
+      }
+      const metricValuePath =
+        `session_note_goal_measurements.${goalId}.data.target_trials.${targetIndex}.metric_value` as const;
+      const opportunitiesPath =
+        `session_note_goal_measurements.${goalId}.data.target_trials.${targetIndex}.opportunities` as const;
+      const currentSummary = getRawTrialNumericSummary(configuredTarget.id);
+      const nextSummary = {
+        count: currentSummary.count + 1,
+        total: currentSummary.total + value,
+      };
+      const newEvent: SessionCaptureTrialEventInput = {
+        target_id: configuredTarget.id,
+        trial_number: getNextRawTrialNumber(configuredTarget.id),
+        value,
+        metadata: { source: 'schedule_capture', goal_id: goalId, target_index: targetIndex },
+      };
+      setPendingTrialEvents((current) => [...current, newEvent]);
+      setValue(metricValuePath, nextSummary.total, { shouldDirty: true, shouldTouch: true });
+      setValue(opportunitiesPath, nextSummary.count, { shouldDirty: true, shouldTouch: true });
+      setPendingNumericTrialValues((current) => ({
+        ...current,
+        [configuredTarget.id]: '',
+      }));
+    },
+    [getNextRawTrialNumber, getRawTrialNumericSummary, setValue],
   );
 
   const updateGoalTargets = useCallback(
@@ -1864,11 +1979,11 @@ export function SessionModal({
     if (saveState === 'error') {
       return { tone: 'error' as const, text: 'Unable to save session details. Try again.' };
     }
-    if (isDirty) {
+    if (hasUnsavedSessionChanges) {
       return { tone: 'warning' as const, text: 'Unsaved changes.' };
     }
     return null;
-  }, [isDirty, isSubmitting, saveState]);
+  }, [hasUnsavedSessionChanges, isSubmitting, saveState]);
   const dialogDescriptionIds = [
     dialogDescriptionId,
     ...(retryHint ? [retryHintDescriptionId] : []),
@@ -1953,7 +2068,7 @@ export function SessionModal({
   }, [isOpen, handleAttemptClose]);
 
   useEffect(() => {
-    if (!isOpen || !isDirty || isSubmitting) {
+    if (!isOpen || !hasUnsavedSessionChanges || isSubmitting) {
       return;
     }
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -1964,13 +2079,13 @@ export function SessionModal({
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [isOpen, isDirty, isSubmitting]);
+  }, [isOpen, hasUnsavedSessionChanges, isSubmitting]);
 
   useEffect(() => {
-    if (!isDirty && saveState === 'error') {
+    if (!hasUnsavedSessionChanges && saveState === 'error') {
       setSaveState('idle');
     }
-  }, [isDirty, saveState]);
+  }, [hasUnsavedSessionChanges, saveState]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -1979,7 +2094,7 @@ export function SessionModal({
   }, [isOpen, session?.id]);
 
   useEffect(() => {
-    if (!linkedSessionNote || !session?.id || isDirty) {
+    if (!linkedSessionNote || !session?.id || hasUnsavedSessionChanges) {
       return;
     }
     const linkedMeasurements = (linkedSessionNote.goal_measurements as Record<string, unknown> | null) ?? {};
@@ -2008,7 +2123,7 @@ export function SessionModal({
     setValue('session_note_goals_addressed', linkedSessionNote.goals_addressed ?? []);
     setValue('session_note_authorization_id', linkedSessionNote.authorization_id ?? '');
     setValue('session_note_service_code', linkedSessionNote.service_code ?? '');
-  }, [goalsById, linkedSessionNote, session?.id, setValue, isDirty]);
+  }, [goalsById, linkedSessionNote, session?.id, setValue, hasUnsavedSessionChanges]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -3240,17 +3355,40 @@ export function SessionModal({
                                     const targetTrialTargetFieldKey =
                                       `${targetTrialsFieldBaseKey}.${sourceIndex}.target` as const;
                                     const configuredTarget = resolveConfiguredGoalTarget(selectedGoalId, targetValue);
+                                    const valueCaptureMeta = configuredTarget
+                                      ? getValueMeasurementMeta(configuredTarget.measurement_type)
+                                      : null;
+                                    const responseCaptureOptions = configuredTarget
+                                      ? responseOptionsByMeasurementType[configuredTarget.measurement_type] ?? []
+                                      : [];
+                                    const numericInputValue = configuredTarget
+                                      ? pendingNumericTrialValues[configuredTarget.id] ?? ''
+                                      : '';
+                                    const numericSummary = configuredTarget && valueCaptureMeta
+                                      ? getRawTrialNumericSummary(configuredTarget.id)
+                                      : { count: 0, total: 0 };
+                                    const pendingNumericSummary = configuredTarget && valueCaptureMeta
+                                      ? getRawTrialNumericSummary(configuredTarget.id, 'pending')
+                                      : { count: 0, total: 0 };
                                     const targetCorrectDisplay = configuredTarget
-                                      ? getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'metric_value')
+                                      ? (valueCaptureMeta
+                                          ? numericSummary.total
+                                          : getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'metric_value'))
                                       : getTargetTrialValue(sourceIndex, 'metric_value');
                                     const targetIncorrectDisplay = configuredTarget
-                                      ? getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'incorrect_trials')
+                                      ? (valueCaptureMeta
+                                          ? 0
+                                          : getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'incorrect_trials'))
                                       : getTargetTrialValue(sourceIndex, 'incorrect_trials');
                                     const pendingCorrectDisplay = configuredTarget
-                                      ? getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'metric_value', 'pending')
+                                      ? (valueCaptureMeta
+                                          ? pendingNumericSummary.total
+                                          : getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'metric_value', 'pending'))
                                       : targetCorrectDisplay;
                                     const pendingIncorrectDisplay = configuredTarget
-                                      ? getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'incorrect_trials', 'pending')
+                                      ? (valueCaptureMeta
+                                          ? 0
+                                          : getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'incorrect_trials', 'pending'))
                                       : targetIncorrectDisplay;
                                     const shouldRenderTargetTrialFields =
                                       isAdhocTarget ||
@@ -3322,10 +3460,77 @@ export function SessionModal({
                                           <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
                                             Trials for target {targetIndex + 1}
                                           </p>
-                                          <p className="mt-1 text-[11px] text-indigo-700/90 dark:text-indigo-200/80">
-                                            + correct or achieved · − incorrect or no response.
-                                          </p>
-                                          <div className="mt-3 flex flex-wrap items-center gap-3">
+                                          {valueCaptureMeta && configuredTarget ? (
+                                            <div className="mt-3">
+                                              <label
+                                                htmlFor={`numeric-trial-${selectedGoalId}-${targetIndex}`}
+                                                className="block text-xs font-medium text-gray-700 dark:text-gray-300"
+                                              >
+                                                {valueCaptureMeta.label} value for target {targetIndex + 1} ({valueCaptureMeta.unit})
+                                              </label>
+                                              <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                <input
+                                                  id={`numeric-trial-${selectedGoalId}-${targetIndex}`}
+                                                  type="number"
+                                                  min={0}
+                                                  step={valueCaptureMeta.step}
+                                                  value={numericInputValue}
+                                                  onChange={(event) =>
+                                                    setPendingNumericTrialValues((current) => ({
+                                                      ...current,
+                                                      [configuredTarget.id]: event.target.value,
+                                                    }))
+                                                  }
+                                                  className="min-h-10 w-32 rounded-md border-gray-300 bg-white px-3 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                                />
+                                                <button
+                                                  type="button"
+                                                  aria-label={`Add ${valueCaptureMeta.label.toLowerCase()} trial for target ${targetIndex + 1}`}
+                                                  className="rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
+                                                  onClick={() => recordNumericTrial(selectedGoalId, sourceIndex, configuredTarget, numericInputValue)}
+                                                >
+                                                  Add trial
+                                                </button>
+                                                <span className="text-xs tabular-nums text-gray-600 dark:text-gray-300">
+                                                  {numericSummary.count} trials · total {numericSummary.total}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <p className="mt-1 text-[11px] text-indigo-700/90 dark:text-indigo-200/80">
+                                                + correct or achieved · − incorrect or no response.
+                                              </p>
+                                              {configuredTarget && responseCaptureOptions.length > 0 ? (
+                                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                                  {responseCaptureOptions.map((option) => (
+                                                    <button
+                                                      key={option.response}
+                                                      type="button"
+                                                      aria-label={
+                                                        option.response === 'correct'
+                                                          ? `Increase correct trials for target ${targetIndex + 1}`
+                                                          : option.response === 'incorrect'
+                                                            ? `Increase incorrect or no-response trials for target ${targetIndex + 1}`
+                                                            : `Record ${option.label.toLowerCase()} response for target ${targetIndex + 1}`
+                                                      }
+                                                      className={[
+                                                        'rounded-md px-3 py-2 text-xs font-semibold shadow-sm',
+                                                        isPositiveResponse(option.response)
+                                                          ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                                          : 'bg-rose-600 text-white hover:bg-rose-700',
+                                                      ].join(' ')}
+                                                      onClick={() => recordResponseTrial(selectedGoalId, sourceIndex, configuredTarget, option.response)}
+                                                    >
+                                                      {option.label}
+                                                    </button>
+                                                  ))}
+                                                  <span className="text-xs tabular-nums text-gray-600 dark:text-gray-300">
+                                                    +{targetCorrectDisplay} · −{targetIncorrectDisplay}
+                                                  </span>
+                                                </div>
+                                              ) : (
+                                                <div className="mt-3 flex flex-wrap items-center gap-3">
                                             <div className="flex flex-wrap items-center gap-2">
                                               <span className="text-xs font-medium text-gray-700 dark:text-gray-300">+</span>
                                               <button
@@ -3346,7 +3551,7 @@ export function SessionModal({
                                                 className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-700 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-400 dark:text-emerald-200"
                                                 onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -1, configuredTarget)}
                                               >
-                                                −
+                                                -
                                               </button>
                                               <button
                                                 type="button"
@@ -3363,11 +3568,11 @@ export function SessionModal({
                                                 className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
                                                 onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -5, configuredTarget)}
                                               >
-                                                −5
+                                                -5
                                               </button>
                                             </div>
                                             <div className="flex flex-wrap items-center gap-2">
-                                              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">−</span>
+                                              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">-</span>
                                               <button
                                                 type="button"
                                                 aria-label={`Increase incorrect or no-response trials for target ${targetIndex + 1}`}
@@ -3386,7 +3591,7 @@ export function SessionModal({
                                                 className="flex h-10 w-10 items-center justify-center rounded-full border border-rose-700 text-rose-700 hover:bg-rose-50 dark:border-rose-400 dark:text-rose-200"
                                                 onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -1, configuredTarget)}
                                               >
-                                                −
+                                                -
                                               </button>
                                               <button
                                                 type="button"
@@ -3403,10 +3608,13 @@ export function SessionModal({
                                                 className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
                                                 onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -5, configuredTarget)}
                                               >
-                                                −5
+                                                -5
                                               </button>
                                             </div>
                                           </div>
+                                              )}
+                                            </>
+                                          )}
                                           <input
                                             type="number"
                                             className="sr-only"

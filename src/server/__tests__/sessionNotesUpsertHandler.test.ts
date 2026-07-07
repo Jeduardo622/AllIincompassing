@@ -323,6 +323,214 @@ describe("sessionNotesUpsertHandler", () => {
     expect(trialEventsPostCount).toBe(1);
   });
 
+  it("persists numeric raw trial values for duration targets before saving the session note", async () => {
+    const fetchJsonMock = vi.mocked(fetchJson);
+    let trialEventsPostCount = 0;
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && init?.method === "POST") {
+        return { ok: true, status: 201, data: [{ id: "note-with-duration-event" }] };
+      }
+      if (requestUrl.includes("/rest/v1/goal_targets?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: targetId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            goal_id: basePayload.goalIds[0],
+            measurement_type: "duration",
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/sessions?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.sessionId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            therapist_id: basePayload.therapistId,
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/trial_events") && init?.method === "GET") {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.includes("/rest/v1/trial_events") && init?.method === "POST") {
+        trialEventsPostCount += 1;
+        const parsedBody = JSON.parse(String(init.body)) as Array<Record<string, unknown>>;
+        expect(parsedBody).toEqual([
+          expect.objectContaining({
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            session_id: basePayload.sessionId,
+            target_id: targetId,
+            goal_id: basePayload.goalIds[0],
+            therapist_id: basePayload.therapistId,
+            trial_number: 1,
+            response: null,
+            value: 12.5,
+            created_by: "actor-1",
+          }),
+        ]);
+        return { ok: true, status: 201, data: [] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-with-duration-event")) {
+        return { ok: true, status: 200, data: [buildSessionNoteRow("note-with-duration-event")] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          trialEvents: [{
+            target_id: targetId,
+            trial_number: 1,
+            value: 12.5,
+            metadata: { source: "schedule_capture" },
+          }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(trialEventsPostCount).toBe(1);
+  });
+
+  it("persists task-analysis raw trial responses before saving the session note", async () => {
+    const fetchJsonMock = vi.mocked(fetchJson);
+    let trialEventsPostCount = 0;
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && init?.method === "POST") {
+        return { ok: true, status: 201, data: [{ id: "note-with-task-analysis-events" }] };
+      }
+      if (requestUrl.includes("/rest/v1/goal_targets?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: targetId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            goal_id: basePayload.goalIds[0],
+            measurement_type: "taskAnalysis",
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/sessions?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.sessionId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            therapist_id: basePayload.therapistId,
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/trial_events") && init?.method === "GET") {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.includes("/rest/v1/trial_events") && init?.method === "POST") {
+        trialEventsPostCount += 1;
+        const parsedBody = JSON.parse(String(init.body)) as Array<Record<string, unknown>>;
+        expect(parsedBody).toEqual([
+          expect.objectContaining({
+            target_id: targetId,
+            goal_id: basePayload.goalIds[0],
+            trial_number: 1,
+            response: "independent",
+            value: null,
+            created_by: "actor-1",
+          }),
+          expect.objectContaining({
+            target_id: targetId,
+            goal_id: basePayload.goalIds[0],
+            trial_number: 2,
+            response: "prompted",
+            value: null,
+          }),
+        ]);
+        return { ok: true, status: 201, data: [] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-with-task-analysis-events")) {
+        return { ok: true, status: 200, data: [buildSessionNoteRow("note-with-task-analysis-events")] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          trialEvents: [
+            {
+              target_id: targetId,
+              trial_number: 1,
+              response: "independent",
+              metadata: { source: "schedule_capture" },
+            },
+            {
+              target_id: targetId,
+              trial_number: 2,
+              response: "prompted",
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(trialEventsPostCount).toBe(1);
+  });
+
   it("rejects raw trial events outside the saved goal scope", async () => {
     const fetchJsonMock = vi.mocked(fetchJson);
     let noteWriteCount = 0;

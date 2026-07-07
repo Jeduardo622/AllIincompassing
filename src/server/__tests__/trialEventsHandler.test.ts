@@ -287,66 +287,75 @@ describe("trialEventsHandler", () => {
     expect(fetchJson).not.toHaveBeenCalled();
   });
 
-  it("rejects value-based measurements without a numeric value", async () => {
-    mockTargetAndSessionLookups("frequency");
+  it.each(["frequency", "rate", "duration", "timeSample", "latency", "IRT"])(
+    "rejects %s measurements without a numeric value",
+    async (measurementType) => {
+      mockTargetAndSessionLookups(measurementType);
 
-    const response = await trialEventsHandler(
-      new Request("http://localhost/api/trial-events", {
-        method: "POST",
-        body: JSON.stringify({
-          session_id: SESSION_ID,
-          target_id: TARGET_ID,
-          trial_number: 1,
+      const response = await trialEventsHandler(
+        new Request("http://localhost/api/trial-events", {
+          method: "POST",
+          body: JSON.stringify({
+            session_id: SESSION_ID,
+            target_id: TARGET_ID,
+            trial_number: 1,
+          }),
         }),
-      }),
-    );
+      );
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "value is required for this target measurement type" });
-    expect(currentUserCanCaptureTrialEvent).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "value is required for this target measurement type" });
+      expect(currentUserCanCaptureTrialEvent).not.toHaveBeenCalled();
+    },
+  );
 
-  it("rejects standardized responses for value-based measurements", async () => {
-    mockTargetAndSessionLookups("frequency");
+  it.each(["frequency", "rate", "duration", "timeSample", "latency", "IRT"])(
+    "rejects standardized responses for %s measurements",
+    async (measurementType) => {
+      mockTargetAndSessionLookups(measurementType);
 
-    const response = await trialEventsHandler(
-      new Request("http://localhost/api/trial-events", {
-        method: "POST",
-        body: JSON.stringify({
-          session_id: SESSION_ID,
-          target_id: TARGET_ID,
-          trial_number: 1,
-          response: "correct",
-          value: 1,
+      const response = await trialEventsHandler(
+        new Request("http://localhost/api/trial-events", {
+          method: "POST",
+          body: JSON.stringify({
+            session_id: SESSION_ID,
+            target_id: TARGET_ID,
+            trial_number: 1,
+            response: "correct",
+            value: 1,
+          }),
         }),
-      }),
-    );
+      );
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "response is not allowed for this target measurement type" });
-    expect(currentUserCanCaptureTrialEvent).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "response is not allowed for this target measurement type" });
+      expect(currentUserCanCaptureTrialEvent).not.toHaveBeenCalled();
+    },
+  );
 
-  it("rejects numeric values for response-based measurements", async () => {
-    mockTargetAndSessionLookups("correctIncorrect");
+  it.each(["correctIncorrect", "taskAnalysis"])(
+    "rejects numeric values for %s response-based measurements",
+    async (measurementType) => {
+      mockTargetAndSessionLookups(measurementType);
 
-    const response = await trialEventsHandler(
-      new Request("http://localhost/api/trial-events", {
-        method: "POST",
-        body: JSON.stringify({
-          session_id: SESSION_ID,
-          target_id: TARGET_ID,
-          trial_number: 1,
-          response: "correct",
-          value: 1,
+      const response = await trialEventsHandler(
+        new Request("http://localhost/api/trial-events", {
+          method: "POST",
+          body: JSON.stringify({
+            session_id: SESSION_ID,
+            target_id: TARGET_ID,
+            trial_number: 1,
+            response: "correct",
+            value: 1,
+          }),
         }),
-      }),
-    );
+      );
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "value is not allowed for this target measurement type" });
-    expect(currentUserCanCaptureTrialEvent).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "value is not allowed for this target measurement type" });
+      expect(currentUserCanCaptureTrialEvent).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns 502 when trial-event capture access cannot be validated", async () => {
     mockTargetAndSessionLookups();
@@ -418,6 +427,38 @@ describe("trialEventsHandler", () => {
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining("\"value\":3"),
+      }),
+    );
+  });
+
+  it("inserts a duration trial event with a zero value when capture and lock checks allow it", async () => {
+    mockTargetAndSessionLookups("duration");
+    vi.mocked(currentUserCanCaptureTrialEvent).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(sessionHasLockedNote).mockResolvedValue({ locked: false, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      data: [{ id: "event-1", target_id: TARGET_ID, value: 0, response: null }],
+    });
+
+    const response = await trialEventsHandler(
+      new Request("http://localhost/api/trial-events", {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: SESSION_ID,
+          target_id: TARGET_ID,
+          trial_number: 1,
+          value: 0,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(fetchJson).toHaveBeenCalledWith(
+      "https://example.supabase.co/rest/v1/trial_events",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("\"value\":0"),
       }),
     );
   });

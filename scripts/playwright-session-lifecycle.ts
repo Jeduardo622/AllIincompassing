@@ -395,96 +395,6 @@ const fetchLinkedTherapistIdsForActor = async (actorUserId: string): Promise<str
   );
 };
 
-const logLifecycleActorAuthorizationDiagnostics = async (
-  actorUserId: string,
-  ids: LifecycleIds,
-): Promise<void> => {
-  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
-  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const adminClient = createClient(supabaseUrl, serviceRole, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-      detectSessionInUrl: false,
-    },
-  });
-
-  const [profileResult, userRolesResult, sessionResult, exactLinkResult] = await Promise.all([
-    adminClient
-      .from("profiles")
-      .select("role, organization_id")
-      .eq("id", actorUserId)
-      .maybeSingle(),
-    adminClient
-      .from("user_roles")
-      .select("role_id, is_active, expires_at")
-      .eq("user_id", actorUserId),
-    adminClient
-      .from("sessions")
-      .select("organization_id, therapist_id, created_by, status, started_at")
-      .eq("id", ids.sessionId)
-      .maybeSingle(),
-    adminClient
-      .from("user_therapist_links")
-      .select("therapist_id")
-      .eq("user_id", actorUserId)
-      .eq("therapist_id", ids.therapistId)
-      .limit(1),
-  ]);
-
-  const roleIds = Array.from(
-    new Set(
-      (userRolesResult.data ?? [])
-        .map((row) => typeof row.role_id === "string" ? row.role_id : null)
-        .filter((value): value is string => Boolean(value)),
-    ),
-  );
-  const rolesResult = roleIds.length > 0
-    ? await adminClient.from("roles").select("id, name").in("id", roleIds)
-    : { data: [], error: null };
-
-  const now = Date.now();
-  const activeRoleIds = new Set(
-    (userRolesResult.data ?? [])
-      .filter((row) => row.is_active !== false)
-      .filter((row) => !row.expires_at || Number.isNaN(Date.parse(row.expires_at)) || Date.parse(row.expires_at) > now)
-      .map((row) => row.role_id),
-  );
-  const activeRoleNames = (rolesResult.data ?? [])
-    .filter((role) => activeRoleIds.has(role.id))
-    .map((role) => role.name)
-    .filter((name): name is string => typeof name === "string")
-    .sort();
-
-  const profile = profileResult.data as { role?: string | null; organization_id?: string | null } | null;
-  const session = sessionResult.data as {
-    organization_id?: string | null;
-    therapist_id?: string | null;
-    created_by?: string | null;
-    status?: string | null;
-    started_at?: string | null;
-  } | null;
-
-  console.log("[lifecycle] actor authorization diagnostic", {
-    profileRole: profile?.role ?? null,
-    activeRoleNames,
-    profileOrgMatchesSession: Boolean(
-      profile?.organization_id && session?.organization_id && profile.organization_id === session.organization_id,
-    ),
-    createdByMatchesActor: Boolean(session?.created_by && session.created_by === actorUserId),
-    sessionStatus: session?.status ?? null,
-    sessionAlreadyStarted: Boolean(session?.started_at),
-    exactTherapistLink: Array.isArray(exactLinkResult.data) && exactLinkResult.data.length > 0,
-    queryErrors: {
-      profile: profileResult.error?.message ?? null,
-      userRoles: userRolesResult.error?.message ?? null,
-      roles: rolesResult.error?.message ?? null,
-      session: sessionResult.error?.message ?? null,
-      exactLink: exactLinkResult.error?.message ?? null,
-    },
-  });
-};
-
 const resolveOrganizationIdForTherapist = async (
   adminClient: ReturnType<typeof createClient>,
   therapistId: string,
@@ -1718,12 +1628,6 @@ async function startSessionViaScheduleModal(
       "[lifecycle] Modal did not yield sessions-start in time; using token/RPC fallback.",
       error instanceof Error ? error.message : error,
     );
-    await logLifecycleActorAuthorizationDiagnostics(getActorUserIdFromToken(token), ids).catch((diagnosticError) => {
-      console.warn(
-        "[lifecycle] actor authorization diagnostic failed",
-        diagnosticError instanceof Error ? diagnosticError.message : diagnosticError,
-      );
-    });
     if (strictMode) {
       throw error;
     }

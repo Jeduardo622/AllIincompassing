@@ -39,6 +39,12 @@ const SUPER_ADMIN_PRECEDENCE_MIGRATION_PATH = path.join(
   'migrations',
   '20260707121500_super_admin_bcba_role_precedence.sql',
 );
+const START_SESSION_AUTHZ_MIGRATION_PATH = path.join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260707194500_start_session_employee_role_authz.sql',
+);
 const SMOKE_SQL_PATH = path.join(process.cwd(), 'tests', 'sql', 'employee_role_capability_smoke.sql');
 
 const sql = readFileSync(MIGRATION_PATH, 'utf8');
@@ -47,6 +53,7 @@ const employeeRoleListingSql = readFileSync(EMPLOYEE_ROLE_LISTING_MIGRATION_PATH
 const employeeRoleListingGrantsSql = readFileSync(EMPLOYEE_ROLE_LISTING_GRANTS_MIGRATION_PATH, 'utf8');
 const bcbaExactCapabilitySql = readFileSync(BCBA_EXACT_CAPABILITY_MIGRATION_PATH, 'utf8');
 const superAdminPrecedenceSql = readFileSync(SUPER_ADMIN_PRECEDENCE_MIGRATION_PATH, 'utf8');
+const startSessionAuthzSql = readFileSync(START_SESSION_AUTHZ_MIGRATION_PATH, 'utf8');
 const smokeSql = readFileSync(SMOKE_SQL_PATH, 'utf8');
 
 const extractFunctionFrom = (sourceSql: string, name: string): string => {
@@ -61,6 +68,7 @@ const extractFunction = (name: string): string => extractFunctionFrom(sql, name)
 const extractBcbaExactFunction = (name: string): string => extractFunctionFrom(bcbaExactCapabilitySql, name);
 const extractSuperAdminPrecedenceFunction = (name: string): string =>
   extractFunctionFrom(superAdminPrecedenceSql, name);
+const extractStartSessionAuthzFunction = (name: string): string => extractFunctionFrom(startSessionAuthzSql, name);
 
 describe('employee role capability matrix migration', () => {
   it('keeps bt and midtier out of broad therapist/org_member helper aliases', () => {
@@ -224,5 +232,22 @@ describe('employee role capability matrix migration', () => {
       '-- @migration-rollback: GRANT EXECUTE ON FUNCTION public.get_employee_users_paged(uuid, integer, integer) TO authenticated;',
     );
     expect(employeeRoleListingGrantsSql).toContain("NOTIFY pgrst, 'reload schema';");
+  });
+
+  it('aligns session start RPC authorization with exact employee roles and linked BT identities', () => {
+    const functionSql = extractStartSessionAuthzFunction('public.start_session_with_goals');
+
+    expect(functionSql).toContain('public.current_user_is_super_admin()');
+    expect(functionSql).toContain("array['admin', 'admin_schedule', 'midtier', 'bcba']::text[]");
+    expect(functionSql).toContain('from public.user_therapist_links utl');
+    expect(functionSql).toContain('utl.user_id = v_actor_id');
+    expect(functionSql).toContain('utl.therapist_id = v_session.therapist_id');
+    expect(functionSql).toContain("array['therapist', 'bt']::text[]");
+    expect(functionSql).toContain('and v_session.therapist_id = v_actor_id');
+    expect(functionSql).not.toContain("public.user_has_role_for_org('therapist'");
+    expect(startSessionAuthzSql).toContain(
+      'revoke execute on function public.start_session_with_goals(uuid, uuid, uuid, uuid[], timestamptz, uuid) from anon;',
+    );
+    expect(startSessionAuthzSql).toContain("notify pgrst, 'reload schema';");
   });
 });

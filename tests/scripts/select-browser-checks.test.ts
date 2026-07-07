@@ -70,12 +70,15 @@ describe('select-browser-checks', () => {
     ]);
   });
 
-  it('includes the PreAuth spec in the full tier-0 browser fallback', () => {
+  it('runs full tier-0 without hosted auth smoke when browser selector changes', () => {
     const selection = runSelector('--changed-file', 'scripts/ci/select-browser-checks.mjs');
 
     expect(selection.tier0Required).toBe(true);
-    expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.authSmokeRequired).toBe(false);
     expect(selection.tier0Specs).toContain('cypress/e2e/preauth_workflow.cy.ts');
+    expect(selection.reasons).toEqual([
+      'scripts/ci/select-browser-checks.mjs: browser check selector',
+    ]);
   });
 
   it('keeps session cancellation changes out of hosted auth smoke', () => {

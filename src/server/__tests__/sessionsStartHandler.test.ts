@@ -137,20 +137,26 @@ describe("sessionsStartHandler", () => {
       supabaseUrl: "https://example.supabase.co",
       anonKey: "anon",
     });
-    vi.mocked(fetchJson).mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      data: [
-        {
-          id: "session-1",
-          client_id: "client-1",
-          organization_id: "org-1",
-          therapist_id: "therapist-2",
-          status: "scheduled",
-          started_at: null,
-        },
-      ],
-    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-2",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [],
+      });
 
     const response = await sessionsStartHandler(
       new Request("http://localhost/api/sessions-start", {
@@ -165,6 +171,131 @@ describe("sessionsStartHandler", () => {
     );
 
     expect(response.status).toBe(403);
+    expect(vi.mocked(fetchJson).mock.calls[1]?.[0]).toContain("/user_therapist_links");
+  });
+
+  it("allows linked therapist users to start sessions assigned to their therapist row id", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("auth-user-1"));
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "auth-user-1",
+      upstreamError: false,
+    });
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-row-1",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ therapist_id: "therapist-row-1" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          success: true,
+          session: {
+            id: "session-1",
+            started_at: "2026-02-10T15:00:00.000Z",
+          },
+        },
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("auth-user-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson).mock.calls[1]?.[0]).toContain(
+      "/user_therapist_links?select=therapist_id&user_id=eq.auth-user-1&therapist_id=eq.therapist-row-1",
+    );
+    expect(vi.mocked(fetchJson).mock.calls[2]?.[0]).toContain("/rpc/start_session_with_goals");
+  });
+
+  it("returns 502 when linked therapist lookup fails upstream", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("auth-user-1"));
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "auth-user-1",
+      upstreamError: false,
+    });
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-row-1",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        data: null,
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("auth-user-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    expect(vi.mocked(fetchJson).mock.calls).toHaveLength(2);
   });
 
   it("returns 409 when RPC reports invalid status", async () => {

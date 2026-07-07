@@ -50,6 +50,10 @@ describe("sessionsCompleteHandler", () => {
     auditStatus = 200,
     supervisionRequestBody = { created: true } as unknown,
     edgeNetworkFailure = false,
+    roleName = "admin",
+    authUserId = "admin-user",
+    userTherapistLinksRows = [] as Array<Record<string, unknown>>,
+    userTherapistLinksStatus = 200,
   } = {}) => vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -65,10 +69,13 @@ describe("sessionsCompleteHandler", () => {
     }
     if (url.includes("/rest/v1/rpc/user_has_role_for_org")) {
       const body = typeof init?.body === "string" ? JSON.parse(init.body) as { role_name?: string } : {};
-      return jsonResponse(body.role_name === "admin");
+      return jsonResponse(body.role_name === roleName);
     }
     if (url.includes("/auth/v1/user")) {
-      return jsonResponse(authStatus < 400 ? { id: "admin-user" } : { error: "Unauthorized" }, authStatus);
+      return jsonResponse(authStatus < 400 ? { id: authUserId } : { error: "Unauthorized" }, authStatus);
+    }
+    if (url.includes("/rest/v1/user_therapist_links")) {
+      return jsonResponse(userTherapistLinksRows, userTherapistLinksStatus);
     }
     if (url.includes("/rest/v1/session_goals")) {
       return jsonResponse(goalRows, goalsStatus);
@@ -433,6 +440,69 @@ describe("sessionsCompleteHandler", () => {
       p_event_type: "session_no_show",
       p_actor_id: "admin-user",
     }));
+  });
+
+  it("runtime REST fallback allows linked therapist users to complete sessions assigned to their therapist row id", async () => {
+    const fetchMock = makeFallbackFetchMock({
+      roleName: "therapist",
+      authUserId: "auth-user-1",
+      session: {
+        id: sessionId,
+        status: "scheduled",
+        therapist_id: "therapist-row-1",
+        goal_id: "goal-primary",
+        start_time: "2026-03-31T09:00:00Z",
+        end_time: "2026-03-31T10:00:00Z",
+      },
+      userTherapistLinksRows: [{ therapist_id: "therapist-row-1" }],
+    });
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await __TESTING__.completeSessionViaRuntimeRest({
+      request: new Request("http://localhost/api/sessions-complete", { method: "POST" }),
+      payload: { session_id: sessionId, outcome: "completed", notes: null },
+      accessToken: "token-123",
+      traceHeaders: {},
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/rest/v1/user_therapist_links"))).toBe(true);
+    expect(getFetchBody(fetchMock, "/rest/v1/rpc/record_session_audit")).toEqual(expect.objectContaining({
+      p_actor_id: "auth-user-1",
+    }));
+  });
+
+  it("runtime REST fallback still denies unlinked therapist users", async () => {
+    makeFallbackFetchMock({
+      roleName: "therapist",
+      authUserId: "auth-user-1",
+      session: {
+        id: sessionId,
+        status: "scheduled",
+        therapist_id: "therapist-row-1",
+        goal_id: "goal-primary",
+        start_time: "2026-03-31T09:00:00Z",
+        end_time: "2026-03-31T10:00:00Z",
+      },
+      userTherapistLinksRows: [],
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await __TESTING__.completeSessionViaRuntimeRest({
+      request: new Request("http://localhost/api/sessions-complete", { method: "POST" }),
+      payload: { session_id: sessionId, outcome: "completed", notes: null },
+      accessToken: "token-123",
+      traceHeaders: {},
+    });
+    const body = await response.json() as { code: string };
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+    expectMetric(logSpy, "tenant_denial_total", {
+      function: "sessions-complete",
+      orgId: "org-1",
+      reason: "therapist-mismatch",
+    });
   });
 
   it("runtime REST fallback emits notes-required metric", async () => {

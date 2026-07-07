@@ -37,6 +37,15 @@ const baseBody = () => ({
   goal_id: "33333333-3333-4333-8333-333333333333",
 });
 
+const makeUserTherapistLinksBuilder = (rows: Array<{ therapist_id: string }>) => {
+  const builder: any = {};
+  const chain = () => builder;
+  builder.select = vi.fn(() => chain());
+  builder.eq = vi.fn(() => chain());
+  builder.limit = vi.fn(async () => ({ data: rows, error: null }));
+  return builder;
+};
+
 describe("sessions-start organization context parity", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -71,6 +80,7 @@ describe("sessions-start organization context parity", () => {
       auth: {
         getUser: vi.fn(async () => ({ data: { user: { id: "therapist-self" } }, error: null })),
       },
+      from: vi.fn(() => makeUserTherapistLinksBuilder([])),
       rpc: vi.fn(async () => {
         throw new Error("rpc should not run");
       }),
@@ -108,6 +118,57 @@ describe("sessions-start organization context parity", () => {
     expect(response.status).toBe(403);
     const body = (await response.json()) as { error?: string };
     expect(body.error).toBe("Forbidden");
+  });
+
+  it("allows linked therapist users to start sessions assigned to their therapist row id", async () => {
+    const rpcMock = vi.fn(async () => ({
+      data: {
+        success: true,
+        session: { id: baseBody().session_id, started_at: "2026-02-10T15:00:00.000Z" },
+      },
+      error: null,
+    }));
+    const fromMock = vi.fn(() => makeUserTherapistLinksBuilder([{ therapist_id: "therapist-row-1" }]));
+    createRequestClientMock.mockReturnValue({
+      auth: {
+        getUser: vi.fn(async () => ({ data: { user: { id: "auth-user-1" } }, error: null })),
+      },
+      from: fromMock,
+      rpc: rpcMock,
+    });
+    requireOrgMock.mockResolvedValue("org-1");
+    assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _org: string, role: string) => role === "therapist");
+    orgScopedQueryMock.mockImplementation(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          limit: vi.fn(async () => ({
+            data: [
+              {
+                id: baseBody().session_id,
+                client_id: "c1",
+                therapist_id: "therapist-row-1",
+                started_at: null,
+                status: "scheduled",
+              },
+            ],
+            error: null,
+          })),
+        })),
+      })),
+    }));
+    const mod = await loadSessionsStartModule();
+
+    const response = await mod.handleSessionsStart(
+      new Request(postUrl, {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify(baseBody()),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fromMock).toHaveBeenCalledWith("user_therapist_links");
+    expect(rpcMock).toHaveBeenCalled();
   });
 
   it("returns 404 when session is not in org scope", async () => {

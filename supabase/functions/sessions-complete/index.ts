@@ -371,7 +371,13 @@ async function handleSessionCompletionForRequest(
 
   // Therapist self-ownership: a therapist may only complete their own sessions.
   // Admins and super_admins may complete any session in their org.
-  if (role === "therapist" && session.therapist_id !== userId) {
+  const therapistOwnsSession =
+    role !== "therapist" ||
+    session.therapist_id === userId ||
+    (session.therapist_id
+      ? await userCanAccessTherapistSession(db, userId, session.therapist_id)
+      : false);
+  if (!therapistOwnsSession) {
     logger.warn("session.scope.denied", {
       sessionId,
       reason: "therapist-mismatch",
@@ -530,6 +536,24 @@ async function handleSessionCompletionForRequest(
   logger.info("session.complete.success", { sessionId, outcome });
 
   return respondSuccess(req, { session: updatedSession, outcome });
+}
+
+async function userCanAccessTherapistSession(
+  db: SupabaseClient,
+  userId: string,
+  therapistId: string,
+): Promise<boolean> {
+  const { data, error } = await db
+    .from("user_therapist_links")
+    .select("therapist_id")
+    .eq("user_id", userId)
+    .eq("therapist_id", therapistId)
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+  return Array.isArray(data) && data.some((row) => row?.therapist_id === therapistId);
 }
 
 export async function handleSessionCompletion(

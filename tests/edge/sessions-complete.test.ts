@@ -90,7 +90,15 @@ const makeSession = (overrides: Partial<{
   ...overrides,
 });
 
-const makeDb = () => ({ rpc: vi.fn(async () => ({ error: null })) } as any);
+const makeDb = (userTherapistLinks: Array<{ therapist_id: string }> = []) => ({
+  rpc: vi.fn(async () => ({ error: null })),
+  from: vi.fn((table: string) => {
+    if (table === "user_therapist_links") {
+      return makeSelectBuilder(userTherapistLinks);
+    }
+    return makeSelectBuilder([]);
+  }),
+} as any);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -211,6 +219,33 @@ describe("sessions-complete handler", () => {
     const body = await response.json() as { success: boolean };
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
+  });
+
+  it("allows linked therapist users to complete sessions assigned to their therapist row id", async () => {
+    const session = makeSession({ id: "session-linked", status: "scheduled", therapist_id: "therapist-row-1" });
+    const updatedRow = { id: "session-linked", status: "completed", updated_at: "2026-03-31T10:05:00Z" };
+    const db = makeDb([{ therapist_id: "therapist-row-1" }]);
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockReturnValue(
+      makeUpdateBuilder(updatedRow),
+    );
+
+    const response = await handleSessionCompletion(
+      db,
+      "org-1",
+      { session_id: "session-linked", outcome: "completed", notes: null },
+      "auth-user-1",
+      "therapist",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(db.from).toHaveBeenCalledWith("user_therapist_links");
   });
 
   it("creates a pending supervision note request after a BT session is completed", async () => {

@@ -14,6 +14,31 @@ const requestSchema = z.object({
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+async function userCanAccessTherapistSession(
+  db: ReturnType<typeof createRequestClient>,
+  userId: string,
+  therapistId: string | null | undefined,
+): Promise<boolean> {
+  if (!therapistId) {
+    return false;
+  }
+  if (therapistId === userId) {
+    return true;
+  }
+
+  const { data, error } = await db
+    .from("user_therapist_links")
+    .select("therapist_id")
+    .eq("user_id", userId)
+    .eq("therapist_id", therapistId)
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+  return Array.isArray(data) && data.some((row) => row?.therapist_id === therapistId);
+}
+
 export const handleSessionsStart = async (req: Request) => {
   if (req.method !== "POST") {
     return json({ error: "Method not allowed" }, 405);
@@ -79,7 +104,12 @@ export const handleSessionsStart = async (req: Request) => {
     status: string | null;
   };
 
-  if (isTherapist && !isAdmin && !isSuperAdmin && session.therapist_id !== currentUserId) {
+  if (
+    isTherapist &&
+    !isAdmin &&
+    !isSuperAdmin &&
+    !(await userCanAccessTherapistSession(db, currentUserId, session.therapist_id))
+  ) {
     return json({ error: "Forbidden" }, 403);
   }
   if (session.started_at) {

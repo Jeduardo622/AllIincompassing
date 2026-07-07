@@ -21,6 +21,37 @@ export const startSessionSchema = z.object({
   started_at: z.string().optional(),
 });
 
+async function userCanAccessTherapistSession({
+  supabaseUrl,
+  headers,
+  userId,
+  therapistId,
+}: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  userId: string;
+  therapistId: string | null | undefined;
+}): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  if (!therapistId) {
+    return { allowed: false, upstreamError: false };
+  }
+  if (therapistId === userId) {
+    return { allowed: true, upstreamError: false };
+  }
+
+  const result = await fetchJson<Array<{ therapist_id?: string }>>(
+    `${supabaseUrl}/rest/v1/user_therapist_links?select=therapist_id&user_id=eq.${encodeURIComponent(userId)}&therapist_id=eq.${encodeURIComponent(therapistId)}&limit=1`,
+    { method: "GET", headers },
+  );
+  if (!result.ok) {
+    return { allowed: false, upstreamError: result.status >= 500 || result.status === 0 };
+  }
+  return {
+    allowed: Array.isArray(result.data) && result.data.some((row) => row.therapist_id === therapistId),
+    upstreamError: false,
+  };
+}
+
 export async function sessionsStartHandler(request: Request): Promise<Response> {
   const traceHeaders: Record<string, string> = {};
   const requestId = request.headers.get("x-request-id")?.trim();
@@ -155,8 +186,22 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     }
 
     const sessionRow = sessionResult.data[0];
-    if (isTherapist && sessionRow.therapist_id !== currentUserId) {
-      return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
+    if (isTherapist) {
+      const therapistAccess = await userCanAccessTherapistSession({
+        supabaseUrl,
+        headers,
+        userId: currentUserId,
+        therapistId: sessionRow.therapist_id,
+      });
+      if (therapistAccess.upstreamError) {
+        return errorResponse(request, "upstream_error", "Unable to validate therapist access", {
+          status: 502,
+          headers: traceHeaders,
+        });
+      }
+      if (!therapistAccess.allowed) {
+        return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
+      }
     }
 
     const rpcUrl = `${supabaseUrl}/rest/v1/rpc/start_session_with_goals`;

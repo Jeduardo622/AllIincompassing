@@ -210,6 +210,46 @@ describe("sessions-cancel org scoping", () => {
     expect(payload.data.summary.cancelledSessionIds).toEqual(["session-super"]);
   });
 
+  it("persists cancellation attribution with the session update", async () => {
+    const selectBuilder = makeSelectBuilder({
+      data: [
+        { id: "session-client-cancel", status: "scheduled", therapist_id: "therapist-9" },
+      ],
+      error: null,
+    });
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockImplementation(
+      () => selectBuilder as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+
+    const updateBuilder = makeUpdateBuilder();
+    vi.spyOn(supabaseAdmin, "from").mockReturnValue(updateBuilder as never);
+    const mockDb: any = {
+      from: vi.fn(() => updateBuilder),
+      rpc: vi.fn(async () => ({ error: null })),
+    };
+
+    const logger = createStubLogger();
+
+    await __TESTING__.handleSessionCancellation(
+      mockDb,
+      "org-9",
+      {
+        sessionIds: ["session-client-cancel"],
+        dateRange: null,
+        therapistId: null,
+        reason: "Client cancelled",
+        cancellationAttribution: "client",
+      },
+      "super-admin-user",
+      "super_admin",
+      logger,
+    );
+
+    expect(updateBuilder.update).toHaveBeenCalledWith(expect.objectContaining({
+      cancellation_attribution: "client",
+    }));
+  });
+
   it("denies super_admin cancellation when the target session is outside the chosen org scope", async () => {
     const selectBuilder = makeSelectBuilder({
       data: [],

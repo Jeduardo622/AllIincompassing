@@ -12,6 +12,7 @@ import { ProgramsGoalsTab } from '../components/ClientDetails/ProgramsGoalsTab';
 import { ClientSessionTrendsTab } from '../components/ClientDetails/ClientSessionTrendsTab';
 import { useAuth } from '../lib/authContext';
 import { useActiveOrganizationId } from '../lib/organization';
+import { getUpcomingReportStatus } from '../lib/client-report-status';
 
 type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts' | 'programs-goals' | 'session-trends';
 
@@ -116,6 +117,54 @@ export function ClientDetails() {
     },
     enabled: Boolean(clientId && activeOrganizationId && canViewClientRecord),
   });
+
+  const reportWindow = useMemo(() => {
+    const today = new Date();
+    const todayIso = today.toISOString().slice(0, 10);
+    const windowEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 30));
+    return {
+      today: todayIso,
+      endDate: windowEnd.toISOString().slice(0, 10),
+    };
+  }, []);
+
+  const { data: authorizationReportEndDates = [] } = useQuery({
+    queryKey: ['client-report-upcoming-authorizations', clientId, activeOrganizationId ?? 'MISSING_ORG', reportWindow.today, reportWindow.endDate],
+    queryFn: async () => {
+      if (!clientId || !activeOrganizationId || !isAuthorizationAdminViewer) {
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from('authorizations')
+        .select('end_date')
+        .eq('client_id', clientId)
+        .eq('organization_id', activeOrganizationId)
+        .eq('status', 'approved')
+        .gte('end_date', reportWindow.today)
+        .lte('end_date', reportWindow.endDate)
+        .order('end_date', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      return (data ?? [])
+        .map((authorization) => authorization.end_date)
+        .filter((endDate): endDate is string => typeof endDate === 'string' && endDate.length > 0);
+    },
+    enabled: Boolean(clientId && activeOrganizationId && canViewClientRecord && isAuthorizationAdminViewer),
+  });
+
+  const reportStatus = useMemo(() => getUpcomingReportStatus({
+    today: reportWindow.today,
+    clientAuthEndDate: client?.auth_end_date ?? null,
+    authorizationEndDates: authorizationReportEndDates,
+  }), [authorizationReportEndDates, client?.auth_end_date, reportWindow.today]);
+
+  const reportEndDateLabel = reportStatus.endDate
+    ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${reportStatus.endDate}T00:00:00`))
+    : null;
 
   const tabs = useMemo(
     () => [
@@ -301,6 +350,18 @@ export function ClientDetails() {
           </h1>
         </div>
       </div>
+
+      {isAuthorizationAdminViewer && reportStatus.upcoming && reportEndDateLabel && (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
+            <div>
+              <div className="font-semibold">Report upcoming</div>
+              <div>Authorization ends {reportEndDateLabel}; review report timing and renewal readiness.</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
         <div className="border-b dark:border-gray-700 px-3 py-2 sm:px-4">

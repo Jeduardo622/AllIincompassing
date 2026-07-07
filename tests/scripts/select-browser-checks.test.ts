@@ -78,6 +78,34 @@ describe('select-browser-checks', () => {
     expect(selection.tier0Specs).toContain('cypress/e2e/preauth_workflow.cy.ts');
   });
 
+  it('keeps session cancellation changes out of hosted auth smoke', () => {
+    const selection = runSelector('--changed-file', 'supabase/functions/sessions-cancel/index.ts');
+
+    expect(selection.tier0Required).toBe(true);
+    expect(selection.authSmokeRequired).toBe(false);
+    expect(selection.tier0Specs).toEqual([
+      'cypress/e2e/routes_schedule.cy.ts',
+      'cypress/e2e/routes_auth.cy.ts',
+    ]);
+    expect(selection.reasons).toEqual([
+      'supabase/functions/sessions-cancel/index.ts: session cancellation edge flow',
+    ]);
+  });
+
+  it('still requires hosted auth smoke for session start changes', () => {
+    const selection = runSelector('--changed-file', 'supabase/functions/sessions-start/index.ts');
+
+    expect(selection.tier0Required).toBe(true);
+    expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.tier0Specs).toEqual([
+      'cypress/e2e/routes_auth.cy.ts',
+      'cypress/e2e/routes_schedule.cy.ts',
+    ]);
+    expect(selection.reasons).toEqual([
+      'supabase/functions/sessions-start/index.ts: auth/session browser flow',
+    ]);
+  });
+
   it('keeps the PreAuth spec in the default local tier-0 Cypress run', () => {
     const runCypressSource = readFileSync('scripts/run-cypress.ts', 'utf8');
 

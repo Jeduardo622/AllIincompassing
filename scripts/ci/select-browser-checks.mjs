@@ -111,6 +111,12 @@ const classifyFile = (file) => {
   }
 
   if (matchAny(file, [
+    /^supabase\/functions\/sessions-cancel\//,
+  ])) {
+    return { specs: ["schedule", "auth"], authSmoke: false, reason: "session cancellation edge flow" };
+  }
+
+  if (matchAny(file, [
     /^cypress\/e2e\/routes_auth\.cy\.ts$/,
     /^scripts\/playwright-/,
     /^supabase\/functions\/(sessions-|session-|auth-|programs|goals|program-notes)/,

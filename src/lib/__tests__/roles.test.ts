@@ -26,6 +26,7 @@ describe('role capability matrix', () => {
 
     expect(roleHasCapability('bt', 'dataTaking')).toBe(true);
     expect(roleHasCapability('bt', 'viewClients')).toBe(true);
+    expect(roleHasCapability('bt', 'viewFillDocs')).toBe(true);
     expect(roleHasCapability('bt', 'viewSchedule')).toBe(true);
     expect(roleHasCapability('bt', 'manageClients')).toBe(false);
     expect(roleHasCapability('bt', 'manageProgramsGoals')).toBe(false);

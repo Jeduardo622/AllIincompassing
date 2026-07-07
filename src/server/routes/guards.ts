@@ -82,7 +82,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/fill-docs',
-    allowedRoles: ['therapist', 'midtier', 'admin', 'bcba', 'super_admin'],
+    allowedRoles: ['bt', 'therapist', 'midtier', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.sessions: sessions_scoped_access'],
   }),

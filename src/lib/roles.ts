@@ -98,6 +98,7 @@ export const ROLE_CAPABILITIES: Record<AppRole, readonly AppCapability[]> = {
     'dataTaking',
     'viewClients',
     'viewDocumentation',
+    'viewFillDocs',
     'viewMessages',
     'viewProgramsGoals',
     'viewSchedule',

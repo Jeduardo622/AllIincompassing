@@ -822,6 +822,76 @@ describe("sessionsStartHandler", () => {
     expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/user_therapist_links"))).toBe(true);
   });
 
+  it("denies generic org members without therapist link or schedule staff authority", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("client-actor"));
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "client-actor",
+      upstreamError: false,
+    });
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: true,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-2",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("client-actor")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/rpc/start_session_with_goals"))).toBe(false);
+  });
+
   it("returns upstream_error when a network exception is thrown", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
     vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({

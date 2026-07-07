@@ -111,6 +111,12 @@ describe('route guard access controls', () => {
     expect(hasRoleAccess('/schedule', 'admin')).toBe(true);
   });
 
+  it('allows canonical BT users to access fill-docs after therapist role normalization', () => {
+    expect(hasRoleAccess('/fill-docs', 'bt')).toBe(true);
+    expect(hasRoleAccess('/fill-docs', 'therapist')).toBe(true);
+    expect(hasRoleAccess('/fill-docs', 'client')).toBe(false);
+  });
+
   it('does not treat elevated non-client roles as family-dashboard eligible', () => {
     expect(findGuardForPath('/family')?.requiresGuardian).toBe(true);
     expect(hasRoleAccess('/family', 'client')).toBe(true);

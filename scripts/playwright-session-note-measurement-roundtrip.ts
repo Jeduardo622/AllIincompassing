@@ -779,7 +779,7 @@ async function run(): Promise<void> {
 
     await withStepTimeout("navigate-client-session-notes", async () => {
       await activePage.goto(`${base}/clients/${booked.clientId}?tab=session-notes`, {
-        waitUntil: "networkidle",
+        waitUntil: "domcontentloaded",
         timeout: 90_000,
       });
       const cardWait = savedNoteId

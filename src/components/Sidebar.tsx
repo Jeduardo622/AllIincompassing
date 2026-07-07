@@ -46,8 +46,8 @@ export function Sidebar() {
   const [hasLoadedChatAssistant, setHasLoadedChatAssistant] = useState(false);
   const navigate = useNavigate();
 
-  // Check if user is a therapist
-  const isTherapist = hasRole('therapist') || user?.user_metadata?.therapist_id;
+  // `therapist` is a legacy role value; Behavioral Therapist is the product label.
+  const isBehavioralTherapist = effectiveRole === 'bt' || effectiveRole === 'therapist' || hasRole('therapist') || Boolean(user?.user_metadata?.therapist_id);
   const therapistId = user?.user_metadata?.therapist_id;
 
   const handleSignOut = async () => {
@@ -122,7 +122,7 @@ export function Sidebar() {
       icon: Calendar, 
       label: 'Schedule', 
       path: '/schedule',
-      roles: ['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
+      roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
@@ -141,7 +141,7 @@ export function Sidebar() {
     },
     {
       icon: UserCog,
-      label: 'Therapists',
+      label: 'BTs',
       path: '/therapists',
       roles: ['admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
@@ -280,9 +280,9 @@ export function Sidebar() {
             <User aria-hidden="true" className="h-5 w-5 text-gray-500 dark:text-gray-400 mr-2" />
             <div className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
               <div>{user?.email}</div>
-              {isTherapist && therapistId && (
+              {isBehavioralTherapist && therapistId && (
                 <div className="text-xs text-blue-600 dark:text-blue-400">
-                  Therapist Account
+                  Behavioral Therapist Account
                 </div>
               )}
             </div>
@@ -303,7 +303,7 @@ export function Sidebar() {
         </div>
         
         {/* Therapist quick link */}
-        {isTherapist && therapistId && (
+        {isBehavioralTherapist && therapistId && (
           <div className="border-b dark:border-gray-700 px-4 py-2">
             <Link
               to={`/therapists/${therapistId}`}

@@ -29,6 +29,8 @@ const createAuthToken = (subject = "therapist-1") => {
 describe("sessionsStartHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    vi.stubEnv("SUPABASE_SECRET_KEY", "");
     vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
       userId: "therapist-1",
       upstreamError: false,
@@ -137,20 +139,31 @@ describe("sessionsStartHandler", () => {
       supabaseUrl: "https://example.supabase.co",
       anonKey: "anon",
     });
-    vi.mocked(fetchJson).mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      data: [
-        {
-          id: "session-1",
-          client_id: "client-1",
-          organization_id: "org-1",
-          therapist_id: "therapist-2",
-          status: "scheduled",
-          started_at: null,
-        },
-      ],
-    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-2",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
+      });
 
     const response = await sessionsStartHandler(
       new Request("http://localhost/api/sessions-start", {
@@ -165,6 +178,136 @@ describe("sessionsStartHandler", () => {
     );
 
     expect(response.status).toBe(403);
+    expect(vi.mocked(fetchJson).mock.calls[1]?.[0]).toContain("/user_therapist_links");
+  });
+
+  it("allows linked therapist users to start sessions assigned to their therapist row id", async () => {
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-key");
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("auth-user-1"));
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "auth-user-1",
+      upstreamError: false,
+    });
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-row-1",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ therapist_id: "therapist-row-1" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          success: true,
+          session: {
+            id: "session-1",
+            started_at: "2026-02-10T15:00:00.000Z",
+          },
+        },
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("auth-user-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson).mock.calls[1]?.[0]).toContain(
+      "/user_therapist_links?select=therapist_id&user_id=eq.auth-user-1&therapist_id=eq.therapist-row-1",
+    );
+    expect(vi.mocked(fetchJson).mock.calls[1]?.[1]?.headers).toEqual(expect.objectContaining({
+      apikey: "service-key",
+      Authorization: "Bearer service-key",
+    }));
+    expect(vi.mocked(fetchJson).mock.calls[2]?.[0]).toContain("/rpc/start_session_with_goals");
+  });
+
+  it("returns 502 when linked therapist lookup fails upstream", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("auth-user-1"));
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "auth-user-1",
+      upstreamError: false,
+    });
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-row-1",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        data: null,
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("auth-user-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    expect(vi.mocked(fetchJson).mock.calls).toHaveLength(2);
   });
 
   it("returns 409 when RPC reports invalid status", async () => {
@@ -601,6 +744,152 @@ describe("sessionsStartHandler", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("allows midtier scheduling staff to start in-org sessions without therapist links", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("schedule-actor"));
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "schedule-actor",
+      upstreamError: false,
+    });
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-2",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: true,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          success: true,
+          session: {
+            id: "session-1",
+            started_at: "2026-02-10T15:00:00.000Z",
+          },
+        },
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("schedule-actor")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/user_therapist_links"))).toBe(true);
+  });
+
+  it("denies generic org members without therapist link or schedule staff authority", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("client-actor"));
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "client-actor",
+      upstreamError: false,
+    });
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: true,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-2",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: false,
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("client-actor")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/rpc/start_session_with_goals"))).toBe(false);
   });
 
   it("returns upstream_error when a network exception is thrown", async () => {

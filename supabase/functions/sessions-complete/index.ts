@@ -8,9 +8,11 @@ import {
 import {
   requireOrg,
   assertUserHasOrgRole,
+  currentUserHasScheduleStaffAuthority,
   orgScopedQuery,
   MissingOrgContextError,
   ForbiddenError,
+  userHasTherapistLinkForOrg,
 } from "../_shared/org.ts";
 import { getLogger, type Logger } from "../_shared/logging.ts";
 import { increment } from "../_shared/metrics.ts";
@@ -26,7 +28,7 @@ const COMPLETABLE_STATUSES = new Set(["scheduled", "in_progress"]);
 const TERMINAL_STATUSES = new Set(["completed", "cancelled", "no-show"]);
 
 type SessionOutcome = "completed" | "no-show";
-type CompletionRole = "super_admin" | "admin" | "therapist" | null;
+type CompletionRole = "super_admin" | "admin" | "schedule_staff" | "therapist" | null;
 
 interface CompletionPayload {
   session_id: string;
@@ -138,7 +140,13 @@ export async function resolveCompletionRole(
   if (await assertUserHasOrgRole(db, orgId, "admin")) {
     return "admin";
   }
+  if (await currentUserHasScheduleStaffAuthority(db, orgId)) {
+    return "schedule_staff";
+  }
   if (await assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId })) {
+    return "therapist";
+  }
+  if (await userHasTherapistLinkForOrg(db, orgId, userId)) {
     return "therapist";
   }
   return null;
@@ -371,7 +379,13 @@ async function handleSessionCompletionForRequest(
 
   // Therapist self-ownership: a therapist may only complete their own sessions.
   // Admins and super_admins may complete any session in their org.
-  if (role === "therapist" && session.therapist_id !== userId) {
+  const therapistOwnsSession =
+    role !== "therapist" ||
+    session.therapist_id === userId ||
+    (session.therapist_id
+      ? await userCanAccessTherapistSession(supabaseAdmin, userId, session.therapist_id)
+      : false);
+  if (!therapistOwnsSession) {
     logger.warn("session.scope.denied", {
       sessionId,
       reason: "therapist-mismatch",
@@ -530,6 +544,24 @@ async function handleSessionCompletionForRequest(
   logger.info("session.complete.success", { sessionId, outcome });
 
   return respondSuccess(req, { session: updatedSession, outcome });
+}
+
+async function userCanAccessTherapistSession(
+  db: SupabaseClient,
+  userId: string,
+  therapistId: string,
+): Promise<boolean> {
+  const { data, error } = await db
+    .from("user_therapist_links")
+    .select("therapist_id")
+    .eq("user_id", userId)
+    .eq("therapist_id", therapistId)
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+  return Array.isArray(data) && data.some((row) => row?.therapist_id === therapistId);
 }
 
 export async function handleSessionCompletion(

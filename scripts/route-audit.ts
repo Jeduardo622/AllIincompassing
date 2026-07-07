@@ -99,7 +99,7 @@ export const ROUTES: readonly RouteDefinition[] = [
 
   // Protected routes
   { path: '/', component: 'Dashboard', roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
-  { path: '/schedule', component: 'Schedule', roles: ['therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/schedule', component: 'Schedule', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/clients', component: 'Clients', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: ['view_clients'] },
   {
     path: '/clients/:clientId',
@@ -117,7 +117,7 @@ export const ROUTES: readonly RouteDefinition[] = [
   },
   { path: '/therapists/new', component: 'TherapistOnboarding', roles: ['admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/documentation', component: 'Documentation', roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
-  { path: '/fill-docs', component: 'FillDocs', roles: ['therapist', 'midtier', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  { path: '/fill-docs', component: 'FillDocs', roles: ['bt', 'therapist', 'midtier', 'admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/authorizations', component: 'Authorizations', roles: ['midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/messages', component: 'MessagesInbox', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/messages/new', component: 'MessagesNew', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },

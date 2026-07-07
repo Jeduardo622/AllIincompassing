@@ -7,6 +7,7 @@ import {
   fetchJson,
   getAccessToken,
   getSupabaseConfig,
+  getSupabaseServiceRoleHeaders,
   isDisallowedOriginRequest,
   jsonForRequest,
   resolveOrgAndRoleWithStatus,
@@ -20,6 +21,62 @@ export const startSessionSchema = z.object({
   goal_ids: z.array(z.string().uuid()).optional(),
   started_at: z.string().optional(),
 });
+
+async function userCanAccessTherapistSession({
+  supabaseUrl,
+  headers,
+  userId,
+  therapistId,
+}: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  userId: string;
+  therapistId: string | null | undefined;
+}): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  if (!therapistId) {
+    return { allowed: false, upstreamError: false };
+  }
+  if (therapistId === userId) {
+    return { allowed: true, upstreamError: false };
+  }
+
+  const result = await fetchJson<Array<{ therapist_id?: string }>>(
+    `${supabaseUrl}/rest/v1/user_therapist_links?select=therapist_id&user_id=eq.${encodeURIComponent(userId)}&therapist_id=eq.${encodeURIComponent(therapistId)}&limit=1`,
+    { method: "GET", headers: getSupabaseServiceRoleHeaders() ?? headers },
+  );
+  if (!result.ok) {
+    return { allowed: false, upstreamError: result.status >= 500 || result.status === 0 };
+  }
+  return {
+    allowed: Array.isArray(result.data) && result.data.some((row) => row.therapist_id === therapistId),
+    upstreamError: false,
+  };
+}
+
+async function userHasScheduleStaffAuthority({
+  supabaseUrl,
+  headers,
+  organizationId,
+}: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+}): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  for (const roleName of ["admin_schedule", "midtier", "bcba"]) {
+    const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ role_name: roleName, target_organization_id: organizationId }),
+    });
+    if (!result.ok && (result.status >= 500 || result.status === 0)) {
+      return { allowed: false, upstreamError: true };
+    }
+    if (result.ok && result.data === true) {
+      return { allowed: true, upstreamError: false };
+    }
+  }
+  return { allowed: false, upstreamError: false };
+}
 
 export async function sessionsStartHandler(request: Request): Promise<Response> {
   const traceHeaders: Record<string, string> = {};
@@ -71,7 +128,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
       });
     }
 
-    const { organizationId, isTherapist, isAdmin, isOrgMember, isSuperAdmin, upstreamError: roleUpstreamError } =
+    const { organizationId, isTherapist, isAdmin, isSuperAdmin, upstreamError: roleUpstreamError } =
       await resolveOrgAndRoleWithStatus(accessToken);
     if (roleUpstreamError) {
       return errorResponse(request, "upstream_error", "Unable to validate organization access", {
@@ -79,7 +136,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
         headers: traceHeaders,
       });
     }
-    if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember)) {
+    if (!organizationId) {
       return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
     }
 
@@ -155,8 +212,37 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     }
 
     const sessionRow = sessionResult.data[0];
-    if (isTherapist && sessionRow.therapist_id !== currentUserId) {
-      return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
+    if (!isAdmin && !isSuperAdmin) {
+      const therapistAccess = await userCanAccessTherapistSession({
+        supabaseUrl,
+        headers,
+        userId: currentUserId,
+        therapistId: sessionRow.therapist_id,
+      });
+      if (therapistAccess.upstreamError) {
+        return errorResponse(request, "upstream_error", "Unable to validate therapist access", {
+          status: 502,
+          headers: traceHeaders,
+        });
+      }
+      if (!therapistAccess.allowed) {
+        const scheduleStaffAuthority = !isTherapist
+          ? await userHasScheduleStaffAuthority({
+            supabaseUrl,
+            headers,
+            organizationId,
+          })
+          : { allowed: false, upstreamError: false };
+        if (scheduleStaffAuthority.upstreamError) {
+          return errorResponse(request, "upstream_error", "Unable to validate schedule staff access", {
+              status: 502,
+              headers: traceHeaders,
+          });
+        }
+        if (!scheduleStaffAuthority.allowed) {
+          return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
+        }
+      }
     }
 
     const rpcUrl = `${supabaseUrl}/rest/v1/rpc/start_session_with_goals`;

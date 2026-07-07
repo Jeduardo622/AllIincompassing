@@ -368,6 +368,33 @@ const fetchAuthorizedTherapistClientPairs = async (): Promise<LifecycleTargetPai
   );
 };
 
+const fetchLinkedTherapistIdsForActor = async (actorUserId: string): Promise<string[]> => {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const { data, error } = await adminClient
+    .from("user_therapist_links")
+    .select("therapist_id")
+    .eq("user_id", actorUserId)
+    .limit(500);
+  if (error) {
+    throw new Error(`Unable to query linked therapists for lifecycle actor: ${error.message}`);
+  }
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => row.therapist_id)
+        .filter((therapistId): therapistId is string => typeof therapistId === "string" && therapistId.length > 0),
+    ),
+  );
+};
+
 const resolveOrganizationIdForTherapist = async (
   adminClient: ReturnType<typeof createClient>,
   therapistId: string,
@@ -891,7 +918,11 @@ const selectTherapistClientPair = async (
 
 const lifecyclePairKey = (therapistId: string, clientId: string): string => `${therapistId}:${clientId}`;
 
-async function chooseSessionTargetsExcluding(page: Page, excludedPairKeys: Set<string>): Promise<{
+async function chooseSessionTargetsExcluding(
+  page: Page,
+  excludedPairKeys: Set<string>,
+  allowedTherapistIds?: string[],
+): Promise<{
   therapistId: string;
   clientId: string;
   programId: string;
@@ -907,6 +938,7 @@ async function chooseSessionTargetsExcluding(page: Page, excludedPairKeys: Set<s
     therapistIds: therapistValues,
     clientIds: clientValues,
     authorizedPairs,
+    allowedTherapistIds,
   });
 
   if (therapistValues.length === 0 || clientValues.length === 0) {
@@ -916,6 +948,7 @@ async function chooseSessionTargetsExcluding(page: Page, excludedPairKeys: Set<s
     therapistOptionCount: therapistValues.length,
     clientOptionCount: clientValues.length,
     authorizedPairCount: authorizedPairs.length,
+    allowedTherapistCount: allowedTherapistIds?.length ?? 0,
     candidatePairCount: candidatePairs.length,
   });
 
@@ -958,7 +991,7 @@ async function chooseSessionTargetsExcluding(page: Page, excludedPairKeys: Set<s
   throw new Error("Could not find therapist/client/program/goal combination for lifecycle test.");
 }
 
-async function bookSession(page: Page, token: string, strictMode: boolean): Promise<LifecycleIds> {
+async function bookSession(page: Page, token: string, strictMode: boolean, actorUserId: string): Promise<LifecycleIds> {
   const scheduleUrl = `${getEnv("PW_BASE_URL", "https://app.allincompassing.ai")}/schedule`;
   await page.goto(scheduleUrl, {
     waitUntil: "networkidle",
@@ -970,6 +1003,12 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
   const candidateStarts = buildBookingCandidateStarts();
   const bookingDurationMs = 60 * 60 * 1000;
   const excludedPairKeys = new Set<string>();
+  const linkedTherapistIds = await fetchLinkedTherapistIdsForActor(actorUserId);
+  const allowedTherapistIds = linkedTherapistIds.length > 0 ? linkedTherapistIds : undefined;
+  console.log("[lifecycle] actor therapist links", {
+    linkedTherapistCount: linkedTherapistIds.length,
+    restrictTargetsToLinkedTherapists: Boolean(allowedTherapistIds),
+  });
   let lastFailure: {
     selected: Awaited<ReturnType<typeof chooseSessionTargetsExcluding>>;
     finalStartIso: string;
@@ -985,7 +1024,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean): Prom
     await ensureSessionModalOpen(page);
     let selected: Awaited<ReturnType<typeof chooseSessionTargetsExcluding>>;
     try {
-      selected = await chooseSessionTargetsExcluding(page, excludedPairKeys);
+      selected = await chooseSessionTargetsExcluding(page, excludedPairKeys, allowedTherapistIds);
     } catch (error) {
       if (lastFailure) {
         break;
@@ -1249,7 +1288,7 @@ async function invokeStartSessionFallback(token: string, ids: LifecycleIds, stri
 
   if (strictMode) {
     if (edgeStatus === 404) {
-      throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
+      throw new Error(`sessions-start failed (${edgeStatus}) from ${supabaseUrl}/functions/v1/sessions-start: ${edgeBody.slice(0, 400)}`);
     }
     if ([502, 503, 504].includes(edgeStatus)) {
       await runRpcFallback();
@@ -1259,11 +1298,11 @@ async function invokeStartSessionFallback(token: string, ids: LifecycleIds, stri
       await runRpcFallback();
       return;
     }
-    throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
+    throw new Error(`sessions-start failed (${edgeStatus}) from ${supabaseUrl}/functions/v1/sessions-start: ${edgeBody.slice(0, 400)}`);
   }
 
   if (![401, 404, 502, 503, 504].includes(edgeStatus)) {
-    throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
+    throw new Error(`sessions-start failed (${edgeStatus}) from ${supabaseUrl}/functions/v1/sessions-start: ${edgeBody.slice(0, 400)}`);
   }
 
   await runRpcFallback();
@@ -1581,7 +1620,7 @@ async function startSessionViaScheduleModal(
     ]);
     const startBody = await startResponse.text();
     if (!startResponse.ok()) {
-      throw new Error(`sessions-start failed (${startResponse.status()}): ${startBody.slice(0, 800)}`);
+      throw new Error(`sessions-start failed (${startResponse.status()}) from ${startResponse.url()}: ${startBody.slice(0, 800)}`);
     }
     uiEmittedStart = true;
   } catch (error) {
@@ -1689,7 +1728,14 @@ export async function run() {
   const terminalStatus = terminalStatusRaw as TerminalStatus;
   const credentialCandidates = assertNonAiSessionsEnvContract(
     `Session lifecycle (${terminalStatus}) Playwright regression`,
-  );
+  ).sort((left, right) => {
+    const leftIsAdmin = left.label.startsWith("PW_ADMIN_");
+    const rightIsAdmin = right.label.startsWith("PW_ADMIN_");
+    if (leftIsAdmin === rightIsAdmin) {
+      return 0;
+    }
+    return leftIsAdmin ? -1 : 1;
+  });
   console.log(
     JSON.stringify({
       ok: true,
@@ -1772,7 +1818,7 @@ export async function run() {
     }
     let booked: LifecycleIds;
     try {
-      booked = await withStepTimeout("book-session", () => bookSession(activePage, token, strictParityMode));
+      booked = await withStepTimeout("book-session", () => bookSession(activePage, token, strictParityMode, actorUserId));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (
@@ -1784,7 +1830,9 @@ export async function run() {
           authenticatedCredential.email,
           authenticatedCredential.password,
         );
-        booked = await withStepTimeout("book-session retry", () => bookSession(activePage, refreshedToken, strictParityMode));
+        const refreshedActorUserId = getActorUserIdFromToken(refreshedToken);
+        booked = await withStepTimeout("book-session retry", () =>
+          bookSession(activePage, refreshedToken, strictParityMode, refreshedActorUserId));
       } else {
         throw error;
       }

@@ -90,7 +90,18 @@ const makeSession = (overrides: Partial<{
   ...overrides,
 });
 
-const makeDb = () => ({ rpc: vi.fn(async () => ({ error: null })) } as any);
+const makeDb = (userTherapistLinks: Array<{ therapist_id: string }> = []) => ({
+  rpc: vi.fn(async () => ({ error: null })),
+  from: vi.fn((table: string) => {
+    if (table === "user_therapist_links") {
+      return makeSelectBuilder(userTherapistLinks);
+    }
+    if (table === "therapists") {
+      return makeSelectBuilder(userTherapistLinks.map((row) => ({ id: row.therapist_id })));
+    }
+    return makeSelectBuilder([]);
+  }),
+} as any);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -188,6 +199,43 @@ describe("sessions-complete handler", () => {
     });
   });
 
+  it("allows scheduling staff to close in-org sessions without therapist links", async () => {
+    const session = makeSession({ id: "session-schedule", status: "scheduled", therapist_id: "therapist-row-1" });
+    const updatedRow = { id: "session-schedule", status: "no-show", updated_at: "2026-03-31T10:05:00Z" };
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeSelectBuilder([]);
+      return makeUpdateBuilder(updatedRow);
+    });
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-schedule", outcome: "no-show", notes: null },
+      "schedule-actor",
+      "schedule_staff",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean; data: { outcome: string } };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.outcome).toBe("no-show");
+    expect(database.supabaseAdmin.from).not.toHaveBeenCalledWith("user_therapist_links");
+    expect(recordSessionAuditEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      sessionId: "session-schedule",
+      eventType: "session_no_show",
+      actorId: "schedule-actor",
+      required: false,
+      payload: expect.objectContaining({
+        outcome: "no-show",
+      }),
+    }));
+  });
+
   it("allows a therapist to complete their own session", async () => {
     const session = makeSession({ id: "session-3", status: "scheduled", therapist_id: "therapist-1" });
     const updatedRow = { id: "session-3", status: "completed", updated_at: "2026-03-31T10:05:00Z" };
@@ -211,6 +259,35 @@ describe("sessions-complete handler", () => {
     const body = await response.json() as { success: boolean };
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
+  });
+
+  it("allows linked therapist users to complete sessions assigned to their therapist row id", async () => {
+    const session = makeSession({ id: "session-linked", status: "scheduled", therapist_id: "therapist-row-1" });
+    const updatedRow = { id: "session-linked", status: "completed", updated_at: "2026-03-31T10:05:00Z" };
+    const db = makeDb([{ therapist_id: "therapist-row-1" }]);
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "user_therapist_links") return makeSelectBuilder([{ therapist_id: "therapist-row-1" }]);
+      if (table === "sessions") return makeUpdateBuilder(updatedRow);
+      return makeSelectBuilder([]);
+    });
+
+    const response = await handleSessionCompletion(
+      db,
+      "org-1",
+      { session_id: "session-linked", outcome: "completed", notes: null },
+      "auth-user-1",
+      "therapist",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(database.supabaseAdmin.from).toHaveBeenCalledWith("user_therapist_links");
   });
 
   it("creates a pending supervision note request after a BT session is completed", async () => {
@@ -262,6 +339,10 @@ describe("sessions-complete handler", () => {
     vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
       makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
     );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "user_therapist_links") return makeSelectBuilder([]);
+      return makeSelectBuilder([]);
+    });
 
     const response = await handleSessionCompletion(
       makeDb(),

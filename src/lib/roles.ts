@@ -46,8 +46,8 @@ export const APP_ROLES: readonly AppRole[] = [
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   client: 'Client',
-  bt: 'BT',
-  therapist: 'Therapist',
+  bt: 'Behavioral Therapist (BT)',
+  therapist: 'Behavioral Therapist (BT)',
   midtier: 'Midtier',
   admin_schedule: 'Admin Schedule',
   admin: 'Admin',
@@ -98,8 +98,10 @@ export const ROLE_CAPABILITIES: Record<AppRole, readonly AppCapability[]> = {
     'dataTaking',
     'viewClients',
     'viewDocumentation',
+    'viewFillDocs',
     'viewMessages',
     'viewProgramsGoals',
+    'viewSchedule',
     'viewStaffProfile',
   ],
   therapist: [
@@ -199,6 +201,9 @@ export const normalizeRole = (value: unknown): AppRole | null => {
   const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (normalized === 'superadmin') {
     return 'super_admin';
+  }
+  if (normalized === 'therapist') {
+    return 'bt';
   }
 
   return APP_ROLES.includes(normalized as AppRole) ? normalized as AppRole : null;

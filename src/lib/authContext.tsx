@@ -112,9 +112,9 @@ const resolveRoleFromRoleRows = (rows: RoleRow[]): Role | null => {
   return null;
 };
 
-const sanitizeSignupRoleMetadata = (value: unknown): 'client' | 'therapist' => {
+const sanitizeSignupRoleMetadata = (value: unknown): 'client' | 'bt' => {
   const normalized = toRole(value);
-  return normalized === 'therapist' ? 'therapist' : 'client';
+  return normalized === 'bt' ? 'bt' : 'client';
 };
 
 const toLowerCaseString = (value: unknown): string | null => {
@@ -248,7 +248,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   }, [user]);
 
-  const profileRole = profile?.role ?? null;
+  const profileRole = toRole(profile?.role) ?? null;
 
   const effectiveRole = useMemo<Role>(() => {
     if (profileRole && roleFromAssignments) {

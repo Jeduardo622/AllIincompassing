@@ -104,11 +104,17 @@ describe('route guard access controls', () => {
 
   it('restricts schedule access to schedule-capable roles', () => {
     expect(hasRoleAccess('/schedule', 'client')).toBe(false);
-    expect(hasRoleAccess('/schedule', 'bt')).toBe(false);
+    expect(hasRoleAccess('/schedule', 'bt')).toBe(true);
     expect(hasRoleAccess('/schedule', 'therapist')).toBe(true);
     expect(hasRoleAccess('/schedule', 'midtier')).toBe(true);
     expect(hasRoleAccess('/schedule', 'admin_schedule')).toBe(true);
     expect(hasRoleAccess('/schedule', 'admin')).toBe(true);
+  });
+
+  it('allows canonical BT users to access fill-docs after therapist role normalization', () => {
+    expect(hasRoleAccess('/fill-docs', 'bt')).toBe(true);
+    expect(hasRoleAccess('/fill-docs', 'therapist')).toBe(true);
+    expect(hasRoleAccess('/fill-docs', 'client')).toBe(false);
   });
 
   it('does not treat elevated non-client roles as family-dashboard eligible', () => {

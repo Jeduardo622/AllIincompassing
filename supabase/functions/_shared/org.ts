@@ -118,6 +118,45 @@ export async function assertUserHasOrgRole(
   return data === true;
 }
 
+export async function userHasTherapistLinkForOrg(
+  _db: SupabaseClient,
+  orgId: string,
+  userId: string,
+): Promise<boolean> {
+  const { data: linkRows, error: linkError } = await supabaseAdmin
+    .from("user_therapist_links")
+    .select("therapist_id")
+    .eq("user_id", userId)
+    .limit(1000);
+
+  if (linkError || !Array.isArray(linkRows) || linkRows.length === 0) {
+    if (linkError) {
+      console.error("userHasTherapistLinkForOrg links error", linkError);
+    }
+    return false;
+  }
+
+  const therapistIds = linkRows
+    .map((row) => (typeof row?.therapist_id === "string" ? row.therapist_id : null))
+    .filter((value): value is string => Boolean(value));
+  if (therapistIds.length === 0) {
+    return false;
+  }
+
+  const { data: therapistRows, error: therapistError } = await supabaseAdmin
+    .from("therapists")
+    .select("id")
+    .eq("organization_id", orgId)
+    .in("id", therapistIds)
+    .limit(1);
+
+  if (therapistError) {
+    console.error("userHasTherapistLinkForOrg therapists error", therapistError);
+    return false;
+  }
+  return Array.isArray(therapistRows) && therapistRows.length > 0;
+}
+
 export async function currentUserCanManageProgramsGoals(
   db: SupabaseClient,
   orgId: string,
@@ -130,6 +169,18 @@ export async function currentUserCanManageProgramsGoals(
     return false;
   }
   return data === true;
+}
+
+export async function currentUserHasScheduleStaffAuthority(
+  db: SupabaseClient,
+  orgId: string,
+): Promise<boolean> {
+  for (const role of ["admin_schedule", "midtier", "bcba"]) {
+    if (await assertUserHasOrgRole(db, orgId, role)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export async function withOrg<T>(

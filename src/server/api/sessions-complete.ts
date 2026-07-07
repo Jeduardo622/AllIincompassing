@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getOptionalServerEnv } from "../env";
 import {
   consumeRateLimit,
   corsHeadersForRequest,
@@ -60,6 +61,21 @@ const buildRuntimeHeaders = (accessToken: string, supabaseAnonKey: string): Reco
   Authorization: `Bearer ${accessToken}`,
 });
 
+const buildRuntimeServiceRoleHeaders = (): Record<string, string> | null => {
+  const serviceRoleKey =
+    getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY") ||
+    getOptionalServerEnv("SUPABASE_SECRET_KEY");
+  const trimmed = serviceRoleKey?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return {
+    "Content-Type": "application/json",
+    apikey: trimmed,
+    Authorization: `Bearer ${trimmed}`,
+  };
+};
+
 const resolveRuntimeOrgAndRoleWithStatus = async ({
   accessToken,
   supabaseUrl,
@@ -72,6 +88,7 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
   organizationId: string | null;
   isTherapist: boolean;
   isAdmin: boolean;
+  isScheduleStaff: boolean;
   isSuperAdmin: boolean;
   upstreamError: boolean;
 }> => {
@@ -99,6 +116,7 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
       organizationId: null,
       isTherapist: false,
       isAdmin: false,
+      isScheduleStaff: false,
       isSuperAdmin,
       upstreamError: superAdminUpstreamError || orgUpstreamError,
     };
@@ -119,18 +137,40 @@ const resolveRuntimeOrgAndRoleWithStatus = async ({
     headers,
     body: JSON.stringify({ role_name: "super_admin", target_organization_id: organizationId }),
   });
+  const adminScheduleResult = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role_name: "admin_schedule", target_organization_id: organizationId }),
+  });
+  const midtierResult = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role_name: "midtier", target_organization_id: organizationId }),
+  });
+  const bcbaResult = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role_name: "bcba", target_organization_id: organizationId }),
+  });
   const hasOrgSuperAdminRole = orgSuperAdminResult.ok && orgSuperAdminResult.data === true;
   return {
     organizationId,
     isTherapist: therapistResult.ok && therapistResult.data === true,
     isAdmin: adminResult.ok && adminResult.data === true,
+    isScheduleStaff:
+      (adminScheduleResult.ok && adminScheduleResult.data === true) ||
+      (midtierResult.ok && midtierResult.data === true) ||
+      (bcbaResult.ok && bcbaResult.data === true),
     isSuperAdmin: isSuperAdmin || hasOrgSuperAdminRole,
     upstreamError:
       superAdminUpstreamError ||
       orgUpstreamError ||
       (!therapistResult.ok && therapistResult.status >= 500) ||
       (!adminResult.ok && adminResult.status >= 500) ||
-      (!orgSuperAdminResult.ok && orgSuperAdminResult.status >= 500),
+      (!orgSuperAdminResult.ok && orgSuperAdminResult.status >= 500) ||
+      (!adminScheduleResult.ok && adminScheduleResult.status >= 500) ||
+      (!midtierResult.ok && midtierResult.status >= 500) ||
+      (!bcbaResult.ok && bcbaResult.status >= 500),
   };
 };
 
@@ -157,6 +197,37 @@ const resolveRuntimeAuthenticatedUserWithStatus = async ({
   return {
     userId: typeof userResult.data.id === "string" && userResult.data.id.length > 0 ? userResult.data.id : null,
     unauthorized: false,
+    upstreamError: false,
+  };
+};
+
+const userCanAccessTherapistSession = async ({
+  supabaseUrl,
+  headers,
+  userId,
+  therapistId,
+}: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  userId: string;
+  therapistId: string | null | undefined;
+}): Promise<{ allowed: boolean; upstreamError: boolean }> => {
+  if (!therapistId) {
+    return { allowed: false, upstreamError: false };
+  }
+  if (therapistId === userId) {
+    return { allowed: true, upstreamError: false };
+  }
+
+  const result = await fetchJson<Array<{ therapist_id?: string }>>(
+    `${supabaseUrl}/rest/v1/user_therapist_links?select=therapist_id&user_id=eq.${encodeURIComponent(userId)}&therapist_id=eq.${encodeURIComponent(therapistId)}&limit=1`,
+    { method: "GET", headers: buildRuntimeServiceRoleHeaders() ?? headers },
+  );
+  if (!result.ok) {
+    return { allowed: false, upstreamError: result.status >= 500 || result.status === 0 };
+  }
+  return {
+    allowed: Array.isArray(result.data) && result.data.some((row) => row.therapist_id === therapistId),
     upstreamError: false,
   };
 };
@@ -344,11 +415,11 @@ const completeSessionViaRuntimeRest = async ({
       headers: traceHeaders,
     });
   }
-  if (!roleResolution.organizationId || (!roleResolution.isTherapist && !roleResolution.isAdmin && !roleResolution.isSuperAdmin)) {
+  if (!roleResolution.organizationId) {
     incrementRuntimeMetric("tenant_denial_total", {
       function: "sessions-complete",
       orgId: roleResolution.organizationId ?? undefined,
-      reason: roleResolution.organizationId ? "role-denied" : "missing-org",
+      reason: "missing-org",
     });
     return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
   }
@@ -410,16 +481,30 @@ const completeSessionViaRuntimeRest = async ({
     });
   }
   const session = sessionResult.data[0];
-  if (roleResolution.isTherapist && session.therapist_id !== currentUserId) {
-    incrementRuntimeMetric("tenant_denial_total", {
-      function: "sessions-complete",
-      orgId: organizationId,
-      reason: "therapist-mismatch",
+  if (!roleResolution.isAdmin && !roleResolution.isScheduleStaff && !roleResolution.isSuperAdmin) {
+    const therapistAccess = await userCanAccessTherapistSession({
+      supabaseUrl,
+      headers,
+      userId: currentUserId,
+      therapistId: session.therapist_id,
     });
-    return errorResponse(request, "forbidden", "Forbidden", {
-      headers: traceHeaders,
-      extra: { code: "FORBIDDEN" },
-    });
+    if (therapistAccess.upstreamError) {
+      return errorResponse(request, "upstream_error", "Unable to validate therapist access", {
+        status: 502,
+        headers: traceHeaders,
+      });
+    }
+    if (!therapistAccess.allowed) {
+      incrementRuntimeMetric("tenant_denial_total", {
+        function: "sessions-complete",
+        orgId: organizationId,
+        reason: "therapist-mismatch",
+      });
+      return errorResponse(request, "forbidden", "Forbidden", {
+        headers: traceHeaders,
+        extra: { code: "FORBIDDEN" },
+      });
+    }
   }
   if (TERMINAL_STATUSES.has(session.status)) {
     return errorResponse(request, "conflict", `Session is already in a terminal state: ${session.status}`, {

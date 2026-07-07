@@ -125,7 +125,7 @@ describe('readStubAuthState', () => {
     const result = readStubAuthState();
     expect(result).not.toBeNull();
     expect(result?.user.email).toBe('legacy@example.com');
-    expect(result?.profile.role).toBe('therapist');
+    expect(result?.profile.role).toBe('bt');
     expect(result?.session.expires_at).toBeGreaterThan(Math.floor(now / 1000));
   });
 

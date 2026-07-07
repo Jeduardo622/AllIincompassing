@@ -42,7 +42,7 @@ export const routeGroups = {
       roles: ["client", "bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"],
       expectedPathByRole: {
         client: "/documentation",
-        bt: "/clients",
+        bt: "/schedule",
         therapist: "/schedule",
         midtier: "/schedule",
         admin_schedule: "/",
@@ -58,7 +58,7 @@ export const routeGroups = {
     { path: "/family", roles: [] },
   ],
   schedule: [
-    { path: "/schedule", roles: ["therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/schedule", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
   ],
   messages: [
     { path: "/messages", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },

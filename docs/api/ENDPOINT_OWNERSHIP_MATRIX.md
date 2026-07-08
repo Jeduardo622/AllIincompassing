@@ -26,5 +26,5 @@ Notes:
 - `status`, `owner`, and `exception expiry` must stay in sync with:
   - `docs/api/endpoint-convergence-status.json`
   - `docs/api/runtime-exceptions.json`
-- CI enforces direct edge parity for session lifecycle routes (`sessions-hold`, `sessions-confirm`, `sessions-start`, `sessions-cancel`) and session-notes PDF async routes (`generate-session-notes-pdf`, `session-notes-pdf-status`, `session-notes-pdf-download`) so shim-only availability is not sufficient for release.
+- CI enforces direct edge parity for session lifecycle routes (`sessions-hold`, `sessions-confirm`, `sessions-start`, `sessions-cancel`), session-notes PDF async routes (`generate-session-notes-pdf`, `session-notes-pdf-status`, `session-notes-pdf-download`), and Programs/Goals direct-edge routes (`programs`, `goals`, `goal-targets`, `program-notes`) so shim-only availability is not sufficient for release.
 - Remediation details, migration IDs, and rollback/forward-fix instructions are tracked in `docs/SESSION_LIFECYCLE_REMEDIATION_RUNBOOK.md`.

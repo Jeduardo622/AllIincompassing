@@ -11,6 +11,10 @@ const REQUIRED_EDGE_FUNCTIONS = [
   "generate-session-notes-pdf",
   "session-notes-pdf-status",
   "session-notes-pdf-download",
+  "programs",
+  "goals",
+  "goal-targets",
+  "program-notes",
 ];
 
 const CRITICAL_ENDPOINTS = [

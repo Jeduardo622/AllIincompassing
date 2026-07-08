@@ -212,7 +212,12 @@ Supabase auth parity guard details:
   - `generate-session-notes-pdf`
   - `session-notes-pdf-status`
   - `session-notes-pdf-download`
-- Use `SUPABASE_FUNCTION_PARITY_SCOPE` to pin this focused lifecycle scope in local/CI reruns.
+- Programs/Goals direct-edge scope also includes:
+  - `programs`
+  - `goals`
+  - `goal-targets`
+  - `program-notes`
+- Use `SUPABASE_FUNCTION_PARITY_SCOPE` to pin this focused lifecycle or Programs/Goals scope in local/CI reruns.
 - Fails in CI on mismatch so auth posture drift cannot pass silently.
 
 ## Cypress typing policy

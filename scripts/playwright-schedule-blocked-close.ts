@@ -444,17 +444,11 @@ async function run(): Promise<void> {
       }));
 
     await withStepTimeout("open-edit-modal", async () => {
-      const openedFromRenderedCard = await openRenderedSessionCard(activePage, booked.sessionId);
-      if (openedFromRenderedCard) {
-        await activePage
-          .locator('[role="dialog"][data-session-status="in_progress"]')
-          .waitFor({ state: "visible", timeout: 90_000 });
-        return;
-      }
-
       let lastUrl = activePage.url();
       let lastBodyText = "";
 
+      // Prefer URL-driven modal state on deploy previews. Netlify's preview drawer
+      // can overlay the schedule grid and swallow rendered-card clicks.
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         const expiresAt = Date.now() + 30 * 60 * 1000;
         const editUrl = `${base}/schedule?scheduleModal=edit&scheduleSessionId=${encodeURIComponent(
@@ -479,6 +473,14 @@ async function run(): Promise<void> {
           continue;
         }
 
+        await activePage
+          .locator('[role="dialog"][data-session-status="in_progress"]')
+          .waitFor({ state: "visible", timeout: 90_000 });
+        return;
+      }
+
+      const openedFromRenderedCard = await openRenderedSessionCard(activePage, booked.sessionId);
+      if (openedFromRenderedCard) {
         await activePage
           .locator('[role="dialog"][data-session-status="in_progress"]')
           .waitFor({ state: "visible", timeout: 90_000 });

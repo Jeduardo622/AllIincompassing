@@ -35,6 +35,24 @@ export function UserSettings() {
 
   const handleUpdateProfile = async (data: UserSettingsForm) => {
     try {
+      const isPasswordChangeRequested = isChangingPassword && data.current_password && data.new_password;
+      const currentEmail = user?.email?.trim() || data.email.trim();
+
+      if (isPasswordChangeRequested) {
+        if (!currentEmail) {
+          throw new Error('Unable to verify your current password. Please sign out and sign in again.');
+        }
+
+        const { data: verificationData, error: verificationError } = await supabase.auth.signInWithPassword({
+          email: currentEmail,
+          password: data.current_password,
+        });
+
+        if (verificationError || (user?.id && verificationData.user?.id !== user.id)) {
+          throw new Error('Current password is incorrect.');
+        }
+      }
+
       const updates = {
         email: data.email,
         data: {
@@ -49,7 +67,7 @@ export function UserSettings() {
       if (updateError) throw updateError;
 
       // Handle password change if requested
-      if (isChangingPassword && data.current_password && data.new_password) {
+      if (isPasswordChangeRequested) {
         const { error: passwordError } = await supabase.auth.updateUser({
           password: data.new_password,
         });

@@ -81,6 +81,12 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
     supabasePolicies: ['public.profiles: role_scoped_select'],
   }),
   createGuard({
+    path: '/account',
+    allowedRoles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['public.profiles: role_scoped_update'],
+  }),
+  createGuard({
     path: '/fill-docs',
     allowedRoles: ['bt', 'therapist', 'midtier', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: [],

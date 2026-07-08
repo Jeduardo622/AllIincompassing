@@ -18,6 +18,7 @@ const expectedPaths = [
   '/therapists/:therapistId',
   '/therapists/new',
   '/documentation',
+  '/account',
   '/fill-docs',
   '/authorizations',
   '/messages',

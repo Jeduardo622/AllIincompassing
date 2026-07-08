@@ -195,6 +195,13 @@ export function Sidebar() {
       roles: ['admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
+    {
+      icon: User,
+      label: 'My Account',
+      path: '/account',
+      roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
+      requiresGuardian: false,
+    },
   ];
 
   // Mobile menu button

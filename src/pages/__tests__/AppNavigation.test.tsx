@@ -99,6 +99,10 @@ vi.mock('../../pages/Settings', () => ({
   Settings: () => <div>SettingsPage</div>,
 }));
 
+vi.mock('../../pages/Account', () => ({
+  Account: () => <div>AccountPage</div>,
+}));
+
 vi.mock('../../pages/SuperAdminFeatureFlags', () => ({
   SuperAdminFeatureFlags: () => <div>SuperAdminFeatureFlagsPage</div>,
 }));
@@ -298,6 +302,19 @@ describe('App navigation landing', () => {
       await waitFor(() => {
         expect(window.location.pathname).toBe('/unauthorized');
       });
+
+      view.unmount();
+    }
+  });
+
+  it('allows every authenticated role to open personal account settings', async () => {
+    for (const role of ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as const) {
+      authRole = role;
+      window.history.pushState({}, '', '/account');
+      const view = renderApp();
+
+      expect(await screen.findByText('AccountPage')).toBeInTheDocument();
+      expect(window.location.pathname).toBe('/account');
 
       view.unmount();
     }

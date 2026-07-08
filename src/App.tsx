@@ -43,6 +43,7 @@ const Documentation = React.lazy(() =>
 const FillDocs = React.lazy(() => import('./pages/FillDocs').then(module => ({ default: module.FillDocs })));
 const Billing = React.lazy(() => import('./pages/Billing').then(module => ({ default: module.Billing })));
 const Settings = React.lazy(() => import('./pages/Settings').then(module => ({ default: module.Settings })));
+const Account = React.lazy(() => import('./pages/Account').then(module => ({ default: module.Account })));
 const SuperAdminFeatureFlags = React.lazy(() =>
   import('./pages/SuperAdminFeatureFlags').then(module => ({ default: module.SuperAdminFeatureFlags })),
 );
@@ -226,6 +227,9 @@ function App() {
 
                     {/* Documentation - accessible to all authenticated users */}
                     <Route path="documentation" element={<Documentation />} />
+
+                    {/* Account - accessible to all authenticated users */}
+                    <Route path="account" element={<Account />} />
 
                     {/* Fill Docs - accessible to therapists and above */}
                     <Route

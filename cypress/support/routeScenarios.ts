@@ -53,6 +53,7 @@ export const routeGroups = {
     },
     { path: "/clients", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/clients/client-1", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/account", roles: ["client", "bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/documentation", roles: ["client", "bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/authorizations", roles: ["midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/family", roles: [] },

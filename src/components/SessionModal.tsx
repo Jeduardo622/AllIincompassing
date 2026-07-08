@@ -716,6 +716,9 @@ export function SessionModal({
     if (!sessionDetails) {
       return;
     }
+    if (shouldHideGoalCaptureFields && clientId !== session?.client_id) {
+      return;
+    }
     if (sessionDetails.program_id) {
       setValue('program_id', sessionDetails.program_id);
       setSelectedProgramIds((current) =>
@@ -727,7 +730,7 @@ export function SessionModal({
     if (sessionDetails.goal_id) {
       setValue('goal_id', sessionDetails.goal_id);
     }
-  }, [sessionDetails, setValue]);
+  }, [clientId, session?.client_id, sessionDetails, setValue, shouldHideGoalCaptureFields]);
 
   useEffect(() => {
     if (!session?.id) {
@@ -752,6 +755,9 @@ export function SessionModal({
   }, [getValues, session?.goal_id, session?.id, sessionDetails?.goal_id, sessionGoalRows, setValue]);
 
   useEffect(() => {
+    if (shouldHideGoalCaptureFields) {
+      return;
+    }
     if (!isProgramsFetched) {
       return;
     }
@@ -806,9 +812,12 @@ export function SessionModal({
       }
       return nextProgram?.id ? [nextProgram.id] : [];
     });
-  }, [isProgramsFetched, programs, programId, goalId, goalIds, session?.id, setValue]);
+  }, [goalId, goalIds, isProgramsFetched, programId, programs, session?.id, setValue, shouldHideGoalCaptureFields]);
 
   useEffect(() => {
+    if (shouldHideGoalCaptureFields) {
+      return;
+    }
     if (!isGoalsFetched) {
       return;
     }
@@ -852,9 +861,13 @@ export function SessionModal({
     selectedProgramIds,
     session?.id,
     setValue,
+    shouldHideGoalCaptureFields,
   ]);
 
   useEffect(() => {
+    if (shouldHideGoalCaptureFields) {
+      return;
+    }
     if (!goalId) {
       return;
     }
@@ -871,9 +884,12 @@ export function SessionModal({
         setValue('program_id', primaryGoalProgramId);
       }
     }
-  }, [goalId, goalIds, goalsById, programId, setValue]);
+  }, [goalId, goalIds, goalsById, programId, setValue, shouldHideGoalCaptureFields]);
 
   useEffect(() => {
+    if (shouldHideGoalCaptureFields) {
+      return;
+    }
     const programsFromGoals = mergeUniqueGoalIds(Array.isArray(goalIds) ? goalIds : [], goalId ? [goalId] : [])
       .map((selectedGoalId) => goalsById.get(selectedGoalId)?.program_id)
       .filter((id): id is string => Boolean(id));
@@ -889,7 +905,7 @@ export function SessionModal({
         ? current
         : next;
     });
-  }, [goalId, goalIds, setValue]);
+  }, [goalId, goalIds, goalsById, programId, shouldHideGoalCaptureFields]);
 
   const updateProgramSelection = useCallback(
     (nextProgramIds: string[]) => {
@@ -1363,6 +1379,25 @@ export function SessionModal({
             notes: session.notes ?? '',
           }
         : {};
+      const schedulerOnlyClinicalFields: Partial<Session> = shouldHideGoalCaptureFields
+        ? session
+          ? working.client_id === session.client_id
+            ? {
+                program_id: session.program_id ?? '',
+                goal_id: session.goal_id ?? '',
+                goal_ids: session.goal_ids ?? [],
+              }
+            : {
+                program_id: '',
+                goal_id: '',
+                goal_ids: [],
+              }
+          : {
+              program_id: '',
+              goal_id: '',
+              goal_ids: [],
+            }
+        : {};
       const transformed: SessionModalSubmitData = {
         ...working,
         ...(session?.id ? { id: session.id } : {}),
@@ -1386,6 +1421,7 @@ export function SessionModal({
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
         start_time: timeZone ? toUtcSessionIsoString(working.start_time, resolvedTimeZone) : working.start_time,
         end_time: timeZone ? toUtcSessionIsoString(working.end_time, resolvedTimeZone) : working.end_time,
+        ...schedulerOnlyClinicalFields,
         ...lockedSessionFields,
       };
       await onSubmit(transformed);

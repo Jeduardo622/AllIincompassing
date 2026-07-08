@@ -189,7 +189,9 @@ describe('Scheduling Integration - End-to-End Flow', () => {
     );
 
     // Render the Schedule page
-    renderWithProviders(<Schedule />);
+    renderWithProviders(<Schedule />, {
+      auth: { role: 'bcba', organizationId: 'org-a' },
+    });
 
     // Wait for filters to be ready
     await screen.findByRole('combobox', { name: /therapist/i });

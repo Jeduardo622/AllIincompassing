@@ -13,6 +13,7 @@ const REQUIRED_FUNCTIONS = [
   "session-notes-pdf-download",
   "programs",
   "goals",
+  "goal-targets",
   "program-notes",
   "emails",
   "extract-assessment-fields",

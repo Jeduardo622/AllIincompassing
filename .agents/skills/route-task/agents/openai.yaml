@@ -1,0 +1,4 @@
+interface:
+  display_name: "Route Task"
+  short_description: "Classify task risk and lane before implementation."
+  default_prompt: "Use $route-task to classify this task before implementation and emit classification, lane, triggering paths, required agents, reviewer required, verify-change required, mandatory checks, blockers, and Linear requirement."

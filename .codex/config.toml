@@ -1,7 +1,32 @@
+# .codex/config.toml
+# Repository-local Codex runtime configuration.
+# Keep secrets in the shell/IDE environment; do not commit tokens or .env files.
+
 model = "gpt-5.4"
 model_reasoning_effort = "medium"
+
+sandbox_mode = "workspace-write"
 approval_policy = "on-request"
+approvals_reviewer = "user"
+
+[sandbox_workspace_write]
+network_access = false
 
 [agents]
-max_threads = 4
+max_threads = 6
 max_depth = 1
+
+# Netlify remote MCP. CLI deploy commands are gated by .codex/rules/default.rules;
+# MCP deploy actions still require explicit user approval and repo policy review.
+[mcp_servers.netlify]
+url = "https://netlify-mcp.netlify.app/mcp"
+default_tools_approval_mode = "prompt"
+
+# Supabase hosted MCP is intentionally commented until a DEV or BRANCH project is selected.
+# Do not point Codex at production Supabase. Prefer read-only mode by default.
+# After setting SUPABASE_ACCESS_TOKEN in the shell/IDE environment, uncomment and replace
+# YOUR_DEV_PROJECT_REF with the scoped dev/branch project ref.
+#
+# [mcp_servers.supabase]
+# url = "https://mcp.supabase.com/mcp?project_ref=YOUR_DEV_PROJECT_REF&read_only=true"
+# bearer_token_env_var = "SUPABASE_ACCESS_TOKEN"

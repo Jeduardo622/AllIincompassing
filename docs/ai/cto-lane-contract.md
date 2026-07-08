@@ -73,7 +73,14 @@ Use when scope is too unclear to route safely. No implementation may start in th
 
 ## Mandatory Agent Sequence
 
+Agent names in this section are Codex custom-agent names expected under `.codex/agents/*.toml`. `reviewer` and `tester` remain compatibility aliases for `code-review-engineer` and `test-engineer` when older repo guidance requests the generic names.
+
+
 ### Verification: `fast`
+
+For docs/process-only `fast` tasks, no subagent is required; the primary agent may satisfy scope confirmation and manual link/path verification.
+
+For small code/config `fast` tasks, use:
 
 - `specification-engineer` (lightweight scope confirmation)
 - `implementation-engineer`
@@ -107,6 +114,12 @@ Add `performance-engineer` when query or runtime performance is part of the chan
 Run the union required by `docs/ai/verification-matrix.md`.
 
 ### `fast`
+
+For docs/process-only `fast` work:
+
+- verify links, commands, and file paths manually
+
+For small code/config `fast` work:
 
 - `npm run lint`
 - `npm run typecheck`

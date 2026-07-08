@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Change"
+  short_description: "Select and report mandatory verification for routed changes."
+  default_prompt: "Use $verify-change to select required checks, execute available checks, record blocked checks, and produce the verification card."

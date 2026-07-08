@@ -35,12 +35,16 @@ cypress/screenshots
 .env.*
 !.env.example
 
+# Codex / local agent output
+.codex/tmp/
+.codex/**/*.log
+
 # Local/editor backup artifacts
 *.backup
 /src/*.zip
 docs/ai/*.zip
 # Local Netlify folder
-.netlify
+.netlify/
 
 # Large local reference documents
 WHITE BIBLE.pdf

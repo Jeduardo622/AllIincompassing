@@ -1,0 +1,86 @@
+# .codex/rules/default.rules
+# Safety gates for command execution outside the sandbox.
+
+prefix_rule(
+    pattern = ["rm", "-rf"],
+    decision = "forbidden",
+    justification = "Recursive deletion is too destructive for autonomous execution."
+)
+
+prefix_rule(
+    pattern = ["Remove-Item", "-Recurse", "-Force"],
+    decision = "prompt",
+    justification = "Recursive PowerShell deletion can remove user or agent work."
+)
+
+prefix_rule(
+    pattern = ["cmd", "/c", "del"],
+    decision = "prompt",
+    justification = "Shell deletion through cmd.exe can remove user or agent work."
+)
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "prompt",
+    justification = "Hard resets can discard user or agent work."
+)
+
+prefix_rule(
+    pattern = ["git", "clean", "-fd"],
+    decision = "prompt",
+    justification = "Cleaning untracked files can delete local artifacts or user work."
+)
+
+prefix_rule(
+    pattern = ["supabase", "db", "push"],
+    decision = "prompt",
+    justification = "Remote database schema changes require explicit review and scoped project confirmation."
+)
+
+prefix_rule(
+    pattern = ["npx", "supabase", "db", "push"],
+    decision = "prompt",
+    justification = "Remote database schema changes require explicit review and scoped project confirmation."
+)
+
+prefix_rule(
+    pattern = ["supabase", "migration", "repair"],
+    decision = "prompt",
+    justification = "Migration history repair can desynchronize local and remote state."
+)
+
+prefix_rule(
+    pattern = ["npx", "supabase", "migration", "repair"],
+    decision = "prompt",
+    justification = "Migration history repair can desynchronize local and remote state."
+)
+
+prefix_rule(
+    pattern = ["netlify", "deploy", "--prod"],
+    decision = "prompt",
+    justification = "Production deploys require explicit approval."
+)
+
+prefix_rule(
+    pattern = ["npx", "netlify", "deploy", "--prod"],
+    decision = "prompt",
+    justification = "Production deploys require explicit approval."
+)
+
+prefix_rule(
+    pattern = ["netlify", "deploy"],
+    decision = "prompt",
+    justification = "Deploys should be reviewed before execution."
+)
+
+prefix_rule(
+    pattern = ["npx", "netlify", "deploy"],
+    decision = "prompt",
+    justification = "Deploys should be reviewed before execution."
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "merge"],
+    decision = "prompt",
+    justification = "Merges must respect branch protection, review requirements, and repo policy."
+)

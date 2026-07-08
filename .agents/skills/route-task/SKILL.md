@@ -23,6 +23,17 @@ Always emit both:
 - `classification`: `low-risk autonomous` | `high-risk human-reviewed` | `blocked pending clarification`
 - `lane`: `fast` | `standard` | `critical` | `blocked`
 
+## Codex Agent Name Alignment
+
+When this skill emits `required agents`, use the concrete Codex custom-agent names expected under `.codex/agents/*.toml`.
+
+Compatibility aliases:
+
+- `reviewer` may satisfy `code-review-engineer` when the generic reviewer path is requested by `AGENTS.md`.
+- `tester` may satisfy `test-engineer` when the generic tester path is requested by `AGENTS.md`.
+
+Prefer the explicit lane-contract names (`specification-engineer`, `implementation-engineer`, `code-review-engineer`, `test-engineer`, etc.) when a multi-agent sequence is emitted.
+
 ## Lane And Classification Mapping
 
 Choose exactly one:

@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Hygiene"
+  short_description: "Check branch, diff, verification, Linear linkage, and PR readiness."
+  default_prompt: "Use $pr-hygiene to determine whether this non-trivial change is isolated, verified, reviewable, and PR-ready."

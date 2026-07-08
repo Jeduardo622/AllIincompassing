@@ -37,7 +37,32 @@ This memo captures the current repository operating baseline in one place.
 
 ## 2) Agents and Subagents
 
-### Repo-Defined Agents (`.cursor/agents`)
+### Codex Custom Agents (`.codex/agents`)
+
+The lane-contract agent names below should exist as Codex custom-agent TOML files:
+
+- `specification-engineer`
+- `software-architect`
+- `implementation-engineer`
+- `code-review-engineer`
+- `test-engineer`
+- `security-engineer`
+- `performance-engineer`
+- `devops-engineer`
+- `documentation-engineer`
+- `debugging-specialist`
+- `refactoring-specialist`
+
+Compatibility / repo-specific Codex agents:
+
+- `reviewer` — compatibility alias for `code-review-engineer`
+- `tester` — compatibility alias for `test-engineer`
+- `test-isolation` — low-risk deterministic-test specialist
+- `ui-hardener` — low-risk UI hardening specialist
+- `supabase-reviewer` — migrations, RLS, grants, RPC exposure, functions, and tenant-boundary review
+- `netlify-deploy-reviewer` — Netlify build/deploy, redirect, function, and env-var review
+
+### Repo-Defined Cursor Agents (`.cursor/agents`)
 
 - `aba-ops-coordinator`
 - `code-reviewer`
@@ -54,20 +79,9 @@ This memo captures the current repository operating baseline in one place.
 ### Operational Subagent Model
 
 - One primary orchestrator (AI CTO operating pattern)
-- Specialist subagents activated based on task/risk:
-  - `research-engineer`
-  - `specification-engineer`
-  - `software-architect`
-  - `implementation-engineer`
-  - `code-review-engineer`
-  - `test-engineer`
-  - `security-engineer`
-  - `performance-engineer`
-  - `devops-engineer`
-  - `documentation-engineer`
-  - `debugging-specialist`
-  - `refactoring-specialist`
-- Supabase platform subagents are used when data/auth/RLS/migrations/functions are in scope.
+- `route-task` chooses the lane and emits the required Codex agent sequence.
+- Named Codex agents should map directly to the lane-contract roles.
+- Use Supabase and Netlify specialist agents whenever platform, deploy, tenant, or runtime boundaries are in scope.
 
 ## 3) Installed Skills
 
@@ -79,6 +93,7 @@ This memo captures the current repository operating baseline in one place.
 - `auth-routing-guard`
 - `supabase-tenant-safety`
 - `playwright-regression-triage`
+- `clinical-data-parity-auditor`
 
 ### Cursor Skills In Repo (`.cursor/skills`)
 
@@ -117,8 +132,11 @@ The workspace has these MCP servers enabled:
 
 ### MCP Operating Rule
 
+Codex-specific MCP servers belong in `.codex/config.toml`. Cursor plugin MCP servers remain configured in Cursor/plugin settings. Do not assume project `.env` files are injected into MCP server processes.
+
 - Always inspect the MCP tool schema/descriptor before calling an MCP tool.
 - If an MCP server exposes an `mcp_auth` tool, authenticate it before use.
+- Treat deploy-capable MCP tools as production-sensitive even when CLI command rules exist; require explicit approval and repo policy review before invoking them.
 
 ## 5) Workflow Contract (How Work Gets Done)
 

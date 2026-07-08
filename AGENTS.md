@@ -174,7 +174,7 @@ Repo-local skill layout:
   - create or confirm the matching Linear issue for non-trivial work; require one for high-risk work
   - `route-task` before implementation
   - ensure `route-task` emits both `classification` and `lane` (`fast`|`standard`|`critical`|`blocked`)
-  - invoke the matching repo-local skill when scope enters auth/routing, tenant-sensitive Supabase work, or Playwright-driven browser triage
+  - invoke the matching repo-local skill when scope enters auth/routing, tenant-sensitive Supabase work, Playwright-driven browser triage, or redacted clinical parity QA
   - `verify-change` before closing
   - `pr-hygiene` before final handoff
   - push the branch and create a PR for human review
@@ -182,6 +182,7 @@ Repo-local skill layout:
   - `auth-routing-guard` for auth, routing, session, or redirect changes
   - `supabase-tenant-safety` for migrations, functions, RLS, grants, RPC exposure, or tenant-boundary changes
   - `playwright-regression-triage` for browser-only or route-level reproduction and evidence capture
+  - `clinical-data-parity-auditor` for redacted browser-only IEHP/FBA source-to-output parity QA; use only with redacted, synthetic, smoke, or test fixtures
 
 When the required checks do not need secrets or protected external systems, run `npm run verify:local` before finalizing.
 
@@ -198,12 +199,22 @@ Required artifact for non-trivial code/config work:
 
 ## Subagent Use
 
+Codex custom agents live under `.codex/agents/**`. Use the lane-contract agent names when a task is routed through `route-task`; keep `reviewer` and `tester` as compatibility aliases for the older generic flow.
+
 For non-trivial tasks:
 
-- Use `tester` for targeted test selection, reproduction, and verification.
-- Use `reviewer` for auth, security, CI-policy, and high-risk diff review.
+- Use `specification-engineer` to confirm scope, acceptance criteria, non-goals, and stop conditions before implementation.
+- Use `implementation-engineer` for the bounded implementation slice after routing is complete.
+- Use `code-review-engineer` for focused review of correctness, regression risk, protected-path drift, and policy compliance. `reviewer` may satisfy this role when the generic reviewer path is requested.
+- Use `test-engineer` for targeted test selection, reproduction, and verification planning. `tester` may satisfy this role when the generic tester path is requested.
+- Use `software-architect` for critical-lane or cross-boundary design review.
+- Use `security-engineer` for auth, secrets, tenant isolation, RLS, RPC exposure, MCP/tooling, or CI/deploy security risk.
+- Use `performance-engineer` when query behavior, route startup, bundle boundaries, or runtime performance may be affected.
+- Use `devops-engineer` or `netlify-deploy-reviewer` for Netlify, CI, build, redirect, function, environment, or deployment readiness work.
+- Use `supabase-reviewer` for migrations, RLS, grants, RPC exposure, functions, and tenant-boundary work.
+- Use `documentation-engineer` when behavior, process, runbook, or handoff documentation changes.
 
-Subagent findings must reference specific files, diffs, or commands when possible.
+Subagent findings must reference specific files, diffs, commands, or policy docs when possible.
 
 ## Definition Of Done
 

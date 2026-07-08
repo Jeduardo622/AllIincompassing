@@ -104,6 +104,7 @@ vi.mock("../../components/SessionModal", () => ({
     session,
     retryHint,
     dataCollectionOnly,
+    hideGoalCaptureFields,
   }: {
     isOpen: boolean;
     onClose: () => void;
@@ -111,12 +112,14 @@ vi.mock("../../components/SessionModal", () => ({
     session?: { id: string };
     retryHint?: string | null;
     dataCollectionOnly?: boolean;
+    hideGoalCaptureFields?: boolean;
   }) =>
     isOpen ? (
       <div data-testid="session-modal">
         <div data-testid="modal-mode">{session ? "edit" : "create"}</div>
         <div data-testid="retry-hint">{retryHint ?? ""}</div>
         <div data-testid="data-collection-only">{dataCollectionOnly ? "true" : "false"}</div>
+        <div data-testid="hide-goal-capture-fields">{hideGoalCaptureFields ? "true" : "false"}</div>
         <button
           aria-label="submit-create"
           onClick={() => {
@@ -579,6 +582,23 @@ describe("Schedule orchestration integration hardening", () => {
     );
     expect(showSuccessMock).toHaveBeenCalledWith("Session data collection saved");
     expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["admin", "admin", "true"],
+    ["admin schedule", "admin_schedule", "true"],
+    ["bcba", "bcba", "false"],
+  ] as const)("wires goal-capture visibility for %s schedule sessions", async (_label, role, expectedHidden) => {
+    renderWithProviders(<Schedule />, {
+      auth: { role, organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("hide-goal-capture-fields")).toHaveTextContent(expectedHidden);
   });
 
   it("manual live capture persistence can resolve the edit session from submitted id", async () => {

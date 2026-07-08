@@ -1878,6 +1878,7 @@ export const Schedule = React.memo(() => {
         existingSessions={displayData.sessions}
         timeZone={userTimeZone}
         dataCollectionOnly={effectiveRole === "bt" && Boolean(selectedSession?.id)}
+        hideGoalCaptureFields={effectiveRole === "admin" || effectiveRole === "admin_schedule"}
         defaultTherapistId={selectedTherapist}
         defaultClientId={selectedClient}
         retryHint={retryHint}

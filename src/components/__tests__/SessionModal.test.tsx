@@ -1695,6 +1695,54 @@ describe('SessionModal', () => {
     expect(screen.getByRole('tab', { name: /^BX$/i })).toBeInTheDocument();
   });
 
+  it('hides goal planning and session capture fields when schedule goal capture is suppressed', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        hideGoalCaptureFields
+        session={{
+          id: 'session-admin-schedule-edit',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: 'Schedule only note',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    expect(screen.getByText('Edit Session')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Program/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Primary Goal/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Programs in this session/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Goals in this session/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('session-modal-capture-section')).not.toBeInTheDocument();
+
+    const updateButton = screen.getByRole('button', { name: /Update Session/i });
+    await waitFor(() => expect(updateButton).not.toBeDisabled());
+    await userEvent.click(updateButton);
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'session-admin-schedule-edit',
+        program_id: 'program-1',
+        goal_id: 'goal-1',
+        therapist_id: 'test-therapist-1',
+        client_id: 'test-client-1',
+      }));
+    });
+  });
+
   it('submits normalized per-target trials with session capture', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const buildChain = (rows: unknown[]) => {

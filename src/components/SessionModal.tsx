@@ -266,6 +266,7 @@ interface SessionModalProps {
   onRetryAction?: (() => void) | undefined;
   onSessionStarted?: () => void | Promise<void>;
   dataCollectionOnly?: boolean;
+  hideGoalCaptureFields?: boolean;
 }
 
 export function SessionModal({
@@ -287,6 +288,7 @@ export function SessionModal({
   onRetryAction,
   onSessionStarted,
   dataCollectionOnly = false,
+  hideGoalCaptureFields = false,
 }: SessionModalProps) {
   const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
   const [selectedProgramIds, setSelectedProgramIds] = useState<string[]>(() =>
@@ -314,6 +316,7 @@ export function SessionModal({
   const conflictHeadingId = 'session-modal-conflicts-heading';
   const queryClient = useQueryClient();
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
+  const shouldHideGoalCaptureFields = hideGoalCaptureFields;
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
 
@@ -1578,13 +1581,17 @@ export function SessionModal({
   }, [session, isInProgressSession]);
   const modalSubtitle = useMemo(() => {
     if (!session) {
-      return 'Choose therapist, client, time, and plan details before creating this appointment.';
+      return shouldHideGoalCaptureFields
+        ? 'Choose therapist, client, and time before creating this appointment.'
+        : 'Choose therapist, client, time, and plan details before creating this appointment.';
     }
     if (isInProgressSession) {
-      return 'Log trials and per-goal notes, then save to sync. Use Close session when the visit ends.';
+      return shouldHideGoalCaptureFields
+        ? 'Review scheduling details and save updates while the visit is active.'
+        : 'Log trials and per-goal notes, then save to sync. Use Close session when the visit ends.';
     }
     return 'Review core details first, then add notes before saving.';
-  }, [session, isInProgressSession]);
+  }, [session, isInProgressSession, shouldHideGoalCaptureFields]);
   const sessionNoteGoalIds = useMemo(
     () => mergeUniqueGoalIds(
       Array.isArray(goalIds) ? goalIds : [],
@@ -2305,7 +2312,9 @@ export function SessionModal({
                 <p className="mt-1">
                   {isDataCollectionOnly
                     ? 'Session details are read-only. Save progress to sync data collection.'
-                    : 'You can adjust program and goals while active; save to keep the plan in sync with the schedule.'}
+                    : shouldHideGoalCaptureFields
+                      ? 'Session details stay focused on scheduling fields while active.'
+                      : 'You can adjust program and goals while active; save to keep the plan in sync with the schedule.'}
                 </p>
               </div>
             )}
@@ -2333,7 +2342,9 @@ export function SessionModal({
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">People &amp; Plan</h3>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Pick the therapist, client, and care-plan details for this session.
+                    {shouldHideGoalCaptureFields
+                      ? 'Pick the therapist and client for this session.'
+                      : 'Pick the therapist, client, and care-plan details for this session.'}
                   </p>
                 </div>
                 <button
@@ -2356,10 +2367,12 @@ export function SessionModal({
                     <p className="font-semibold text-gray-900 dark:text-white">Client</p>
                     <p className="mt-1 truncate">{selectedClient?.full_name ?? 'Not selected'}</p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 dark:text-white">Primary goal</p>
-                    <p className="mt-1 truncate">{selectedPrimaryGoal?.title ?? 'Not selected'}</p>
-                  </div>
+                  {!shouldHideGoalCaptureFields ? (
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900 dark:text-white">Primary goal</p>
+                      <p className="mt-1 truncate">{selectedPrimaryGoal?.title ?? 'Not selected'}</p>
+                    </div>
+                  ) : null}
                 </div>
               )}
 
@@ -2415,7 +2428,7 @@ export function SessionModal({
               </div>
             </div>
 
-            {selectedPrimaryGoal && (
+            {!shouldHideGoalCaptureFields && selectedPrimaryGoal && (
               <>
                 <details className="rounded-lg border border-blue-200 bg-blue-50 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100 sm:hidden">
                   <summary className="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
@@ -2498,7 +2511,7 @@ export function SessionModal({
               </div>
             )}
 
-            {(programs.length === 0 || activePrograms.length === 0 || availableProgramGroups.length === 0) && (
+            {!shouldHideGoalCaptureFields && (programs.length === 0 || activePrograms.length === 0 || availableProgramGroups.length === 0) && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200 sm:p-4">
                 {programs.length === 0 || activePrograms.length === 0
                   ? 'No active programs found for this client. Create or activate a program before starting a session.'
@@ -2506,6 +2519,8 @@ export function SessionModal({
               </div>
             )}
 
+            {!shouldHideGoalCaptureFields ? (
+              <>
             <div className="space-y-2 sm:space-y-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 sm:sr-only">
                 Program &amp; goals
@@ -2812,6 +2827,13 @@ export function SessionModal({
                 Select one or more programs above to load goals instantly on mobile and desktop.
               </div>
             )}
+              </>
+            ) : (
+              <>
+                <input type="hidden" {...register('program_id')} />
+                <input type="hidden" {...register('goal_id')} />
+              </>
+            )}
             </section>
 
             <section className="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
@@ -2937,7 +2959,7 @@ export function SessionModal({
             </div>
             </section>
 
-            {session?.id && (
+            {session?.id && !shouldHideGoalCaptureFields && (
               <section
                 ref={sessionCaptureSectionRef}
                 className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-4 dark:border-indigo-900/40 dark:bg-indigo-900/10"

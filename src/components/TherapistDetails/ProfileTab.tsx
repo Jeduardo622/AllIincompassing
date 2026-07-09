@@ -10,9 +10,10 @@ import { useAuth } from '../../lib/authContext';
 import { showSuccess, showError } from '../../lib/toast';
 import { TherapistModal } from '../TherapistModal';
 import type { AvailabilityHours } from '../../types';
+import { StaffInviteModal, type StaffInviteFormData } from '../settings/StaffInviteModal';
 
 interface ProfileTabProps {
-  therapist: { id: string; full_name: string; title?: string; email?: string; phone?: string; specialties?: string[]; street?: string; city?: string; state?: string; zip_code?: string; facility?: string; employee_type?: string; availability_hours?: AvailabilityHours; };
+  therapist: { id: string; organization_id?: string | null; full_name: string; title?: string; email?: string; phone?: string; specialties?: string[]; street?: string; city?: string; state?: string; zip_code?: string; facility?: string; employee_type?: string; availability_hours?: AvailabilityHours; };
 }
 
 interface Note {
@@ -35,14 +36,25 @@ interface Issue {
 }
 
 export function ProfileTab({ therapist }: ProfileTabProps) {
-  const { hasRole, profile, effectiveRole } = useAuth();
+  const { hasRole, profile, user, effectiveRole } = useAuth();
+  const metadata = user?.user_metadata ?? {};
+  const metadataOrganizationId =
+    typeof metadata.organization_id === 'string'
+      ? metadata.organization_id
+      : typeof metadata.organizationId === 'string'
+        ? metadata.organizationId
+        : null;
+  const inviteOrganizationId =
+    therapist.organization_id ?? profile?.organization_id ?? metadataOrganizationId;
+  const canInviteStaff = hasRole('admin');
   const isOwnProfile = Boolean(
     effectiveRole === 'therapist' &&
-      (profile.id === therapist.id ||
-        (profile.email && therapist.email && profile.email.toLowerCase() === therapist.email.toLowerCase())),
+      (profile?.id === therapist.id ||
+        (profile?.email && therapist.email && profile.email.toLowerCase() === therapist.email.toLowerCase())),
   );
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [isAddIssueModalOpen, setIsAddIssueModalOpen] = useState(false);
   const [noteContent, setNoteContent] = useState('');
@@ -108,6 +120,42 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
       queryClient.invalidateQueries({ queryKey: ['therapist', therapist.id] });
       setIsEditModalOpen(false);
       showSuccess('Therapist updated successfully');
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
+  const inviteStaffMutation = useMutation({
+    mutationFn: async (data: StaffInviteFormData) => {
+      if (!data.email.trim()) {
+        throw new Error('Email is required before inviting staff.');
+      }
+
+      if (!data.organization_id) {
+        throw new Error('Organization context is required to invite staff.');
+      }
+
+      const trimmedReason = data.reason.trim();
+      if (trimmedReason.length < 10) {
+        throw new Error('Please provide a reason with at least 10 characters.');
+      }
+
+      const { error } = await supabase.functions.invoke('admin-invite', {
+        body: {
+          email: data.email.trim(),
+          organizationId: data.organization_id,
+          role: 'bt',
+          reason: trimmedReason,
+        },
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admins'] });
+      setIsInviteModalOpen(false);
+      showSuccess('Staff invite sent successfully');
     },
     onError: (error) => {
       showError(error);
@@ -206,15 +254,26 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
               </p>
             </div>
           </div>
-          {(hasRole('admin') || isOwnProfile) && (
-            <button
-              onClick={() => setIsEditModalOpen(true)}
-              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
-            >
-              <Edit2 className="w-4 h-4 mr-1" />
-              Edit
-            </button>
-          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            {canInviteStaff && therapist.email && (
+              <button
+                onClick={() => setIsInviteModalOpen(true)}
+                className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 rounded-md shadow-sm hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/30 flex items-center"
+              >
+                <Mail className="w-4 h-4 mr-1" />
+                Invite to app
+              </button>
+            )}
+            {(hasRole('admin') || isOwnProfile) && (
+              <button
+                onClick={() => setIsEditModalOpen(true)}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+              >
+                <Edit2 className="w-4 h-4 mr-1" />
+                Edit
+              </button>
+            )}
+          </div>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
@@ -479,6 +538,23 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
           therapist={therapist}
         />
       )}
+
+      <StaffInviteModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        onSubmit={inviteStaffMutation.mutateAsync}
+        initialData={{
+          email: therapist.email ?? '',
+          organization_id: inviteOrganizationId ?? null,
+          role: 'bt',
+          reason: `Invite ${therapist.full_name} to access their BT profile.`,
+        }}
+        roleOptions={['bt']}
+        title="Invite BT to app"
+        submitLabel="Send invite"
+        organizationLabel="Organization"
+        roleLocked
+      />
       
       {/* Add Note Modal */}
       {isAddNoteModalOpen && (

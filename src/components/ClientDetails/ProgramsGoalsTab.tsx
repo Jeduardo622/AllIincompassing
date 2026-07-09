@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Loader2, Plus, Trash2, UploadCloud } from "lucide-react";
+import { ClipboardList, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from "lucide-react";
 import type { Client, Goal, GoalDomain, GoalTarget, Program, ProgramNote, TargetMeasurementType, TrialEvent } from "../../types";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
@@ -505,6 +505,12 @@ const buildGoalTargetsQueryKey = (
   organizationId?: string | null,
 ) => ["goal-targets", clientId, organizationId ?? "MISSING_ORG", goalIds.join(",")] as const;
 
+const buildGoalTargetGraphConfig = (measurementType: TargetMeasurementType): Record<string, unknown> => ({
+  defaultChart: "line",
+  source: "trial_events",
+  aggregation: measurementType === "frequency" ? "sum" : "session_summary",
+});
+
 const upsertById = <T extends { id: string }>(current: T[] | undefined, nextItem: T): T[] => {
   const existingItems = Array.isArray(current) ? current : [];
   const existingIndex = existingItems.findIndex((item) => item.id === nextItem.id);
@@ -761,20 +767,146 @@ function GoalTargetCard({
   goalTargetsLoading,
   organizationId,
   target,
+  updateGoalTarget,
+  updatingTargetId,
 }: {
   clientId: string;
   goalTargetsLoading: boolean;
   organizationId: string | null;
   target: GoalTarget;
+  updateGoalTarget: {
+    isLoading: boolean;
+    mutate: (input: {
+      target: GoalTarget;
+      name: string;
+      measurement_type: TargetMeasurementType;
+      status: GoalTarget["status"];
+    }) => void;
+  } | null;
+  updatingTargetId: string | null;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(target.name);
+  const [editMeasurementType, setEditMeasurementType] = useState<TargetMeasurementType>(target.measurement_type);
+  const [editStatus, setEditStatus] = useState<GoalTarget["status"]>(target.status);
+  const editNameValue = editName.trim();
+  const isSaving = updatingTargetId === target.id && updateGoalTarget?.isLoading === true;
+
+  useEffect(() => {
+    if (isEditing) return;
+    setEditName(target.name);
+    setEditMeasurementType(target.measurement_type);
+    setEditStatus(target.status);
+  }, [isEditing, target.measurement_type, target.name, target.status]);
+
   return (
     <div className="rounded-md border border-slate-200 bg-white px-3 py-3 text-xs dark:border-slate-700 dark:bg-dark">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-medium text-slate-800 dark:text-slate-100">{target.name}</span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-          {target.status}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+            {target.status}
+          </span>
+          {updateGoalTarget && (
+            <button
+              type="button"
+              aria-label={isEditing ? `Cancel editing target ${target.name}` : `Edit target ${target.name}`}
+              title={isEditing ? "Cancel target edit" : "Edit target"}
+              onClick={() => {
+                if (isEditing) {
+                  setEditName(target.name);
+                  setEditMeasurementType(target.measurement_type);
+                  setEditStatus(target.status);
+                  setIsEditing(false);
+                  return;
+                }
+                setIsEditing(true);
+              }}
+              disabled={isSaving}
+              className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+            >
+              {isEditing ? <X className="h-3.5 w-3.5" aria-hidden="true" /> : <Pencil className="h-3.5 w-3.5" aria-hidden="true" />}
+            </button>
+          )}
+        </div>
       </div>
+      {isEditing && (
+        <div className="mt-3 rounded-md border border-blue-100 bg-blue-50 p-3 dark:border-blue-900/60 dark:bg-blue-900/20">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-200">
+              Name
+              <input
+                type="text"
+                aria-label={`Target name for ${target.name}`}
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+                className="mt-1 w-full rounded-md border-slate-300 bg-white text-sm shadow-sm dark:border-slate-600 dark:bg-dark"
+              />
+            </label>
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-200">
+              Measurement
+              <select
+                aria-label={`Measurement type for ${target.name}`}
+                value={editMeasurementType}
+                onChange={(event) => setEditMeasurementType(event.target.value as TargetMeasurementType)}
+                className="mt-1 w-full rounded-md border-slate-300 bg-white text-sm shadow-sm dark:border-slate-600 dark:bg-dark"
+              >
+                {TARGET_MEASUREMENT_TYPES.map((measurementType) => (
+                  <option key={measurementType} value={measurementType}>
+                    {TARGET_MEASUREMENT_TYPE_LABELS[measurementType]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-200">
+              Status
+              <select
+                aria-label={`Target status for ${target.name}`}
+                value={editStatus}
+                onChange={(event) => setEditStatus(event.target.value as GoalTarget["status"])}
+                className="mt-1 w-full rounded-md border-slate-300 bg-white text-sm shadow-sm dark:border-slate-600 dark:bg-dark"
+              >
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="mastered">Mastered</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditName(target.name);
+                setEditMeasurementType(target.measurement_type);
+                setEditStatus(target.status);
+                setIsEditing(false);
+              }}
+              disabled={isSaving}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              aria-label={`Save target ${target.name}`}
+              onClick={() => {
+                updateGoalTarget?.mutate({
+                  target,
+                  name: editNameValue,
+                  measurement_type: editMeasurementType,
+                  status: editStatus,
+                });
+                setIsEditing(false);
+              }}
+              disabled={!editNameValue || isSaving}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-slate-500">
         <span>
           Measurement: {TARGET_MEASUREMENT_TYPE_LABELS[target.measurement_type] ?? target.measurement_type}
@@ -802,6 +934,8 @@ function GoalCard({
   goalTargetsForGoal,
   goalTargetsLoading,
   organizationId,
+  updateGoalTarget,
+  updatingTargetId,
 }: {
   archivingGoalId: string | null;
   archiveGoal: {
@@ -814,6 +948,16 @@ function GoalCard({
   goalTargetsForGoal: GoalTarget[];
   goalTargetsLoading: boolean;
   organizationId: string | null;
+  updateGoalTarget: {
+    isLoading: boolean;
+    mutate: (input: {
+      target: GoalTarget;
+      name: string;
+      measurement_type: TargetMeasurementType;
+      status: GoalTarget["status"];
+    }) => void;
+  } | null;
+  updatingTargetId: string | null;
 }) {
   return (
     <div className="rounded-md border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter/30">
@@ -873,6 +1017,8 @@ function GoalCard({
                 goalTargetsLoading={goalTargetsLoading}
                 organizationId={organizationId}
                 target={target}
+                updateGoalTarget={updateGoalTarget}
+                updatingTargetId={updatingTargetId}
               />
             ))}
           </div>
@@ -885,7 +1031,8 @@ function GoalCard({
 export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
-  const { session } = useAuth();
+  const { hasCapability, session } = useAuth();
+  const canManageProgramsGoals = hasCapability("manageProgramsGoals");
   const publishSectionRef = useRef<HTMLDivElement | null>(null);
   const assessmentDocumentsQueryKey = ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"] as const;
   const clientProgramsQueryKey = buildClientProgramsQueryKey(client.id, organizationId);
@@ -954,6 +1101,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
   const [archivingProgramId, setArchivingProgramId] = useState<string | null>(null);
   const [archivingGoalId, setArchivingGoalId] = useState<string | null>(null);
+  const [updatingTargetId, setUpdatingTargetId] = useState<string | null>(null);
   const [isUploadProcessing, setIsUploadProcessing] = useState(false);
   const [assessmentDocumentsNeedsRetry, setAssessmentDocumentsNeedsRetry] = useState(false);
 
@@ -2042,11 +2190,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           name: targetNameValue,
           measurement_type: targetMeasurementType,
           status: targetStatus,
-          graph_config: {
-            defaultChart: "line",
-            source: "trial_events",
-            aggregation: targetMeasurementType === "frequency" ? "sum" : "session_summary",
-          },
+          graph_config: buildGoalTargetGraphConfig(targetMeasurementType),
         }),
       });
       if (!response.ok) {
@@ -2063,6 +2207,47 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({ queryKey: goalTargetsQueryKey });
     },
     onError: showError,
+  });
+
+  const updateGoalTarget = useMutation({
+    mutationFn: async ({
+      target,
+      name,
+      measurement_type,
+      status,
+    }: {
+      target: GoalTarget;
+      name: string;
+      measurement_type: TargetMeasurementType;
+      status: GoalTarget["status"];
+    }) => {
+      const response = await callEdgeFunctionHttp(`${GOAL_TARGETS_EDGE_PATH}?target_id=${encodeURIComponent(target.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name,
+          measurement_type,
+          status,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to update target."));
+      }
+      return parseJson<GoalTarget>(response);
+    },
+    onMutate: ({ target }) => {
+      setUpdatingTargetId(target.id);
+    },
+    onSuccess: (updated) => {
+      showSuccess("Target updated");
+      queryClient.setQueryData<GoalTarget[]>(goalTargetsQueryKey, (current) =>
+        mapById(current, updated.id, (currentTarget) => ({ ...currentTarget, ...updated })),
+      );
+      queryClient.invalidateQueries({ queryKey: goalTargetsQueryKey });
+    },
+    onError: showError,
+    onSettled: () => {
+      setUpdatingTargetId(null);
+    },
   });
 
   const archiveProgram = useMutation({
@@ -3238,6 +3423,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 goalTargetsForGoal={targetsByGoalId[goal.id] ?? []}
                                 goalTargetsLoading={goalTargetsLoading}
                                 organizationId={organizationId}
+                                updateGoalTarget={canManageProgramsGoals ? updateGoalTarget : null}
+                                updatingTargetId={updatingTargetId}
                               />
                             ))}
                           </div>

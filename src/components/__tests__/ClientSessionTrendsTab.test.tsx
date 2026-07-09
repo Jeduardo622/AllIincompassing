@@ -7,7 +7,13 @@ import { fetchClientSessionNotes } from '../../lib/session-notes';
 import { supabase } from '../../lib/supabase';
 
 vi.mock('react-chartjs-2', () => ({
-  Line: React.forwardRef(({ data }: { data: { labels: string[]; datasets: Array<{ label: string; data: number[]; pointStyle?: string; borderColor?: string }> } }, ref) => {
+  Line: React.forwardRef(({
+    data,
+    options,
+  }: {
+    data: { labels: string[]; datasets: Array<{ label: string; data: Array<number | null>; pointStyle?: string; borderColor?: string }> };
+    options?: { scales?: { y?: { max?: number } } };
+  }, ref) => {
     if (ref && typeof ref !== 'function') {
       ref.current = {
         toBase64Image: vi.fn(() => 'data:image/png;base64,chart-image'),
@@ -16,7 +22,7 @@ vi.mock('react-chartjs-2', () => ({
 
     return (
       <div data-testid="session-trends-chart">
-        {data.labels.join(',')}:{data.datasets.map((dataset) => `${dataset.label}:${dataset.pointStyle}:${dataset.data.join('|')}:${dataset.borderColor}`).join(';')}
+        {data.labels.join(',')}:{data.datasets.map((dataset) => `${dataset.label}:${dataset.pointStyle}:${dataset.data.join('|')}:${dataset.borderColor}`).join(';')}:yMax={options?.scales?.y?.max ?? 'unset'}
       </div>
     );
   }),
@@ -193,6 +199,48 @@ describe('ClientSessionTrendsTab', () => {
 
     expect(chart).toHaveTextContent('lost in community:circle:90');
     expect(chart).toHaveTextContent('cross street safely:rectRot:45');
+    expect(chart).toHaveTextContent('yMax=100');
+  });
+
+  it('expands the chart scale and flags evidence above 100 percent', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([
+      createSessionNote('over-range-note', '2025-06-15', [
+        { target: 'complete opportunities independently', metric_value: 8, opportunities: 7 },
+      ]),
+    ]);
+
+    renderWithProviders(<ClientSessionTrendsTab client={{ id: 'client-1' }} />, {
+      auth: { role: 'admin', userId: 'admin-user-id' },
+    });
+
+    const chart = await screen.findByTestId('session-trends-chart');
+
+    expect(chart).toHaveTextContent('complete opportunities independently:circle:114.3');
+    expect(chart).toHaveTextContent('yMax=120');
+    expect(screen.getByText('1 plotted value exceeds 100% because recorded successes are greater than opportunities.')).toBeInTheDocument();
+    expect(screen.getByText('114.3% (8/7)')).toBeInTheDocument();
+  });
+
+  it('keeps the scale and warning aligned with aggregated plotted medians', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([
+      createSessionNote('over-range-note', '2025-06-15', [
+        { target: 'complete opportunities independently', metric_value: 8, opportunities: 7 },
+      ]),
+      createSessionNote('lower-companion-note', '2025-06-22', [
+        { target: 'complete opportunities independently', metric_value: 8, opportunities: 10 },
+      ]),
+    ]);
+
+    renderWithProviders(<ClientSessionTrendsTab client={{ id: 'client-1' }} />, {
+      auth: { role: 'admin', userId: 'admin-user-id' },
+    });
+
+    const chart = await screen.findByTestId('session-trends-chart');
+
+    expect(chart).toHaveTextContent('complete opportunities independently:circle:97.1');
+    expect(chart).toHaveTextContent('yMax=100');
+    expect(screen.queryByText(/plotted value.*100%/i)).not.toBeInTheDocument();
+    expect(screen.getByText('114.3% (8/7)')).toBeInTheDocument();
   });
 
   it('keeps target point symbols distinct beyond six target series', async () => {

@@ -511,6 +511,18 @@ const buildGoalTargetGraphConfig = (measurementType: TargetMeasurementType): Rec
   aggregation: measurementType === "frequency" ? "sum" : "session_summary",
 });
 
+const normalizeGoalTargetGraphConfig = (
+  measurementType: TargetMeasurementType,
+  graphConfig: Record<string, unknown> | undefined,
+): Record<string, unknown> => ({
+  ...buildGoalTargetGraphConfig(measurementType),
+  ...(graphConfig ?? {}),
+});
+
+const GRAPH_CHART_TYPES = ["line", "bar"] as const;
+const GRAPH_SOURCES = ["trial_events", "session_notes"] as const;
+const GRAPH_AGGREGATIONS = ["session_summary", "sum", "average", "count"] as const;
+
 const upsertById = <T extends { id: string }>(current: T[] | undefined, nextItem: T): T[] => {
   const existingItems = Array.isArray(current) ? current : [];
   const existingIndex = existingItems.findIndex((item) => item.id === nextItem.id);
@@ -781,23 +793,55 @@ function GoalTargetCard({
       name: string;
       measurement_type: TargetMeasurementType;
       status: GoalTarget["status"];
+      graph_config?: Record<string, unknown>;
     }) => void;
   } | null;
   updatingTargetId: string | null;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const normalizedGraphConfig = normalizeGoalTargetGraphConfig(target.measurement_type, target.graph_config);
   const [editName, setEditName] = useState(target.name);
   const [editMeasurementType, setEditMeasurementType] = useState<TargetMeasurementType>(target.measurement_type);
   const [editStatus, setEditStatus] = useState<GoalTarget["status"]>(target.status);
+  const [editGraphChart, setEditGraphChart] = useState(String(normalizedGraphConfig.defaultChart));
+  const [editGraphSource, setEditGraphSource] = useState(String(normalizedGraphConfig.source));
+  const [editGraphAggregation, setEditGraphAggregation] = useState(String(normalizedGraphConfig.aggregation));
   const editNameValue = editName.trim();
+  const editedGraphConfig = {
+    defaultChart: editGraphChart,
+    source: editGraphSource,
+    aggregation: editGraphAggregation,
+  };
+  const graphConfigChanged =
+    editedGraphConfig.defaultChart !== String(normalizedGraphConfig.defaultChart) ||
+    editedGraphConfig.source !== String(normalizedGraphConfig.source) ||
+    editedGraphConfig.aggregation !== String(normalizedGraphConfig.aggregation);
   const isSaving = updatingTargetId === target.id && updateGoalTarget?.isLoading === true;
 
   useEffect(() => {
     if (isEditing) return;
+    const nextGraphConfig = normalizeGoalTargetGraphConfig(target.measurement_type, target.graph_config);
     setEditName(target.name);
     setEditMeasurementType(target.measurement_type);
     setEditStatus(target.status);
-  }, [isEditing, target.measurement_type, target.name, target.status]);
+    setEditGraphChart(String(nextGraphConfig.defaultChart));
+    setEditGraphSource(String(nextGraphConfig.source));
+    setEditGraphAggregation(String(nextGraphConfig.aggregation));
+  }, [isEditing, target.graph_config, target.measurement_type, target.name, target.status]);
+
+  const resetEditor = () => {
+    const nextGraphConfig = normalizeGoalTargetGraphConfig(target.measurement_type, target.graph_config);
+    setEditName(target.name);
+    setEditMeasurementType(target.measurement_type);
+    setEditStatus(target.status);
+    setEditGraphChart(String(nextGraphConfig.defaultChart));
+    setEditGraphSource(String(nextGraphConfig.source));
+    setEditGraphAggregation(String(nextGraphConfig.aggregation));
+  };
+  const handleMeasurementTypeChange = (measurementType: TargetMeasurementType) => {
+    setEditMeasurementType(measurementType);
+    setEditGraphAggregation(String(buildGoalTargetGraphConfig(measurementType).aggregation));
+  };
 
   return (
     <div className="rounded-md border border-slate-200 bg-white px-3 py-3 text-xs dark:border-slate-700 dark:bg-dark">
@@ -814,9 +858,7 @@ function GoalTargetCard({
               title={isEditing ? "Cancel target edit" : "Edit target"}
               onClick={() => {
                 if (isEditing) {
-                  setEditName(target.name);
-                  setEditMeasurementType(target.measurement_type);
-                  setEditStatus(target.status);
+                  resetEditor();
                   setIsEditing(false);
                   return;
                 }
@@ -848,7 +890,7 @@ function GoalTargetCard({
               <select
                 aria-label={`Measurement type for ${target.name}`}
                 value={editMeasurementType}
-                onChange={(event) => setEditMeasurementType(event.target.value as TargetMeasurementType)}
+                onChange={(event) => handleMeasurementTypeChange(event.target.value as TargetMeasurementType)}
                 className="mt-1 w-full rounded-md border-slate-300 bg-white text-sm shadow-sm dark:border-slate-600 dark:bg-dark"
               >
                 {TARGET_MEASUREMENT_TYPES.map((measurementType) => (
@@ -873,13 +915,58 @@ function GoalTargetCard({
               </select>
             </label>
           </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-200">
+              Chart
+              <select
+                aria-label={`Graph chart for ${target.name}`}
+                value={editGraphChart}
+                onChange={(event) => setEditGraphChart(event.target.value)}
+                className="mt-1 w-full rounded-md border-slate-300 bg-white text-sm shadow-sm dark:border-slate-600 dark:bg-dark"
+              >
+                {GRAPH_CHART_TYPES.map((chartType) => (
+                  <option key={chartType} value={chartType}>
+                    {chartType}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-200">
+              Source
+              <select
+                aria-label={`Graph source for ${target.name}`}
+                value={editGraphSource}
+                onChange={(event) => setEditGraphSource(event.target.value)}
+                className="mt-1 w-full rounded-md border-slate-300 bg-white text-sm shadow-sm dark:border-slate-600 dark:bg-dark"
+              >
+                {GRAPH_SOURCES.map((source) => (
+                  <option key={source} value={source}>
+                    {source}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-medium text-slate-700 dark:text-slate-200">
+              Aggregation
+              <select
+                aria-label={`Graph aggregation for ${target.name}`}
+                value={editGraphAggregation}
+                onChange={(event) => setEditGraphAggregation(event.target.value)}
+                className="mt-1 w-full rounded-md border-slate-300 bg-white text-sm shadow-sm dark:border-slate-600 dark:bg-dark"
+              >
+                {GRAPH_AGGREGATIONS.map((aggregation) => (
+                  <option key={aggregation} value={aggregation}>
+                    {aggregation}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="mt-3 flex flex-wrap justify-end gap-2">
             <button
               type="button"
               onClick={() => {
-                setEditName(target.name);
-                setEditMeasurementType(target.measurement_type);
-                setEditStatus(target.status);
+                resetEditor();
                 setIsEditing(false);
               }}
               disabled={isSaving}
@@ -896,6 +983,7 @@ function GoalTargetCard({
                   name: editNameValue,
                   measurement_type: editMeasurementType,
                   status: editStatus,
+                  ...(graphConfigChanged ? { graph_config: editedGraphConfig } : {}),
                 });
                 setIsEditing(false);
               }}
@@ -914,6 +1002,7 @@ function GoalTargetCard({
         <span>
           Graph: {String(target.graph_config?.defaultChart ?? "line")} from{" "}
           {String(target.graph_config?.source ?? "trial_events")}
+          {target.graph_config?.aggregation ? ` (${String(target.graph_config.aggregation)})` : ""}
         </span>
       </div>
       {goalTargetsLoading ? (
@@ -955,6 +1044,7 @@ function GoalCard({
       name: string;
       measurement_type: TargetMeasurementType;
       status: GoalTarget["status"];
+      graph_config?: Record<string, unknown>;
     }) => void;
   } | null;
   updatingTargetId: string | null;
@@ -2215,11 +2305,13 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       name,
       measurement_type,
       status,
+      graph_config,
     }: {
       target: GoalTarget;
       name: string;
       measurement_type: TargetMeasurementType;
       status: GoalTarget["status"];
+      graph_config?: Record<string, unknown>;
     }) => {
       const response = await callEdgeFunctionHttp(`${GOAL_TARGETS_EDGE_PATH}?target_id=${encodeURIComponent(target.id)}`, {
         method: "PATCH",
@@ -2227,6 +2319,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           name,
           measurement_type,
           status,
+          ...(graph_config ? { graph_config } : {}),
         }),
       });
       if (!response.ok) {

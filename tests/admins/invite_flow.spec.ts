@@ -58,6 +58,42 @@ let currentUserMetadata: Record<string, unknown> = { organization_id: 'org-123' 
 
 const inviteTokens: StoredInviteToken[] = [];
 const adminActionRows: Array<Record<string, unknown>> = [];
+let rollbackDeleteError: { message: string } | null = null;
+
+const fromTable = (table: string) => {
+  if (table === 'admin_actions') {
+    return {
+      insert: vi.fn(async (payload: Record<string, unknown>) => {
+        adminActionRows.push(payload);
+        return { error: null };
+      }),
+    };
+  }
+  if (table === 'admin_invite_tokens') {
+    return {
+      delete: vi.fn(() => {
+        const filters: Record<string, unknown> = {};
+        const builder = {
+          eq: vi.fn((column: string, value: unknown) => {
+            filters[column] = value;
+            if (filters.id && filters.organization_id && !rollbackDeleteError) {
+              const index = inviteTokens.findIndex(token =>
+                token.id === filters.id && token.organization_id === filters.organization_id,
+              );
+              if (index >= 0) {
+                inviteTokens.splice(index, 1);
+              }
+            }
+            return builder;
+          }),
+          then: (resolve: (value: { error: { message: string } | null }) => void) => resolve({ error: rollbackDeleteError }),
+        };
+        return builder;
+      }),
+    };
+  }
+  throw new Error(`Unexpected table ${table}`);
+};
 
 const createMockClient = () => ({
   auth: {
@@ -66,17 +102,7 @@ const createMockClient = () => ({
       error: null,
     })),
   },
-  from: (table: string) => {
-    if (table === 'admin_actions') {
-      return {
-        insert: vi.fn(async (payload: Record<string, unknown>) => {
-          adminActionRows.push(payload);
-          return { error: null };
-        }),
-      };
-    }
-    throw new Error(`Unexpected table ${table}`);
-  },
+  from: fromTable,
 });
 
 const createAdminRpc = vi.fn(async (functionName: string, params: Record<string, unknown>) => {
@@ -156,6 +182,7 @@ vi.mock('../../supabase/functions/_shared/database.ts', () => ({
   createRequestClient,
   supabaseAdmin: {
     rpc: createAdminRpc,
+    from: fromTable,
   },
 }));
 
@@ -175,6 +202,7 @@ describe('admin invite edge function', () => {
     vi.resetModules();
     inviteTokens.splice(0, inviteTokens.length);
     adminActionRows.splice(0, adminActionRows.length);
+    rollbackDeleteError = null;
     currentUserContext = {
       user: { id: 'admin-1', email: 'admin@example.com' },
       profile: { id: 'profile-1', email: 'admin@example.com', role: 'admin', is_active: true },
@@ -197,7 +225,7 @@ describe('admin invite edge function', () => {
       new Request('https://edge.example.com/admin/invite', {
         method: 'POST',
         headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
-        body: JSON.stringify({ email: 'NewAdmin@example.com' }),
+        body: JSON.stringify({ email: 'NewAdmin@example.com', reason: 'Coverage for staff onboarding.' }),
       }),
     );
 
@@ -228,9 +256,102 @@ describe('admin invite edge function', () => {
     expect(adminActionRows[0]?.action_details).toMatchObject({
       email: 'newadmin@example.com',
       email_delivery_status: 'sent',
+      reason: 'Coverage for staff onboarding.',
     });
 
     expect(assertAdminOrSuperAdmin).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
+  it('does not persist an invite token when the email service URL is missing', async () => {
+    envValues.set('ADMIN_INVITE_EMAIL_URL', '');
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'missing-mailer@example.com', reason: 'Coverage for missing mailer.' }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ error: 'email_service_unconfigured' });
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(inviteTokens).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('does not persist an invite token when the portal URL is missing', async () => {
+    envValues.set('ADMIN_PORTAL_URL', '');
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'missing-portal@example.com', reason: 'Coverage for missing portal.' }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ error: 'portal_url_unconfigured' });
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(inviteTokens).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('deletes the invite token when email delivery fails', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'mailer-failure@example.com', reason: 'Coverage for mailer failure.' }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({ error: 'email_delivery_failed' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(inviteTokens).toHaveLength(0);
+    expect(adminActionRows).toHaveLength(1);
+    expect(adminActionRows[0]?.action_details).toMatchObject({
+      email: 'mailer-failure@example.com',
+      email_delivery_status: 'failed',
+      email_error: 'Email service responded with status 503',
+      reason: 'Coverage for mailer failure.',
+    });
+  }, 20_000);
+
+  it('surfaces rollback failure when email delivery fails and token cleanup cannot complete', async () => {
+    rollbackDeleteError = { message: 'delete denied' };
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'rollback-failure@example.com', reason: 'Coverage for rollback failure.' }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_rollback_failed' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(inviteTokens).toHaveLength(1);
+    expect(inviteTokens[0]?.email).toBe('rollback-failure@example.com');
+    expect(adminActionRows).toHaveLength(1);
+    expect(adminActionRows[0]?.action_details).toMatchObject({
+      email: 'rollback-failure@example.com',
+      email_delivery_status: 'failed',
+      email_error: 'Email service responded with status 503',
+      reason: 'Coverage for rollback failure.',
+    });
   }, 20_000);
 
   it('replaces an expired invite token with a new one', async () => {

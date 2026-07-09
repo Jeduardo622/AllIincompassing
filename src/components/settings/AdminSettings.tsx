@@ -8,6 +8,7 @@ import { useAuth } from '../../lib/authContext';
 import { Modal } from '../common/Modal';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { ROLE_LABELS, type AppRole } from '../../lib/roles';
+import { StaffInviteModal, type StaffInviteFormData } from './StaffInviteModal';
 
 const ADMIN_USER_FETCH_LIMIT = 200;
 const EMPLOYEE_USER_FETCH_LIMIT = 200;
@@ -50,13 +51,6 @@ interface EmployeeUser {
   last_login_at: string | null;
 }
 
-interface AdminFormData {
-  email: string;
-  organization_id: string | null;
-  role: AppRole;
-  reason: string;
-}
-
 interface GuardianQueueEntry {
   id: string;
   guardian_id: string;
@@ -96,7 +90,7 @@ export function AdminSettings() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<AdminUser | null>(null);
-  const [formData, setFormData] = useState<AdminFormData>({
+  const [formData, setFormData] = useState<StaffInviteFormData>({
     email: '',
     organization_id: null,
     role: 'bt',
@@ -110,7 +104,6 @@ export function AdminSettings() {
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>(ALL_ORGANIZATIONS_VALUE);
   const [selectedTherapistByAdmin, setSelectedTherapistByAdmin] = useState<Record<string, string>>({});
 
-  const addAdminEmailRef = useRef<HTMLInputElement>(null);
   const resetPasswordInputRef = useRef<HTMLInputElement>(null);
 
   const queryClient = useQueryClient();
@@ -455,7 +448,7 @@ export function AdminSettings() {
   }, [adminTherapistLinksError]);
 
   const createAdminMutation = useMutation({
-    mutationFn: async (data: AdminFormData) => {
+    mutationFn: async (data: StaffInviteFormData) => {
       const targetOrganizationId = isSuperAdmin
         ? data.organization_id ?? activeOrganizationId
         : organizationId ?? data.organization_id ?? activeOrganizationId;
@@ -840,16 +833,15 @@ export function AdminSettings() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmedReason = formData.reason.trim();
+  const handleSubmit = async (data: StaffInviteFormData) => {
+    const trimmedReason = data.reason.trim();
 
     if (trimmedReason.length < 10) {
       showError(new Error('Please provide a reason with at least 10 characters.'));
       return;
     }
 
-    await createAdminMutation.mutateAsync({ ...formData, reason: trimmedReason });
+    await createAdminMutation.mutateAsync({ ...data, reason: trimmedReason });
   };
 
   const handlePasswordReset = async (e: React.FormEvent) => {
@@ -878,16 +870,6 @@ export function AdminSettings() {
         metadata: { requestId: entry.id, selectedClientCount: selectedClients.length },
       });
     }
-  };
-
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
   };
 
   return (
@@ -1356,139 +1338,15 @@ export function AdminSettings() {
         )}
       </div>
 
-      {/* Staff Invite Modal */}
-      <Modal
+      <StaffInviteModal
         isOpen={isModalOpen}
         onClose={closeCreateAdminModal}
-        titleId="add-admin-modal-title"
-        initialFocusRef={addAdminEmailRef}
-        panelClassName="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-md p-6"
-      >
-        <h2 id="add-admin-modal-title" className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-          Invite Staff
-        </h2>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="add-admin-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Email*
-                </label>
-                <input
-                  ref={addAdminEmailRef}
-                  type="email"
-                  name="email"
-                  required
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  id="add-admin-email"
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="add-admin-role" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Role*
-                </label>
-                <select
-                  id="add-admin-role"
-                  name="role"
-                  required
-                  value={formData.role}
-                  onChange={handleInputChange}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                >
-                  {inviteRoleOptions.map((role) => (
-                    <option key={role} value={role}>
-                      {ROLE_LABELS[role]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="add-admin-organization" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Organization
-                </label>
-                {isSuperAdmin ? (
-                  <>
-                    <select
-                      id="add-admin-organization"
-                      name="organization_id"
-                      value={formData.organization_id ?? ''}
-                      onChange={handleInputChange}
-                      required
-                      className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                    >
-                      <option value="">Select organization</option>
-                      {organizationOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name ?? option.id}
-                        </option>
-                      ))}
-                    </select>
-                    {!formData.organization_id && (
-                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                        Choose an organization before inviting staff.
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      name="organization_id"
-                      value={formData.organization_id ?? ''}
-                      readOnly
-                      id="add-admin-organization"
-                      className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                    />
-                    {!formData.organization_id && (
-                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                        Organization context is required before inviting staff.
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="add-admin-reason" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Reason for staff access*
-                </label>
-                <textarea
-                  id="add-admin-reason"
-                  name="reason"
-                  required
-                  minLength={10}
-                  rows={3}
-                  value={formData.reason}
-                  onChange={handleInputChange}
-                  placeholder="Explain why this user requires staff access"
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Provide a short justification that will be stored in the audit log.
-                </p>
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={closeCreateAdminModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!formData.organization_id}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Send Invite
-                </button>
-              </div>
-            </form>
-      </Modal>
+        onSubmit={handleSubmit}
+        initialData={formData}
+        roleOptions={inviteRoleOptions}
+        organizationOptions={organizationOptions}
+        isSuperAdmin={isSuperAdmin}
+      />
 
       {/* Password Reset Modal */}
       <Modal

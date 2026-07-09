@@ -258,6 +258,44 @@ const hasSuccessesBeyondOpportunities = (
   Number.isFinite(opportunities) &&
   metricValue > opportunities;
 
+const normalizeMeasurementMetadata = (value: string | null | undefined): string =>
+  value?.trim().toLowerCase() ?? "";
+
+const isCountTrialMeasurement = (entry: SessionGoalMeasurementEntry): boolean => {
+  const metadata = [
+    normalizeMeasurementMetadata(entry.data.measurement_type),
+    normalizeMeasurementMetadata(entry.data.metric_label),
+    normalizeMeasurementMetadata(entry.data.metric_unit),
+  ].filter((value) => value.length > 0);
+
+  if (
+    metadata.some((value) =>
+      value.includes("percent") ||
+      value.includes("%") ||
+      value.includes("accuracy") ||
+      value.includes("fidelity") ||
+      value.includes("duration") ||
+      value.includes("minute") ||
+      value.includes("time") ||
+      value.includes("rate") ||
+      value.includes("per hour")
+    )
+  ) {
+    return false;
+  }
+
+  return metadata.some((value) =>
+    value.includes("count") ||
+    value.includes("correct") ||
+    value.includes("incorrect") ||
+    value.includes("trial") ||
+    value.includes("response") ||
+    value.includes("task analysis") ||
+    value.includes("taskanalysis") ||
+    value.includes("occurrence")
+  );
+};
+
 const validateGoalMeasurementOpportunityBounds = (
   measurements: Record<string, SessionGoalMeasurementEntry> | null,
 ): string | null => {
@@ -266,6 +304,10 @@ const validateGoalMeasurementOpportunityBounds = (
   }
 
   for (const entry of Object.values(measurements)) {
+    if (!isCountTrialMeasurement(entry)) {
+      continue;
+    }
+
     if (hasSuccessesBeyondOpportunities(entry.data.metric_value, entry.data.opportunities)) {
       return "Correct trials cannot exceed opportunities.";
     }

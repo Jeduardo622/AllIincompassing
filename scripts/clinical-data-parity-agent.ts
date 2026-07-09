@@ -5,6 +5,7 @@ import { chromium, type Page } from "playwright";
 import {
   assertRedactedQaFixture,
   assertSupportedClinicalQaSourceTextFixture,
+  assertClinicalQaSmokeTargetMarker,
   buildClinicalQaPreflightReport,
   buildClinicalQaPreflightReportMarkdown,
   buildClinicalQaReportMarkdown,
@@ -106,6 +107,8 @@ const run = async (): Promise<void> => {
   }
 
   loadPlaywrightEnv();
+
+  assertClinicalQaSmokeTargetMarker(process.env.PW_CLINICAL_QA_TARGET_MARKER);
 
   const baseUrl = resolvePlaywrightBaseUrl().replace(/\/$/, "");
   const credentials = selectClinicalQaCredentials([

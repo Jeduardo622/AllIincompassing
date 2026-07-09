@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertBrowserOnlyTarget,
+  assertClinicalQaSmokeTargetMarker,
   assertRedactedQaFixture,
   assertSupportedClinicalQaSourceTextFixture,
   buildClinicalQaPreflightReportMarkdown,
@@ -181,6 +182,13 @@ describe("clinical data parity agent helpers", () => {
     expect(() => assertBrowserOnlyTarget("/admin/users")).toThrow("must not target admin-only routes");
   });
 
+  it("requires an explicit smoke-only clinical QA target marker before artifact capture", () => {
+    expect(assertClinicalQaSmokeTargetMarker(" smoke ")).toBe("smoke");
+    expect(assertClinicalQaSmokeTargetMarker("redacted")).toBe("redacted");
+    expect(() => assertClinicalQaSmokeTargetMarker(undefined)).toThrow("PW_CLINICAL_QA_TARGET_MARKER");
+    expect(() => assertClinicalQaSmokeTargetMarker("production")).toThrow("PW_CLINICAL_QA_TARGET_MARKER");
+  });
+
   it("builds the default client programs/goals route when a smoke client is configured", () => {
     expect(buildClinicalQaRoute({ clientId: "client id" })).toBe(
       "/clients/client%20id?tab=programs-goals",
@@ -200,6 +208,9 @@ describe("clinical data parity agent helpers", () => {
       "Set PW_CLINICAL_QA_EMAIL/PW_CLINICAL_QA_PASSWORD or PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD.",
     );
     expect(report.blockingIssues).toContain("Set PW_CLINICAL_QA_CLIENT_ID or PW_CLINICAL_QA_ROUTE.");
+    expect(report.blockingIssues).toContain(
+      "PW_CLINICAL_QA_TARGET_MARKER must be one of redacted, synthetic, smoke, or test before browser artifacts are captured.",
+    );
     expect(report.blockingIssues).toContain(
       "Set PW_CLINICAL_QA_SOURCE_FILE or PW_CLINICAL_QA_EXPECTATIONS_FILE.",
     );
@@ -225,6 +236,7 @@ describe("clinical data parity agent helpers", () => {
     const report = buildClinicalQaPreflightReport({
       PW_CLINICAL_QA_EMAIL: "qa@example.test",
       PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_TARGET_MARKER: "redacted",
       PW_CLINICAL_QA_CLIENT_ID: "client id",
       PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-iehp-source.example.txt",
       PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR: "[data-testid='generate-redacted-output']",
@@ -249,6 +261,7 @@ describe("clinical data parity agent helpers", () => {
     const report = buildClinicalQaPreflightReport({
       PW_CLINICAL_QA_EMAIL: "qa@example.test",
       PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_TARGET_MARKER: "redacted",
       PW_CLINICAL_QA_ROUTE: "/clients/client-1",
       PW_CLINICAL_QA_SOURCE_FILE: "fixtures/private-client-source.docx",
       PW_CLINICAL_QA_OUTPUT_FILE: "fixtures/redacted-output.docx",
@@ -264,6 +277,7 @@ describe("clinical data parity agent helpers", () => {
     const report = buildClinicalQaPreflightReport({
       PW_CLINICAL_QA_EMAIL: "qa@example.test",
       PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_TARGET_MARKER: "redacted",
       PW_CLINICAL_QA_ROUTE: "/clients/client-1",
       PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-missing-source.example.txt",
       PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-missing-output.example.txt",
@@ -290,6 +304,7 @@ describe("clinical data parity agent helpers", () => {
     const report = buildClinicalQaPreflightReport({
       PW_CLINICAL_QA_EMAIL: "qa@example.test",
       PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_TARGET_MARKER: "redacted",
       PW_CLINICAL_QA_CLIENT_ID: "client-1",
       PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-iehp-source.example.txt",
       PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-output.example.txt",
@@ -499,6 +514,7 @@ describe("clinical data parity agent helpers", () => {
     const report = buildClinicalQaPreflightReport({
       PW_CLINICAL_QA_EMAIL: "qa@example.test",
       PW_CLINICAL_QA_PASSWORD: "qa-password",
+      PW_CLINICAL_QA_TARGET_MARKER: "redacted",
       PW_CLINICAL_QA_CLIENT_ID: "client-1",
       PW_CLINICAL_QA_SOURCE_FILE: "tests/fixtures/redacted-iehp-source.example.txt",
       PW_CLINICAL_QA_OUTPUT_FILE: "tests/fixtures/redacted-output.example.txt",

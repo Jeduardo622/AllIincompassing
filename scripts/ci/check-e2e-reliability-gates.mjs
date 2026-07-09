@@ -191,6 +191,25 @@ const run = async () => {
   if (!scripts["playwright:preflight"]) {
     errors.push("package.json is missing playwright:preflight script.");
   }
+  if (scripts["ci:playwright:env-readiness"] !== "node scripts/ci/playwright-env-readiness.mjs") {
+    errors.push("package.json must expose ci:playwright:env-readiness through scripts/ci/playwright-env-readiness.mjs.");
+  }
+  if (!String(scripts["ci:playwright:optional-smoke"] ?? "").includes("scripts/playwright-ci-runner.ts")) {
+    errors.push("package.json must expose ci:playwright:optional-smoke through the attributed Playwright runner.");
+  }
+  for (const scriptName of [
+    "playwright:authorizations-read-scope",
+    "playwright:assessment-upload-promote-smoke",
+    "playwright:assessment-pdf-smoke",
+    "playwright:clinical-data-parity-agent",
+  ]) {
+    if (!String(scripts["ci:playwright:optional-smoke"] ?? "").includes(scriptName)) {
+      errors.push(`package.json ci:playwright:optional-smoke must include ${scriptName}.`);
+    }
+  }
+  if (scripts["ci:connector-health"] !== "node scripts/ci/connector-health-readiness.mjs") {
+    errors.push("package.json must expose ci:connector-health through scripts/ci/connector-health-readiness.mjs.");
+  }
 
   for (const scriptPath of CRITICAL_PLAYWRIGHT_SCRIPTS) {
     const content = await readFile(scriptPath, "utf8");
@@ -228,6 +247,36 @@ const run = async () => {
   }
   if (!ciWorkflow.includes("Record auth smoke evidence")) {
     errors.push(".github/workflows/ci.yml must record auth smoke evidence artifacts for success/failure runs.");
+  }
+  if (!ciWorkflow.includes("playwright-env-readiness")) {
+    errors.push(".github/workflows/ci.yml must include the Playwright environment readiness report job.");
+  }
+  if (!ciWorkflow.includes("npm run ci:playwright:env-readiness -- --fail-on-blocking")) {
+    errors.push(".github/workflows/ci.yml Playwright readiness job must run ci:playwright:env-readiness with --fail-on-blocking.");
+  }
+  if (!ciWorkflow.includes("Select Playwright readiness scope")) {
+    errors.push(".github/workflows/ci.yml Playwright readiness job must use the browser scope selector before injecting hosted smoke secrets.");
+  }
+  if (ciWorkflow.includes("secrets.W_ASSESSMENT_CLIENT_ID")) {
+    errors.push(".github/workflows/ci.yml must not reference the misspelled W_ASSESSMENT_CLIENT_ID secret.");
+  }
+  if (!ciWorkflow.includes("needs.playwright_env_readiness.result")) {
+    errors.push(".github/workflows/ci.yml ci-gate must depend on the Playwright environment readiness result.");
+  }
+  if (!ciWorkflow.includes("optional-playwright-smoke")) {
+    errors.push(".github/workflows/ci.yml must include the optional Playwright smoke job.");
+  }
+  if (!ciWorkflow.includes("PW_OPTIONAL_PLAYWRIGHT_SMOKE")) {
+    errors.push(".github/workflows/ci.yml optional Playwright smoke job must have an explicit enablement secret gate.");
+  }
+  if (!ciWorkflow.includes("PW_CLINICAL_QA_TARGET_MARKER")) {
+    errors.push(".github/workflows/ci.yml optional clinical QA smoke must require PW_CLINICAL_QA_TARGET_MARKER.");
+  }
+  if (!ciWorkflow.includes("redacted|synthetic|smoke|test")) {
+    errors.push(".github/workflows/ci.yml optional clinical QA smoke must validate PW_CLINICAL_QA_TARGET_MARKER allowed values.");
+  }
+  if (!ciWorkflow.includes("npm run ci:playwright:optional-smoke")) {
+    errors.push(".github/workflows/ci.yml optional Playwright smoke job must run ci:playwright:optional-smoke.");
   }
   if (!ciWorkflow.includes("iehp-assessment-import-smoke")) {
     errors.push(".github/workflows/ci.yml must include the IEHP assessment import smoke gate.");

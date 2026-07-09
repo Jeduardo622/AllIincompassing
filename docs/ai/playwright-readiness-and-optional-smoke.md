@@ -2,6 +2,13 @@
 
 Status: implemented as protected CI/tooling follow-up.
 
+Current hosted follow-up:
+
+- GitHub secret `PW_ASSESSMENT_CLIENT_ID` was added after the first PR CI attempt reported it missing.
+- `PW_ASSESSMENT_SAMPLE_FILE` was already configured.
+- The selected hosted client is explicitly marked as a test client; do not replace it with a real client.
+- PR CI was rerun after the secret update so `playwright-env-readiness` and `iehp-assessment-import-smoke` can validate the corrected environment.
+
 ## Route-task
 
 - classification: `high-risk human-reviewed`

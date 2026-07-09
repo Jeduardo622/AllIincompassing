@@ -25,6 +25,7 @@ const InviteRequestSchema = z.object({
     .max(MAX_EXPIRATION_HOURS)
     .optional(),
   role: z.enum(["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"]).optional(),
+  reason: z.string().trim().min(10).max(1000).optional(),
 });
 
 type InviteRequest = z.infer<typeof InviteRequestSchema>;
@@ -77,6 +78,20 @@ const ensureEmailServiceConfig = () => {
 const buildInviteUrl = (baseUrl: string, token: string) => {
   const trimmed = baseUrl.replace(/\/$/, "");
   return `${trimmed}/accept-invite?token=${token}`;
+};
+
+const rollbackInviteToken = async (inviteId: string, organizationId: string) => {
+  const { error } = await supabaseAdmin
+    .from("admin_invite_tokens")
+    .delete()
+    .eq("id", inviteId)
+    .eq("organization_id", organizationId);
+
+  if (error) {
+    console.error("Failed to roll back invite token after email failure", { code: "invite_token_rollback_failed" });
+  }
+
+  return { error };
 };
 
 async function sendInviteEmail(
@@ -166,6 +181,19 @@ async function handleInvite(req: Request, userContext: UserContext) {
       return jsonResponse(403, { error: "insufficient_role_for_target" });
     }
 
+    const { emailServiceUrl, portalBaseUrl } = ensureEmailServiceConfig();
+    if (!emailServiceUrl) {
+      console.error("ADMIN_INVITE_EMAIL_URL is not configured", { code: 'invite_email_url_missing' });
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
+      return jsonResponse(500, { error: "email_service_unconfigured" });
+    }
+
+    if (!portalBaseUrl) {
+      console.error("ADMIN_PORTAL_URL is not configured", { code: 'portal_url_missing' });
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
+      return jsonResponse(500, { error: "portal_url_unconfigured" });
+    }
+
     const now = new Date();
     const expiresInHours = payload.expiresInHours ?? DEFAULT_EXPIRATION_HOURS;
     const expiresAt = new Date(now.getTime() + expiresInHours * 60 * 60 * 1000);
@@ -211,19 +239,6 @@ async function handleInvite(req: Request, userContext: UserContext) {
       return jsonResponse(500, { error: "invite_creation_failed" });
     }
 
-    const { emailServiceUrl, portalBaseUrl } = ensureEmailServiceConfig();
-    if (!emailServiceUrl) {
-      console.error("ADMIN_INVITE_EMAIL_URL is not configured", { code: 'invite_email_url_missing' });
-      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-      return jsonResponse(500, { error: "email_service_unconfigured" });
-    }
-
-    if (!portalBaseUrl) {
-      console.error("ADMIN_PORTAL_URL is not configured", { code: 'portal_url_missing' });
-      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-      return jsonResponse(500, { error: "portal_url_unconfigured" });
-    }
-
     const inviteUrl = buildInviteUrl(portalBaseUrl, rawToken);
 
     const emailResult = await sendInviteEmail(emailServiceUrl, {
@@ -245,6 +260,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
         invite_id: inviteResult.id,
         role: desiredRole,
         email_delivery_status: emailResult.status,
+        ...(payload.reason ? { reason: payload.reason } : {}),
         ...(emailResult.error ? { email_error: emailResult.error } : {}),
       },
     });
@@ -254,6 +270,11 @@ async function handleInvite(req: Request, userContext: UserContext) {
     }
 
     if (emailResult.status === "failed") {
+      const rollbackResult = await rollbackInviteToken(inviteResult.id, targetOrganizationId);
+      if (rollbackResult.error) {
+        logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
+        return jsonResponse(500, { error: "invite_rollback_failed" });
+      }
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 502);
       return jsonResponse(502, { error: "email_delivery_failed" });
     }

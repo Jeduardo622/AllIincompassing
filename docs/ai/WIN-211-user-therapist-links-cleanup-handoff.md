@@ -126,7 +126,7 @@ where q.quarantine_batch = '20260709170000_quarantine_stale_user_therapist_links
   - Supabase connector migration apply: passed
   - Supabase connector post-apply aggregate check: passed; 0 stale live links, 1 quarantined row, 0 rerun delete candidates
   - `npx vitest run tests/integration/user-therapist-links-cleanup-migration.contract.test.ts --reporter=verbose`: passed, 1 file / 4 tests
-  - `WIN211_POSTGRES_URL=postgresql://postgres:postgres@127.0.0.1:<ephemeral-port>/postgres npx vitest run tests/integration/user-therapist-links-cleanup-migration.postgres.test.js --reporter=verbose`: passed against a disposable `postgres:16` Docker container, 1 file / 1 test
+  - `WIN211_POSTGRES_URL=<masked local disposable Postgres URL> npx vitest run tests/integration/user-therapist-links-cleanup-migration.postgres.test.js --reporter=verbose`: passed against a disposable `postgres:16` Docker container, 1 file / 1 test
     - executed the actual migration SQL twice
     - verified stale rows are quarantined then deleted
     - verified restored links already present in the quarantine batch are not deleted when they no longer evaluate stale

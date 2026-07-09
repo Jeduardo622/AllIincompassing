@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubDenoEnv } from '../utils/stubDeno';
 
-type TestRole = 'client' | 'therapist' | 'admin' | 'super_admin';
+type TestRole = 'client' | 'bt' | 'therapist' | 'admin' | 'super_admin';
 
 type TestUser = {
   id: string;
@@ -66,64 +66,6 @@ const createMockClient = () => ({
       error: null,
     })),
   },
-  rpc: vi.fn(async (functionName: string, params: Record<string, unknown>) => {
-    if (functionName !== 'create_admin_invite_token_rate_limited') {
-      throw new Error(`Unexpected RPC ${functionName}`);
-    }
-
-    const email = String(params.p_email);
-    const organizationId = String(params.p_organization_id);
-    const createdBy = String(params.p_created_by);
-    const now = Date.now();
-    const activeToken = inviteTokens
-      .filter(token => token.email === email && token.organization_id === organizationId)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-
-    if (activeToken && new Date(activeToken.expires_at).getTime() > now) {
-      return {
-        data: [{ id: activeToken.id, expires_at: activeToken.expires_at, status: 'active_invite_exists' }],
-        error: null,
-      };
-    }
-
-    for (let index = inviteTokens.length - 1; index >= 0; index -= 1) {
-      const token = inviteTokens[index];
-      if (
-        token.email === email
-        && token.organization_id === organizationId
-        && new Date(token.expires_at).getTime() <= now
-      ) {
-        inviteTokens.splice(index, 1);
-      }
-    }
-
-    const windowStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const limit = 10;
-    const recentInviteCount = inviteTokens.filter(token =>
-      token.created_by === createdBy && token.created_at >= windowStart,
-    ).length;
-
-    if (recentInviteCount >= limit) {
-      return { data: [{ id: null, expires_at: null, status: 'rate_limited' }], error: null };
-    }
-
-    const stored: StoredInviteToken = {
-      id: crypto.randomUUID(),
-      email,
-      organization_id: organizationId,
-      token_hash: String(params.p_token_hash),
-      expires_at: String(params.p_expires_at),
-      created_by: createdBy,
-      created_at: new Date().toISOString(),
-      role: String(params.p_role ?? 'admin'),
-    };
-    inviteTokens.push(stored);
-
-    return {
-      data: [{ id: stored.id, expires_at: stored.expires_at, status: 'created' }],
-      error: null,
-    };
-  }),
   from: (table: string) => {
     if (table === 'admin_actions') {
       return {
@@ -135,6 +77,68 @@ const createMockClient = () => ({
     }
     throw new Error(`Unexpected table ${table}`);
   },
+});
+
+const createAdminRpc = vi.fn(async (functionName: string, params: Record<string, unknown>) => {
+  if (functionName !== 'create_admin_invite_token_rate_limited') {
+    throw new Error(`Unexpected service RPC ${functionName}`);
+  }
+
+  const email = String(params.p_email);
+  const organizationId = String(params.p_organization_id);
+  const createdBy = String(params.p_created_by);
+  const now = Date.now();
+  const activeToken = inviteTokens
+    .filter(token =>
+      token.email === email
+      && token.organization_id === organizationId
+      && new Date(token.expires_at).getTime() > now
+    )
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+
+  if (activeToken) {
+    return {
+      data: [{ id: activeToken.id, expires_at: activeToken.expires_at, status: 'active_invite_exists' }],
+      error: null,
+    };
+  }
+
+  for (let index = inviteTokens.length - 1; index >= 0; index -= 1) {
+    const token = inviteTokens[index];
+    if (
+      token.email === email
+      && token.organization_id === organizationId
+      && new Date(token.expires_at).getTime() <= now
+    ) {
+      inviteTokens.splice(index, 1);
+    }
+  }
+
+  const windowStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const recentInviteCount = inviteTokens.filter(token =>
+    token.created_by === createdBy && token.created_at >= windowStart,
+  ).length;
+
+  if (recentInviteCount >= 10) {
+    return { data: [{ id: null, expires_at: null, status: 'rate_limited' }], error: null };
+  }
+
+  const stored: StoredInviteToken = {
+    id: crypto.randomUUID(),
+    email,
+    organization_id: organizationId,
+    token_hash: String(params.p_token_hash),
+    expires_at: String(params.p_expires_at),
+    created_by: createdBy,
+    created_at: new Date().toISOString(),
+    role: String(params.p_role ?? 'admin'),
+  };
+  inviteTokens.push(stored);
+
+  return {
+    data: [{ id: stored.id, expires_at: stored.expires_at, status: 'created' }],
+    error: null,
+  };
 });
 
 createRequestClient.mockImplementation(() => createMockClient());
@@ -150,6 +154,9 @@ vi.mock('../../supabase/functions/_shared/auth-middleware.ts', () => ({
 
 vi.mock('../../supabase/functions/_shared/database.ts', () => ({
   createRequestClient,
+  supabaseAdmin: {
+    rpc: createAdminRpc,
+  },
 }));
 
 vi.mock('../../supabase/functions/_shared/auth.ts', () => ({
@@ -180,6 +187,7 @@ describe('admin invite edge function', () => {
     logApiAccess.mockClear();
     assertAdminOrSuperAdmin.mockClear();
     createRequestClient.mockClear();
+    createAdminRpc.mockClear();
   });
 
   it('creates a scoped invite token, sends email, and logs the admin action', async () => {
@@ -346,5 +354,63 @@ describe('admin invite edge function', () => {
     expect(inviteTokens).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('prevents standard admins from inviting BCBA staff', async () => {
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'bcba@example.com', role: 'bcba' }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: 'insufficient_role_for_target' });
+    expect(inviteTokens).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('allows standard admins to invite BT staff in their organization', async () => {
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'bt.staff@example.com', role: 'bt' }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      inviteId: expect.any(String),
+      expiresAt: expect.any(String),
+    });
+
+    expect(inviteTokens).toHaveLength(1);
+    expect(inviteTokens[0]).toMatchObject({
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      role: 'bt',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, requestInit] = fetchMock.mock.calls[0];
+    const emailPayload = JSON.parse(requestInit?.body as string);
+    expect(emailPayload.variables).toMatchObject({
+      role: 'bt',
+      organization_id: 'org-123',
+    });
+
+    expect(adminActionRows).toHaveLength(1);
+    expect(adminActionRows[0]?.action_details).toMatchObject({
+      email: 'bt.staff@example.com',
+      role: 'bt',
+      email_delivery_status: 'sent',
+    });
   }, 20_000);
 });

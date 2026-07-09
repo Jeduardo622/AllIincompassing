@@ -10,6 +10,7 @@ describe('edge function config', () => {
       // Public pre-auth endpoints
       'auth-login',
       'auth-signup',
+      'accept-staff-invite',
       // Token-based automation endpoints (no JWT required)
       'admin-actions-retention',
     ]);

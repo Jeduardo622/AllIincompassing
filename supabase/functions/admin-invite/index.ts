@@ -6,7 +6,7 @@ import {
   RouteOptions,
   type UserContext,
 } from "../_shared/auth-middleware.ts";
-import { createRequestClient } from "../_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
 const DEFAULT_EXPIRATION_HOURS = 72;
@@ -14,7 +14,6 @@ const MIN_EXPIRATION_HOURS = 1;
 const MAX_EXPIRATION_HOURS = 24 * 7;
 const ADMIN_INVITE_PATH = "/admin/invite";
 const INVITE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-const MAX_INVITES_PER_ADMIN_PER_WINDOW = 10;
 
 const InviteRequestSchema = z.object({
   email: z.string().email(),
@@ -25,7 +24,7 @@ const InviteRequestSchema = z.object({
     .min(MIN_EXPIRATION_HOURS)
     .max(MAX_EXPIRATION_HOURS)
     .optional(),
-  role: z.enum(["admin", "super_admin"]).optional(),
+  role: z.enum(["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"]).optional(),
 });
 
 type InviteRequest = z.infer<typeof InviteRequestSchema>;
@@ -162,7 +161,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
     }
 
     const desiredRole = payload.role ?? "admin";
-    if (desiredRole === "super_admin" && userContext.profile.role !== "super_admin") {
+    if ((desiredRole === "super_admin" || desiredRole === "bcba") && userContext.profile.role !== "super_admin") {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
       return jsonResponse(403, { error: "insufficient_role_for_target" });
     }
@@ -173,7 +172,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
     const rawToken = crypto.randomUUID().replace(/-/g, "");
     const tokenHash = await hashToken(rawToken);
 
-    const insertedInvite = (await adminClient.rpc("create_admin_invite_token_rate_limited", {
+    const insertedInvite = (await supabaseAdmin.rpc("create_admin_invite_token_rate_limited", {
       p_email: normalizedEmail,
       p_token_hash: tokenHash,
       p_organization_id: targetOrganizationId,

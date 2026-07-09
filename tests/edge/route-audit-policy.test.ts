@@ -33,6 +33,7 @@ const parseAppRouteRoles = (source: string): Map<string, string[]> => {
   routeMap.set('/login', ['public']);
   routeMap.set('/signup', ['public']);
   routeMap.set('/auth/recovery', ['public']);
+  routeMap.set('/accept-invite', ['public']);
   routeMap.set('/unauthorized', ['public']);
   routeMap.set('/', normalizeRoles(['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']));
 

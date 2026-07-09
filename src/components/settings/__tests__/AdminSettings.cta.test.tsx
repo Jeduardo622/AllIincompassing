@@ -32,7 +32,7 @@ describe('AdminSettings CTA', () => {
       </QueryClientProvider>
     );
     expect(screen.getByText(/Create organization/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add Admin' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Invite Staff' })).toBeDisabled();
   });
 });
 

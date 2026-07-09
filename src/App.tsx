@@ -19,6 +19,9 @@ const Signup = React.lazy(() => import('./pages/Signup').then(module => ({ defau
 const PasswordRecovery = React.lazy(() =>
   import('./pages/PasswordRecovery').then(module => ({ default: module.PasswordRecovery })),
 );
+const AcceptInvite = React.lazy(() =>
+  import('./pages/AcceptInvite').then(module => ({ default: module.AcceptInvite })),
+);
 const Layout = React.lazy(() => import('./components/Layout').then(module => ({ default: module.Layout })));
 const Dashboard = React.lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
 const Schedule = React.lazy(() => import('./pages/Schedule').then(module => ({ default: module.Schedule })));
@@ -163,6 +166,7 @@ function App() {
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/auth/recovery" element={<PasswordRecovery />} />
+                  <Route path="/accept-invite" element={<AcceptInvite />} />
                   <Route path="/unauthorized" element={<Unauthorized />} />
 
                   {/* Protected Routes */}

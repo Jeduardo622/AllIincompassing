@@ -83,6 +83,10 @@ vi.mock('../../pages/PasswordRecovery', () => ({
   PasswordRecovery: () => <div>PasswordRecoveryPage</div>,
 }));
 
+vi.mock('../../pages/AcceptInvite', () => ({
+  AcceptInvite: () => <div>AcceptInvitePage</div>,
+}));
+
 vi.mock('../../pages/ClientOnboardingPage', () => ({
   ClientOnboardingPage: () => <div>ClientOnboardingPage</div>,
 }));
@@ -278,6 +282,16 @@ describe('App navigation landing', () => {
     expect(await screen.findByText('PasswordRecoveryPage')).toBeInTheDocument();
     expect(screen.queryByTestId('layout')).not.toBeInTheDocument();
     expect(window.location.pathname).toBe('/auth/recovery');
+  });
+
+  it('renders staff invite acceptance as a public route outside the protected layout', async () => {
+    authRole = 'client';
+    window.history.pushState({}, '', '/accept-invite?token=secret-token');
+    renderApp();
+
+    expect(await screen.findByText('AcceptInvitePage')).toBeInTheDocument();
+    expect(screen.queryByTestId('layout')).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe('/accept-invite');
   });
 
   it('allows admins and super admins to open settings tabs', async () => {

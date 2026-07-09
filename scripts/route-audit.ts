@@ -95,6 +95,7 @@ export const ROUTES: readonly RouteDefinition[] = [
   { path: '/login', component: 'Login', roles: ['public'], permissions: [] },
   { path: '/signup', component: 'Signup', roles: ['public'], permissions: [] },
   { path: '/auth/recovery', component: 'PasswordRecovery', roles: ['public'], permissions: [] },
+  { path: '/accept-invite', component: 'AcceptInvite', roles: ['public'], permissions: [] },
   { path: '/unauthorized', component: 'Unauthorized', roles: ['public'], permissions: [] },
 
   // Protected routes

@@ -248,6 +248,38 @@ const normalizeGoalMeasurements = (
   return entries.length > 0 ? Object.fromEntries(entries) : null;
 };
 
+const hasSuccessesBeyondOpportunities = (
+  metricValue: number | null | undefined,
+  opportunities: number | null | undefined,
+): boolean =>
+  typeof metricValue === "number" &&
+  Number.isFinite(metricValue) &&
+  typeof opportunities === "number" &&
+  Number.isFinite(opportunities) &&
+  metricValue > opportunities;
+
+const validateGoalMeasurementOpportunityBounds = (
+  measurements: Record<string, SessionGoalMeasurementEntry> | null,
+): string | null => {
+  if (!measurements) {
+    return null;
+  }
+
+  for (const entry of Object.values(measurements)) {
+    if (hasSuccessesBeyondOpportunities(entry.data.metric_value, entry.data.opportunities)) {
+      return "Correct trials cannot exceed opportunities.";
+    }
+
+    for (const trial of entry.data.target_trials ?? []) {
+      if (hasSuccessesBeyondOpportunities(trial.metric_value, trial.opportunities)) {
+        return "Correct trials cannot exceed opportunities.";
+      }
+    }
+  }
+
+  return null;
+};
+
 /**
  * Keeps `goal_ids` and `goals_addressed` aligned with trimmed `goal_notes` / normalized `goal_measurements`
  * (same merge semantics as SessionModal / AddSessionNoteModal): any goal key present only in maps is
@@ -967,6 +999,10 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
 
   const normalizedGoalNotes = trimGoalNotes(goalNotesForNormalize);
   const normalizedGoalMeasurements = normalizeGoalMeasurements(goalMeasurementsForNormalize ?? null);
+  const measurementBoundsError = validateGoalMeasurementOpportunityBounds(normalizedGoalMeasurements);
+  if (measurementBoundsError) {
+    return errorResponse(request, "validation_error", measurementBoundsError);
+  }
 
   const alignedGoals = alignSessionNoteGoalPayload({
     goalIds: payload.goalIds,

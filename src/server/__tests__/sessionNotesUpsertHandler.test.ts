@@ -205,6 +205,119 @@ describe("sessionNotesUpsertHandler", () => {
     expect(payload.goal_notes).toEqual({ "44444444-4444-4444-8444-444444444444": "covered" });
   });
 
+  it("rejects goal measurements when correct trials exceed opportunities", async () => {
+    const fetchJsonMock = vi.mocked(fetchJson);
+    let noteWriteCount = 0;
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && init?.method === "POST") {
+        noteWriteCount += 1;
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          goalMeasurements: {
+            [basePayload.goalIds[0]]: {
+              data: {
+                metric_value: 8,
+                opportunities: 7,
+                target: "Playwright smoke target",
+              },
+            },
+          },
+        }),
+      }),
+    );
+    const payload = await response.json() as { code?: string; error?: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.code).toBe("validation_error");
+    expect(payload.error).toBe("Correct trials cannot exceed opportunities.");
+    expect(noteWriteCount).toBe(0);
+  });
+
+  it("rejects target-trial measurements when correct trials exceed opportunities", async () => {
+    const fetchJsonMock = vi.mocked(fetchJson);
+    let noteWriteCount = 0;
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && init?.method === "POST") {
+        noteWriteCount += 1;
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          goalMeasurements: {
+            [basePayload.goalIds[0]]: {
+              data: {
+                targets: ["Playwright smoke target"],
+                target_trials: [{
+                  target: "Playwright smoke target",
+                  metric_value: 8,
+                  opportunities: 7,
+                }],
+              },
+            },
+          },
+        }),
+      }),
+    );
+    const payload = await response.json() as { code?: string; error?: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.code).toBe("validation_error");
+    expect(payload.error).toBe("Correct trials cannot exceed opportunities.");
+    expect(noteWriteCount).toBe(0);
+  });
+
   it("persists explicit raw trial events before saving the session note", async () => {
     const fetchJsonMock = vi.mocked(fetchJson);
     let trialEventsPostCount = 0;

@@ -52,11 +52,8 @@ interface EmployeeUser {
 
 interface AdminFormData {
   email: string;
-  password: string;
-  first_name: string;
-  last_name: string;
-  title: string;
   organization_id: string | null;
+  role: AppRole;
   reason: string;
 }
 
@@ -101,11 +98,8 @@ export function AdminSettings() {
   const [selectedAdmin, setSelectedAdmin] = useState<AdminUser | null>(null);
   const [formData, setFormData] = useState<AdminFormData>({
     email: '',
-    password: '',
-    first_name: '',
-    last_name: '',
-    title: '',
     organization_id: null,
+    role: 'bt',
     reason: '',
   });
   const [newPassword, setNewPassword] = useState('');
@@ -131,6 +125,10 @@ export function AdminSettings() {
   }, [user]);
 
   const canOpenAddAdminModal = isSuperAdmin || Boolean(organizationId);
+  const inviteRoleOptions = useMemo(
+    () => EMPLOYEE_ROLE_OPTIONS.filter((role) => isSuperAdmin || (role !== 'bcba' && role !== 'super_admin')),
+    [isSuperAdmin],
+  );
 
   const activeOrganizationId = useMemo(() => {
     if (!isSuperAdmin) {
@@ -463,8 +461,8 @@ export function AdminSettings() {
         : organizationId ?? data.organization_id ?? activeOrganizationId;
 
       if (!targetOrganizationId) {
-        const error = new Error('Organization context is required to create an admin user.');
-        logger.error('Missing organization during admin creation', {
+        const error = new Error('Organization context is required to invite staff.');
+        logger.error('Missing organization during staff invite', {
           error,
           context: { component: 'AdminSettings', operation: 'createAdminMutation' },
           metadata: { hasOrganizationId: false, isSuperAdmin },
@@ -476,15 +474,12 @@ export function AdminSettings() {
         const trimmedReason = data.reason.trim();
         const payload = {
           email: data.email,
-          password: data.password,
-          first_name: data.first_name,
-          last_name: data.last_name,
-          title: data.title,
-          organization_id: targetOrganizationId,
+          organizationId: targetOrganizationId,
+          role: data.role,
           reason: trimmedReason,
         };
 
-        const { error: functionError } = await supabase.functions.invoke('admin-create-user', {
+        const { error: functionError } = await supabase.functions.invoke('admin-invite', {
           body: payload,
         });
 
@@ -492,12 +487,12 @@ export function AdminSettings() {
           throw functionError;
         }
       } catch (error) {
-        logger.error('Admin creation mutation failed', {
+        logger.error('Staff invite mutation failed', {
           error,
           context: { component: 'AdminSettings', operation: 'createAdminMutation' },
           metadata: {
             hasEmail: Boolean(data.email),
-            hasProfileDetails: Boolean(data.first_name || data.last_name || data.title),
+            role: data.role,
             hasOrganizationId: Boolean(targetOrganizationId),
             isSuperAdmin,
           },
@@ -511,7 +506,7 @@ export function AdminSettings() {
       });
       setIsModalOpen(false);
       resetForm();
-      showSuccess('Admin user created successfully');
+      showSuccess('Staff invite sent successfully');
     },
     onError: (error) => {
       showError(error);
@@ -738,11 +733,8 @@ export function AdminSettings() {
   const resetForm = () => {
     setFormData({
       email: '',
-      password: '',
-      first_name: '',
-      last_name: '',
-      title: '',
       organization_id: activeOrganizationId ?? null,
+      role: 'bt',
       reason: '',
     });
   };
@@ -905,11 +897,11 @@ export function AdminSettings() {
         <button
           onClick={() => setIsModalOpen(true)}
           disabled={!canOpenAddAdminModal}
-          title={!canOpenAddAdminModal ? 'Create an organization before adding admins.' : undefined}
+          title={!canOpenAddAdminModal ? 'Create an organization before inviting staff.' : undefined}
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400 disabled:hover:bg-blue-400"
         >
           <Plus className="w-4 h-4 mr-2 inline-block" />
-          Add Admin
+          Invite Staff
         </button>
       </div>
 
@@ -1364,7 +1356,7 @@ export function AdminSettings() {
         )}
       </div>
 
-      {/* Create Admin Modal */}
+      {/* Staff Invite Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={closeCreateAdminModal}
@@ -1373,7 +1365,7 @@ export function AdminSettings() {
         panelClassName="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-md p-6"
       >
         <h2 id="add-admin-modal-title" className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-          Add New Admin
+          Invite Staff
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1394,63 +1386,23 @@ export function AdminSettings() {
               </div>
 
               <div>
-                <label htmlFor="add-admin-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Password*
+                <label htmlFor="add-admin-role" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Role*
                 </label>
-                <input
-                  type="password"
-                  name="password"
+                <select
+                  id="add-admin-role"
+                  name="role"
                   required
-                  minLength={8}
-                  value={formData.password}
+                  value={formData.role}
                   onChange={handleInputChange}
-                  id="add-admin-password"
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="add-admin-first-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  First Name*
-                </label>
-                <input
-                  type="text"
-                  name="first_name"
-                  required
-                  value={formData.first_name}
-                  onChange={handleInputChange}
-                  id="add-admin-first-name"
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="add-admin-last-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Last Name*
-                </label>
-                <input
-                  type="text"
-                  name="last_name"
-                  required
-                  value={formData.last_name}
-                  onChange={handleInputChange}
-                  id="add-admin-last-name"
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="add-admin-title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Title
-                </label>
-                <input
-                  type="text"
-                  name="title"
-                  value={formData.title}
-                  onChange={handleInputChange}
-                  id="add-admin-title"
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
+                >
+                  {inviteRoleOptions.map((role) => (
+                    <option key={role} value={role}>
+                      {ROLE_LABELS[role]}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -1476,7 +1428,7 @@ export function AdminSettings() {
                     </select>
                     {!formData.organization_id && (
                       <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                        Choose an organization before inviting a new admin.
+                        Choose an organization before inviting staff.
                       </p>
                     )}
                   </>
@@ -1492,7 +1444,7 @@ export function AdminSettings() {
                     />
                     {!formData.organization_id && (
                       <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                        Organization context is required before creating additional admins.
+                        Organization context is required before inviting staff.
                       </p>
                     )}
                   </>
@@ -1501,7 +1453,7 @@ export function AdminSettings() {
 
               <div>
                 <label htmlFor="add-admin-reason" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Reason for admin access*
+                  Reason for staff access*
                 </label>
                 <textarea
                   id="add-admin-reason"
@@ -1511,7 +1463,7 @@ export function AdminSettings() {
                   rows={3}
                   value={formData.reason}
                   onChange={handleInputChange}
-                  placeholder="Explain why this user requires administrative privileges"
+                  placeholder="Explain why this user requires staff access"
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1532,7 +1484,7 @@ export function AdminSettings() {
                   disabled={!formData.organization_id}
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Add Admin
+                  Send Invite
                 </button>
               </div>
             </form>

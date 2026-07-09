@@ -195,7 +195,7 @@ describe('AdminSettings logging', () => {
     });
   });
 
-  it('adds organization metadata when creating an admin user', async () => {
+  it('adds organization metadata when inviting staff', async () => {
     const invokeSpy = vi
       .spyOn(supabase.functions, 'invoke')
       .mockResolvedValue({ data: null, error: null });
@@ -221,19 +221,17 @@ describe('AdminSettings logging', () => {
     try {
       renderWithProviders(<AdminSettings />);
 
-      await userEvent.click(await screen.findByText('Add Admin'));
+      await userEvent.click(await screen.findByText('Invite Staff'));
 
-      const modal = await screen.findByRole('dialog', { name: 'Add New Admin' });
+      const modal = await screen.findByRole('dialog', { name: 'Invite Staff' });
       await userEvent.type(within(modal).getByLabelText('Email*'), 'new.admin@example.com');
-      await userEvent.type(within(modal).getByLabelText('Password*'), 'StrongPass123!');
-      await userEvent.type(within(modal).getByLabelText('First Name*'), 'New');
-      await userEvent.type(within(modal).getByLabelText('Last Name*'), 'Admin');
+      await userEvent.selectOptions(within(modal).getByLabelText('Role*'), 'bt');
       await userEvent.type(
-        within(modal).getByLabelText('Reason for admin access*'),
+        within(modal).getByLabelText('Reason for staff access*'),
         'Granting admin for coverage.'
       );
 
-      const submitButton = within(modal).getByRole('button', { name: 'Add Admin' });
+      const submitButton = within(modal).getByRole('button', { name: 'Send Invite' });
       await waitFor(() => {
         expect(submitButton).toBeEnabled();
       });
@@ -241,11 +239,12 @@ describe('AdminSettings logging', () => {
 
       await waitFor(() => {
         expect(invokeSpy).toHaveBeenCalledWith(
-          'admin-create-user',
+          'admin-invite',
           expect.objectContaining({
             body: expect.objectContaining({
               email: 'new.admin@example.com',
-              organization_id: '11111111-1111-1111-1111-111111111111',
+              organizationId: '11111111-1111-1111-1111-111111111111',
+              role: 'bt',
               reason: 'Granting admin for coverage.',
             }),
           })
@@ -256,7 +255,7 @@ describe('AdminSettings logging', () => {
     }
   }, 20000);
 
-  it('requires a justification before assigning a new admin user', async () => {
+  it('requires a justification before inviting staff', async () => {
     const invokeSpy = vi
       .spyOn(supabase.functions, 'invoke')
       .mockResolvedValue({ data: null, error: null });
@@ -279,16 +278,13 @@ describe('AdminSettings logging', () => {
     try {
       renderWithProviders(<AdminSettings />);
 
-      await userEvent.click(await screen.findByText('Add Admin'));
+      await userEvent.click(await screen.findByText('Invite Staff'));
 
-      const modal = await screen.findByRole('dialog', { name: 'Add New Admin' });
+      const modal = await screen.findByRole('dialog', { name: 'Invite Staff' });
       await userEvent.type(within(modal).getByLabelText('Email*'), 'space.admin@example.com');
-      await userEvent.type(within(modal).getByLabelText('Password*'), 'StrongPass123!');
-      await userEvent.type(within(modal).getByLabelText('First Name*'), 'Space');
-      await userEvent.type(within(modal).getByLabelText('Last Name*'), 'Admin');
-      await userEvent.type(within(modal).getByLabelText('Reason for admin access*'), '          ');
+      await userEvent.type(within(modal).getByLabelText('Reason for staff access*'), '          ');
 
-      const submitButton = within(modal).getByRole('button', { name: 'Add Admin' });
+      const submitButton = within(modal).getByRole('button', { name: 'Send Invite' });
       await userEvent.click(submitButton);
 
       await waitFor(() => {
@@ -928,34 +924,33 @@ describe('AdminSettings super admin access', () => {
     expect(fromSpy).not.toHaveBeenCalledWith('therapists');
   });
 
-  it('creates an admin in the selected organization', async () => {
+  it('invites staff in the selected organization', async () => {
     renderWithProviders(<AdminSettings />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Add Admin' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Invite Staff' }));
 
-    const modal = await screen.findByRole('dialog', { name: 'Add New Admin' });
+    const modal = await screen.findByRole('dialog', { name: 'Invite Staff' });
     await userEvent.type(within(modal).getByLabelText('Email*'), 'super.created@example.com');
-    await userEvent.type(within(modal).getByLabelText('Password*'), 'StrongPass123!');
-    await userEvent.type(within(modal).getByLabelText('First Name*'), 'Super');
-    await userEvent.type(within(modal).getByLabelText('Last Name*'), 'Created');
+    await userEvent.selectOptions(within(modal).getByLabelText('Role*'), 'bcba');
     await userEvent.selectOptions(within(modal).getByLabelText('Organization'), 'org-2');
-    await userEvent.type(within(modal).getByLabelText('Reason for admin access*'), 'Coverage for the Sunrise Therapy workspace.');
+    await userEvent.type(within(modal).getByLabelText('Reason for staff access*'), 'Coverage for the Sunrise Therapy workspace.');
 
-    await userEvent.click(within(modal).getByRole('button', { name: 'Add Admin' }));
+    await userEvent.click(within(modal).getByRole('button', { name: 'Send Invite' }));
 
     await waitFor(() => {
       expect(invokeSpy).toHaveBeenCalledWith(
-        'admin-create-user',
+        'admin-invite',
         expect.objectContaining({
           body: expect.objectContaining({
             email: 'super.created@example.com',
-            organization_id: 'org-2',
+            organizationId: 'org-2',
+            role: 'bcba',
             reason: 'Coverage for the Sunrise Therapy workspace.',
           }),
         }),
       );
     });
-    expect(showSuccess).toHaveBeenCalledWith('Admin user created successfully');
+    expect(showSuccess).toHaveBeenCalledWith('Staff invite sent successfully');
   }, 20_000);
 
   it('resets an admin password through the canonical RPC without falling back when available', async () => {
@@ -1056,13 +1051,13 @@ describe('AdminSettings accessibility', () => {
     fromSpy = null;
   });
 
-  it('traps focus within the add admin modal', async () => {
+  it('traps focus within the staff invite modal', async () => {
     renderWithProviders(<AdminSettings />);
 
-    const openModalButton = await screen.findByRole('button', { name: 'Add Admin' });
+    const openModalButton = await screen.findByRole('button', { name: 'Invite Staff' });
     await userEvent.click(openModalButton);
 
-    const modal = await screen.findByRole('dialog', { name: 'Add New Admin' });
+    const modal = await screen.findByRole('dialog', { name: 'Invite Staff' });
     const emailInput = within(modal).getByLabelText('Email*');
 
     await waitFor(() => {
@@ -1071,7 +1066,7 @@ describe('AdminSettings accessibility', () => {
 
     await userEvent.tab({ shift: true });
 
-    const submitButton = within(modal).getByRole('button', { name: 'Add Admin' });
+    const submitButton = within(modal).getByRole('button', { name: 'Send Invite' });
     expect(submitButton).toHaveFocus();
 
     await userEvent.tab();
@@ -1081,18 +1076,18 @@ describe('AdminSettings accessibility', () => {
   it('closes the modal with Escape and restores trigger focus', async () => {
     renderWithProviders(<AdminSettings />);
 
-    const openModalButton = await screen.findByRole('button', { name: 'Add Admin' });
+    const openModalButton = await screen.findByRole('button', { name: 'Invite Staff' });
     openModalButton.focus();
 
     await userEvent.click(openModalButton);
 
-    const modal = await screen.findByRole('dialog', { name: 'Add New Admin' });
+    const modal = await screen.findByRole('dialog', { name: 'Invite Staff' });
     expect(modal).toHaveAttribute('aria-modal', 'true');
 
     await userEvent.keyboard('{Escape}');
 
     await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: 'Add New Admin' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: 'Invite Staff' })).not.toBeInTheDocument();
     });
 
     expect(openModalButton).toHaveFocus();

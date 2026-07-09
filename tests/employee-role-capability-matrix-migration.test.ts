@@ -45,6 +45,12 @@ const START_SESSION_AUTHZ_MIGRATION_PATH = path.join(
   'migrations',
   '20260707193703_start_session_employee_role_authz.sql',
 );
+const START_SESSION_LINK_HARDENING_MIGRATION_PATH = path.join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260709162000_harden_goal_domain_and_session_link_authz.sql',
+);
 const SMOKE_SQL_PATH = path.join(process.cwd(), 'tests', 'sql', 'employee_role_capability_smoke.sql');
 
 const sql = readFileSync(MIGRATION_PATH, 'utf8');
@@ -54,6 +60,7 @@ const employeeRoleListingGrantsSql = readFileSync(EMPLOYEE_ROLE_LISTING_GRANTS_M
 const bcbaExactCapabilitySql = readFileSync(BCBA_EXACT_CAPABILITY_MIGRATION_PATH, 'utf8');
 const superAdminPrecedenceSql = readFileSync(SUPER_ADMIN_PRECEDENCE_MIGRATION_PATH, 'utf8');
 const startSessionAuthzSql = readFileSync(START_SESSION_AUTHZ_MIGRATION_PATH, 'utf8');
+const startSessionLinkHardeningSql = readFileSync(START_SESSION_LINK_HARDENING_MIGRATION_PATH, 'utf8');
 const smokeSql = readFileSync(SMOKE_SQL_PATH, 'utf8');
 
 const extractFunctionFrom = (sourceSql: string, name: string): string => {
@@ -69,6 +76,8 @@ const extractBcbaExactFunction = (name: string): string => extractFunctionFrom(b
 const extractSuperAdminPrecedenceFunction = (name: string): string =>
   extractFunctionFrom(superAdminPrecedenceSql, name);
 const extractStartSessionAuthzFunction = (name: string): string => extractFunctionFrom(startSessionAuthzSql, name);
+const extractStartSessionLinkHardeningFunction = (name: string): string =>
+  extractFunctionFrom(startSessionLinkHardeningSql, name);
 
 describe('employee role capability matrix migration', () => {
   it('keeps bt and midtier out of broad therapist/org_member helper aliases', () => {
@@ -249,5 +258,26 @@ describe('employee role capability matrix migration', () => {
       'revoke execute on function public.start_session_with_goals(uuid, uuid, uuid, uuid[], timestamptz, uuid) from anon;',
     );
     expect(startSessionAuthzSql).toContain("notify pgrst, 'reload schema';");
+  });
+
+  it('hardens linked therapist session-start authority with active same-org role checks', () => {
+    const functionSql = extractStartSessionLinkHardeningFunction('public.start_session_with_goals');
+
+    expect(functionSql).toContain("array['therapist', 'bt']::text[]");
+    expect(functionSql).toContain('from public.user_therapist_links utl');
+    expect(functionSql).toContain('join public.therapists t on t.id = utl.therapist_id');
+    expect(functionSql).toContain('and t.organization_id = v_session.organization_id');
+    expect(functionSql).toContain('and t.deleted_at is null');
+    expect(functionSql.indexOf("array['therapist', 'bt']::text[]")).toBeLessThan(
+      functionSql.indexOf('from public.user_therapist_links utl'),
+    );
+    expect(startSessionLinkHardeningSql).toContain('revoke all on table public.user_therapist_links from anon;');
+    expect(startSessionLinkHardeningSql).toContain('revoke all on table public.user_therapist_links from authenticated;');
+    expect(startSessionLinkHardeningSql).toContain('grant select on table public.user_therapist_links to authenticated;');
+    expect(startSessionLinkHardeningSql).toContain('revoke all on table public.user_therapist_links from service_role;');
+    expect(startSessionLinkHardeningSql).toContain('grant select, insert, update, delete on table public.user_therapist_links to service_role;');
+    expect(startSessionLinkHardeningSql).not.toContain(
+      'grant select, insert, update, delete, truncate on table public.user_therapist_links',
+    );
   });
 });

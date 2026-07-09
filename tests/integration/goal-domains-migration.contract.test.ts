@@ -9,7 +9,14 @@ describe("goal domains migration contract", () => {
     "migrations",
     "20260706143000_goal_domains_and_structured_draft_goals.sql",
   );
+  const hardeningMigrationPath = join(
+    process.cwd(),
+    "supabase",
+    "migrations",
+    "20260709162000_harden_goal_domain_and_session_link_authz.sql",
+  );
   const sql = readFileSync(migrationPath, "utf8").replace(/\s+/g, " ");
+  const hardeningSql = readFileSync(hardeningMigrationPath, "utf8").replace(/\s+/g, " ");
 
   it("enforces goal domain tenant scope at the database boundary", () => {
     expect(sql).toContain("create temporary table legacy_goal_domain_backfill");
@@ -29,5 +36,14 @@ describe("goal domains migration contract", () => {
     expect(sql).toContain(
       "add constraint assessment_draft_goals_domain_id_fkey foreign key (domain_id, organization_id) references public.goal_domains(id, organization_id)",
     );
+  });
+
+  it("removes authenticated destructive privileges from goal domains", () => {
+    expect(hardeningSql).toContain("revoke all on table public.goal_domains from anon");
+    expect(hardeningSql).toContain("revoke all on table public.goal_domains from authenticated");
+    expect(hardeningSql).toContain("grant select, insert, update on table public.goal_domains to authenticated");
+    expect(hardeningSql).toContain("revoke all on table public.goal_domains from service_role");
+    expect(hardeningSql).toContain("grant select, insert, update, delete on table public.goal_domains to service_role");
+    expect(hardeningSql).not.toContain("grant select, insert, update, delete, truncate on table public.goal_domains");
   });
 });

@@ -6604,9 +6604,17 @@ export type Database = {
         }
         Returns: Json
       }
-      get_admin_users:
-        | { Args: never; Returns: Json }
-        | { Args: { p_org_id: string }; Returns: Json }
+      get_admin_users: {
+        Args: { organization_id?: string }
+        Returns: {
+          created_at: string | null
+          email: string | null
+          id: string | null
+          raw_user_meta_data: Json | null
+          user_id: string | null
+          user_role_id: string | null
+        }[]
+      }
       get_admin_users_paged: {
         Args: { organization_id?: string; p_limit?: number; p_offset?: number }
         Returns: {

@@ -144,6 +144,100 @@ const hasNestedDirtyEntries = (value: unknown): boolean => {
   return Object.values(value as Record<string, unknown>).some((entry) => hasNestedDirtyEntries(entry));
 };
 
+const normalizeMeasurementMetadata = (value: string | null | undefined): string =>
+  value?.trim().toLowerCase() ?? '';
+
+const isCountTrialMeasurementMetadata = (
+  measurementType: string | null | undefined,
+  metricLabel: string | null | undefined,
+  metricUnit: string | null | undefined,
+): boolean => {
+  const metadata = [
+    normalizeMeasurementMetadata(measurementType),
+    normalizeMeasurementMetadata(metricLabel),
+    normalizeMeasurementMetadata(metricUnit),
+  ].filter((value) => value.length > 0);
+
+  if (
+    metadata.some((value) =>
+      value.includes('percent') ||
+      value.includes('%') ||
+      value.includes('accuracy') ||
+      value.includes('fidelity') ||
+      value.includes('duration') ||
+      value.includes('minute') ||
+      value.includes('time') ||
+      value.includes('rate') ||
+      value.includes('per hour')
+    )
+  ) {
+    return false;
+  }
+
+  return metadata.some((value) =>
+    value.includes('count') ||
+    value.includes('correct') ||
+    value.includes('incorrect') ||
+    value.includes('trial') ||
+    value.includes('response') ||
+    value.includes('task analysis') ||
+    value.includes('taskanalysis') ||
+    value.includes('occurrence')
+  );
+};
+
+const hasSuccessesBeyondOpportunities = (
+  metricValue: number | null | undefined,
+  opportunities: number | null | undefined,
+): boolean =>
+  typeof metricValue === 'number' &&
+  Number.isFinite(metricValue) &&
+  typeof opportunities === 'number' &&
+  Number.isFinite(opportunities) &&
+  metricValue > opportunities;
+
+const getCorrectTrialsOpportunityError = (
+  metricValue: number | null | undefined,
+  opportunities: number | null | undefined,
+  shouldValidate: boolean,
+): string | null =>
+  shouldValidate && hasSuccessesBeyondOpportunities(metricValue, opportunities)
+    ? 'Correct trials cannot exceed opportunities.'
+    : null;
+
+const getGoalMeasurementOpportunityError = (
+  measurements: Record<string, SessionGoalMeasurementEntry>,
+): string | null => {
+  for (const entry of Object.values(measurements)) {
+    const shouldValidate = isCountTrialMeasurementMetadata(
+      entry.data.measurement_type,
+      entry.data.metric_label,
+      entry.data.metric_unit,
+    );
+    const entryError = getCorrectTrialsOpportunityError(
+      entry.data.metric_value,
+      entry.data.opportunities,
+      shouldValidate,
+    );
+    if (entryError) {
+      return entryError;
+    }
+
+    for (const trial of entry.data.target_trials ?? []) {
+      const trialError = getCorrectTrialsOpportunityError(
+        trial.metric_value,
+        trial.opportunities,
+        shouldValidate,
+      );
+      if (trialError) {
+        return trialError;
+      }
+    }
+  }
+
+  return null;
+};
+
 const trimString = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -1290,6 +1384,11 @@ export function SessionModal({
           })
           .filter((entry): entry is [string, SessionGoalMeasurementEntry] => Boolean(entry)),
       );
+      const measurementBoundsError = getGoalMeasurementOpportunityError(normalizedGoalMeasurementMap);
+      if (measurementBoundsError) {
+        showError(measurementBoundsError);
+        return;
+      }
       const firstDefaultServiceCode = firstServiceCodeOnAuthorization(primaryBillingAuthorization);
       const resolvedAuthorizationId =
         working.session_note_authorization_id?.trim() ||
@@ -3448,13 +3547,24 @@ export function SessionModal({
                                           ? 0
                                           : getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'incorrect_trials', 'pending'))
                                       : targetIncorrectDisplay;
+                                    const targetOpportunitiesDisplay = getTargetTrialValue(sourceIndex, 'opportunities');
+                                    const targetTrialBoundsError = getCorrectTrialsOpportunityError(
+                                      targetCorrectDisplay,
+                                      targetOpportunitiesDisplay,
+                                      !valueCaptureMeta &&
+                                        isCountTrialMeasurementMetadata(
+                                          configuredTarget?.measurement_type ?? selectedGoal?.measurement_type,
+                                          existingMeasurementEntry?.data.metric_label ?? measurementFieldMeta.primaryLabel,
+                                          existingMeasurementEntry?.data.metric_unit ?? measurementFieldMeta.primaryUnit,
+                                        ),
+                                    );
                                     const shouldRenderTargetTrialFields =
                                       isAdhocTarget ||
                                       planGoalHasNoConfiguredTarget ||
                                       targetValue.trim().length > 0 ||
                                       targetCorrectDisplay > 0 ||
                                       targetIncorrectDisplay > 0 ||
-                                      getTargetTrialValue(sourceIndex, 'opportunities') > 0 ||
+                                      targetOpportunitiesDisplay > 0 ||
                                       getTargetTrialNote(sourceIndex).trim().length > 0;
                                     const indexedTargetRegistration = register(indexedTargetFieldKey, {
                                       onChange: (event) => {
@@ -3692,8 +3802,13 @@ export function SessionModal({
                                           <input
                                             type="hidden"
                                             {...register(targetTrialOpportunitiesFieldKey, { setValueAs: toFormNumber })}
-                                            defaultValue={getTargetTrialValue(sourceIndex, 'opportunities') || ''}
+                                            defaultValue={targetOpportunitiesDisplay || ''}
                                           />
+                                          {targetTrialBoundsError ? (
+                                            <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
+                                              {targetTrialBoundsError}
+                                            </p>
+                                          ) : null}
                                           <label
                                             htmlFor={`trial-prompt-note-${selectedGoalId}-${targetIndex}`}
                                             className="mt-3 block text-xs font-medium text-gray-600 dark:text-gray-300"

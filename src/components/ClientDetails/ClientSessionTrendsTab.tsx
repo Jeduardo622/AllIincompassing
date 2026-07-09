@@ -10,7 +10,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { BarChart3, Download, Inbox, Loader2 } from 'lucide-react';
+import { AlertTriangle, BarChart3, Download, Inbox, Loader2 } from 'lucide-react';
 import type { Chart as ChartInstance, ChartData, ChartOptions, PointStyle } from 'chart.js';
 import type { Goal } from '../../types';
 import { fetchClientSessionNotes } from '../../lib/session-notes';
@@ -50,6 +50,8 @@ const todayDate = (): string => toLocalDateInputValue(new Date());
 
 const formatPercent = (value: number): string =>
   Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`;
+
+const roundUpToNextTen = (value: number): number => Math.ceil(value / 10) * 10;
 
 const targetSeriesColors = [
   '#2563eb',
@@ -210,6 +212,17 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
 
   const chartEvidence = useMemo(() => targetSeries.flatMap((series) => series.evidence), [targetSeries]);
 
+  const maxChartValue = useMemo(() => {
+    const values = targetSeries.flatMap((series) => series.buckets.map((bucket) => bucket.median));
+    return values.length > 0 ? Math.max(...values) : 100;
+  }, [targetSeries]);
+
+  const chartYMax = Math.max(100, roundUpToNextTen(maxChartValue));
+  const overRangeBucketCount = targetSeries.reduce(
+    (count, series) => count + series.buckets.filter((bucket) => bucket.median > 100).length,
+    0,
+  );
+
   const chartData = useMemo<ChartData<'line', Array<number | null>, string>>(() => ({
     labels: chartBuckets.map((bucket) => bucket.label),
     datasets: targetSeries.map((series) => {
@@ -264,7 +277,7 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
     scales: {
       y: {
         min: 0,
-        max: 100,
+        max: chartYMax,
         title: {
           display: true,
           text: 'Median % of opportunities',
@@ -280,7 +293,7 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
         },
       },
     },
-  }), [chartBuckets, displayPeriod, targetSeries]);
+  }), [chartBuckets, chartYMax, displayPeriod, targetSeries]);
 
   const recentEvidence = chartEvidence
     .slice()
@@ -426,6 +439,14 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
                 Download graph
               </button>
             </div>
+            {overRangeBucketCount > 0 && (
+              <div className="mb-3 flex items-start rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-100">
+                <AlertTriangle className="mr-2 mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>
+                  {overRangeBucketCount} plotted value{overRangeBucketCount === 1 ? ' exceeds' : 's exceed'} 100% because recorded successes are greater than opportunities.
+                </span>
+              </div>
+            )}
             <div className="h-80">
               <Line ref={chartRef} options={chartOptions} data={chartData} />
             </div>

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SessionGoalMeasurementEntry } from "../../types";
 import { sessionNotesUpsertHandler } from "../api/session-notes-upsert";
 
 vi.mock("../api/shared", async () => {
@@ -203,6 +204,210 @@ describe("sessionNotesUpsertHandler", () => {
     expect(response.status).toBe(200);
     expect(payload.id).toBe("note-created");
     expect(payload.goal_notes).toEqual({ "44444444-4444-4444-8444-444444444444": "covered" });
+  });
+
+  it("rejects goal measurements when correct trials exceed opportunities", async () => {
+    const fetchJsonMock = vi.mocked(fetchJson);
+    let noteWriteCount = 0;
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && init?.method === "POST") {
+        noteWriteCount += 1;
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          goalMeasurements: {
+            [basePayload.goalIds[0]]: {
+              data: {
+                metric_value: 8,
+                opportunities: 7,
+                target: "Playwright smoke target",
+              },
+            },
+          },
+        }),
+      }),
+    );
+    const payload = await response.json() as { code?: string; error?: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.code).toBe("validation_error");
+    expect(payload.error).toBe("Correct trials cannot exceed opportunities.");
+    expect(noteWriteCount).toBe(0);
+  });
+
+  it("rejects target-trial measurements when correct trials exceed opportunities", async () => {
+    const fetchJsonMock = vi.mocked(fetchJson);
+    let noteWriteCount = 0;
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && init?.method === "POST") {
+        noteWriteCount += 1;
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          goalMeasurements: {
+            [basePayload.goalIds[0]]: {
+              data: {
+                targets: ["Playwright smoke target"],
+                target_trials: [{
+                  target: "Playwright smoke target",
+                  metric_value: 8,
+                  opportunities: 7,
+                }],
+              },
+            },
+          },
+        }),
+      }),
+    );
+    const payload = await response.json() as { code?: string; error?: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.code).toBe("validation_error");
+    expect(payload.error).toBe("Correct trials cannot exceed opportunities.");
+    expect(noteWriteCount).toBe(0);
+  });
+
+  it("allows percent and duration measurements when metric values exceed opportunities", async () => {
+    const fetchJsonMock = vi.mocked(fetchJson);
+    const durationGoalId = "66666666-6666-4666-8666-666666666666";
+    let noteWriteCount = 0;
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && init?.method === "POST") {
+        noteWriteCount += 1;
+        const parsedBody = JSON.parse(String(init.body)) as {
+          goal_measurements?: Record<string, SessionGoalMeasurementEntry>;
+        };
+        expect(parsedBody.goal_measurements?.[basePayload.goalIds[0]]?.data).toEqual(
+          expect.objectContaining({
+            measurement_type: "percent accuracy",
+            metric_label: "Percent",
+            metric_unit: "%",
+            metric_value: 80,
+            opportunities: 10,
+          }),
+        );
+        expect(parsedBody.goal_measurements?.[durationGoalId]?.data).toEqual(
+          expect.objectContaining({
+            measurement_type: "duration",
+            metric_label: "Duration",
+            metric_unit: "minutes",
+            metric_value: 60,
+            opportunities: 1,
+          }),
+        );
+        return { ok: true, status: 201, data: [{ id: "note-percent-duration" }] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-percent-duration")) {
+        return { ok: true, status: 200, data: [buildSessionNoteRow("note-percent-duration")] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          goalIds: [basePayload.goalIds[0], durationGoalId],
+          goalsAddressed: ["Percent goal", "Duration goal"],
+          goalMeasurements: {
+            [basePayload.goalIds[0]]: {
+              data: {
+                measurement_type: "percent accuracy",
+                metric_label: "Percent",
+                metric_unit: "%",
+                metric_value: 80,
+                opportunities: 10,
+              },
+            },
+            [durationGoalId]: {
+              data: {
+                measurement_type: "duration",
+                metric_label: "Duration",
+                metric_unit: "minutes",
+                metric_value: 60,
+                opportunities: 1,
+              },
+            },
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(noteWriteCount).toBe(1);
   });
 
   it("persists explicit raw trial events before saving the session note", async () => {

@@ -7,6 +7,17 @@ import path from 'node:path';
 
 import { selectConfiguredSmokeClient } from '../../scripts/playwright-iehp-assessment-import-smoke';
 
+const sliceWorkflowJob = (workflow: string, jobName: string): string => {
+  const start = workflow.indexOf(`  ${jobName}:`);
+  expect(start).toBeGreaterThanOrEqual(0);
+
+  const afterJobName = start + `  ${jobName}:`.length;
+  const rest = workflow.slice(afterJobName);
+  const nextJob = rest.search(/\n  [A-Za-z0-9_]+:\r?\n/);
+
+  return nextJob === -1 ? workflow.slice(start) : workflow.slice(start, afterJobName + nextJob);
+};
+
 describe('selectConfiguredSmokeClient', () => {
   it('falls back to the next configured credential when the first seed password drifted', async () => {
     const signInWithPassword = vi
@@ -168,10 +179,7 @@ describe('selectConfiguredSmokeClient', () => {
     const root = process.cwd();
     const workflow = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
     const script = readFileSync(path.join(root, 'scripts/playwright-iehp-assessment-import-smoke.ts'), 'utf8');
-    const iehpJob = workflow.slice(
-      workflow.indexOf('iehp_assessment_import_smoke:'),
-      workflow.indexOf('ci_gate:'),
-    );
+    const iehpJob = sliceWorkflowJob(workflow, 'iehp_assessment_import_smoke');
     const candidateBlock = script.slice(
       script.indexOf('const credentialCandidates = ['),
       script.indexOf('preflightCredentials(credentialCandidates);'),

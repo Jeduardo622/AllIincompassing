@@ -206,6 +206,16 @@ export const requireClinicalQaClientId = (value: string | undefined): string | n
   return clientId && clientId.length > 0 ? clientId : null;
 };
 
+export const assertClinicalQaSmokeTargetMarker = (value: string | undefined): string => {
+  const marker = value?.trim().toLowerCase();
+  if (!marker || !/^(redacted|synthetic|smoke|test)$/.test(marker)) {
+    throw new Error(
+      "PW_CLINICAL_QA_TARGET_MARKER must be one of redacted, synthetic, smoke, or test before browser artifacts are captured.",
+    );
+  }
+  return marker;
+};
+
 export const assertRedactedQaFixture = (value: string | undefined, label: string): string | null => {
   const fixturePath = value?.trim();
   if (!fixturePath) {
@@ -544,6 +554,12 @@ export const buildClinicalQaPreflightReport = (
   }
 
   let routePath: string | null = null;
+  try {
+    assertClinicalQaSmokeTargetMarker(env.PW_CLINICAL_QA_TARGET_MARKER);
+  } catch (error) {
+    blockingIssues.push(error instanceof Error ? error.message : String(error));
+  }
+
   try {
     const clientId = requireClinicalQaClientId(env.PW_CLINICAL_QA_CLIENT_ID);
     if (!clientId && !env.PW_CLINICAL_QA_ROUTE?.trim()) {

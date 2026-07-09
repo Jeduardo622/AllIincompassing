@@ -268,6 +268,32 @@ Useful knobs:
 - `PW_EDGE_FETCH_TIMEOUT_MS` (edge fetch timeout, default `20000`)
 - `PW_STRICT_SESSION_PARITY=1` / `CI_SESSION_PARITY_REQUIRED=true` for stricter edge parity behavior
 
+## Playwright readiness and optional hosted smoke
+
+Use the readiness report before relying on hosted Playwright evidence:
+
+```bash
+npm run ci:playwright:env-readiness
+```
+
+The command writes secret-safe JSON and markdown artifacts under `artifacts/latest/readiness/` and classifies required inputs as `configured`, `missing`, `placeholder`, or `not_validated`. In CI, the secret-backed readiness job only validates hosted inputs when the browser-scope selector marks auth/session Playwright coverage as required. See [`docs/ai/playwright-readiness-and-optional-smoke.md`](./ai/playwright-readiness-and-optional-smoke.md).
+
+High-cost or fixture-heavy hosted smoke scripts are grouped behind an explicit optional gate:
+
+```bash
+npm run ci:playwright:optional-smoke
+```
+
+The optional CI job is not part of the fast required gate. It runs only when `PW_OPTIONAL_PLAYWRIGHT_SMOKE=true` and the explicit secret gate is complete. Clinical QA artifact capture also requires `PW_CLINICAL_QA_TARGET_MARKER` set to `redacted`, `synthetic`, `smoke`, or `test`.
+
+Connector readiness can be checked separately with:
+
+```bash
+npm run ci:connector-health
+```
+
+See [`docs/connector-health-readiness.md`](./connector-health-readiness.md).
+
 ## Scheduling stabilization validation (2026-03-18)
 
 Completed validation run for Cypress + Playwright stabilization:

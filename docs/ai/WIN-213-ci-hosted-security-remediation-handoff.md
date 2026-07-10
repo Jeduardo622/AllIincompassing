@@ -8,6 +8,7 @@
 - lane: `critical`
 - branch: `codex/ci-hosted-security-remediation`
 - single-purpose diff: yes
+- final review-fix commit: `86c7805f`
 
 ## Route Task
 
@@ -39,6 +40,7 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - The exact checked-in SQL from `supabase/migrations/20260709162000_harden_goal_domain_and_session_link_authz.sql` was applied through the Supabase migration API with name `harden_goal_domain_and_session_link_authz`; tool returned `success: true`.
 - New hosted ledger row: version `20260710023059`, name `harden_goal_domain_and_session_link_authz`.
 - Older same-name row remains; duplicate logical names are intentionally not accepted as decisive behavior proof by the strict merge-range parity helper.
+- Duplicate same-name ledger rows are intentionally fail-closed for name-based parity.
 - Post-replay function contract query returned all true:
   - `has_exact_role_helper`
   - `uses_link_table`
@@ -51,6 +53,8 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - `goal_domains`: `anon SELECT false`; `authenticated SELECT/INSERT/UPDATE true`; `DELETE/TRUNCATE false`.
 - `user_therapist_links`: `anon SELECT false`; `authenticated SELECT true`; `INSERT/UPDATE/DELETE/TRUNCATE false`; `service_role TRUNCATE false`.
 - Security advisors were queried after inspection. Existing project-wide SECURITY DEFINER warnings remain outside WIN-213 scope; link the Supabase remediation guide: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable
+- Production audit count: `0`.
+- The whole-branch review blockers were fixed: `always()` skip semantics, actor/session link predicates, `SECURITY DEFINER`/`search_path`/superadmin/direct therapist markers, and direct deploy-helper detection.
 
 ## Repository Changes And Evidence
 
@@ -64,6 +68,21 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - `npm run test:ci` and `npm run verify:local` fail only on pre-existing missing `VITE_SUPABASE_URL` in `src/server/__tests__/orgRoleRpcEquivalence.contract.test.ts`.
 - Task 2 review: spec PASS, quality APPROVED, no blocking findings.
 - Baseline `npm test -- --run` before edits had the same 12 missing-`VITE_SUPABASE_URL` failures.
+- Fresh integrated evidence:
+  - `npm run ci:check-focused` -> PASS
+  - `npm run lint` -> PASS
+  - `npm run typecheck` -> PASS
+  - `npm run test:ci` -> PASS with synthetic non-secret Supabase config: `370` files passed, `1` skipped; `2409` tests passed, `1` skipped
+  - `npm run validate:tenant` -> PASS
+  - `npm run build` -> PASS
+  - `npm run test:routes:tier0` -> PASS `220/220`
+  - `npm run verify:local` -> PASS with synthetic config
+  - `npm run ci:playwright` -> BLOCKED at preflight only for missing hosted credentials
+  - production audit -> `0`
+- Fresh red/green notes:
+  - red: runtime checker `6` failed / `4` passed; deploy safety `4` failed / `12` passed
+  - green focused: `4` files, `36` tests passed; deploy checker, `ci:check-focused`, `lint`, `typecheck` PASS
+- Hosted behavior proof remains current.
 
 ## Residual Risk
 
@@ -71,6 +90,7 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - GitHub-hosted CI must prove the secret-backed runtime contract job with `SUPABASE_DB_URL` and all required checks.
 - PRs no longer deploy changed edge functions to shared runtime, so a PR whose frontend preview needs new edge behavior may fail closed until isolated Supabase previews exist.
 - Existing unrelated security-advisor warnings are not remediated in this slice.
+- Final reviewer / pr-hygiene / PR readiness remain pending until those gates run.
 
 ## Verification Card
 
@@ -88,25 +108,25 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
   - `npm run ci:check-focused` -> PASS
   - `npm run lint` -> PASS
   - `npm run typecheck` -> PASS
-  - `npm run test:ci` -> FAIL, pre-existing missing `VITE_SUPABASE_URL` in `src/server/__tests__/orgRoleRpcEquivalence.contract.test.ts`
-  - `npm run verify:local` -> FAIL, same pre-existing missing `VITE_SUPABASE_URL` failure
+  - `npm run test:ci` -> PASS with synthetic non-secret Supabase config: `370` files passed, `1` skipped; `2409` tests passed, `1` skipped
+  - `npm run validate:tenant` -> PASS
+  - `npm run build` -> PASS
+  - `npm run test:routes:tier0` -> PASS `220/220`
+  - `npm run verify:local` -> PASS with synthetic config
 - blocked checks:
-  - `npm run validate:tenant` -> BLOCKED because the check was not run in this slice
-  - `npm run build` -> BLOCKED because the check was not run in this slice
-  - `npm run test:routes:tier0` -> BLOCKED because the check was not run in this slice
-  - `npm run ci:playwright` -> BLOCKED because readiness failed with missing browser target, hosted persona credentials, Supabase runtime keys, service-role access, foreign IDs, and assessment-smoke fixture inputs in the process environment
+  - `npm run ci:playwright` -> BLOCKED at preflight only for missing hosted credentials
 - result: pass-with-blocked-checks
 - residual risk: secret-backed CI still needs to confirm the full runtime contract path
 
 ## PR Hygiene Verdict
 
-- branch-ready: pending
+- branch-ready: pending final reviewer/pr-hygiene/PR readiness gates
 - linear-ready: pending
 - protected-path drift: expected, `supabase/migrations/**` in the underlying remediation slice
 - unrelated changes: none
 - generated artifact drift: none
 - verification summary: present
-- pr-ready: not ready
+- pr-ready: not ready until final reviewer/pr-hygiene/PR readiness gates run
 - pr handoff: pending
 - reviewer: pending
 - pr-hygiene: pending
@@ -116,4 +136,4 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 
 ## Handoff Summary
 
-WIN-213 records the hosted Supabase and CI security remediation state for the branch and preserves the exact boundary conditions for session-start authorization. The hosted replay and contract checks confirm the intended authz predicates, ACLs, and ledger state; local `ci:playwright` remains blocked by missing secret-backed environment inputs. Remaining risk is limited to human review and CI confirmation of the secret-dependent runtime path.
+WIN-213 records the hosted Supabase and CI security remediation state for the branch and preserves the exact boundary conditions for session-start authorization. The hosted replay and contract checks confirm the intended authz predicates, ACLs, and ledger state; local `ci:playwright` remains blocked only by missing hosted credentials. Remaining risk is limited to human review and CI confirmation of the secret-dependent runtime path.

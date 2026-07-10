@@ -217,6 +217,13 @@ export const useAuth = () => {
   return context;
 };
 
+class AuthQueryUnauthorizedError extends Error {
+  constructor(readonly source: 'profile' | 'role') {
+    super(`Supabase ${source} query returned 401`);
+    this.name = 'AuthQueryUnauthorizedError';
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -226,6 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [roleFromAssignments, setRoleFromAssignments] = useState<Role | null>(null);
   const [authFlow, setAuthFlow] = useState<'normal' | 'password_recovery'>('normal');
   const signOutInProgressRef = useRef(false);
+  const authGenerationRef = useRef(0);
 
   const metadataRole = useMemo<Role | null>(() => {
     if (!user) return null;
@@ -321,7 +329,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', userId)
         .maybeSingle();
 
-      const { data, error } = await primaryQuery;
+      const { data, error, status } = await primaryQuery;
+
+      if (status === 401) {
+        throw new AuthQueryUnauthorizedError('profile');
+      }
 
       if (error && isMissingOrganizationIdColumnError(error)) {
         logger.warn('Profiles table is missing organization_id; retrying profile fetch without it', {
@@ -331,11 +343,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           },
         });
 
-        const { data: fallbackData, error: fallbackError } = await supabase
+        const { data: fallbackData, error: fallbackError, status: fallbackStatus } = await supabase
           .from('profiles')
           .select(PROFILE_SELECT_COLUMNS_FALLBACK)
           .eq('id', userId)
           .maybeSingle();
+
+        if (fallbackStatus === 401) {
+          throw new AuthQueryUnauthorizedError('profile');
+        }
 
         if (fallbackError) {
           logger.error('Failed to fetch profile record after fallback select', {
@@ -364,6 +380,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return data;
     } catch (error) {
+      if (error instanceof AuthQueryUnauthorizedError) {
+        throw error;
+      }
       logger.error('Failed to fetch profile record', {
         error: toError(error, 'Profile fetch failed'),
         metadata: {
@@ -377,10 +396,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchAssignedRole = useCallback(async (userId: string): Promise<Role | null> => {
     try {
-      const { data, error } = await supabase
+      const { data, error, status } = await supabase
         .from('user_roles')
         .select('is_active, expires_at, roles(name)')
         .eq('user_id', userId);
+
+      if (status === 401) {
+        throw new AuthQueryUnauthorizedError('role');
+      }
 
       if (error || !Array.isArray(data)) {
         logger.warn('Unable to resolve role assignments; falling back to profile role', {
@@ -395,6 +418,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return resolveRoleFromRoleRows(data as RoleRow[]);
     } catch (error) {
+      if (error instanceof AuthQueryUnauthorizedError) {
+        throw error;
+      }
       logger.warn('Role assignment lookup failed unexpectedly; falling back to profile role', {
         error: toError(error, 'Role assignment query failed'),
         metadata: {
@@ -413,15 +439,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ]) as Promise<T>;
   };
 
-  const forceInactiveAccountSignOut = useCallback(async (userId: string, source: string) => {
-    logger.warn('Inactive account detected during auth runtime; forcing sign-out', {
+  const forceAuthSessionSignOut = useCallback(async (
+    userId: string,
+    source: string,
+    reason: 'inactive-account' | 'unauthorized-query',
+  ) => {
+    logger.warn('Auth session is no longer usable; forcing sign-out', {
       metadata: {
-        scope: 'authContext.inactiveAccount',
+        scope: 'authContext.forceAuthSessionSignOut',
         userId,
         source,
+        reason,
       },
     });
 
+    authGenerationRef.current += 1;
     signOutInProgressRef.current = true;
     setAuthFlow('normal');
     setSession(null);
@@ -437,12 +469,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       await supabase.auth.signOut();
     } catch (error) {
-      logger.warn('Failed to fully sign out inactive account session', {
-        error: toError(error, 'Inactive account sign-out failed'),
+      logger.warn('Failed to fully clear unusable auth session', {
+        error: toError(error, 'Auth session sign-out failed'),
         metadata: {
-          scope: 'authContext.inactiveAccount',
+          scope: 'authContext.forceAuthSessionSignOut',
           userId,
           source,
+          reason,
         },
       });
     } finally {
@@ -453,6 +486,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const performInitialization = useCallback(async () => {
+    const initializationGeneration = authGenerationRef.current;
     const {
       data: { session: initialSession },
       error,
@@ -462,14 +496,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw error;
     }
 
+    if (authGenerationRef.current !== initializationGeneration) {
+      return;
+    }
+
     if (initialSession?.user) {
       setUser(initialSession.user);
       setSession(initialSession);
       setProfileLoading(true);
-      const profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
-      const assignedRole = await withTimeout(fetchAssignedRole(initialSession.user.id), 'fetchAssignedRole');
+      let profileData: UserProfile | null;
+      let assignedRole: Role | null;
+      try {
+        profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
+        assignedRole = await withTimeout(fetchAssignedRole(initialSession.user.id), 'fetchAssignedRole');
+      } catch (error) {
+        if (error instanceof AuthQueryUnauthorizedError) {
+          if (authGenerationRef.current !== initializationGeneration) {
+            return;
+          }
+          await forceAuthSessionSignOut(
+            initialSession.user.id,
+            `initializeAuth:${error.source}`,
+            'unauthorized-query',
+          );
+          return;
+        }
+        throw error;
+      }
+      if (authGenerationRef.current !== initializationGeneration) {
+        return;
+      }
       if (profileData && profileData.is_active === false) {
-        await forceInactiveAccountSignOut(initialSession.user.id, 'initializeAuth');
+        await forceAuthSessionSignOut(initialSession.user.id, 'initializeAuth', 'inactive-account');
         return;
       }
       setProfile(profileData);
@@ -493,7 +551,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(null);
     setRoleFromAssignments(null);
     setProfileLoading(false);
-  }, [fetchAssignedRole, fetchProfile, forceInactiveAccountSignOut]);
+  }, [fetchAssignedRole, fetchProfile, forceAuthSessionSignOut]);
 
   const initializeAuth = useCallback(async () => {
     setLoading(true);
@@ -545,7 +603,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [performInitialization]);
 
-  const refreshProfileForSession = useCallback(async (nextSession: Session, event: string) => {
+  const refreshProfileForSession = useCallback(async (
+    nextSession: Session,
+    event: string,
+    authGeneration: number,
+  ) => {
+    if (authGenerationRef.current !== authGeneration) {
+      return;
+    }
     setProfileLoading(true);
     logger.debug('Refreshing profile after auth state change', {
       metadata: {
@@ -556,24 +621,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
     });
 
-    const [profileData, assignedRole] = await Promise.all([
-      withTimeout(
-        fetchProfile(nextSession.user.id),
-        'fetchProfile in onAuthStateChange',
-        10000
-      ).catch((error) => {
-        logger.error('Failed to fetch profile in auth state change', {
-          error: toError(error, 'Profile fetch failed in listener'),
-          metadata: {
-            scope: 'authContext.onAuthStateChange',
-            userId: nextSession.user.id,
-            event,
-          },
-        });
-        return null;
-      }),
-      fetchAssignedRole(nextSession.user.id),
-    ]);
+    let profileData: UserProfile | null;
+    let assignedRole: Role | null;
+    try {
+      [profileData, assignedRole] = await Promise.all([
+        withTimeout(
+          fetchProfile(nextSession.user.id),
+          'fetchProfile in onAuthStateChange',
+          10000
+        ).catch((error) => {
+          if (error instanceof AuthQueryUnauthorizedError) {
+            throw error;
+          }
+          logger.error('Failed to fetch profile in auth state change', {
+            error: toError(error, 'Profile fetch failed in listener'),
+            metadata: {
+              scope: 'authContext.onAuthStateChange',
+              userId: nextSession.user.id,
+              event,
+            },
+          });
+          return null;
+        }),
+        fetchAssignedRole(nextSession.user.id),
+      ]);
+    } catch (error) {
+      if (error instanceof AuthQueryUnauthorizedError) {
+        if (authGenerationRef.current !== authGeneration) {
+          return;
+        }
+        await forceAuthSessionSignOut(
+          nextSession.user.id,
+          `authStateChange:${event}:${error.source}`,
+          'unauthorized-query',
+        );
+        return;
+      }
+      throw error;
+    }
+
+    if (authGenerationRef.current !== authGeneration) {
+      return;
+    }
 
     logger.debug('Completed profile refresh after auth state change', {
       metadata: {
@@ -586,7 +675,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     if (profileData && profileData.is_active === false) {
-      await forceInactiveAccountSignOut(nextSession.user.id, `authStateChange:${event}`);
+      await forceAuthSessionSignOut(nextSession.user.id, `authStateChange:${event}`, 'inactive-account');
       return;
     }
 
@@ -605,7 +694,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     });
     setProfileLoading(false);
-  }, [fetchAssignedRole, fetchProfile, forceInactiveAccountSignOut]);
+  }, [fetchAssignedRole, fetchProfile, forceAuthSessionSignOut]);
 
   const waitForSignedOutEvent = useCallback((timeoutMs = 5000): Promise<void> => {
     return new Promise((resolve) => {
@@ -645,6 +734,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       try {
+        const authGeneration = authGenerationRef.current + 1;
+        authGenerationRef.current = authGeneration;
         if (signOutInProgressRef.current) {
           if (event === 'SIGNED_OUT' || !session?.user) {
             setAuthFlow('normal');
@@ -668,7 +759,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // this callback. Schedule profile refresh in a separate task to avoid
           // re-entrancy stalls that can lead to timeout errors during SIGNED_IN.
           window.setTimeout(() => {
-            void refreshProfileForSession(session, event);
+            void refreshProfileForSession(session, event, authGeneration);
           }, 0);
         } else {
           const stubAuthState = readStubAuthState();
@@ -726,7 +817,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (payload) => {
           const nextProfile = payload.new as UserProfile;
           if (nextProfile.is_active === false) {
-            void forceInactiveAccountSignOut(user.id, 'profilesRealtimeUpdate');
+            void forceAuthSessionSignOut(user.id, 'profilesRealtimeUpdate', 'inactive-account');
             return;
           }
           setProfile(nextProfile);
@@ -737,7 +828,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, forceInactiveAccountSignOut]);
+  }, [user, forceAuthSessionSignOut]);
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -814,6 +905,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       setLoading(true);
+      authGenerationRef.current += 1;
       signOutInProgressRef.current = true;
 
       // Optimistically clear local auth state so route-level queries disable

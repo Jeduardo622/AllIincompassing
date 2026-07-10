@@ -439,6 +439,21 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   ) {
     violations.push("tenant-safety workflow must run `npm test` without masking failures");
   }
+  const tenantTestEnvironment = tenantTestSteps[0]?.env ?? {};
+  const requiredTenantTestEnvironment = [
+    "VITE_SUPABASE_URL",
+    "SUPABASE_URL",
+    "VITE_SUPABASE_ANON_KEY",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+  ];
+  if (
+    requiredTenantTestEnvironment.some(
+      (key) => !String(tenantTestEnvironment[key] ?? "").trim(),
+    )
+  ) {
+    violations.push("tenant-safety workflow must map the required Supabase test environment");
+  }
 
   return { violations };
 };

@@ -226,6 +226,7 @@ ${ciGateInertText}
 const tenantSafetyWorkflow = ({
   testRun = "npm test",
   testContinueOnError = false,
+  includeTestEnvironment = true,
 } = {}) => `name: tenant-safety
 
 on:
@@ -248,6 +249,13 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: ${testRun}
+${includeTestEnvironment ? `        env:
+          VITE_SUPABASE_URL: test-url
+          SUPABASE_URL: test-url
+          VITE_SUPABASE_ANON_KEY: test-anon
+          SUPABASE_ANON_KEY: test-anon
+          SUPABASE_SERVICE_ROLE_KEY: test-service
+` : ""}
 ${testContinueOnError ? "        continue-on-error: true" : ""}
 `;
 
@@ -521,5 +529,20 @@ describe("check-session-deploy-safety", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("tenant-safety workflow must run `npm test` without masking failures");
+  });
+
+  test("rejects tenant-safety npm test steps without the required Supabase test environment", () => {
+    const root = makeFixture({
+      tenant: {
+        includeTestEnvironment: false,
+      },
+    });
+
+    const result = runCheck(root);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "tenant-safety workflow must map the required Supabase test environment",
+    );
   });
 });

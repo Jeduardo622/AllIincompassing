@@ -103,6 +103,7 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - Final whole-branch code review and Supabase tenant-safety review returned `READY` with no in-scope findings.
 - The first PR run exposed the hosted database's private CA chain: strict TLS correctly rejected it instead of silently disabling verification.
 - The checker now trusts the checked-in public Supabase Root 2021 CA while retaining `rejectUnauthorized: true`; an OpenSSL handshake to the project database verifies with TLS 1.3 and return code 0.
+- The first unmasked standalone tenant-safety run exposed missing Supabase test environment mappings. The workflow now maps the same repository test secrets used by the main CI matrix, and the structural policy rejects future removal.
 
 ## Verification Card
 
@@ -123,7 +124,7 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - executed checks:
   - `Test-Path 'C:\\Users\\test\\.config\\superpowers\\worktrees\\AllIincompassing\\ci-hosted-security-remediation\\docs\\ai\\WIN-213-ci-hosted-security-remediation-handoff.md'` -> PASS
   - `Test-Path 'C:\\Users\\test\\.config\\superpowers\\worktrees\\AllIincompassing\\ci-hosted-security-remediation\\.superpowers\\sdd\\task-3-report.md'` -> PASS
-  - `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts` -> PASS (`36` tests)
+  - `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts` -> PASS (`37` tests)
   - `npx vitest run tests/runtime-migration-parity.test.ts tests/ci/deploy-session-edge-bundle.test.ts` -> PASS (`10` tests)
   - `node scripts/ci/check-session-deploy-safety.mjs` -> PASS
   - `npm run ci:check-focused` -> PASS

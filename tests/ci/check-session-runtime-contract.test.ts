@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { evaluateStartSessionRuntimeContract } from "../../scripts/ci/check-start-session-runtime-contract.mjs";
+import { evaluateStartSessionRuntimeContract } from "../../scripts/ci/check-session-runtime-contract.mjs";
 
 const validContract = {
   functionDefinition: `
@@ -47,7 +47,7 @@ end;
   },
 };
 
-describe("check-start-session-runtime-contract", () => {
+describe("check-session-runtime-contract", () => {
   test("accepts the live function and grant contract when all required clauses are present", () => {
     const result = evaluateStartSessionRuntimeContract(validContract);
 

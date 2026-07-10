@@ -42,6 +42,9 @@ jobs:
           elif [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             base_sha="${{ github.event.before }}"
             head_sha="${GITHUB_SHA}"
+          elif [ "${GITHUB_EVENT_NAME}" = "merge_group" ]; then
+            base_sha="${{ github.event.merge_group.base_sha }}"
+            head_sha="${{ github.event.merge_group.head_sha }}"
           fi
 
           echo "base_sha=${base_sha}" >> "${GITHUB_OUTPUT}"
@@ -269,7 +272,7 @@ jobs:
       - name: Check start_session_with_goals runtime contract
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: node scripts/ci/check-start-session-runtime-contract.mjs
+        run: node scripts/ci/check-session-runtime-contract.mjs
 
   deploy_session_edge:
     name: deploy-session-edge

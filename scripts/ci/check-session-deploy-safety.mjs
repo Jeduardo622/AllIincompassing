@@ -4,8 +4,10 @@ import { pathToFileURL } from "node:url";
 
 const DEPLOY_COMMAND = "npm run ci:deploy:session-edge-bundle";
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
-const AUTH_DEPLOY_GUARD =
-  "github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success'";
+const AUTH_SMOKE_IF =
+  "needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')";
+const DEPLOY_NEEDS = ["policy", "tenant_safety", "runtime_migration_parity", "start_session_runtime_contract"];
+const AUTH_SMOKE_NEEDS = ["policy", "change_scope", "deploy_session_edge"];
 
 const getWorkflowPaths = (cwd = process.cwd()) => ({
   ciWorkflowPath: path.join(cwd, ".github", "workflows", "ci.yml"),
@@ -13,159 +15,402 @@ const getWorkflowPaths = (cwd = process.cwd()) => ({
 });
 
 const readWorkflow = (filePath) => readFileSync(filePath, "utf8");
+const indentation = (line) => line.match(/^ */)?.[0].length ?? 0;
 
-const extractJobBlock = (content, jobName) => {
-  const lines = content.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.trimEnd() === `  ${jobName}:`);
-  if (start === -1) {
-    return "";
+const stripComment = (line, marker = "#") => {
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === "'" && !doubleQuoted) {
+      singleQuoted = !singleQuoted;
+    } else if (character === '"' && !singleQuoted && line[index - 1] !== "\\") {
+      doubleQuoted = !doubleQuoted;
+    } else if (character === marker && !singleQuoted && !doubleQuoted) {
+      return line.slice(0, index).trimEnd();
+    }
   }
+  return line.trimEnd();
+};
 
-  const block = [];
-  for (let index = start; index < lines.length; index += 1) {
+const unquote = (value) => {
+  const trimmed = value.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"')))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+};
+
+const parseKeyValue = (text) => {
+  const match = text.match(/^([A-Za-z0-9_-]+):(?:\s*(.*))?$/);
+  return match ? { key: match[1], value: match[2] ?? "" } : null;
+};
+
+const parseList = (value) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return trimmed
+      .slice(1, -1)
+      .split(",")
+      .map((item) => unquote(item))
+      .filter(Boolean);
+  }
+  return [unquote(trimmed)];
+};
+
+const readBlockScalar = (lines, startIndex, parentIndent) => {
+  const body = [];
+  let index = startIndex + 1;
+  while (index < lines.length) {
     const line = lines[index];
-    if (index > start && /^  [A-Za-z0-9_]+:\s*$/.test(line)) {
+    if (line.trim() && indentation(line) <= parentIndent) {
       break;
     }
-    block.push(line);
+    body.push(line.length > parentIndent + 2 ? line.slice(parentIndent + 2) : "");
+    index += 1;
+  }
+  return { value: body.join("\n"), nextIndex: index };
+};
+
+const parseStep = (lines) => {
+  const step = { env: {} };
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = stripComment(lines[index]);
+    if (!raw.trim()) {
+      continue;
+    }
+
+    const lineIndent = indentation(raw);
+    const content = raw.trimStart();
+    const fieldText = index === 0 && content.startsWith("- ") ? content.slice(2) : content;
+    const field = parseKeyValue(fieldText);
+    if (!field || (index > 0 && lineIndent !== 8) || (index === 0 && lineIndent !== 6)) {
+      continue;
+    }
+
+    if (field.key === "env" && !field.value) {
+      const envParentIndent = index === 0 ? lineIndent + 2 : lineIndent;
+      for (let envIndex = index + 1; envIndex < lines.length; envIndex += 1) {
+        const envRaw = stripComment(lines[envIndex]);
+        if (!envRaw.trim()) {
+          continue;
+        }
+        if (indentation(envRaw) <= envParentIndent) {
+          break;
+        }
+        if (indentation(envRaw) === envParentIndent + 2) {
+          const envField = parseKeyValue(envRaw.trim());
+          if (envField) {
+            step.env[envField.key] = unquote(envField.value);
+          }
+        }
+      }
+      continue;
+    }
+
+    if (field.key === "run" && /^[|>][-+]?\s*$/.test(field.value)) {
+      const block = readBlockScalar(lines, index, lineIndent);
+      step.run = block.value;
+      index = block.nextIndex - 1;
+      continue;
+    }
+
+    step[field.key] = unquote(field.value);
+  }
+  return step;
+};
+
+const parseSteps = (jobLines) => {
+  const stepsIndex = jobLines.findIndex((line) => stripComment(line).trimEnd() === "    steps:");
+  if (stepsIndex === -1) {
+    return [];
   }
 
-  return block.join("\n");
+  const steps = [];
+  for (let index = stepsIndex + 1; index < jobLines.length; ) {
+    const line = stripComment(jobLines[index]);
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+    if (indentation(line) <= 4) {
+      break;
+    }
+    if (indentation(line) !== 6 || !line.trimStart().startsWith("- ")) {
+      index += 1;
+      continue;
+    }
+
+    let end = index + 1;
+    while (end < jobLines.length) {
+      const candidate = stripComment(jobLines[end]);
+      if (candidate.trim() && indentation(candidate) <= 6) {
+        break;
+      }
+      end += 1;
+    }
+    steps.push(parseStep(jobLines.slice(index, end)));
+    index = end;
+  }
+  return steps;
 };
 
-const countOccurrences = (content, needle) => {
-  const matches = content.match(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"));
-  return matches ? matches.length : 0;
+const parseJob = (jobLines) => {
+  const job = { needs: [], steps: parseSteps(jobLines) };
+  for (let index = 1; index < jobLines.length; index += 1) {
+    const raw = stripComment(jobLines[index]);
+    if (!raw.trim() || indentation(raw) !== 4) {
+      continue;
+    }
+    const field = parseKeyValue(raw.trim());
+    if (!field) {
+      continue;
+    }
+    if (field.key === "needs") {
+      job.needs.push(...parseList(field.value));
+      if (!field.value.trim()) {
+        for (let needIndex = index + 1; needIndex < jobLines.length; needIndex += 1) {
+          const needLine = stripComment(jobLines[needIndex]);
+          if (!needLine.trim()) {
+            continue;
+          }
+          if (indentation(needLine) <= 4) {
+            break;
+          }
+          if (indentation(needLine) === 6 && needLine.trimStart().startsWith("- ")) {
+            job.needs.push(unquote(needLine.trimStart().slice(2)));
+          }
+        }
+      }
+    } else if (field.key !== "steps") {
+      job[field.key] = unquote(field.value);
+    }
+  }
+  return job;
 };
 
-const blockHasNeeds = (block, needs) => needs.every((need) => new RegExp(`^\\s*-\\s+${need}\\s*$`, "m").test(block));
+const parseWorkflowJobs = (content) => {
+  const lines = content.split(/\r?\n/);
+  const jobsIndex = lines.findIndex((line) => stripComment(line).trimEnd() === "jobs:");
+  if (jobsIndex === -1) {
+    return {};
+  }
 
-const normalizeGrantSet = (values) => [...new Set(values.map((value) => value.toUpperCase()))].sort();
+  const jobs = {};
+  for (let index = jobsIndex + 1; index < lines.length; ) {
+    const line = stripComment(lines[index]);
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+    if (indentation(line) === 0) {
+      break;
+    }
+    const match = line.match(/^  ([A-Za-z0-9_-]+):\s*$/);
+    if (!match) {
+      index += 1;
+      continue;
+    }
+
+    let end = index + 1;
+    while (end < lines.length) {
+      const candidate = stripComment(lines[end]);
+      if (candidate.trim() && indentation(candidate) <= 2) {
+        break;
+      }
+      end += 1;
+    }
+    jobs[match[1]] = parseJob(lines.slice(index, end));
+    index = end;
+  }
+  return jobs;
+};
+
+const executableLines = (run = "") =>
+  String(run)
+    .split(/\r?\n/)
+    .map((line) => stripComment(line).trim())
+    .filter(Boolean);
+
+const runText = (job) => job.steps.flatMap((step) => executableLines(step.run)).join("\n");
+const stepHasExactCommand = (step, command) => executableLines(step.run).includes(command);
+const stepIsExactCommand = (step, command) => {
+  const lines = executableLines(step.run);
+  return lines.length === 1 && lines[0] === command;
+};
+const sameSet = (actual, expected) => {
+  const sortedActual = [...actual].sort();
+  const sortedExpected = [...expected].sort();
+  return sortedActual.length === sortedExpected.length && sortedActual.every((value, index) => value === sortedExpected[index]);
+};
+const hasSequence = (lines, sequence) =>
+  lines.some((_, index) => sequence.every((value, offset) => lines[index + offset] === value));
+const hasOrderedSequence = (lines, sequence) => {
+  let cursor = 0;
+  for (const line of lines) {
+    if (line === sequence[cursor]) {
+      cursor += 1;
+      if (cursor === sequence.length) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const requireJob = (jobs, name, violations) => {
+  const job = jobs[name];
+  if (!job) {
+    violations.push(`${name} job is missing`);
+  }
+  return job;
+};
 
 export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   const violations = [];
+  const jobs = parseWorkflowJobs(ciWorkflow);
+  const tenantJobs = parseWorkflowJobs(tenantWorkflow);
 
-  const policyBlock = extractJobBlock(ciWorkflow, "policy");
-  const runtimeParityBlock = extractJobBlock(ciWorkflow, "runtime_migration_parity");
-  const runtimeContractBlock = extractJobBlock(ciWorkflow, "start_session_runtime_contract");
-  const deployBlock = extractJobBlock(ciWorkflow, "deploy_session_edge");
-  const authBlock = extractJobBlock(ciWorkflow, "auth_browser_smoke");
-  const ciGateBlock = extractJobBlock(ciWorkflow, "ci_gate");
+  const changeScope = requireJob(jobs, "change_scope", violations);
+  const policy = requireJob(jobs, "policy", violations);
+  const runtimeParity = requireJob(jobs, "runtime_migration_parity", violations);
+  const runtimeContract = requireJob(jobs, "start_session_runtime_contract", violations);
+  const deploy = requireJob(jobs, "deploy_session_edge", violations);
+  const authSmoke = requireJob(jobs, "auth_browser_smoke", violations);
+  const ciGate = requireJob(jobs, "ci_gate", violations);
 
-  const deployCount = countOccurrences(ciWorkflow, DEPLOY_COMMAND);
-  if (deployCount !== 1) {
+  if (changeScope) {
+    const detectRun = changeScope.steps.find((step) => step.id === "detect")?.run ?? "";
+    const mergeGroupContract = /elif\s+\[\s*"\$\{GITHUB_EVENT_NAME\}"\s*=\s*"merge_group"\s*\]\s*;\s*then[\s\S]*?base_sha="\$\{\{\s*github\.event\.merge_group\.base_sha\s*\}\}"[\s\S]*?head_sha="\$\{\{\s*github\.event\.merge_group\.head_sha\s*\}\}"/;
+    if (!mergeGroupContract.test(executableLines(detectRun).join("\n"))) {
+      violations.push("change_scope must map merge_group base_sha and head_sha from the merge-group event");
+    }
+  }
+
+  const deploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
+    job.steps.filter((step) => stepIsExactCommand(step, DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
+  );
+  if (deploySteps.length !== 1 || deploySteps[0]?.jobName !== "deploy_session_edge") {
     violations.push("CI workflow must contain exactly one session edge deploy command");
+    violations.push("CI workflow must contain exactly one real session edge deploy run step in deploy_session_edge");
   }
 
-  if (!policyBlock) {
-    violations.push("policy job is missing from .github/workflows/ci.yml");
-  } else {
-    for (const forbidden of [
-      DEPLOY_COMMAND,
-      "npm run validate:tenant",
-      "check-runtime-migration-parity.mjs",
-      "check-start-session-runtime-contract.mjs",
-      "Validate session edge deploy prerequisites",
-    ]) {
-      if (policyBlock.includes(forbidden)) {
-        violations.push(`policy job must stay read-only and may not include \`${forbidden}\``);
+  if (policy) {
+    const policyRuns = runText(policy);
+    for (const forbidden of [DEPLOY_COMMAND, "npm run validate:tenant", "check-runtime-migration-parity.mjs", "check-session-runtime-contract.mjs"]) {
+      if (policyRuns.includes(forbidden)) {
+        violations.push("policy job must stay read-only and may not run `" + forbidden + "`");
       }
     }
   }
 
-  if (!runtimeParityBlock) {
-    violations.push("runtime_migration_parity job is missing");
-  } else {
-    for (const required of [
-      "node scripts/ci/check-runtime-migration-parity.mjs",
-      "MIGRATION_PARITY_BASE_SHA",
-      "MIGRATION_PARITY_HEAD_SHA",
-      "SUPABASE_DB_URL",
-    ]) {
-      if (!runtimeParityBlock.includes(required)) {
-        violations.push(`runtime_migration_parity job must include \`${required}\``);
-      }
+  if (runtimeParity) {
+    const parityStep = runtimeParity.steps.find((step) => stepHasExactCommand(step, "node scripts/ci/check-runtime-migration-parity.mjs"));
+    if (
+      !parityStep ||
+      parityStep.env.MIGRATION_PARITY_BASE_SHA !== "${{ needs.change_scope.outputs.base_sha }}" ||
+      parityStep.env.MIGRATION_PARITY_HEAD_SHA !== "${{ needs.change_scope.outputs.head_sha }}" ||
+      parityStep.env.SUPABASE_DB_URL !== "${{ secrets.SUPABASE_DB_URL }}"
+    ) {
+      violations.push("runtime_migration_parity must run the merge-range checker with change_scope SHAs and SUPABASE_DB_URL");
     }
   }
 
-  if (!runtimeContractBlock) {
-    violations.push("start_session_runtime_contract job is missing");
-  } else {
-    for (const required of [
-      "node scripts/ci/check-start-session-runtime-contract.mjs",
-      "SUPABASE_DB_URL",
-    ]) {
-      if (!runtimeContractBlock.includes(required)) {
-        violations.push(`start_session_runtime_contract job must include \`${required}\``);
-      }
+  if (runtimeContract) {
+    const contractStep = runtimeContract.steps.find((step) => stepHasExactCommand(step, "node scripts/ci/check-session-runtime-contract.mjs"));
+    if (!contractStep || contractStep.env.SUPABASE_DB_URL !== "${{ secrets.SUPABASE_DB_URL }}") {
+      violations.push("start_session_runtime_contract must run check-session-runtime-contract.mjs with SUPABASE_DB_URL");
     }
   }
 
-  if (!deployBlock) {
-    violations.push("deploy_session_edge job is missing");
-  } else {
-    if (!deployBlock.includes(`if: ${MAIN_PUSH_IF}`)) {
-      violations.push("deploy_session_edge must be restricted to push on refs/heads/main");
+  if (deploy) {
+    if (deploy.if !== MAIN_PUSH_IF) {
+      violations.push("deploy_session_edge must be restricted to push on refs/heads/main using the exact event/ref condition");
     }
-    if (!blockHasNeeds(deployBlock, ["policy", "tenant_safety", "runtime_migration_parity", "start_session_runtime_contract"])) {
-      violations.push(
-        "deploy_session_edge must need policy, tenant_safety, runtime_migration_parity, and start_session_runtime_contract",
-      );
+    if (!sameSet(deploy.needs, DEPLOY_NEEDS)) {
+      violations.push(`deploy_session_edge needs must exactly equal ${DEPLOY_NEEDS.join(", ")}`);
     }
-    const prereqIndex = deployBlock.indexOf("Validate session edge deploy prerequisites");
-    const deployIndex = deployBlock.indexOf(DEPLOY_COMMAND);
+    const prereqIndex = deploy.steps.findIndex((step) => step.name === "Validate session edge deploy prerequisites");
+    const deployIndex = deploy.steps.findIndex((step) => stepIsExactCommand(step, DEPLOY_COMMAND));
     if (prereqIndex === -1 || deployIndex === -1 || prereqIndex > deployIndex) {
       violations.push("deploy_session_edge must validate deploy prerequisites before deploying");
     }
   }
 
-  if (!authBlock) {
-    violations.push("auth_browser_smoke job is missing");
-  } else {
-    if (authBlock.includes(DEPLOY_COMMAND)) {
-      violations.push("auth_browser_smoke must not deploy session edge functions");
-    }
-    if (!blockHasNeeds(authBlock, ["deploy_session_edge"])) {
-      violations.push("auth_browser_smoke must need deploy_session_edge");
-    }
-    if (!authBlock.includes(AUTH_DEPLOY_GUARD)) {
-      violations.push(
-        "auth_browser_smoke must allow PR/merge_group runs while requiring successful deploy_session_edge on main pushes",
-      );
-    }
-  }
-
-  if (!ciGateBlock) {
-    violations.push("ci_gate job is missing");
-  } else {
-    if (!blockHasNeeds(ciGateBlock, ["tenant_safety", "runtime_migration_parity", "start_session_runtime_contract", "deploy_session_edge"])) {
-      violations.push(
-        "ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, and deploy_session_edge",
-      );
-    }
-
-    for (const required of [
-      "TENANT_SAFETY_RESULT",
-      "RUNTIME_PARITY_RESULT",
-      "START_SESSION_RUNTIME_CONTRACT_RESULT",
-      "DEPLOY_SESSION_EDGE_RESULT",
-      "GITHUB_EVENT_NAME",
-      "GITHUB_REF",
-      "tenant-safety=${TENANT_SAFETY_RESULT}",
-      "runtime-migration-parity=${RUNTIME_PARITY_RESULT}",
-      "start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}",
-      "deploy-session-edge=${DEPLOY_SESSION_EDGE_RESULT}",
-    ]) {
-      if (!ciGateBlock.includes(required)) {
-        violations.push(`ci_gate must enforce \`${required}\` semantics`);
+  if (authSmoke) {
+    if (!sameSet(authSmoke.needs, AUTH_SMOKE_NEEDS)) {
+      if (!authSmoke.needs.includes("deploy_session_edge")) {
+        violations.push("auth_browser_smoke must need deploy_session_edge");
+      } else {
+        violations.push(`auth_browser_smoke needs must exactly equal ${AUTH_SMOKE_NEEDS.join(", ")}`);
       }
     }
+    if (authSmoke.if !== AUTH_SMOKE_IF) {
+      violations.push("auth_browser_smoke must use the exact read-only/non-main and successful-main-deploy condition");
+    }
+    if (authSmoke.steps.some((step) => stepHasExactCommand(step, DEPLOY_COMMAND))) {
+      violations.push("auth_browser_smoke must not deploy session edge functions");
+    }
   }
 
-  if (!tenantWorkflow.includes("run: npm test")) {
-    violations.push("tenant-safety workflow must run `npm test` without masking failures");
+  if (ciGate) {
+    const requiredNeeds = ["tenant_safety", "runtime_migration_parity", "start_session_runtime_contract", "deploy_session_edge"];
+    if (!requiredNeeds.every((need) => ciGate.needs.includes(need))) {
+      violations.push("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, and deploy_session_edge");
+    }
+
+    const gateStep = ciGate.steps.find((step) => step.name === "Enforce lane-specific CI results") ?? ciGate.steps[0];
+    const expectedEnv = {
+      GITHUB_EVENT_NAME: "${{ github.event_name }}",
+      GITHUB_REF: "${{ github.ref }}",
+      TENANT_SAFETY_RESULT: "${{ needs.tenant_safety.result }}",
+      RUNTIME_PARITY_RESULT: "${{ needs.runtime_migration_parity.result }}",
+      START_SESSION_RUNTIME_CONTRACT_RESULT: "${{ needs.start_session_runtime_contract.result }}",
+      DEPLOY_SESSION_EDGE_RESULT: "${{ needs.deploy_session_edge.result }}",
+    };
+    for (const [name, value] of Object.entries(expectedEnv)) {
+      if (gateStep?.env?.[name] !== value) {
+        violations.push(`ci_gate must map ${name} to ${value}`);
+      }
+    }
+
+    const gateLines = executableLines(gateStep?.run);
+    const resultChecks = [
+      ['[ "${TENANT_SAFETY_RESULT}" = "success" ] || failed+=("tenant-safety=${TENANT_SAFETY_RESULT}")', "ci_gate must enforce tenant_safety result failure"],
+      ['[ "${RUNTIME_PARITY_RESULT}" = "success" ] || failed+=("runtime-migration-parity=${RUNTIME_PARITY_RESULT}")', "ci_gate must enforce runtime_migration_parity result failure"],
+      ['[ "${START_SESSION_RUNTIME_CONTRACT_RESULT}" = "success" ] || failed+=("start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}")', "ci_gate must enforce start_session_runtime_contract result failure"],
+    ];
+    for (const [line, message] of resultChecks) {
+      if (!gateLines.includes(line)) {
+        violations.push(message);
+      }
+    }
+    if (!hasSequence(gateLines, [
+      'if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ] && [ "${DEPLOY_SESSION_EDGE_RESULT}" != "success" ]; then',
+      'failed+=("deploy-session-edge=${DEPLOY_SESSION_EDGE_RESULT}")',
+      "fi",
+    ])) {
+      violations.push("ci_gate must enforce deploy_session_edge success for main pushes");
+    }
+    if (!hasOrderedSequence(gateLines, ['if [ "${#failed[@]}" -gt 0 ]; then', "exit 1", "fi"])) {
+      violations.push("ci_gate must exit nonzero when any required result fails");
+    }
   }
-  if (/npm test\s*(\|\||\|)/.test(tenantWorkflow)) {
+
+  const tenantJob = tenantJobs["tenant-safety"];
+  const tenantTestSteps = tenantJob?.steps.filter((step) => stepHasExactCommand(step, "npm test")) ?? [];
+  if (
+    tenantTestSteps.length !== 1 ||
+    executableLines(tenantTestSteps[0]?.run).length !== 1 ||
+    String(tenantTestSteps[0]?.["continue-on-error"] ?? "false").toLowerCase() === "true"
+  ) {
     violations.push("tenant-safety workflow must run `npm test` without masking failures");
   }
 
@@ -180,7 +425,7 @@ const run = () => {
   });
 
   if (result.violations.length > 0) {
-    for (const violation of result.violations) {
+    for (const violation of [...new Set(result.violations)]) {
       console.error(`❌ ${violation}`);
     }
     process.exit(1);

@@ -238,4 +238,62 @@ describe("goal-targets Edge/server DELETE parity", () => {
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toEqual({ error: "Failed to delete goal target" });
   });
+
+  const buildProgressionDb = (rpcError: { code?: string; message: string } | null = null) => ({
+    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "bcba-1" } }, error: null })) },
+    rpc: vi.fn(async (name: string, args?: unknown) => {
+      if (name === "current_user_organization_id") return { data: ORG_ID, error: null };
+      if (name === "current_user_can_manage_programs_goals") return { data: true, error: null };
+      if (name === "override_goal_target_progression") {
+        return { data: rpcError ? null : [{ outcome: "manual_override", target_id: TARGET_ID }], error: rpcError };
+      }
+      throw new Error(`Unexpected RPC: ${name} ${JSON.stringify(args)}`);
+    }),
+    from: vi.fn(),
+  });
+
+  it("exposes the same manual override success envelope as the server adapter", async () => {
+    const db = buildProgressionDb();
+    createRequestClientMock.mockReturnValue(db);
+    const module = await loadGoalTargetsModule();
+    const response = await module.handleGoalTargets(new Request("https://edge.example.com/functions/v1/goal-targets", {
+      method: "POST", headers: { Authorization: "Bearer token" }, body: JSON.stringify({
+        action: "override_progression", target_id: TARGET_ID, target_phase: "teaching",
+        current_target_id: null, reason: "Clinical review", expected_version: 2,
+      }),
+    }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ outcome: "manual_override", target_id: TARGET_ID });
+    expect(db.rpc).toHaveBeenCalledWith("override_goal_target_progression", {
+      target_goal_target_id: TARGET_ID, target_phase: "teaching", target_current_goal_target_id: null,
+      reason: "Clinical review", expected_version: 2,
+    });
+  });
+
+  it("maps stale manual override versions to the shared 409 envelope", async () => {
+    createRequestClientMock.mockReturnValue(buildProgressionDb({ code: "40001", message: "stale progression version" }));
+    const module = await loadGoalTargetsModule();
+    const response = await module.handleGoalTargets(new Request("https://edge.example.com/functions/v1/goal-targets", {
+      method: "POST", headers: { Authorization: "Bearer token" }, body: JSON.stringify({
+        action: "override_progression", target_id: TARGET_ID, target_phase: "teaching",
+        current_target_id: null, reason: "Clinical review", expected_version: 2,
+      }),
+    }));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "Progression version conflict" });
+  });
+
+  it("rejects empty override reasons before the RPC", async () => {
+    const db = buildProgressionDb(); createRequestClientMock.mockReturnValue(db);
+    const module = await loadGoalTargetsModule();
+    const response = await module.handleGoalTargets(new Request("https://edge.example.com/functions/v1/goal-targets", {
+      method: "POST", headers: { Authorization: "Bearer token" }, body: JSON.stringify({
+        action: "override_progression", target_id: TARGET_ID, target_phase: "teaching",
+        current_target_id: null, reason: " ", expected_version: 2,
+      }),
+    }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Invalid request body" });
+    expect(db.rpc).not.toHaveBeenCalledWith("override_goal_target_progression", expect.anything());
+  });
 });

@@ -28,7 +28,30 @@ const createGoalTargetSchema = z.object({
 const updateGoalTargetSchema = createGoalTargetSchema
   .omit({ goal_id: true })
   .partial()
+  .strict()
   .refine((value) => Object.keys(value).length > 0, "At least one field is required");
+const phaseSchema = z.enum(["baseline", "teaching", "generalization", "mastery"]);
+const criteriaSchema = z.object({ action: z.literal("set_criteria"), target_id: z.string().uuid(), phase: phaseSchema,
+  metric: z.enum(["percent_correct", "percent_independent", "total_value", "average_value"]).nullable(),
+  comparator: z.enum(["gte", "lte"]).nullable(), threshold: z.number().finite().min(0).nullable(),
+  min_observations: z.number().int().positive().nullable(), consecutive_sessions: z.number().int().positive().nullable(),
+  clinical_note: z.string().nullable().optional(), expected_version: z.number().int().nonnegative(),
+}).refine((v) => [v.metric, v.comparator, v.threshold, v.min_observations, v.consecutive_sessions].every((x) => x === null)
+  || [v.metric, v.comparator, v.threshold, v.min_observations, v.consecutive_sessions].every((x) => x !== null));
+const reorderSchema = z.object({ action: z.literal("reorder"), goal_id: z.string().uuid(), targets: z.array(z.object({
+  target_id: z.string().uuid(), expected_version: z.number().int().nonnegative(),
+})).min(1) }).refine((v) => new Set(v.targets.map((target) => target.target_id)).size === v.targets.length);
+const overrideSchema = z.object({ action: z.literal("override_progression"), target_id: z.string().uuid(),
+  target_phase: phaseSchema, current_target_id: z.string().uuid().nullable(), reason: z.string().trim().min(1),
+  expected_version: z.number().int().nonnegative() });
+const progressionActionSchema = z.union([criteriaSchema, reorderSchema, overrideSchema]);
+const progressionOwnedFields = new Set(["current_phase", "is_current", "progression_version", "evaluation_window_started_at"]);
+const mapDatabaseError = (error: { code?: string } | null, fallback: string) => {
+  if (error?.code === "40001") return { error: "Progression version conflict", status: 409 };
+  if (error?.code === "42501") return { error: "Forbidden", status: 403 };
+  if (error?.code === "22023" || error?.code === "23514") return { error: "Invalid request body", status: 400 };
+  return { error: fallback, status: 502 };
+};
 
 const json = (req: Request, body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -110,11 +133,26 @@ export const handleGoalTargets = async (req: Request) => {
 
   if (req.method === "GET") {
     const url = new URL(req.url);
+    const action = url.searchParams.get("action");
     const goalId = url.searchParams.get("goal_id");
     const targetId = url.searchParams.get("target_id");
     if (!goalId && !targetId) return json(req, { error: "goal_id or target_id is required" }, 400);
     if (goalId && !isUuid(goalId)) return json(req, { error: "goal_id must be a valid UUID" }, 400);
     if (targetId && !isUuid(targetId)) return json(req, { error: "target_id must be a valid UUID" }, 400);
+
+    if (action === "criteria") {
+      if (!targetId) return json(req, { error: "target_id is required" }, 400);
+      const { data, error } = await db.from("goal_target_phase_criteria").select("*")
+        .eq("organization_id", orgId).eq("target_id", targetId).order("phase", { ascending: true });
+      return error ? json(req, { error: "Failed to load progression criteria" }, 502) : json(req, data ?? []);
+    }
+    if (action === "transition_history") {
+      if (!targetId && !goalId) return json(req, { error: "goal_id or target_id is required" }, 400);
+      let history = db.from("goal_target_transitions").select("*").eq("organization_id", orgId);
+      history = targetId ? history.eq("target_id", targetId) : history.eq("goal_id", goalId!);
+      const { data, error } = await history.order("transitioned_at", { ascending: false }).order("id", { ascending: false });
+      return error ? json(req, { error: "Failed to load progression history" }, 502) : json(req, data ?? []);
+    }
 
     let query = db
       .from("goal_targets")
@@ -181,6 +219,31 @@ export const handleGoalTargets = async (req: Request) => {
     } catch {
       return json(req, { error: "Invalid JSON body" }, 400);
     }
+    if (payload && typeof payload === "object" && "action" in payload) {
+      const action = progressionActionSchema.safeParse(payload);
+      if (!action.success) return json(req, { error: "Invalid request body" }, 400);
+      let rpc: string; let args: Record<string, unknown>;
+      if (action.data.action === "override_progression") {
+        rpc = "override_goal_target_progression";
+        args = { target_goal_target_id: action.data.target_id, target_phase: action.data.target_phase,
+          target_current_goal_target_id: action.data.current_target_id, reason: action.data.reason,
+          expected_version: action.data.expected_version };
+      } else if (action.data.action === "set_criteria") {
+        rpc = "set_goal_target_phase_criterion";
+        args = { target_goal_target_id: action.data.target_id, target_phase: action.data.phase,
+          target_metric: action.data.metric, target_comparator: action.data.comparator,
+          target_threshold: action.data.threshold, target_min_observations: action.data.min_observations,
+          target_consecutive_sessions: action.data.consecutive_sessions,
+          target_clinical_note: action.data.clinical_note ?? null, expected_version: action.data.expected_version };
+      } else {
+        rpc = "reorder_goal_targets";
+        args = { target_goal_id: action.data.goal_id, ordered_target_ids: action.data.targets.map((t) => t.target_id),
+          expected_versions: action.data.targets.map((t) => t.expected_version) };
+      }
+      const { data, error } = await db.rpc(rpc, args);
+      if (error) { const mapped = mapDatabaseError(error, "Failed to update target progression"); return json(req, { error: mapped.error }, mapped.status); }
+      return json(req, Array.isArray(data) && rpc !== "reorder_goal_targets" ? data[0] : data);
+    }
     const parsed = createGoalTargetSchema.safeParse(payload);
     if (!parsed.success) return json(req, { error: "Invalid request body" }, 400);
 
@@ -217,6 +280,12 @@ export const handleGoalTargets = async (req: Request) => {
       payload = await req.json();
     } catch {
       return json(req, { error: "Invalid JSON body" }, 400);
+    }
+    if (payload && typeof payload === "object") {
+      const record = payload as Record<string, unknown>;
+      if (Object.keys(record).some((field) => progressionOwnedFields.has(field)) || record.status === "mastered") {
+        return json(req, { error: "Progression state must be changed through a progression action" }, 400);
+      }
     }
     const parsed = updateGoalTargetSchema.safeParse(payload);
     if (!parsed.success) return json(req, { error: "Invalid request body" }, 400);

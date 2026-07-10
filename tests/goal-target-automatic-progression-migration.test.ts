@@ -117,6 +117,19 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/revoke execute on function app\.evaluate_goal_target_progression\(uuid, uuid\)[^;]+from public, anon, authenticated/is);
   });
 
+  it("exposes hardened criteria and deterministic reorder writers", () => {
+    expect(sql).toMatch(/create or replace function public\.set_goal_target_phase_criterion\(/i);
+    expect(sql).toMatch(/set_goal_target_phase_criterion[\s\S]*security definer\s+set search_path = ''/i);
+    expect(sql).toMatch(/set_goal_target_phase_criterion[\s\S]*evaluation_window_started_at = v_now[\s\S]*progression_version = progression_version \+ 1/i);
+    expect(sql).toMatch(/create or replace function public\.reorder_goal_targets\(/i);
+    expect(sql).toMatch(/reorder_goal_targets[\s\S]*pg_advisory_xact_lock[\s\S]*cardinality\(ordered_target_ids\)/i);
+    expect(sql).toMatch(/reorder_goal_targets[\s\S]*count\(distinct target_id\)[\s\S]*stale or mixed target set/i);
+    expect(sql).toMatch(/revoke execute on function public\.set_goal_target_phase_criterion[^;]+from public, anon/i);
+    expect(sql).toMatch(/grant execute on function public\.set_goal_target_phase_criterion[^;]+to authenticated/i);
+    expect(sql).toMatch(/revoke execute on function public\.reorder_goal_targets[^;]+from public, anon/i);
+    expect(sql).toMatch(/grant execute on function public\.reorder_goal_targets[^;]+to authenticated/i);
+  });
+
   it("serializes note finalization by session and reuses a canonical note when note id is omitted", () => {
     expect(sql).toMatch(/select s\.\* into v_session[\s\S]*where s\.id = target_session_id[\s\S]*for update/is);
     expect(sql).toMatch(/if target_note_id is not null[\s\S]*else[\s\S]*from public\.client_session_notes csn[\s\S]*csn\.session_id = v_session\.id[\s\S]*order by csn\.is_locked desc, csn\.signed_at desc nulls last, csn\.created_at desc, csn\.id desc[\s\S]*for update/is);

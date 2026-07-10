@@ -1025,6 +1025,129 @@ revoke execute on function public.finalize_session_note_with_progression(uuid, u
 grant execute on function public.finalize_session_note_with_progression(uuid, uuid, jsonb, jsonb)
   to authenticated, service_role;
 
+create or replace function public.set_goal_target_phase_criterion(
+  target_goal_target_id uuid,
+  target_phase public.goal_target_phase,
+  target_metric text,
+  target_comparator text,
+  target_threshold numeric,
+  target_min_observations integer,
+  target_consecutive_sessions integer,
+  target_clinical_note text,
+  expected_version bigint
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_target public.goal_targets;
+  v_criterion public.goal_target_phase_criteria;
+  v_actor uuid := auth.uid();
+  v_now timestamptz := timezone('utc', now());
+begin
+  if v_actor is null then
+    raise exception using errcode = '42501', message = 'goal target is not in scope';
+  end if;
+
+  select gt.* into v_target from public.goal_targets gt
+  where gt.id = target_goal_target_id;
+  if not found then
+    raise exception using errcode = '42501', message = 'goal target is not in scope';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(v_target.goal_id::text, 0));
+  select gt.* into v_target from public.goal_targets gt where gt.id = target_goal_target_id for update;
+
+  if not (public.current_user_is_super_admin() or
+    (v_target.organization_id = app.current_user_organization_id() and
+     app.current_user_has_exact_role_for_org(v_target.organization_id, array['bcba', 'midtier']::text[]))) then
+    raise exception using errcode = '42501', message = 'goal target is not in scope';
+  end if;
+  if v_target.progression_version <> expected_version then
+    raise exception using errcode = '40001', message = 'stale progression version';
+  end if;
+
+  insert into public.goal_target_phase_criteria (
+    target_id, phase, metric, comparator, threshold, min_observations,
+    consecutive_sessions, clinical_note, created_by, updated_by
+  ) values (
+    v_target.id, target_phase, target_metric, target_comparator, target_threshold,
+    target_min_observations, target_consecutive_sessions, nullif(btrim(target_clinical_note), ''), v_actor, v_actor
+  ) on conflict (target_id, phase) do update set
+    metric = excluded.metric, comparator = excluded.comparator, threshold = excluded.threshold,
+    min_observations = excluded.min_observations, consecutive_sessions = excluded.consecutive_sessions,
+    clinical_note = excluded.clinical_note, updated_by = v_actor, updated_at = v_now
+  returning * into v_criterion;
+
+  if v_target.is_current and v_target.current_phase = target_phase then
+    update public.goal_targets
+    set evaluation_window_started_at = v_now, progression_version = progression_version + 1,
+        updated_by = v_actor, updated_at = v_now
+    where id = v_target.id;
+  end if;
+
+  return to_jsonb(v_criterion) || jsonb_build_object(
+    'progression_version', case when v_target.is_current and v_target.current_phase = target_phase
+      then expected_version + 1 else expected_version end
+  );
+end;
+$$;
+
+revoke execute on function public.set_goal_target_phase_criterion(uuid, public.goal_target_phase, text, text, numeric, integer, integer, text, bigint) from public, anon;
+grant execute on function public.set_goal_target_phase_criterion(uuid, public.goal_target_phase, text, text, numeric, integer, integer, text, bigint) to authenticated;
+
+create or replace function public.reorder_goal_targets(
+  target_goal_id uuid,
+  ordered_target_ids uuid[],
+  expected_versions bigint[]
+)
+returns setof public.goal_targets
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_goal public.goals;
+  v_actor uuid := auth.uid();
+begin
+  if v_actor is null or cardinality(ordered_target_ids) = 0
+    or cardinality(ordered_target_ids) <> cardinality(expected_versions) then
+    raise exception using errcode = '22023', message = 'invalid reorder request';
+  end if;
+  select g.* into v_goal from public.goals g where g.id = target_goal_id;
+  if not found then raise exception using errcode = '42501', message = 'goal target is not in scope'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(v_goal.id::text, 0));
+  if not (public.current_user_is_super_admin() or
+    (v_goal.organization_id = app.current_user_organization_id() and
+     app.current_user_has_exact_role_for_org(v_goal.organization_id, array['bcba', 'midtier']::text[]))) then
+    raise exception using errcode = '42501', message = 'goal target is not in scope';
+  end if;
+
+  if (select count(distinct target_id) from unnest(ordered_target_ids) u(target_id)) <> cardinality(ordered_target_ids)
+     or (select count(*) from public.goal_targets gt where gt.goal_id = v_goal.id) <> cardinality(ordered_target_ids)
+     or exists (
+       select 1 from unnest(ordered_target_ids, expected_versions) u(target_id, expected_version)
+       left join public.goal_targets gt on gt.id = u.target_id
+       where gt.id is null or gt.goal_id <> v_goal.id or gt.organization_id <> v_goal.organization_id
+         or gt.client_id <> v_goal.client_id or gt.progression_version <> u.expected_version
+     ) then
+    raise exception using errcode = '40001', message = 'stale or mixed target set';
+  end if;
+
+  perform 1 from public.goal_targets gt where gt.goal_id = v_goal.id for update;
+  update public.goal_targets gt
+  set sort_order = ordered.ordinality - 1, updated_by = v_actor, updated_at = timezone('utc', now())
+  from unnest(ordered_target_ids) with ordinality ordered(target_id, ordinality)
+  where gt.id = ordered.target_id;
+  return query select gt.* from public.goal_targets gt where gt.goal_id = v_goal.id
+    order by gt.sort_order, gt.created_at, gt.id;
+end;
+$$;
+
+revoke execute on function public.reorder_goal_targets(uuid, uuid[], bigint[]) from public, anon;
+grant execute on function public.reorder_goal_targets(uuid, uuid[], bigint[]) to authenticated;
+
 create or replace function public.override_goal_target_progression(
   target_goal_target_id uuid,
   target_phase public.goal_target_phase,

@@ -105,6 +105,12 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/current_user_has_exact_role_for_org\([\s\S]*array\['bcba', 'midtier'\]::text\[\]/is);
   });
 
+  it("keeps the automatic evaluator internal and exposes structured results", () => {
+    expect(sql).toMatch(/create or replace function app\.evaluate_goal_target_progression\(\s*target_session_id uuid,\s*target_note_id uuid\s*\)/is);
+    expect(sql).toMatch(/returns table\s*\([\s\S]*outcome text[\s\S]*goal_id uuid[\s\S]*target_id uuid[\s\S]*previous_phase public\.goal_target_phase[\s\S]*current_phase public\.goal_target_phase[\s\S]*next_target_id uuid[\s\S]*goal_status text[\s\S]*warning text/is);
+    expect(sql).toMatch(/revoke execute on function app\.evaluate_goal_target_progression\(uuid, uuid\)[^;]+from public, anon, authenticated/is);
+  });
+
   it("preserves metadata and documents an additive truthful rollback", () => {
     expect(sql).toMatch(/^-- @migration-intent:/);
     expect(sql).toMatch(/^-- @migration-dependencies:/m);

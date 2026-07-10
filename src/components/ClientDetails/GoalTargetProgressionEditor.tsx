@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type {
   GoalTarget,
+  GoalTargetCompleteMasteryInput,
   GoalTargetCriterionMetric,
   GoalTargetPhase,
   GoalTargetPhaseCriterion,
@@ -136,44 +137,62 @@ function PhaseEditor({ target, phase, criterion, canManage, busy, onSave }: {
   );
 }
 
-export function GoalTargetProgressionEditor({ target, criteria, sequencePosition, sequenceCount, canManage, busy, error, onSaveCriterion, onManualOverride }: {
-  target: GoalTarget; criteria: GoalTargetPhaseCriterion[]; sequencePosition: number; sequenceCount: number;
+export function GoalTargetProgressionEditor({ target, criteria, sequencePosition, sequenceCount, canManage, busy, error, onSaveCriterion, onManualOverride, onCompleteMastery }: {
+  target: GoalTarget; criteria: GoalTargetPhaseCriterion[]; sequencePosition: number | null; sequenceCount: number;
   canManage: boolean; busy: boolean; error?: string | null;
   onSaveCriterion: (input: SaveCriterionInput) => void; onManualOverride: (input: ManualOverrideInput) => void;
+  onCompleteMastery?: (input: GoalTargetCompleteMasteryInput) => void;
 }) {
   const byPhase = useMemo(() => new Map(criteria.map((item) => [item.phase, item])), [criteria]);
   const incomplete = PHASES.some((phase) => !isCriterionComplete(byPhase.get(phase)));
-  const [manualAction, setManualAction] = useState<"advance" | "back" | "select" | "reopen" | null>(null);
+  const [manualAction, setManualAction] = useState<"advance" | "back" | "select" | "reopen" | "complete" | null>(null);
   const [reason, setReason] = useState("");
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const canMutate = canManage && target.status !== "archived";
   const phaseIndex = Math.max(0, PHASES.indexOf(target.current_phase ?? "baseline"));
   const targetPhase = manualAction === "advance" ? PHASES[Math.min(PHASES.length - 1, phaseIndex + 1)]
     : manualAction === "back" ? PHASES[Math.max(0, phaseIndex - 1)] : "baseline";
-  const actionLabel = manualAction === "select" ? "Select as current" : manualAction === "reopen" ? "Reopen target" : manualAction === "back" ? "Move back" : "Manual advance";
+  const actionLabel = manualAction === "select" ? "Select as current" : manualAction === "reopen" ? "Reopen target" : manualAction === "back" ? "Move back" : manualAction === "complete" ? "Complete mastery" : "Manual advance";
+  const closeDialog = () => {
+    setManualAction(null); setReason("");
+    window.setTimeout(() => triggerRef.current?.focus(), 0);
+  };
+  const openDialog = (action: NonNullable<typeof manualAction>, trigger: HTMLElement) => {
+    triggerRef.current = trigger; setManualAction(action);
+  };
+  useEffect(() => {
+    if (!manualAction) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); closeDialog(); } };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [manualAction]);
   return (
     <section aria-label={`Progression for ${target.name}`} className="mt-3 space-y-3 rounded-md border border-indigo-100 bg-indigo-50/40 p-3 dark:border-indigo-900/60 dark:bg-indigo-950/20">
       <div className="flex flex-wrap items-center gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:text-indigo-200">Progression</h4>
-        <span className="rounded-full bg-white px-2 py-0.5 text-xs dark:bg-dark">Sequence {sequencePosition} of {sequenceCount}</span>
+        <span className="rounded-full bg-white px-2 py-0.5 text-xs dark:bg-dark">{target.status === "archived" ? "Archived · outside active sequence" : `Sequence ${sequencePosition} of ${sequenceCount}`}</span>
         {target.is_current && <span className="rounded-full bg-indigo-700 px-2 py-0.5 text-xs text-white">Current · {LABELS[target.current_phase ?? "baseline"]}</span>}
+        {!target.is_current && target.current_phase && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-800">Phase · {LABELS[target.current_phase]}</span>}
         {incomplete && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Criteria incomplete</span>}
       </div>
       {error && <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:bg-rose-900/30 dark:text-rose-200">{error}</p>}
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">{PHASES.map((phase) => <PhaseEditor key={phase} target={target} phase={phase} criterion={byPhase.get(phase)} canManage={canManage} busy={busy} onSave={onSaveCriterion} />)}</div>
-      {canManage && (
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">{PHASES.map((phase) => <PhaseEditor key={phase} target={target} phase={phase} criterion={byPhase.get(phase)} canManage={canMutate} busy={busy} onSave={onSaveCriterion} />)}</div>
+      {canMutate && (
         <div className="flex flex-wrap gap-2 border-t border-indigo-100 pt-3 dark:border-indigo-900/60">
-          {target.is_current && target.status !== "mastered" && phaseIndex > 0 && <button type="button" onClick={() => setManualAction("back")} className="rounded-md border border-slate-300 px-2 py-1 text-xs">Move back</button>}
-          {target.is_current && target.status !== "mastered" && phaseIndex < PHASES.length - 1 && <button type="button" aria-label="Manual advance" onClick={() => setManualAction("advance")} className="rounded-md border border-slate-300 px-2 py-1 text-xs">Manual advance</button>}
-          {!target.is_current && target.status !== "mastered" && <button type="button" onClick={() => setManualAction("select")} className="rounded-md border border-slate-300 px-2 py-1 text-xs">Select as current</button>}
-          {target.status === "mastered" && <button type="button" onClick={() => setManualAction("reopen")} className="rounded-md border border-slate-300 px-2 py-1 text-xs">Reopen target</button>}
+          {target.is_current && target.status !== "mastered" && phaseIndex > 0 && <button type="button" onClick={(e) => openDialog("back", e.currentTarget)} className="rounded-md border border-slate-300 px-2 py-1 text-xs">Move back</button>}
+          {target.is_current && target.status !== "mastered" && phaseIndex < PHASES.length - 1 && <button type="button" aria-label="Manual advance" onClick={(e) => openDialog("advance", e.currentTarget)} className="rounded-md border border-slate-300 px-2 py-1 text-xs">Manual advance</button>}
+          {target.is_current && target.status === "active" && target.current_phase === "mastery" && <button type="button" aria-label="Complete mastery" onClick={(e) => openDialog("complete", e.currentTarget)} className="rounded-md border border-emerald-500 px-2 py-1 text-xs text-emerald-800 dark:text-emerald-200">Complete mastery</button>}
+          {!target.is_current && target.status !== "mastered" && <button type="button" onClick={(e) => openDialog("select", e.currentTarget)} className="rounded-md border border-slate-300 px-2 py-1 text-xs">Select as current</button>}
+          {target.status === "mastered" && <button type="button" onClick={(e) => openDialog("reopen", e.currentTarget)} className="rounded-md border border-slate-300 px-2 py-1 text-xs">Reopen target</button>}
         </div>
       )}
       {manualAction && (
-        <div role="dialog" aria-label={actionLabel} className="rounded-md border border-indigo-200 bg-white p-3 dark:border-indigo-800 dark:bg-dark">
+        <div role="dialog" aria-modal="true" aria-label={actionLabel} className="rounded-md border border-indigo-200 bg-white p-3 dark:border-indigo-800 dark:bg-dark">
           <p className="text-sm font-semibold">{actionLabel}</p>
           <label className="mt-2 block text-xs">Reason for manual change
             <textarea aria-label="Reason for manual change" autoFocus value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-dark" />
           </label>
-          <div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => { setManualAction(null); setReason(""); }} className="rounded-md border px-3 py-1.5 text-xs">Cancel</button><button type="button" aria-label="Confirm manual change" disabled={!reason.trim() || busy} onClick={() => { onManualOverride({ action: "override_progression", target_id: target.id, target_phase: targetPhase, current_target_id: manualAction === "select" || manualAction === "reopen" ? target.id : target.id, reason: reason.trim(), expected_version: target.progression_version }); setManualAction(null); setReason(""); }} className="rounded-md bg-indigo-700 px-3 py-1.5 text-xs text-white disabled:opacity-50">Confirm manual change</button></div>
+          <div className="mt-2 flex justify-end gap-2"><button type="button" onClick={closeDialog} className="rounded-md border px-3 py-1.5 text-xs">Cancel</button><button type="button" aria-label="Confirm manual change" disabled={!reason.trim() || busy} onClick={() => { if (manualAction === "complete") onCompleteMastery?.({ action: "complete_mastery", target_id: target.id, reason: reason.trim(), expected_version: target.progression_version }); else onManualOverride({ action: "override_progression", target_id: target.id, target_phase: targetPhase, current_target_id: target.id, reason: reason.trim(), expected_version: target.progression_version }); closeDialog(); }} className="rounded-md bg-indigo-700 px-3 py-1.5 text-xs text-white disabled:opacity-50">Confirm manual change</button></div>
         </div>
       )}
     </section>

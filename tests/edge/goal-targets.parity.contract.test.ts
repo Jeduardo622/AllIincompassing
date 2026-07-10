@@ -247,6 +247,9 @@ describe("goal-targets Edge/server DELETE parity", () => {
       if (name === "override_goal_target_progression") {
         return { data: rpcError ? null : [{ outcome: "manual_override", target_id: TARGET_ID }], error: rpcError };
       }
+      if (name === "complete_goal_target_mastery") {
+        return { data: rpcError ? null : [{ outcome: "target_mastered", target_id: TARGET_ID }], error: rpcError };
+      }
       if (name === "set_goal_target_phase_criterion") {
         return { data: rpcError ? null : { phase: "baseline" }, error: rpcError };
       }
@@ -287,6 +290,20 @@ describe("goal-targets Edge/server DELETE parity", () => {
     }));
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({ error: "Progression version conflict" });
+  });
+
+  it("exposes explicit manual mastery completion parity", async () => {
+    const db = buildProgressionDb(); createRequestClientMock.mockReturnValue(db);
+    const module = await loadGoalTargetsModule();
+    const response = await module.handleGoalTargets(new Request("https://edge.example.com/functions/v1/goal-targets", {
+      method: "POST", headers: { Authorization: "Bearer token" }, body: JSON.stringify({
+        action: "complete_mastery", target_id: TARGET_ID, reason: "Clinical review", expected_version: 2,
+      }),
+    }));
+    expect(response.status).toBe(200);
+    expect(db.rpc).toHaveBeenCalledWith("complete_goal_target_mastery", {
+      target_goal_target_id: TARGET_ID, reason: "Clinical review", expected_version: 2,
+    });
   });
 
   it("maps database out-of-scope progression rejection to 403", async () => {

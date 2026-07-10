@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from "lucide-react";
-import type { Client, Goal, GoalDomain, GoalTarget, GoalTargetPhaseCriterion, GoalTargetTransition, Program, ProgramNote, TargetMeasurementType, TrialEvent } from "../../types";
+import type { Client, Goal, GoalDomain, GoalTarget, GoalTargetCompleteMasteryInput, GoalTargetPhaseCriterion, GoalTargetTransition, Program, ProgramNote, TargetMeasurementType, TrialEvent } from "../../types";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { useActiveOrganizationId } from "../../lib/organization";
@@ -777,7 +777,7 @@ function GoalFieldList({
 }
 
 export function GoalTargetProgressionPanel({ target, sequencePosition, sequenceCount, canManage }: {
-  target: GoalTarget; sequencePosition: number; sequenceCount: number; canManage: boolean;
+  target: GoalTarget; sequencePosition: number | null; sequenceCount: number; canManage: boolean;
 }) {
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<string | null>(null);
@@ -809,7 +809,7 @@ export function GoalTargetProgressionPanel({ target, sequencePosition, sequenceC
     ]);
   };
   const progressionMutation = useMutation({
-    mutationFn: async (input: SaveCriterionInput | ManualOverrideInput) => {
+    mutationFn: async (input: SaveCriterionInput | ManualOverrideInput | GoalTargetCompleteMasteryInput) => {
       const response = await callEdgeFunctionHttp(GOAL_TARGETS_EDGE_PATH, { method: "PUT", body: JSON.stringify(input) });
       if (!response.ok) {
         const message = await parseApiErrorMessage(response, "Failed to update target progression.");
@@ -834,7 +834,7 @@ export function GoalTargetProgressionPanel({ target, sequencePosition, sequenceC
   const loadError = criteriaQuery.error instanceof Error ? criteriaQuery.error.message : null;
   return <>
     {loading ? <p className="mt-3 text-xs text-slate-500">Loading progression criteria...</p> :
-      <GoalTargetProgressionEditor target={target} criteria={criteriaQuery.data ?? []} sequencePosition={sequencePosition} sequenceCount={sequenceCount} canManage={canManage} busy={progressionMutation.isLoading} error={mutationError ?? loadError} onSaveCriterion={(input) => progressionMutation.mutate(input)} onManualOverride={(input) => progressionMutation.mutate(input)} />}
+      <GoalTargetProgressionEditor target={target} criteria={criteriaQuery.data ?? []} sequencePosition={sequencePosition} sequenceCount={sequenceCount} canManage={canManage} busy={progressionMutation.isLoading} error={mutationError ?? loadError} onSaveCriterion={(input) => progressionMutation.mutate(input)} onManualOverride={(input) => progressionMutation.mutate(input)} onCompleteMastery={(input) => progressionMutation.mutate(input)} />}
     <GoalTargetProgressionHistory transitions={historyQuery.data ?? []} loading={historyQuery.isLoading} error={historyQuery.error instanceof Error ? historyQuery.error.message : null} />
   </>;
 }
@@ -867,7 +867,7 @@ function GoalTargetCard({
   organizationId: string | null;
   progressionCanManage: boolean;
   sequenceCount: number;
-  sequencePosition: number;
+  sequencePosition: number | null;
   setGoalTargetArchiveState: {
     isLoading: boolean;
     mutate: (input: { target: GoalTarget; status: "active" | "archived" }) => void;
@@ -1132,7 +1132,7 @@ function GoalTargetCard({
           {target.graph_config?.aggregation ? ` (${String(target.graph_config.aggregation)})` : ""}
         </span>
       </div>
-      {target.status !== "archived" && <GoalTargetProgressionPanel target={target} sequencePosition={sequencePosition} sequenceCount={sequenceCount} canManage={progressionCanManage} />}
+      <GoalTargetProgressionPanel target={target} sequencePosition={sequencePosition} sequenceCount={sequenceCount} canManage={progressionCanManage && target.status !== "archived"} />
       {goalTargetsLoading ? (
         <p className="mt-3 text-slate-500">Loading target progress...</p>
       ) : (
@@ -1217,7 +1217,7 @@ function GoalCard({
     [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
     reorderTargets.mutate(ordered);
   };
-  const renderTargetCard = (target: GoalTarget, index: number) => (
+  const renderTargetCard = (target: GoalTarget, index: number | null) => (
     <GoalTargetCard
       key={target.id}
       canDelete={canDeleteGoalTargets}
@@ -1229,7 +1229,7 @@ function GoalCard({
       organizationId={organizationId}
       progressionCanManage={progressionCanManage}
       sequenceCount={activeTargets.length}
-      sequencePosition={index + 1}
+      sequencePosition={index === null ? null : index + 1}
       setGoalTargetArchiveState={setGoalTargetArchiveState}
       target={target}
       updateGoalTarget={updateGoalTarget}
@@ -1309,7 +1309,7 @@ function GoalCard({
             {showArchivedTargets && archivedTargets.length > 0 && (
               <section aria-label="Archived targets" className="space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Archived targets</p>
-                {archivedTargets.map((target, index) => renderTargetCard(target, activeTargets.length + index))}
+                {archivedTargets.map((target) => renderTargetCard(target, null))}
               </section>
             )}
           </div>

@@ -329,6 +329,13 @@ export interface GoalTargetProgressionResult {
   warning: string | null;
 }
 
+export interface GoalTargetCompleteMasteryInput {
+  action: 'complete_mastery';
+  target_id: string;
+  reason: string;
+  expected_version: number;
+}
+
 export interface TrialEvent {
   id: string;
   organization_id: string;

@@ -1,6 +1,6 @@
 -- @migration-intent: Add tenant-scoped structured criteria, state, evaluation, audit, and atomic RPC support for automatic goal-target progression.
 -- @migration-dependencies: 20260710161038_goal_target_delete_capability_invoker.sql,20260710153231_goal_target_lifecycle_authz.sql,20260703173000_goal_targets_trial_events.sql
--- @migration-rollback: Drop public.get_session_capture_strict_billing_gate, app.session_capture_strict_billing_gate, public.override_goal_target_progression, app.evaluate_goal_target_progression, app.validate_goal_target_phase_criterion, public.goal_target_transitions, public.goal_target_phase_evaluations, public.goal_target_phase_criteria, app.set_goal_target_progression_scope, app.guard_goal_target_progression_state, and app.initialize_goal_target_progression_state; remove the seeded session_capture_strict_billing_gate only when no organization overrides depend on it; then remove progression triggers, columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
+-- @migration-rollback: Drop public.get_session_capture_strict_billing_gate, app.session_capture_strict_billing_gate, public.complete_goal_target_mastery, public.override_goal_target_progression, app.evaluate_goal_target_progression, app.validate_goal_target_phase_criterion, public.goal_target_transitions, public.goal_target_phase_evaluations, public.goal_target_phase_criteria, app.set_goal_target_progression_scope, app.guard_goal_target_progression_state, and app.initialize_goal_target_progression_state; remove the seeded session_capture_strict_billing_gate only when no organization overrides depend on it; then remove progression triggers, columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
 
 begin;
 
@@ -1133,6 +1133,121 @@ $$;
 
 revoke execute on function public.reorder_goal_targets(uuid, uuid[], bigint[]) from public, anon;
 grant execute on function public.reorder_goal_targets(uuid, uuid[], bigint[]) to authenticated;
+
+create or replace function public.complete_goal_target_mastery(
+  target_goal_target_id uuid,
+  reason text,
+  expected_version bigint
+)
+returns table (
+  outcome text,
+  goal_id uuid,
+  target_id uuid,
+  previous_phase public.goal_target_phase,
+  current_phase public.goal_target_phase,
+  next_target_id uuid,
+  goal_status text,
+  warning text
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_target public.goal_targets;
+  v_next public.goal_targets;
+  v_actor uuid := auth.uid();
+  v_now timestamptz := timezone('utc', now());
+  v_goal_status text;
+begin
+  if v_actor is null or reason is null or char_length(btrim(reason)) = 0 then
+    raise exception using errcode = '22023', message = 'manual mastery completion requires an actor and reason';
+  end if;
+
+  select gt.* into v_target from public.goal_targets gt where gt.id = target_goal_target_id;
+  if not found then
+    raise exception using errcode = '42501', message = 'goal target is not in scope';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(v_target.goal_id::text, 0));
+  select gt.* into v_target from public.goal_targets gt
+  where gt.id = target_goal_target_id for update;
+
+  if not (
+    public.current_user_is_super_admin()
+    or (
+      v_target.organization_id = app.current_user_organization_id()
+      and app.current_user_has_exact_role_for_org(v_target.organization_id, array['bcba', 'midtier']::text[])
+    )
+  ) then
+    raise exception using errcode = '42501', message = 'goal target is not in scope';
+  end if;
+  if v_target.progression_version <> expected_version then
+    raise exception using errcode = '40001', message = 'stale progression version';
+  end if;
+  if v_target.status <> 'active' or not v_target.is_current
+     or v_target.current_phase <> 'mastery' then
+    raise exception using errcode = '22023', message = 'only the active current mastery-phase target can be completed';
+  end if;
+
+  select gt.* into v_next
+  from public.goal_targets gt
+  where gt.goal_id = v_target.goal_id
+    and gt.organization_id = v_target.organization_id
+    and gt.client_id = v_target.client_id
+    and gt.status <> 'archived'
+    and gt.status <> 'mastered'
+    and gt.id <> v_target.id
+    and (gt.sort_order, gt.created_at, gt.id) > (v_target.sort_order, v_target.created_at, v_target.id)
+  order by gt.sort_order, gt.created_at, gt.id
+  limit 1
+  for update;
+
+  insert into public.goal_target_transitions (
+    organization_id, client_id, goal_id, target_id, previous_target_id,
+    resulting_target_id, previous_phase, resulting_phase, previous_status,
+    resulting_status, previous_progression_version, resulting_progression_version,
+    source, actor_id, reason, previous_evaluation_window_started_at,
+    resulting_evaluation_window_started_at, metadata
+  ) values (
+    v_target.organization_id, v_target.client_id, v_target.goal_id, v_target.id,
+    v_target.id, coalesce(v_next.id, v_target.id), v_target.current_phase,
+    case when v_next.id is null then 'mastery'::public.goal_target_phase else 'baseline'::public.goal_target_phase end,
+    v_target.status, 'mastered', v_target.progression_version,
+    v_target.progression_version + 1, 'manual', v_actor, btrim(reason),
+    v_target.evaluation_window_started_at, v_now,
+    jsonb_build_object('action', 'complete_mastery')
+  );
+
+  update public.goal_targets
+  set status = 'mastered', is_current = false,
+      progression_version = progression_version + 1,
+      updated_by = v_actor, updated_at = v_now
+  where id = v_target.id;
+
+  if v_next.id is null then
+    update public.goals set status = 'mastered', updated_at = v_now where id = v_target.goal_id;
+    v_goal_status := 'mastered';
+  else
+    update public.goal_targets
+    set status = 'active', is_current = true,
+        current_phase = 'baseline'::public.goal_target_phase,
+        evaluation_window_started_at = v_now,
+        progression_version = progression_version + 1,
+        updated_by = v_actor, updated_at = v_now
+    where id = v_next.id;
+    select g.status into v_goal_status from public.goals g where g.id = v_target.goal_id;
+  end if;
+
+  return query select
+    case when v_next.id is null then 'goal_mastered' else 'target_mastered' end,
+    v_target.goal_id, v_target.id, 'mastery'::public.goal_target_phase,
+    case when v_next.id is null then 'mastery'::public.goal_target_phase else 'baseline'::public.goal_target_phase end,
+    v_next.id, v_goal_status, null::text;
+end;
+$$;
+
+revoke execute on function public.complete_goal_target_mastery(uuid, text, bigint) from public, anon;
+grant execute on function public.complete_goal_target_mastery(uuid, text, bigint) to authenticated;
 
 create or replace function public.override_goal_target_progression(
   target_goal_target_id uuid,

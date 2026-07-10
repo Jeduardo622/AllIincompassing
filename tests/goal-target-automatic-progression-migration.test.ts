@@ -139,6 +139,12 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/grant execute on function public\.reorder_goal_targets[^;]+to authenticated/i);
   });
 
+  it("exposes only authenticated explicit manual mastery completion", () => {
+    expect(sql).toMatch(/create or replace function public\.complete_goal_target_mastery\(/i);
+    expect(sql).toMatch(/revoke execute on function public\.complete_goal_target_mastery[^;]+from public, anon/i);
+    expect(sql).toMatch(/grant execute on function public\.complete_goal_target_mastery[^;]+to authenticated/i);
+  });
+
   it("serializes note finalization by session and reuses a canonical note when note id is omitted", () => {
     expect(sql).toMatch(/select s\.\* into v_session[\s\S]*where s\.id = target_session_id[\s\S]*for update/is);
     expect(sql).toMatch(/if target_note_id is not null[\s\S]*else[\s\S]*from public\.client_session_notes csn[\s\S]*csn\.session_id = v_session\.id[\s\S]*order by csn\.is_locked desc, csn\.signed_at desc nulls last, csn\.created_at desc, csn\.id desc[\s\S]*for update/is);

@@ -58,7 +58,11 @@ const overrideSchema = z.object({
   current_target_id: z.string().uuid().nullable(), reason: z.string().trim().min(1),
   expected_version: z.number().int().nonnegative(),
 });
-const progressionActionSchema = z.union([criteriaSchema, reorderSchema, overrideSchema]);
+const completeMasterySchema = z.object({
+  action: z.literal("complete_mastery"), target_id: z.string().uuid(),
+  reason: z.string().trim().min(1), expected_version: z.number().int().nonnegative(),
+});
+const progressionActionSchema = z.union([criteriaSchema, reorderSchema, overrideSchema, completeMasterySchema]);
 const progressionOwnedFields = new Set(["current_phase", "is_current", "progression_version", "evaluation_window_started_at"]);
 const phaseOrder = new Map(["baseline", "teaching", "generalization", "mastery"].map((phase, index) => [phase, index]));
 const orderCriteria = (data: unknown): unknown => Array.isArray(data) ? [...data].sort((a, b) =>
@@ -247,7 +251,11 @@ export async function goalTargetsHandler(request: Request): Promise<Response> {
       if (!action.success) return json({ error: "Invalid request body" }, 400);
       let rpc: string;
       let args: Record<string, unknown>;
-      if (action.data.action === "override_progression") {
+      if (action.data.action === "complete_mastery") {
+        rpc = "complete_goal_target_mastery";
+        args = { target_goal_target_id: action.data.target_id, reason: action.data.reason,
+          expected_version: action.data.expected_version };
+      } else if (action.data.action === "override_progression") {
         rpc = "override_goal_target_progression";
         args = { target_goal_target_id: action.data.target_id, target_phase: action.data.target_phase,
           target_current_goal_target_id: action.data.current_target_id, reason: action.data.reason,

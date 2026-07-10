@@ -381,6 +381,19 @@ describe("goalTargetsHandler", () => {
     );
   });
 
+  it("calls the explicit manual mastery completion RPC", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: [{ outcome: "target_mastered" }] });
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "POST", body: JSON.stringify({ action: "complete_mastery", target_id: TARGET_ID,
+        reason: "Clinical review", expected_version: 2 }),
+    }));
+    expect(response.status).toBe(200);
+    expect(fetchJson).toHaveBeenCalledWith(expect.stringContaining("/rpc/complete_goal_target_mastery"),
+      expect.objectContaining({ body: JSON.stringify({ target_goal_target_id: TARGET_ID,
+        reason: "Clinical review", expected_version: 2 }) }));
+  });
+
   it("rejects an empty manual override reason before calling the database", async () => {
     vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
     const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {

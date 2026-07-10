@@ -73,6 +73,80 @@ const buildClient = (overrides: Partial<ProgramsGoalsTabClient> = {}): ProgramsG
   ...overrides,
 });
 
+describe("ProgramsGoalsTab progression integration", { timeout: 15_000 }, () => {
+  const integrationTargets: GoalTarget[] = [
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", organization_id: ORG_ID, client_id: "client-1", goal_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Current target", measurement_type: "correctIncorrect", graph_config: {}, status: "active", sort_order: 0, current_phase: "mastery", is_current: true, evaluation_window_started_at: "2026-07-10T00:00:00Z", progression_version: 4, created_at: "2026-07-01T00:00:00Z", updated_at: "2026-07-10T00:00:00Z" },
+    { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", organization_id: ORG_ID, client_id: "client-1", goal_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Next target", measurement_type: "correctIncorrect", graph_config: {}, status: "active", sort_order: 1, current_phase: "baseline", is_current: false, evaluation_window_started_at: null, progression_version: 2, created_at: "2026-07-02T00:00:00Z", updated_at: "2026-07-10T00:00:00Z" },
+    { id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", organization_id: ORG_ID, client_id: "client-1", goal_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Archived target", measurement_type: "correctIncorrect", graph_config: {}, status: "archived", sort_order: 2, current_phase: "teaching", is_current: false, evaluation_window_started_at: null, progression_version: 7, created_at: "2026-07-03T00:00:00Z", updated_at: "2026-07-10T00:00:00Z" },
+  ];
+  const setup = (role: "bcba" | "midtier" | "super_admin" | "admin" | "therapist", mutationStatus = 200, targets = integrationTargets, goalStatus: "active" | "mastered" = "active") => {
+    vi.mocked(supabase.from).mockImplementation(() => ({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), order: vi.fn().mockResolvedValue({ data: [], error: null }) }) as never);
+    vi.mocked(callApi).mockImplementation(async (path) => {
+      if (path.startsWith("/api/assessment-documents?")) return new Response("[]", { status: 200 });
+      if (path.startsWith("/api/assessment-drafts?")) return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      return new Response("[]", { status: 200 });
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path, init) => {
+      if (path.startsWith("programs?")) return new Response(JSON.stringify([{ id: "program-1", organization_id: ORG_ID, client_id: "client-1", name: "Program", status: "active", created_at: "2026-07-01T00:00:00Z", updated_at: "2026-07-01T00:00:00Z" }]), { status: 200 });
+      if (path.startsWith("goals?")) return new Response(JSON.stringify([{ id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", organization_id: ORG_ID, client_id: "client-1", program_id: "program-1", title: "Goal", description: "Description", original_text: "Original", status: goalStatus, created_at: "2026-07-01T00:00:00Z", updated_at: "2026-07-01T00:00:00Z" }]), { status: 200 });
+      if (path.startsWith("goal-targets?goal_id=")) return new Response(JSON.stringify(targets), { status: 200 });
+      if (path.includes("action=criteria")) return new Response("[]", { status: 200 });
+      if (path.includes("action=transition_history")) return new Response("[]", { status: 200 });
+      if (path.startsWith("trial-events?")) return new Response("[]", { status: 200 });
+      if (path === "goal-targets" && init?.method === "PUT") return mutationStatus === 200 ? new Response(JSON.stringify({ outcome: "target_mastered" }), { status: 200 }) : new Response(JSON.stringify({ error: "Progression version conflict" }), { status: mutationStatus });
+      return new Response("[]", { status: 200 });
+    });
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, { auth: { role, organizationId: ORG_ID, accessToken: "test-access-token" } });
+  };
+
+  it.each([["bcba", true], ["midtier", true], ["super_admin", true], ["admin", false], ["therapist", false]] as const)("uses trusted effectiveRole %s for progression mutation visibility", async (role, allowed) => {
+    setup(role);
+    await screen.findByText("Current · Mastery");
+    expect(Boolean(screen.queryByRole("button", { name: "Complete mastery" }))).toBe(allowed);
+  });
+
+  it("sends each active and archived target exactly once when reordering and keeps archived UI read-only", async () => {
+    setup("bcba");
+    await screen.findByText("Current · Mastery");
+    await userEvent.click(screen.getByRole("button", { name: "Move Next target earlier" }));
+    await waitFor(() => expect(callEdgeFunctionHttp).toHaveBeenCalledWith("goal-targets", expect.objectContaining({ method: "PUT" })));
+    const reorderCall = vi.mocked(callEdgeFunctionHttp).mock.calls.find(([, init]) => typeof init?.body === "string" && init.body.includes('"action":"reorder"'));
+    const payload = JSON.parse(String(reorderCall?.[1]?.body));
+    expect(payload.targets).toEqual([
+      { target_id: integrationTargets[1].id, expected_version: 2 }, { target_id: integrationTargets[0].id, expected_version: 4 }, { target_id: integrationTargets[2].id, expected_version: 7 },
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "Show archived targets (1)" }));
+    expect(await screen.findByText("Archived · outside active sequence")).toBeInTheDocument();
+    const archivedRegion = screen.getByRole("region", { name: "Progression for Archived target" });
+    expect(within(archivedRegion).queryByRole("button", { name: /save|select|advance|reopen/i })).not.toBeInTheDocument();
+  });
+
+  it("submits explicit mastery completion and refreshes, while a stale result stays visible", async () => {
+    setup("bcba", 409);
+    await userEvent.click(await screen.findByRole("button", { name: "Complete mastery" }));
+    await userEvent.type(screen.getByLabelText("Reason for manual change"), "Clinical review");
+    await userEvent.click(screen.getByRole("button", { name: "Confirm manual change" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Progression version conflict");
+    expect(callEdgeFunctionHttp).toHaveBeenCalledWith("goal-targets", expect.objectContaining({ body: JSON.stringify({ action: "complete_mastery", target_id: integrationTargets[0].id, reason: "Clinical review", expected_version: 4 }) }));
+  });
+
+  it("refreshes complete-set reorder conflicts without hiding errors", async () => {
+    setup("bcba", 409);
+    await userEvent.click(await screen.findByRole("button", { name: "Move Next target earlier" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Progression version conflict");
+  });
+
+  it("reopens a mastered goal/target and refreshes a stale result without hiding the error", async () => {
+    const mastered = { ...integrationTargets[0], status: "mastered" as const, is_current: false, progression_version: 9 };
+    setup("bcba", 409, [mastered], "mastered");
+    await userEvent.click(await screen.findByRole("button", { name: "Reopen target" }));
+    await userEvent.type(screen.getByLabelText("Reason for manual change"), "Resume treatment");
+    await userEvent.click(screen.getByRole("button", { name: "Confirm manual change" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Progression version conflict");
+    expect(callEdgeFunctionHttp).toHaveBeenCalledWith("goal-targets", expect.objectContaining({ body: JSON.stringify({ action: "override_progression", target_id: mastered.id, target_phase: "baseline", current_target_id: mastered.id, reason: "Resume treatment", expected_version: 9 }) }));
+  });
+});
+
 describe("goal target progression management", () => {
   const target = {
     id: "11111111-1111-4111-8111-111111111111",
@@ -155,6 +229,32 @@ describe("goal target progression management", () => {
     await user.type(screen.getByLabelText("Reason for manual change"), "  Clinical review  ");
     await user.click(screen.getByRole("button", { name: "Confirm manual change" }));
     expect(onManualOverride).toHaveBeenCalledWith(expect.objectContaining({ target_phase: "generalization", reason: "Clinical review", expected_version: 3 }));
+  });
+
+  it("offers explicit audited mastery completion and restores focus when Escape closes the dialog", async () => {
+    const user = userEvent.setup();
+    const onCompleteMastery = vi.fn();
+    const masteryTarget = { ...target, current_phase: "mastery" as const };
+    render(<GoalTargetProgressionEditor target={masteryTarget} criteria={criteria} sequencePosition={2} sequenceCount={4} canManage busy={false} onSaveCriterion={vi.fn()} onManualOverride={vi.fn()} onCompleteMastery={onCompleteMastery} />);
+    const trigger = screen.getByRole("button", { name: "Complete mastery" });
+    await user.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Complete mastery" })).toHaveAttribute("aria-modal", "true");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Complete mastery" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    await user.type(screen.getByLabelText("Reason for manual change"), "Clinical mastery review");
+    await user.click(screen.getByRole("button", { name: "Confirm manual change" }));
+    expect(onCompleteMastery).toHaveBeenCalledWith({ action: "complete_mastery", target_id: target.id, reason: "Clinical mastery review", expected_version: 3 });
+  });
+
+  it("keeps archived targets read-only and outside the active sequence", () => {
+    const archived = { ...target, status: "archived" as const, is_current: false };
+    render(<GoalTargetProgressionEditor target={archived} criteria={criteria} sequencePosition={null} sequenceCount={3} canManage busy={false} onSaveCriterion={vi.fn()} onManualOverride={vi.fn()} onCompleteMastery={vi.fn()} />);
+    expect(screen.getByText("Archived · outside active sequence")).toBeInTheDocument();
+    expect(screen.getByText("Phase · Teaching")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save .* criteria/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /select as current/i })).not.toBeInTheDocument();
   });
 
   it("preserves a stale-version server error and refreshes progression state", async () => {

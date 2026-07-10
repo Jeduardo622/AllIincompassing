@@ -10,6 +10,7 @@ const sql = readFileSync(
 
 const evaluator = () => sql.match(/create or replace function app\.evaluate_goal_target_progression[\s\S]*?\n\$\$;/i)?.[0] ?? "";
 const override = () => sql.match(/create or replace function public\.override_goal_target_progression[\s\S]*?\n\$\$;/i)?.[0] ?? "";
+const completeMastery = () => sql.match(/create or replace function public\.complete_goal_target_mastery[\s\S]*?\n\$\$;/i)?.[0] ?? "";
 const initializer = () => sql.match(/create or replace function app\.initialize_goal_target_progression_state[\s\S]*?\n\$\$;/i)?.[0] ?? "";
 
 describe("static automatic goal-target progression SQL contract", () => {
@@ -169,5 +170,23 @@ describe("static manual progression override SQL contract", () => {
   it("is callable only by authenticated and service roles", () => {
     expect(sql).toMatch(/revoke execute on function public\.override_goal_target_progression\(uuid, public\.goal_target_phase, uuid, text, bigint\) from public, anon/i);
     expect(sql).toMatch(/grant execute on function public\.override_goal_target_progression\(uuid, public\.goal_target_phase, uuid, text, bigint\) to authenticated, service_role/i);
+  });
+});
+
+describe("static manual mastery completion SQL contract", () => {
+  it("requires current active mastery state, exact authority, reason, version, and goal lock", () => {
+    expect(completeMastery()).toMatch(/current_phase <> 'mastery'|current_phase is distinct from 'mastery'/i);
+    expect(completeMastery()).toMatch(/status <> 'active'[\s\S]*not v_target\.is_current/i);
+    expect(completeMastery()).toMatch(/current_user_has_exact_role_for_org[\s\S]*array\['bcba', 'midtier'\]/i);
+    expect(completeMastery()).toMatch(/char_length\(btrim\(reason\)\) = 0/i);
+    expect(completeMastery()).toMatch(/progression_version <> expected_version/i);
+    expect(completeMastery()).toMatch(/pg_advisory_xact_lock/i);
+  });
+
+  it("audits before mastery, activates the next eligible target, or masters the goal", () => {
+    expect(completeMastery()).toMatch(/insert into public\.goal_target_transitions[\s\S]*update public\.goal_targets[\s\S]*status = 'mastered'/i);
+    expect(completeMastery()).toMatch(/status <> 'archived'[\s\S]*sort_order/i);
+    expect(completeMastery()).toMatch(/current_phase = 'baseline'[\s\S]*evaluation_window_started_at = v_now/i);
+    expect(completeMastery()).toMatch(/update public\.goals[\s\S]*status = 'mastered'/i);
   });
 });

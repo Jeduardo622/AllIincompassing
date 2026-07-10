@@ -46,6 +46,9 @@ const overrideSchema = z.object({ action: z.literal("override_progression"), tar
   expected_version: z.number().int().nonnegative() });
 const progressionActionSchema = z.union([criteriaSchema, reorderSchema, overrideSchema]);
 const progressionOwnedFields = new Set(["current_phase", "is_current", "progression_version", "evaluation_window_started_at"]);
+const phaseOrder = new Map(["baseline", "teaching", "generalization", "mastery"].map((phase, index) => [phase, index]));
+const orderCriteria = (data: unknown): unknown => Array.isArray(data) ? [...data].sort((a, b) =>
+  (phaseOrder.get((a as { phase?: string }).phase ?? "") ?? 99) - (phaseOrder.get((b as { phase?: string }).phase ?? "") ?? 99)) : data;
 const mapDatabaseError = (error: { code?: string } | null, fallback: string) => {
   if (error?.code === "40001") return { error: "Progression version conflict", status: 409 };
   if (error?.code === "42501") return { error: "Forbidden", status: 403 };
@@ -144,7 +147,7 @@ export const handleGoalTargets = async (req: Request) => {
       if (!targetId) return json(req, { error: "target_id is required" }, 400);
       const { data, error } = await db.from("goal_target_phase_criteria").select("*")
         .eq("organization_id", orgId).eq("target_id", targetId).order("phase", { ascending: true });
-      return error ? json(req, { error: "Failed to load progression criteria" }, 502) : json(req, data ?? []);
+      return error ? json(req, { error: "Failed to load progression criteria" }, 502) : json(req, orderCriteria(data ?? []));
     }
     if (action === "transition_history") {
       if (!targetId && !goalId) return json(req, { error: "goal_id or target_id is required" }, 400);
@@ -153,6 +156,7 @@ export const handleGoalTargets = async (req: Request) => {
       const { data, error } = await history.order("transitioned_at", { ascending: false }).order("id", { ascending: false });
       return error ? json(req, { error: "Failed to load progression history" }, 502) : json(req, data ?? []);
     }
+    if (action) return json(req, { error: "Invalid action" }, 400);
 
     let query = db
       .from("goal_targets")
@@ -212,7 +216,7 @@ export const handleGoalTargets = async (req: Request) => {
   if (allowed.upstreamError) return json(req, { error: "Unable to validate program-goal access" }, 502);
   if (!allowed.allowed) return json(req, { error: "Forbidden" }, 403);
 
-  if (req.method === "POST") {
+  if (req.method === "POST" || req.method === "PUT") {
     let payload: unknown;
     try {
       payload = await req.json();
@@ -244,6 +248,7 @@ export const handleGoalTargets = async (req: Request) => {
       if (error) { const mapped = mapDatabaseError(error, "Failed to update target progression"); return json(req, { error: mapped.error }, mapped.status); }
       return json(req, Array.isArray(data) && rpc !== "reorder_goal_targets" ? data[0] : data);
     }
+    if (req.method === "PUT") return json(req, { error: "Invalid request body" }, 400);
     const parsed = createGoalTargetSchema.safeParse(payload);
     if (!parsed.success) return json(req, { error: "Invalid request body" }, 400);
 

@@ -274,6 +274,11 @@ begin
       or new.is_current is distinct from old.is_current
       or new.evaluation_window_started_at is distinct from old.evaluation_window_started_at
       or new.progression_version is distinct from old.progression_version
+      or new.sort_order is distinct from old.sort_order
+      or (
+        new.status is distinct from old.status
+        and (new.status = 'mastered' or old.status = 'mastered')
+      )
     )
   then
     raise exception using
@@ -289,7 +294,7 @@ revoke execute on function app.guard_goal_target_progression_state()
 
 drop trigger if exists goal_targets_guard_progression_state on public.goal_targets;
 create trigger goal_targets_guard_progression_state
-before update of current_phase, is_current, evaluation_window_started_at, progression_version
+before update of current_phase, is_current, evaluation_window_started_at, progression_version, sort_order, status
 on public.goal_targets
 for each row execute function app.guard_goal_target_progression_state();
 
@@ -446,13 +451,13 @@ alter table public.goal_target_transitions enable row level security;
 revoke all on table public.goal_target_phase_criteria from anon;
 revoke all on table public.goal_target_phase_evaluations from anon;
 revoke all on table public.goal_target_transitions from anon;
-grant select, insert, update on table public.goal_target_phase_criteria to authenticated;
-revoke delete on table public.goal_target_phase_criteria from authenticated;
+grant select on table public.goal_target_phase_criteria to authenticated;
+revoke insert, update, delete on table public.goal_target_phase_criteria from authenticated, service_role;
 grant select on table public.goal_target_phase_evaluations to authenticated;
 grant select on table public.goal_target_transitions to authenticated;
 revoke insert, update, delete on table public.goal_target_phase_evaluations from authenticated;
 revoke insert, update, delete on table public.goal_target_transitions from authenticated;
-grant select, insert, update, delete on table public.goal_target_phase_criteria to service_role;
+grant select on table public.goal_target_phase_criteria to service_role;
 grant select on table public.goal_target_phase_evaluations to service_role;
 grant select on table public.goal_target_transitions to service_role;
 revoke insert, update, delete on table public.goal_target_phase_evaluations from service_role;
@@ -462,22 +467,6 @@ create policy goal_target_phase_criteria_org_read on public.goal_target_phase_cr
 for select to authenticated using (
   organization_id = app.current_user_organization_id()
   and app.current_user_can_read_client_programs(organization_id, client_id)
-);
-create policy goal_target_phase_criteria_org_insert on public.goal_target_phase_criteria
-for insert to authenticated with check (
-  (organization_id = app.current_user_organization_id()
-   and app.current_user_has_exact_role_for_org(organization_id, array['bcba', 'midtier']::text[]))
-  or app.current_user_is_super_admin()
-);
-create policy goal_target_phase_criteria_org_update on public.goal_target_phase_criteria
-for update to authenticated using (
-  (organization_id = app.current_user_organization_id()
-   and app.current_user_has_exact_role_for_org(organization_id, array['bcba', 'midtier']::text[]))
-  or app.current_user_is_super_admin()
-) with check (
-  (organization_id = app.current_user_organization_id()
-   and app.current_user_has_exact_role_for_org(organization_id, array['bcba', 'midtier']::text[]))
-  or app.current_user_is_super_admin()
 );
 create policy goal_target_phase_evaluations_org_read on public.goal_target_phase_evaluations
 for select to authenticated using (
@@ -489,9 +478,6 @@ for select to authenticated using (
   organization_id = app.current_user_organization_id()
   and app.current_user_can_read_client_programs(organization_id, client_id)
 );
-
-create policy goal_target_phase_criteria_service_role_all on public.goal_target_phase_criteria
-for all to service_role using (true) with check (true);
 
 create or replace function app.validate_goal_target_phase_criterion()
 returns trigger

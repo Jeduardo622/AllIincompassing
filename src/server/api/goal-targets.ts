@@ -60,6 +60,9 @@ const overrideSchema = z.object({
 });
 const progressionActionSchema = z.union([criteriaSchema, reorderSchema, overrideSchema]);
 const progressionOwnedFields = new Set(["current_phase", "is_current", "progression_version", "evaluation_window_started_at"]);
+const phaseOrder = new Map(["baseline", "teaching", "generalization", "mastery"].map((phase, index) => [phase, index]));
+const orderCriteria = (data: unknown): unknown => Array.isArray(data) ? [...data].sort((a, b) =>
+  (phaseOrder.get((a as { phase?: string }).phase ?? "") ?? 99) - (phaseOrder.get((b as { phase?: string }).phase ?? "") ?? 99)) : data;
 
 const isUuid = (value: string): boolean => z.string().uuid().safeParse(value).success;
 
@@ -138,7 +141,7 @@ export async function goalTargetsHandler(request: Request): Promise<Response> {
     if (action === "criteria") {
       if (!targetId) return json({ error: "target_id is required" }, 400);
       const result = await fetchJson(`${supabaseUrl}/rest/v1/goal_target_phase_criteria?select=*&organization_id=eq.${encodeURIComponent(organizationId)}&target_id=eq.${encodeURIComponent(targetId)}&order=phase.asc`, { method: "GET", headers });
-      return result.ok ? json(result.data ?? []) : json({ error: "Failed to load progression criteria" }, 502);
+      return result.ok ? json(orderCriteria(result.data ?? [])) : json({ error: "Failed to load progression criteria" }, 502);
     }
     if (action === "transition_history") {
       if (!targetId && !goalId) return json({ error: "goal_id or target_id is required" }, 400);
@@ -146,6 +149,7 @@ export async function goalTargetsHandler(request: Request): Promise<Response> {
       const result = await fetchJson(`${supabaseUrl}/rest/v1/goal_target_transitions?select=*&organization_id=eq.${encodeURIComponent(organizationId)}&${scope}&order=transitioned_at.desc,id.desc`, { method: "GET", headers });
       return result.ok ? json(result.data ?? []) : json({ error: "Failed to load progression history" }, 502);
     }
+    if (action) return json({ error: "Invalid action" }, 400);
 
     const filters = [
       `organization_id=eq.${encodeURIComponent(organizationId)}`,
@@ -222,7 +226,7 @@ export async function goalTargetsHandler(request: Request): Promise<Response> {
     return json(deleted);
   }
 
-  if (request.method === "POST") {
+  if (request.method === "POST" || request.method === "PUT") {
     const canManage = await currentUserCanManageProgramsGoals(accessToken, organizationId);
     if (canManage.upstreamError) {
       return json({ error: "Unable to validate program-goal access" }, 502);
@@ -265,6 +269,8 @@ export async function goalTargetsHandler(request: Request): Promise<Response> {
       if (!result.ok) { const mapped = databaseError(result.data, "Failed to update target progression"); return json(mapped.body, mapped.status); }
       return json(Array.isArray(result.data) && rpc !== "reorder_goal_targets" ? result.data[0] : result.data);
     }
+
+    if (request.method === "PUT") return json({ error: "Invalid request body" }, 400);
 
     const parsed = createGoalTargetSchema.safeParse(body);
     if (!parsed.success) {

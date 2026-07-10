@@ -83,16 +83,15 @@ describe("goal target automatic progression migration", () => {
     expect(sql).not.toMatch(/(?:update|delete from) public\.sessions/is);
   });
 
-  it("enables tenant-scoped RLS with criteria-only clinician mutation", () => {
+  it("enables tenant-scoped RLS with RPC-only criteria mutation", () => {
     for (const table of ["goal_target_phase_criteria", "goal_target_phase_evaluations", "goal_target_transitions"]) {
       expect(sql).toContain(`alter table public.${table} enable row level security;`);
       expect(sql).toContain(`revoke all on table public.${table} from anon;`);
     }
     expect(sql).toMatch(/create policy goal_target_phase_criteria_org_read[\s\S]*organization_id = app\.current_user_organization_id\(\)/is);
-    expect(sql).toMatch(/create policy goal_target_phase_criteria_org_insert[\s\S]*current_user_has_exact_role_for_org\(organization_id, array\['bcba', 'midtier'\]::text\[\]\)/is);
     expect(sql).toMatch(/current_user_is_super_admin\(\)/is);
-    expect(sql).toContain("grant select, insert, update on table public.goal_target_phase_criteria to authenticated;");
-    expect(sql).toContain("revoke delete on table public.goal_target_phase_criteria from authenticated;");
+    expect(sql).toContain("grant select on table public.goal_target_phase_criteria to authenticated;");
+    expect(sql).toContain("revoke insert, update, delete on table public.goal_target_phase_criteria from authenticated, service_role;");
     expect(sql).toContain("grant select on table public.goal_target_phase_evaluations to authenticated;");
     expect(sql).toContain("grant select on table public.goal_target_transitions to authenticated;");
     expect(sql).toContain("revoke insert, update, delete on table public.goal_target_phase_evaluations from authenticated;");
@@ -115,6 +114,16 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/create or replace function app\.evaluate_goal_target_progression\(\s*target_session_id uuid,\s*target_note_id uuid\s*\)/is);
     expect(sql).toMatch(/returns table\s*\([\s\S]*outcome text[\s\S]*goal_id uuid[\s\S]*target_id uuid[\s\S]*previous_phase public\.goal_target_phase[\s\S]*current_phase public\.goal_target_phase[\s\S]*next_target_id uuid[\s\S]*goal_status text[\s\S]*warning text/is);
     expect(sql).toMatch(/revoke execute on function app\.evaluate_goal_target_progression\(uuid, uuid\)[^;]+from public, anon, authenticated/is);
+  });
+
+  it("makes criteria mutation RPC-only and blocks direct progression lifecycle bypasses", () => {
+    expect(sql).toMatch(/grant select on table public\.goal_target_phase_criteria to authenticated/i);
+    expect(sql).toMatch(/revoke insert, update, delete on table public\.goal_target_phase_criteria from authenticated, service_role/i);
+    expect(sql).not.toMatch(/create policy goal_target_phase_criteria_org_(insert|update)/i);
+    expect(sql).not.toMatch(/create policy goal_target_phase_criteria_service_role_all/i);
+    expect(sql).toMatch(/new\.sort_order is distinct from old\.sort_order/i);
+    expect(sql).toMatch(/new\.status = 'mastered' or old\.status = 'mastered'/i);
+    expect(sql).toMatch(/before update of current_phase, is_current, evaluation_window_started_at, progression_version, sort_order, status/i);
   });
 
   it("exposes hardened criteria and deterministic reorder writers", () => {

@@ -419,13 +419,48 @@ describe("goalTargetsHandler", () => {
     vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
     vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: { phase: "baseline" } });
     const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
-      method: "POST", body: JSON.stringify({ action: "set_criteria", target_id: TARGET_ID, phase: "baseline",
+      method: "PUT", body: JSON.stringify({ action: "set_criteria", target_id: TARGET_ID, phase: "baseline",
         metric: "percent_correct", comparator: "gte", threshold: 80, min_observations: 10,
         consecutive_sessions: 3, clinical_note: null, expected_version: 2 }),
     }));
     expect(response.status).toBe(200);
     expect(fetchJson).toHaveBeenCalledWith(expect.stringContaining("/rpc/set_goal_target_phase_criterion"),
       expect.objectContaining({ method: "POST" }));
+  });
+
+  it("returns criteria in clinical phase order", async () => {
+    vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: [
+      { phase: "mastery" }, { phase: "baseline" }, { phase: "generalization" }, { phase: "teaching" },
+    ] });
+    const response = await goalTargetsHandler(new Request(
+      `http://localhost/api/goal-targets?action=criteria&target_id=${TARGET_ID}`,
+    ));
+    expect((await response.json()).map((row: { phase: string }) => row.phase)).toEqual([
+      "baseline", "teaching", "generalization", "mastery",
+    ]);
+  });
+
+  it("rejects unknown GET actions", async () => {
+    const response = await goalTargetsHandler(new Request(
+      `http://localhost/api/goal-targets?action=surprise&target_id=${TARGET_ID}`,
+    ));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid action" });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ code: "42501", message: "goal target is not in scope" }, 403, "Forbidden"],
+    [{ code: "40001", message: "stale or mixed target set" }, 409, "Progression version conflict"],
+  ] as const)("maps progression RPC authority/conflict errors", async (data, status, error) => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValue({ ok: false, status: 400, data });
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "POST", body: JSON.stringify({ action: "reorder", goal_id: GOAL_ID,
+        targets: [{ target_id: TARGET_ID, expected_version: 2 }] }),
+    }));
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error });
   });
 
   it("rejects partially configured criteria", async () => {

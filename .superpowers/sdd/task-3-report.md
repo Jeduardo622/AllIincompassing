@@ -63,7 +63,7 @@ Review-fix TDD evidence:
 
 - Seeded `session_capture_strict_billing_gate` with `default_enabled=false`, preserving the current relaxed default.
 - Added a fixed-search-path internal resolver using organization override first and flag default second.
-- Added an authenticated read wrapper that permits only the target organization's caller, super admin, or trusted service role; `PUBLIC` and `anon` execution are revoked.
+- Added an authenticated read wrapper that permits only the target organization's caller or super admin; `PUBLIC`, `anon`, and direct service-role execution are not granted.
 - The server resolves this policy through the public RPC under the caller bearer token and fails closed on lookup failure. `SESSION_CAPTURE_RELAX_BILLING_GATE` is no longer a server authority.
 - Finalization resolves strictness internally without a caller boolean. Strict mode requires approved authorization, persisted session date coverage, and the requested authorization-owned service. Relaxed mode retains deterministic authorized-service fallback and `UNSPECIFIED`.
 - Tenant organization/client/authorization scope checks remain unconditional.

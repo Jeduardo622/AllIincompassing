@@ -86,6 +86,8 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
   - `Test-Path 'C:\\Users\\test\\.config\\superpowers\\worktrees\\AllIincompassing\\ci-hosted-security-remediation\\docs\\ai\\WIN-213-ci-hosted-security-remediation-handoff.md'` -> PASS
   - `Test-Path 'C:\\Users\\test\\.config\\superpowers\\worktrees\\AllIincompassing\\ci-hosted-security-remediation\\.superpowers\\sdd\\task-3-report.md'` -> PASS
   - `npm run ci:check-focused` -> PASS
+  - `npm run lint` -> PASS
+  - `npm run typecheck` -> PASS
   - `npm run test:ci` -> FAIL, pre-existing missing `VITE_SUPABASE_URL` in `src/server/__tests__/orgRoleRpcEquivalence.contract.test.ts`
   - `npm run verify:local` -> FAIL, same pre-existing missing `VITE_SUPABASE_URL` failure
 - blocked checks:

@@ -4,7 +4,7 @@
 
 **Goal:** Prevent unsafe shared Supabase deployments, make tenant CI fail closed, keep critical hosted authorization migrations continuously verified, and clear the identified production dependency advisories.
 
-**Architecture:** The existing `policy` job remains the single owner of shared Supabase edge deployment, but deployment is restricted to pushes on `main` and ordered after policy, tenant, and database migration parity checks. Runtime parity is extended with an explicit baseline list so critical historical authz migrations are checked on every deploy, while package overrides resolve vulnerable transitive sanitizer and WebSocket versions without broad application refactors.
+**Architecture:** The existing `policy` job becomes read-only. A dedicated shared Supabase edge deployment job is restricted to pushes on `main` and depends on same-workflow tenant safety, merge-range migration parity, and a read-only live session-RPC contract check; PR and merge-group paths never mutate hosted runtime. Package overrides resolve vulnerable transitive sanitizer and WebSocket versions without broad application refactors.
 
 **Tech Stack:** GitHub Actions, Node.js 20, Vitest, Supabase Postgres, npm lockfiles.
 
@@ -12,8 +12,8 @@
 
 - Classification is `high-risk human-reviewed`; lane is `critical`.
 - Shared Supabase edge functions may deploy only on a push to `refs/heads/main`.
-- No edge deployment may occur before policy checks, `npm run validate:tenant`, and runtime migration parity pass.
-- Runtime parity must always require the four session authz baseline migrations named in Task 1.
+- The deployment job must depend on successful policy, tenant-safety, runtime-migration-parity, and session-runtime-contract jobs in the same workflow DAG.
+- Keep duplicate migration-name rejection intact; hosted behavior parity is proven from the live function definition and ACLs, not ambiguous generated ledger versions.
 - Hosted changes must replay only checked-in migration SQL against project `wnnjeqheqxxyrgsjmygy`; no invented SQL or migration names.
 - Do not edit application code, Netlify routing, secrets, branch protection, or unrelated dependencies.
 - Human review and Linear issue `WIN-213` are required before merge.
@@ -25,47 +25,39 @@
 **Files:**
 - Create: `scripts/ci/check-session-deploy-safety.mjs`
 - Create: `tests/ci/check-session-deploy-safety.test.ts`
-- Modify: `scripts/ci/runtime-migration-parity.mjs`
-- Modify: `scripts/ci/check-runtime-migration-parity.mjs`
-- Modify: `tests/runtime-migration-parity.test.ts`
+- Create: `scripts/ci/check-session-runtime-contract.mjs`
+- Create: `tests/ci/check-session-runtime-contract.test.ts`
 - Modify: `scripts/ci/run-policy-checks.mjs`
 - Modify: `.github/workflows/ci.yml`
 - Modify: `.github/workflows/tenant-safety.yml`
 
 **Interfaces:**
-- Consumes: `MIGRATION_PARITY_BASE_SHA`, `MIGRATION_PARITY_HEAD_SHA`, `SUPABASE_DB_URL`, and comma-separated `MIGRATION_PARITY_REQUIRED_FILES`.
-- Produces: a policy checker that exits nonzero unless one main-push-only deploy follows policy, tenant, and parity checks; a parity requirement list containing migration `{ version, name }` entries.
+- Consumes: `MIGRATION_PARITY_BASE_SHA`, `MIGRATION_PARITY_HEAD_SHA`, and `SUPABASE_DB_URL`.
+- Produces: a policy checker that exits nonzero unless one main-push-only deploy job depends on policy, tenant, migration parity, and live session-RPC contract jobs; a read-only database contract checker for the hosted session authorization surface.
 
 - [ ] **Step 1: Write failing deploy-safety and migration-baseline tests**
 
-Add tests that reject PR-capable deploy conditions, duplicate deploy commands, deploy-before-parity ordering, masked tenant tests, missing baseline files, and older same-name hosted rows.
+Add tests that reject PR-capable deploy conditions, duplicate deploy commands, missing deploy-job prerequisites, and masked tenant tests. Add database contract tests for expected function-body markers and ACL/grant mismatches.
 
 - [ ] **Step 2: Run tests to verify red state**
 
-Run: `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/runtime-migration-parity.test.ts`
+Run: `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts`
 
-Expected: FAIL because the deploy-safety checker and baseline parser do not exist and current workflows violate the contract.
+Expected: FAIL because the deploy-safety and runtime-contract checkers do not exist and current workflows violate the contract.
 
-- [ ] **Step 3: Implement baseline parsing and deploy-safety policy**
+- [ ] **Step 3: Implement deploy-safety and runtime-contract policies**
 
-Parse each required migration path using the existing `TIMESTAMP_name.sql` contract, merge and deduplicate baseline entries with merge-range additions, and fail if a configured path is invalid or absent. Validate the checked-in workflow with deterministic string/step-order checks consistent with existing `scripts/ci` policy checkers.
+Validate the checked-in workflow with deterministic checks consistent with existing `scripts/ci` policy checkers. Add a read-only Postgres checker that fails unless the live function definition contains exact employee-role, linked therapist/BT, same-org, and active-therapist guards and the function/table ACL matrix matches the checked-in hardening migration.
 
 - [ ] **Step 4: Reorder and restrict workflow deployment**
 
-In `policy`, run secrets policy and focused policy checks first; on `push` to `refs/heads/main`, run tenant validation, runtime migration parity with the four files below, deploy prerequisite validation, then exactly one session edge deployment:
+Keep `policy` read-only. Add same-workflow tenant-safety, merge-range runtime-migration-parity, and session-runtime-contract jobs, then one `deploy_session_edge` job restricted to `push` on `refs/heads/main` and dependent on all guards. Preserve PR and merge-group browser execution when deploy is skipped, but require successful deploy before the main-push auth browser smoke.
 
-```text
-supabase/migrations/20260706023600_bcba_exact_capability_matrix.sql
-supabase/migrations/20260706143000_goal_domains_and_structured_draft_goals.sql
-supabase/migrations/20260707193703_start_session_employee_role_authz.sql
-supabase/migrations/20260709162000_harden_goal_domain_and_session_link_authz.sql
-```
-
-Remove the duplicate deploy from `auth_browser_smoke`. Replace the tenant workflow's masked shell pipeline with `run: npm test`.
+Remove the duplicate deploy from `auth_browser_smoke`, include the new guard/deploy results in `ci-gate` semantics, and replace the standalone tenant workflow's masked shell pipeline with `run: npm test`.
 
 - [ ] **Step 5: Run focused green tests and policy checker**
 
-Run: `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/runtime-migration-parity.test.ts`
+Run: `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts tests/runtime-migration-parity.test.ts`
 
 Run: `node scripts/ci/check-session-deploy-safety.mjs`
 
@@ -107,7 +99,7 @@ Expected: audit exits zero and the resolved versions meet the floors above.
 
 **Interfaces:**
 - Consumes: Supabase project `wnnjeqheqxxyrgsjmygy` and the exact checked-in migration SQL.
-- Produces: a hosted migration ledger entry whose name/version satisfies runtime parity and evidence for function body, ACL, and tenant-table grants.
+- Produces: a current hosted replay ledger entry plus decisive evidence for function body, ACL, and tenant-table grants; duplicate generated ledger names remain intentionally insufficient for behavioral proof.
 
 - [ ] **Step 1: Reconfirm hosted object state and ledger mismatch**
 

@@ -4952,18 +4952,14 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     await screen.findByText("synthetic-iehp.docx");
     await screen.findByRole("heading", { name: /IEHP FBA Checklist Review/i });
-    await waitFor(() => {
-      expect(callApi).toHaveBeenCalledWith(
-        `/api/assessment-checklist?assessment_document_id=${ASSESSMENT_ID}`,
-      );
-      expect(callApi).toHaveBeenCalledWith(
-        `/api/assessment-drafts?assessment_document_id=${ASSESSMENT_ID}`,
-      );
-    });
+    const publishButton = await screen.findByRole("button", { name: /Publish Reviewed Assessment/i });
+    const unresolvedGuidance = await screen.findByText(
+      "1 required checklist or structured row must be approved before publishing.",
+    );
 
     expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Publish Reviewed Assessment/i })).toBeDisabled();
-    expect(screen.getByText("1 required checklist or structured row must be approved before publishing.")).toBeInTheDocument();
+    expect(publishButton).toBeDisabled();
+    expect(unresolvedGuidance).toBeInTheDocument();
   });
 
   it("does not promote IEHP drafts through the live Programs and Goals API", async () => {

@@ -6,7 +6,7 @@
 - lane: `standard`
 - issue: `WIN-214`
 - branch: `codex/fix-tenant-safety-programs-goals-race`
-- intent: make the IEHP unresolved-review test wait for settled checklist and draft state, then assert the existing disabled publish contract
+- intent: make the IEHP unresolved-review test wait for rendered checklist and publish state, then assert the existing disabled publish contract
 
 ## Root Cause
 
@@ -14,7 +14,7 @@ The standalone tenant-safety workflow exposed a race in `ProgramsGoalsTab.test.t
 
 ## Changes
 
-- wait for the IEHP checklist heading and both checklist and draft API requests
+- wait for the IEHP checklist heading, disabled publish action, and unresolved-row guidance to render
 - keep the generic draft publish action absent for IEHP assessments
 - assert the IEHP publish action is present but disabled
 - assert the unresolved-row guidance is visible
@@ -72,4 +72,4 @@ The standalone tenant-safety workflow exposed a race in `ProgramsGoalsTab.test.t
 - pr handoff: ready after branch push and PR creation
 - reviewer: completed
 - required follow-up: require hosted CI before merge
-- handoff summary: Stabilize the IEHP unresolved-review regression by waiting for checklist and draft state, then asserting the intended disabled publish UI and guidance. No production behavior or authorization boundary changes.
+- handoff summary: Stabilize the IEHP unresolved-review regression by waiting for rendered checklist and publish state, then asserting the intended disabled publish UI and guidance. No production behavior or authorization boundary changes.

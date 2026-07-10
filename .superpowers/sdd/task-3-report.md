@@ -75,3 +75,5 @@ Policy TDD evidence:
 - `npm run typecheck`, `npm run ci:check-focused`, and `git diff --check`: passed.
 
 Task 6 follow-up: `src/lib/sessionCaptureBillingGate.ts` and its UI consumers still use `VITE_SESSION_CAPTURE_RELAX_BILLING_GATE`. They must be aligned to the database-owned organization policy in Task 6 so UI affordances match the server/database decision; the server and finalizer already fail safely if the client is stale.
+
+Final privilege tightening: the public policy wrapper no longer contains a `current_user = 'service_role'` bypass and no longer grants `service_role` execution. Only authenticated callers resolved to the target organization or super admins may use the public wrapper. The finalizer continues to call the restricted internal resolver directly. Static RED reproduced the excessive grant/bypass; the focused contract returned GREEN after removal.

@@ -139,7 +139,9 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/coalesce\(organization_override\.is_enabled, flag_default\.default_enabled, false\)[\s\S]*organization_feature_flags/is);
     expect(sql).toMatch(/create or replace function public\.get_session_capture_strict_billing_gate\(target_organization_id uuid\)[\s\S]*current_user_is_super_admin[\s\S]*resolve_user_organization_id/is);
     expect(sql).toMatch(/revoke execute on function public\.get_session_capture_strict_billing_gate\(uuid\) from public, anon/is);
-    expect(sql).toMatch(/grant execute on function public\.get_session_capture_strict_billing_gate\(uuid\) to authenticated, service_role/is);
+    expect(sql).toMatch(/grant execute on function public\.get_session_capture_strict_billing_gate\(uuid\) to authenticated/is);
+    expect(sql).not.toMatch(/grant execute on function public\.get_session_capture_strict_billing_gate\(uuid\) to[^;]*service_role/is);
+    expect(sql).not.toMatch(/current_user\s*=\s*'service_role'/is);
   });
 
   it("enforces strict billing inside finalization without caller policy input", () => {

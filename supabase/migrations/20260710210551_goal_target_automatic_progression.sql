@@ -43,8 +43,7 @@ set search_path = ''
 as $$
 begin
   if target_organization_id is null or not (
-    current_user = 'service_role'
-    or public.current_user_is_super_admin()
+    public.current_user_is_super_admin()
     or app.resolve_user_organization_id(auth.uid()) = target_organization_id
   ) then
     raise exception using errcode = '42501', message = 'organization policy is out of scope';
@@ -54,7 +53,7 @@ end;
 $$;
 
 revoke execute on function public.get_session_capture_strict_billing_gate(uuid) from public, anon;
-grant execute on function public.get_session_capture_strict_billing_gate(uuid) to authenticated, service_role;
+grant execute on function public.get_session_capture_strict_billing_gate(uuid) to authenticated;
 
 alter table public.goal_targets
   add column if not exists current_phase public.goal_target_phase,

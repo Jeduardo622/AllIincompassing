@@ -2960,6 +2960,7 @@ describe('SessionModal', () => {
     fireEvent.change(target2PromptFields[target2PromptFields.length - 1], {
       target: { value: 'Prompt note B' },
     });
+    expect(screen.queryByText('Correct trials cannot exceed opportunities.')).not.toBeInTheDocument();
 
     const removeTargetButtons = screen.getAllByRole('button', { name: /Remove target 1/i });
     await userEvent.click(removeTargetButtons[removeTargetButtons.length - 1]);
@@ -3638,6 +3639,127 @@ describe('SessionModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
 
     expect(onSubmit).not.toHaveBeenCalled();
+  }, 10000);
+
+  it('does not block Save skills for an out-of-scope behavior row with trial bounds errors', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const behaviorGoalId = 'adhoc-bx-550e8400-e29b-41d4-a716-446655440000';
+    const linkedSessionNote = {
+      id: 'linked-note-partial-save-bounds',
+      authorization_id: 'auth-1',
+      service_code: '97153',
+      narrative: '',
+      goal_notes: {
+        'goal-1': 'Skill target remains in progress',
+        [behaviorGoalId]: 'Behavior target stays on the BX tab',
+      },
+      goal_measurements: {
+        [behaviorGoalId]: {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            targets: ['Behavior target'],
+            target: 'Behavior target',
+            metric_value: 8,
+            incorrect_trials: 0,
+            opportunities: 7,
+            target_trials: [
+              {
+                target: 'Behavior target',
+                metric_value: 8,
+                incorrect_trials: 0,
+                opportunities: 7,
+              },
+            ],
+          },
+        },
+      },
+      goal_ids: ['goal-1', behaviorGoalId],
+      goals_addressed: ['Default Goal', 'Behavior target'],
+    };
+
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'linked-note-partial-save-bounds',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: linkedSessionNote.goals_addressed,
+      goal_ids: linkedSessionNote.goal_ids,
+      goal_measurements: linkedSessionNote.goal_measurements as Record<string, unknown>,
+      goal_notes: linkedSessionNote.goal_notes,
+      session_id: 'session-linked-partial-save-bounds',
+      narrative: linkedSessionNote.narrative,
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T09:00:00.000Z',
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      const buildChain = (rows: unknown[]) => {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      };
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-linked-partial-save-bounds',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Skill target remains in progress')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalled();
+    });
   }, 10000);
 
   it('preserves linked note measurements for drifted saved goals when saving', async () => {

@@ -578,6 +578,80 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     expect(screen.getByDisplayValue('Second existing target')).toBeInTheDocument();
   });
 
+  it('submits coherent count and opportunity bounds when editing a target trial measurement', async () => {
+    const onSubmit = vi.fn();
+
+    renderWithProviders(
+      <AddSessionNoteModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        therapists={[mockTherapist] as any}
+        selectedAuth="auth-1"
+        existingNote={{
+          id: 'note-count-edit',
+          date: '2026-03-31',
+          start_time: '09:00:00',
+          end_time: '10:00:00',
+          service_code: '97153',
+          therapist_id: 'therapist-1',
+          therapist_name: 'Test Therapist',
+          goals_addressed: ['Default Goal'],
+          goal_ids: ['goal-1'],
+          goal_notes: { 'goal-1': 'Existing goal note' },
+          goal_measurements: {
+            'goal-1': {
+              version: 1,
+              data: {
+                measurement_type: 'frequency',
+                metric_label: 'Count',
+                metric_unit: 'responses',
+                metric_value: 7,
+                opportunities: 7,
+                targets: ['Existing target'],
+                target: 'Existing target',
+                target_trials: [{
+                  target: 'Existing target',
+                  metric_value: 7,
+                  opportunities: 7,
+                }],
+              },
+            },
+          },
+          session_id: null,
+          narrative: '',
+          is_locked: false,
+          client_id: 'client-1',
+          authorization_id: 'auth-1',
+        }}
+      />
+    );
+
+    fireEvent.change(await screen.findByLabelText(/count \(responses\)/i), {
+      target: { value: '8' },
+    });
+    fireEvent.change(screen.getByLabelText(/opportunities/i), {
+      target: { value: '8' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save note/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        goal_measurements: {
+          'goal-1': expect.objectContaining({
+            data: expect.objectContaining({
+              metric_value: 8,
+              opportunities: 8,
+              target_trials: [expect.objectContaining({
+                metric_value: 8,
+                opportunities: 8,
+              })],
+            }),
+          }),
+        },
+      }));
+    });
+  });
+
   it('preserves blank earlier target slots when editing a later target', async () => {
     const onSubmit = vi.fn();
 

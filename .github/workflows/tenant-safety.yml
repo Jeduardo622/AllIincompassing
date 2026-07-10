@@ -38,5 +38,4 @@ jobs:
       - name: Type check
         run: npm run -s typecheck
       - name: Run tests
-        run: |
-          npm test || echo "tests skipped if environment lacks runner"
+        run: npm test

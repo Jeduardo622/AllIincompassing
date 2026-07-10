@@ -1,0 +1,327 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { afterEach, describe, expect, test } from "vitest";
+
+const repoRoot = path.resolve(__dirname, "..", "..");
+const scriptPath = path.join(repoRoot, "scripts", "ci", "check-session-deploy-safety.mjs");
+
+const tempDirs: string[] = [];
+
+const write = (root: string, relativePath: string, content: string) => {
+  const target = path.join(root, relativePath);
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, content, "utf8");
+};
+
+const ciWorkflow = ({
+  policyExtra = "",
+  deployRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+  deployNeeds = ["policy", "tenant_safety", "runtime_migration_parity", "start_session_runtime_contract"],
+  authNeeds = ["policy", "change_scope", "deploy_session_edge"],
+  authIf = "needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')",
+  authExtra = "",
+  ciGateNeeds = [
+    "change_scope",
+    "docs_guard",
+    "policy",
+    "tenant_safety",
+    "runtime_migration_parity",
+    "start_session_runtime_contract",
+    "deploy_session_edge",
+    "lint_typecheck",
+    "unit_tests",
+    "build",
+    "tier0_browser",
+    "auth_browser_smoke",
+    "playwright_env_readiness",
+    "iehp_assessment_import_smoke",
+  ],
+  ciGateChecks = [
+    "[ \"${TENANT_SAFETY_RESULT}\" = \"success\" ] || failed+=(\"tenant-safety=${TENANT_SAFETY_RESULT}\")",
+    "[ \"${RUNTIME_PARITY_RESULT}\" = \"success\" ] || failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+    "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
+    "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${DEPLOY_SESSION_EDGE_RESULT}\" != \"success\" ]; then failed+=(\"deploy-session-edge=${DEPLOY_SESSION_EDGE_RESULT}\"); fi",
+  ],
+} = {}) => `name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  merge_group:
+    branches: [main, develop]
+
+jobs:
+  change_scope:
+    outputs:
+      docs_only: \${{ steps.detect.outputs.docs_only }}
+      base_sha: \${{ steps.detect.outputs.base_sha }}
+      head_sha: \${{ steps.detect.outputs.head_sha }}
+    steps:
+      - id: detect
+        run: |
+          echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          echo "base_sha=base" >> "$GITHUB_OUTPUT"
+          echo "head_sha=head" >> "$GITHUB_OUTPUT"
+
+  docs_guard:
+    needs: change_scope
+    if: needs.change_scope.outputs.docs_only == 'true'
+    steps:
+      - run: echo docs
+
+  policy:
+    needs: change_scope
+    if: needs.change_scope.outputs.docs_only != 'true'
+    steps:
+      - run: npm run ci:secrets
+      - run: npm run ci:check-focused
+${policyExtra}
+
+  tenant_safety:
+    needs: policy
+    steps:
+      - run: npm run validate:tenant
+
+  runtime_migration_parity:
+    needs:
+      - policy
+      - change_scope
+    steps:
+      - env:
+          MIGRATION_PARITY_BASE_SHA: \${{ needs.change_scope.outputs.base_sha }}
+          MIGRATION_PARITY_HEAD_SHA: \${{ needs.change_scope.outputs.head_sha }}
+          SUPABASE_DB_URL: \${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/ci/check-runtime-migration-parity.mjs
+
+  start_session_runtime_contract:
+    needs: policy
+    steps:
+      - env:
+          SUPABASE_DB_URL: \${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/ci/check-start-session-runtime-contract.mjs
+
+  deploy_session_edge:
+    needs:
+${deployNeeds.map((need) => `      - ${need}`).join("\n")}
+    if: ${deployRestriction}
+    steps:
+      - name: Validate session edge deploy prerequisites
+        run: node scripts/ci/check-session-edge-deploy-prerequisites.mjs
+      - name: Deploy required session edge functions
+        run: npm run ci:deploy:session-edge-bundle
+
+  lint_typecheck:
+    needs: policy
+    steps:
+      - run: npm run lint
+      - run: npm run typecheck
+
+  unit_tests:
+    needs: policy
+    steps:
+      - run: npm run test:ci
+
+  build:
+    needs:
+      - lint_typecheck
+      - unit_tests
+    steps:
+      - run: npm run build
+
+  tier0_browser:
+    needs:
+      - build
+      - change_scope
+    steps:
+      - run: npm run test:routes:tier0
+
+  auth_browser_smoke:
+    needs:
+${authNeeds.map((need) => `      - ${need}`).join("\n")}
+    if: ${authIf}
+    steps:
+      - run: npm run playwright:auth
+${authExtra}
+
+  playwright_env_readiness:
+    needs:
+      - policy
+      - change_scope
+    steps:
+      - run: npm run ci:playwright:env-readiness -- --fail-on-blocking
+
+  iehp_assessment_import_smoke:
+    needs:
+      - policy
+      - change_scope
+    steps:
+      - run: npm run playwright:iehp-assessment-import-smoke
+
+  ci_gate:
+    if: always()
+    needs:
+${ciGateNeeds.map((need) => `      - ${need}`).join("\n")}
+    steps:
+      - env:
+          GITHUB_EVENT_NAME: \${{ github.event_name }}
+          GITHUB_REF: \${{ github.ref }}
+          DOCS_ONLY: \${{ needs.change_scope.outputs.docs_only }}
+          DOCS_GUARD_RESULT: \${{ needs.docs_guard.result }}
+          POLICY_RESULT: \${{ needs.policy.result }}
+          TENANT_SAFETY_RESULT: \${{ needs.tenant_safety.result }}
+          RUNTIME_PARITY_RESULT: \${{ needs.runtime_migration_parity.result }}
+          START_SESSION_RUNTIME_CONTRACT_RESULT: \${{ needs.start_session_runtime_contract.result }}
+          DEPLOY_SESSION_EDGE_RESULT: \${{ needs.deploy_session_edge.result }}
+          LINT_RESULT: \${{ needs.lint_typecheck.result }}
+          UNIT_RESULT: \${{ needs.unit_tests.result }}
+          BUILD_RESULT: \${{ needs.build.result }}
+          TIER0_RESULT: \${{ needs.tier0_browser.result }}
+          AUTH_SMOKE_RESULT: \${{ needs.auth_browser_smoke.result }}
+          PLAYWRIGHT_ENV_RESULT: \${{ needs.playwright_env_readiness.result }}
+          IEHP_IMPORT_SMOKE_RESULT: \${{ needs.iehp_assessment_import_smoke.result }}
+        run: |
+          failed=()
+${ciGateChecks.map((line) => `          ${line}`).join("\n")}
+          [ "\${AUTH_SMOKE_RESULT}" = "success" ] || failed+=("auth-browser-smoke=\${AUTH_SMOKE_RESULT}")
+          [ "\${PLAYWRIGHT_ENV_RESULT}" = "success" ] || failed+=("playwright-env-readiness=\${PLAYWRIGHT_ENV_RESULT}")
+          [ "\${IEHP_IMPORT_SMOKE_RESULT}" = "success" ] || failed+=("iehp-assessment-import-smoke=\${IEHP_IMPORT_SMOKE_RESULT}")
+          if [ "\${#failed[@]}" -gt 0 ]; then
+            exit 1
+          fi
+`;
+
+const tenantSafetyWorkflow = ({
+  testRun = "npm test",
+} = {}) => `name: tenant-safety
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ci/**'
+      - '.github/workflows/**'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/ci/**'
+      - '.github/workflows/**'
+
+jobs:
+  tenant-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm ci
+      - run: npm run validate:tenant
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: ${testRun}
+`;
+
+const makeFixture = (options?: {
+  ci?: Parameters<typeof ciWorkflow>[0];
+  tenant?: Parameters<typeof tenantSafetyWorkflow>[0];
+}) => {
+  const root = mkdtempSync(path.join(tmpdir(), "session-deploy-safety-"));
+  tempDirs.push(root);
+  write(root, ".github/workflows/ci.yml", ciWorkflow(options?.ci));
+  write(root, ".github/workflows/tenant-safety.yml", tenantSafetyWorkflow(options?.tenant));
+  return root;
+};
+
+const runCheck = (cwd: string) =>
+  spawnSync(process.execPath, [scriptPath], {
+    cwd,
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+
+describe("check-session-deploy-safety", () => {
+  afterEach(() => {
+    while (tempDirs.length > 0) {
+      rmSync(tempDirs.pop()!, { recursive: true, force: true });
+    }
+  });
+
+  test("accepts the dedicated main-push deploy DAG with read-only PR jobs", () => {
+    const fixtureRoot = makeFixture();
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Session deploy safety check passed.");
+  });
+
+  test("rejects deploy commands outside deploy_session_edge", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: "      - run: npm run ci:deploy:session-edge-bundle",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("must contain exactly one session edge deploy command");
+  });
+
+  test("rejects deploy_session_edge when it is not restricted to pushes on refs/heads/main", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployRestriction: "github.event_name == 'push'",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_session_edge must be restricted to push on refs/heads/main");
+  });
+
+  test("rejects auth_browser_smoke when it does not depend on deploy_session_edge for main pushes", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authNeeds: ["policy", "change_scope"],
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("auth_browser_smoke must need deploy_session_edge");
+  });
+
+  test("rejects ci-gate when deploy and tenant results are not part of required semantics", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        ciGateNeeds: [
+          "change_scope",
+          "docs_guard",
+          "policy",
+          "lint_typecheck",
+          "unit_tests",
+          "build",
+          "tier0_browser",
+          "auth_browser_smoke",
+          "playwright_env_readiness",
+          "iehp_assessment_import_smoke",
+        ],
+        ciGateChecks: [],
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, and deploy_session_edge");
+  });
+
+  test("rejects masked tenant-safety test failures", () => {
+    const fixtureRoot = makeFixture({
+      tenant: {
+        testRun: "npm test || echo \"tests skipped\"",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("tenant-safety workflow must run `npm test` without masking failures");
+  });
+});

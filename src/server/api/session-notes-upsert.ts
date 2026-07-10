@@ -15,7 +15,7 @@ import {
   jsonForRequest,
   resolveOrgAndRoleWithStatus,
 } from "./shared";
-import { isSessionCaptureBillingGateRelaxed } from "../sessionCaptureBillingGate";
+import { resolveSessionCaptureStrictBillingPolicy } from "../sessionCaptureBillingGate";
 
 type SessionNoteRow = {
   id: string;
@@ -943,6 +943,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     Authorization: `Bearer ${accessToken}`,
   };
 
+  const billingPolicy = await resolveSessionCaptureStrictBillingPolicy(accessToken, organizationId);
+  if (billingPolicy.upstreamError) {
+    return errorResponse(request, "upstream_error", "Unable to resolve session capture policy", { status: 502 });
+  }
+  const captureBillingRelaxed = !billingPolicy.strict;
+
   const authorizationUrl =
     `${supabaseUrl}/rest/v1/authorizations?select=` +
     encodeURIComponent(
@@ -970,8 +976,6 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (authorization.client_id !== payload.clientId) {
     return errorResponse(request, "validation_error", "Client does not match the selected authorization.");
   }
-
-  const captureBillingRelaxed = isSessionCaptureBillingGateRelaxed();
 
   if (!captureBillingRelaxed) {
     if (authorization.status !== "approved") {

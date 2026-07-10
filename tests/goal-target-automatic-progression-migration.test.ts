@@ -133,6 +133,21 @@ describe("goal target automatic progression migration", () => {
     expect(sql).not.toMatch(/note_payload->>'session_duration'/is);
   });
 
+  it("owns strict billing policy in tenant-scoped database functions", () => {
+    expect(sql).toMatch(/insert into public\.feature_flags[\s\S]*session_capture_strict_billing_gate[\s\S]*false[\s\S]*on conflict/is);
+    expect(sql).toMatch(/create or replace function app\.session_capture_strict_billing_gate\(target_organization_id uuid\)[\s\S]*security definer[\s\S]*set search_path = ''/is);
+    expect(sql).toMatch(/coalesce\(organization_override\.is_enabled, flag_default\.default_enabled, false\)[\s\S]*organization_feature_flags/is);
+    expect(sql).toMatch(/create or replace function public\.get_session_capture_strict_billing_gate\(target_organization_id uuid\)[\s\S]*current_user_is_super_admin[\s\S]*resolve_user_organization_id/is);
+    expect(sql).toMatch(/revoke execute on function public\.get_session_capture_strict_billing_gate\(uuid\) from public, anon/is);
+    expect(sql).toMatch(/grant execute on function public\.get_session_capture_strict_billing_gate\(uuid\) to authenticated, service_role/is);
+  });
+
+  it("enforces strict billing inside finalization without caller policy input", () => {
+    expect(sql).not.toMatch(/finalize_session_note_with_progression\([^)]*(?:strict|relax)/is);
+    expect(sql).toMatch(/v_strict_billing := app\.session_capture_strict_billing_gate\(v_session\.organization_id\)/is);
+    expect(sql).toMatch(/if v_strict_billing[\s\S]*v_authorization\.status <> 'approved'[\s\S]*v_session\.start_time::date not between v_authorization\.start_date and v_authorization\.end_date[\s\S]*requested service is not authorized/is);
+  });
+
   it("preserves metadata and documents an additive truthful rollback", () => {
     expect(sql).toMatch(/^-- @migration-intent:/);
     expect(sql).toMatch(/^-- @migration-dependencies:/m);

@@ -58,3 +58,20 @@ Review-fix TDD evidence:
 - `npm run typecheck`: passed.
 - `npm run ci:check-focused`: passed with the same database-backed checks skipped because no database URL is configured.
 - `git diff --check`: passed.
+
+## Database-owned billing policy decision
+
+- Seeded `session_capture_strict_billing_gate` with `default_enabled=false`, preserving the current relaxed default.
+- Added a fixed-search-path internal resolver using organization override first and flag default second.
+- Added an authenticated read wrapper that permits only the target organization's caller, super admin, or trusted service role; `PUBLIC` and `anon` execution are revoked.
+- The server resolves this policy through the public RPC under the caller bearer token and fails closed on lookup failure. `SESSION_CAPTURE_RELAX_BILLING_GATE` is no longer a server authority.
+- Finalization resolves strictness internally without a caller boolean. Strict mode requires approved authorization, persisted session date coverage, and the requested authorization-owned service. Relaxed mode retains deterministic authorized-service fallback and `UNSPECIFIED`.
+- Tenant organization/client/authorization scope checks remain unconditional.
+
+Policy TDD evidence:
+
+- RED: policy resolver/mock contract absent across the handler plus two missing migration policy contracts.
+- GREEN: handler, policy resolver, progression migration, and trial migration suites passed 62/62.
+- `npm run typecheck`, `npm run ci:check-focused`, and `git diff --check`: passed.
+
+Task 6 follow-up: `src/lib/sessionCaptureBillingGate.ts` and its UI consumers still use `VITE_SESSION_CAPTURE_RELAX_BILLING_GATE`. They must be aligned to the database-owned organization policy in Task 6 so UI affordances match the server/database decision; the server and finalizer already fail safely if the client is stale.

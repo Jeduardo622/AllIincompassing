@@ -15,6 +15,10 @@ vi.mock("../api/shared", async () => {
   };
 });
 
+vi.mock("../sessionCaptureBillingGate", () => ({
+  resolveSessionCaptureStrictBillingPolicy: vi.fn(),
+}));
+
 import {
   currentUserCanCaptureTrialEvent,
   fetchAuthenticatedUserIdWithStatus,
@@ -23,6 +27,7 @@ import {
   getSupabaseConfig,
   resolveOrgAndRoleWithStatus,
 } from "../api/shared";
+import { resolveSessionCaptureStrictBillingPolicy } from "../sessionCaptureBillingGate";
 
 const ACCESS_TOKEN = "token-123";
 const BASE_URL = "https://example.supabase.co";
@@ -97,7 +102,7 @@ const buildSessionNoteRow = (id: string) => ({
 describe("sessionNotesUpsertHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    process.env.SESSION_CAPTURE_RELAX_BILLING_GATE = "false";
+    vi.mocked(resolveSessionCaptureStrictBillingPolicy).mockResolvedValue({ strict: true, upstreamError: false });
     vi.mocked(getAccessToken).mockReturnValue(ACCESS_TOKEN);
     vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
@@ -1465,7 +1470,7 @@ describe("sessionNotesUpsertHandler", () => {
   });
 
   it("when billing gate relaxed, skips date/service strict checks and uses first listed service code", async () => {
-    delete process.env.SESSION_CAPTURE_RELAX_BILLING_GATE;
+    vi.mocked(resolveSessionCaptureStrictBillingPolicy).mockResolvedValue({ strict: false, upstreamError: false });
     const fetchJsonMock = vi.mocked(fetchJson);
     fetchJsonMock.mockImplementation(async (url, init) => {
       const requestUrl = String(url);
@@ -2241,6 +2246,15 @@ describe("sessionNotesUpsertHandler", () => {
 
     expect(response.status).toBe(200);
     expect(updateAttempts).toBe(2);
+  });
+
+  it("fails closed before data access when organization billing policy lookup fails", async () => {
+    vi.mocked(resolveSessionCaptureStrictBillingPolicy).mockResolvedValue({ strict: false, upstreamError: true });
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST", headers: HEADERS, body: JSON.stringify(basePayload),
+    }));
+    expect(response.status).toBe(502);
+    expect(fetchJson).not.toHaveBeenCalled();
   });
 
   it("finalizes a locked note and target trials through one progression transaction", async () => {

@@ -1,10 +1,60 @@
 -- @migration-intent: Add tenant-scoped structured criteria, state, evaluation, audit, and atomic RPC support for automatic goal-target progression.
 -- @migration-dependencies: 20260710161038_goal_target_delete_capability_invoker.sql,20260710153231_goal_target_lifecycle_authz.sql,20260703173000_goal_targets_trial_events.sql
--- @migration-rollback: Drop public.override_goal_target_progression, app.evaluate_goal_target_progression, app.validate_goal_target_phase_criterion, public.goal_target_transitions, public.goal_target_phase_evaluations, public.goal_target_phase_criteria, app.set_goal_target_progression_scope, app.guard_goal_target_progression_state, and app.initialize_goal_target_progression_state; then remove progression triggers, columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
+-- @migration-rollback: Drop public.get_session_capture_strict_billing_gate, app.session_capture_strict_billing_gate, public.override_goal_target_progression, app.evaluate_goal_target_progression, app.validate_goal_target_phase_criterion, public.goal_target_transitions, public.goal_target_phase_evaluations, public.goal_target_phase_criteria, app.set_goal_target_progression_scope, app.guard_goal_target_progression_state, and app.initialize_goal_target_progression_state; remove the seeded session_capture_strict_billing_gate only when no organization overrides depend on it; then remove progression triggers, columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
 
 begin;
 
 create type public.goal_target_phase as enum ('baseline', 'teaching', 'generalization', 'mastery');
+
+insert into public.feature_flags (flag_key, description, default_enabled)
+values (
+  'session_capture_strict_billing_gate',
+  'Require approved, date-valid authorization service coverage for session capture.',
+  false
+)
+on conflict (flag_key) do nothing;
+
+create or replace function app.session_capture_strict_billing_gate(target_organization_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce((
+    select coalesce(organization_override.is_enabled, flag_default.default_enabled, false)
+    from public.feature_flags flag_default
+    left join public.organization_feature_flags organization_override
+      on organization_override.feature_flag_id = flag_default.id
+     and organization_override.organization_id = target_organization_id
+    where flag_default.flag_key = 'session_capture_strict_billing_gate'
+  ), false)
+$$;
+
+revoke execute on function app.session_capture_strict_billing_gate(uuid)
+  from public, anon, authenticated, service_role;
+
+create or replace function public.get_session_capture_strict_billing_gate(target_organization_id uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if target_organization_id is null or not (
+    current_user = 'service_role'
+    or public.current_user_is_super_admin()
+    or app.resolve_user_organization_id(auth.uid()) = target_organization_id
+  ) then
+    raise exception using errcode = '42501', message = 'organization policy is out of scope';
+  end if;
+  return app.session_capture_strict_billing_gate(target_organization_id);
+end;
+$$;
+
+revoke execute on function public.get_session_capture_strict_billing_gate(uuid) from public, anon;
+grant execute on function public.get_session_capture_strict_billing_gate(uuid) to authenticated, service_role;
 
 alter table public.goal_targets
   add column if not exists current_phase public.goal_target_phase,
@@ -796,6 +846,7 @@ declare
   v_results jsonb := '[]'::jsonb;
   v_was_locked boolean := false;
   v_service_code text;
+  v_strict_billing boolean;
 begin
   if v_actor_id is null then
     raise exception using errcode = '42501', message = 'authentication required';
@@ -824,6 +875,23 @@ begin
     and a.client_id = v_session.client_id;
   if not found then
     raise exception using errcode = '42501', message = 'authorization is out of scope';
+  end if;
+
+  v_strict_billing := app.session_capture_strict_billing_gate(v_session.organization_id);
+  if v_strict_billing then
+    if v_authorization.status <> 'approved' then
+      raise exception using errcode = '22023', message = 'authorization must be approved';
+    end if;
+    if v_session.start_time::date not between v_authorization.start_date and v_authorization.end_date then
+      raise exception using errcode = '22023', message = 'session date is outside authorization range';
+    end if;
+    if not exists (
+      select 1 from public.authorization_services authorized
+      where authorized.authorization_id = v_authorization.id
+        and authorized.service_code = nullif(note_payload->>'requested_service_code', '')
+    ) then
+      raise exception using errcode = '22023', message = 'requested service is not authorized';
+    end if;
   end if;
 
   select authorized.service_code into v_service_code

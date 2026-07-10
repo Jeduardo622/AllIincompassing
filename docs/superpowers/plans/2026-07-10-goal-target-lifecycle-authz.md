@@ -86,3 +86,15 @@
 - [ ] Compare hosted migration/function state, apply only the new migration, deploy `goal-targets`, and verify the live function version and catalog grants.
 - [ ] Use synthetic same-org role fixtures or safe transactional SQL to prove BCBA success, midtier denial, cross-org denial, and referenced-target preservation without exposing production data.
 - [ ] Run `pr-hygiene`, commit, push, open a PR linked to `WIN-215`, update Linear to In Review, and report live checks/blockers.
+
+## Execution Handoff
+
+- Status: implementation and hosted enforcement complete; PR preparation in progress.
+- Lane: `critical` (auth, RLS/grants, tenant-sensitive migration, server and Edge boundaries).
+- Delivered scope: exact BCBA/super-admin delete capability; midtier archive/restore without delete; archived/unused/same-org RLS deletion; non-cascading trial-history preservation; server/Edge/UI parity.
+- Focused verification: 7 files / 119 tests passed; dedicated Cypress lifecycle spec 3/3 passed.
+- Full local verification: `npm run verify:local` passed, including policy checks, lint, typecheck, test/coverage, build, and 220/220 tier-0 route tests. `npm run validate:tenant` also passed.
+- Hosted proof: both migrations applied; `goal-targets` Edge v3 active with JWT verification; authenticated synthetic midtier archive/restore succeeded and delete returned zero rows; BCBA deleted only archived unused data; active/history/cross-org checks denied; trial history remained; synthetic cleanup counts were zero.
+- Advisor follow-through: the exposed public capability wrapper was changed to `SECURITY INVOKER`; the follow-up security advisor returned no goal-target lifecycle findings.
+- Blocked check: `npm run ci:playwright` preflight passed, then hosted auth rejected the configured super-admin credential as invalid before product smoke execution.
+- Stop condition: no further lifecycle or permission expansion without fresh routing.

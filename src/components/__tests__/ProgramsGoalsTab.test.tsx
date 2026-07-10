@@ -70,6 +70,99 @@ const buildClient = (overrides: Partial<ProgramsGoalsTabClient> = {}): ProgramsG
   ...overrides,
 });
 
+type LifecycleTarget = {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  goal_id: string;
+  name: string;
+  measurement_type: "frequency";
+  graph_config: { defaultChart: "bar"; source: "trial_events" };
+  status: "active" | "archived";
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+const buildLifecycleTarget = (
+  id: string,
+  name: string,
+  status: LifecycleTarget["status"],
+): LifecycleTarget => ({
+  id,
+  organization_id: ORG_ID,
+  client_id: "client-1",
+  goal_id: "goal-1",
+  name,
+  measurement_type: "frequency",
+  graph_config: { defaultChart: "bar", source: "trial_events" },
+  status,
+  sort_order: 0,
+  created_at: "2026-02-11T00:00:00.000Z",
+  updated_at: "2026-02-11T00:00:00.000Z",
+});
+
+const mockGoalTargetLifecycleApi = (
+  initialTargets: LifecycleTarget[],
+  deleteResponse: Response = new Response(JSON.stringify({ deleted_target_id: "target-archived" }), { status: 200 }),
+) => {
+  let targets = initialTargets;
+  vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    if (method === "GET" && path.startsWith("/api/programs?")) {
+      return new Response(JSON.stringify([{
+        id: "program-1",
+        organization_id: ORG_ID,
+        client_id: "client-1",
+        name: "Communication Program",
+        status: "active",
+        created_at: "2026-02-11T00:00:00.000Z",
+        updated_at: "2026-02-11T00:00:00.000Z",
+      }]), { status: 200 });
+    }
+    if (method === "GET" && path.startsWith("/api/goals?")) {
+      return new Response(JSON.stringify([{
+        id: "goal-1",
+        organization_id: ORG_ID,
+        client_id: "client-1",
+        program_id: "program-1",
+        title: "Increase functional communication",
+        description: "Client uses functional communication.",
+        original_text: "Original clinical wording",
+        status: "active",
+        created_at: "2026-02-11T00:00:00.000Z",
+        updated_at: "2026-02-11T00:00:00.000Z",
+      }]), { status: 200 });
+    }
+    if (method === "GET" && path.startsWith("/api/goal-targets?")) {
+      return new Response(JSON.stringify(targets), { status: 200 });
+    }
+    if (method === "PATCH" && path.startsWith("/api/goal-targets?target_id=")) {
+      const targetId = new URL(path, "http://localhost").searchParams.get("target_id");
+      const body = JSON.parse(String(init?.body)) as { status: LifecycleTarget["status"] };
+      const updated = targets.find((target) => target.id === targetId);
+      if (!updated) return new Response(JSON.stringify({ error: "Not found" }), { status: 404 });
+      targets = targets.map((target) => target.id === targetId ? { ...target, status: body.status } : target);
+      return new Response(JSON.stringify({ ...updated, status: body.status }), { status: 200 });
+    }
+    if (method === "DELETE" && path.startsWith("/api/goal-targets?target_id=")) {
+      if (deleteResponse.ok) {
+        const targetId = new URL(path, "http://localhost").searchParams.get("target_id");
+        targets = targets.filter((target) => target.id !== targetId);
+      }
+      return deleteResponse.clone();
+    }
+    if (method === "GET" && path.startsWith("/api/trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+    if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+    if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+    if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+    if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+      return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: "Not handled in lifecycle test" }), { status: 500 });
+  });
+};
+
 const buildAcceptedDraftGoals = () => [
   ...Array.from({ length: 20 }, (_, index) => ({
     id: `child-${index + 1}`,
@@ -1320,6 +1413,183 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(await screen.findByText("Mands for help independently")).toBeInTheDocument();
     expect(screen.getByText("Measurement: Correct / incorrect")).toBeInTheDocument();
     expect(screen.getByText(/Graph: bar from/i)).toBeInTheDocument();
+  });
+
+  it("gives midtier explicit Archive and Restore actions without exposing Delete", async () => {
+    mockGoalTargetLifecycleApi([
+      buildLifecycleTarget("target-active", "Mands for help", "active"),
+      buildLifecycleTarget("target-archived", "Archived imitation", "archived"),
+    ]);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("Mands for help")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete target/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Archive target Mands for help" }));
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goal-targets?target_id=target-active",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "archived" }) }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith("Target archived");
+    expect(screen.queryByText("Mands for help")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Show archived targets/i }));
+    expect(await screen.findByText("Archived imitation")).toBeInTheDocument();
+    expect(screen.getByText("Mands for help")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Restore target Archived imitation" }));
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goal-targets?target_id=target-archived",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "active" }) }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith("Target restored");
+    expect(screen.getByText("Archived imitation")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete target/i })).not.toBeInTheDocument();
+  });
+
+  it("cancels BCBA target deletion without issuing a request", async () => {
+    mockGoalTargetLifecycleApi([
+      buildLifecycleTarget("target-archived", "Archived imitation", "archived"),
+    ]);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: { role: "bcba", organizationId: ORG_ID, accessToken: "test-access-token" },
+    });
+
+    await user.click(await screen.findByRole("button", { name: /Show archived targets/i }));
+    await user.click(screen.getByRole("button", { name: "Delete target Archived imitation" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/Archived imitation.*irreversible/i));
+    expect(
+      vi.mocked(callEdgeFunctionHttp).mock.calls.some(([, init]) => init?.method === "DELETE"),
+    ).toBe(false);
+    expect(screen.getByText("Archived imitation")).toBeInTheDocument();
+  });
+
+  it("shows BCBA Delete only for archived targets and requires irreversible confirmation", async () => {
+    mockGoalTargetLifecycleApi([
+      buildLifecycleTarget("target-active", "Mands for help", "active"),
+      buildLifecycleTarget("target-archived", "Archived imitation", "archived"),
+    ]);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "bcba",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("Mands for help")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete target Mands for help" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Show archived targets/i }));
+
+    await user.click(screen.getByRole("button", { name: "Delete target Archived imitation" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/Archived imitation.*irreversible/i));
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goal-targets?target_id=target-archived",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+    await waitFor(() => expect(screen.queryByText("Archived imitation")).not.toBeInTheDocument());
+    expect(showSuccess).toHaveBeenCalledWith('Target "Archived imitation" deleted');
+  });
+
+  it("retains an archived target when BCBA deletion fails", async () => {
+    mockGoalTargetLifecycleApi(
+      [buildLifecycleTarget("target-archived", "Archived imitation", "archived")],
+      new Response(JSON.stringify({ error: "Goal target has trial history and cannot be deleted" }), { status: 409 }),
+    );
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "bcba",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: /Show archived targets/i }));
+    expect(await screen.findByText("Archived imitation")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete target Archived imitation" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(showError).mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({ message: "Goal target has trial history and cannot be deleted" }),
+      );
+    });
+    expect(screen.getByText("Archived imitation")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete target Archived imitation" })).toBeEnabled();
+  });
+
+  it("disables every target lifecycle action while an archive request is pending", async () => {
+    mockGoalTargetLifecycleApi([
+      buildLifecycleTarget("target-active", "Mands for help", "active"),
+      buildLifecycleTarget("target-archived", "Archived imitation", "archived"),
+    ]);
+    const baseApi = vi.mocked(callApi).getMockImplementation();
+    vi.mocked(callApi).mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === "PATCH" && path === "/api/goal-targets?target_id=target-active") {
+        return new Promise<Response>(() => {});
+      }
+      return baseApi!(path, init);
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: { role: "bcba", organizationId: ORG_ID, accessToken: "test-access-token" },
+    });
+
+    await user.click(await screen.findByRole("button", { name: /Show archived targets/i }));
+    await user.click(screen.getByRole("button", { name: "Archive target Mands for help" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Archive target Mands for help" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Restore target Archived imitation" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Delete target Archived imitation" })).toBeDisabled();
+    });
+  });
+
+  it("disables every target lifecycle action while a delete request is pending", async () => {
+    mockGoalTargetLifecycleApi([
+      buildLifecycleTarget("target-active", "Mands for help", "active"),
+      buildLifecycleTarget("target-archived", "Archived imitation", "archived"),
+    ]);
+    const baseApi = vi.mocked(callApi).getMockImplementation();
+    vi.mocked(callApi).mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === "DELETE" && path === "/api/goal-targets?target_id=target-archived") {
+        return new Promise<Response>(() => {});
+      }
+      return baseApi!(path, init);
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: { role: "bcba", organizationId: ORG_ID, accessToken: "test-access-token" },
+    });
+
+    await user.click(await screen.findByRole("button", { name: /Show archived targets/i }));
+    await user.click(screen.getByRole("button", { name: "Delete target Archived imitation" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Archive target Mands for help" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Restore target Archived imitation" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Delete target Archived imitation" })).toBeDisabled();
+    });
   });
 
   it("lets a midtier edit an existing goal target graph configuration", async () => {

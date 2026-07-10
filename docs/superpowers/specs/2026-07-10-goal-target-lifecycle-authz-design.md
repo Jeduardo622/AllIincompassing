@@ -15,10 +15,10 @@ Implement a tenant-safe target lifecycle in which a midtier can archive or resto
 ## Data integrity contract
 
 - Hard deletion is allowed only when the target is already `archived` and no `trial_events` row references it.
-- A referenced target returns `TARGET_HAS_TRIAL_HISTORY`; the HTTP adapters map this to `409 Conflict` and instruct the caller to keep it archived.
-- A non-archived target returns `TARGET_NOT_ARCHIVED` and maps to `409 Conflict`.
+- A referenced target maps to `409 Conflict`: a PostgreSQL foreign-key conflict returns `Goal target has trial history and cannot be deleted`; a strict-RLS zero-row delete after archived preflight returns `Goal target has trial history or is no longer eligible for deletion`.
+- A non-archived target returns `409 Conflict` with `Only archived goal targets can be deleted`.
 - Trial events are never deleted or cascaded by this feature.
-- Missing and out-of-scope targets return a non-disclosing `TARGET_NOT_FOUND` response.
+- Missing and out-of-scope targets return a non-disclosing `404 Goal target not found` response.
 
 ## Architecture
 

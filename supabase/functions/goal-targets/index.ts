@@ -65,6 +65,20 @@ const currentUserCanManageProgramsGoals = async (
   return { allowed: data === true, upstreamError: false };
 };
 
+const currentUserCanDeleteGoalTargets = async (
+  db: ReturnType<typeof createRequestClient>,
+  orgId: string,
+): Promise<CapabilityResult> => {
+  const { data, error } = await db.rpc("current_user_can_delete_goal_targets", {
+    target_organization_id: orgId,
+  });
+  if (error) {
+    console.error("current_user_can_delete_goal_targets rpc error", error);
+    return { allowed: false, upstreamError: true };
+  }
+  return { allowed: data === true, upstreamError: false };
+};
+
 const loadGoalScope = async (
   db: ReturnType<typeof createRequestClient>,
   orgId: string,
@@ -114,6 +128,46 @@ export const handleGoalTargets = async (req: Request) => {
     const { data, error } = await query;
     if (error) return json(req, { error: "Failed to load goal targets" }, 500);
     return json(req, data ?? []);
+  }
+
+  if (req.method === "DELETE") {
+    const url = new URL(req.url);
+    const targetId = url.searchParams.get("target_id");
+    if (!targetId) return json(req, { error: "target_id is required" }, 400);
+    if (!isUuid(targetId)) return json(req, { error: "target_id must be a valid UUID" }, 400);
+
+    const canDelete = await currentUserCanDeleteGoalTargets(db, orgId);
+    if (canDelete.upstreamError) return json(req, { error: "Unable to validate goal-target delete access" }, 502);
+    if (!canDelete.allowed) return json(req, { error: "Forbidden" }, 403);
+
+    const { data: targets, error: targetError } = await db
+      .from("goal_targets")
+      .select("id,status")
+      .eq("organization_id", orgId)
+      .eq("id", targetId)
+      .limit(1);
+    if (targetError) return json(req, { error: "Failed to load goal target" }, 502);
+    const target = targets?.[0] as { id: string; status: string } | undefined;
+    if (!target) return json(req, { error: "Goal target not found" }, 404);
+    if (target.status !== "archived") {
+      return json(req, { error: "Only archived goal targets can be deleted" }, 409);
+    }
+
+    const { data, error } = await db
+      .from("goal_targets")
+      .delete()
+      .eq("organization_id", orgId)
+      .eq("id", targetId)
+      .select("id")
+      .limit(1);
+    if (error && error.code === "23503") {
+      return json(req, { error: "Goal target has trial history and cannot be deleted" }, 409);
+    }
+    if (error) return json(req, { error: "Failed to delete goal target" }, 502);
+    if (!data || data.length === 0) {
+      return json(req, { error: "Goal target has trial history or is no longer eligible for deletion" }, 409);
+    }
+    return json(req, data[0]);
   }
 
   const allowed = await currentUserCanManageProgramsGoals(db, orgId);

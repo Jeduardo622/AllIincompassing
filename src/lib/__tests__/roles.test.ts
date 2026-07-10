@@ -18,6 +18,15 @@ describe('role capability matrix', () => {
     expect(roleHasCapability('bcba', 'viewSettings')).toBe(true);
   });
 
+  it('reserves hard-delete of goal targets for BCBA and super-admin', () => {
+    expect(rolesForCapability('deleteGoalTargets')).toEqual(['bcba', 'super_admin']);
+    expect(roleHasCapability('bcba', 'deleteGoalTargets')).toBe(true);
+    expect(roleHasCapability('super_admin', 'deleteGoalTargets')).toBe(true);
+    expect(roleHasCapability('midtier', 'deleteGoalTargets')).toBe(false);
+    expect(roleHasCapability('admin', 'deleteGoalTargets')).toBe(false);
+    expect(roleHasCapability('therapist', 'deleteGoalTargets')).toBe(false);
+  });
+
   it('keeps admin_schedule and BT scoped to their exact capabilities', () => {
     expect(roleHasCapability('admin_schedule', 'manageClients')).toBe(true);
     expect(roleHasCapability('admin_schedule', 'manageProgramsGoals')).toBe(false);

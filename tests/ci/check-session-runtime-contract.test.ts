@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   buildDatabaseSslConfig,
   evaluateStartSessionRuntimeContract,
+  TABLE_GRANT_QUERY,
 } from "../../scripts/ci/check-session-runtime-contract.mjs";
 
 const validContract = {
@@ -66,6 +67,11 @@ describe("check-session-runtime-contract", () => {
       ca: "trusted-ca",
       rejectUnauthorized: true,
     });
+  });
+
+  test("inspects PUBLIC ACL entries without treating PUBLIC as a database role", () => {
+    expect(TABLE_GRANT_QUERY).toContain("acl.grantee = 0");
+    expect(TABLE_GRANT_QUERY).not.toContain("then 'PUBLIC'");
   });
 
   test("accepts the live function and grant contract when all required clauses are present", () => {

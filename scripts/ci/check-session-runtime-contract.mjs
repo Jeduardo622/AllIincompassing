@@ -82,6 +82,31 @@ const TABLE_GRANT_PROBE_VALUES = Object.keys(TABLE_GRANT_CONTRACT)
   )
   .join(",\n            ");
 
+export const TABLE_GRANT_QUERY = `
+  select grants.table_name, grants.grantee, grants.privilege_type
+  from (
+    values
+      ${TABLE_GRANT_PROBE_VALUES}
+  ) as grants(table_name, grantee, privilege_type)
+  where case
+    when grants.grantee = 'public' then exists (
+      select 1
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      cross join lateral aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) acl
+      where n.nspname = 'public'
+        and c.relname = grants.table_name
+        and acl.grantee = 0
+        and acl.privilege_type = grants.privilege_type
+    )
+    else has_table_privilege(
+      grants.grantee,
+      format('public.%I', grants.table_name),
+      grants.privilege_type
+    )
+  end
+`;
+
 const sortPrivileges = (privileges) => [...new Set(privileges.map((value) => value.toUpperCase()))].sort();
 
 const samePrivileges = (actual, expected) =>
@@ -168,20 +193,7 @@ const fetchRuntimeContract = async ({ connectionString, ca }) => {
       [FUNCTION_SIGNATURE],
     );
 
-    const grantsResult = await client.query(
-      `
-        select grants.table_name, grants.grantee, grants.privilege_type
-        from (
-          values
-            ${TABLE_GRANT_PROBE_VALUES}
-        ) as grants(table_name, grantee, privilege_type)
-        where has_table_privilege(
-          case when grants.grantee = 'public' then 'PUBLIC' else grants.grantee end,
-          format('public.%I', grants.table_name),
-          grants.privilege_type
-        )
-      `,
-    );
+    const grantsResult = await client.query(TABLE_GRANT_QUERY);
 
     const tableGrants = {
       goal_domains: {

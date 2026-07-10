@@ -146,13 +146,52 @@ Observed before implementation:
 ### Fix details
 
 - Added `app.initialize_goal_target_progression_state()` as an `AFTER INSERT`, fixed-empty-search-path `SECURITY DEFINER` trigger helper. `AFTER INSERT` guarantees the pre-existing target scope trigger has already derived and validated organization/client/goal scope.
-- The helper takes a goal-keyed transaction advisory lock and a `FOR SHARE` parent-goal row lock. `FOR SHARE` keeps status stable without the foreign-key lock-upgrade deadlock risk that `FOR UPDATE` would introduce across concurrent inserts.
+- The helper takes a goal-keyed transaction advisory lock before reading parent scope. The later lifecycle-trigger refactor intentionally avoids a second parent row lock: a goal-status update already owns that row lock before its `AFTER UPDATE` trigger, so combining it with the opposite advisory-then-row order from target inserts would create a lock inversion.
 - The helper revalidates target/goal scope and the existing program-goal management authority for authenticated callers.
 - Every newly inserted target receives four incomplete phase-criteria rows.
 - Only an `active` target under an `active` parent goal becomes current, and only when no current active target exists after serialization. It starts at `baseline` with a fresh UTC evaluation window; draft, mastered, archived, and later active targets remain non-current.
 - When eligible non-current targets already exist, selection is deterministic by `sort_order, created_at, id`; a refinement assertion was observed RED before adding this ordered selection.
 - Direct callers still cannot provide progression-owned columns because INSERT remains column-granted only for non-progression fields.
 - Revoked initializer execution from `PUBLIC`, `anon`, `authenticated`, and `service_role`; added the helper to rollback metadata.
+
+### GREEN evidence
+
+Command:
+
+`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
+
+Observed after implementation:
+
+- Exit code: `0`
+- Test files: `2 passed / 2`
+- Tests: `18 passed / 18`
+- `npm run ci:check-focused`: passed; database-backed checks remain skipped without a configured database URL.
+
+## Lifecycle activation invariant remediation
+
+### RED evidence
+
+Added static contracts requiring the same trusted initializer on both target `draft -> active` and parent-goal `draft -> active`, plus owner-context version increments.
+
+Command:
+
+`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
+
+Observed before implementation:
+
+- Exit code: `1`
+- Progression migration contract: `1 failed / 7`
+- Existing goal-target/trial-event migration contract: `11 passed / 11`
+- Expected failure: lifecycle activation triggers were absent.
+
+### Fix details
+
+- Refactored `app.initialize_goal_target_progression_state()` into one trigger helper shared by target inserts, target status transitions into `active`, and goal status transitions into `active`.
+- The helper derives a single goal ID by trigger table/operation, obtains the goal advisory lock, validates parent scope and active status, and no-ops unless the event can require initialization.
+- Existing valid current targets short-circuit selection. Otherwise the earliest active target is chosen deterministically by `sort_order, created_at, id`, initialized at baseline with a fresh UTC window, and has its progression version incremented.
+- Target inserts still receive four incomplete criteria rows regardless of lifecycle status.
+- The progression update does not include `status`, so the column-specific activation trigger cannot recurse. The goal activation trigger is likewise isolated to goal status updates.
+- The helper remains fixed-search-path, owner-executed, role/scope checked for authenticated callers, and non-executable by Data API roles.
 
 ### GREEN evidence
 

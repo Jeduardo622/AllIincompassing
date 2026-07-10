@@ -25,12 +25,17 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/grant update \(\s*organization_id, client_id, goal_id, name, measurement_type, graph_config,\s*status, sort_order, created_by, updated_by, created_at, updated_at\s*\)[^;]+to authenticated, service_role/is);
     expect(sql).toContain("create or replace function app.initialize_goal_target_progression_state()");
     expect(sql).toMatch(/initialize_goal_target_progression_state[\s\S]*security definer\s+set search_path = ''/is);
-    expect(sql).toMatch(/pg_advisory_xact_lock\(hashtextextended\(new\.goal_id::text, 0\)\)/is);
-    expect(sql).toMatch(/from public\.goals g[\s\S]*where g\.id = new\.goal_id[\s\S]*for share/is);
+    expect(sql).toMatch(/pg_advisory_xact_lock\(hashtextextended\(v_goal_id::text, 0\)\)/is);
+    expect(sql).toMatch(/from public\.goals g[\s\S]*where g\.id = v_goal_id/is);
     expect(sql).toMatch(/new\.status = 'active'[\s\S]*v_goal_status = 'active'[\s\S]*not exists \([\s\S]*is_current[\s\S]*status = 'active'/is);
     expect(sql).toMatch(/order by gt\.sort_order, gt\.created_at, gt\.id[\s\S]*limit 1/is);
     expect(sql).toMatch(/set current_phase = 'baseline'::public\.goal_target_phase,[\s\S]*is_current = true,[\s\S]*evaluation_window_started_at = timezone\('utc', now\(\)\)/is);
     expect(sql).toMatch(/create trigger goal_targets_initialize_progression_state\s+after insert on public\.goal_targets/is);
+    expect(sql).toMatch(/create trigger goal_targets_initialize_progression_on_activation\s+after update of status on public\.goal_targets/is);
+    expect(sql).toMatch(/create trigger goals_initialize_target_progression_on_activation\s+after update of status on public\.goals/is);
+    expect(sql).toMatch(/tg_table_name = 'goal_targets'[\s\S]*old\.status is distinct from 'active'[\s\S]*new\.status = 'active'/is);
+    expect(sql).toMatch(/tg_table_name = 'goals'[\s\S]*old\.status is distinct from 'active'[\s\S]*new\.status = 'active'/is);
+    expect(sql).toMatch(/set current_phase = 'baseline'::public\.goal_target_phase,[\s\S]*is_current = true,[\s\S]*evaluation_window_started_at = timezone\('utc', now\(\)\),[\s\S]*progression_version = progression_version \+ 1/is);
     expect(sql).toMatch(/revoke execute on function app\.initialize_goal_target_progression_state\(\)[^;]+from public, anon, authenticated, service_role/is);
   });
 

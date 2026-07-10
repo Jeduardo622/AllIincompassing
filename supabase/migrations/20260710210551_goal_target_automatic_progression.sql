@@ -247,22 +247,52 @@ security definer
 set search_path = ''
 as $$
 declare
+  v_goal_id uuid;
   v_goal_status text;
   v_goal_organization_id uuid;
   v_goal_client_id uuid;
   v_first_target_id uuid;
+  v_initialize_current boolean := false;
 begin
-  perform pg_advisory_xact_lock(hashtextextended(new.goal_id::text, 0));
+  if tg_table_name = 'goal_targets' then
+    v_goal_id := new.goal_id;
+    if tg_op = 'INSERT' then
+      v_initialize_current := new.status = 'active';
+    elsif tg_op = 'UPDATE'
+      and old.status is distinct from 'active'
+      and new.status = 'active'
+    then
+      v_initialize_current := true;
+    else
+      return new;
+    end if;
+  elsif tg_table_name = 'goals'
+    and tg_op = 'UPDATE'
+    and old.status is distinct from 'active'
+    and new.status = 'active'
+  then
+    v_goal_id := new.id;
+    v_initialize_current := true;
+  else
+    return new;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(v_goal_id::text, 0));
 
   select g.status, g.organization_id, g.client_id
   into v_goal_status, v_goal_organization_id, v_goal_client_id
   from public.goals g
-  where g.id = new.goal_id
-  for share;
+  where g.id = v_goal_id;
 
-  if not found
-    or new.organization_id <> v_goal_organization_id
-    or new.client_id <> v_goal_client_id
+  if not found then
+    raise exception using errcode = '23503', message = 'goal is not in scope';
+  end if;
+
+  if tg_table_name = 'goal_targets'
+    and (
+      new.organization_id <> v_goal_organization_id
+      or new.client_id <> v_goal_client_id
+    )
   then
     raise exception using errcode = '23514', message = 'goal target is not in goal scope';
   end if;
@@ -271,35 +301,37 @@ begin
     and not (
       app.current_user_is_super_admin()
       or (
-        new.organization_id = app.current_user_organization_id()
-        and app.current_user_can_manage_programs_goals(new.organization_id)
+        v_goal_organization_id = app.current_user_organization_id()
+        and app.current_user_can_manage_programs_goals(v_goal_organization_id)
       )
     )
   then
     raise exception using errcode = '42501', message = 'goal target is not in scope';
   end if;
 
-  insert into public.goal_target_phase_criteria (
-    organization_id, client_id, goal_id, target_id, phase,
-    metric, comparator, threshold, min_observations, consecutive_sessions
-  )
-  select new.organization_id, new.client_id, new.goal_id, new.id, phases.phase,
-    null, null, null, null, null
-  from (values
-    ('baseline'::public.goal_target_phase),
-    ('teaching'::public.goal_target_phase),
-    ('generalization'::public.goal_target_phase),
-    ('mastery'::public.goal_target_phase)
-  ) as phases(phase)
-  on conflict (target_id, phase) do nothing;
+  if tg_table_name = 'goal_targets' and tg_op = 'INSERT' then
+    insert into public.goal_target_phase_criteria (
+      organization_id, client_id, goal_id, target_id, phase,
+      metric, comparator, threshold, min_observations, consecutive_sessions
+    )
+    select new.organization_id, new.client_id, new.goal_id, new.id, phases.phase,
+      null, null, null, null, null
+    from (values
+      ('baseline'::public.goal_target_phase),
+      ('teaching'::public.goal_target_phase),
+      ('generalization'::public.goal_target_phase),
+      ('mastery'::public.goal_target_phase)
+    ) as phases(phase)
+    on conflict (target_id, phase) do nothing;
+  end if;
 
-  if new.status = 'active'
+  if v_initialize_current
     and v_goal_status = 'active'
     and not exists (
       select 1
       from public.goal_targets gt
-      where gt.organization_id = new.organization_id
-        and gt.goal_id = new.goal_id
+      where gt.organization_id = v_goal_organization_id
+        and gt.goal_id = v_goal_id
         and gt.is_current
         and gt.status = 'active'
     )
@@ -307,8 +339,8 @@ begin
     select gt.id
     into v_first_target_id
     from public.goal_targets gt
-    where gt.organization_id = new.organization_id
-      and gt.goal_id = new.goal_id
+    where gt.organization_id = v_goal_organization_id
+      and gt.goal_id = v_goal_id
       and gt.status = 'active'
     order by gt.sort_order, gt.created_at, gt.id
     limit 1
@@ -317,7 +349,8 @@ begin
     update public.goal_targets
     set current_phase = 'baseline'::public.goal_target_phase,
         is_current = true,
-        evaluation_window_started_at = timezone('utc', now())
+        evaluation_window_started_at = timezone('utc', now()),
+        progression_version = progression_version + 1
     where id = v_first_target_id;
   end if;
 
@@ -331,6 +364,16 @@ revoke execute on function app.initialize_goal_target_progression_state()
 drop trigger if exists goal_targets_initialize_progression_state on public.goal_targets;
 create trigger goal_targets_initialize_progression_state
 after insert on public.goal_targets
+for each row execute function app.initialize_goal_target_progression_state();
+
+drop trigger if exists goal_targets_initialize_progression_on_activation on public.goal_targets;
+create trigger goal_targets_initialize_progression_on_activation
+after update of status on public.goal_targets
+for each row execute function app.initialize_goal_target_progression_state();
+
+drop trigger if exists goals_initialize_target_progression_on_activation on public.goals;
+create trigger goals_initialize_target_progression_on_activation
+after update of status on public.goals
 for each row execute function app.initialize_goal_target_progression_state();
 
 revoke insert, update on table public.goal_targets from anon, authenticated, service_role;

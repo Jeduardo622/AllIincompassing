@@ -775,6 +775,165 @@ $$;
 revoke execute on function app.evaluate_goal_target_progression(uuid, uuid) from public, anon, authenticated;
 grant execute on function app.evaluate_goal_target_progression(uuid, uuid) to service_role;
 
+create or replace function public.finalize_session_note_with_progression(
+  target_session_id uuid,
+  target_note_id uuid,
+  note_payload jsonb,
+  trial_events jsonb default '[]'::jsonb
+)
+returns table (note jsonb, progression_results jsonb)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id uuid := auth.uid();
+  v_session public.sessions;
+  v_note public.client_session_notes;
+  v_event jsonb;
+  v_target public.goal_targets;
+  v_authorization public.authorizations;
+  v_results jsonb := '[]'::jsonb;
+  v_was_locked boolean := false;
+begin
+  if v_actor_id is null then
+    raise exception using errcode = '42501', message = 'authentication required';
+  end if;
+  if jsonb_typeof(coalesce(note_payload, '{}'::jsonb)) <> 'object'
+     or jsonb_typeof(coalesce(trial_events, '[]'::jsonb)) <> 'array' then
+    raise exception using errcode = '22023', message = 'invalid finalization payload';
+  end if;
+
+  select s.* into v_session
+  from public.sessions s
+  where s.id = target_session_id
+  for update;
+  if not found or v_session.status <> 'completed' then
+    raise exception using errcode = '22023', message = 'session is not finalized';
+  end if;
+
+  if not public.current_user_can_capture_trial_event(v_session.organization_id, v_session.client_id) then
+    raise exception using errcode = '42501', message = 'forbidden';
+  end if;
+
+  select a.* into v_authorization
+  from public.authorizations a
+  where a.id = nullif(note_payload->>'authorization_id', '')::uuid
+    and a.organization_id = v_session.organization_id
+    and a.client_id = v_session.client_id;
+  if not found then
+    raise exception using errcode = '42501', message = 'authorization is out of scope';
+  end if;
+
+  if target_note_id is not null then
+    select csn.* into v_note
+    from public.client_session_notes csn
+    where csn.id = target_note_id
+      and csn.session_id = v_session.id
+      and csn.organization_id = v_session.organization_id
+      and csn.client_id = v_session.client_id
+    for update;
+    if not found then
+      raise exception using errcode = '42501', message = 'session note is out of scope';
+    end if;
+    v_was_locked := v_note.is_locked;
+  end if;
+
+  if v_note.id is null then
+    insert into public.client_session_notes (
+      authorization_id, client_id, therapist_id, organization_id, session_id,
+      service_code, session_date, start_time, end_time, session_duration,
+      goals_addressed, goal_ids, goal_measurements, goal_notes, narrative,
+      is_locked, signed_at, created_by
+    ) values (
+      v_authorization.id, v_session.client_id, v_session.therapist_id,
+      v_session.organization_id, v_session.id, note_payload->>'service_code',
+      (note_payload->>'session_date')::date, (note_payload->>'start_time')::time,
+      (note_payload->>'end_time')::time, (note_payload->>'session_duration')::integer,
+      coalesce(array(select jsonb_array_elements_text(note_payload->'goals_addressed')), '{}'::text[]),
+      case when note_payload->'goal_ids' is null or note_payload->'goal_ids' = 'null'::jsonb then null
+        else array(select jsonb_array_elements_text(note_payload->'goal_ids')) end,
+      note_payload->'goal_measurements', note_payload->'goal_notes',
+      coalesce(note_payload->>'narrative', ''), true, timezone('utc', now()), v_actor_id
+    ) returning * into v_note;
+  elsif not v_note.is_locked then
+    update public.client_session_notes csn set
+      authorization_id = v_authorization.id,
+      service_code = note_payload->>'service_code',
+      session_date = (note_payload->>'session_date')::date,
+      start_time = (note_payload->>'start_time')::time,
+      end_time = (note_payload->>'end_time')::time,
+      session_duration = (note_payload->>'session_duration')::integer,
+      goals_addressed = coalesce(array(select jsonb_array_elements_text(note_payload->'goals_addressed')), '{}'::text[]),
+      goal_ids = case when note_payload->'goal_ids' is null or note_payload->'goal_ids' = 'null'::jsonb then null
+        else array(select jsonb_array_elements_text(note_payload->'goal_ids')) end,
+      goal_measurements = note_payload->'goal_measurements', goal_notes = note_payload->'goal_notes',
+      narrative = coalesce(note_payload->>'narrative', ''), is_locked = true,
+      signed_at = timezone('utc', now())
+    where csn.id = v_note.id
+    returning * into v_note;
+  end if;
+
+  for v_event in select value from jsonb_array_elements(trial_events) where not v_was_locked
+  loop
+    select gt.* into v_target
+    from public.goal_targets gt
+    where gt.id = nullif(v_event->>'target_id', '')::uuid
+      and gt.organization_id = v_session.organization_id
+      and gt.client_id = v_session.client_id
+    for update;
+    if not found then
+      raise exception using errcode = '42501', message = 'target is out of scope';
+    end if;
+    if not v_target.is_current or v_target.status <> 'active' then
+      raise exception using errcode = '40001', message = 'stale_target: target is no longer current';
+    end if;
+
+    insert into public.trial_events (
+      organization_id, client_id, session_id, target_id, goal_id, therapist_id,
+      trial_number, response, prompt_type, prompt_level, value, event_timestamp,
+      metadata, created_by, updated_by
+    ) values (
+      v_session.organization_id, v_session.client_id, v_session.id, v_target.id,
+      v_target.goal_id, v_session.therapist_id, (v_event->>'trial_number')::integer,
+      nullif(v_event->>'response', ''), nullif(v_event->>'prompt_type', ''),
+      nullif(v_event->>'prompt_level', ''), nullif(v_event->>'value', '')::numeric,
+      coalesce(nullif(v_event->>'event_timestamp', '')::timestamptz, timezone('utc', now())),
+      coalesce(v_event->'metadata', '{}'::jsonb), v_actor_id, v_actor_id
+    ) on conflict (session_id, target_id, trial_number) do nothing;
+  end loop;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'outcome', case
+      when r.outcome = 'advanced' and r.previous_phase = 'mastery' and r.next_target_id is null then 'goal_mastered'
+      when r.outcome = 'advanced' and r.previous_phase = 'mastery' then 'target_mastered'
+      when r.outcome = 'advanced' then 'advanced'
+      when r.outcome = 'blocked_incomplete_criteria' then 'criteria_incomplete'
+      when r.outcome like 'ignored_%' then 'ignored'
+      else 'no_change' end,
+    'goal_id', r.goal_id, 'target_id', r.target_id,
+    'previous_phase', r.previous_phase, 'current_phase', r.current_phase,
+    'next_target_id', r.next_target_id, 'goal_status', r.goal_status,
+    'warning', r.warning
+  )), '[]'::jsonb) into v_results
+  from app.evaluate_goal_target_progression(v_session.id, v_note.id) r;
+
+  return query select
+    to_jsonb(v_note) || jsonb_build_object(
+      'therapists', (
+        select jsonb_build_object('full_name', t.full_name, 'title', t.title)
+        from public.therapists t where t.id = v_note.therapist_id
+      )
+    ),
+    v_results;
+end;
+$$;
+
+revoke execute on function public.finalize_session_note_with_progression(uuid, uuid, jsonb, jsonb)
+  from public, anon;
+grant execute on function public.finalize_session_note_with_progression(uuid, uuid, jsonb, jsonb)
+  to authenticated, service_role;
+
 create or replace function public.override_goal_target_progression(
   target_goal_target_id uuid,
   target_phase public.goal_target_phase,

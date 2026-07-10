@@ -2242,4 +2242,123 @@ describe("sessionNotesUpsertHandler", () => {
     expect(response.status).toBe(200);
     expect(updateAttempts).toBe(2);
   });
+
+  it("finalizes a locked note and target trials through one progression transaction", async () => {
+    const rpcCalls: Array<{ name: string; body: Record<string, unknown> }> = [];
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return { ok: true, status: 200, data: [{
+          id: basePayload.authorizationId, organization_id: "org-1", client_id: basePayload.clientId,
+          status: "approved", start_date: "2026-01-01", end_date: "2026-12-31",
+          services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+        }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.includes("/rest/v1/sessions?")) {
+        return { ok: true, status: 200, data: [{ id: basePayload.sessionId, organization_id: "org-1", client_id: basePayload.clientId, therapist_id: basePayload.therapistId }] };
+      }
+      if (requestUrl.includes("/rest/v1/goal_targets?")) {
+        return { ok: true, status: 200, data: [{ id: targetId, organization_id: "org-1", client_id: basePayload.clientId, goal_id: basePayload.goalIds[0], measurement_type: "correctIncorrect" }] };
+      }
+      if (requestUrl.endsWith("/rest/v1/rpc/finalize_session_note_with_progression")) {
+        rpcCalls.push({ name: "finalize_session_note_with_progression", body: JSON.parse(String(init?.body)) });
+        return { ok: true, status: 200, data: [{
+          note: { ...buildSessionNoteRow("final-note"), is_locked: true, signed_at: "2026-03-10T17:00:00.000Z", session_id: basePayload.sessionId },
+          progression_results: [{ outcome: "advanced", goal_id: basePayload.goalIds[0], target_id: targetId, previous_phase: "baseline", current_phase: "teaching", next_target_id: null, goal_status: "active", warning: null }],
+        }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST", headers: HEADERS, body: JSON.stringify({
+        ...basePayload, isLocked: true,
+        trialEvents: [{ target_id: targetId, trial_number: 1, response: "correct" }],
+        organizationId: "attacker-org", actorUserId: "attacker-user", client_id: "attacker-client",
+      }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(rpcCalls).toEqual([expect.objectContaining({ name: "finalize_session_note_with_progression" })]);
+    expect(rpcCalls[0].body).not.toHaveProperty("organization_id");
+    expect(rpcCalls[0].body).not.toHaveProperty("actor_id");
+    expect(body.progression_results[0]).toMatchObject({ outcome: "advanced", current_phase: "teaching" });
+    expect(body.progression_warnings).toEqual([]);
+  });
+
+  it("keeps draft/save-progress on the compatible non-finalizing path", async () => {
+    const urls: string[] = [];
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url); urls.push(requestUrl);
+      if (requestUrl.includes("/rest/v1/authorizations?")) return { ok: true, status: 200, data: [{ id: basePayload.authorizationId, organization_id: "org-1", client_id: basePayload.clientId, status: "approved", start_date: "2026-01-01", end_date: "2026-12-31", services: [{ service_code: basePayload.serviceCode, approved_units: 10 }] }] };
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) return { ok: true, status: 200, data: [] };
+      if (requestUrl === `${BASE_URL}/rest/v1/client_session_notes` && init?.method === "POST") return { ok: true, status: 201, data: [{ id: "draft-note" }] };
+      if (requestUrl.includes("id=eq.draft-note")) return { ok: true, status: 200, data: [buildSessionNoteRow("draft-note")] };
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", { method: "POST", headers: HEADERS, body: JSON.stringify(basePayload) }));
+    expect(response.status).toBe(200);
+    expect(urls.some((url) => url.includes("finalize_session_note_with_progression"))).toBe(false);
+  });
+
+  it.each([
+    [{ outcome: "criteria_incomplete", warning: "Progression criteria incomplete." }, 200, "Progression criteria incomplete."],
+    [{ error: { code: "stale_target", message: "target is no longer current" } }, 409, null],
+  ])("maps finalization progression result %#", async (rpcData, expectedStatus, expectedWarning) => {
+    vi.mocked(fetchJson).mockImplementation(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) return { ok: true, status: 200, data: [{ id: basePayload.authorizationId, organization_id: "org-1", client_id: basePayload.clientId, status: "approved", start_date: "2026-01-01", end_date: "2026-12-31", services: [{ service_code: basePayload.serviceCode, approved_units: 10 }] }] };
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) return { ok: true, status: 200, data: [] };
+      if (requestUrl.includes("/rest/v1/sessions?")) return { ok: true, status: 200, data: [{ id: basePayload.sessionId, organization_id: "org-1", client_id: basePayload.clientId, therapist_id: basePayload.therapistId }] };
+      if (requestUrl.endsWith("/rest/v1/rpc/finalize_session_note_with_progression")) {
+        if ("error" in rpcData) return { ok: false, status: 409, data: rpcData };
+        return { ok: true, status: 200, data: [{ note: { ...buildSessionNoteRow("final-note"), is_locked: true }, progression_results: [{ ...rpcData, goal_id: basePayload.goalIds[0], target_id: targetId, previous_phase: "baseline", current_phase: "baseline", next_target_id: null, goal_status: "active" }] }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", { method: "POST", headers: HEADERS, body: JSON.stringify({ ...basePayload, isLocked: true }) }));
+    expect(response.status).toBe(expectedStatus);
+    if (expectedWarning) expect((await response.json()).progression_warnings).toContain(expectedWarning);
+  });
+
+  it("returns an error without falling back to partial REST writes when finalization fails", async () => {
+    const writeUrls: string[] = [];
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) return { ok: true, status: 200, data: [{ id: basePayload.authorizationId, organization_id: "org-1", client_id: basePayload.clientId, status: "approved", start_date: "2026-01-01", end_date: "2026-12-31", services: [{ service_code: basePayload.serviceCode, approved_units: 10 }] }] };
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) return { ok: true, status: 200, data: [] };
+      if (requestUrl.includes("/rest/v1/sessions?")) return { ok: true, status: 200, data: [{ id: basePayload.sessionId, organization_id: "org-1", client_id: basePayload.clientId, therapist_id: basePayload.therapistId }] };
+      if (requestUrl.includes("/rest/v1/goal_targets?")) return { ok: true, status: 200, data: [{ id: targetId, organization_id: "org-1", client_id: basePayload.clientId, goal_id: basePayload.goalIds[0], measurement_type: "correctIncorrect" }] };
+      if (init?.method === "POST" || init?.method === "PATCH") writeUrls.push(requestUrl);
+      if (requestUrl.endsWith("/rest/v1/rpc/finalize_session_note_with_progression")) return { ok: false, status: 500, data: { code: "XX000", message: "transaction aborted" } };
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", { method: "POST", headers: HEADERS, body: JSON.stringify({ ...basePayload, isLocked: true, trialEvents: [{ target_id: targetId, trial_number: 1, response: "correct" }] }) }));
+    expect(response.status).toBe(500);
+    expect(writeUrls).toEqual([`${BASE_URL}/rest/v1/rpc/finalize_session_note_with_progression`]);
+  });
+
+  it("routes replay of an already locked note through the idempotent finalizer", async () => {
+    const existing = { ...buildSessionNoteRow("99999999-9999-4999-8999-999999999999"), is_locked: true, signed_at: "2026-03-10T17:00:00.000Z", session_id: basePayload.sessionId };
+    let rpcCount = 0;
+    vi.mocked(fetchJson).mockImplementation(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) return { ok: true, status: 200, data: [{ id: basePayload.authorizationId, organization_id: "org-1", client_id: basePayload.clientId, status: "approved", start_date: "2026-01-01", end_date: "2026-12-31", services: [{ service_code: basePayload.serviceCode, approved_units: 10 }] }] };
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) return { ok: true, status: 200, data: [{ id: existing.id, is_locked: true }] };
+      if (requestUrl.endsWith("/rest/v1/rpc/finalize_session_note_with_progression")) {
+        rpcCount += 1;
+        return { ok: true, status: 200, data: [{ note: existing, progression_results: [{ outcome: "no_change", goal_id: basePayload.goalIds[0], target_id: targetId, previous_phase: "baseline", current_phase: "baseline", next_target_id: null, goal_status: "active", warning: null }] }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", { method: "POST", headers: HEADERS, body: JSON.stringify({ ...basePayload, noteId: existing.id, isLocked: true }) }));
+    expect(response.status).toBe(200);
+    expect(rpcCount).toBe(1);
+    expect((await response.json()).progression_results[0].outcome).toBe("no_change");
+  });
 });

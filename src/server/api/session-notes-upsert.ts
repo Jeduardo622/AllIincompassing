@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { SessionGoalMeasurementEntry, SessionNote } from "../../types";
+import type { GoalTargetProgressionResult, SessionGoalMeasurementEntry, SessionNote } from "../../types";
 import { mergeUniqueGoalIds, normalizeGoalMeasurementEntry } from "../../lib/goal-measurements";
 import { isAdhocSessionTargetId, isValidSessionNoteGoalKey } from "../../lib/session-adhoc-targets";
 import { getOptionalServerEnv } from "../env";
@@ -1012,7 +1012,7 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     return errorResponse(request, "not_found", "Session note not found.");
   }
 
-  if (existingNote?.is_locked) {
+  if (existingNote?.is_locked && !payload.isLocked) {
     return errorResponse(request, "conflict", "Session note is locked and cannot be edited.", { status: 409 });
   }
 
@@ -1096,6 +1096,67 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     signed_at: payload.isLocked ? new Date().toISOString() : null,
     session_id: payload.sessionId ?? null,
   };
+
+  if (payload.isLocked) {
+    if (!payload.sessionId) {
+      return errorResponse(request, "validation_error", "A session is required to finalize a session note.");
+    }
+
+    // Scope and actor fields are intentionally absent. The SECURITY DEFINER RPC
+    // derives them from auth.uid() and the persisted session/target records.
+    const finalizationResult = await fetchJson<Array<{
+      note: SessionNoteRow;
+      progression_results: GoalTargetProgressionResult[];
+    }>>(`${supabaseUrl}/rest/v1/rpc/finalize_session_note_with_progression`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        target_session_id: payload.sessionId,
+        target_note_id: existingNote?.id ?? payload.noteId ?? null,
+        note_payload: {
+          authorization_id: payload.authorizationId,
+          service_code: effectiveServiceCode,
+          session_date: payload.sessionDate,
+          start_time: payload.startTime,
+          end_time: payload.endTime,
+          session_duration: sessionDuration,
+          goals_addressed: alignedGoals.goalsAddressed,
+          goal_ids: alignedGoals.goalIds.length > 0 ? alignedGoals.goalIds : null,
+          goal_measurements: alignedGoals.goalMeasurements,
+          goal_notes: alignedGoals.goalNotes,
+          narrative: payload.narrative.trim(),
+        },
+        trial_events: trialEventBuild.rows.map(({ organization_id: _organizationId, client_id: _clientId,
+          goal_id: _goalId, therapist_id: _therapistId, created_by: _createdBy, updated_by: _updatedBy, ...event }) => event),
+      }),
+    });
+
+    if (!finalizationResult.ok || !finalizationResult.data?.[0]) {
+      const serializedError = JSON.stringify(finalizationResult.data ?? {}).toLowerCase();
+      if (finalizationResult.status === 409 || serializedError.includes("stale_target") || serializedError.includes("no longer current")) {
+        return errorResponse(request, "conflict", "The selected target is no longer current.", { status: 409 });
+      }
+      if (finalizationResult.status === 400 || serializedError.includes("22023")) {
+        return errorResponse(request, "validation_error", "Unable to finalize session note.", { status: 400 });
+      }
+      if (finalizationResult.status === 401 || finalizationResult.status === 403 || serializedError.includes("42501")) {
+        return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
+      }
+      return errorResponse(request, "upstream_error", "Unable to finalize session note", {
+        status: finalizationResult.status >= 500 ? finalizationResult.status : 502,
+      });
+    }
+
+    const finalized = finalizationResult.data[0];
+    const progressionResults = finalized.progression_results ?? [];
+    return jsonForRequest(request, {
+      ...mapRowToSessionNote(finalized.note),
+      progression_results: progressionResults,
+      progression_warnings: progressionResults
+        .map((result) => result.warning)
+        .filter((warning): warning is string => Boolean(warning)),
+    });
+  }
 
   const existingTrialEventKeyBuild = await fetchExistingSessionTrialEventKeys({
     request,

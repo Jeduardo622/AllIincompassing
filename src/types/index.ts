@@ -272,6 +272,19 @@ export interface GoalTarget {
   updated_at: string;
 }
 
+export type GoalTargetPhase = 'baseline' | 'teaching' | 'generalization' | 'mastery';
+
+export interface GoalTargetProgressionResult {
+  outcome: 'advanced' | 'target_mastered' | 'goal_mastered' | 'no_change' | 'criteria_incomplete' | 'ignored';
+  goal_id: string;
+  target_id: string;
+  previous_phase: GoalTargetPhase | null;
+  current_phase: GoalTargetPhase | null;
+  next_target_id: string | null;
+  goal_status: Goal['status'];
+  warning: string | null;
+}
+
 export interface TrialEvent {
   id: string;
   organization_id: string;

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { Pool } from "pg";
 
 const sql = readFileSync(
   path.join(process.cwd(), "supabase", "migrations", "20260710210551_goal_target_automatic_progression.sql"),
@@ -188,5 +189,62 @@ describe("static manual mastery completion SQL contract", () => {
     expect(completeMastery()).toMatch(/status <> 'archived'[\s\S]*sort_order/i);
     expect(completeMastery()).toMatch(/current_phase = 'baseline'[\s\S]*evaluation_window_started_at = v_now/i);
     expect(completeMastery()).toMatch(/update public\.goals[\s\S]*status = 'mastered'/i);
+  });
+});
+
+const localDatabaseUrl = process.env.LOCAL_PROGRESSION_DATABASE_URL;
+
+describe.runIf(Boolean(localDatabaseUrl))("live local goal-target progression database contract", () => {
+  it("installs the progression schema with RLS and least-privilege RPC grants", async () => {
+    const pool = new Pool({ connectionString: localDatabaseUrl, max: 1 });
+    try {
+      const tables = await pool.query<{ relname: string; relrowsecurity: boolean }>(`
+        select c.relname, c.relrowsecurity
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public'
+          and c.relname = any($1::text[])
+        order by c.relname
+      `, [["goal_target_phase_criteria", "goal_target_phase_evaluations", "goal_target_transitions"]]);
+      expect(tables.rows).toEqual([
+        { relname: "goal_target_phase_criteria", relrowsecurity: true },
+        { relname: "goal_target_phase_evaluations", relrowsecurity: true },
+        { relname: "goal_target_transitions", relrowsecurity: true },
+      ]);
+
+      const grants = await pool.query<{ authenticated: boolean; anon: boolean }>(`
+        select
+          has_function_privilege('authenticated', 'public.finalize_session_note_with_progression(uuid,uuid,jsonb,jsonb,jsonb)', 'execute') authenticated,
+          has_function_privilege('anon', 'public.finalize_session_note_with_progression(uuid,uuid,jsonb,jsonb,jsonb)', 'execute') anon
+      `);
+      expect(grants.rows[0]).toEqual({ authenticated: true, anon: false });
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("fails closed before writes for malformed finalization payloads", async () => {
+    const pool = new Pool({ connectionString: localDatabaseUrl, max: 1 });
+    const client = await pool.connect();
+    try {
+      const before = await client.query<{ notes: string; trials: string }>(`
+        select (select count(*)::text from public.client_session_notes) notes,
+               (select count(*)::text from public.trial_events) trials
+      `);
+      await client.query("begin");
+      await client.query("set local role authenticated");
+      await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: "11111111-1111-4111-8111-111111111111", role: "authenticated" })]);
+      await expect(client.query(`select * from public.finalize_session_note_with_progression(
+        '22222222-2222-4222-8222-222222222222'::uuid, null, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb
+      )`)).rejects.toMatchObject({ code: "22023" });
+      await client.query("rollback");
+      const after = await client.query<{ notes: string; trials: string }>(`
+        select (select count(*)::text from public.client_session_notes) notes,
+               (select count(*)::text from public.trial_events) trials
+      `);
+      expect(after.rows[0]).toEqual(before.rows[0]);
+    } finally {
+      client.release();
+      await pool.end();
+    }
   });
 });

@@ -1,10 +1,31 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type PostgrestError, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { computeEnvironmentGuidance, resolveSupabaseTestEnv } from './supabaseEnv';
 import type { Database } from '../../lib/generated/database.types';
 
 type TypedClient = SupabaseClient<Database, 'public', Database['public']>;
+
+const goalTargetProgressionMigration = readFileSync(
+  path.join(process.cwd(), 'supabase', 'migrations', '20260710210551_goal_target_automatic_progression.sql'),
+  'utf8',
+);
+
+describe('goal target progression RLS contract', () => {
+  it('enables RLS and scopes all three progression tables to the caller organization', () => {
+    for (const table of [
+      'goal_target_phase_criteria',
+      'goal_target_phase_evaluations',
+      'goal_target_transitions',
+    ]) {
+      expect(goalTargetProgressionMigration).toContain(`alter table public.${table} enable row level security;`);
+    }
+    expect(goalTargetProgressionMigration.match(/organization_id = app\.current_user_organization_id\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(goalTargetProgressionMigration).toContain('revoke insert, update, delete on table public.goal_target_transitions from authenticated;');
+  });
+});
 
 interface TenantContext {
   email: string;

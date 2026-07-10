@@ -5,11 +5,16 @@ import { evaluateStartSessionRuntimeContract } from "../../scripts/ci/check-sess
 const validContract = {
   functionDefinition: `
 create or replace function public.start_session_with_goals(...)
+returns void
+language plpgsql
+security definer
+set search_path = public
 begin
   select coalesce(app.current_user_has_exact_role_for_org(
     v_session.organization_id,
     array['admin', 'admin_schedule', 'midtier', 'bcba']::text[]
   ), false)
+  or coalesce(public.current_user_is_super_admin(), false)
   into v_has_start_authority;
 
   select coalesce(app.current_user_has_exact_role_for_org(
@@ -22,6 +27,7 @@ begin
     join public.therapists t on t.id = utl.therapist_id
     where utl.user_id = v_actor_id
       and utl.therapist_id = v_session.therapist_id
+      and v_session.therapist_id = v_actor_id
       and t.organization_id = v_session.organization_id
       and t.deleted_at is null
   )
@@ -63,6 +69,46 @@ describe("check-session-runtime-contract", () => {
     expect(result.violations).toContain(
       "start_session_with_goals must require a same-org active therapist join through public.user_therapist_links",
     );
+  });
+
+  test.each([
+    {
+      name: "utl.user_id = v_actor_id",
+      before: "where utl.user_id = v_actor_id",
+      message: "start_session_with_goals must scope user_therapist_links to v_actor_id",
+    },
+    {
+      name: "utl.therapist_id = v_session.therapist_id",
+      before: "and utl.therapist_id = v_session.therapist_id",
+      message: "start_session_with_goals must scope user_therapist_links to v_session.therapist_id",
+    },
+    {
+      name: "v_session.therapist_id = v_actor_id",
+      before: "and v_session.therapist_id = v_actor_id",
+      message: "start_session_with_goals must require therapist actors to match v_session.therapist_id",
+    },
+    {
+      name: "security definer",
+      before: "security definer",
+      message: "start_session_with_goals must be SECURITY DEFINER",
+    },
+    {
+      name: "set search_path = public",
+      before: "set search_path = public",
+      message: "start_session_with_goals must set search_path = public",
+    },
+    {
+      name: "public.current_user_is_super_admin()",
+      before: "or coalesce(public.current_user_is_super_admin(), false)",
+      message: "start_session_with_goals must allow public.current_user_is_super_admin()",
+    },
+  ])("rejects missing runtime marker: $name", ({ before, message }) => {
+    const result = evaluateStartSessionRuntimeContract({
+      ...validContract,
+      functionDefinition: validContract.functionDefinition.replace(before, ""),
+    });
+
+    expect(result.violations).toContain(message);
   });
 
   test("rejects execute grants when anon can call the function", () => {

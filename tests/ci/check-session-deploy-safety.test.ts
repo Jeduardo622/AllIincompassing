@@ -24,7 +24,7 @@ const ciWorkflow = ({
   deployNeeds = ["policy", "tenant_safety", "runtime_migration_parity", "start_session_runtime_contract"],
   deployRun = "npm run ci:deploy:session-edge-bundle",
   authNeeds = ["policy", "change_scope", "deploy_session_edge"],
-  authIf = "needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')",
+  authIf = "always() && needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')",
   authExtra = "",
   workflowComment = "",
   ciGateNeeds = [
@@ -334,6 +334,30 @@ describe("check-session-deploy-safety", () => {
     const fixtureRoot = makeFixture({
       ci: {
         authExtra: "      - run: npm run ci:deploy:session-edge-bundle",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("must contain exactly one session edge deploy command");
+  });
+
+  test("rejects direct node deploy script invocations outside deploy_session_edge", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: "      - run: node scripts/ci/deploy-session-edge-bundle.mjs",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("must contain exactly one session edge deploy command");
+  });
+
+  test("rejects raw supabase functions deploy invocations outside deploy_session_edge", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: "      - run: supabase functions deploy sessions-book --project-ref wnnjeqheqxxyrgsjmygy",
       },
     });
     const result = runCheck(fixtureRoot);

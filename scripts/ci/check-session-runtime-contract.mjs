@@ -21,12 +21,28 @@ const REQUIRED_BODY_PATTERNS = [
     message: "start_session_with_goals must call app.current_user_has_exact_role_for_org",
   },
   {
+    pattern: /public\.current_user_is_super_admin\s*\(\s*\)/i,
+    message: "start_session_with_goals must allow public.current_user_is_super_admin()",
+  },
+  {
     pattern: /public\.user_therapist_links/i,
     message: "start_session_with_goals must reference public.user_therapist_links",
   },
   {
+    pattern: /utl\.user_id\s*=\s*v_actor_id/i,
+    message: "start_session_with_goals must scope user_therapist_links to v_actor_id",
+  },
+  {
+    pattern: /utl\.therapist_id\s*=\s*v_session\.therapist_id/i,
+    message: "start_session_with_goals must scope user_therapist_links to v_session.therapist_id",
+  },
+  {
     pattern: /join\s+public\.therapists\s+t\s+on\s+t\.id\s*=\s*utl\.therapist_id/i,
     message: "start_session_with_goals must join public.therapists through public.user_therapist_links",
+  },
+  {
+    pattern: /v_session\.therapist_id\s*=\s*v_actor_id/i,
+    message: "start_session_with_goals must require therapist actors to match v_session.therapist_id",
   },
   {
     pattern: /t\.organization_id\s*=\s*v_session\.organization_id/i,
@@ -43,6 +59,14 @@ const REQUIRED_BODY_PATTERNS = [
   {
     pattern: /array\['therapist',\s*'bt'\]::text\[\]/i,
     message: "start_session_with_goals must authorize therapist/bt exact roles",
+  },
+  {
+    pattern: /security\s+definer/i,
+    message: "start_session_with_goals must be SECURITY DEFINER",
+  },
+  {
+    pattern: /set\s+search_path\s*=\s*public/i,
+    message: "start_session_with_goals must set search_path = public",
   },
 ];
 

@@ -495,7 +495,7 @@ jobs:
       - policy
       - change_scope
       - deploy_session_edge
-    if: needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')
+    if: always() && needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')
     timeout-minutes: 35
     steps:
       - name: Checkout

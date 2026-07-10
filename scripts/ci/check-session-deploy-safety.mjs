@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 const DEPLOY_COMMAND = "npm run ci:deploy:session-edge-bundle";
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
 const AUTH_SMOKE_IF =
-  "needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')";
+  "always() && needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')";
 const DEPLOY_NEEDS = ["policy", "tenant_safety", "runtime_migration_parity", "start_session_runtime_contract"];
 const AUTH_SMOKE_NEEDS = ["policy", "change_scope", "deploy_session_edge"];
 
@@ -245,6 +245,10 @@ const stepIsExactCommand = (step, command) => {
   const lines = executableLines(step.run);
   return lines.length === 1 && lines[0] === command;
 };
+const isDeployInvocation = (line) =>
+  line === DEPLOY_COMMAND ||
+  /^node\s+scripts\/ci\/deploy-session-edge-bundle\.mjs(?:\s|$)/i.test(line) ||
+  /^(?:npx\s+)?supabase\s+functions\s+deploy\b/i.test(line);
 const sameSet = (actual, expected) => {
   const sortedActual = [...actual].sort();
   const sortedExpected = [...expected].sort();
@@ -297,9 +301,23 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   const deploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
     job.steps.filter((step) => stepIsExactCommand(step, DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
   );
+  const deployInvocations = Object.entries(jobs).flatMap(([jobName, job]) =>
+    job.steps.flatMap((step) =>
+      executableLines(step.run)
+        .filter((line) => isDeployInvocation(line))
+        .map((line) => ({ jobName, line })),
+    ),
+  );
   if (deploySteps.length !== 1 || deploySteps[0]?.jobName !== "deploy_session_edge") {
     violations.push("CI workflow must contain exactly one session edge deploy command");
     violations.push("CI workflow must contain exactly one real session edge deploy run step in deploy_session_edge");
+  }
+  if (
+    deployInvocations.some(
+      ({ jobName, line }) => jobName !== "deploy_session_edge" || line !== DEPLOY_COMMAND,
+    )
+  ) {
+    violations.push("CI workflow must contain exactly one session edge deploy command");
   }
 
   if (policy) {

@@ -21,7 +21,15 @@ const ciWorkflow = ({
             head_sha="\${{ github.event.merge_group.head_sha }}"`,
   policyExtra = "",
   deployRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main'",
-  deployNeeds = ["policy", "tenant_safety", "runtime_migration_parity", "start_session_runtime_contract"],
+  deployNeeds = [
+    "policy",
+    "tenant_safety",
+    "runtime_migration_parity",
+    "start_session_runtime_contract",
+    "lint_typecheck",
+    "unit_tests",
+    "build",
+  ],
   deployRun = "npm run ci:deploy:session-edge-bundle",
   authNeeds = ["policy", "change_scope", "deploy_session_edge"],
   authIf = "always() && needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')",
@@ -386,8 +394,39 @@ describe("check-session-deploy-safety", () => {
           "tenant_safety",
           "runtime_migration_parity",
           "start_session_runtime_contract",
+          "lint_typecheck",
+          "unit_tests",
           "build",
+          "change_scope",
         ],
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_session_edge needs must exactly equal");
+  });
+
+  test.each([
+    "policy",
+    "tenant_safety",
+    "runtime_migration_parity",
+    "start_session_runtime_contract",
+    "lint_typecheck",
+    "unit_tests",
+    "build",
+  ])("rejects deploy_session_edge when prerequisite %s is removed", (missingNeed) => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployNeeds: [
+          "policy",
+          "tenant_safety",
+          "runtime_migration_parity",
+          "start_session_runtime_contract",
+          "lint_typecheck",
+          "unit_tests",
+          "build",
+        ].filter((need) => need !== missingNeed),
       },
     });
     const result = runCheck(fixtureRoot);

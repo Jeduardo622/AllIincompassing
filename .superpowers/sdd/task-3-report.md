@@ -1,7 +1,25 @@
 # Task 3 Report
 
-- status: fix-appended
-- lineage before this metadata fix: `fcdcceeb`, `98f52546`, `df3d80a0`
-- handoff document commit: `86c7805f`
-- document validation summary: handoff still uses repo handoff-card format; verification entries were tightened to explicit command -> PASS/FAIL/BLOCKED wording; fresh integrated evidence was added for `test:ci`, `verify:local`, `validate:tenant`, `build`, and `tier0`; no code/config/package/migration files touched
-- concerns: `npm run ci:playwright` remains blocked at preflight for missing hosted credentials until the secret-backed environment is available
+- status: final-fix-wave-appended
+- lineage before this update: `fcdcceeb`, `98f52546`, `df3d80a0`, `86c7805f`
+- scope confirmation: only `.github/workflows/ci.yml`, the two session CI checker scripts, their tests, `docs/ai/WIN-213-ci-hosted-security-remediation-handoff.md`, and this report were changed
+- review-fix summary:
+  - `deploy_session_edge` now explicitly depends on `policy`, `tenant_safety`, `runtime_migration_parity`, `start_session_runtime_contract`, `lint_typecheck`, `unit_tests`, and `build`
+  - deploy-safety structure tests now fail if any one of those prerequisites is removed
+  - runtime contract evaluation now strips SQL line and block comments before authz marker checks, preventing comment-only spoof markers from passing
+  - runtime ACL inspection now uses effective `has_table_privilege(...)` probes for `PUBLIC`, `anon`, `authenticated`, and `service_role`
+  - the runtime contract checker enables TLS certificate verification instead of `rejectUnauthorized: false`
+- verification summary:
+  - red: `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts` -> FAIL before implementation (`4` failures)
+  - green: `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts` -> PASS (`35` tests)
+  - focused follow-up: `npx vitest run tests/runtime-migration-parity.test.ts tests/ci/deploy-session-edge-bundle.test.ts` -> PASS (`10` tests)
+  - direct checker: `node scripts/ci/check-session-deploy-safety.mjs` -> PASS
+  - `npm run ci:check-focused` -> PASS
+  - `npm run lint` -> PASS
+  - `npm run typecheck` -> PASS
+  - `npm run validate:tenant` -> PASS
+  - `npm run build` -> PASS
+- residual external blockers:
+  - `npm run ci:playwright` still needs secret-backed hosted credentials in the process environment
+  - same-repo PR secret trust still requires protected GitHub environment or repository configuration
+  - Netlify `merge_group` / `main` commit-target readiness remains a separate deployment-design follow-up

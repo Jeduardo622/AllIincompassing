@@ -282,6 +282,9 @@ jobs:
       - tenant_safety
       - runtime_migration_parity
       - start_session_runtime_contract
+      - lint_typecheck
+      - unit_tests
+      - build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 20
     steps:

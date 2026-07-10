@@ -8,7 +8,7 @@
 - lane: `critical`
 - branch: `codex/ci-hosted-security-remediation`
 - single-purpose diff: yes
-- final review-fix commit: `86c7805f`
+- final review-fix commit: pending local commit for the last TDD fix wave
 
 ## Route Task
 
@@ -55,6 +55,12 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - Security advisors were queried after inspection. Existing project-wide SECURITY DEFINER warnings remain outside WIN-213 scope; link the Supabase remediation guide: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable
 - Production audit count: `0`.
 - The whole-branch review blockers were fixed: `always()` skip semantics, actor/session link predicates, `SECURITY DEFINER`/`search_path`/superadmin/direct therapist markers, and direct deploy-helper detection.
+- Final review-fix wave closes the remaining branch review notes:
+  - `deploy_session_edge` now requires `policy`, `tenant_safety`, `runtime_migration_parity`, `start_session_runtime_contract`, `lint_typecheck`, `unit_tests`, and `build`.
+  - the structural deploy-safety checker and tests now fail if any one of those full-validation prerequisites is removed.
+  - the runtime contract checker now strips SQL line/block comments before marker evaluation so comment-only spoof markers cannot satisfy the authz body contract.
+  - runtime ACL inspection now uses effective `has_table_privilege(...)` probes for `PUBLIC`, `anon`, `authenticated`, and `service_role`; expected `PUBLIC` privileges on `goal_domains` and `user_therapist_links` remain all false.
+  - the runtime contract Postgres pool now keeps TLS certificate verification enabled instead of disabling `rejectUnauthorized`.
 
 ## Repository Changes And Evidence
 
@@ -69,25 +75,26 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - Task 2 review: spec PASS, quality APPROVED, no blocking findings.
 - Baseline `npm test -- --run` before edits had the same 12 missing-`VITE_SUPABASE_URL` failures.
 - Fresh integrated evidence:
+  - red TDD: `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts` -> FAIL before implementation (`4` failing tests: deploy prerequisites, PUBLIC grant drift, and comment-spoof regressions)
+  - green targeted: `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts` -> PASS (`35` tests)
+  - focused follow-up: `npx vitest run tests/runtime-migration-parity.test.ts tests/ci/deploy-session-edge-bundle.test.ts` -> PASS (`10` tests)
+  - direct checker: `node scripts/ci/check-session-deploy-safety.mjs` -> PASS
   - `npm run ci:check-focused` -> PASS
   - `npm run lint` -> PASS
   - `npm run typecheck` -> PASS
-  - `npm run test:ci` -> PASS with synthetic non-secret Supabase config: `370` files passed, `1` skipped; `2409` tests passed, `1` skipped
   - `npm run validate:tenant` -> PASS
   - `npm run build` -> PASS
-  - `npm run test:routes:tier0` -> PASS `220/220`
-  - `npm run verify:local` -> PASS with synthetic config
   - `npm run ci:playwright` -> BLOCKED at preflight only for missing hosted credentials
   - production audit -> `0`
-- Fresh red/green notes:
-  - red: runtime checker `6` failed / `4` passed; deploy safety `4` failed / `12` passed
-  - green focused: `4` files, `36` tests passed; deploy checker, `ci:check-focused`, `lint`, `typecheck` PASS
 - Hosted behavior proof remains current.
 
 ## Residual Risk
 
 - Human review is required before merge for workflows, CI scripts, and hosted Supabase authorization.
-- GitHub-hosted CI must prove the secret-backed runtime contract job with `SUPABASE_DB_URL` and all required checks.
+- GitHub-hosted CI must still prove the secret-backed runtime contract job with `SUPABASE_DB_URL` and all required checks.
+- `npm run ci:playwright` remains blocked locally until valid hosted credentials are available to this process environment.
+- Same-repo PR secret trust for these jobs still depends on protected GitHub environment or repository configuration; this slice documents that blocker but does not resolve it.
+- Netlify `merge_group` / `main` commit-target readiness remains a separate deployment-design follow-up and is not fixed here.
 - PRs no longer deploy changed edge functions to shared runtime, so a PR whose frontend preview needs new edge behavior may fail closed until isolated Supabase previews exist.
 - Existing unrelated security-advisor warnings are not remediated in this slice.
 - Final reviewer / pr-hygiene / PR readiness remain pending until those gates run.
@@ -96,27 +103,30 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 
 - lane: `critical`
 - required checks:
+  - `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts`
+  - `npx vitest run tests/runtime-migration-parity.test.ts tests/ci/deploy-session-edge-bundle.test.ts`
+  - `node scripts/ci/check-session-deploy-safety.mjs`
   - `npm run ci:check-focused`
-  - `npm run test:ci`
+  - `npm run lint`
+  - `npm run typecheck`
   - `npm run validate:tenant`
   - `npm run build`
-  - `npm run test:routes:tier0`
   - `npm run ci:playwright`
 - executed checks:
   - `Test-Path 'C:\\Users\\test\\.config\\superpowers\\worktrees\\AllIincompassing\\ci-hosted-security-remediation\\docs\\ai\\WIN-213-ci-hosted-security-remediation-handoff.md'` -> PASS
   - `Test-Path 'C:\\Users\\test\\.config\\superpowers\\worktrees\\AllIincompassing\\ci-hosted-security-remediation\\.superpowers\\sdd\\task-3-report.md'` -> PASS
+  - `npx vitest run tests/ci/check-session-deploy-safety.test.ts tests/ci/check-session-runtime-contract.test.ts` -> PASS (`35` tests)
+  - `npx vitest run tests/runtime-migration-parity.test.ts tests/ci/deploy-session-edge-bundle.test.ts` -> PASS (`10` tests)
+  - `node scripts/ci/check-session-deploy-safety.mjs` -> PASS
   - `npm run ci:check-focused` -> PASS
   - `npm run lint` -> PASS
   - `npm run typecheck` -> PASS
-  - `npm run test:ci` -> PASS with synthetic non-secret Supabase config: `370` files passed, `1` skipped; `2409` tests passed, `1` skipped
   - `npm run validate:tenant` -> PASS
   - `npm run build` -> PASS
-  - `npm run test:routes:tier0` -> PASS `220/220`
-  - `npm run verify:local` -> PASS with synthetic config
 - blocked checks:
   - `npm run ci:playwright` -> BLOCKED at preflight only for missing hosted credentials
 - result: pass-with-blocked-checks
-- residual risk: secret-backed CI still needs to confirm the full runtime contract path
+- residual risk: secret-backed CI, same-repo secret trust, and Netlify deploy-target design still need external confirmation outside this slice
 
 ## PR Hygiene Verdict
 
@@ -136,4 +146,4 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 
 ## Handoff Summary
 
-WIN-213 records the hosted Supabase and CI security remediation state for the branch and preserves the exact boundary conditions for session-start authorization. The hosted replay and contract checks confirm the intended authz predicates, ACLs, and ledger state; local `ci:playwright` remains blocked only by missing hosted credentials. Remaining risk is limited to human review and CI confirmation of the secret-dependent runtime path.
+WIN-213 now includes the final review-fix wave for the session deploy gate and runtime contract checker: deploy prerequisites are fully enumerated, effective ACL checks fail on any `PUBLIC` grant drift, and comment-only function-body spoofing no longer passes. The hosted replay and contract checks remain the source of truth for the secret-backed path; local `ci:playwright` is still blocked by missing hosted credentials, same-repo PR secret trust still requires protected GitHub configuration, and Netlify commit-target readiness remains a separate design follow-up.

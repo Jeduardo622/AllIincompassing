@@ -4,11 +4,13 @@ import { pathToFileURL } from "node:url";
 const FUNCTION_SIGNATURE = "public.start_session_with_goals(uuid, uuid, uuid, uuid[], timestamptz, uuid)";
 const TABLE_GRANT_CONTRACT = {
   goal_domains: {
+    public: [],
     anon: [],
     authenticated: ["INSERT", "SELECT", "UPDATE"],
     service_role: ["DELETE", "INSERT", "SELECT", "UPDATE"],
   },
   user_therapist_links: {
+    public: [],
     anon: [],
     authenticated: ["SELECT"],
     service_role: ["DELETE", "INSERT", "SELECT", "UPDATE"],
@@ -70,10 +72,24 @@ const REQUIRED_BODY_PATTERNS = [
   },
 ];
 
+const TABLE_PRIVILEGES = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"];
+const TABLE_GRANT_PROBE_VALUES = Object.keys(TABLE_GRANT_CONTRACT)
+  .flatMap((tableName) =>
+    ["public", "anon", "authenticated", "service_role"].flatMap((grantee) =>
+      TABLE_PRIVILEGES.map((privilege) => `('${tableName}', '${grantee}', '${privilege}')`),
+    ),
+  )
+  .join(",\n            ");
+
 const sortPrivileges = (privileges) => [...new Set(privileges.map((value) => value.toUpperCase()))].sort();
 
 const samePrivileges = (actual, expected) =>
   JSON.stringify(sortPrivileges(actual)) === JSON.stringify(sortPrivileges(expected));
+
+const stripSqlComments = (sql) =>
+  String(sql)
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--.*$/gm, "");
 
 export const evaluateStartSessionRuntimeContract = ({
   functionDefinition,
@@ -81,7 +97,7 @@ export const evaluateStartSessionRuntimeContract = ({
   tableGrants,
 }) => {
   const violations = [];
-  const definition = String(functionDefinition ?? "");
+  const definition = stripSqlComments(functionDefinition ?? "");
 
   for (const { pattern, message } of REQUIRED_BODY_PATTERNS) {
     if (!pattern.test(definition)) {
@@ -115,7 +131,7 @@ export const evaluateStartSessionRuntimeContract = ({
 const fetchRuntimeContract = async ({ connectionString }) => {
   const pool = new Pool({
     connectionString,
-    ssl: { rejectUnauthorized: false },
+    ssl: { rejectUnauthorized: true },
     max: 1,
     connectionTimeoutMillis: 60_000,
     idleTimeoutMillis: 0,
@@ -142,21 +158,28 @@ const fetchRuntimeContract = async ({ connectionString }) => {
 
     const grantsResult = await client.query(
       `
-        select table_name, grantee, privilege_type
-        from information_schema.role_table_grants
-        where table_schema = 'public'
-          and table_name in ('goal_domains', 'user_therapist_links')
-          and grantee in ('anon', 'authenticated', 'service_role')
+        select grants.table_name, grants.grantee, grants.privilege_type
+        from (
+          values
+            ${TABLE_GRANT_PROBE_VALUES}
+        ) as grants(table_name, grantee, privilege_type)
+        where has_table_privilege(
+          case when grants.grantee = 'public' then 'PUBLIC' else grants.grantee end,
+          format('public.%I', grants.table_name),
+          grants.privilege_type
+        )
       `,
     );
 
     const tableGrants = {
       goal_domains: {
+        public: [],
         anon: [],
         authenticated: [],
         service_role: [],
       },
       user_therapist_links: {
+        public: [],
         anon: [],
         authenticated: [],
         service_role: [],

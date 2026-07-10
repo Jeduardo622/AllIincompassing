@@ -6,7 +6,15 @@ const DEPLOY_COMMAND = "npm run ci:deploy:session-edge-bundle";
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
 const AUTH_SMOKE_IF =
   "always() && needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')";
-const DEPLOY_NEEDS = ["policy", "tenant_safety", "runtime_migration_parity", "start_session_runtime_contract"];
+const DEPLOY_NEEDS = [
+  "policy",
+  "tenant_safety",
+  "runtime_migration_parity",
+  "start_session_runtime_contract",
+  "lint_typecheck",
+  "unit_tests",
+  "build",
+];
 const AUTH_SMOKE_NEEDS = ["policy", "change_scope", "deploy_session_edge"];
 
 const getWorkflowPaths = (cwd = process.cwd()) => ({

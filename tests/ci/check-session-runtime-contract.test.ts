@@ -41,11 +41,13 @@ end;
   },
   tableGrants: {
     goal_domains: {
+      public: [],
       anon: [],
       authenticated: ["INSERT", "SELECT", "UPDATE"],
       service_role: ["DELETE", "INSERT", "SELECT", "UPDATE"],
     },
     user_therapist_links: {
+      public: [],
       anon: [],
       authenticated: ["SELECT"],
       service_role: ["DELETE", "INSERT", "SELECT", "UPDATE"],
@@ -129,6 +131,7 @@ describe("check-session-runtime-contract", () => {
       tableGrants: {
         ...validContract.tableGrants,
         goal_domains: {
+          public: [],
           anon: [],
           authenticated: ["DELETE", "INSERT", "SELECT", "UPDATE"],
           service_role: ["DELETE", "INSERT", "SELECT", "UPDATE"],
@@ -138,6 +141,50 @@ describe("check-session-runtime-contract", () => {
 
     expect(result.violations).toContain(
       "goal_domains grants must match the checked-in hardening migration for authenticated and service_role",
+    );
+  });
+
+  test("rejects PUBLIC grants on protected runtime ACL tables", () => {
+    const result = evaluateStartSessionRuntimeContract({
+      ...validContract,
+      tableGrants: {
+        ...validContract.tableGrants,
+        user_therapist_links: {
+          public: ["SELECT"],
+          anon: [],
+          authenticated: ["SELECT"],
+          service_role: ["DELETE", "INSERT", "SELECT", "UPDATE"],
+        },
+      },
+    });
+
+    expect(result.violations).toContain(
+      "user_therapist_links grants must match the checked-in hardening migration for authenticated and service_role",
+    );
+  });
+
+  test("rejects comment-only marker spoofing in the function body", () => {
+    const result = evaluateStartSessionRuntimeContract({
+      ...validContract,
+      functionDefinition: `
+create or replace function public.start_session_with_goals(...)
+returns void
+language plpgsql
+security definer
+set search_path = public
+begin
+  /* public.current_user_is_super_admin() */
+  -- app.current_user_has_exact_role_for_org(
+  perform 1;
+end;
+`,
+    });
+
+    expect(result.violations).toContain(
+      "start_session_with_goals must call app.current_user_has_exact_role_for_org",
+    );
+    expect(result.violations).toContain(
+      "start_session_with_goals must allow public.current_user_is_super_admin()",
     );
   });
 });

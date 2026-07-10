@@ -43,7 +43,8 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/create table[^;]+goal_target_phase_criteria/is);
     expect(sql).toMatch(/unique\s*\(target_id, phase\)/is);
     expect(sql).toMatch(/metric text[\s\S]*metric is null or metric in \('percent_correct', 'percent_independent', 'total_value', 'average_value'\)/is);
-    expect(sql).toMatch(/threshold numeric[\s\S]*threshold is null or threshold >= 0/is);
+    expect(sql).toMatch(/threshold numeric[\s\S]*threshold is null[\s\S]*threshold >= 0/is);
+    expect(sql).toMatch(/threshold[\s\S]*not in \('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric\)/is);
     expect(sql).toMatch(/min_observations integer[\s\S]*check \(min_observations is null or min_observations > 0\)/is);
     expect(sql).toMatch(/consecutive_sessions integer[\s\S]*check \(consecutive_sessions is null or consecutive_sessions > 0\)/is);
     expect(sql).toMatch(/create table[^;]+goal_target_phase_evaluations/is);
@@ -53,6 +54,11 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/source text not null[\s\S]*source in \('automatic', 'manual'\)/is);
     expect(sql).not.toMatch(/target_id uuid[^,;]+on delete cascade/is);
     expect(sql).not.toMatch(/session_id uuid[^,;]+on delete cascade/is);
+  });
+
+  it("rejects every PostgreSQL numeric non-finite threshold before metric bounds", () => {
+    expect(sql).toMatch(/new\.threshold in \('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric\)[\s\S]*criterion threshold must be finite/is);
+    expect(sql).toMatch(/criterion threshold must be finite[\s\S]*new\.metric in \('percent_correct', 'percent_independent'\)[\s\S]*new\.threshold > 100/is);
   });
 
   it("derives and validates tenant scope with fixed-search-path helpers", () => {

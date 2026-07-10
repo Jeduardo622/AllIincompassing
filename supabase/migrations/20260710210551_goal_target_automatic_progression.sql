@@ -29,7 +29,10 @@ create table if not exists public.goal_target_phase_criteria (
   phase public.goal_target_phase not null,
   metric text check (metric is null or metric in ('percent_correct', 'percent_independent', 'total_value', 'average_value')),
   comparator text check (comparator is null or comparator in ('gte', 'lte')),
-  threshold numeric check (threshold is null or threshold >= 0),
+  threshold numeric check (
+    threshold is null
+    or (threshold not in ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric) and threshold >= 0)
+  ),
   min_observations integer check (min_observations is null or min_observations > 0),
   consecutive_sessions integer check (consecutive_sessions is null or consecutive_sessions > 0),
   clinical_note text,
@@ -453,6 +456,10 @@ begin
   select gt.measurement_type into v_measurement_type
   from public.goal_targets gt
   where gt.id = new.target_id;
+
+  if new.threshold in ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric) then
+    raise exception using errcode = '22023', message = 'criterion threshold must be finite';
+  end if;
 
   if new.metric is not null and not (
     (v_measurement_type = 'correctIncorrect' and new.metric = 'percent_correct')

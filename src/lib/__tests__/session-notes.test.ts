@@ -535,6 +535,18 @@ describe('session note write helpers', () => {
 
   it('throws server error message when API request fails', async () => {
     callApiMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ...baseServerNote, progression_results: [{ outcome: 'advanced', current_phase: 'teaching' }], progression_warnings: [] }),
+    });
+    const progressionResult = await upsertClientSessionNoteForSession({
+      sessionId: '77777777-7777-4777-8777-777777777777', clientId: '11111111-1111-4111-8111-111111111111',
+      authorizationId: '22222222-2222-4222-8222-222222222222', therapistId: '33333333-3333-4333-8333-333333333333',
+      organizationId: 'org-1', actorUserId: 'user-1', serviceCode: '97153', sessionDate: '2025-06-01',
+      startTime: '09:00', endTime: '10:00', goalsAddressed: ['Goal A'], goalIds: ['goal-1'], goalNotes: { 'goal-1': 'Note' }, narrative: '',
+    });
+    expect(progressionResult.progression_results).toEqual([{ outcome: 'advanced', current_phase: 'teaching' }]);
+
+    callApiMock.mockResolvedValueOnce({
       ok: false,
       json: async () => ({ error: 'Session note is locked and cannot be edited.' }),
     });

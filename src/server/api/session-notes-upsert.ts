@@ -108,6 +108,7 @@ const upsertSchema = z.object({
       value: z.number().nonnegative().optional().nullable(),
       timestamp: z.string().datetime().optional(),
       metadata: z.record(z.unknown()).optional(),
+      expected_progression_version: z.number().int().nonnegative().optional(),
     }))
     .max(500)
     .optional()
@@ -1128,13 +1129,28 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
         },
         trial_events: trialEventBuild.rows.map(({ organization_id: _organizationId, client_id: _clientId,
           goal_id: _goalId, therapist_id: _therapistId, created_by: _createdBy, updated_by: _updatedBy, ...event }) => event),
+        expected_target_versions: Array.from(new Map(payload.trialEvents
+          .filter((event) => event.expected_progression_version !== undefined)
+          .map((event) => [event.target_id, {
+            target_id: event.target_id,
+            progression_version: event.expected_progression_version,
+          }])).values()),
       }),
     });
 
     if (!finalizationResult.ok || !finalizationResult.data?.[0]) {
       const serializedError = JSON.stringify(finalizationResult.data ?? {}).toLowerCase();
       if (finalizationResult.status === 409 || serializedError.includes("stale_target") || serializedError.includes("no longer current")) {
-        return errorResponse(request, "conflict", "The selected target is no longer current.", { status: 409 });
+        const conflictMatch = serializedError.match(/stale_target:\s*([^|"}]+)\|([^|"}]+)\|([^"}]+)/);
+        return jsonForRequest(request, {
+          error: "conflict",
+          message: "The selected target is no longer current.",
+          conflict: conflictMatch ? {
+            current_target_id: conflictMatch[1],
+            current_target_name: conflictMatch[2],
+            current_phase: conflictMatch[3],
+          } : undefined,
+        }, 409);
       }
       if (finalizationResult.status === 400 || serializedError.includes("22023")) {
         return errorResponse(request, "validation_error", "Unable to finalize session note.", { status: 400 });
@@ -1156,6 +1172,11 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
         .map((result) => result.warning)
         .filter((warning): warning is string => Boolean(warning)),
     });
+  }
+  if (payload.isLocked && !existingNote?.is_locked && payload.trialEvents.some(
+    (event) => event.expected_progression_version === undefined,
+  )) {
+    return errorResponse(request, "validation_error", "A current target version is required to finalize trial data.");
   }
 
   const existingTrialEventKeyBuild = await fetchExistingSessionTrialEventKeys({

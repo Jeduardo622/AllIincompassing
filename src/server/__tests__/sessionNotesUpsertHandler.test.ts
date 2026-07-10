@@ -2290,7 +2290,7 @@ describe("sessionNotesUpsertHandler", () => {
     const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
       method: "POST", headers: HEADERS, body: JSON.stringify({
         ...basePayload, isLocked: true,
-        trialEvents: [{ target_id: targetId, trial_number: 1, response: "correct" }],
+        trialEvents: [{ target_id: targetId, trial_number: 1, response: "correct", expected_progression_version: 7 }],
         organizationId: "attacker-org", actorUserId: "attacker-user", client_id: "attacker-client",
       }),
     }));
@@ -2299,6 +2299,9 @@ describe("sessionNotesUpsertHandler", () => {
     expect(response.status).toBe(200);
     expect(rpcCalls).toEqual([expect.objectContaining({ name: "finalize_session_note_with_progression" })]);
     expect(rpcCalls[0].body.target_note_id).toBeNull();
+    expect(rpcCalls[0].body.expected_target_versions).toEqual([
+      { target_id: targetId, progression_version: 7 },
+    ]);
     expect(rpcCalls[0].body).not.toHaveProperty("organization_id");
     expect(rpcCalls[0].body).not.toHaveProperty("actor_id");
     expect(rpcCalls[0].body.note_payload).not.toEqual(expect.objectContaining({
@@ -2360,7 +2363,7 @@ describe("sessionNotesUpsertHandler", () => {
       throw new Error(`Unexpected request: ${requestUrl}`);
     });
 
-    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", { method: "POST", headers: HEADERS, body: JSON.stringify({ ...basePayload, isLocked: true, trialEvents: [{ target_id: targetId, trial_number: 1, response: "correct" }] }) }));
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", { method: "POST", headers: HEADERS, body: JSON.stringify({ ...basePayload, isLocked: true, trialEvents: [{ target_id: targetId, trial_number: 1, response: "correct", expected_progression_version: 7 }] }) }));
     expect(response.status).toBe(500);
     expect(writeUrls).toEqual([`${BASE_URL}/rest/v1/rpc/finalize_session_note_with_progression`]);
   });

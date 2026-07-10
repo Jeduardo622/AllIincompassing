@@ -366,6 +366,13 @@ export interface SessionCaptureTrialEventInput {
   value?: number | null;
   timestamp?: string;
   metadata?: Record<string, unknown>;
+  /** Optimistic concurrency token for completed-session progression. */
+  expected_progression_version?: number;
+}
+
+export interface SessionNoteUpsertResult extends SessionNote {
+  progression_results?: GoalTargetProgressionResult[];
+  progression_warnings?: string[];
 }
 
 export interface ProgramNote {

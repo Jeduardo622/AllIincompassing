@@ -814,7 +814,8 @@ create or replace function public.finalize_session_note_with_progression(
   target_session_id uuid,
   target_note_id uuid,
   note_payload jsonb,
-  trial_events jsonb default '[]'::jsonb
+  trial_events jsonb default '[]'::jsonb,
+  expected_target_versions jsonb default '[]'::jsonb
 )
 returns table (note jsonb, progression_results jsonb)
 language plpgsql
@@ -832,12 +833,15 @@ declare
   v_was_locked boolean := false;
   v_service_code text;
   v_strict_billing boolean;
+  v_expected jsonb;
+  v_current_target public.goal_targets;
 begin
   if v_actor_id is null then
     raise exception using errcode = '42501', message = 'authentication required';
   end if;
   if jsonb_typeof(coalesce(note_payload, '{}'::jsonb)) <> 'object'
-     or jsonb_typeof(coalesce(trial_events, '[]'::jsonb)) <> 'array' then
+     or jsonb_typeof(coalesce(trial_events, '[]'::jsonb)) <> 'array'
+     or jsonb_typeof(coalesce(expected_target_versions, '[]'::jsonb)) <> 'array' then
     raise exception using errcode = '22023', message = 'invalid finalization payload';
   end if;
 
@@ -951,6 +955,37 @@ begin
     returning * into v_note;
   end if;
 
+  -- Canonical replays of an already locked note return the persisted result without
+  -- rejecting a now-old browser version. New finalizations lock and compare first.
+  if not v_was_locked then
+    for v_expected in select value from jsonb_array_elements(expected_target_versions)
+    loop
+      select gt.* into v_target
+      from public.goal_targets gt
+      where gt.id = nullif(v_expected->>'target_id', '')::uuid
+        and gt.organization_id = v_session.organization_id
+        and gt.client_id = v_session.client_id
+      for update;
+      if not found then
+        raise exception using errcode = '40001', message = 'stale_target: ||';
+      end if;
+      if not v_target.is_current or v_target.status <> 'active'
+         or v_target.progression_version <> (v_expected->>'progression_version')::bigint then
+        select gt.* into v_current_target
+        from public.goal_targets gt
+        where gt.organization_id = v_session.organization_id
+          and gt.client_id = v_session.client_id
+          and gt.goal_id = v_target.goal_id
+          and gt.is_current and gt.status = 'active'
+        order by gt.sort_order, gt.created_at, gt.id limit 1;
+        raise exception using errcode = '40001', message = format(
+          'stale_target: %s|%s|%s', coalesce(v_current_target.id::text, ''),
+          coalesce(v_current_target.name, ''), coalesce(v_current_target.current_phase::text, '')
+        );
+      end if;
+    end loop;
+  end if;
+
   for v_event in select value from jsonb_array_elements(trial_events) where not v_was_locked
   loop
     select gt.* into v_target
@@ -1006,9 +1041,9 @@ begin
 end;
 $$;
 
-revoke execute on function public.finalize_session_note_with_progression(uuid, uuid, jsonb, jsonb)
+revoke execute on function public.finalize_session_note_with_progression(uuid, uuid, jsonb, jsonb, jsonb)
   from public, anon;
-grant execute on function public.finalize_session_note_with_progression(uuid, uuid, jsonb, jsonb)
+grant execute on function public.finalize_session_note_with_progression(uuid, uuid, jsonb, jsonb, jsonb)
   to authenticated, service_role;
 
 create or replace function public.set_goal_target_phase_criterion(

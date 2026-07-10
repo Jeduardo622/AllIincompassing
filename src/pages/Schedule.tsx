@@ -44,7 +44,6 @@ import { supabase } from "../lib/supabase";
 import { fetchLinkedClientIdsForTherapist } from "../lib/clients/therapistClientScope";
 import { hasMeaningfulGoalMeasurementEntry, normalizeGoalMeasurementEntry } from "../lib/goal-measurements";
 import { upsertClientSessionNoteForSession } from "../lib/session-notes";
-import { isSessionCaptureBillingGateRelaxed } from "../lib/sessionCaptureBillingGate";
 import {
   createSessionSlotKey,
   buildSessionSlotIndex,
@@ -1603,9 +1602,32 @@ export const Schedule = React.memo(() => {
             outcome: "completed",
             notes: decision.notes,
           });
+          let progressionResult;
+          if (clinicalNoteDraft && effectiveSelectedSession && activeOrganizationId && user?.id) {
+            progressionResult = await upsertClientSessionNoteForSession({
+              sessionId: effectiveSelectedSession.id,
+              clientId: sessionPayload.client_id ?? effectiveSelectedSession.client_id,
+              authorizationId: clinicalNoteDraft.authorizationId,
+              therapistId: sessionPayload.therapist_id ?? effectiveSelectedSession.therapist_id,
+              organizationId: activeOrganizationId,
+              actorUserId: user.id,
+              serviceCode: clinicalNoteDraft.serviceCode,
+              sessionDate: format(parseISO(sessionPayload.start_time ?? effectiveSelectedSession.start_time), "yyyy-MM-dd"),
+              startTime: format(parseISO(sessionPayload.start_time ?? effectiveSelectedSession.start_time), "HH:mm:ss"),
+              endTime: format(parseISO(sessionPayload.end_time ?? effectiveSelectedSession.end_time), "HH:mm:ss"),
+              goalsAddressed: clinicalNoteDraft.goalsAddressed,
+              goalIds: clinicalNoteDraft.goalIds,
+              goalMeasurements: clinicalNoteDraft.goalMeasurements,
+              goalNotes: clinicalNoteDraft.goalNotes,
+              narrative: clinicalNoteDraft.narrative,
+              isLocked: true,
+              ...(mergeCaptureIds?.length ? { captureMergeGoalIds: mergeCaptureIds } : {}),
+              ...(clinicalNoteDraft.trialEvents.length ? { trialEvents: clinicalNoteDraft.trialEvents } : {}),
+            });
+          }
           showSuccess("Session marked as completed");
           applyScheduleResetBranch({ kind: "submit-cancel" }, scheduleResetSetters);
-          return;
+          return progressionResult;
         }
         case "edit-no-show": {
           let liveInProgressNoShow = effectiveSelectedSession?.status === "in_progress";
@@ -1658,6 +1680,7 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-update": {
+          let sessionNoteResult;
           if (isBtDataCollectionOnlySession && !clinicalNoteDraft) {
             showError("No data collection changes to save.");
             return;
@@ -1669,18 +1692,12 @@ export const Schedule = React.memo(() => {
             if (!user?.id) {
               throw new Error("Sign in again before saving session capture.");
             }
-            if (!isSessionCaptureBillingGateRelaxed()) {
-              if (!clinicalNoteDraft.authorizationId || !clinicalNoteDraft.serviceCode) {
-                throw new Error(
-                  "Authorization and service code are required to save session capture from Schedule (configure billing defaults for the client).",
-                );
-              }
-            } else if (!clinicalNoteDraft.authorizationId) {
+            if (!clinicalNoteDraft.authorizationId) {
               throw new Error(
-                "An authorization id is required to save session capture (add any authorization for this client).",
+                "An authorization id is required to save session capture.",
               );
             }
-            await upsertClientSessionNoteForSession({
+            sessionNoteResult = await upsertClientSessionNoteForSession({
               sessionId: effectiveSelectedSession.id,
               clientId: sessionPayload.client_id ?? effectiveSelectedSession.client_id,
               authorizationId: clinicalNoteDraft.authorizationId,
@@ -1710,11 +1727,11 @@ export const Schedule = React.memo(() => {
                 { kind: "update-success" },
                 scheduleResetSetters,
               );
-              return;
+              return sessionNoteResult;
             }
           }
           await updateSessionMutation.mutateAsync(sessionPayload);
-          return;
+          return sessionNoteResult;
         }
         case "create": {
           await createSessionMutation.mutateAsync(sessionPayload);

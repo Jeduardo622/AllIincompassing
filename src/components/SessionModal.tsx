@@ -25,6 +25,7 @@ import type {
   Client,
   Goal,
   Program,
+  SessionNoteUpsertResult,
 } from '../types';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
 import { logger } from '../lib/logger/logger';
@@ -63,7 +64,6 @@ import {
 import { resolveSessionCloseRequiredGoalIds } from '../lib/sessionCloseRequiredGoals';
 import {
   firstServiceCodeOnAuthorization,
-  isSessionCaptureBillingGateRelaxed,
   pickPrimaryBillingAuthorization,
   SESSION_CAPTURE_RELAXED_FALLBACK_SERVICE_CODE,
 } from '../lib/sessionCaptureBillingGate';
@@ -121,6 +121,28 @@ const isPositiveResponse = (response: TrialEvent['response']): boolean =>
   response === 'correct' || response === 'independent' || response === 'prompted';
 
 export type SessionModalSubmitData = Partial<Session> & SessionModalClinicalNotesPayload;
+
+export const selectSessionCaptureTargets = (
+  targets: readonly GoalTarget[],
+  historicalTargetIds: ReadonlySet<string>,
+): GoalTarget[] => targets.filter((target) => (
+  (target.is_current === true && target.status === 'active') || historicalTargetIds.has(target.id)
+));
+
+export const formatProgressionNotices = (
+  results: readonly import('../types').GoalTargetProgressionResult[],
+  targetNames: ReadonlyMap<string, string>,
+): string[] => results.flatMap((result) => {
+  if (result.outcome === 'advanced' && result.current_phase) {
+    return [`Advanced to ${result.current_phase[0].toUpperCase()}${result.current_phase.slice(1)}`];
+  }
+  if (result.outcome === 'target_mastered') {
+    return [`Target mastered${result.next_target_id ? ` · Next: ${targetNames.get(result.next_target_id) ?? 'next target'}` : ''}`];
+  }
+  if (result.outcome === 'goal_mastered') return ['Goal mastered'];
+  if (result.outcome === 'criteria_incomplete') return [result.warning ?? 'Progression criteria are incomplete'];
+  return [];
+});
 
 const toOptionalNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') {
@@ -348,7 +370,7 @@ const filterPlanGoalMeasurementToTargetCriteria = (
 interface SessionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: SessionModalSubmitData) => Promise<void>;
+  onSubmit: (data: SessionModalSubmitData) => Promise<void | SessionNoteUpsertResult>;
   session?: Session;
   selectedDate?: Date;
   selectedTime?: string;
@@ -398,6 +420,8 @@ export function SessionModal({
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [pendingTrialEvents, setPendingTrialEvents] = useState<SessionCaptureTrialEventInput[]>([]);
   const [pendingNumericTrialValues, setPendingNumericTrialValues] = useState<Record<string, string>>({});
+  const [progressionNotices, setProgressionNotices] = useState<string[]>([]);
+  const [progressionConflict, setProgressionConflict] = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const sessionCaptureSectionRef = useRef<HTMLElement | null>(null);
@@ -580,7 +604,7 @@ export function SessionModal({
       }
       const { data, error } = await supabase
         .from('goal_targets')
-        .select('id, organization_id, client_id, goal_id, name, measurement_type, graph_config, status, sort_order, created_by, updated_by, created_at, updated_at')
+        .select('id, organization_id, client_id, goal_id, name, measurement_type, graph_config, status, sort_order, current_phase, is_current, evaluation_window_started_at, progression_version, created_by, updated_by, created_at, updated_at')
         .eq('client_id', clientId)
         .eq('organization_id', activeOrganizationId)
         .neq('status', 'archived')
@@ -618,7 +642,19 @@ export function SessionModal({
     enabled: Boolean(session?.id && activeOrganizationId),
   });
 
-  const captureBillingRelaxed = isSessionCaptureBillingGateRelaxed();
+  const { data: captureStrictBilling = true } = useQuery({
+    queryKey: ['session-capture-strict-billing-policy', activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!activeOrganizationId) return false;
+      const { data, error } = await supabase.rpc('get_session_capture_strict_billing_gate', {
+        target_organization_id: activeOrganizationId,
+      } as never);
+      if (error) throw error;
+      return data === true;
+    },
+    enabled: Boolean(activeOrganizationId),
+  });
+  const captureBillingRelaxed = !captureStrictBilling;
 
   const { data: billingAuthorizations = [] } = useQuery({
     queryKey: [
@@ -1505,6 +1541,10 @@ export function SessionModal({
               goal_ids: [],
             }
         : {};
+      const versionedTrialEvents = trialEventsForSubmit.map((event) => ({
+        ...event,
+        expected_progression_version: goalTargetsById.get(event.target_id)?.progression_version,
+      }));
       const transformed: SessionModalSubmitData = {
         ...working,
         ...(session?.id ? { id: session.id } : {}),
@@ -1523,7 +1563,7 @@ export function SessionModal({
         session_note_persist_requested:
           isPartialCaptureSave || hasDirtySessionCaptureFields || isInProgressSession || trialEventsForSubmit.length > 0,
         ...(isPartialCaptureSave ? { session_note_capture_merge_goal_ids: mergeGoalIds } : {}),
-        ...(trialEventsForSubmit.length > 0 ? { session_note_trial_events: trialEventsForSubmit } : {}),
+        ...(versionedTrialEvents.length > 0 ? { session_note_trial_events: versionedTrialEvents } : {}),
         goal_ids: sessionGoalIds,
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
         start_time: timeZone ? toUtcSessionIsoString(working.start_time, resolvedTimeZone) : working.start_time,
@@ -1531,7 +1571,14 @@ export function SessionModal({
         ...schedulerOnlyClinicalFields,
         ...lockedSessionFields,
       };
-      await onSubmit(transformed);
+      const submitResult = await onSubmit(transformed);
+      if (submitResult?.progression_results || submitResult?.progression_warnings) {
+        const targetNames = new Map(goalTargets.map((target) => [target.id, target.name]));
+        const notices = formatProgressionNotices(submitResult.progression_results ?? [], targetNames);
+        setProgressionNotices([...notices, ...(submitResult.progression_warnings ?? [])]);
+        setProgressionConflict(null);
+        void queryClient.invalidateQueries({ queryKey: ['client-goal-targets', clientId, activeOrganizationId ?? 'MISSING_ORG'] });
+      }
       if (trialEventsForSubmit.length > 0 && session?.id) {
         const submittedAt = new Date().toISOString();
         queryClient.setQueryData<TrialEvent[]>(sessionTrialEventsQueryKey, (current = []) => {
@@ -1593,6 +1640,14 @@ export function SessionModal({
         context: { component: 'SessionModal', operation: 'handleFormSubmit' }
       });
       setSaveState('error');
+      const conflictError = error as Error & { status?: number; conflict?: { current_target_name?: string; current_phase?: string } };
+      if (conflictError.status === 409) {
+        const context = conflictError.conflict;
+        setProgressionConflict(context
+          ? `${conflictError.message}${context.current_target_name ? ` Current target: ${context.current_target_name}` : ''}${context.current_phase ? ` (${context.current_phase})` : ''}`
+          : conflictError.message);
+        void queryClient.invalidateQueries({ queryKey: ['client-goal-targets', clientId, activeOrganizationId ?? 'MISSING_ORG'] });
+      }
       return;
     }
   };
@@ -1771,13 +1826,14 @@ export function SessionModal({
 
   const goalTargetsByGoalId = useMemo(() => {
     const grouped = new Map<string, GoalTarget[]>();
-    goalTargets.forEach((target) => {
+    const historicalTargetIds = new Set([...existingTrialEvents, ...pendingTrialEvents].map((event) => event.target_id));
+    selectSessionCaptureTargets(goalTargets, historicalTargetIds).forEach((target) => {
       const list = grouped.get(target.goal_id) ?? [];
       list.push(target);
       grouped.set(target.goal_id, list);
     });
     return grouped;
-  }, [goalTargets]);
+  }, [existingTrialEvents, goalTargets, pendingTrialEvents]);
 
   const goalTargetsById = useMemo(
     () => new Map(goalTargets.map((target) => [target.id, target])),
@@ -3108,6 +3164,11 @@ export function SessionModal({
                 className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-4 dark:border-indigo-900/40 dark:bg-indigo-900/10"
                 data-testid="session-modal-capture-section"
               >
+                {(progressionConflict || progressionNotices.length > 0) && (
+                  <div role={progressionConflict ? 'alert' : 'status'} className={`rounded-lg border p-3 text-sm ${progressionConflict ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-300 bg-emerald-50 text-emerald-900'}`}>
+                    {progressionConflict ?? progressionNotices.join(' · ')}
+                  </div>
+                )}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Session capture</p>

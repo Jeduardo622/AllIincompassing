@@ -816,6 +816,13 @@ function GoalTargetCard({
     editedGraphConfig.defaultChart !== String(normalizedGraphConfig.defaultChart) ||
     editedGraphConfig.source !== String(normalizedGraphConfig.source) ||
     editedGraphConfig.aggregation !== String(normalizedGraphConfig.aggregation);
+  const graphConfigIncomplete =
+    !target.graph_config ||
+    target.graph_config.defaultChart === undefined ||
+    target.graph_config.source === undefined ||
+    target.graph_config.aggregation === undefined;
+  const measurementTypeChanged = editMeasurementType !== target.measurement_type;
+  const shouldPersistGraphConfig = graphConfigChanged || graphConfigIncomplete || measurementTypeChanged;
   const isSaving = updatingTargetId === target.id && updateGoalTarget?.isLoading === true;
 
   useEffect(() => {
@@ -983,7 +990,7 @@ function GoalTargetCard({
                   name: editNameValue,
                   measurement_type: editMeasurementType,
                   status: editStatus,
-                  ...(graphConfigChanged ? { graph_config: editedGraphConfig } : {}),
+                  ...(shouldPersistGraphConfig ? { graph_config: editedGraphConfig } : {}),
                 });
                 setIsEditing(false);
               }}

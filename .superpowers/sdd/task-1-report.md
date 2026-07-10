@@ -88,3 +88,40 @@ Observed:
 - The migration is not applied to hosted Supabase, per instruction.
 - Only `percent_correct` with `gte`/`lte` is enabled initially; later evaluator work must deliberately expand metric compatibility rather than accepting arbitrary values.
 - Task 1 establishes the manual phase override boundary but does not implement later-task target selection, reopen-goal, or automatic evaluator behavior.
+
+## Review-finding remediation
+
+### Additional RED evidence
+
+Added static contract assertions requiring a fixed-search-path progression-state guard, column-level INSERT/UPDATE privileges that omit progression-owned columns, removal of direct service-role ledger writes, and rollback metadata covering both helper functions.
+
+Command:
+
+`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
+
+Observed before remediation:
+
+- Exit code: `1`
+- New migration contract failures: `3`
+- Existing goal-target/trial-event contract: `11 passed / 11`
+- Expected missing contracts: progression-state guard/column privileges, service-role ledger write revocations, and complete rollback helper inventory.
+
+### Fix details
+
+- Added `app.guard_goal_target_progression_state()` as an invoker-context, fixed-search-path trigger function. Direct `anon`, `authenticated`, and `service_role` updates to progression-owned columns fail; owner-executed fixed-search-path `SECURITY DEFINER` progression RPCs remain able to perform audited/versioned updates.
+- Revoked table-level INSERT/UPDATE on `public.goal_targets` from Data API roles and re-granted column-specific INSERT/UPDATE only for non-progression fields. This also prevents callers from supplying progression state during INSERT.
+- Removed service-role all-access policies and INSERT/UPDATE/DELETE grants from evaluation and transition ledgers. Both ledgers are now SELECT-only for service role; writes occur only under owner-executed RPC context.
+- Expanded rollback metadata to name `app.set_goal_target_progression_scope()` and `app.guard_goal_target_progression_state()`.
+
+### Remediation GREEN evidence
+
+Command:
+
+`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
+
+Observed after remediation:
+
+- Exit code: `0`
+- Test files: `2 passed / 2`
+- Tests: `18 passed / 18`
+- `npm run ci:check-focused`: passed; live database-backed checks remain skipped because no database URL is configured.

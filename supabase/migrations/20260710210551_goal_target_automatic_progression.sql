@@ -1,6 +1,6 @@
 -- @migration-intent: Add tenant-scoped structured criteria, state, evaluation, audit, and atomic RPC support for automatic goal-target progression.
 -- @migration-dependencies: 20260710161038_goal_target_delete_capability_invoker.sql,20260710153231_goal_target_lifecycle_authz.sql,20260703173000_goal_targets_trial_events.sql
--- @migration-rollback: Drop public.override_goal_target_progression, public.goal_target_transitions, public.goal_target_phase_evaluations, and public.goal_target_phase_criteria; then remove progression columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
+-- @migration-rollback: Drop public.override_goal_target_progression, public.goal_target_transitions, public.goal_target_phase_evaluations, public.goal_target_phase_criteria, app.set_goal_target_progression_scope, and app.guard_goal_target_progression_state; then remove progression triggers, columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
 
 begin;
 
@@ -209,6 +209,47 @@ create unique index if not exists goal_targets_one_current_per_goal_idx
   on public.goal_targets (organization_id, goal_id)
   where is_current and status = 'active';
 
+create or replace function app.guard_goal_target_progression_state()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('anon', 'authenticated', 'service_role')
+    and (
+      new.current_phase is distinct from old.current_phase
+      or new.is_current is distinct from old.is_current
+      or new.evaluation_window_started_at is distinct from old.evaluation_window_started_at
+      or new.progression_version is distinct from old.progression_version
+    )
+  then
+    raise exception using
+      errcode = '42501',
+      message = 'progression state may only be changed by an authorized progression RPC';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function app.guard_goal_target_progression_state()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists goal_targets_guard_progression_state on public.goal_targets;
+create trigger goal_targets_guard_progression_state
+before update of current_phase, is_current, evaluation_window_started_at, progression_version
+on public.goal_targets
+for each row execute function app.guard_goal_target_progression_state();
+
+revoke insert, update on table public.goal_targets from anon, authenticated, service_role;
+grant insert (
+  organization_id, client_id, goal_id, name, measurement_type, graph_config,
+  status, sort_order, created_by, updated_by, created_at, updated_at
+) on table public.goal_targets to authenticated, service_role;
+grant update (
+  organization_id, client_id, goal_id, name, measurement_type, graph_config,
+  status, sort_order, created_by, updated_by, created_at, updated_at
+) on table public.goal_targets to authenticated, service_role;
+
 alter table public.goal_target_phase_criteria enable row level security;
 alter table public.goal_target_phase_evaluations enable row level security;
 alter table public.goal_target_transitions enable row level security;
@@ -223,8 +264,10 @@ grant select on table public.goal_target_transitions to authenticated;
 revoke insert, update, delete on table public.goal_target_phase_evaluations from authenticated;
 revoke insert, update, delete on table public.goal_target_transitions from authenticated;
 grant select, insert, update, delete on table public.goal_target_phase_criteria to service_role;
-grant select, insert, update, delete on table public.goal_target_phase_evaluations to service_role;
-grant select, insert, update, delete on table public.goal_target_transitions to service_role;
+grant select on table public.goal_target_phase_evaluations to service_role;
+grant select on table public.goal_target_transitions to service_role;
+revoke insert, update, delete on table public.goal_target_phase_evaluations from service_role;
+revoke insert, update, delete on table public.goal_target_transitions from service_role;
 
 create policy goal_target_phase_criteria_org_read on public.goal_target_phase_criteria
 for select to authenticated using (
@@ -259,10 +302,6 @@ for select to authenticated using (
 );
 
 create policy goal_target_phase_criteria_service_role_all on public.goal_target_phase_criteria
-for all to service_role using (true) with check (true);
-create policy goal_target_phase_evaluations_service_role_all on public.goal_target_phase_evaluations
-for all to service_role using (true) with check (true);
-create policy goal_target_transitions_service_role_all on public.goal_target_transitions
 for all to service_role using (true) with check (true);
 
 create or replace function public.override_goal_target_progression(

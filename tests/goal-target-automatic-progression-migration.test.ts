@@ -17,6 +17,12 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/add column if not exists progression_version bigint not null default 0/is);
     expect(sql).toMatch(/goal_targets_current_state_chk[\s\S]*not is_current or \(status = 'active' and current_phase is not null\)/is);
     expect(sql).toMatch(/create unique index[^;]+goal_targets_one_current_per_goal_idx[^;]+\(organization_id, goal_id\)[^;]+where is_current and status = 'active'/is);
+    expect(sql).toContain("create or replace function app.guard_goal_target_progression_state()");
+    expect(sql).toMatch(/if current_user in \('anon', 'authenticated', 'service_role'\)[\s\S]*new\.current_phase is distinct from old\.current_phase[\s\S]*raise exception/is);
+    expect(sql).toContain("create trigger goal_targets_guard_progression_state");
+    expect(sql).toMatch(/revoke insert, update on table public\.goal_targets from anon, authenticated, service_role/is);
+    expect(sql).toMatch(/grant insert \(\s*organization_id, client_id, goal_id, name, measurement_type, graph_config,\s*status, sort_order, created_by, updated_by, created_at, updated_at\s*\)[^;]+to authenticated, service_role/is);
+    expect(sql).toMatch(/grant update \(\s*organization_id, client_id, goal_id, name, measurement_type, graph_config,\s*status, sort_order, created_by, updated_by, created_at, updated_at\s*\)[^;]+to authenticated, service_role/is);
   });
 
   it("creates scoped normalized criteria and immutable history tables", () => {
@@ -71,6 +77,10 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toContain("grant select on table public.goal_target_transitions to authenticated;");
     expect(sql).toContain("revoke insert, update, delete on table public.goal_target_phase_evaluations from authenticated;");
     expect(sql).toContain("revoke insert, update, delete on table public.goal_target_transitions from authenticated;");
+    expect(sql).toContain("revoke insert, update, delete on table public.goal_target_phase_evaluations from service_role;");
+    expect(sql).toContain("revoke insert, update, delete on table public.goal_target_transitions from service_role;");
+    expect(sql).not.toContain("create policy goal_target_phase_evaluations_service_role_all");
+    expect(sql).not.toContain("create policy goal_target_transitions_service_role_all");
   });
 
   it("exposes only a hardened manual override function contract", () => {
@@ -84,6 +94,6 @@ describe("goal target automatic progression migration", () => {
   it("preserves metadata and documents an additive truthful rollback", () => {
     expect(sql).toMatch(/^-- @migration-intent:/);
     expect(sql).toMatch(/^-- @migration-dependencies:/m);
-    expect(sql).toMatch(/^-- @migration-rollback:.*drop.*goal_target_transitions.*goal_target_phase_evaluations.*goal_target_phase_criteria/ims);
+    expect(sql).toMatch(/^-- @migration-rollback:.*drop.*goal_target_transitions.*goal_target_phase_evaluations.*goal_target_phase_criteria.*set_goal_target_progression_scope.*guard_goal_target_progression_state/ims);
   });
 });

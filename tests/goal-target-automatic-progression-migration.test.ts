@@ -23,6 +23,15 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/revoke insert, update on table public\.goal_targets from anon, authenticated, service_role/is);
     expect(sql).toMatch(/grant insert \(\s*organization_id, client_id, goal_id, name, measurement_type, graph_config,\s*status, sort_order, created_by, updated_by, created_at, updated_at\s*\)[^;]+to authenticated, service_role/is);
     expect(sql).toMatch(/grant update \(\s*organization_id, client_id, goal_id, name, measurement_type, graph_config,\s*status, sort_order, created_by, updated_by, created_at, updated_at\s*\)[^;]+to authenticated, service_role/is);
+    expect(sql).toContain("create or replace function app.initialize_goal_target_progression_state()");
+    expect(sql).toMatch(/initialize_goal_target_progression_state[\s\S]*security definer\s+set search_path = ''/is);
+    expect(sql).toMatch(/pg_advisory_xact_lock\(hashtextextended\(new\.goal_id::text, 0\)\)/is);
+    expect(sql).toMatch(/from public\.goals g[\s\S]*where g\.id = new\.goal_id[\s\S]*for share/is);
+    expect(sql).toMatch(/new\.status = 'active'[\s\S]*v_goal_status = 'active'[\s\S]*not exists \([\s\S]*is_current[\s\S]*status = 'active'/is);
+    expect(sql).toMatch(/order by gt\.sort_order, gt\.created_at, gt\.id[\s\S]*limit 1/is);
+    expect(sql).toMatch(/set current_phase = 'baseline'::public\.goal_target_phase,[\s\S]*is_current = true,[\s\S]*evaluation_window_started_at = timezone\('utc', now\(\)\)/is);
+    expect(sql).toMatch(/create trigger goal_targets_initialize_progression_state\s+after insert on public\.goal_targets/is);
+    expect(sql).toMatch(/revoke execute on function app\.initialize_goal_target_progression_state\(\)[^;]+from public, anon, authenticated, service_role/is);
   });
 
   it("creates scoped normalized criteria and immutable history tables", () => {
@@ -94,6 +103,6 @@ describe("goal target automatic progression migration", () => {
   it("preserves metadata and documents an additive truthful rollback", () => {
     expect(sql).toMatch(/^-- @migration-intent:/);
     expect(sql).toMatch(/^-- @migration-dependencies:/m);
-    expect(sql).toMatch(/^-- @migration-rollback:.*drop.*goal_target_transitions.*goal_target_phase_evaluations.*goal_target_phase_criteria.*set_goal_target_progression_scope.*guard_goal_target_progression_state/ims);
+    expect(sql).toMatch(/^-- @migration-rollback:.*drop.*goal_target_transitions.*goal_target_phase_evaluations.*goal_target_phase_criteria.*set_goal_target_progression_scope.*guard_goal_target_progression_state.*initialize_goal_target_progression_state/ims);
   });
 });

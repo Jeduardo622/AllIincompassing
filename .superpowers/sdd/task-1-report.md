@@ -125,3 +125,44 @@ Observed after remediation:
 - Test files: `2 passed / 2`
 - Tests: `18 passed / 18`
 - `npm run ci:check-focused`: passed; live database-backed checks remain skipped because no database URL is configured.
+
+## Insert-time current-target remediation
+
+### RED evidence
+
+Added static assertions to the existing migration contract requiring a trusted fixed-search-path insert initializer, goal-level serialization, active goal/target eligibility, baseline initialization with a fresh window, non-current later targets, restricted helper execution, and rollback coverage.
+
+Command:
+
+`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
+
+Observed before implementation:
+
+- Exit code: `1`
+- Progression migration contract: `1 failed / 7`
+- Existing goal-target/trial-event migration contract: `11 passed / 11`
+- Expected failure: `app.initialize_goal_target_progression_state()` and its trigger contract did not exist.
+
+### Fix details
+
+- Added `app.initialize_goal_target_progression_state()` as an `AFTER INSERT`, fixed-empty-search-path `SECURITY DEFINER` trigger helper. `AFTER INSERT` guarantees the pre-existing target scope trigger has already derived and validated organization/client/goal scope.
+- The helper takes a goal-keyed transaction advisory lock and a `FOR SHARE` parent-goal row lock. `FOR SHARE` keeps status stable without the foreign-key lock-upgrade deadlock risk that `FOR UPDATE` would introduce across concurrent inserts.
+- The helper revalidates target/goal scope and the existing program-goal management authority for authenticated callers.
+- Every newly inserted target receives four incomplete phase-criteria rows.
+- Only an `active` target under an `active` parent goal becomes current, and only when no current active target exists after serialization. It starts at `baseline` with a fresh UTC evaluation window; draft, mastered, archived, and later active targets remain non-current.
+- When eligible non-current targets already exist, selection is deterministic by `sort_order, created_at, id`; a refinement assertion was observed RED before adding this ordered selection.
+- Direct callers still cannot provide progression-owned columns because INSERT remains column-granted only for non-progression fields.
+- Revoked initializer execution from `PUBLIC`, `anon`, `authenticated`, and `service_role`; added the helper to rollback metadata.
+
+### GREEN evidence
+
+Command:
+
+`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
+
+Observed after implementation:
+
+- Exit code: `0`
+- Test files: `2 passed / 2`
+- Tests: `18 passed / 18`
+- `npm run ci:check-focused`: passed; database-backed checks remain skipped without a configured database URL.

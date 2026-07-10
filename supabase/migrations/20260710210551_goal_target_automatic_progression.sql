@@ -1,6 +1,6 @@
 -- @migration-intent: Add tenant-scoped structured criteria, state, evaluation, audit, and atomic RPC support for automatic goal-target progression.
 -- @migration-dependencies: 20260710161038_goal_target_delete_capability_invoker.sql,20260710153231_goal_target_lifecycle_authz.sql,20260703173000_goal_targets_trial_events.sql
--- @migration-rollback: Drop public.override_goal_target_progression, public.goal_target_transitions, public.goal_target_phase_evaluations, public.goal_target_phase_criteria, app.set_goal_target_progression_scope, and app.guard_goal_target_progression_state; then remove progression triggers, columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
+-- @migration-rollback: Drop public.override_goal_target_progression, public.goal_target_transitions, public.goal_target_phase_evaluations, public.goal_target_phase_criteria, app.set_goal_target_progression_scope, app.guard_goal_target_progression_state, and app.initialize_goal_target_progression_state; then remove progression triggers, columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
 
 begin;
 
@@ -239,6 +239,99 @@ create trigger goal_targets_guard_progression_state
 before update of current_phase, is_current, evaluation_window_started_at, progression_version
 on public.goal_targets
 for each row execute function app.guard_goal_target_progression_state();
+
+create or replace function app.initialize_goal_target_progression_state()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_goal_status text;
+  v_goal_organization_id uuid;
+  v_goal_client_id uuid;
+  v_first_target_id uuid;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(new.goal_id::text, 0));
+
+  select g.status, g.organization_id, g.client_id
+  into v_goal_status, v_goal_organization_id, v_goal_client_id
+  from public.goals g
+  where g.id = new.goal_id
+  for share;
+
+  if not found
+    or new.organization_id <> v_goal_organization_id
+    or new.client_id <> v_goal_client_id
+  then
+    raise exception using errcode = '23514', message = 'goal target is not in goal scope';
+  end if;
+
+  if auth.uid() is not null
+    and not (
+      app.current_user_is_super_admin()
+      or (
+        new.organization_id = app.current_user_organization_id()
+        and app.current_user_can_manage_programs_goals(new.organization_id)
+      )
+    )
+  then
+    raise exception using errcode = '42501', message = 'goal target is not in scope';
+  end if;
+
+  insert into public.goal_target_phase_criteria (
+    organization_id, client_id, goal_id, target_id, phase,
+    metric, comparator, threshold, min_observations, consecutive_sessions
+  )
+  select new.organization_id, new.client_id, new.goal_id, new.id, phases.phase,
+    null, null, null, null, null
+  from (values
+    ('baseline'::public.goal_target_phase),
+    ('teaching'::public.goal_target_phase),
+    ('generalization'::public.goal_target_phase),
+    ('mastery'::public.goal_target_phase)
+  ) as phases(phase)
+  on conflict (target_id, phase) do nothing;
+
+  if new.status = 'active'
+    and v_goal_status = 'active'
+    and not exists (
+      select 1
+      from public.goal_targets gt
+      where gt.organization_id = new.organization_id
+        and gt.goal_id = new.goal_id
+        and gt.is_current
+        and gt.status = 'active'
+    )
+  then
+    select gt.id
+    into v_first_target_id
+    from public.goal_targets gt
+    where gt.organization_id = new.organization_id
+      and gt.goal_id = new.goal_id
+      and gt.status = 'active'
+    order by gt.sort_order, gt.created_at, gt.id
+    limit 1
+    for update;
+
+    update public.goal_targets
+    set current_phase = 'baseline'::public.goal_target_phase,
+        is_current = true,
+        evaluation_window_started_at = timezone('utc', now())
+    where id = v_first_target_id;
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function app.initialize_goal_target_progression_state()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists goal_targets_initialize_progression_state on public.goal_targets;
+create trigger goal_targets_initialize_progression_state
+after insert on public.goal_targets
+for each row execute function app.initialize_goal_target_progression_state();
 
 revoke insert, update on table public.goal_targets from anon, authenticated, service_role;
 grant insert (

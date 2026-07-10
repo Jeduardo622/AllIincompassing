@@ -1245,10 +1245,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         return new Response(JSON.stringify([targetRecord]), { status: 200 });
       }
       if (method === "PATCH" && path === "/api/goal-targets?target_id=target-1") {
+        const body = JSON.parse(String(init?.body));
         targetRecord = {
           ...targetRecord,
           name: "Mands for help independently",
           measurement_type: "correctIncorrect",
+          graph_config: body.graph_config,
           status: "mastered",
           updated_at: "2026-02-12T00:00:00.000Z",
         };
@@ -1309,11 +1311,377 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     };
     expect(body.measurement_type).toBe("correctIncorrect");
     expect(body.status).toBe("mastered");
-    expect(body.graph_config).toBeUndefined();
+    expect(body.graph_config).toEqual({
+      defaultChart: "bar",
+      source: "trial_events",
+      aggregation: "session_summary",
+    });
     expect(showSuccess).toHaveBeenCalledWith("Target updated");
     expect(await screen.findByText("Mands for help independently")).toBeInTheDocument();
     expect(screen.getByText("Measurement: Correct / incorrect")).toBeInTheDocument();
     expect(screen.getByText(/Graph: bar from/i)).toBeInTheDocument();
+  });
+
+  it("lets a midtier edit an existing goal target graph configuration", async () => {
+    let targetRecord = {
+      id: "target-1",
+      organization_id: ORG_ID,
+      client_id: "client-1",
+      goal_id: "goal-1",
+      name: "Mands for help",
+      measurement_type: "frequency",
+      graph_config: { defaultChart: "bar", source: "trial_events", aggregation: "sum" },
+      status: "active",
+      sort_order: 0,
+      created_at: "2026-02-11T00:00:00.000Z",
+      updated_at: "2026-02-11T00:00:00.000Z",
+    };
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "goal-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              program_id: "program-1",
+              title: "Increase functional communication",
+              description: "Client uses functional communication.",
+              original_text: "Original clinical wording",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goal-targets?")) {
+        return new Response(JSON.stringify([targetRecord]), { status: 200 });
+      }
+      if (method === "PATCH" && path === "/api/goal-targets?target_id=target-1") {
+        targetRecord = {
+          ...targetRecord,
+          graph_config: { defaultChart: "line", source: "session_notes", aggregation: "session_summary" },
+          updated_at: "2026-02-12T00:00:00.000Z",
+        };
+        return new Response(JSON.stringify(targetRecord), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/trial-events?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("Mands for help")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit target Mands for help" }));
+
+    fireEvent.change(screen.getByLabelText("Graph chart for Mands for help"), {
+      target: { value: "line" },
+    });
+    fireEvent.change(screen.getByLabelText("Graph source for Mands for help"), {
+      target: { value: "session_notes" },
+    });
+    fireEvent.change(screen.getByLabelText("Graph aggregation for Mands for help"), {
+      target: { value: "session_summary" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Save target Mands for help" }));
+
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goal-targets?target_id=target-1",
+        expect.objectContaining({
+          method: "PATCH",
+        }),
+      );
+    });
+    const updateCall = vi
+      .mocked(callEdgeFunctionHttp)
+      .mock.calls.find(([path, init]) => path === "goal-targets?target_id=target-1" && init?.method === "PATCH");
+    const body = JSON.parse(String(updateCall?.[1]?.body)) as {
+      graph_config?: Record<string, unknown>;
+    };
+    expect(body.graph_config).toEqual({
+      defaultChart: "line",
+      source: "session_notes",
+      aggregation: "session_summary",
+    });
+    expect(showSuccess).toHaveBeenCalledWith("Target updated");
+    expect(await screen.findByText(/Graph: line from session_notes/i)).toBeInTheDocument();
+  });
+
+  it("keeps frequency target graph aggregation aligned with creation defaults when stored config is incomplete", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "goal-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              program_id: "program-1",
+              title: "Increase functional communication",
+              description: "Client uses functional communication.",
+              original_text: "Original clinical wording",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goal-targets?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "target-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              goal_id: "goal-1",
+              name: "Mands for help",
+              measurement_type: "frequency",
+              graph_config: { defaultChart: "bar", source: "trial_events" },
+              status: "active",
+              sort_order: 0,
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "PATCH" && path === "/api/goal-targets?target_id=target-1") {
+        const body = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({
+            id: "target-1",
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            goal_id: "goal-1",
+            name: "Mands for help",
+            measurement_type: "frequency",
+            graph_config: body.graph_config,
+            status: "active",
+            sort_order: 0,
+            created_at: "2026-02-11T00:00:00.000Z",
+            updated_at: "2026-02-12T00:00:00.000Z",
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("Mands for help")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit target Mands for help" }));
+    fireEvent.change(screen.getByLabelText("Graph chart for Mands for help"), {
+      target: { value: "line" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save target Mands for help" }));
+
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goal-targets?target_id=target-1",
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+    const updateCall = vi
+      .mocked(callEdgeFunctionHttp)
+      .mock.calls.find(([path, init]) => path === "goal-targets?target_id=target-1" && init?.method === "PATCH");
+    const body = JSON.parse(String(updateCall?.[1]?.body)) as {
+      graph_config?: Record<string, unknown>;
+    };
+    expect(body.graph_config).toEqual({
+      defaultChart: "line",
+      source: "trial_events",
+      aggregation: "sum",
+    });
+  });
+
+  it("persists normalized graph config when a legacy target is edited without graph field changes", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "goal-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              program_id: "program-1",
+              title: "Increase functional communication",
+              description: "Client uses functional communication.",
+              original_text: "Original clinical wording",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goal-targets?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "target-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              goal_id: "goal-1",
+              name: "Mands for help",
+              measurement_type: "correctIncorrect",
+              graph_config: { defaultChart: "bar", source: "trial_events" },
+              status: "active",
+              sort_order: 0,
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "PATCH" && path === "/api/goal-targets?target_id=target-1") {
+        const body = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({
+            id: "target-1",
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            goal_id: "goal-1",
+            name: "Mands for help independently",
+            measurement_type: "correctIncorrect",
+            graph_config: body.graph_config,
+            status: "active",
+            sort_order: 0,
+            created_at: "2026-02-11T00:00:00.000Z",
+            updated_at: "2026-02-12T00:00:00.000Z",
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("Mands for help")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit target Mands for help" }));
+    fireEvent.change(screen.getByLabelText("Target name for Mands for help"), {
+      target: { value: "Mands for help independently" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save target Mands for help" }));
+
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goal-targets?target_id=target-1",
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+    const updateCall = vi
+      .mocked(callEdgeFunctionHttp)
+      .mock.calls.find(([path, init]) => path === "goal-targets?target_id=target-1" && init?.method === "PATCH");
+    const body = JSON.parse(String(updateCall?.[1]?.body)) as {
+      graph_config?: Record<string, unknown>;
+    };
+    expect(body.graph_config).toEqual({
+      defaultChart: "bar",
+      source: "trial_events",
+      aggregation: "session_summary",
+    });
   });
 
   it("does not expose existing target editing to view-only therapist roles", async () => {

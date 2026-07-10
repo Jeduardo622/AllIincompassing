@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   CORS_HEADERS,
+  currentUserCanDeleteGoalTargets,
   currentUserCanManageProgramsGoals,
   fetchJson,
   getAccessToken,
@@ -116,6 +117,65 @@ export async function goalTargetsHandler(request: Request): Promise<Response> {
       return json({ error: "Failed to load goal targets" }, result.status || 500);
     }
     return json(result.data ?? []);
+  }
+
+  if (request.method === "DELETE") {
+    const url = new URL(request.url);
+    const targetId = url.searchParams.get("target_id");
+    if (!targetId) {
+      return json({ error: "target_id is required" }, 400);
+    }
+    if (!isUuid(targetId)) {
+      return json({ error: "target_id must be a valid UUID" }, 400);
+    }
+
+    const canDelete = await currentUserCanDeleteGoalTargets(accessToken, organizationId);
+    if (canDelete.upstreamError) {
+      return json({ error: "Unable to validate goal-target delete access" }, 502);
+    }
+    if (!canDelete.allowed) {
+      return json({ error: "Forbidden" }, 403);
+    }
+
+    const encodedTargetId = encodeURIComponent(targetId);
+    const encodedOrganizationId = encodeURIComponent(organizationId);
+    const targetResult = await fetchJson<Array<{ id: string; status: string }>>(
+      `${supabaseUrl}/rest/v1/goal_targets?select=id,status&id=eq.${encodedTargetId}&organization_id=eq.${encodedOrganizationId}&limit=1`,
+      { method: "GET", headers },
+    );
+    if (!targetResult.ok) {
+      return json({ error: "Failed to load goal target" }, 502);
+    }
+    const target = Array.isArray(targetResult.data) ? targetResult.data[0] : null;
+    if (!target) {
+      return json({ error: "Goal target not found" }, 404);
+    }
+    if (target.status !== "archived") {
+      return json({ error: "Only archived goal targets can be deleted" }, 409);
+    }
+
+    const deleteResult = await fetchJson<Array<{ id: string }>>(
+      `${supabaseUrl}/rest/v1/goal_targets?id=eq.${encodedTargetId}&organization_id=eq.${encodedOrganizationId}`,
+      {
+        method: "DELETE",
+        headers: { ...headers, Prefer: "return=representation" },
+      },
+    );
+    if (!deleteResult.ok) {
+      const errorCode =
+        deleteResult.data && !Array.isArray(deleteResult.data) && typeof deleteResult.data === "object"
+          ? (deleteResult.data as { code?: unknown }).code
+          : null;
+      if (errorCode === "23503") {
+        return json({ error: "Goal target has trial history and cannot be deleted" }, 409);
+      }
+      return json({ error: "Failed to delete goal target" }, 502);
+    }
+    const deleted = Array.isArray(deleteResult.data) ? deleteResult.data[0] : null;
+    if (!deleted) {
+      return json({ error: "Goal target has trial history or is no longer eligible for deletion" }, 409);
+    }
+    return json(deleted);
   }
 
   if (request.method === "POST") {

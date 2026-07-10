@@ -263,6 +263,27 @@ export async function currentUserCanManageProgramsGoals(
   return { allowed: result.data === true, upstreamError: false };
 }
 
+export async function currentUserCanDeleteGoalTargets(
+  accessToken: string,
+  organizationId: string,
+): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/current_user_can_delete_goal_targets`, {
+    method: "POST",
+    headers: {
+      ...JSON_HEADERS,
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ target_organization_id: organizationId }),
+  });
+
+  if (!result.ok) {
+    return { allowed: false, upstreamError: true };
+  }
+  return { allowed: result.data === true, upstreamError: false };
+}
+
 export async function currentUserCanTakeClientData(
   accessToken: string,
   organizationId: string,

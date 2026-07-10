@@ -12,6 +12,7 @@ export type AppCapability =
   | 'accessSuperAdminTools'
   | 'assignClientsToStaff'
   | 'dataTaking'
+  | 'deleteGoalTargets'
   | 'lockSessionNotes'
   | 'manageAuthorizations'
   | 'manageClients'
@@ -70,6 +71,7 @@ const allCapabilities: readonly AppCapability[] = [
   'accessSuperAdminTools',
   'assignClientsToStaff',
   'dataTaking',
+  'deleteGoalTargets',
   'lockSessionNotes',
   'manageAuthorizations',
   'manageClients',
@@ -169,6 +171,7 @@ export const ROLE_CAPABILITIES: Record<AppRole, readonly AppCapability[]> = {
   bcba: [
     'assignClientsToStaff',
     'dataTaking',
+    'deleteGoalTargets',
     'lockSessionNotes',
     'manageAuthorizations',
     'manageClients',

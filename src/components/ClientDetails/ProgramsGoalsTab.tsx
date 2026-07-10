@@ -775,16 +775,32 @@ function GoalFieldList({
 }
 
 function GoalTargetCard({
+  canDelete,
   clientId,
+  deleteGoalTarget,
+  deletingTargetId,
   goalTargetsLoading,
+  lifecycleTargetId,
   organizationId,
+  setGoalTargetArchiveState,
   target,
   updateGoalTarget,
   updatingTargetId,
 }: {
+  canDelete: boolean;
   clientId: string;
+  deleteGoalTarget: {
+    isLoading: boolean;
+    mutate: (target: GoalTarget) => void;
+  };
+  deletingTargetId: string | null;
   goalTargetsLoading: boolean;
+  lifecycleTargetId: string | null;
   organizationId: string | null;
+  setGoalTargetArchiveState: {
+    isLoading: boolean;
+    mutate: (input: { target: GoalTarget; status: "active" | "archived" }) => void;
+  } | null;
   target: GoalTarget;
   updateGoalTarget: {
     isLoading: boolean;
@@ -824,6 +840,9 @@ function GoalTargetCard({
   const measurementTypeChanged = editMeasurementType !== target.measurement_type;
   const shouldPersistGraphConfig = graphConfigChanged || graphConfigIncomplete || measurementTypeChanged;
   const isSaving = updatingTargetId === target.id && updateGoalTarget?.isLoading === true;
+  const isLifecyclePending = lifecycleTargetId === target.id && setGoalTargetArchiveState?.isLoading === true;
+  const isDeleting = deletingTargetId === target.id && deleteGoalTarget.isLoading;
+  const lifecycleActionsBusy = lifecycleTargetId !== null || deletingTargetId !== null;
 
   useEffect(() => {
     if (isEditing) return;
@@ -858,7 +877,7 @@ function GoalTargetCard({
           <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-300">
             {target.status}
           </span>
-          {updateGoalTarget && (
+          {updateGoalTarget && target.status !== "archived" && (
             <button
               type="button"
               aria-label={isEditing ? `Cancel editing target ${target.name}` : `Edit target ${target.name}`}
@@ -875,6 +894,36 @@ function GoalTargetCard({
               className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
             >
               {isEditing ? <X className="h-3.5 w-3.5" aria-hidden="true" /> : <Pencil className="h-3.5 w-3.5" aria-hidden="true" />}
+            </button>
+          )}
+          {setGoalTargetArchiveState && (
+            <button
+              type="button"
+              aria-label={`${target.status === "archived" ? "Restore" : "Archive"} target ${target.name}`}
+              onClick={() => setGoalTargetArchiveState.mutate({
+                target,
+                status: target.status === "archived" ? "active" : "archived",
+              })}
+              disabled={lifecycleActionsBusy}
+              className="rounded-md border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+            >
+              {isLifecyclePending ? "Saving..." : target.status === "archived" ? "Restore" : "Archive"}
+            </button>
+          )}
+          {canDelete && target.status === "archived" && (
+            <button
+              type="button"
+              aria-label={`Delete target ${target.name}`}
+              onClick={() => {
+                const confirmed = typeof window === "undefined" || window.confirm(
+                  `Delete target "${target.name}"? This action is irreversible.`,
+                );
+                if (confirmed) deleteGoalTarget.mutate(target);
+              }}
+              disabled={lifecycleActionsBusy}
+              className="rounded-md border border-rose-200 px-2 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
             </button>
           )}
         </div>
@@ -1024,12 +1073,17 @@ function GoalTargetCard({
 function GoalCard({
   archivingGoalId,
   archiveGoal,
+  canDeleteGoalTargets,
   clientId,
+  deleteGoalTarget,
+  deletingTargetId,
   domainsById,
   goal,
   goalTargetsForGoal,
   goalTargetsLoading,
+  lifecycleTargetId,
   organizationId,
+  setGoalTargetArchiveState,
   updateGoalTarget,
   updatingTargetId,
 }: {
@@ -1038,12 +1092,23 @@ function GoalCard({
     isLoading: boolean;
     mutate: (goal: Goal) => void;
   };
+  canDeleteGoalTargets: boolean;
   clientId: string;
+  deleteGoalTarget: {
+    isLoading: boolean;
+    mutate: (target: GoalTarget) => void;
+  };
+  deletingTargetId: string | null;
   domainsById: Record<string, GoalDomain>;
   goal: Goal;
   goalTargetsForGoal: GoalTarget[];
   goalTargetsLoading: boolean;
+  lifecycleTargetId: string | null;
   organizationId: string | null;
+  setGoalTargetArchiveState: {
+    isLoading: boolean;
+    mutate: (input: { target: GoalTarget; status: "active" | "archived" }) => void;
+  } | null;
   updateGoalTarget: {
     isLoading: boolean;
     mutate: (input: {
@@ -1056,6 +1121,26 @@ function GoalCard({
   } | null;
   updatingTargetId: string | null;
 }) {
+  const [showArchivedTargets, setShowArchivedTargets] = useState(false);
+  const activeTargets = goalTargetsForGoal.filter((target) => target.status !== "archived");
+  const archivedTargets = goalTargetsForGoal.filter((target) => target.status === "archived");
+  const renderTargetCard = (target: GoalTarget) => (
+    <GoalTargetCard
+      key={target.id}
+      canDelete={canDeleteGoalTargets}
+      clientId={clientId}
+      deleteGoalTarget={deleteGoalTarget}
+      deletingTargetId={deletingTargetId}
+      goalTargetsLoading={goalTargetsLoading}
+      lifecycleTargetId={lifecycleTargetId}
+      organizationId={organizationId}
+      setGoalTargetArchiveState={setGoalTargetArchiveState}
+      target={target}
+      updateGoalTarget={updateGoalTarget}
+      updatingTargetId={updatingTargetId}
+    />
+  );
+
   return (
     <div className="rounded-md border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter/30">
       <div className="flex items-start justify-between gap-2">
@@ -1107,17 +1192,26 @@ function GoalCard({
           <p className="text-xs text-slate-500">No target-level measurement definitions yet.</p>
         ) : (
           <div className="space-y-3">
-            {goalTargetsForGoal.map((target) => (
-              <GoalTargetCard
-                key={target.id}
-                clientId={clientId}
-                goalTargetsLoading={goalTargetsLoading}
-                organizationId={organizationId}
-                target={target}
-                updateGoalTarget={updateGoalTarget}
-                updatingTargetId={updatingTargetId}
-              />
-            ))}
+            {activeTargets.length === 0 && !showArchivedTargets && (
+              <p className="text-xs text-slate-500">No active targets.</p>
+            )}
+            {activeTargets.map(renderTargetCard)}
+            {archivedTargets.length > 0 && (
+              <button
+                type="button"
+                aria-expanded={showArchivedTargets}
+                onClick={() => setShowArchivedTargets((current) => !current)}
+                className="rounded-md border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-white dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                {showArchivedTargets ? "Hide archived targets" : `Show archived targets (${archivedTargets.length})`}
+              </button>
+            )}
+            {showArchivedTargets && archivedTargets.length > 0 && (
+              <section aria-label="Archived targets" className="space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Archived targets</p>
+                {archivedTargets.map(renderTargetCard)}
+              </section>
+            )}
           </div>
         )}
       </div>
@@ -1130,6 +1224,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const organizationId = useActiveOrganizationId();
   const { hasCapability, session } = useAuth();
   const canManageProgramsGoals = hasCapability("manageProgramsGoals");
+  const canDeleteGoalTargets = hasCapability("deleteGoalTargets");
   const publishSectionRef = useRef<HTMLDivElement | null>(null);
   const assessmentDocumentsQueryKey = ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"] as const;
   const clientProgramsQueryKey = buildClientProgramsQueryKey(client.id, organizationId);
@@ -1199,6 +1294,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [archivingProgramId, setArchivingProgramId] = useState<string | null>(null);
   const [archivingGoalId, setArchivingGoalId] = useState<string | null>(null);
   const [updatingTargetId, setUpdatingTargetId] = useState<string | null>(null);
+  const [lifecycleTargetId, setLifecycleTargetId] = useState<string | null>(null);
+  const [deletingTargetId, setDeletingTargetId] = useState<string | null>(null);
   const [isUploadProcessing, setIsUploadProcessing] = useState(false);
   const [assessmentDocumentsNeedsRetry, setAssessmentDocumentsNeedsRetry] = useState(false);
 
@@ -2347,6 +2444,67 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
     onSettled: () => {
       setUpdatingTargetId(null);
+    },
+  });
+
+  const setGoalTargetArchiveState = useMutation({
+    mutationFn: async ({
+      target,
+      status,
+    }: {
+      target: GoalTarget;
+      status: "active" | "archived";
+    }) => {
+      const response = await callEdgeFunctionHttp(
+        `${GOAL_TARGETS_EDGE_PATH}?target_id=${encodeURIComponent(target.id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, `Failed to ${status === "archived" ? "archive" : "restore"} target.`));
+      }
+      return parseJson<GoalTarget>(response);
+    },
+    onMutate: ({ target }) => {
+      setLifecycleTargetId(target.id);
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<GoalTarget[]>(goalTargetsQueryKey, (current) =>
+        mapById(current, updated.id, (currentTarget) => ({ ...currentTarget, ...updated })),
+      );
+      showSuccess(updated.status === "archived" ? "Target archived" : "Target restored");
+    },
+    onError: showError,
+    onSettled: () => {
+      setLifecycleTargetId(null);
+    },
+  });
+
+  const deleteGoalTarget = useMutation({
+    mutationFn: async (target: GoalTarget) => {
+      const response = await callEdgeFunctionHttp(
+        `${GOAL_TARGETS_EDGE_PATH}?target_id=${encodeURIComponent(target.id)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to delete target."));
+      }
+      return target;
+    },
+    onMutate: (target) => {
+      setDeletingTargetId(target.id);
+    },
+    onSuccess: (deleted) => {
+      queryClient.setQueryData<GoalTarget[]>(goalTargetsQueryKey, (current) =>
+        (current ?? []).filter((target) => target.id !== deleted.id),
+      );
+      showSuccess(`Target "${deleted.name}" deleted`);
+    },
+    onError: showError,
+    onSettled: () => {
+      setDeletingTargetId(null);
     },
   });
 
@@ -3517,12 +3675,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 key={goal.id}
                                 archiveGoal={archiveGoal}
                                 archivingGoalId={archivingGoalId}
+                                canDeleteGoalTargets={canDeleteGoalTargets}
                                 clientId={client.id}
+                                deleteGoalTarget={deleteGoalTarget}
+                                deletingTargetId={deletingTargetId}
                                 domainsById={goalDomainsById}
                                 goal={goal}
                                 goalTargetsForGoal={targetsByGoalId[goal.id] ?? []}
                                 goalTargetsLoading={goalTargetsLoading}
+                                lifecycleTargetId={lifecycleTargetId}
                                 organizationId={organizationId}
+                                setGoalTargetArchiveState={canManageProgramsGoals ? setGoalTargetArchiveState : null}
                                 updateGoalTarget={canManageProgramsGoals ? updateGoalTarget : null}
                                 updatingTargetId={updatingTargetId}
                               />

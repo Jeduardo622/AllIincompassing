@@ -83,28 +83,33 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
   - `npm run test:routes:tier0`
   - `npm run ci:playwright`
 - executed checks:
-  - hosted Supabase replay and contract verification for `wnnjeqheqxxyrgsjmygy`
-  - hosted ACL checks for `goal_domains` and `user_therapist_links`
-  - hosted function body contract query returning all required predicates true
-  - repository evidence review for Task 1 and Task 2 verification notes
+  - `Test-Path 'C:\\Users\\test\\.config\\superpowers\\worktrees\\AllIincompassing\\ci-hosted-security-remediation\\docs\\ai\\WIN-213-ci-hosted-security-remediation-handoff.md'` -> PASS
+  - `Test-Path 'C:\\Users\\test\\.config\\superpowers\\worktrees\\AllIincompassing\\ci-hosted-security-remediation\\.superpowers\\sdd\\task-3-report.md'` -> PASS
+  - `npm run ci:check-focused` -> PASS
+  - `npm run test:ci` -> FAIL, pre-existing missing `VITE_SUPABASE_URL` in `src/server/__tests__/orgRoleRpcEquivalence.contract.test.ts`
+  - `npm run verify:local` -> FAIL, same pre-existing missing `VITE_SUPABASE_URL` failure
 - blocked checks:
-  - `npm run ci:playwright` was not run locally because readiness failed with missing browser target, hosted persona credentials, Supabase runtime keys, service-role access, foreign IDs, and assessment-smoke fixture inputs in the process environment.
+  - `npm run validate:tenant` -> BLOCKED because the check was not run in this slice
+  - `npm run build` -> BLOCKED because the check was not run in this slice
+  - `npm run test:routes:tier0` -> BLOCKED because the check was not run in this slice
+  - `npm run ci:playwright` -> BLOCKED because readiness failed with missing browser target, hosted persona credentials, Supabase runtime keys, service-role access, foreign IDs, and assessment-smoke fixture inputs in the process environment
 - result: pass-with-blocked-checks
 - residual risk: secret-backed CI still needs to confirm the full runtime contract path
 
 ## PR Hygiene Verdict
 
-- branch-ready: yes, `codex/ci-hosted-security-remediation`
-- linear-ready: yes, `WIN-213`
+- branch-ready: pending
+- linear-ready: pending
 - protected-path drift: expected, `supabase/migrations/**` in the underlying remediation slice
 - unrelated changes: none
 - generated artifact drift: none
 - verification summary: present
-- pr-ready: yes, with `ci:playwright` explicitly deferred to secret-backed CI because local readiness failed
-- pr handoff: ready
-- reviewer: completed, with no new findings in this documentation-only handoff
+- pr-ready: not ready
+- pr handoff: pending
+- reviewer: pending
+- pr-hygiene: pending
 - required follow-up:
-  - confirm the secret-backed CI runtime contract job
+  - complete final whole-branch review, verify-change, pr-hygiene, push, and CI before marking ready
   - keep the unrelated security-advisor warnings out of this slice
 
 ## Handoff Summary

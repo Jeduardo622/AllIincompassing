@@ -371,6 +371,7 @@ export const Schedule = React.memo(() => {
   const lastAppliedUrlModalKeyRef = useRef<string | null>(null);
   const attemptedUrlSessionLookupRef = useRef<Set<string>>(new Set());
   const wasModalOpenRef = useRef(false);
+  const completedAwaitingFinalizationRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1597,11 +1598,14 @@ export const Schedule = React.memo(() => {
             }
           }
 
-          await completeSessionMutation.mutateAsync({
-            sessionId: decision.selectedSessionId,
-            outcome: "completed",
-            notes: decision.notes,
-          });
+          if (!completedAwaitingFinalizationRef.current.has(decision.selectedSessionId)) {
+            await completeSessionMutation.mutateAsync({
+              sessionId: decision.selectedSessionId,
+              outcome: "completed",
+              notes: decision.notes,
+            });
+            if (clinicalNoteDraft) completedAwaitingFinalizationRef.current.add(decision.selectedSessionId);
+          }
           let progressionResult;
           if (clinicalNoteDraft && effectiveSelectedSession && activeOrganizationId && user?.id) {
             progressionResult = await upsertClientSessionNoteForSession({
@@ -1624,6 +1628,7 @@ export const Schedule = React.memo(() => {
               ...(mergeCaptureIds?.length ? { captureMergeGoalIds: mergeCaptureIds } : {}),
               ...(clinicalNoteDraft.trialEvents.length ? { trialEvents: clinicalNoteDraft.trialEvents } : {}),
             });
+            completedAwaitingFinalizationRef.current.delete(decision.selectedSessionId);
           }
           showSuccess("Session marked as completed");
           applyScheduleResetBranch({ kind: "submit-cancel" }, scheduleResetSetters);

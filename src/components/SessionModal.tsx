@@ -144,6 +144,9 @@ export const formatProgressionNotices = (
   return [];
 });
 
+export const dedupeProgressionNotices = (...groups: readonly string[][]): string[] =>
+  Array.from(new Set(groups.flat()));
+
 const toOptionalNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -422,6 +425,7 @@ export function SessionModal({
   const [pendingNumericTrialValues, setPendingNumericTrialValues] = useState<Record<string, string>>({});
   const [progressionNotices, setProgressionNotices] = useState<string[]>([]);
   const [progressionConflict, setProgressionConflict] = useState<string | null>(null);
+  const [staleProgressionTargetIds, setStaleProgressionTargetIds] = useState<string[]>([]);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const sessionCaptureSectionRef = useRef<HTMLElement | null>(null);
@@ -1295,7 +1299,7 @@ export function SessionModal({
 
   const handleFormSubmit = async (
     data: SessionModalFormValues,
-    options?: { captureMergeGoalIds?: string[] },
+    options?: { captureMergeGoalIds?: string[]; discardTrialTargetIds?: readonly string[] },
   ) => {
     if (!isDataCollectionOnly && conflicts.length > 0) {
       if (!window.confirm('There are scheduling conflicts. Do you want to proceed anyway?')) {
@@ -1371,7 +1375,9 @@ export function SessionModal({
       );
       const mergeGoalIds = options?.captureMergeGoalIds?.filter((id) => id.trim().length > 0) ?? [];
       const isPartialCaptureSave = mergeGoalIds.length > 0;
+      const discardedTargetIds = new Set(options?.discardTrialTargetIds ?? []);
       const trialEventsForSubmit = pendingTrialEvents.filter((event) => {
+        if (discardedTargetIds.has(event.target_id)) return false;
         if (!isPartialCaptureSave) {
           return true;
         }
@@ -1575,8 +1581,9 @@ export function SessionModal({
       if (submitResult?.progression_results || submitResult?.progression_warnings) {
         const targetNames = new Map(goalTargets.map((target) => [target.id, target.name]));
         const notices = formatProgressionNotices(submitResult.progression_results ?? [], targetNames);
-        setProgressionNotices([...notices, ...(submitResult.progression_warnings ?? [])]);
+        setProgressionNotices(dedupeProgressionNotices(notices, submitResult.progression_warnings ?? []));
         setProgressionConflict(null);
+        setStaleProgressionTargetIds([]);
         void queryClient.invalidateQueries({ queryKey: ['client-goal-targets', clientId, activeOrganizationId ?? 'MISSING_ORG'] });
       }
       if (trialEventsForSubmit.length > 0 && session?.id) {
@@ -1640,12 +1647,13 @@ export function SessionModal({
         context: { component: 'SessionModal', operation: 'handleFormSubmit' }
       });
       setSaveState('error');
-      const conflictError = error as Error & { status?: number; conflict?: { current_target_name?: string; current_phase?: string } };
+      const conflictError = error as Error & { status?: number; conflict?: { stale_target_id?: string; current_target_name?: string; current_phase?: string } };
       if (conflictError.status === 409) {
         const context = conflictError.conflict;
         setProgressionConflict(context
-          ? `${conflictError.message}${context.current_target_name ? ` Current target: ${context.current_target_name}` : ''}${context.current_phase ? ` (${context.current_phase})` : ''}`
+          ? `${conflictError.message} The completed session is preserved.${context.current_target_name ? ` Current target: ${context.current_target_name}` : ''}${context.current_phase ? ` (${context.current_phase})` : ''}`
           : conflictError.message);
+        setStaleProgressionTargetIds(context?.stale_target_id ? [context.stale_target_id] : []);
         void queryClient.invalidateQueries({ queryKey: ['client-goal-targets', clientId, activeOrganizationId ?? 'MISSING_ORG'] });
       }
       return;
@@ -3166,7 +3174,20 @@ export function SessionModal({
               >
                 {(progressionConflict || progressionNotices.length > 0) && (
                   <div role={progressionConflict ? 'alert' : 'status'} className={`rounded-lg border p-3 text-sm ${progressionConflict ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-300 bg-emerald-50 text-emerald-900'}`}>
-                    {progressionConflict ?? progressionNotices.join(' · ')}
+                    <p>{progressionConflict ?? progressionNotices.join(' · ')}</p>
+                    {progressionConflict && staleProgressionTargetIds.length > 0 && (
+                      <button
+                        type="button"
+                        className="mt-2 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold"
+                        onClick={() => {
+                          const staleIds = [...staleProgressionTargetIds];
+                          setPendingTrialEvents((events) => events.filter((event) => !staleIds.includes(event.target_id)));
+                          void handleFormSubmit(getValues(), { discardTrialTargetIds: staleIds });
+                        }}
+                      >
+                        Discard stale trials and retry
+                      </button>
+                    )}
                   </div>
                 )}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

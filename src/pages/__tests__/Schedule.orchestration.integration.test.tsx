@@ -9,6 +9,7 @@ const showSuccessMock = vi.fn();
 const buildBookSessionApiPayloadMock = vi.fn((session: unknown) => session);
 const upsertClientSessionNoteForSessionMock = vi.fn();
 const invalidateSessionNoteCachesAfterSessionWriteMock = vi.fn();
+const completeSessionFromModalMock = vi.fn();
 
 const currentSessionStart = new Date();
 currentSessionStart.setHours(10, 0, 0, 0);
@@ -92,6 +93,11 @@ vi.mock("../../features/scheduling/domain/sessionNoteQueryInvalidation", () => (
     invalidateSessionNoteCachesAfterSessionWriteMock(...args),
 }));
 
+vi.mock("../../features/scheduling/domain/sessionComplete", async () => {
+  const actual = await vi.importActual<typeof import("../../features/scheduling/domain/sessionComplete")>("../../features/scheduling/domain/sessionComplete");
+  return { ...actual, completeSessionFromModal: (...args: unknown[]) => completeSessionFromModalMock(...args) };
+});
+
 vi.mock("../../lib/conflictPolicy", () => ({
   buildSchedulingConflictHint: () => "conflict-hint",
 }));
@@ -120,6 +126,33 @@ vi.mock("../../components/SessionModal", () => ({
         <div data-testid="retry-hint">{retryHint ?? ""}</div>
         <div data-testid="data-collection-only">{dataCollectionOnly ? "true" : "false"}</div>
         <div data-testid="hide-goal-capture-fields">{hideGoalCaptureFields ? "true" : "false"}</div>
+        <button
+          aria-label="submit-complete-with-stale-trial"
+          onClick={() => {
+            const result = onSubmit({
+              id: "session-1", therapist_id: "therapist-1", client_id: "client-1", program_id: "program-1", goal_id: "goal-1",
+              start_time: originalSessionWindow.start_time, end_time: originalSessionWindow.end_time, status: "completed",
+              session_note_goal_ids: ["goal-1"], session_note_goals_addressed: ["Goal 1"],
+              session_note_goal_notes: { "goal-1": "Keep this note" }, session_note_goal_measurements: {},
+              session_note_authorization_id: "auth-1", session_note_service_code: "97153", session_note_persist_requested: true,
+              session_note_trial_events: [{ target_id: "88888888-8888-4888-8888-888888888888", trial_number: 1, response: "correct", expected_progression_version: 1 }],
+            });
+            if (result && typeof (result as Promise<unknown>).catch === "function") void (result as Promise<unknown>).catch(() => undefined);
+          }}
+        >complete stale</button>
+        <button
+          aria-label="submit-complete-after-discard"
+          onClick={() => {
+            const result = onSubmit({
+              id: "session-1", therapist_id: "therapist-1", client_id: "client-1", program_id: "program-1", goal_id: "goal-1",
+              start_time: originalSessionWindow.start_time, end_time: originalSessionWindow.end_time, status: "completed",
+              session_note_goal_ids: ["goal-1"], session_note_goals_addressed: ["Goal 1"],
+              session_note_goal_notes: { "goal-1": "Keep this note" }, session_note_goal_measurements: {},
+              session_note_authorization_id: "auth-1", session_note_service_code: "97153", session_note_persist_requested: true,
+            });
+            if (result && typeof (result as Promise<unknown>).catch === "function") void (result as Promise<unknown>).catch(() => undefined);
+          }}
+        >complete retry</button>
         <button
           aria-label="submit-create"
           onClick={() => {
@@ -309,6 +342,7 @@ describe("Schedule orchestration integration hardening", () => {
     upsertClientSessionNoteForSessionMock.mockResolvedValue({
       id: "linked-note-1",
     });
+    completeSessionFromModalMock.mockResolvedValue(undefined);
     bookSessionViaApiMock.mockResolvedValue({
       session: {
         id: "created-session",
@@ -321,6 +355,26 @@ describe("Schedule orchestration integration hardening", () => {
 
   afterEach(() => {
     localStorage.clear();
+  });
+
+  it("does not repeat session completion when stale trials are explicitly discarded and finalization is retried", async () => {
+    const stale = Object.assign(new Error("stale"), { status: 409 });
+    upsertClientSessionNoteForSessionMock.mockRejectedValueOnce(stale).mockResolvedValueOnce({ id: "linked-note-1", progression_results: [] });
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    fireEvent.click(screen.getByLabelText("submit-complete-with-stale-trial"));
+    await waitFor(() => expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1));
+    expect(completeSessionFromModalMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByLabelText("submit-complete-after-discard"));
+    await waitFor(() => expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(2));
+    expect(completeSessionFromModalMock).toHaveBeenCalledTimes(1);
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0]).not.toHaveProperty("trialEvents");
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0].goalNotes).toEqual({ "goal-1": "Keep this note" });
+    await waitFor(() => expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed"));
+    fireEvent.click(screen.getByLabelText("close-modal"));
   });
 
   it("pending-schedule create forwards metadata and does not reuse it on next manual create", async () => {

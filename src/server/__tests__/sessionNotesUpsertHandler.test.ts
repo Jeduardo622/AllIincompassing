@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionGoalMeasurementEntry } from "../../types";
-import { sessionNotesUpsertHandler } from "../api/session-notes-upsert";
+import { sessionNotesUpsertHandler, validateFinalizationTargetVersions } from "../api/session-notes-upsert";
 
 vi.mock("../api/shared", async () => {
   const actual = await vi.importActual<typeof import("../api/shared")>("../api/shared");
@@ -100,6 +100,23 @@ const buildSessionNoteRow = (id: string) => ({
 });
 
 describe("sessionNotesUpsertHandler", () => {
+  it.each([
+    { events: [{ target_id: "a" }], expected: null, label: "absent" },
+    { events: [{ target_id: "a", expected_progression_version: 1 }, { target_id: "b" }], expected: null, label: "partial" },
+    { events: [{ target_id: "a", expected_progression_version: 1 }, { target_id: "a", expected_progression_version: 2 }], expected: null, label: "conflicting duplicate" },
+    { events: [{ target_id: "a", expected_progression_version: Number.POSITIVE_INFINITY }], expected: null, label: "nonfinite" },
+    { events: [{ target_id: "a", expected_progression_version: -1 }], expected: null, label: "negative" },
+  ])("rejects $label first-finalization target versions", ({ events, expected }) => {
+    expect(validateFinalizationTargetVersions(events)).toBe(expected);
+  });
+
+  it("returns exactly one version per distinct target", () => {
+    expect(validateFinalizationTargetVersions([
+      { target_id: "a", expected_progression_version: 1 },
+      { target_id: "a", expected_progression_version: 1 },
+      { target_id: "b", expected_progression_version: 3 },
+    ])).toEqual([{ target_id: "a", progression_version: 1 }, { target_id: "b", progression_version: 3 }]);
+  });
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(resolveSessionCaptureStrictBillingPolicy).mockResolvedValue({ strict: true, upstreamError: false });
@@ -2332,7 +2349,7 @@ describe("sessionNotesUpsertHandler", () => {
 
   it.each([
     [{ outcome: "criteria_incomplete", warning: "Progression criteria incomplete." }, 200, "Progression criteria incomplete."],
-    [{ error: { code: "stale_target", message: "target is no longer current" } }, 409, null],
+    [{ error: { code: "stale_target", message: `stale_target: ${targetId}|next-id|Replacement Target|Baseline` } }, 409, null],
   ])("maps finalization progression result %#", async (rpcData, expectedStatus, expectedWarning) => {
     vi.mocked(fetchJson).mockImplementation(async (url) => {
       const requestUrl = String(url);
@@ -2347,7 +2364,11 @@ describe("sessionNotesUpsertHandler", () => {
     });
     const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", { method: "POST", headers: HEADERS, body: JSON.stringify({ ...basePayload, isLocked: true }) }));
     expect(response.status).toBe(expectedStatus);
-    if (expectedWarning) expect((await response.json()).progression_warnings).toContain(expectedWarning);
+    const responseBody = await response.json();
+    if (expectedWarning) expect(responseBody.progression_warnings).toContain(expectedWarning);
+    if (expectedStatus === 409) expect(responseBody.conflict).toMatchObject({
+      stale_target_id: targetId, current_target_name: "Replacement Target", current_phase: "Baseline",
+    });
   });
 
   it("returns an error without falling back to partial REST writes when finalization fails", async () => {

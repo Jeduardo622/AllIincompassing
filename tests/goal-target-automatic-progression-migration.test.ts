@@ -14,6 +14,8 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/for v_expected in select value from jsonb_array_elements\(expected_target_versions\)[\s\S]*for update;[\s\S]*progression_version <>/i);
     expect(sql).toMatch(/if not v_was_locked then[\s\S]*jsonb_array_elements\(expected_target_versions\)/i);
     expect(sql).toMatch(/stale_target:/i);
+    expect(sql).toMatch(/jsonb_array_length\(expected_target_versions\)[\s\S]*count\(distinct[^;]+target_id/is);
+    expect(sql).toMatch(/expected target versions do not match trial targets/i);
   });
   it("adds phase state and enforces one valid current target per goal", () => {
     expect(sql).toMatch(/create type public\.goal_target_phase as enum\s*\(\s*'baseline',\s*'teaching',\s*'generalization',\s*'mastery'\s*\)/is);

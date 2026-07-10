@@ -117,6 +117,22 @@ const upsertSchema = z.object({
 
 type SessionCaptureTrialEventInput = z.infer<typeof upsertSchema>["trialEvents"][number];
 
+export type ExpectedTargetVersion = { target_id: string; progression_version: number };
+
+export function validateFinalizationTargetVersions(
+  events: readonly { target_id: string; expected_progression_version?: number | null }[],
+): ExpectedTargetVersion[] | null {
+  const versions = new Map<string, number>();
+  for (const event of events) {
+    const version = event.expected_progression_version;
+    if (typeof version !== "number" || !Number.isFinite(version) || !Number.isInteger(version) || version < 0) return null;
+    const existing = versions.get(event.target_id);
+    if (existing !== undefined && existing !== version) return null;
+    versions.set(event.target_id, version);
+  }
+  return Array.from(versions, ([target_id, progression_version]) => ({ target_id, progression_version }));
+}
+
 type GoalTargetScope = {
   id: string;
   organization_id: string;
@@ -1102,6 +1118,11 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     session_id: payload.sessionId ?? null,
   };
 
+  const expectedTargetVersions = validateFinalizationTargetVersions(payload.trialEvents);
+  if (payload.isLocked && !existingNote?.is_locked && expectedTargetVersions === null) {
+    return errorResponse(request, "validation_error", "A current target version is required to finalize trial data.");
+  }
+
   if (payload.isLocked) {
     if (!payload.sessionId) {
       return errorResponse(request, "validation_error", "A session is required to finalize a session note.");
@@ -1129,26 +1150,23 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
         },
         trial_events: trialEventBuild.rows.map(({ organization_id: _organizationId, client_id: _clientId,
           goal_id: _goalId, therapist_id: _therapistId, created_by: _createdBy, updated_by: _updatedBy, ...event }) => event),
-        expected_target_versions: Array.from(new Map(payload.trialEvents
-          .filter((event) => event.expected_progression_version !== undefined)
-          .map((event) => [event.target_id, {
-            target_id: event.target_id,
-            progression_version: event.expected_progression_version,
-          }])).values()),
+        expected_target_versions: expectedTargetVersions ?? [],
       }),
     });
 
     if (!finalizationResult.ok || !finalizationResult.data?.[0]) {
-      const serializedError = JSON.stringify(finalizationResult.data ?? {}).toLowerCase();
+      const serializedErrorOriginal = JSON.stringify(finalizationResult.data ?? {});
+      const serializedError = serializedErrorOriginal.toLowerCase();
       if (finalizationResult.status === 409 || serializedError.includes("stale_target") || serializedError.includes("no longer current")) {
-        const conflictMatch = serializedError.match(/stale_target:\s*([^|"}]+)\|([^|"}]+)\|([^"}]+)/);
+        const conflictMatch = serializedErrorOriginal.match(/stale_target:\s*([^|"}]+)\|([^|"}]*)\|([^|"}]*)\|([^"}]*)/i);
         return jsonForRequest(request, {
           error: "conflict",
           message: "The selected target is no longer current.",
           conflict: conflictMatch ? {
-            current_target_id: conflictMatch[1],
-            current_target_name: conflictMatch[2],
-            current_phase: conflictMatch[3],
+            stale_target_id: conflictMatch[1],
+            current_target_id: conflictMatch[2],
+            current_target_name: conflictMatch[3],
+            current_phase: conflictMatch[4],
           } : undefined,
         }, 409);
       }
@@ -1173,12 +1191,6 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
         .filter((warning): warning is string => Boolean(warning)),
     });
   }
-  if (payload.isLocked && !existingNote?.is_locked && payload.trialEvents.some(
-    (event) => event.expected_progression_version === undefined,
-  )) {
-    return errorResponse(request, "validation_error", "A current target version is required to finalize trial data.");
-  }
-
   const existingTrialEventKeyBuild = await fetchExistingSessionTrialEventKeys({
     request,
     supabaseUrl,

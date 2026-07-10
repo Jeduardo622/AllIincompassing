@@ -1,7 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { fireEvent } from '@testing-library/react';
-import { SessionModal, formatProgressionNotices, selectSessionCaptureTargets } from '../SessionModal';
+import { SessionModal, dedupeProgressionNotices, formatProgressionNotices, selectSessionCaptureTargets } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
 import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-linked-fetch';
 import type { Session } from '../../types';
@@ -44,6 +44,7 @@ describe('SessionModal', () => {
     ], new Map([['next', 'New target']]))).toEqual([
       'Advanced to Teaching', 'Target mastered · Next: New target', 'Goal mastered', 'Configure mastery criteria',
     ]);
+    expect(dedupeProgressionNotices(['Configure mastery criteria'], ['Configure mastery criteria'])).toEqual(['Configure mastery criteria']);
   });
 
   it('loads billing policy from the caller-scoped database RPC', async () => {
@@ -1500,9 +1501,9 @@ describe('SessionModal', () => {
   it('preserves entered values and shows current context after a stale 409', async () => {
     const conflict = Object.assign(new Error('The selected target is no longer current.'), {
       status: 409,
-      conflict: { current_target_name: 'Replacement target', current_phase: 'baseline' },
+      conflict: { stale_target_id: 'stale-target', current_target_name: 'Replacement Target', current_phase: 'Baseline' },
     });
-    const onSubmit = vi.fn().mockRejectedValue(conflict);
+    const onSubmit = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValueOnce({ progression_results: [], progression_warnings: [] });
     const session = {
       id: 'session-stale', therapist_id: 'test-therapist-1', client_id: 'test-client-1', program_id: 'program-1', goal_id: 'goal-1',
       start_time: '2026-03-01T10:00:00.000Z', end_time: '2026-03-01T11:00:00.000Z', status: 'scheduled', notes: '',
@@ -1513,8 +1514,12 @@ describe('SessionModal', () => {
     fireEvent.change(notes, { target: { value: 'Do not discard this entry' } });
     await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
     expect(notes).toHaveValue('Do not discard this entry');
-    expect(await screen.findByRole('alert')).toHaveTextContent('Replacement target');
-    expect(screen.getByRole('alert')).toHaveTextContent('baseline');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Replacement Target');
+    expect(screen.getByRole('alert')).toHaveTextContent('Baseline');
+    expect(screen.getByRole('alert')).toHaveTextContent('completed session is preserved');
+    await userEvent.click(screen.getByRole('button', { name: /Discard stale trials and retry/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(notes).toHaveValue('Do not discard this entry');
   });
 
   it('resets saved status after close and reopen', async () => {

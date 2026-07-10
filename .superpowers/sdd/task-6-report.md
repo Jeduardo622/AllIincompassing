@@ -45,3 +45,13 @@ Implemented after the parent reclassified and authorized the narrow missing-cont
 - The migration/RPC concurrency behavior still requires Task 7 live database proof.
 - Browser proof of stale retry, historical hydration, and completion notices remains required.
 - Session completion and note finalization are sequential application calls because the existing session-completion API is outside this bounded migration RPC; a finalization conflict preserves the completed session and editable note for explicit retry.
+
+## Reviewer remediation
+
+- Captured RED with seven focused failures for the missing expected-version validator and SQL set contract.
+- First finalization now requires one finite, integer, nonnegative version per distinct trial target. Partial, conflicting, invalid, duplicate-version-entry, and extra/missing target sets fail before mutation; already-locked replay bypasses the new-token requirement.
+- Structured conflicts preserve server capitalization and identify both the stale target and authoritative current target/phase.
+- A visible `Discard stale trials and retry` action explains that the completed session is preserved, drops only the named stale target's unsaved trials, retains other form/note input, and retries without silently retargeting.
+- Schedule records completion success so retry finalizes the note without completing the session twice.
+- Duplicate incomplete-criteria notices are collapsed.
+- Remediation focused suite: 158/158 tests PASS. Typecheck, lint, policy checks, tenant validation, build, and diff check PASS.

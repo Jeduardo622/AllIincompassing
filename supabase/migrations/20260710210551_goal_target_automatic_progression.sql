@@ -835,6 +835,9 @@ declare
   v_strict_billing boolean;
   v_expected jsonb;
   v_current_target public.goal_targets;
+  v_expected_count integer;
+  v_expected_distinct_count integer;
+  v_trial_target_count integer;
 begin
   if v_actor_id is null then
     raise exception using errcode = '42501', message = 'authentication required';
@@ -919,6 +922,41 @@ begin
     end if;
   end if;
 
+  -- Locked notes are canonical replays. First finalization must present exactly
+  -- one nonnegative version for every distinct trial target before any write.
+  if not v_was_locked then
+    select count(distinct event->>'target_id') into v_trial_target_count
+    from jsonb_array_elements(trial_events) event;
+    select count(*), count(distinct expected->>'target_id')
+      into v_expected_count, v_expected_distinct_count
+    from jsonb_array_elements(expected_target_versions) expected;
+    if jsonb_array_length(expected_target_versions) <> v_expected_count
+       or v_expected_count <> v_expected_distinct_count
+       or v_expected_count <> v_trial_target_count
+       or exists (
+         select 1 from jsonb_array_elements(expected_target_versions) expected
+         where jsonb_typeof(expected->'progression_version') <> 'number'
+           or (expected->>'progression_version')::numeric < 0
+           or (expected->>'progression_version')::numeric <> trunc((expected->>'progression_version')::numeric)
+       )
+       or exists (
+         select 1 from jsonb_array_elements(trial_events) event
+         where not exists (
+           select 1 from jsonb_array_elements(expected_target_versions) expected
+           where expected->>'target_id' = event->>'target_id'
+         )
+       )
+       or exists (
+         select 1 from jsonb_array_elements(expected_target_versions) expected
+         where not exists (
+           select 1 from jsonb_array_elements(trial_events) event
+           where event->>'target_id' = expected->>'target_id'
+         )
+       ) then
+      raise exception using errcode = '22023', message = 'expected target versions do not match trial targets';
+    end if;
+  end if;
+
   if v_note.id is null then
     insert into public.client_session_notes (
       authorization_id, client_id, therapist_id, organization_id, session_id,
@@ -979,7 +1017,7 @@ begin
           and gt.is_current and gt.status = 'active'
         order by gt.sort_order, gt.created_at, gt.id limit 1;
         raise exception using errcode = '40001', message = format(
-          'stale_target: %s|%s|%s', coalesce(v_current_target.id::text, ''),
+          'stale_target: %s|%s|%s|%s', v_target.id::text, coalesce(v_current_target.id::text, ''),
           coalesce(v_current_target.name, ''), coalesce(v_current_target.current_phase::text, '')
         );
       end if;

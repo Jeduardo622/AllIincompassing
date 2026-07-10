@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
+import { resolveOpportunityCountForMetric } from "../../scripts/playwright-session-note-measurement-roundtrip";
+
 const repoRoot = path.resolve(__dirname, "..", "..");
 const gatePath = path.join(repoRoot, "scripts", "ci", "check-e2e-reliability-gates.mjs");
 const runnerChildren = [
@@ -182,6 +184,19 @@ describe("check-e2e-reliability-gates", () => {
 
     expect(content).not.toMatch(/skip(ped|s)?/i);
     expect(content).not.toMatch(/smoke skipped/i);
+  });
+
+  test("session note measurement edit keeps correct trials within opportunities", () => {
+    const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
+    const content = readFileSync(scriptPath, "utf8");
+
+    expect(content).toContain('`#goal-measurement-opportunities-${goalId}`');
+    expect(content).toContain("resolveOpportunityCountForMetric(updatedMetric, currentOpportunities)");
+    expect(content).toContain("edit upsert failed: HTTP ${res.status()} body=");
+
+    expect(resolveOpportunityCountForMetric(8, 7)).toBe(8);
+    expect(resolveOpportunityCountForMetric(8, 9)).toBe(9);
+    expect(resolveOpportunityCountForMetric(8, Number.NaN)).toBe(8);
   });
 
   test("accepts ci:playwright runner invocation semantics", () => {

@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 const checks = [
   ['node', ['scripts/ci/check-focused-tests.mjs']],
   ['node', ['scripts/ci/check-main-branch-protection.mjs']],
+  ['node', ['scripts/ci/check-session-deploy-safety.mjs']],
   ['node', ['scripts/ci/check-startup-canary.mjs']],
   ['node', ['scripts/ci/check-api-boundary.mjs']],
   ['node', ['scripts/ci/check-api-adapter-boundary.mjs']],

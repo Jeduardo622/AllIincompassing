@@ -42,6 +42,9 @@ const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(
 
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
 
+export const resolveOpportunityCountForMetric = (metric: number, currentOpportunities: number): number =>
+  Math.max(metric, Number.isFinite(currentOpportunities) ? currentOpportunities : 0);
+
 /** Assert server upsert JSON includes per-goal metric data (Session Data Collection 2.0 contract). */
 const assertUpsertResponseMetric = (
   body: unknown,
@@ -813,14 +816,26 @@ async function run(): Promise<void> {
       await valueInput.waitFor({ state: "visible", timeout: 20_000 });
       await valueInput.fill("");
       await valueInput.fill(String(updatedMetric));
+      const opportunityInput = activePage.locator(`#goal-measurement-opportunities-${goalId}`);
+      if ((await opportunityInput.count()) > 0 && (await opportunityInput.first().isVisible())) {
+        const parsedOpportunities = Number(await opportunityInput.first().inputValue());
+        const currentOpportunities = Number.isFinite(parsedOpportunities) ? parsedOpportunities : 0;
+        await opportunityInput.first().fill(
+          String(resolveOpportunityCountForMetric(updatedMetric, currentOpportunities)),
+        );
+      }
       const upsertPromise = activePage.waitForResponse(
         (res) => res.url().includes("/api/session-notes/upsert") && res.request().method() === "POST",
         { timeout: 120_000 },
       );
       await activePage.getByRole("button", { name: /Save Note/i }).click();
       const res = await upsertPromise;
-      assert.equal(res.ok(), true, `edit upsert failed: HTTP ${res.status()}`);
-      const editBody = (await res.json()) as unknown;
+      const editBody = (await res.json().catch(() => null)) as unknown;
+      assert.equal(
+        res.ok(),
+        true,
+        `edit upsert failed: HTTP ${res.status()} body=${JSON.stringify(editBody).slice(0, 2000)}`,
+      );
       assert.ok(editBody && typeof editBody === "object", "edit upsert must return a JSON object");
       assertUpsertResponseMetric(editBody, goalId, updatedMetric, "edit-via-add-session-note-modal");
       await activePage.getByLabel(/Close add session note modal/i).click().catch(() => undefined);

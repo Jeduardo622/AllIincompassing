@@ -9,6 +9,7 @@ const showSuccessMock = vi.fn();
 const buildBookSessionApiPayloadMock = vi.fn((session: unknown) => session);
 const upsertClientSessionNoteForSessionMock = vi.fn();
 const invalidateSessionNoteCachesAfterSessionWriteMock = vi.fn();
+const completeSessionFromModalMock = vi.fn();
 
 const currentSessionStart = new Date();
 currentSessionStart.setHours(10, 0, 0, 0);
@@ -90,6 +91,17 @@ vi.mock("../../lib/session-notes", () => ({
 vi.mock("../../features/scheduling/domain/sessionNoteQueryInvalidation", () => ({
   invalidateSessionNoteCachesAfterSessionWrite: (...args: unknown[]) =>
     invalidateSessionNoteCachesAfterSessionWriteMock(...args),
+}));
+
+vi.mock("../../features/scheduling/domain/sessionComplete", () => ({
+  completeSessionFromModal: (...args: unknown[]) => completeSessionFromModalMock(...args),
+  checkInProgressSessionCloseReadiness: vi.fn(async () => ({
+    ready: true,
+    requiredGoalIds: ["goal-1"],
+    missingGoalIds: [],
+  })),
+  IN_PROGRESS_CLOSE_NOT_READY_MESSAGE:
+    "You must complete the linked session documentation with per-goal notes before closing this in-progress session.",
 }));
 
 vi.mock("../../lib/conflictPolicy", () => ({
@@ -217,6 +229,34 @@ vi.mock("../../components/SessionModal", () => ({
           submit-capture-persist
         </button>
         <button
+          aria-label="submit-terminal-capture"
+          onClick={() => {
+            const result = onSubmit({
+              therapist_id: "therapist-1",
+              client_id: "client-1",
+              program_id: "program-1",
+              goal_id: "goal-1",
+              start_time: originalSessionWindow.start_time,
+              end_time: originalSessionWindow.end_time,
+              status: "completed",
+              session_note_goal_ids: ["goal-1"],
+              session_note_goals_addressed: ["Goal 1"],
+              session_note_goal_notes: {
+                "goal-1": "Plan note",
+              },
+              session_note_goal_measurements: {},
+              session_note_authorization_id: "auth-1",
+              session_note_service_code: "97153",
+              session_note_persist_requested: true,
+            });
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          submit-terminal-capture
+        </button>
+        <button
           aria-label="submit-capture-persist-by-id"
           onClick={() => {
             const result = onSubmit({
@@ -309,6 +349,7 @@ describe("Schedule orchestration integration hardening", () => {
     upsertClientSessionNoteForSessionMock.mockResolvedValue({
       id: "linked-note-1",
     });
+    completeSessionFromModalMock.mockResolvedValue(undefined);
     bookSessionViaApiMock.mockResolvedValue({
       session: {
         id: "created-session",
@@ -581,6 +622,32 @@ describe("Schedule orchestration integration hardening", () => {
       }),
     );
     expect(showSuccessMock).toHaveBeenCalledWith("Session data collection saved");
+    expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("BT close persists session capture and then completes the session", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    expect(screen.getByTestId("data-collection-only")).toHaveTextContent("true");
+    fireEvent.click(screen.getByLabelText("submit-terminal-capture"));
+
+    await waitFor(() => {
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
+      expect(completeSessionFromModalMock).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        outcome: "completed",
+        notes: undefined,
+      });
+    });
+    expect(bookSessionViaApiMock).not.toHaveBeenCalled();
+    expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed");
     expect(showErrorMock).not.toHaveBeenCalled();
   });
 

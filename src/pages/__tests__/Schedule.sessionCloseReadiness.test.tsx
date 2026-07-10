@@ -201,7 +201,9 @@ describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () =>
       missingGoalIds: ["goal-1"],
     });
 
-    renderWithProviders(<Schedule />);
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
 
     await waitForScheduleGridReady();
     fireEvent.click(await findSessionCard("session-1"));
@@ -231,7 +233,9 @@ describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () =>
       missingGoalIds: ["goal-1"],
     });
 
-    renderWithProviders(<Schedule />);
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
 
     await waitForScheduleGridReady();
     fireEvent.click(await findSessionCard("session-1"));
@@ -247,7 +251,9 @@ describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () =>
   });
 
   it("proceeds with completion when readiness passes", async () => {
-    renderWithProviders(<Schedule />);
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
 
     await waitForScheduleGridReady();
     fireEvent.click(await findSessionCard("session-1"));
@@ -266,7 +272,9 @@ describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () =>
   it("does not run precheck for non-in_progress sessions", async () => {
     sessionStatus = "scheduled";
 
-    renderWithProviders(<Schedule />);
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
 
     await waitForScheduleGridReady();
     fireEvent.click(await findSessionCard("session-1"));

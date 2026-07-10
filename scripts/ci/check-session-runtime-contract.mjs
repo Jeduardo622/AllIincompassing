@@ -67,7 +67,7 @@ const REQUIRED_BODY_PATTERNS = [
     message: "start_session_with_goals must be SECURITY DEFINER",
   },
   {
-    pattern: /set\s+search_path\s*=\s*public/i,
+    pattern: /set\s+search_path\s+(?:=|to)\s*'?public'?/i,
     message: "start_session_with_goals must set search_path = public",
   },
 ];

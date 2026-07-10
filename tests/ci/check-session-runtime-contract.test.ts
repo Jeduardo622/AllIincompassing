@@ -8,7 +8,7 @@ create or replace function public.start_session_with_goals(...)
 returns void
 language plpgsql
 security definer
-set search_path = public
+SET search_path TO 'public'
 begin
   select coalesce(app.current_user_has_exact_role_for_org(
     v_session.organization_id,
@@ -95,8 +95,8 @@ describe("check-session-runtime-contract", () => {
       message: "start_session_with_goals must be SECURITY DEFINER",
     },
     {
-      name: "set search_path = public",
-      before: "set search_path = public",
+      name: "SET search_path TO 'public'",
+      before: "SET search_path TO 'public'",
       message: "start_session_with_goals must set search_path = public",
     },
     {

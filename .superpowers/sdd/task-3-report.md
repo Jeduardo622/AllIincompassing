@@ -42,3 +42,19 @@ No `SUPABASE_DB_URL` or `DATABASE_URL` is configured. Policy checks therefore sk
 ## Residual risk
 
 The finalizer SQL must be compiled and exercised against the repository schema in CI or supervised local Supabase before merge. Human security/Supabase review remains mandatory for this critical-lane migration and session API boundary.
+
+## Configuration-independent review fixes
+
+- The locked session row is now the concurrency serialization boundary. When `target_note_id` is absent, the transaction deterministically selects and locks the canonical in-scope note by locked/sign/creation order. A retry arriving after the first transaction commits reuses that note; no global unique `session_id` constraint was added.
+- Handler and static migration tests explicitly cover null-note-ID finalization and canonical reuse.
+- Client-provided date, start/end time, duration, and effective service code are no longer sent to or trusted by the finalizer.
+- Finalized date/time/duration derive from the locked persisted session. The requested service is selected only when present on the scoped authorization; otherwise the first deterministic authorized service is used, falling back to `UNSPECIFIED` when none exists.
+- The strict-versus-relaxed authorization status/date decision was intentionally left unchanged pending product/config direction.
+
+Review-fix TDD evidence:
+
+- RED: 43 passed, 3 failed across handler and migration contracts for forwarded timing/service fields, missing canonical note lookup, and client-derived timing.
+- GREEN: focused handler/progression/trial suites passed 57/57.
+- `npm run typecheck`: passed.
+- `npm run ci:check-focused`: passed with the same database-backed checks skipped because no database URL is configured.
+- `git diff --check`: passed.

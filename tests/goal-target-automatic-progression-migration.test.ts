@@ -117,6 +117,22 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/revoke execute on function app\.evaluate_goal_target_progression\(uuid, uuid\)[^;]+from public, anon, authenticated/is);
   });
 
+  it("serializes note finalization by session and reuses a canonical note when note id is omitted", () => {
+    expect(sql).toMatch(/select s\.\* into v_session[\s\S]*where s\.id = target_session_id[\s\S]*for update/is);
+    expect(sql).toMatch(/if target_note_id is not null[\s\S]*else[\s\S]*from public\.client_session_notes csn[\s\S]*csn\.session_id = v_session\.id[\s\S]*order by csn\.is_locked desc, csn\.signed_at desc nulls last, csn\.created_at desc, csn\.id desc[\s\S]*for update/is);
+    expect(sql).toMatch(/if v_note\.id is null[\s\S]*insert into public\.client_session_notes/is);
+  });
+
+  it("derives finalized timing and service values from persisted scoped records", () => {
+    expect(sql).toMatch(/v_session\.start_time::date[\s\S]*v_session\.start_time::time[\s\S]*v_session\.end_time::time/is);
+    expect(sql).toMatch(/extract\(epoch from \(v_session\.end_time - v_session\.start_time\)\)\s*\/\s*60/is);
+    expect(sql).toMatch(/authorization_services[\s\S]*service_code = nullif\(note_payload->>'requested_service_code', ''\)[\s\S]*order by/is);
+    expect(sql).not.toMatch(/note_payload->>'session_date'/is);
+    expect(sql).not.toMatch(/note_payload->>'start_time'/is);
+    expect(sql).not.toMatch(/note_payload->>'end_time'/is);
+    expect(sql).not.toMatch(/note_payload->>'session_duration'/is);
+  });
+
   it("preserves metadata and documents an additive truthful rollback", () => {
     expect(sql).toMatch(/^-- @migration-intent:/);
     expect(sql).toMatch(/^-- @migration-dependencies:/m);

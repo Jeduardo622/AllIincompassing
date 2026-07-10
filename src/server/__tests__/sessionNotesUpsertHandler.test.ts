@@ -2284,8 +2284,16 @@ describe("sessionNotesUpsertHandler", () => {
 
     expect(response.status).toBe(200);
     expect(rpcCalls).toEqual([expect.objectContaining({ name: "finalize_session_note_with_progression" })]);
+    expect(rpcCalls[0].body.target_note_id).toBeNull();
     expect(rpcCalls[0].body).not.toHaveProperty("organization_id");
     expect(rpcCalls[0].body).not.toHaveProperty("actor_id");
+    expect(rpcCalls[0].body.note_payload).not.toEqual(expect.objectContaining({
+      service_code: expect.anything(),
+      session_date: expect.anything(),
+      start_time: expect.anything(),
+      end_time: expect.anything(),
+      session_duration: expect.anything(),
+    }));
     expect(body.progression_results[0]).toMatchObject({ outcome: "advanced", current_phase: "teaching" });
     expect(body.progression_warnings).toEqual([]);
   });

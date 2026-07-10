@@ -795,6 +795,7 @@ declare
   v_authorization public.authorizations;
   v_results jsonb := '[]'::jsonb;
   v_was_locked boolean := false;
+  v_service_code text;
 begin
   if v_actor_id is null then
     raise exception using errcode = '42501', message = 'authentication required';
@@ -825,6 +826,16 @@ begin
     raise exception using errcode = '42501', message = 'authorization is out of scope';
   end if;
 
+  select authorized.service_code into v_service_code
+  from public.authorization_services authorized
+  where authorized.authorization_id = v_authorization.id
+  order by
+    case when authorized.service_code = nullif(note_payload->>'requested_service_code', '') then 0 else 1 end,
+    authorized.created_at,
+    authorized.id
+  limit 1;
+  v_service_code := coalesce(v_service_code, 'UNSPECIFIED');
+
   if target_note_id is not null then
     select csn.* into v_note
     from public.client_session_notes csn
@@ -837,6 +848,18 @@ begin
       raise exception using errcode = '42501', message = 'session note is out of scope';
     end if;
     v_was_locked := v_note.is_locked;
+  else
+    select csn.* into v_note
+    from public.client_session_notes csn
+    where csn.session_id = v_session.id
+      and csn.organization_id = v_session.organization_id
+      and csn.client_id = v_session.client_id
+    order by csn.is_locked desc, csn.signed_at desc nulls last, csn.created_at desc, csn.id desc
+    limit 1
+    for update;
+    if found then
+      v_was_locked := v_note.is_locked;
+    end if;
   end if;
 
   if v_note.id is null then
@@ -847,9 +870,10 @@ begin
       is_locked, signed_at, created_by
     ) values (
       v_authorization.id, v_session.client_id, v_session.therapist_id,
-      v_session.organization_id, v_session.id, note_payload->>'service_code',
-      (note_payload->>'session_date')::date, (note_payload->>'start_time')::time,
-      (note_payload->>'end_time')::time, (note_payload->>'session_duration')::integer,
+      v_session.organization_id, v_session.id, v_service_code,
+      v_session.start_time::date, v_session.start_time::time,
+      v_session.end_time::time,
+      round(extract(epoch from (v_session.end_time - v_session.start_time)) / 60)::integer,
       coalesce(array(select jsonb_array_elements_text(note_payload->'goals_addressed')), '{}'::text[]),
       case when note_payload->'goal_ids' is null or note_payload->'goal_ids' = 'null'::jsonb then null
         else array(select jsonb_array_elements_text(note_payload->'goal_ids')) end,
@@ -859,11 +883,11 @@ begin
   elsif not v_note.is_locked then
     update public.client_session_notes csn set
       authorization_id = v_authorization.id,
-      service_code = note_payload->>'service_code',
-      session_date = (note_payload->>'session_date')::date,
-      start_time = (note_payload->>'start_time')::time,
-      end_time = (note_payload->>'end_time')::time,
-      session_duration = (note_payload->>'session_duration')::integer,
+      service_code = v_service_code,
+      session_date = v_session.start_time::date,
+      start_time = v_session.start_time::time,
+      end_time = v_session.end_time::time,
+      session_duration = round(extract(epoch from (v_session.end_time - v_session.start_time)) / 60)::integer,
       goals_addressed = coalesce(array(select jsonb_array_elements_text(note_payload->'goals_addressed')), '{}'::text[]),
       goal_ids = case when note_payload->'goal_ids' is null or note_payload->'goal_ids' = 'null'::jsonb then null
         else array(select jsonb_array_elements_text(note_payload->'goal_ids')) end,

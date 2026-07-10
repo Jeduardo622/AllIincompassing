@@ -1115,11 +1115,7 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
         target_note_id: existingNote?.id ?? payload.noteId ?? null,
         note_payload: {
           authorization_id: payload.authorizationId,
-          service_code: effectiveServiceCode,
-          session_date: payload.sessionDate,
-          start_time: payload.startTime,
-          end_time: payload.endTime,
-          session_duration: sessionDuration,
+          requested_service_code: payload.serviceCode,
           goals_addressed: alignedGoals.goalsAddressed,
           goal_ids: alignedGoals.goalIds.length > 0 ? alignedGoals.goalIds : null,
           goal_measurements: alignedGoals.goalMeasurements,

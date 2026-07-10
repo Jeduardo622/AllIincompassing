@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { evaluateStartSessionRuntimeContract } from "../../scripts/ci/check-session-runtime-contract.mjs";
+import {
+  buildDatabaseSslConfig,
+  evaluateStartSessionRuntimeContract,
+} from "../../scripts/ci/check-session-runtime-contract.mjs";
 
 const validContract = {
   functionDefinition: `
@@ -56,6 +59,15 @@ end;
 };
 
 describe("check-session-runtime-contract", () => {
+  test("requires the explicitly trusted Supabase CA without disabling certificate verification", () => {
+    const ssl = buildDatabaseSslConfig("trusted-ca");
+
+    expect(ssl).toEqual({
+      ca: "trusted-ca",
+      rejectUnauthorized: true,
+    });
+  });
+
   test("accepts the live function and grant contract when all required clauses are present", () => {
     const result = evaluateStartSessionRuntimeContract(validContract);
 

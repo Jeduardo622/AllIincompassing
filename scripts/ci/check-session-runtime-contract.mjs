@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const FUNCTION_SIGNATURE = "public.start_session_with_goals(uuid, uuid, uuid, uuid[], timestamptz, uuid)";
@@ -86,6 +87,17 @@ const sortPrivileges = (privileges) => [...new Set(privileges.map((value) => val
 const samePrivileges = (actual, expected) =>
   JSON.stringify(sortPrivileges(actual)) === JSON.stringify(sortPrivileges(expected));
 
+export const buildDatabaseSslConfig = (ca) => {
+  if (!String(ca ?? "").trim()) {
+    throw new Error("The trusted Supabase database CA certificate is empty.");
+  }
+
+  return {
+    ca,
+    rejectUnauthorized: true,
+  };
+};
+
 const stripSqlComments = (sql) =>
   String(sql)
     .replace(/\/\*[\s\S]*?\*\//g, " ")
@@ -128,10 +140,10 @@ export const evaluateStartSessionRuntimeContract = ({
   return { violations };
 };
 
-const fetchRuntimeContract = async ({ connectionString }) => {
+const fetchRuntimeContract = async ({ connectionString, ca }) => {
   const pool = new Pool({
     connectionString,
-    ssl: { rejectUnauthorized: true },
+    ssl: buildDatabaseSslConfig(ca),
     max: 1,
     connectionTimeoutMillis: 60_000,
     idleTimeoutMillis: 0,
@@ -222,7 +234,8 @@ const run = async () => {
     fail("SUPABASE_DB_URL is required.");
   }
 
-  const contract = await fetchRuntimeContract({ connectionString });
+  const ca = await readFile(new URL("./certs/supabase-root-2021-ca.crt", import.meta.url), "utf8");
+  const contract = await fetchRuntimeContract({ connectionString, ca });
   const result = evaluateStartSessionRuntimeContract(contract);
   if (result.violations.length > 0) {
     fail(result.violations.join("; "));

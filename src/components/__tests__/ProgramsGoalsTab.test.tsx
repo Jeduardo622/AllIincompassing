@@ -4873,7 +4873,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(screen.queryByText("Accepted draft goals: 2 child / 1 parent")).not.toBeInTheDocument();
   });
 
-  it("does not show IEHP publish controls when required rows remain unresolved", async () => {
+  it("shows disabled IEHP publish controls when required rows remain unresolved", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -4951,8 +4951,15 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("synthetic-iehp.docx");
+    await screen.findByRole("heading", { name: /IEHP FBA Checklist Review/i });
+    const publishButton = await screen.findByRole("button", { name: /Publish Reviewed Assessment/i });
+    const unresolvedGuidance = await screen.findByText(
+      "1 required checklist or structured row must be approved before publishing.",
+    );
+
     expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
-    expect(screen.queryByText("1 required checklist or structured row must be approved before publishing.")).not.toBeInTheDocument();
+    expect(publishButton).toBeDisabled();
+    expect(unresolvedGuidance).toBeInTheDocument();
   });
 
   it("does not promote IEHP drafts through the live Programs and Goals API", async () => {

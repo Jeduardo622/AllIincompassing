@@ -1,6 +1,6 @@
 -- @migration-intent: Add tenant-scoped structured criteria, state, evaluation, audit, and atomic RPC support for automatic goal-target progression.
 -- @migration-dependencies: 20260710161038_goal_target_delete_capability_invoker.sql,20260710153231_goal_target_lifecycle_authz.sql,20260703173000_goal_targets_trial_events.sql
--- @migration-rollback: Drop public.override_goal_target_progression, public.goal_target_transitions, public.goal_target_phase_evaluations, public.goal_target_phase_criteria, app.set_goal_target_progression_scope, app.guard_goal_target_progression_state, and app.initialize_goal_target_progression_state; then remove progression triggers, columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
+-- @migration-rollback: Drop public.override_goal_target_progression, app.evaluate_goal_target_progression, app.validate_goal_target_phase_criterion, public.goal_target_transitions, public.goal_target_phase_evaluations, public.goal_target_phase_criteria, app.set_goal_target_progression_scope, app.guard_goal_target_progression_state, and app.initialize_goal_target_progression_state; then remove progression triggers, columns, indexes, constraints, and public.goal_target_phase only after dependent application code is rolled back. Never delete trial or session history.
 
 begin;
 
@@ -27,9 +27,9 @@ create table if not exists public.goal_target_phase_criteria (
   goal_id uuid not null references public.goals(id),
   target_id uuid not null references public.goal_targets(id),
   phase public.goal_target_phase not null,
-  metric text check (metric is null or metric in ('percent_correct')),
+  metric text check (metric is null or metric in ('percent_correct', 'percent_independent', 'total_value', 'average_value')),
   comparator text check (comparator is null or comparator in ('gte', 'lte')),
-  threshold numeric check (threshold is null or threshold between 0 and 100),
+  threshold numeric check (threshold is null or threshold >= 0),
   min_observations integer check (min_observations is null or min_observations > 0),
   consecutive_sessions integer check (consecutive_sessions is null or consecutive_sessions > 0),
   clinical_note text,
@@ -55,6 +55,7 @@ create table if not exists public.goal_target_phase_evaluations (
   progression_version bigint not null check (progression_version >= 0),
   session_id uuid not null references public.sessions(id),
   note_id uuid references public.client_session_notes(id),
+  session_completed_at timestamptz not null,
   result text not null check (result in (
     'qualifying', 'nonqualifying', 'ignored_no_data',
     'ignored_insufficient_observations', 'blocked_incomplete_criteria'
@@ -249,7 +250,6 @@ as $$
 declare
   v_goal_id uuid;
   v_goal_status text;
-  v_prior_evaluation public.goal_target_phase_evaluations;
   v_goal_organization_id uuid;
   v_goal_client_id uuid;
   v_first_target_id uuid;
@@ -454,8 +454,16 @@ begin
   from public.goal_targets gt
   where gt.id = new.target_id;
 
-  if new.metric = 'percent_correct' and v_measurement_type <> 'correctIncorrect' then
-    raise exception using errcode = '22023', message = 'percent_correct requires a correctness target';
+  if new.metric is not null and not (
+    (v_measurement_type = 'correctIncorrect' and new.metric = 'percent_correct')
+    or (v_measurement_type = 'taskAnalysis' and new.metric = 'percent_independent')
+    or (v_measurement_type in ('frequency', 'timeSample') and new.metric = 'total_value')
+    or (v_measurement_type in ('rate', 'duration', 'latency', 'IRT') and new.metric = 'average_value')
+  ) then
+    raise exception using errcode = '22023', message = 'criterion metric is incompatible with target measurement type';
+  end if;
+  if new.metric in ('percent_correct', 'percent_independent') and new.threshold > 100 then
+    raise exception using errcode = '22023', message = 'percentage threshold must be between 0 and 100';
   end if;
   return new;
 end;
@@ -501,6 +509,7 @@ declare
   v_inserted_id uuid;
   v_next_target_id uuid;
   v_goal_status text;
+  v_prior_evaluation public.goal_target_phase_evaluations;
   v_now timestamptz := timezone('utc', now());
 begin
   select s.* into v_session
@@ -587,17 +596,32 @@ begin
       or v_criterion.threshold is null
       or v_criterion.min_observations is null
       or v_criterion.consecutive_sessions is null
-      or v_target.measurement_type <> 'correctIncorrect'
-      or v_criterion.metric <> 'percent_correct'
+      or not (
+        (v_target.measurement_type = 'correctIncorrect' and v_criterion.metric = 'percent_correct')
+        or (v_target.measurement_type = 'taskAnalysis' and v_criterion.metric = 'percent_independent')
+        or (v_target.measurement_type in ('frequency', 'timeSample') and v_criterion.metric = 'total_value')
+        or (v_target.measurement_type in ('rate', 'duration', 'latency', 'IRT') and v_criterion.metric = 'average_value')
+      )
     then
       v_result := 'blocked_incomplete_criteria';
       v_metric_value := null;
       v_observation_count := null;
     else
-      select
-        count(*) filter (where te.response is distinct from 'notObserved')::integer,
-        100.0 * count(*) filter (where te.response in ('correct', 'independent'))
-          / nullif(count(*) filter (where te.response is distinct from 'notObserved'), 0)
+      select case v_criterion.metric
+          when 'percent_correct' then count(*) filter (where te.response is distinct from 'notObserved')::integer
+          when 'percent_independent' then count(*) filter (where te.response is distinct from 'notObserved')::integer
+          else count(te.value)::integer
+        end,
+        case v_criterion.metric
+          when 'percent_correct' then
+            100.0 * count(*) filter (where te.response in ('correct', 'independent'))
+              / nullif(count(*) filter (where te.response is distinct from 'notObserved'), 0)
+          when 'percent_independent' then
+            100.0 * count(*) filter (where te.response = 'independent')
+              / nullif(count(*) filter (where te.response is distinct from 'notObserved'), 0)
+          when 'total_value' then sum(te.value)
+          when 'average_value' then avg(te.value)
+        end
       into v_observation_count, v_metric_value
       from public.trial_events te
       where te.session_id = v_session.id
@@ -624,10 +648,10 @@ begin
     v_inserted_id := null;
     insert into public.goal_target_phase_evaluations (
       organization_id, client_id, goal_id, target_id, phase, progression_version,
-      session_id, note_id, result, metric_value, observation_count, evaluated_by
+      session_id, note_id, session_completed_at, result, metric_value, observation_count, evaluated_by
     ) values (
       v_target.organization_id, v_target.client_id, v_target.goal_id, v_target.id,
-      v_target.current_phase, v_target.progression_version, v_session.id, v_note.id,
+      v_target.current_phase, v_target.progression_version, v_session.id, v_note.id, v_note.signed_at,
       v_result, v_metric_value, v_observation_count, auth.uid()
     )
     on conflict (session_id, target_id, phase, progression_version) do nothing
@@ -648,20 +672,19 @@ begin
       continue;
     end if;
 
-    select count(*)::integer into v_streak
-    from public.goal_target_phase_evaluations e
-    where e.target_id = v_target.id
-      and e.phase = v_target.current_phase
-      and e.progression_version = v_target.progression_version
-      and e.result = 'qualifying'
-      and e.evaluated_at > coalesce((
-        select max(reset_e.evaluated_at)
-        from public.goal_target_phase_evaluations reset_e
-        where reset_e.target_id = v_target.id
-          and reset_e.phase = v_target.current_phase
-          and reset_e.progression_version = v_target.progression_version
-          and reset_e.result = 'nonqualifying'
-      ), '-infinity'::timestamptz);
+    select count(*) filter (where ordered.result = 'qualifying' and ordered.resets_seen = 0)::integer
+    into v_streak
+    from (
+      select e.result,
+        sum(case when e.result = 'nonqualifying' then 1 else 0 end) over (
+          order by e.session_completed_at desc, e.session_id desc
+        ) as resets_seen
+      from public.goal_target_phase_evaluations e
+      where e.target_id = v_target.id
+        and e.phase = v_target.current_phase
+        and e.progression_version = v_target.progression_version
+        and e.result in ('qualifying', 'nonqualifying')
+    ) ordered;
 
     if v_streak < v_criterion.consecutive_sessions then
       return query select 'qualifying', v_target.goal_id, v_target.id,
@@ -671,23 +694,15 @@ begin
     end if;
 
     if v_target.current_phase <> 'mastery' then
-      update public.goal_targets
-      set current_phase = case v_target.current_phase
+      v_current_phase := case v_target.current_phase
           when 'baseline' then 'teaching'::public.goal_target_phase
           when 'teaching' then 'generalization'::public.goal_target_phase
           when 'generalization' then 'mastery'::public.goal_target_phase
           when 'mastery' then 'mastery'::public.goal_target_phase
-        end,
-        evaluation_window_started_at = v_now,
-        progression_version = progression_version + 1
-      where id = v_target.id
-      returning public.goal_targets.current_phase into v_current_phase;
+        end;
       v_next_target_id := null;
+      select g.status into v_goal_status from public.goals g where g.id = v_goal_id;
     else
-      update public.goal_targets
-      set is_current = false, status = 'mastered', progression_version = progression_version + 1
-      where id = v_target.id;
-
       select gt.id into v_next_target_id
       from public.goal_targets gt
       where gt.goal_id = v_goal_id
@@ -699,22 +714,14 @@ begin
       for update;
 
       if v_next_target_id is null then
-        update public.goals g set status = 'mastered' where g.id = v_goal_id
-        returning g.status into v_goal_status;
+        v_goal_status := 'mastered';
         v_current_phase := 'mastery'::public.goal_target_phase;
       else
-        update public.goal_targets
-        set status = 'active', is_current = true,
-            current_phase = 'baseline'::public.goal_target_phase,
-            evaluation_window_started_at = v_now,
-            progression_version = progression_version + 1
-        where id = v_next_target_id;
         select g.status into v_goal_status from public.goals g where g.id = v_goal_id;
         v_current_phase := 'mastery'::public.goal_target_phase;
       end if;
     end if;
 
-    select g.status into v_goal_status from public.goals g where g.id = v_goal_id;
     insert into public.goal_target_transitions (
       organization_id, client_id, goal_id, target_id, previous_target_id,
       resulting_target_id, previous_phase, resulting_phase, previous_status,
@@ -728,6 +735,29 @@ begin
       v_target.progression_version, v_target.progression_version + 1, 'automatic',
       v_session.id, v_note.id, v_target.evaluation_window_started_at, v_now
     );
+
+    if v_target.current_phase <> 'mastery' then
+      update public.goal_targets
+      set current_phase = v_current_phase,
+          evaluation_window_started_at = v_now,
+          progression_version = progression_version + 1
+      where id = v_target.id;
+    else
+      update public.goal_targets
+      set is_current = false, status = 'mastered', progression_version = progression_version + 1
+      where id = v_target.id;
+
+      if v_next_target_id is null then
+        update public.goals g set status = 'mastered' where g.id = v_goal_id;
+      else
+        update public.goal_targets
+        set status = 'active', is_current = true,
+            current_phase = 'baseline'::public.goal_target_phase,
+            evaluation_window_started_at = v_now,
+            progression_version = progression_version + 1
+        where id = v_next_target_id;
+      end if;
+    end if;
 
     return query select 'advanced', v_target.goal_id, v_target.id, v_previous_phase,
       v_current_phase, v_next_target_id, v_goal_status, null::text;
@@ -764,6 +794,7 @@ declare
   v_selected public.goal_targets;
   v_previous public.goal_targets;
   v_previous_current public.goal_targets;
+  v_goal_id uuid;
   v_actor uuid := auth.uid();
   v_now timestamptz := timezone('utc', now());
 begin
@@ -771,15 +802,22 @@ begin
     raise exception using errcode = '22023', message = 'manual progression requires an actor and reason';
   end if;
 
-  select gt.* into v_target
+  select gt.goal_id into v_goal_id
   from public.goal_targets gt
-  where gt.id = target_goal_target_id
-  for update;
+  where gt.id = target_goal_target_id;
   if not found then
     raise exception using errcode = '42501', message = 'goal target is not in scope';
   end if;
 
-  perform pg_advisory_xact_lock(hashtextextended(v_target.goal_id::text, 0));
+  perform pg_advisory_xact_lock(hashtextextended(v_goal_id::text, 0));
+
+  select gt.* into v_target
+  from public.goal_targets gt
+  where gt.id = target_goal_target_id and gt.goal_id = v_goal_id
+  for update;
+  if not found then
+    raise exception using errcode = '42501', message = 'goal target is not in scope';
+  end if;
 
   select gt.* into v_selected
   from public.goal_targets gt
@@ -814,9 +852,43 @@ begin
     v_previous_current := v_selected;
   end if;
 
-  update public.goal_targets
-  set is_current = false
-  where goal_id = v_target.goal_id and is_current;
+  if v_previous_current.id <> v_selected.id then
+    insert into public.goal_target_transitions (
+      organization_id, client_id, goal_id, target_id,
+      previous_target_id, resulting_target_id, previous_phase, resulting_phase,
+      previous_status, resulting_status, previous_progression_version,
+      resulting_progression_version, source, actor_id, reason,
+      previous_evaluation_window_started_at, resulting_evaluation_window_started_at, metadata
+    ) values (
+      v_previous_current.organization_id, v_previous_current.client_id, v_previous_current.goal_id,
+      v_previous_current.id, v_previous_current.id, v_previous_current.id, v_previous_current.current_phase,
+      v_previous_current.current_phase, v_previous_current.status, v_previous_current.status,
+      v_previous_current.progression_version, v_previous_current.progression_version + 1,
+      'manual', v_actor, btrim(reason), v_previous_current.evaluation_window_started_at, v_now,
+      jsonb_build_object('action', 'manual_deactivation', 'previous_is_current', true, 'resulting_is_current', false)
+    );
+
+    update public.goal_targets
+    set is_current = false,
+        evaluation_window_started_at = v_now,
+        progression_version = progression_version + 1
+    where id = v_previous_current.id;
+  end if;
+
+  insert into public.goal_target_transitions (
+    organization_id, client_id, goal_id, target_id,
+    previous_target_id, resulting_target_id, previous_phase, resulting_phase,
+    previous_status, resulting_status, previous_progression_version,
+    resulting_progression_version, source, actor_id, reason,
+    previous_evaluation_window_started_at, resulting_evaluation_window_started_at, metadata
+  ) values (
+    v_selected.organization_id, v_selected.client_id, v_selected.goal_id, v_selected.id,
+    v_selected.id, v_selected.id, v_previous.current_phase, target_phase,
+    v_previous.status, 'active', expected_version,
+    expected_version + 1, 'manual', v_actor, btrim(reason),
+    v_previous.evaluation_window_started_at, v_now,
+    jsonb_build_object('action', 'manual_activation', 'previous_is_current', v_previous.is_current, 'resulting_is_current', true)
+  );
 
   update public.goal_targets
   set current_phase = target_phase,
@@ -830,20 +902,6 @@ begin
   update public.goals g
   set status = 'active'
   where g.id = v_target.goal_id and g.status = 'mastered';
-
-  insert into public.goal_target_transitions (
-    organization_id, client_id, goal_id, target_id,
-    previous_target_id, resulting_target_id, previous_phase, resulting_phase,
-    previous_status, resulting_status, previous_progression_version,
-    resulting_progression_version, source, actor_id, reason,
-    previous_evaluation_window_started_at, resulting_evaluation_window_started_at
-  ) values (
-    v_selected.organization_id, v_selected.client_id, v_selected.goal_id, v_selected.id,
-    v_previous_current.id, v_selected.id, v_previous.current_phase, target_phase,
-    v_previous_current.status, v_selected.status, expected_version,
-    expected_version + 1, 'manual', v_actor, btrim(reason),
-    v_previous.evaluation_window_started_at, v_now
-  );
   return query select 'manual_override', v_selected.goal_id, v_selected.id,
     v_previous.current_phase, v_selected.current_phase, v_selected.id,
     (select g.status from public.goals g where g.id = v_selected.goal_id), null::text;

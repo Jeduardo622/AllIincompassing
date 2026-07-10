@@ -42,8 +42,8 @@ describe("goal target automatic progression migration", () => {
   it("creates scoped normalized criteria and immutable history tables", () => {
     expect(sql).toMatch(/create table[^;]+goal_target_phase_criteria/is);
     expect(sql).toMatch(/unique\s*\(target_id, phase\)/is);
-    expect(sql).toMatch(/metric text[\s\S]*metric is null or metric in \('percent_correct'\)/is);
-    expect(sql).toMatch(/threshold numeric[\s\S]*threshold is null or threshold between 0 and 100/is);
+    expect(sql).toMatch(/metric text[\s\S]*metric is null or metric in \('percent_correct', 'percent_independent', 'total_value', 'average_value'\)/is);
+    expect(sql).toMatch(/threshold numeric[\s\S]*threshold is null or threshold >= 0/is);
     expect(sql).toMatch(/min_observations integer[\s\S]*check \(min_observations is null or min_observations > 0\)/is);
     expect(sql).toMatch(/consecutive_sessions integer[\s\S]*check \(consecutive_sessions is null or consecutive_sessions > 0\)/is);
     expect(sql).toMatch(/create table[^;]+goal_target_phase_evaluations/is);

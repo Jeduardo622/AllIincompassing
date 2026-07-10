@@ -10,11 +10,22 @@ const sql = readFileSync(
 
 const evaluator = () => sql.match(/create or replace function app\.evaluate_goal_target_progression[\s\S]*?\n\$\$;/i)?.[0] ?? "";
 const override = () => sql.match(/create or replace function public\.override_goal_target_progression[\s\S]*?\n\$\$;/i)?.[0] ?? "";
+const initializer = () => sql.match(/create or replace function app\.initialize_goal_target_progression_state[\s\S]*?\n\$\$;/i)?.[0] ?? "";
 
-describe("automatic goal-target progression RPC contract", () => {
+describe("static automatic goal-target progression SQL contract", () => {
+  it("declares evaluator-only records inside the evaluator", () => {
+    expect(evaluator()).toMatch(/declare[\s\S]*v_prior_evaluation public\.goal_target_phase_evaluations;/i);
+    expect(initializer()).not.toContain("v_prior_evaluation");
+  });
+
+  it("uses goal advisory lock before any target row lock in every writer", () => {
+    for (const writer of [initializer(), evaluator(), override()]) {
+      expect(writer.indexOf("pg_advisory_xact_lock")).toBeGreaterThan(-1);
+      expect(writer.indexOf("pg_advisory_xact_lock")).toBeLessThan(writer.indexOf("for update"));
+    }
+  });
   it("advances baseline after the required qualifying streak", () => {
-    expect(evaluator()).toMatch(/select count\(\*\)::integer into v_streak/i);
-    expect(evaluator()).toMatch(/e\.result = 'qualifying'/i);
+    expect(evaluator()).toMatch(/count\(\*\) filter \(where ordered\.result = 'qualifying' and ordered\.resets_seen = 0\)::integer[\s\S]*into v_streak/i);
     expect(evaluator()).toMatch(/v_streak < v_criterion\.consecutive_sessions/i);
     expect(evaluator()).toMatch(/'baseline'[\s\S]*'teaching'/i);
   });
@@ -76,9 +87,26 @@ describe("automatic goal-target progression RPC contract", () => {
     expect(evaluator()).toMatch(/where g\.id = v_goal_id/i);
   });
 
-  it("uses only correctness-compatible persisted trial observations", () => {
-    expect(sql).toMatch(/measurement_type[\s\S]*percent_correct/i);
+  it("supports only explicit measurement-compatible metrics", () => {
+    expect(sql).toMatch(/metric in \('percent_correct', 'percent_independent', 'total_value', 'average_value'\)/i);
+    expect(sql).toMatch(/correctIncorrect[\s\S]*percent_correct/i);
+    expect(sql).toMatch(/taskAnalysis[\s\S]*percent_independent/i);
+    expect(sql).toMatch(/frequency[\s\S]*timeSample[\s\S]*total_value/i);
+    expect(sql).toMatch(/rate[\s\S]*duration[\s\S]*latency[\s\S]*IRT[\s\S]*average_value/i);
     expect(evaluator()).toMatch(/100\.0 \* count\(\*\) filter \(where te\.response in \('correct', 'independent'\)\)[\s\S]*nullif\(count\(\*\) filter \(where te\.response is distinct from 'notObserved'\), 0\)/i);
+    expect(evaluator()).toMatch(/percent_independent[\s\S]*sum\(te\.value\)[\s\S]*avg\(te\.value\)/i);
+  });
+
+  it("orders streaks by authoritative completion timestamp and stable session id", () => {
+    expect(sql).toMatch(/session_completed_at timestamptz not null/i);
+    expect(evaluator()).toMatch(/order by[\s\S]*session_completed_at[\s\S]*session_id/i);
+    expect(evaluator()).not.toMatch(/max\(reset_e\.evaluated_at\)/i);
+  });
+
+  it("records automatic transitions before mutating progression state", () => {
+    expect(evaluator().indexOf("insert into public.goal_target_transitions")).toBeLessThan(
+      evaluator().indexOf("update public.goal_targets"),
+    );
   });
 
   it("validates exact finalized session, note, target, client, and organization scope", () => {
@@ -90,7 +118,7 @@ describe("automatic goal-target progression RPC contract", () => {
   });
 });
 
-describe("manual progression override RPC contract", () => {
+describe("static manual progression override SQL contract", () => {
   it("allows only active bcba, midtier, and super admin authority", () => {
     expect(override()).toMatch(/current_user_has_exact_role_for_org[\s\S]*array\['bcba', 'midtier'\]/i);
     expect(override()).toMatch(/current_user_is_super_admin/i);
@@ -104,8 +132,18 @@ describe("manual progression override RPC contract", () => {
 
   it("locks the goal and can select a different current target", () => {
     expect(override()).toMatch(/target_current_goal_target_id uuid/i);
-    expect(override()).toMatch(/pg_advisory_xact_lock\(hashtextextended\(v_target\.goal_id::text, 0\)\)/i);
+    expect(override()).toMatch(/pg_advisory_xact_lock\(hashtextextended\(v_goal_id::text, 0\)\)/i);
     expect(override()).toMatch(/set is_current = false[\s\S]*is_current = true/i);
+  });
+
+  it("versions both sides of a current-target switch", () => {
+    expect(override()).toMatch(/progression_version = progression_version \+ 1[\s\S]*where id = v_previous_current\.id/i);
+    expect(override()).toMatch(/progression_version = progression_version \+ 1[\s\S]*where id = v_selected\.id/i);
+  });
+
+  it("writes separate deactivation and activation audit rows", () => {
+    expect(override().match(/insert into public\.goal_target_transitions/gi)).toHaveLength(2);
+    expect(override()).toMatch(/manual_deactivation[\s\S]*manual_activation/i);
   });
 
   it("supports forward and backward phases and resets the evaluation window", () => {

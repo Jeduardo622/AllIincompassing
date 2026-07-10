@@ -8,7 +8,7 @@
 - lane: `critical`
 - branch: `codex/ci-hosted-security-remediation`
 - single-purpose diff: yes
-- final review-fix commit: pending local commit for the last TDD fix wave
+- final review-fix commits: `bf9301e5`, `1f4ebf59`
 
 ## Route Task
 
@@ -71,7 +71,7 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - Task 2 commit `c1f06713`: `react-router-dom ^6.30.4`, `dompurify ^3.4.11` override, `ws ^8.21.0` override.
 - Production audit passes and tree resolves `react-router/react-router-dom 6.30.4`, `dompurify 3.4.11`, `ws 8.21.0`.
 - Task 2 verification: policy/lint/typecheck/build/audit pass; focused router/sanitizer-adjacent tests pass.
-- `npm run test:ci` and `npm run verify:local` fail only on pre-existing missing `VITE_SUPABASE_URL` in `src/server/__tests__/orgRoleRpcEquivalence.contract.test.ts`.
+- `npm run test:ci` and `npm run verify:local` pass when supplied the repository's documented synthetic, non-secret Supabase configuration; the unconfigured baseline fails on missing `VITE_SUPABASE_URL`.
 - Task 2 review: spec PASS, quality APPROVED, no blocking findings.
 - Baseline `npm test -- --run` before edits had the same 12 missing-`VITE_SUPABASE_URL` failures.
 - Fresh integrated evidence:
@@ -82,6 +82,9 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
   - `npm run ci:check-focused` -> PASS
   - `npm run lint` -> PASS
   - `npm run typecheck` -> PASS
+  - `npm run test:ci` with synthetic non-secret Supabase configuration -> PASS (`370` files passed, `1` skipped; `2409` tests passed, `1` skipped)
+  - `npm run test:routes:tier0` with synthetic non-secret Supabase configuration -> PASS (`220/220` Cypress checks)
+  - `npm run verify:local` with synthetic non-secret Supabase configuration -> PASS
   - `npm run validate:tenant` -> PASS
   - `npm run build` -> PASS
   - `npm run ci:playwright` -> BLOCKED at preflight only for missing hosted credentials
@@ -97,7 +100,7 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 - Netlify `merge_group` / `main` commit-target readiness remains a separate deployment-design follow-up and is not fixed here.
 - PRs no longer deploy changed edge functions to shared runtime, so a PR whose frontend preview needs new edge behavior may fail closed until isolated Supabase previews exist.
 - Existing unrelated security-advisor warnings are not remediated in this slice.
-- Final reviewer / pr-hygiene / PR readiness remain pending until those gates run.
+- Final whole-branch code review and Supabase tenant-safety review returned `READY` with no in-scope findings.
 
 ## Verification Card
 
@@ -109,6 +112,9 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
   - `npm run ci:check-focused`
   - `npm run lint`
   - `npm run typecheck`
+  - `npm run test:ci`
+  - `npm run test:routes:tier0`
+  - `npm run verify:local`
   - `npm run validate:tenant`
   - `npm run build`
   - `npm run ci:playwright`
@@ -121,6 +127,9 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
   - `npm run ci:check-focused` -> PASS
   - `npm run lint` -> PASS
   - `npm run typecheck` -> PASS
+  - `npm run test:ci` with synthetic non-secret Supabase configuration -> PASS (`370` files passed, `1` skipped; `2409` tests passed, `1` skipped)
+  - `npm run test:routes:tier0` with synthetic non-secret Supabase configuration -> PASS (`220/220` Cypress checks)
+  - `npm run verify:local` with synthetic non-secret Supabase configuration -> PASS
   - `npm run validate:tenant` -> PASS
   - `npm run build` -> PASS
 - blocked checks:
@@ -130,18 +139,19 @@ Supabase project: `wnnjeqheqxxyrgsjmygy`
 
 ## PR Hygiene Verdict
 
-- branch-ready: pending final reviewer/pr-hygiene/PR readiness gates
-- linear-ready: pending
-- protected-path drift: expected, `supabase/migrations/**` in the underlying remediation slice
+- branch-ready: yes, for a human-review PR; not merge-ready without required human review and live CI
+- linear-ready: yes, `WIN-213`
+- protected-path drift: expected, `.github/workflows/**` and `scripts/ci/**`; hosted replay used the existing checked-in migration without modifying it
 - unrelated changes: none
 - generated artifact drift: none
 - verification summary: present
-- pr-ready: not ready until final reviewer/pr-hygiene/PR readiness gates run
-- pr handoff: pending
-- reviewer: pending
-- pr-hygiene: pending
+- pr-ready: yes, for draft human review
+- pr handoff: this document
+- reviewer: `READY`; no in-scope findings
+- Supabase reviewer: `READY`; no tenant-boundary or grant-contract findings
+- pr-hygiene: `PR-READY` for draft human review; merge remains blocked on human review and live CI
 - required follow-up:
-  - complete final whole-branch review, verify-change, pr-hygiene, push, and CI before marking ready
+  - push the branch, open the draft PR, and require live CI plus human review before merge
   - keep the unrelated security-advisor warnings out of this slice
 
 ## Handoff Summary

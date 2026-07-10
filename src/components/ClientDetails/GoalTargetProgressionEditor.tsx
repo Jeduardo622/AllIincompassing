@@ -148,6 +148,7 @@ export function GoalTargetProgressionEditor({ target, criteria, sequencePosition
   const [manualAction, setManualAction] = useState<"advance" | "back" | "select" | "reopen" | "complete" | null>(null);
   const [reason, setReason] = useState("");
   const triggerRef = useRef<HTMLElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const canMutate = canManage && target.status !== "archived";
   const phaseIndex = Math.max(0, PHASES.indexOf(target.current_phase ?? "baseline"));
   const targetPhase = manualAction === "advance" ? PHASES[Math.min(PHASES.length - 1, phaseIndex + 1)]
@@ -162,7 +163,18 @@ export function GoalTargetProgressionEditor({ target, criteria, sequencePosition
   };
   useEffect(() => {
     if (!manualAction) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); closeDialog(); } };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeDialog(); return; }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+        'textarea:not([disabled]), input:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) { event.preventDefault(); return; }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [manualAction]);
@@ -187,7 +199,7 @@ export function GoalTargetProgressionEditor({ target, criteria, sequencePosition
         </div>
       )}
       {manualAction && (
-        <div role="dialog" aria-modal="true" aria-label={actionLabel} className="rounded-md border border-indigo-200 bg-white p-3 dark:border-indigo-800 dark:bg-dark">
+        <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={actionLabel} className="rounded-md border border-indigo-200 bg-white p-3 dark:border-indigo-800 dark:bg-dark">
           <p className="text-sm font-semibold">{actionLabel}</p>
           <label className="mt-2 block text-xs">Reason for manual change
             <textarea aria-label="Reason for manual change" autoFocus value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-dark" />

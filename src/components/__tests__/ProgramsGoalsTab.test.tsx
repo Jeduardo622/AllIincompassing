@@ -239,6 +239,13 @@ describe("goal target progression management", () => {
     const trigger = screen.getByRole("button", { name: "Complete mastery" });
     await user.click(trigger);
     expect(screen.getByRole("dialog", { name: "Complete mastery" })).toHaveAttribute("aria-modal", "true");
+    const reason = screen.getByLabelText("Reason for manual change");
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(reason).toHaveFocus();
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(cancel).toHaveFocus();
+    await user.keyboard("{Tab}");
+    expect(reason).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Complete mastery" })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();

@@ -3,7 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { fireEvent, render, renderWithProviders, screen, userEvent, waitFor, within } from "../../test/utils";
-import { ProgramsGoalsTab } from "../ClientDetails/ProgramsGoalsTab";
+import { GoalTargetProgressionPanel, ProgramsGoalsTab } from "../ClientDetails/ProgramsGoalsTab";
+import { canRoleManageGoalTargetProgression, GoalTargetProgressionEditor } from "../ClientDetails/GoalTargetProgressionEditor";
+import { GoalTargetProgressionHistory } from "../ClientDetails/GoalTargetProgressionHistory";
+import type { GoalTarget, GoalTargetPhaseCriterion, GoalTargetTransition } from "../../types";
 import { generateProgramGoalDraft } from "../../lib/ai";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
@@ -68,6 +71,125 @@ const buildClient = (overrides: Partial<ProgramsGoalsTabClient> = {}): ProgramsG
   availability_hours: {},
   created_at: "2026-02-11T00:00:00.000Z",
   ...overrides,
+});
+
+describe("goal target progression management", () => {
+  const target = {
+    id: "11111111-1111-4111-8111-111111111111",
+    organization_id: ORG_ID,
+    client_id: "client-1",
+    goal_id: "22222222-2222-4222-8222-222222222222",
+    name: "Request help",
+    measurement_type: "correctIncorrect",
+    graph_config: {},
+    status: "active",
+    sort_order: 1,
+    current_phase: "teaching",
+    is_current: true,
+    evaluation_window_started_at: "2026-07-10T00:00:00.000Z",
+    progression_version: 3,
+    created_at: "2026-07-01T00:00:00.000Z",
+    updated_at: "2026-07-10T00:00:00.000Z",
+  } satisfies GoalTarget;
+  const completeCriterion = (phase: GoalTargetPhaseCriterion["phase"]): GoalTargetPhaseCriterion => ({
+    id: `criterion-${phase}`,
+    organization_id: ORG_ID,
+    client_id: "client-1",
+    goal_id: target.goal_id,
+    target_id: target.id,
+    phase,
+    metric: "percent_correct",
+    comparator: "gte",
+    threshold: 80,
+    min_observations: 5,
+    consecutive_sessions: 3,
+    clinical_note: null,
+    created_at: "2026-07-01T00:00:00.000Z",
+    updated_at: "2026-07-01T00:00:00.000Z",
+  });
+  const criteria = (["baseline", "teaching", "generalization", "mastery"] as const).map(completeCriterion);
+
+  it.each([
+    ["bcba", true], ["midtier", true], ["super_admin", true], ["admin", false],
+    ["therapist", false], ["bt", false], ["client", false],
+  ])("limits progression mutations for %s", (role, expected) => {
+    expect(canRoleManageGoalTargetProgression(role)).toBe(expected);
+  });
+
+  it("renders all phase criteria, current state, sequence, and incomplete state read-only", () => {
+    render(<GoalTargetProgressionEditor target={target} criteria={criteria.slice(0, 3)} sequencePosition={2} sequenceCount={4} canManage={false} busy={false} onSaveCriterion={vi.fn()} onManualOverride={vi.fn()} />);
+    expect(screen.getByText("Baseline criteria")).toBeInTheDocument();
+    expect(screen.getByText("Teaching criteria")).toBeInTheDocument();
+    expect(screen.getByText("Generalization criteria")).toBeInTheDocument();
+    expect(screen.getByText("Mastery criteria")).toBeInTheDocument();
+    expect(screen.getByText("Current · Teaching")).toBeInTheDocument();
+    expect(screen.getByText("Sequence 2 of 4")).toBeInTheDocument();
+    expect(screen.getByText("Criteria incomplete")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save baseline criteria/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /manual advance/i })).not.toBeInTheDocument();
+  });
+
+  it("validates structured criteria and submits compatible values", async () => {
+    const user = userEvent.setup();
+    const onSaveCriterion = vi.fn();
+    render(<GoalTargetProgressionEditor target={target} criteria={criteria} sequencePosition={2} sequenceCount={4} canManage busy={false} onSaveCriterion={onSaveCriterion} onManualOverride={vi.fn()} />);
+    const baseline = screen.getByRole("group", { name: "Baseline criteria" });
+    expect(within(baseline).getByRole("option", { name: "Percent independent" })).toBeDisabled();
+    expect(within(baseline).getByRole("option", { name: "Total value" })).toBeDisabled();
+    await user.clear(within(baseline).getByLabelText("Minimum observations"));
+    await user.type(within(baseline).getByLabelText("Minimum observations"), "0");
+    expect(within(baseline).getByRole("button", { name: "Save baseline criteria" })).toBeDisabled();
+    expect(within(baseline).getByText("Minimum observations must be at least 1.")).toBeInTheDocument();
+    await user.clear(within(baseline).getByLabelText("Minimum observations"));
+    await user.type(within(baseline).getByLabelText("Minimum observations"), "8");
+    await user.click(within(baseline).getByRole("button", { name: "Save baseline criteria" }));
+    expect(onSaveCriterion).toHaveBeenCalledWith(expect.objectContaining({ phase: "baseline", min_observations: 8, expected_version: 3 }));
+  });
+
+  it("requires a trimmed reason for manual progression controls", async () => {
+    const user = userEvent.setup();
+    const onManualOverride = vi.fn();
+    render(<GoalTargetProgressionEditor target={target} criteria={criteria} sequencePosition={2} sequenceCount={4} canManage busy={false} onSaveCriterion={vi.fn()} onManualOverride={onManualOverride} />);
+    await user.click(screen.getByRole("button", { name: "Manual advance" }));
+    expect(screen.getByRole("button", { name: "Confirm manual change" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Reason for manual change"), "  Clinical review  ");
+    await user.click(screen.getByRole("button", { name: "Confirm manual change" }));
+    expect(onManualOverride).toHaveBeenCalledWith(expect.objectContaining({ target_phase: "generalization", reason: "Clinical review", expected_version: 3 }));
+  });
+
+  it("preserves a stale-version server error and refreshes progression state", async () => {
+    const user = userEvent.setup();
+    let criteriaReads = 0;
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path, init) => {
+      if (path.includes("action=criteria")) { criteriaReads += 1; return new Response(JSON.stringify(criteria), { status: 200 }); }
+      if (path.includes("action=transition_history")) return new Response(JSON.stringify([]), { status: 200 });
+      if ((init?.method ?? "GET") === "PUT") return new Response(JSON.stringify({ error: "Progression version conflict" }), { status: 409 });
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><GoalTargetProgressionPanel target={target} sequencePosition={2} sequenceCount={4} canManage /></QueryClientProvider>);
+    await user.click(await screen.findByRole("button", { name: "Manual advance" }));
+    await user.type(screen.getByLabelText("Reason for manual change"), "Clinical review");
+    await user.click(screen.getByRole("button", { name: "Confirm manual change" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Progression version conflict");
+    await waitFor(() => expect(criteriaReads).toBeGreaterThan(1));
+  });
+
+  it("renders immutable transition history and its empty state", () => {
+    const transition = {
+      id: "transition-1", organization_id: ORG_ID, client_id: "client-1", goal_id: target.goal_id,
+      target_id: target.id, previous_target_id: null, resulting_target_id: target.id,
+      previous_phase: "baseline", resulting_phase: "teaching", previous_status: "active", resulting_status: "active",
+      previous_progression_version: 2, resulting_progression_version: 3, source: "manual", session_id: null,
+      actor_id: "user-1", reason: "Clinical review", transitioned_at: "2026-07-10T12:00:00.000Z",
+    } satisfies GoalTargetTransition;
+    const { rerender } = render(<GoalTargetProgressionHistory transitions={[transition]} loading={false} error={null} />);
+    expect(screen.getByText("Progression history")).toBeInTheDocument();
+    expect(screen.getByText("Baseline → Teaching")).toBeInTheDocument();
+    expect(screen.getByText("Clinical review")).toBeInTheDocument();
+    rerender(<GoalTargetProgressionHistory transitions={[]} loading={false} error={null} />);
+    expect(screen.getByText("No progression changes yet.")).toBeInTheDocument();
+  });
 });
 
 type LifecycleTarget = {

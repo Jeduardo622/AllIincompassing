@@ -63,7 +63,9 @@ describe("static automatic goal-target progression SQL contract", () => {
   });
 
   it("returns an idempotent replay without a second transition", () => {
-    expect(evaluator()).toMatch(/on conflict \(session_id, target_id, phase, progression_version\) do nothing/i);
+    expect(evaluator()).toMatch(
+      /on conflict on constraint goal_target_phase_evaluations_session_id_target_id_phase_pr_key do nothing/i,
+    );
     expect(evaluator()).toMatch(/v_prior_transition public\.goal_target_transitions/i);
     expect(evaluator()).toMatch(/v_prior_transition\.id is not null[\s\S]*'advanced'/i);
     expect(evaluator()).toMatch(/blocked_incomplete_criteria[\s\S]*ignored_no_data[\s\S]*ignored_insufficient_observations[\s\S]*qualifying[\s\S]*nonqualifying/i);

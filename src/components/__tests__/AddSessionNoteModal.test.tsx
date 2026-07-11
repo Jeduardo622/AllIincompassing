@@ -423,7 +423,7 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     expect(screen.getByLabelText(/end time/i)).toBeDisabled();
     expect(screen.getByLabelText(/^therapist$/i)).toBeDisabled();
     expect(screen.getByLabelText(/link to session/i)).toBeDisabled();
-    expect(screen.getByRole('checkbox', { name: /default goal/i })).toBeDisabled();
+    expect(await screen.findByRole('checkbox', { name: /default goal/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /add target/i })).toBeDisabled();
     expect(screen.getByLabelText(/^target$/i)).toBeDisabled();
 

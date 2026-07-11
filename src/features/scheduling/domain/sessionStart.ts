@@ -40,6 +40,9 @@ export async function startSessionFromModal(request: StartSessionRequest): Promi
     } catch {
       fallbackPayload = null;
     }
+    if (response.status === 409 && fallbackPayload?.rpcCode === "ALREADY_STARTED") {
+      return;
+    }
     throw toNormalizedApiError(
       fallbackPayload,
       response.status,

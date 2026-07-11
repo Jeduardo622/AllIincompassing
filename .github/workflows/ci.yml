@@ -534,6 +534,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/provision-ci-smoke-admin.ts
 
+      - name: Provision synthetic BCBA smoke actor
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true' && github.event_name != 'pull_request'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/provision-ci-smoke-bcba.ts
+
       - name: Install Playwright browser
         if: steps.browser_scope.outputs.auth_smoke_required == 'true'
         run: npx playwright install --with-deps chromium
@@ -631,6 +638,26 @@ jobs:
           export PW_CI_CHILD_TIMEOUT_MS=480000
           echo "Running non-AI session browser smoke suite."
           npm run ci:playwright:session-smoke
+
+      - name: BCBA session acceptance proof
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true' && github.event_name != 'pull_request'
+        env:
+          PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CI_SESSION_PARITY_REQUIRED: true
+          PW_ASSERT_ALREADY_STARTED_UI: true
+        run: |
+          npm run playwright:session-lifecycle
+          npm run playwright:session-note-measurement-roundtrip
+
+      - name: Cleanup synthetic BCBA smoke actor
+        if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true' && github.event_name != 'pull_request'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/provision-ci-smoke-bcba.ts --cleanup
 
       - name: Cleanup auth smoke admin
         if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true'

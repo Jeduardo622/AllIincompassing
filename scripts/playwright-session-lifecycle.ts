@@ -1224,6 +1224,19 @@ const expectStartButtonEnabled = async (
   throw new Error("Start Session stayed disabled after opening the edit modal (program/goal data may not have loaded).");
 };
 
+export const isExpectedAlreadyStartedResponse = (
+  enabled: boolean,
+  status: number,
+  body: string,
+): boolean => {
+  if (!enabled || status !== 409) return false;
+  try {
+    return (JSON.parse(body) as { rpcCode?: unknown }).rpcCode === "ALREADY_STARTED";
+  } catch {
+    return false;
+  }
+};
+
 /** Same contract as UI/`sessions-start` + RPC fallback; used when the modal does not surface a `sessions-start` response in time. */
 async function invokeStartSessionFallback(token: string, ids: LifecycleIds, strictMode: boolean): Promise<void> {
   const payload: SessionStartPayload = {
@@ -1576,7 +1589,7 @@ const cleanupCreatedProgramGoal = async (ids: Pick<LifecycleIds, "createdProgram
   await archiveLifecycleProgramGoal(adminClient, ids);
 };
 
-async function assertSessionRowStatus(sessionId: string, expected: string): Promise<void> {
+async function readSessionRowStatus(sessionId: string): Promise<string> {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -1590,7 +1603,33 @@ async function assertSessionRowStatus(sessionId: string, expected: string): Prom
   if (error) {
     throw new Error(`sessions status read failed: ${error.message}`);
   }
-  const status = data && typeof data === "object" && "status" in data ? String((data as { status: unknown }).status) : "";
+  return data && typeof data === "object" && "status" in data ? String((data as { status: unknown }).status) : "";
+}
+
+export async function waitForSessionStatus(
+  sessionId: string,
+  expected: string,
+  options: {
+    readStatus?: (sessionId: string) => Promise<string>;
+    intervalMs?: number;
+    timeoutMs?: number;
+  } = {},
+): Promise<void> {
+  const readStatus = options.readStatus ?? readSessionRowStatus;
+  const intervalMs = options.intervalMs ?? 500;
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const deadline = Date.now() + timeoutMs;
+  let status = "";
+  do {
+    status = await readStatus(sessionId);
+    if (status === expected) return;
+    if (intervalMs > 0) await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  } while (Date.now() < deadline);
+  throw new Error(`Expected session status ${expected}, got ${status || "unknown"}`);
+}
+
+async function assertSessionRowStatus(sessionId: string, expected: string): Promise<void> {
+  const status = await readSessionRowStatus(sessionId);
   if (status !== expected) {
     throw new Error(`Expected session status ${expected}, got ${status || "unknown"}`);
   }
@@ -1609,6 +1648,12 @@ async function startSessionViaScheduleModal(
   await expectStartButtonEnabled(page, startButton);
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
 
+  const assertAlreadyStartedRecovery = /^(1|true|yes)$/i.test(process.env.PW_ASSERT_ALREADY_STARTED_UI ?? "");
+  if (assertAlreadyStartedRecovery) {
+    await invokeStartSessionFallback(token, ids, strictMode);
+    await waitForSessionStatus(ids.sessionId, "in_progress");
+  }
+
   let uiEmittedStart = false;
   try {
     const [startResponse] = await Promise.all([
@@ -1620,7 +1665,10 @@ async function startSessionViaScheduleModal(
     ]);
     const startBody = await startResponse.text();
     if (!startResponse.ok()) {
-      throw new Error(`sessions-start failed (${startResponse.status()}) from ${startResponse.url()}: ${startBody.slice(0, 800)}`);
+      if (!isExpectedAlreadyStartedResponse(assertAlreadyStartedRecovery, startResponse.status(), startBody)) {
+        throw new Error(`sessions-start failed (${startResponse.status()}) from ${startResponse.url()}: ${startBody.slice(0, 800)}`);
+      }
+      console.log("[lifecycle] verified hosted 409 ALREADY_STARTED UI recovery");
     }
     uiEmittedStart = true;
   } catch (error) {
@@ -1635,7 +1683,15 @@ async function startSessionViaScheduleModal(
   }
 
   if (uiEmittedStart) {
-    await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
+    if (assertAlreadyStartedRecovery) {
+      await editDialog.waitFor({ state: "hidden", timeout: 90_000 });
+      const failureAlert = page.getByText(/Failed to start session/i).first();
+      if (await failureAlert.isVisible().catch(() => false)) {
+        throw new Error("ALREADY_STARTED recovery left a visible session-start failure alert.");
+      }
+    } else {
+      await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
+    }
   }
   await page.goto(scheduleUrl, { waitUntil: "networkidle", timeout: 60000 });
 }

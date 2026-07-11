@@ -7,7 +7,9 @@ import {
   filterNonOverlappingBookingStarts,
   hasReachedLifecyclePairAttemptLimit,
   isCreateSessionButtonReady,
+  isExpectedAlreadyStartedResponse,
   shouldTryNextLifecyclePairAfterAttempts,
+  waitForSessionStatus,
 } from "../../scripts/playwright-session-lifecycle";
 
 const originalGithubRunId = process.env.GITHUB_RUN_ID;
@@ -46,6 +48,31 @@ describe("playwright session lifecycle booking starts", () => {
     expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: null })).toBe(true);
     expect(isCreateSessionButtonReady({ disabled: "", ariaDisabled: null })).toBe(false);
     expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: "true" })).toBe(false);
+  });
+
+  it("accepts only the explicit hosted ALREADY_STARTED recovery contract", () => {
+    const body = JSON.stringify({ rpcCode: "ALREADY_STARTED" });
+    expect(isExpectedAlreadyStartedResponse(true, 409, body)).toBe(true);
+    expect(isExpectedAlreadyStartedResponse(false, 409, body)).toBe(false);
+    expect(isExpectedAlreadyStartedResponse(true, 409, JSON.stringify({ rpcCode: "INVALID_STATUS" }))).toBe(false);
+    expect(isExpectedAlreadyStartedResponse(true, 500, body)).toBe(false);
+  });
+
+  it("waits until the hosted session reaches the expected status", async () => {
+    const statuses = ["scheduled", "scheduled", "in_progress"];
+    await expect(waitForSessionStatus("session-1", "in_progress", {
+      readStatus: async () => statuses.shift() ?? "in_progress",
+      intervalMs: 0,
+      timeoutMs: 100,
+    })).resolves.toBeUndefined();
+  });
+
+  it("fails closed when the hosted session never reaches the expected status", async () => {
+    await expect(waitForSessionStatus("session-1", "in_progress", {
+      readStatus: async () => "scheduled",
+      intervalMs: 0,
+      timeoutMs: 0,
+    })).rejects.toThrow("Expected session status in_progress, got scheduled");
   });
 
   it("filters booking starts that overlap occupied sessions or holds", () => {

@@ -112,6 +112,7 @@ create table if not exists public.goal_target_phase_evaluations (
     'qualifying', 'nonqualifying', 'ignored_no_data',
     'ignored_insufficient_observations', 'blocked_incomplete_criteria'
   )),
+  goal_status text not null,
   metric_value numeric,
   observation_count integer check (observation_count is null or observation_count >= 0),
   evaluated_by uuid,
@@ -621,7 +622,7 @@ begin
       else
         return query select v_prior_evaluation.result, v_prior_evaluation.goal_id,
           v_prior_evaluation.target_id, v_prior_evaluation.phase, v_prior_evaluation.phase,
-          null::uuid, (select g.status from public.goals g where g.id = v_goal_id),
+          null::uuid, v_prior_evaluation.goal_status,
           case when v_prior_evaluation.result = 'blocked_incomplete_criteria'
             then 'Progression criteria incomplete.' else null::text end;
       end if;
@@ -639,6 +640,10 @@ begin
     if not found then
       continue;
     end if;
+
+    select g.status into v_goal_status
+    from public.goals g
+    where g.id = v_goal_id;
 
     v_previous_phase := v_target.current_phase;
     v_current_phase := v_target.current_phase;
@@ -665,7 +670,7 @@ begin
       else
         return query select v_prior_evaluation.result, v_prior_evaluation.goal_id,
           v_prior_evaluation.target_id, v_prior_evaluation.phase, v_prior_evaluation.phase,
-          null::uuid, (select g.status from public.goals g where g.id = v_goal_id),
+          null::uuid, v_prior_evaluation.goal_status,
           case when v_prior_evaluation.result = 'blocked_incomplete_criteria'
             then 'Progression criteria incomplete.' else null::text end;
       end if;
@@ -733,11 +738,12 @@ begin
     v_inserted_id := null;
     insert into public.goal_target_phase_evaluations (
       organization_id, client_id, goal_id, target_id, phase, progression_version,
-      session_id, note_id, session_completed_at, result, metric_value, observation_count, evaluated_by
+      session_id, note_id, session_completed_at, result, goal_status,
+      metric_value, observation_count, evaluated_by
     ) values (
       v_target.organization_id, v_target.client_id, v_target.goal_id, v_target.id,
       v_target.current_phase, v_target.progression_version, v_session.id, v_note.id, v_note.signed_at,
-      v_result, v_metric_value, v_observation_count, auth.uid()
+      v_result, v_goal_status, v_metric_value, v_observation_count, auth.uid()
     )
     on conflict (session_id, target_id, phase, progression_version) do nothing
     returning id into v_inserted_id;
@@ -762,7 +768,7 @@ begin
       else
         return query select v_prior_evaluation.result, v_prior_evaluation.goal_id,
           v_prior_evaluation.target_id, v_prior_evaluation.phase, v_prior_evaluation.phase,
-          null::uuid, (select g.status from public.goals g where g.id = v_goal_id),
+          null::uuid, v_prior_evaluation.goal_status,
           case when v_prior_evaluation.result = 'blocked_incomplete_criteria'
             then 'Progression criteria incomplete.' else null::text end;
       end if;

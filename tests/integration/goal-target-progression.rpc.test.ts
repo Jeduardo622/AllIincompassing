@@ -78,6 +78,13 @@ describe("static automatic goal-target progression SQL contract", () => {
     expect(finalizer()).toMatch(/previous_phase = 'mastery' and r\.next_target_id is null then 'goal_mastered'[\s\S]*previous_phase = 'mastery' then 'target_mastered'[\s\S]*then 'advanced'[\s\S]*blocked_incomplete_criteria[\s\S]*criteria_incomplete[\s\S]*ignored_[\s\S]*then 'ignored'[\s\S]*else 'no_change'/i);
   });
 
+  it("replays no-transition outcomes with the goal status persisted at evaluation time", () => {
+    expect(sql).toMatch(/create table if not exists public\.goal_target_phase_evaluations[\s\S]*goal_status text not null/i);
+    expect(evaluator()).toMatch(/insert into public\.goal_target_phase_evaluations \([\s\S]*goal_status[\s\S]*v_goal_status/i);
+    expect(evaluator().match(/null::uuid, v_prior_evaluation\.goal_status/gi)).toHaveLength(3);
+    expect(evaluator()).not.toMatch(/null::uuid, \(select g\.status from public\.goals g where g\.id = v_goal_id\),[\s\S]*v_prior_evaluation\.result/i);
+  });
+
   it("serializes two clients completing the same goal concurrently", () => {
     expect(evaluator()).toMatch(/pg_advisory_xact_lock\(hashtextextended\(v_goal_id::text, 0\)\)/i);
     expect(evaluator()).toMatch(/is_current[\s\S]*status = 'active'[\s\S]*for update/i);

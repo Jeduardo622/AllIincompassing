@@ -57,6 +57,7 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/consecutive_sessions integer[\s\S]*check \(consecutive_sessions is null or consecutive_sessions > 0\)/is);
     expect(sql).toMatch(/create table[^;]+goal_target_phase_evaluations/is);
     expect(sql).toMatch(/result text not null[\s\S]*'qualifying'[\s\S]*'blocked_incomplete_criteria'/is);
+    expect(sql).toMatch(/goal_target_phase_evaluations[\s\S]*goal_status text not null/is);
     expect(sql).toMatch(/unique\s*\(session_id, target_id, phase, progression_version\)/is);
     expect(sql).toMatch(/create table[^;]+goal_target_transitions/is);
     expect(sql).toMatch(/source text not null[\s\S]*source in \('automatic', 'manual'\)/is);

@@ -1589,7 +1589,7 @@ const cleanupCreatedProgramGoal = async (ids: Pick<LifecycleIds, "createdProgram
   await archiveLifecycleProgramGoal(adminClient, ids);
 };
 
-async function assertSessionRowStatus(sessionId: string, expected: string): Promise<void> {
+async function readSessionRowStatus(sessionId: string): Promise<string> {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -1603,7 +1603,33 @@ async function assertSessionRowStatus(sessionId: string, expected: string): Prom
   if (error) {
     throw new Error(`sessions status read failed: ${error.message}`);
   }
-  const status = data && typeof data === "object" && "status" in data ? String((data as { status: unknown }).status) : "";
+  return data && typeof data === "object" && "status" in data ? String((data as { status: unknown }).status) : "";
+}
+
+export async function waitForSessionStatus(
+  sessionId: string,
+  expected: string,
+  options: {
+    readStatus?: (sessionId: string) => Promise<string>;
+    intervalMs?: number;
+    timeoutMs?: number;
+  } = {},
+): Promise<void> {
+  const readStatus = options.readStatus ?? readSessionRowStatus;
+  const intervalMs = options.intervalMs ?? 500;
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const deadline = Date.now() + timeoutMs;
+  let status = "";
+  do {
+    status = await readStatus(sessionId);
+    if (status === expected) return;
+    if (intervalMs > 0) await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  } while (Date.now() < deadline);
+  throw new Error(`Expected session status ${expected}, got ${status || "unknown"}`);
+}
+
+async function assertSessionRowStatus(sessionId: string, expected: string): Promise<void> {
+  const status = await readSessionRowStatus(sessionId);
   if (status !== expected) {
     throw new Error(`Expected session status ${expected}, got ${status || "unknown"}`);
   }

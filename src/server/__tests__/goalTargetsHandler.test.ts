@@ -31,6 +31,26 @@ const GOAL_ID = "22222222-2222-4222-8222-222222222222";
 const TARGET_ID = "33333333-3333-4333-8333-333333333333";
 
 describe("goalTargetsHandler", () => {
+  it("rejects archiving the current target before issuing a status patch", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({ organizationId: ORG_ID, role: "bcba", upstreamError: false });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (init?.method === "GET" && requestUrl.includes("/rest/v1/goal_targets?select=id,is_current,status")) {
+        return { ok: true, status: 200, data: [{ id: TARGET_ID, is_current: true, status: "active" }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await goalTargetsHandler(new Request(
+      `http://localhost/api/goal-targets?target_id=${TARGET_ID}`,
+      { method: "PATCH", headers: { Authorization: `Bearer ${ACCESS_TOKEN}` }, body: JSON.stringify({ status: "archived" }) },
+    ));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Select another current target before archiving this target" });
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+  });
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getAccessToken).mockReturnValue(ACCESS_TOKEN);
@@ -319,5 +339,184 @@ describe("goalTargetsHandler", () => {
 
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({ error: "Failed to delete goal target" });
+  });
+
+  it.each(["current_phase", "is_current", "progression_version", "evaluation_window_started_at"])(
+    "rejects progression-owned PATCH field %s",
+    async (field) => {
+      vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+      const response = await goalTargetsHandler(new Request(
+        `http://localhost/api/goal-targets?target_id=${TARGET_ID}`,
+        { method: "PATCH", body: JSON.stringify({ [field]: field === "progression_version" ? 2 : true }) },
+      ));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "Progression state must be changed through a progression action",
+      });
+      expect(fetchJson).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects direct mastery through generic PATCH", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    const response = await goalTargetsHandler(new Request(
+      `http://localhost/api/goal-targets?target_id=${TARGET_ID}`,
+      { method: "PATCH", body: JSON.stringify({ status: "mastered" }) },
+    ));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Progression state must be changed through a progression action",
+    });
+  });
+
+  it("preserves ordinary lifecycle PATCH fields", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: [{ id: TARGET_ID, name: "Updated" }] });
+    const response = await goalTargetsHandler(new Request(
+      `http://localhost/api/goal-targets?target_id=${TARGET_ID}`,
+      { method: "PATCH", body: JSON.stringify({ name: "Updated" }) },
+    ));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ id: TARGET_ID, name: "Updated" });
+  });
+
+  it("calls the manual override RPC with the authenticated caller token", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: [{ outcome: "manual_override" }] });
+    const body = {
+      action: "override_progression", target_id: TARGET_ID, target_phase: "teaching",
+      current_target_id: null, reason: "Clinical review", expected_version: 2,
+    };
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "POST", body: JSON.stringify(body),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ outcome: "manual_override" });
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/rpc/override_goal_target_progression"),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({
+        target_goal_target_id: TARGET_ID, target_phase: "teaching",
+        target_current_goal_target_id: null, reason: "Clinical review", expected_version: 2,
+      }) }),
+    );
+  });
+
+  it("calls the explicit manual mastery completion RPC", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: [{ outcome: "target_mastered" }] });
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "POST", body: JSON.stringify({ action: "complete_mastery", target_id: TARGET_ID,
+        reason: "Clinical review", expected_version: 2 }),
+    }));
+    expect(response.status).toBe(200);
+    expect(fetchJson).toHaveBeenCalledWith(expect.stringContaining("/rpc/complete_goal_target_mastery"),
+      expect.objectContaining({ body: JSON.stringify({ target_goal_target_id: TARGET_ID,
+        reason: "Clinical review", expected_version: 2 }) }));
+  });
+
+  it("rejects an empty manual override reason before calling the database", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "POST", body: JSON.stringify({ action: "override_progression", target_id: TARGET_ID,
+        target_phase: "teaching", current_target_id: null, reason: " ", expected_version: 2 }),
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid request body" });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("maps a stale override version to the shared conflict envelope", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValue({ ok: false, status: 400, data: { code: "40001", message: "stale progression version" } });
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "POST", body: JSON.stringify({ action: "override_progression", target_id: TARGET_ID,
+        target_phase: "teaching", current_target_id: null, reason: "Clinical review", expected_version: 2 }),
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Progression version conflict" });
+  });
+
+  it("loads transition history within the resolved organization", async () => {
+    vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: [{ id: "transition-1" }] });
+    const response = await goalTargetsHandler(new Request(
+      `http://localhost/api/goal-targets?action=transition_history&target_id=${TARGET_ID}`,
+    ));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([{ id: "transition-1" }]);
+    expect(fetchJson).toHaveBeenCalledWith(expect.stringContaining(
+      `/rest/v1/goal_target_transitions?select=*&organization_id=eq.${ORG_ID}&target_id=eq.${TARGET_ID}`,
+    ), expect.objectContaining({ method: "GET" }));
+  });
+
+  it("writes complete structured criteria through the dedicated RPC", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: { phase: "baseline" } });
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "PUT", body: JSON.stringify({ action: "set_criteria", target_id: TARGET_ID, phase: "baseline",
+        metric: "percent_correct", comparator: "gte", threshold: 80, min_observations: 10,
+        consecutive_sessions: 3, clinical_note: null, expected_version: 2 }),
+    }));
+    expect(response.status).toBe(200);
+    expect(fetchJson).toHaveBeenCalledWith(expect.stringContaining("/rpc/set_goal_target_phase_criterion"),
+      expect.objectContaining({ method: "POST" }));
+  });
+
+  it("returns criteria in clinical phase order", async () => {
+    vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: [
+      { phase: "mastery" }, { phase: "baseline" }, { phase: "generalization" }, { phase: "teaching" },
+    ] });
+    const response = await goalTargetsHandler(new Request(
+      `http://localhost/api/goal-targets?action=criteria&target_id=${TARGET_ID}`,
+    ));
+    expect((await response.json()).map((row: { phase: string }) => row.phase)).toEqual([
+      "baseline", "teaching", "generalization", "mastery",
+    ]);
+  });
+
+  it("rejects unknown GET actions", async () => {
+    const response = await goalTargetsHandler(new Request(
+      `http://localhost/api/goal-targets?action=surprise&target_id=${TARGET_ID}`,
+    ));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid action" });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ code: "42501", message: "goal target is not in scope" }, 403, "Forbidden"],
+    [{ code: "40001", message: "stale or mixed target set" }, 409, "Progression version conflict"],
+  ] as const)("maps progression RPC authority/conflict errors", async (data, status, error) => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValue({ ok: false, status: 400, data });
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "POST", body: JSON.stringify({ action: "reorder", goal_id: GOAL_ID,
+        targets: [{ target_id: TARGET_ID, expected_version: 2 }] }),
+    }));
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error });
+  });
+
+  it("rejects partially configured criteria", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "POST", body: JSON.stringify({ action: "set_criteria", target_id: TARGET_ID, phase: "baseline",
+        metric: "percent_correct", comparator: null, threshold: 80, min_observations: 10,
+        consecutive_sessions: 3, expected_version: 2 }),
+    }));
+    expect(response.status).toBe(400);
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("calls deterministic reorder with parallel ids and versions", async () => {
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValue({ ok: true, status: 200, data: [] });
+    const response = await goalTargetsHandler(new Request("http://localhost/api/goal-targets", {
+      method: "POST", body: JSON.stringify({ action: "reorder", goal_id: GOAL_ID,
+        targets: [{ target_id: TARGET_ID, expected_version: 2 }] }),
+    }));
+    expect(response.status).toBe(200);
+    expect(fetchJson).toHaveBeenCalledWith(expect.stringContaining("/rpc/reorder_goal_targets"),
+      expect.objectContaining({ body: JSON.stringify({ target_goal_id: GOAL_ID,
+        ordered_target_ids: [TARGET_ID], expected_versions: [2] }) }));
   });
 });

@@ -1,7 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { fireEvent } from '@testing-library/react';
-import { SessionModal } from '../SessionModal';
+import { SessionModal, dedupeProgressionNotices, formatProgressionNotices, selectSessionCaptureTargets } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
 import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-linked-fetch';
 import type { Session } from '../../types';
@@ -25,6 +25,35 @@ type SupabaseQueryChain = {
 };
 
 describe('SessionModal', () => {
+  it('selects only current active targets for new capture while retaining hydrated history', () => {
+    const base = { organization_id: 'org-a', client_id: 'client-a', goal_id: 'goal-a', measurement_type: 'frequency', graph_config: {}, sort_order: 0, current_phase: 'baseline', evaluation_window_started_at: null, progression_version: 1, created_at: '', updated_at: '' } as const;
+    const current = { ...base, id: 'current', name: 'Current', status: 'active', is_current: true };
+    const stale = { ...base, id: 'stale', name: 'Stale', status: 'active', is_current: false };
+    const archived = { ...base, id: 'archived', name: 'Archived', status: 'archived', is_current: false };
+    expect(selectSessionCaptureTargets([current, stale, archived], new Set())).toEqual([current]);
+    expect(selectSessionCaptureTargets([current, stale, archived], new Set(['stale']))).toEqual([current, stale]);
+  });
+
+  it('formats every progression outcome and incomplete-criteria warning', () => {
+    const common = { goal_id: 'goal', target_id: 'target', previous_phase: 'baseline', next_target_id: null, goal_status: 'active', warning: null } as const;
+    expect(formatProgressionNotices([
+      { ...common, outcome: 'advanced', current_phase: 'teaching' },
+      { ...common, outcome: 'target_mastered', current_phase: null, next_target_id: 'next' },
+      { ...common, outcome: 'goal_mastered', current_phase: null, goal_status: 'mastered' },
+      { ...common, outcome: 'criteria_incomplete', current_phase: 'baseline', warning: 'Configure mastery criteria' },
+    ], new Map([['next', 'New target']]))).toEqual([
+      'Advanced to Teaching', 'Target mastered · Next: New target', 'Goal mastered', 'Configure mastery criteria',
+    ]);
+    expect(dedupeProgressionNotices(['Configure mastery criteria'], ['Configure mastery criteria'])).toEqual(['Configure mastery criteria']);
+  });
+
+  it('loads billing policy from the caller-scoped database RPC', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+    await waitFor(() => expect(supabase.rpc).toHaveBeenCalledWith(
+      'get_session_capture_strict_billing_gate',
+      { target_organization_id: expect.any(String) },
+    ));
+  });
   const mockPrograms = [
     {
       id: 'program-1',
@@ -1505,6 +1534,30 @@ describe('SessionModal', () => {
     expect(saveState).toHaveAttribute('aria-live', 'polite');
   });
 
+  it('preserves entered values and shows current context after a stale 409', async () => {
+    const conflict = Object.assign(new Error('The selected target is no longer current.'), {
+      status: 409,
+      conflict: { stale_target_id: 'stale-target', current_target_name: 'Replacement Target', current_phase: 'Baseline' },
+    });
+    const onSubmit = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValueOnce({ progression_results: [], progression_warnings: [] });
+    const session = {
+      id: 'session-stale', therapist_id: 'test-therapist-1', client_id: 'test-client-1', program_id: 'program-1', goal_id: 'goal-1',
+      start_time: '2026-03-01T10:00:00.000Z', end_time: '2026-03-01T11:00:00.000Z', status: 'scheduled', notes: '',
+      created_at: '2026-03-01T09:00:00.000Z', created_by: null, updated_at: '2026-03-01T09:00:00.000Z', updated_by: null, started_at: null,
+    } satisfies Session;
+    renderWithProviders(<SessionModal {...defaultProps} onSubmit={onSubmit} session={session} />);
+    const notes = screen.getByLabelText(/^Schedule Notes$/i) as HTMLTextAreaElement;
+    fireEvent.change(notes, { target: { value: 'Do not discard this entry' } });
+    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    expect(notes).toHaveValue('Do not discard this entry');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Replacement Target');
+    expect(screen.getByRole('alert')).toHaveTextContent('Baseline');
+    expect(screen.getByRole('alert')).toHaveTextContent('completed session is preserved');
+    await userEvent.click(screen.getByRole('button', { name: /Discard stale trials and retry/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(notes).toHaveValue('Do not discard this entry');
+  });
+
   it('resets saved status after close and reopen', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const props = {
@@ -1979,6 +2032,10 @@ describe('SessionModal', () => {
             graph_config: {},
             status: 'active',
             sort_order: 0,
+            is_current: true,
+            current_phase: 'baseline',
+            evaluation_window_started_at: '2024-01-01T00:00:00Z',
+            progression_version: 7,
             created_by: null,
             updated_by: null,
             created_at: '2024-01-01T00:00:00Z',
@@ -2058,12 +2115,14 @@ describe('SessionModal', () => {
             target_id: targetId,
             trial_number: 3,
             response: 'correct',
+            expected_progression_version: 7,
             metadata: expect.objectContaining({ source: 'schedule_capture', goal_id: 'goal-1' }),
           }),
           expect.objectContaining({
             target_id: targetId,
             trial_number: 4,
             response: 'incorrect',
+            expected_progression_version: 7,
           }),
         ],
       }));
@@ -2121,6 +2180,7 @@ describe('SessionModal', () => {
             graph_config: {},
             status: 'active',
             sort_order: 0,
+            is_current: true,
             created_by: null,
             updated_by: null,
             created_at: '2024-01-01T00:00:00Z',
@@ -2272,6 +2332,7 @@ describe('SessionModal', () => {
             graph_config: {},
             status: 'active',
             sort_order: 0,
+            is_current: true,
             created_by: null,
             updated_by: null,
             created_at: '2024-01-01T00:00:00Z',
@@ -2359,6 +2420,7 @@ describe('SessionModal', () => {
             graph_config: {},
             status: 'active',
             sort_order: 0,
+            is_current: true,
             created_by: null,
             updated_by: null,
             created_at: '2024-01-01T00:00:00Z',
@@ -2453,6 +2515,7 @@ describe('SessionModal', () => {
             graph_config: {},
             status: 'active',
             sort_order: 0,
+            is_current: true,
             created_by: null,
             updated_by: null,
             created_at: '2024-01-01T00:00:00Z',
@@ -2564,6 +2627,7 @@ describe('SessionModal', () => {
             graph_config: {},
             status: 'active',
             sort_order: 0,
+            is_current: true,
             created_by: null,
             updated_by: null,
             created_at: '2024-01-01T00:00:00Z',

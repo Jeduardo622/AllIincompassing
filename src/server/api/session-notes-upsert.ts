@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { SessionGoalMeasurementEntry, SessionNote } from "../../types";
+import type { GoalTargetProgressionResult, SessionGoalMeasurementEntry, SessionNote } from "../../types";
 import { mergeUniqueGoalIds, normalizeGoalMeasurementEntry } from "../../lib/goal-measurements";
 import { isAdhocSessionTargetId, isValidSessionNoteGoalKey } from "../../lib/session-adhoc-targets";
 import { getOptionalServerEnv } from "../env";
@@ -15,7 +15,7 @@ import {
   jsonForRequest,
   resolveOrgAndRoleWithStatus,
 } from "./shared";
-import { isSessionCaptureBillingGateRelaxed } from "../sessionCaptureBillingGate";
+import { resolveSessionCaptureStrictBillingPolicy } from "../sessionCaptureBillingGate";
 
 type SessionNoteRow = {
   id: string;
@@ -108,6 +108,7 @@ const upsertSchema = z.object({
       value: z.number().nonnegative().optional().nullable(),
       timestamp: z.string().datetime().optional(),
       metadata: z.record(z.unknown()).optional(),
+      expected_progression_version: z.number().int().nonnegative().optional(),
     }))
     .max(500)
     .optional()
@@ -115,6 +116,47 @@ const upsertSchema = z.object({
 });
 
 type SessionCaptureTrialEventInput = z.infer<typeof upsertSchema>["trialEvents"][number];
+
+export type ExpectedTargetVersion = { target_id: string; progression_version: number };
+
+export function validateFinalizationTargetVersions(
+  events: readonly { target_id: string; expected_progression_version?: number | null }[],
+): ExpectedTargetVersion[] | null {
+  const versions = new Map<string, number>();
+  for (const event of events) {
+    const version = event.expected_progression_version;
+    if (typeof version !== "number" || !Number.isFinite(version) || !Number.isInteger(version) || version < 0) return null;
+    const existing = versions.get(event.target_id);
+    if (existing !== undefined && existing !== version) return null;
+    versions.set(event.target_id, version);
+  }
+  return Array.from(versions, ([target_id, progression_version]) => ({ target_id, progression_version }));
+}
+
+const loadPersistedTrialTargetVersions = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  sessionId: string;
+}): Promise<{ events: Array<{ target_id: string; expected_progression_version?: number }>; upstreamError: boolean }> => {
+  const result = await fetchJson<Array<{ target_id: string; metadata: Record<string, unknown> | null }>>(
+    `${args.supabaseUrl}/rest/v1/trial_events?select=target_id,metadata` +
+      `&organization_id=eq.${encodeURIComponent(args.organizationId)}` +
+      `&session_id=eq.${encodeURIComponent(args.sessionId)}`,
+    { method: "GET", headers: args.headers },
+  );
+  if (!result.ok || !Array.isArray(result.data)) return { events: [], upstreamError: true };
+  return {
+    events: result.data.map((row) => ({
+      target_id: row.target_id,
+      expected_progression_version:
+        typeof row.metadata?.progression_version_at_capture === "number"
+          ? row.metadata.progression_version_at_capture
+          : undefined,
+    })),
+    upstreamError: false,
+  };
+};
 
 type GoalTargetScope = {
   id: string;
@@ -749,7 +791,12 @@ const buildSessionTrialEventRows = async (args: {
       prompt_level: event.prompt_level ?? null,
       value: typeof event.value === "number" ? event.value : null,
       event_timestamp: event.timestamp ?? now,
-      metadata: event.metadata ?? {},
+      metadata: {
+        ...(event.metadata ?? {}),
+        ...(Number.isInteger(event.expected_progression_version) && (event.expected_progression_version ?? -1) >= 0
+          ? { progression_version_at_capture: event.expected_progression_version }
+          : {}),
+      },
       created_by: args.actorUserId,
     };
   });
@@ -943,6 +990,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     Authorization: `Bearer ${accessToken}`,
   };
 
+  const billingPolicy = await resolveSessionCaptureStrictBillingPolicy(accessToken, organizationId);
+  if (billingPolicy.upstreamError) {
+    return errorResponse(request, "upstream_error", "Unable to resolve session capture policy", { status: 502 });
+  }
+  const captureBillingRelaxed = !billingPolicy.strict;
+
   const authorizationUrl =
     `${supabaseUrl}/rest/v1/authorizations?select=` +
     encodeURIComponent(
@@ -970,8 +1023,6 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (authorization.client_id !== payload.clientId) {
     return errorResponse(request, "validation_error", "Client does not match the selected authorization.");
   }
-
-  const captureBillingRelaxed = isSessionCaptureBillingGateRelaxed();
 
   if (!captureBillingRelaxed) {
     if (authorization.status !== "approved") {
@@ -1012,7 +1063,7 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     return errorResponse(request, "not_found", "Session note not found.");
   }
 
-  if (existingNote?.is_locked) {
+  if (existingNote?.is_locked && !payload.isLocked) {
     return errorResponse(request, "conflict", "Session note is locked and cannot be edited.", { status: 409 });
   }
 
@@ -1097,6 +1148,92 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     session_id: payload.sessionId ?? null,
   };
 
+  let persistedTrialVersionEvents: Array<{ target_id: string; expected_progression_version?: number }> = [];
+  if (payload.isLocked && !existingNote?.is_locked && payload.sessionId) {
+    const persistedVersions = await loadPersistedTrialTargetVersions({
+      supabaseUrl, headers, organizationId, sessionId: payload.sessionId,
+    });
+    if (persistedVersions.upstreamError) {
+      return errorResponse(request, "upstream_error", "Unable to validate persisted trial target versions", { status: 502 });
+    }
+    persistedTrialVersionEvents = persistedVersions.events;
+  }
+  const expectedTargetVersions = validateFinalizationTargetVersions([
+    ...payload.trialEvents,
+    ...persistedTrialVersionEvents,
+  ]);
+  if (payload.isLocked && !existingNote?.is_locked && expectedTargetVersions === null) {
+    return errorResponse(request, "validation_error", "A current target version is required to finalize trial data.");
+  }
+
+  if (payload.isLocked) {
+    if (!payload.sessionId) {
+      return errorResponse(request, "validation_error", "A session is required to finalize a session note.");
+    }
+
+    // Scope and actor fields are intentionally absent. The SECURITY DEFINER RPC
+    // derives them from auth.uid() and the persisted session/target records.
+    const finalizationResult = await fetchJson<Array<{
+      note: SessionNoteRow;
+      progression_results: GoalTargetProgressionResult[];
+    }>>(`${supabaseUrl}/rest/v1/rpc/finalize_session_note_with_progression`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        target_session_id: payload.sessionId,
+        target_note_id: existingNote?.id ?? payload.noteId ?? null,
+        note_payload: {
+          authorization_id: payload.authorizationId,
+          requested_service_code: payload.serviceCode,
+          goals_addressed: alignedGoals.goalsAddressed,
+          goal_ids: alignedGoals.goalIds.length > 0 ? alignedGoals.goalIds : null,
+          goal_measurements: alignedGoals.goalMeasurements,
+          goal_notes: alignedGoals.goalNotes,
+          narrative: payload.narrative.trim(),
+        },
+        trial_events: trialEventBuild.rows.map(({ organization_id: _organizationId, client_id: _clientId,
+          goal_id: _goalId, therapist_id: _therapistId, created_by: _createdBy, updated_by: _updatedBy, ...event }) => event),
+        expected_target_versions: expectedTargetVersions ?? [],
+      }),
+    });
+
+    if (!finalizationResult.ok || !finalizationResult.data?.[0]) {
+      const serializedErrorOriginal = JSON.stringify(finalizationResult.data ?? {});
+      const serializedError = serializedErrorOriginal.toLowerCase();
+      if (finalizationResult.status === 409 || serializedError.includes("stale_target") || serializedError.includes("no longer current")) {
+        const conflictMatch = serializedErrorOriginal.match(/stale_target:\s*([^|"}]+)\|([^|"}]*)\|([^|"}]*)\|([^"}]*)/i);
+        return jsonForRequest(request, {
+          error: "conflict",
+          message: "The selected target is no longer current.",
+          conflict: conflictMatch ? {
+            stale_target_id: conflictMatch[1],
+            current_target_id: conflictMatch[2],
+            current_target_name: conflictMatch[3],
+            current_phase: conflictMatch[4],
+          } : undefined,
+        }, 409);
+      }
+      if (finalizationResult.status === 400 || serializedError.includes("22023")) {
+        return errorResponse(request, "validation_error", "Unable to finalize session note.", { status: 400 });
+      }
+      if (finalizationResult.status === 401 || finalizationResult.status === 403 || serializedError.includes("42501")) {
+        return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
+      }
+      return errorResponse(request, "upstream_error", "Unable to finalize session note", {
+        status: finalizationResult.status >= 500 ? finalizationResult.status : 502,
+      });
+    }
+
+    const finalized = finalizationResult.data[0];
+    const progressionResults = finalized.progression_results ?? [];
+    return jsonForRequest(request, {
+      ...mapRowToSessionNote(finalized.note),
+      progression_results: progressionResults,
+      progression_warnings: progressionResults
+        .map((result) => result.warning)
+        .filter((warning): warning is string => Boolean(warning)),
+    });
+  }
   const existingTrialEventKeyBuild = await fetchExistingSessionTrialEventKeys({
     request,
     supabaseUrl,

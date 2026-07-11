@@ -266,10 +266,74 @@ export interface GoalTarget {
   graph_config: Record<string, unknown>;
   status: 'draft' | 'active' | 'mastered' | 'archived';
   sort_order: number;
+  current_phase: GoalTargetPhase | null;
+  is_current: boolean;
+  evaluation_window_started_at: string | null;
+  progression_version: number;
   created_by?: string | null;
   updated_by?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export type GoalTargetPhase = 'baseline' | 'teaching' | 'generalization' | 'mastery';
+
+export type GoalTargetCriterionMetric = 'percent_correct' | 'percent_independent' | 'total_value' | 'average_value';
+
+export interface GoalTargetPhaseCriterion {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  goal_id: string;
+  target_id: string;
+  phase: GoalTargetPhase;
+  metric: GoalTargetCriterionMetric | null;
+  comparator: 'gte' | 'lte' | null;
+  threshold: number | null;
+  min_observations: number | null;
+  consecutive_sessions: number | null;
+  clinical_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoalTargetTransition {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  goal_id: string;
+  target_id: string;
+  previous_target_id: string | null;
+  resulting_target_id: string | null;
+  previous_phase: GoalTargetPhase | null;
+  resulting_phase: GoalTargetPhase | null;
+  previous_status: GoalTarget['status'] | null;
+  resulting_status: GoalTarget['status'] | null;
+  previous_progression_version: number;
+  resulting_progression_version: number;
+  source: 'automatic' | 'manual';
+  session_id: string | null;
+  actor_id: string | null;
+  reason: string | null;
+  transitioned_at: string;
+}
+
+export interface GoalTargetProgressionResult {
+  outcome: 'advanced' | 'target_mastered' | 'goal_mastered' | 'no_change' | 'criteria_incomplete' | 'ignored';
+  goal_id: string;
+  target_id: string;
+  previous_phase: GoalTargetPhase | null;
+  current_phase: GoalTargetPhase | null;
+  next_target_id: string | null;
+  goal_status: Goal['status'];
+  warning: string | null;
+}
+
+export interface GoalTargetCompleteMasteryInput {
+  action: 'complete_mastery';
+  target_id: string;
+  reason: string;
+  expected_version: number;
 }
 
 export interface TrialEvent {
@@ -302,6 +366,13 @@ export interface SessionCaptureTrialEventInput {
   value?: number | null;
   timestamp?: string;
   metadata?: Record<string, unknown>;
+  /** Optimistic concurrency token for completed-session progression. */
+  expected_progression_version?: number;
+}
+
+export interface SessionNoteUpsertResult extends SessionNote {
+  progression_results?: GoalTargetProgressionResult[];
+  progression_warnings?: string[];
 }
 
 export interface ProgramNote {

@@ -1,5 +1,5 @@
 import type { PostgrestError } from '@supabase/supabase-js';
-import type { SessionCaptureTrialEventInput, SessionGoalMeasurementEntry, SessionNote } from '../types';
+import type { SessionCaptureTrialEventInput, SessionGoalMeasurementEntry, SessionNote, SessionNoteUpsertResult } from '../types';
 import type { Database } from './generated/database.types';
 import { normalizeGoalMeasurementEntry } from './goal-measurements';
 import { callApi } from './api';
@@ -257,6 +257,7 @@ export interface UpsertClientSessionNoteForSessionInput {
   readonly narrative: string;
   readonly captureMergeGoalIds?: string[];
   readonly trialEvents?: SessionCaptureTrialEventInput[];
+  readonly isLocked?: boolean;
 }
 
 export interface UpdateClientSessionNoteInput {
@@ -308,7 +309,7 @@ export interface SessionNoteUpsertApiPayload {
  */
 const invokeSessionNoteUpsertApi = async (
   payload: SessionNoteUpsertApiPayload,
-): Promise<SessionNote> => {
+): Promise<SessionNoteUpsertResult> => {
   const response = await callApi('/api/session-notes/upsert', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -317,13 +318,16 @@ const invokeSessionNoteUpsertApi = async (
   if (!response.ok) {
     const fallbackMessage = 'Failed to save session note.';
     try {
-      const errorBody = await response.json() as { error?: unknown; message?: unknown };
-      const message = typeof errorBody.error === 'string'
-        ? errorBody.error
-        : typeof errorBody.message === 'string'
-          ? errorBody.message
+      const errorBody = await response.json() as { error?: unknown; message?: unknown; conflict?: unknown };
+      const message = typeof errorBody.message === 'string'
+        ? errorBody.message
+        : typeof errorBody.error === 'string'
+          ? errorBody.error
           : fallbackMessage;
-      throw new Error(message);
+      const apiError = new Error(message) as Error & { status?: number; conflict?: unknown };
+      apiError.status = response.status;
+      apiError.conflict = errorBody.conflict;
+      throw apiError;
     } catch (error) {
       if (error instanceof Error && error.message !== fallbackMessage) {
         throw error;
@@ -332,7 +336,7 @@ const invokeSessionNoteUpsertApi = async (
     }
   }
 
-  return await response.json() as SessionNote;
+  return await response.json() as SessionNoteUpsertResult;
 };
 
 export const createClientSessionNote = async (
@@ -380,7 +384,7 @@ export const updateClientSessionNote = async (
 
 export const upsertClientSessionNoteForSession = async (
   payload: UpsertClientSessionNoteForSessionInput,
-): Promise<SessionNote> => {
+): Promise<SessionNoteUpsertResult> => {
   const sessionDuration = calculateSessionDurationMinutes(payload.startTime, payload.endTime);
   if (sessionDuration <= 0) {
     throw new Error('End time must be later than start time.');
@@ -400,7 +404,7 @@ export const upsertClientSessionNoteForSession = async (
     goalNotes: payload.goalNotes,
     goalMeasurements: payload.goalMeasurements ?? null,
     narrative: payload.narrative,
-    isLocked: false,
+    isLocked: payload.isLocked ?? false,
     ...(payload.captureMergeGoalIds?.length ? { captureMergeGoalIds: payload.captureMergeGoalIds } : {}),
     ...(payload.trialEvents?.length ? { trialEvents: payload.trialEvents } : {}),
   });

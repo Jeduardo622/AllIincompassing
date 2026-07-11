@@ -49,5 +49,43 @@ describe("startSessionFromModal", () => {
       }),
     );
   });
+
+  it("treats a confirmed already-started conflict as idempotent success", async () => {
+    callApiMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        code: "conflict",
+        message: "Session already started",
+        rpcCode: "ALREADY_STARTED",
+      }), { status: 409 }),
+    );
+
+    const { startSessionFromModal } = await import("../sessionStart");
+    await expect(startSessionFromModal({
+      sessionId: "11111111-1111-1111-1111-111111111111",
+      programId: "22222222-2222-2222-2222-222222222222",
+      goalId: "33333333-3333-3333-3333-333333333333",
+    })).resolves.toBeUndefined();
+  });
+
+  it("keeps non-idempotent session conflicts visible", async () => {
+    callApiMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        code: "conflict",
+        message: "Only scheduled sessions can be started",
+        rpcCode: "INVALID_STATUS",
+      }), { status: 409 }),
+    );
+
+    const { startSessionFromModal } = await import("../sessionStart");
+    await expect(startSessionFromModal({
+      sessionId: "11111111-1111-1111-1111-111111111111",
+      programId: "22222222-2222-2222-2222-222222222222",
+      goalId: "33333333-3333-3333-3333-333333333333",
+    })).rejects.toMatchObject({
+      message: "Only scheduled sessions can be started",
+      status: 409,
+      code: "conflict",
+    });
+  });
 });
 

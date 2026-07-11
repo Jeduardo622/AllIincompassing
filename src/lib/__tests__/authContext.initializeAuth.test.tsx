@@ -138,6 +138,37 @@ describe('AuthProvider initializeAuth resilience', () => {
     expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
 
+  it('clears an initial session when the profile query confirms unauthorized', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          user: {
+            id: 'user-1',
+            email: 'user@example.com',
+          },
+        },
+      },
+      error: null,
+    });
+    mockProfilesMaybeSingle.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'JWT expired', code: 'PGRST301' },
+      status: 401,
+    });
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('user')).toHaveTextContent('none');
+    expect(screen.getByTestId('role')).toHaveTextContent('none');
+    expect(screen.getByTestId('effective-role')).toHaveTextContent('client');
+    expect(mockQueryClientClear).toHaveBeenCalled();
+  });
+
   it('retries initialization after signing out when the first session fetch fails', async () => {
     mockGetSession
       .mockRejectedValueOnce(new Error('network down'))
@@ -223,6 +254,7 @@ describe('AuthProvider initializeAuth resilience', () => {
     mockProfilesMaybeSingle.mockResolvedValueOnce({
       data: null,
       error: { message: 'temporary profile fetch failure' },
+      status: 503,
     });
 
     await authStateChangeListenerRef.current?.('TOKEN_REFRESHED', {
@@ -233,6 +265,74 @@ describe('AuthProvider initializeAuth resilience', () => {
     });
 
     await waitFor(() => expect(screen.getByTestId('role')).toHaveTextContent('admin'));
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it('ignores a delayed unauthorized response from an older auth generation', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          user: {
+            id: 'user-1',
+            email: 'one@example.com',
+          },
+        },
+      },
+      error: null,
+    });
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('user-1'));
+
+    let resolveOldProfile!: (value: unknown) => void;
+    const oldProfileResult = new Promise((resolve) => {
+      resolveOldProfile = resolve;
+    });
+    mockProfilesMaybeSingle
+      .mockImplementationOnce(() => oldProfileResult)
+      .mockResolvedValueOnce({
+        data: {
+          id: 'user-2',
+          email: 'two@example.com',
+          role: 'bcba',
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        error: null,
+        status: 200,
+      });
+
+    authStateChangeListenerRef.current?.('TOKEN_REFRESHED', {
+      user: {
+        id: 'user-1',
+        email: 'one@example.com',
+      },
+    });
+    await waitFor(() => expect(mockProfilesMaybeSingle).toHaveBeenCalledTimes(2));
+
+    authStateChangeListenerRef.current?.('SIGNED_IN', {
+      user: {
+        id: 'user-2',
+        email: 'two@example.com',
+      },
+    });
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('user-2'));
+
+    resolveOldProfile({
+      data: null,
+      error: { message: 'JWT expired', code: 'PGRST301' },
+      status: 401,
+    });
+
+    await waitFor(() => expect(screen.getByTestId('role')).toHaveTextContent('bcba'));
+    expect(screen.getByTestId('user')).toHaveTextContent('user-2');
+    expect(mockSignOut).not.toHaveBeenCalled();
   });
 
   it('ignores token refresh events while sign-out is in progress', async () => {

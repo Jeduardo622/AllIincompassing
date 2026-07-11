@@ -56,3 +56,16 @@
 - unrelated changes: none in this isolated worktree
 - protected-path drift: `src/lib/authContext.tsx` is intentionally protected and remains critical-lane
 - human merge blocker: required review and CI, including credential-backed auth/session smoke
+
+## PR #761 CI follow-up
+
+- After `main` was merged into the PR branch, both the CI `unit-tests` job and the separate `tenant-safety` workflow failed on the same assertion in `AddSessionNoteModal.test.tsx`.
+- Root cause: the BT locking test queried the `Default Goal` checkbox synchronously while the modal's sessions/programs/goals queries were still rendering the `Loading sessions...` state.
+- Fix: await the existing accessible checkbox boundary with `findByRole`, matching the established pattern used by the surrounding asynchronous goal-loading tests.
+- Focused verification: `npm run test -- src/components/__tests__/AddSessionNoteModal.test.tsx --run` -> pass, 21 tests.
+- Full verification after the fix:
+  - `npm run test:ci` with synthetic non-secret Supabase configuration -> pass, 373 files / 2476 tests, 1 integration test skipped for unavailable `WIN211_POSTGRES_URL`
+  - `npm run validate:tenant` -> pass
+  - `npm run lint` -> pass
+  - `npm run typecheck` -> pass
+- Test/code review approved the one-line condition-based wait with no findings.

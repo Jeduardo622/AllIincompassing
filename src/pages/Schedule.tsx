@@ -1532,8 +1532,54 @@ export const Schedule = React.memo(() => {
         data: sessionPayload,
       });
       const isBtDataCollectionOnlySession = effectiveRole === "bt" && Boolean(effectiveSelectedSession?.id);
+      const persistClinicalNoteDraftForSession = async (sessionToPersist: Session) => {
+        if (!clinicalNoteDraft) {
+          return false;
+        }
+        if (!activeOrganizationId) {
+          throw new Error("Organization context is required to save session capture.");
+        }
+        if (!user?.id) {
+          throw new Error("Sign in again before saving session capture.");
+        }
+        if (!isSessionCaptureBillingGateRelaxed()) {
+          if (!clinicalNoteDraft.authorizationId || !clinicalNoteDraft.serviceCode) {
+            throw new Error(
+              "Authorization and service code are required to save session capture from Schedule (configure billing defaults for the client).",
+            );
+          }
+        } else if (!clinicalNoteDraft.authorizationId) {
+          throw new Error(
+            "An authorization id is required to save session capture (add any authorization for this client).",
+          );
+        }
+        await upsertClientSessionNoteForSession({
+          sessionId: sessionToPersist.id,
+          clientId: sessionPayload.client_id ?? sessionToPersist.client_id,
+          authorizationId: clinicalNoteDraft.authorizationId,
+          therapistId: sessionPayload.therapist_id ?? sessionToPersist.therapist_id,
+          organizationId: activeOrganizationId,
+          actorUserId: user.id,
+          serviceCode: clinicalNoteDraft.serviceCode,
+          sessionDate: format(parseISO(sessionPayload.start_time ?? sessionToPersist.start_time), "yyyy-MM-dd"),
+          startTime: format(parseISO(sessionPayload.start_time ?? sessionToPersist.start_time), "HH:mm:ss"),
+          endTime: format(parseISO(sessionPayload.end_time ?? sessionToPersist.end_time), "HH:mm:ss"),
+          goalsAddressed: clinicalNoteDraft.goalsAddressed,
+          goalIds: clinicalNoteDraft.goalIds,
+          goalMeasurements: clinicalNoteDraft.goalMeasurements,
+          goalNotes: clinicalNoteDraft.goalNotes,
+          narrative: clinicalNoteDraft.narrative,
+          ...(mergeCaptureIds?.length ? { captureMergeGoalIds: mergeCaptureIds } : {}),
+          ...(clinicalNoteDraft.trialEvents.length ? { trialEvents: clinicalNoteDraft.trialEvents } : {}),
+        });
+        return true;
+      };
 
-      if (isBtDataCollectionOnlySession && decision.kind !== "edit-update") {
+      if (
+        isBtDataCollectionOnlySession &&
+        decision.kind !== "edit-update" &&
+        decision.kind !== "edit-complete"
+      ) {
         showError("BT users can only save data collection for existing sessions.");
         return;
       }
@@ -1558,6 +1604,14 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-complete": {
+          if (isBtDataCollectionOnlySession && effectiveSelectedSession) {
+            await persistClinicalNoteDraftForSession(effectiveSelectedSession);
+            invalidateSessionNoteCachesAfterSessionWrite(queryClient, {
+              sessionId: effectiveSelectedSession.id,
+              clientId: effectiveSelectedSession.client_id,
+              organizationId: activeOrganizationId,
+            });
+          }
           let liveInProgress = effectiveSelectedSession?.status === "in_progress";
           if (!liveInProgress) {
             const { data: liveRow, error: liveError } = await supabase
@@ -1663,42 +1717,7 @@ export const Schedule = React.memo(() => {
             return;
           }
           if (effectiveSelectedSession && clinicalNoteDraft) {
-            if (!activeOrganizationId) {
-              throw new Error("Organization context is required to save session capture.");
-            }
-            if (!user?.id) {
-              throw new Error("Sign in again before saving session capture.");
-            }
-            if (!isSessionCaptureBillingGateRelaxed()) {
-              if (!clinicalNoteDraft.authorizationId || !clinicalNoteDraft.serviceCode) {
-                throw new Error(
-                  "Authorization and service code are required to save session capture from Schedule (configure billing defaults for the client).",
-                );
-              }
-            } else if (!clinicalNoteDraft.authorizationId) {
-              throw new Error(
-                "An authorization id is required to save session capture (add any authorization for this client).",
-              );
-            }
-            await upsertClientSessionNoteForSession({
-              sessionId: effectiveSelectedSession.id,
-              clientId: sessionPayload.client_id ?? effectiveSelectedSession.client_id,
-              authorizationId: clinicalNoteDraft.authorizationId,
-              therapistId: sessionPayload.therapist_id ?? effectiveSelectedSession.therapist_id,
-              organizationId: activeOrganizationId,
-              actorUserId: user.id,
-              serviceCode: clinicalNoteDraft.serviceCode,
-              sessionDate: format(parseISO(sessionPayload.start_time ?? effectiveSelectedSession.start_time), "yyyy-MM-dd"),
-              startTime: format(parseISO(sessionPayload.start_time ?? effectiveSelectedSession.start_time), "HH:mm:ss"),
-              endTime: format(parseISO(sessionPayload.end_time ?? effectiveSelectedSession.end_time), "HH:mm:ss"),
-              goalsAddressed: clinicalNoteDraft.goalsAddressed,
-              goalIds: clinicalNoteDraft.goalIds,
-              goalMeasurements: clinicalNoteDraft.goalMeasurements,
-              goalNotes: clinicalNoteDraft.goalNotes,
-              narrative: clinicalNoteDraft.narrative,
-              ...(mergeCaptureIds?.length ? { captureMergeGoalIds: mergeCaptureIds } : {}),
-              ...(clinicalNoteDraft.trialEvents.length ? { trialEvents: clinicalNoteDraft.trialEvents } : {}),
-            });
+            await persistClinicalNoteDraftForSession(effectiveSelectedSession);
             if (isBtDataCollectionOnlySession) {
               invalidateSessionNoteCachesAfterSessionWrite(queryClient, {
                 sessionId: effectiveSelectedSession.id,

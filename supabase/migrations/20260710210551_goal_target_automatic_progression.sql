@@ -754,7 +754,7 @@ begin
       v_target.current_phase, v_target.progression_version, v_session.id, v_note.id, v_note.signed_at,
       v_result, v_goal_status, v_metric_value, v_observation_count, auth.uid()
     )
-    on conflict (session_id, target_id, phase, progression_version) do nothing
+    on conflict on constraint goal_target_phase_evaluations_session_id_target_id_phase_pr_key do nothing
     returning id into v_inserted_id;
 
     if v_inserted_id is null then

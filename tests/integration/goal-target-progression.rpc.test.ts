@@ -85,6 +85,15 @@ describe("static automatic goal-target progression SQL contract", () => {
     expect(evaluator()).not.toMatch(/null::uuid, \(select g\.status from public\.goals g where g\.id = v_goal_id\),[\s\S]*v_prior_evaluation\.result/i);
   });
 
+  it("targets the named evaluation replay constraint without PL/pgSQL output ambiguity", () => {
+    expect(evaluator()).toMatch(
+      /on conflict on constraint goal_target_phase_evaluations_session_id_target_id_phase_pr_key do nothing/i,
+    );
+    expect(evaluator()).not.toMatch(
+      /on conflict \(session_id, target_id, phase, progression_version\) do nothing/i,
+    );
+  });
+
   it("serializes two clients completing the same goal concurrently", () => {
     expect(evaluator()).toMatch(/pg_advisory_xact_lock\(hashtextextended\(v_goal_id::text, 0\)\)/i);
     expect(evaluator()).toMatch(/is_current[\s\S]*status = 'active'[\s\S]*for update/i);

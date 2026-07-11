@@ -1,0 +1,36 @@
+import { describe, expect, it, vi } from "vitest";
+import type { Page } from "playwright";
+
+import { assertRouteAccessible } from "../../scripts/lib/playwright-smoke";
+
+describe("assertRouteAccessible readiness", () => {
+  const buildPage = (waitFor: ReturnType<typeof vi.fn>): Page => ({
+    goto: vi.fn().mockResolvedValue(undefined),
+    waitForLoadState: vi.fn().mockResolvedValue(undefined),
+    url: vi.fn().mockReturnValue("https://app.example.com/schedule"),
+    locator: vi.fn().mockReturnValue({
+      first: vi.fn().mockReturnValue({ waitFor }),
+    }),
+  } as unknown as Page);
+
+  it("waits for a delayed route readiness selector using the configured timeout", async () => {
+    const waitFor = vi.fn().mockResolvedValue(undefined);
+    const page = buildPage(waitFor);
+
+    await assertRouteAccessible(page, "https://app.example.com", "/schedule", {
+      readySelector: 'button[aria-label="Day view"]',
+      timeoutMs: 30_000,
+    });
+
+    expect(waitFor).toHaveBeenCalledWith({ state: "visible", timeout: 30_000 });
+  });
+
+  it("fails closed when the readiness selector stays absent", async () => {
+    const page = buildPage(vi.fn().mockRejectedValue(new Error("timeout")));
+
+    await expect(assertRouteAccessible(page, "https://app.example.com", "/schedule", {
+      readySelector: 'button[aria-label="Day view"]',
+      timeoutMs: 100,
+    })).rejects.toThrow('readiness selector was not visible: button[aria-label="Day view"]');
+  });
+});

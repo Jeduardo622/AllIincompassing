@@ -192,11 +192,12 @@ export const assertRouteAccessible = async (
 
     if (!pathname.includes("/login") && !pathname.includes("/unauthorized") && onExpectedRoute) {
       if (readySelector) {
-        const ready = await page.locator(readySelector).first().isVisible().catch(() => false);
-        if (!ready && attempt < maxAttempts) {
-          await page.waitForTimeout(1000);
-          continue;
-        }
+        const ready = await page
+          .locator(readySelector)
+          .first()
+          .waitFor({ state: "visible", timeout: timeoutMs })
+          .then(() => true)
+          .catch(() => false);
         if (!ready) {
           throw new Error(
             `Route ${routePath} loaded but readiness selector was not visible: ${readySelector}`,

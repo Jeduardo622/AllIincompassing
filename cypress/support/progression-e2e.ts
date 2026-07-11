@@ -11,4 +11,3 @@ before(() => {
     expect(["127.0.0.1", "localhost", "::1"]).to.include(preflight.supabaseHost);
   });
 });
-

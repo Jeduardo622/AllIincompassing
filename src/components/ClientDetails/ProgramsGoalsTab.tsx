@@ -975,7 +975,10 @@ function GoalTargetCard({
                 target,
                 status: target.status === "archived" ? "active" : "archived",
               })}
-              disabled={lifecycleActionsBusy}
+              disabled={lifecycleActionsBusy || (target.status !== "archived" && target.is_current)}
+              title={target.status !== "archived" && target.is_current
+                ? "Select another current target before archiving this target"
+                : undefined}
               className="rounded-md border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
             >
               {isLifecyclePending ? "Saving..." : target.status === "archived" ? "Restore" : "Archive"}

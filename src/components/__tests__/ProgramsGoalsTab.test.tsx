@@ -105,6 +105,14 @@ describe("ProgramsGoalsTab progression integration", { timeout: 15_000 }, () => 
     expect(Boolean(screen.queryByRole("button", { name: "Complete mastery" }))).toBe(allowed);
   });
 
+  it("requires selecting another current target before archive", async () => {
+    setup("bcba");
+    const currentArchive = await screen.findByRole("button", { name: "Archive target Current target" });
+    expect(currentArchive).toBeDisabled();
+    expect(currentArchive).toHaveAttribute("title", "Select another current target before archiving this target");
+    expect(screen.getByRole("button", { name: "Archive target Next target" })).toBeEnabled();
+  });
+
   it("sends each active and archived target exactly once when reordering and keeps archived UI read-only", async () => {
     setup("bcba");
     await screen.findByText("Current · Mastery");

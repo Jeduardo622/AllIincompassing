@@ -7,6 +7,10 @@ const sql = readFileSync(
   path.join(process.cwd(), "supabase", "migrations", "20260710210551_goal_target_automatic_progression.sql"),
   "utf8",
 );
+const forwardSql = readFileSync(
+  path.join(process.cwd(), "supabase", "migrations", "20260711140753_fix_goal_target_draft_version_validation.sql"),
+  "utf8",
+);
 
 describe("goal target automatic progression migration", () => {
   it("locks and validates expected target versions while preserving locked-note replay", () => {
@@ -19,6 +23,16 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/stale_target:/i);
     expect(sql).toMatch(/jsonb_array_length\(expected_target_versions\)[\s\S]*count\(distinct[^;]+target_id/is);
     expect(sql).toMatch(/expected target versions do not match trial targets/i);
+    expect(sql).toMatch(/from public\.trial_events persisted[\s\S]*persisted\.session_id = v_session\.id[\s\S]*v_trial_target_count := cardinality\(v_trial_target_ids\)/is);
+  });
+  it("forward-fixes already-applied finalizers without adding a competing target-lock trigger", () => {
+    expect(forwardSql).toMatch(/alter function public\.finalize_session_note_with_progression[\s\S]*rename to finalize_session_note_with_progression_v1/is);
+    expect(forwardSql).toMatch(/from public\.trial_events persisted[\s\S]*persisted\.session_id = target_session_id/is);
+    expect(forwardSql).toMatch(/public\.finalize_session_note_with_progression_v1[\s\S]*v_combined_trial_events/is);
+    expect(forwardSql).toMatch(/progression_version_at_capture[\s\S]*expected_target_versions[\s\S]*persisted trial target version does not match/is);
+    expect(forwardSql).toMatch(/guard_trial_event_session_finalization[\s\S]*least\(v_old_session_id, v_new_session_id\)[\s\S]*greatest\(v_old_session_id, v_new_session_id\)[\s\S]*before insert or update or delete on public\.trial_events/is);
+    expect(forwardSql).toMatch(/pg_advisory_xact_lock\(hashtextextended\(target_session_id::text, 1\)\)[\s\S]*from public\.trial_events persisted/is);
+    expect(forwardSql).not.toMatch(/create trigger[\s\S]*goal_targets|for update of targets/is);
   });
   it("adds phase state and enforces one valid current target per goal", () => {
     expect(sql).toMatch(/create type public\.goal_target_phase as enum\s*\(\s*'baseline',\s*'teaching',\s*'generalization',\s*'mastery'\s*\)/is);

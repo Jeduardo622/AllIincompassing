@@ -31,6 +31,26 @@ const GOAL_ID = "22222222-2222-4222-8222-222222222222";
 const TARGET_ID = "33333333-3333-4333-8333-333333333333";
 
 describe("goalTargetsHandler", () => {
+  it("rejects archiving the current target before issuing a status patch", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({ organizationId: ORG_ID, role: "bcba", upstreamError: false });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (init?.method === "GET" && requestUrl.includes("/rest/v1/goal_targets?select=id,is_current,status")) {
+        return { ok: true, status: 200, data: [{ id: TARGET_ID, is_current: true, status: "active" }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await goalTargetsHandler(new Request(
+      `http://localhost/api/goal-targets?target_id=${TARGET_ID}`,
+      { method: "PATCH", headers: { Authorization: `Bearer ${ACCESS_TOKEN}` }, body: JSON.stringify({ status: "archived" }) },
+    ));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Select another current target before archiving this target" });
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+  });
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getAccessToken).mockReturnValue(ACCESS_TOKEN);

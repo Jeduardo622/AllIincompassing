@@ -133,6 +133,31 @@ export function validateFinalizationTargetVersions(
   return Array.from(versions, ([target_id, progression_version]) => ({ target_id, progression_version }));
 }
 
+const loadPersistedTrialTargetVersions = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  sessionId: string;
+}): Promise<{ events: Array<{ target_id: string; expected_progression_version?: number }>; upstreamError: boolean }> => {
+  const result = await fetchJson<Array<{ target_id: string; metadata: Record<string, unknown> | null }>>(
+    `${args.supabaseUrl}/rest/v1/trial_events?select=target_id,metadata` +
+      `&organization_id=eq.${encodeURIComponent(args.organizationId)}` +
+      `&session_id=eq.${encodeURIComponent(args.sessionId)}`,
+    { method: "GET", headers: args.headers },
+  );
+  if (!result.ok || !Array.isArray(result.data)) return { events: [], upstreamError: true };
+  return {
+    events: result.data.map((row) => ({
+      target_id: row.target_id,
+      expected_progression_version:
+        typeof row.metadata?.progression_version_at_capture === "number"
+          ? row.metadata.progression_version_at_capture
+          : undefined,
+    })),
+    upstreamError: false,
+  };
+};
+
 type GoalTargetScope = {
   id: string;
   organization_id: string;
@@ -766,7 +791,12 @@ const buildSessionTrialEventRows = async (args: {
       prompt_level: event.prompt_level ?? null,
       value: typeof event.value === "number" ? event.value : null,
       event_timestamp: event.timestamp ?? now,
-      metadata: event.metadata ?? {},
+      metadata: {
+        ...(event.metadata ?? {}),
+        ...(Number.isInteger(event.expected_progression_version) && (event.expected_progression_version ?? -1) >= 0
+          ? { progression_version_at_capture: event.expected_progression_version }
+          : {}),
+      },
       created_by: args.actorUserId,
     };
   });
@@ -1118,7 +1148,20 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     session_id: payload.sessionId ?? null,
   };
 
-  const expectedTargetVersions = validateFinalizationTargetVersions(payload.trialEvents);
+  let persistedTrialVersionEvents: Array<{ target_id: string; expected_progression_version?: number }> = [];
+  if (payload.isLocked && !existingNote?.is_locked && payload.sessionId) {
+    const persistedVersions = await loadPersistedTrialTargetVersions({
+      supabaseUrl, headers, organizationId, sessionId: payload.sessionId,
+    });
+    if (persistedVersions.upstreamError) {
+      return errorResponse(request, "upstream_error", "Unable to validate persisted trial target versions", { status: 502 });
+    }
+    persistedTrialVersionEvents = persistedVersions.events;
+  }
+  const expectedTargetVersions = validateFinalizationTargetVersions([
+    ...payload.trialEvents,
+    ...persistedTrialVersionEvents,
+  ]);
   if (payload.isLocked && !existingNote?.is_locked && expectedTargetVersions === null) {
     return errorResponse(request, "validation_error", "A current target version is required to finalize trial data.");
   }

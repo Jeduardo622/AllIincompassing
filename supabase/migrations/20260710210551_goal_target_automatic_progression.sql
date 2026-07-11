@@ -916,6 +916,7 @@ declare
   v_expected_count integer;
   v_expected_distinct_count integer;
   v_trial_target_count integer;
+  v_trial_target_ids text[];
   v_goal_id uuid;
 begin
   if v_actor_id is null then
@@ -1004,8 +1005,20 @@ begin
   -- Locked notes are canonical replays. First finalization must present exactly
   -- one nonnegative version for every distinct trial target before any write.
   if not v_was_locked then
-    select count(distinct event->>'target_id') into v_trial_target_count
-    from jsonb_array_elements(trial_events) event;
+    select coalesce(array_agg(distinct captured.target_id), '{}'::text[])
+      into v_trial_target_ids
+    from (
+      select event->>'target_id' as target_id
+      from jsonb_array_elements(trial_events) event
+      union
+      select persisted.target_id::text
+      from public.trial_events persisted
+      where persisted.session_id = v_session.id
+        and persisted.organization_id = v_session.organization_id
+        and persisted.client_id = v_session.client_id
+    ) captured
+    where captured.target_id is not null;
+    v_trial_target_count := cardinality(v_trial_target_ids);
     select count(*), count(distinct expected->>'target_id')
       into v_expected_count, v_expected_distinct_count
     from jsonb_array_elements(expected_target_versions) expected;
@@ -1019,18 +1032,15 @@ begin
            or (expected->>'progression_version')::numeric <> trunc((expected->>'progression_version')::numeric)
        )
        or exists (
-         select 1 from jsonb_array_elements(trial_events) event
+         select 1 from unnest(v_trial_target_ids) captured_target_id
          where not exists (
            select 1 from jsonb_array_elements(expected_target_versions) expected
-           where expected->>'target_id' = event->>'target_id'
+           where expected->>'target_id' = captured_target_id
          )
        )
        or exists (
          select 1 from jsonb_array_elements(expected_target_versions) expected
-         where not exists (
-           select 1 from jsonb_array_elements(trial_events) event
-           where event->>'target_id' = expected->>'target_id'
-         )
+         where not (expected->>'target_id' = any(v_trial_target_ids))
        ) then
       raise exception using errcode = '22023', message = 'expected target versions do not match trial targets';
     end if;

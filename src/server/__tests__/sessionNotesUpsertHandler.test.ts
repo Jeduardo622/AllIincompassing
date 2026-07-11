@@ -505,6 +505,7 @@ describe("sessionNotesUpsertHandler", () => {
             response: "correct",
             prompt_level: "independent",
             value: null,
+            metadata: { source: "schedule_capture", progression_version_at_capture: 7 },
             created_by: "actor-1",
           }),
           expect.objectContaining({
@@ -534,12 +535,14 @@ describe("sessionNotesUpsertHandler", () => {
               response: "correct",
               prompt_level: "independent",
               metadata: { source: "schedule_capture" },
+              expected_progression_version: 7,
             },
             {
               target_id: targetId,
               trial_number: 2,
               response: "incorrect",
               prompt_level: "gestural",
+              expected_progression_version: 7,
             },
           ],
         }),
@@ -2294,6 +2297,7 @@ describe("sessionNotesUpsertHandler", () => {
       if (requestUrl.includes("/rest/v1/goal_targets?")) {
         return { ok: true, status: 200, data: [{ id: targetId, organization_id: "org-1", client_id: basePayload.clientId, goal_id: basePayload.goalIds[0], measurement_type: "correctIncorrect" }] };
       }
+      if (requestUrl.includes("/rest/v1/trial_events?select=target_id,metadata")) return { ok: true, status: 200, data: [] };
       if (requestUrl.endsWith("/rest/v1/rpc/finalize_session_note_with_progression")) {
         rpcCalls.push({ name: "finalize_session_note_with_progression", body: JSON.parse(String(init?.body)) });
         return { ok: true, status: 200, data: [{
@@ -2332,6 +2336,32 @@ describe("sessionNotesUpsertHandler", () => {
     expect(body.progression_warnings).toEqual([]);
   });
 
+  it("uses capture-time versions from persisted draft trials during first finalization", async () => {
+    const draftNoteId = "77777777-7777-4777-8777-777777777777";
+    const rpcBodies: Record<string, unknown>[] = [];
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) return { ok: true, status: 200, data: [{ id: basePayload.authorizationId, organization_id: "org-1", client_id: basePayload.clientId, status: "approved", start_date: "2026-01-01", end_date: "2026-12-31", services: [{ service_code: basePayload.serviceCode, approved_units: 10 }] }] };
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) return { ok: true, status: 200, data: [{ id: draftNoteId, is_locked: false }] };
+      if (requestUrl.includes("/rest/v1/sessions?")) return { ok: true, status: 200, data: [{ id: basePayload.sessionId, organization_id: "org-1", client_id: basePayload.clientId, therapist_id: basePayload.therapistId }] };
+      if (requestUrl.includes("/rest/v1/trial_events?select=target_id,metadata")) {
+        return { ok: true, status: 200, data: [{ target_id: targetId, metadata: { progression_version_at_capture: 7 } }] };
+      }
+      if (requestUrl.endsWith("/rest/v1/rpc/finalize_session_note_with_progression")) {
+        rpcBodies.push(JSON.parse(String(init?.body)));
+        return { ok: true, status: 200, data: [{ note: { ...buildSessionNoteRow(draftNoteId), is_locked: true }, progression_results: [] }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST", headers: HEADERS, body: JSON.stringify({ ...basePayload, noteId: draftNoteId, isLocked: true, trialEvents: [] }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(rpcBodies[0].expected_target_versions).toEqual([{ target_id: targetId, progression_version: 7 }]);
+  });
+
   it("keeps draft/save-progress on the compatible non-finalizing path", async () => {
     const urls: string[] = [];
     vi.mocked(fetchJson).mockImplementation(async (url, init) => {
@@ -2356,6 +2386,7 @@ describe("sessionNotesUpsertHandler", () => {
       if (requestUrl.includes("/rest/v1/authorizations?")) return { ok: true, status: 200, data: [{ id: basePayload.authorizationId, organization_id: "org-1", client_id: basePayload.clientId, status: "approved", start_date: "2026-01-01", end_date: "2026-12-31", services: [{ service_code: basePayload.serviceCode, approved_units: 10 }] }] };
       if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) return { ok: true, status: 200, data: [] };
       if (requestUrl.includes("/rest/v1/sessions?")) return { ok: true, status: 200, data: [{ id: basePayload.sessionId, organization_id: "org-1", client_id: basePayload.clientId, therapist_id: basePayload.therapistId }] };
+      if (requestUrl.includes("/rest/v1/trial_events?select=target_id,metadata")) return { ok: true, status: 200, data: [] };
       if (requestUrl.endsWith("/rest/v1/rpc/finalize_session_note_with_progression")) {
         if ("error" in rpcData) return { ok: false, status: 409, data: rpcData };
         return { ok: true, status: 200, data: [{ note: { ...buildSessionNoteRow("final-note"), is_locked: true }, progression_results: [{ ...rpcData, goal_id: basePayload.goalIds[0], target_id: targetId, previous_phase: "baseline", current_phase: "baseline", next_target_id: null, goal_status: "active" }] }] };
@@ -2379,6 +2410,7 @@ describe("sessionNotesUpsertHandler", () => {
       if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) return { ok: true, status: 200, data: [] };
       if (requestUrl.includes("/rest/v1/sessions?")) return { ok: true, status: 200, data: [{ id: basePayload.sessionId, organization_id: "org-1", client_id: basePayload.clientId, therapist_id: basePayload.therapistId }] };
       if (requestUrl.includes("/rest/v1/goal_targets?")) return { ok: true, status: 200, data: [{ id: targetId, organization_id: "org-1", client_id: basePayload.clientId, goal_id: basePayload.goalIds[0], measurement_type: "correctIncorrect" }] };
+      if (requestUrl.includes("/rest/v1/trial_events?select=target_id,metadata")) return { ok: true, status: 200, data: [] };
       if (init?.method === "POST" || init?.method === "PATCH") writeUrls.push(requestUrl);
       if (requestUrl.endsWith("/rest/v1/rpc/finalize_session_note_with_progression")) return { ok: false, status: 500, data: { code: "XX000", message: "transaction aborted" } };
       throw new Error(`Unexpected request: ${requestUrl}`);

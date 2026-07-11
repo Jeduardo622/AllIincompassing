@@ -55,6 +55,12 @@ describe("goal target and trial event edge access boundaries", () => {
     expect(goalTargetsSource).toContain('if (error) return json(req, { error: "Failed to delete goal target" }, 502);');
   });
 
+  it("rejects generic archival while a target is current", () => {
+    expect(goalTargetsSource).toContain('select("id,is_current,status")');
+    expect(goalTargetsSource).toContain('if (currentTarget.is_current)');
+    expect(goalTargetsSource).toContain('Select another current target before archiving this target');
+  });
+
   it("does not collapse trial-event data-taking or lock RPC failures into normal denials", () => {
     expect(trialEventsSource).toContain("type CapabilityResult = { allowed: boolean; upstreamError: boolean }");
     expect(trialEventsSource).toContain("type LockStateResult = { locked: boolean; upstreamError: boolean }");

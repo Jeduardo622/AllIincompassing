@@ -349,6 +349,24 @@ export async function goalTargetsHandler(request: Request): Promise<Response> {
       return json({ error: "Invalid request body" }, 400);
     }
 
+    if (parsed.data.status === "archived") {
+      const currentTarget = await fetchJson<Array<{ id: string; is_current: boolean; status: string }>>(
+        `${supabaseUrl}/rest/v1/goal_targets?select=id,is_current,status&id=eq.${encodeURIComponent(targetId)}` +
+          `&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+        { method: "GET", headers },
+      );
+      if (!currentTarget.ok) {
+        return json({ error: "Failed to load goal target" }, 502);
+      }
+      const target = Array.isArray(currentTarget.data) ? currentTarget.data[0] : null;
+      if (!target) {
+        return json({ error: "target_id is not in scope for this organization" }, 403);
+      }
+      if (target.is_current) {
+        return json({ error: "Select another current target before archiving this target" }, 409);
+      }
+    }
+
     const payload = {
       ...parsed.data,
       updated_by: getAccessTokenSubject(accessToken),

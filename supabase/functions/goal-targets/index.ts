@@ -301,6 +301,20 @@ export const handleGoalTargets = async (req: Request) => {
     const parsed = updateGoalTargetSchema.safeParse(payload);
     if (!parsed.success) return json(req, { error: "Invalid request body" }, 400);
 
+    if (parsed.data.status === "archived") {
+      const { data: currentTarget, error: currentTargetError } = await db
+        .from("goal_targets")
+        .select("id,is_current,status")
+        .eq("organization_id", orgId)
+        .eq("id", targetId)
+        .maybeSingle();
+      if (currentTargetError) return json(req, { error: "Failed to load goal target" }, 502);
+      if (!currentTarget) return json(req, { error: "target_id is not in scope for this organization" }, 403);
+      if (currentTarget.is_current) {
+        return json(req, { error: "Select another current target before archiving this target" }, 409);
+      }
+    }
+
     const { data, error } = await db
       .from("goal_targets")
       .update({ ...parsed.data, updated_by: authData.user.id })

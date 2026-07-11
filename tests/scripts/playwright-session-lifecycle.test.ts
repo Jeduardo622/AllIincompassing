@@ -7,6 +7,7 @@ import {
   filterNonOverlappingBookingStarts,
   hasReachedLifecyclePairAttemptLimit,
   isCreateSessionButtonReady,
+  isExpectedAlreadyStartedResponse,
   shouldTryNextLifecyclePairAfterAttempts,
 } from "../../scripts/playwright-session-lifecycle";
 
@@ -46,6 +47,14 @@ describe("playwright session lifecycle booking starts", () => {
     expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: null })).toBe(true);
     expect(isCreateSessionButtonReady({ disabled: "", ariaDisabled: null })).toBe(false);
     expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: "true" })).toBe(false);
+  });
+
+  it("accepts only the explicit hosted ALREADY_STARTED recovery contract", () => {
+    const body = JSON.stringify({ rpcCode: "ALREADY_STARTED" });
+    expect(isExpectedAlreadyStartedResponse(true, 409, body)).toBe(true);
+    expect(isExpectedAlreadyStartedResponse(false, 409, body)).toBe(false);
+    expect(isExpectedAlreadyStartedResponse(true, 409, JSON.stringify({ rpcCode: "INVALID_STATUS" }))).toBe(false);
+    expect(isExpectedAlreadyStartedResponse(true, 500, body)).toBe(false);
   });
 
   it("filters booking starts that overlap occupied sessions or holds", () => {

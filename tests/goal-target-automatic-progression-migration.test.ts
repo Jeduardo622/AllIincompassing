@@ -138,6 +138,8 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/create or replace function public\.set_goal_target_phase_criterion\(/i);
     expect(sql).toMatch(/set_goal_target_phase_criterion[\s\S]*security definer\s+set search_path = ''/i);
     expect(sql).toMatch(/set_goal_target_phase_criterion[\s\S]*evaluation_window_started_at = v_now[\s\S]*progression_version = progression_version \+ 1/i);
+    expect(sql).toMatch(/set_goal_target_phase_criterion[\s\S]*update public\.goal_targets[\s\S]*when v_target\.is_current and v_target\.current_phase = target_phase then v_now[\s\S]*progression_version = progression_version \+ 1/i);
+    expect(sql).toMatch(/'progression_version', expected_version \+ 1/i);
     expect(sql).toMatch(/create or replace function public\.reorder_goal_targets\(/i);
     expect(sql).toMatch(/reorder_goal_targets[\s\S]*pg_advisory_xact_lock[\s\S]*cardinality\(ordered_target_ids\)/i);
     expect(sql).toMatch(/reorder_goal_targets[\s\S]*count\(distinct target_id\)[\s\S]*stale or mixed target set/i);

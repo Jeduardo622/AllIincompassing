@@ -10,6 +10,7 @@ const sql = readFileSync(
 );
 
 const evaluator = () => sql.match(/create or replace function app\.evaluate_goal_target_progression[\s\S]*?\n\$\$;/i)?.[0] ?? "";
+const finalizer = () => sql.match(/create or replace function public\.finalize_session_note_with_progression[\s\S]*?\n\$\$;/i)?.[0] ?? "";
 const override = () => sql.match(/create or replace function public\.override_goal_target_progression[\s\S]*?\n\$\$;/i)?.[0] ?? "";
 const completeMastery = () => sql.match(/create or replace function public\.complete_goal_target_mastery[\s\S]*?\n\$\$;/i)?.[0] ?? "";
 const initializer = () => sql.match(/create or replace function app\.initialize_goal_target_progression_state[\s\S]*?\n\$\$;/i)?.[0] ?? "";
@@ -63,7 +64,18 @@ describe("static automatic goal-target progression SQL contract", () => {
 
   it("returns an idempotent replay without a second transition", () => {
     expect(evaluator()).toMatch(/on conflict \(session_id, target_id, phase, progression_version\) do nothing/i);
-    expect(evaluator()).toMatch(/idempotent_replay/i);
+    expect(evaluator()).toMatch(/v_prior_transition public\.goal_target_transitions/i);
+    expect(evaluator()).toMatch(/v_prior_transition\.id is not null[\s\S]*'advanced'/i);
+    expect(evaluator()).toMatch(/blocked_incomplete_criteria[\s\S]*ignored_no_data[\s\S]*ignored_insufficient_observations[\s\S]*qualifying[\s\S]*nonqualifying/i);
+    expect(evaluator()).not.toMatch(/return query select 'idempotent_replay'/i);
+  });
+
+  it("reconstructs every public replay outcome from immutable ledger fields", () => {
+    expect(evaluator()).toMatch(/return query select 'advanced', v_prior_transition\.goal_id[\s\S]*v_prior_transition\.previous_phase[\s\S]*v_prior_transition\.resulting_phase/i);
+    expect(evaluator()).toMatch(/v_prior_transition\.resulting_target_id <> v_prior_transition\.previous_target_id[\s\S]*v_prior_transition\.resulting_target_id else null::uuid/i);
+    expect(evaluator()).toMatch(/v_prior_transition\.resulting_target_id = v_prior_transition\.previous_target_id[\s\S]*then 'mastered'::text else 'active'::text/i);
+    expect(evaluator()).toMatch(/return query select v_prior_evaluation\.result[\s\S]*blocked_incomplete_criteria/i);
+    expect(finalizer()).toMatch(/previous_phase = 'mastery' and r\.next_target_id is null then 'goal_mastered'[\s\S]*previous_phase = 'mastery' then 'target_mastered'[\s\S]*then 'advanced'[\s\S]*blocked_incomplete_criteria[\s\S]*criteria_incomplete[\s\S]*ignored_[\s\S]*then 'ignored'[\s\S]*else 'no_change'/i);
   });
 
   it("serializes two clients completing the same goal concurrently", () => {
@@ -189,6 +201,11 @@ describe("static manual mastery completion SQL contract", () => {
     expect(completeMastery()).toMatch(/status <> 'archived'[\s\S]*sort_order/i);
     expect(completeMastery()).toMatch(/current_phase = 'baseline'[\s\S]*evaluation_window_started_at = v_now/i);
     expect(completeMastery()).toMatch(/update public\.goals[\s\S]*status = 'mastered'/i);
+  });
+
+  it("selects the globally lowest eligible target even when it sorts before the completed target", () => {
+    expect(completeMastery()).not.toMatch(/\(gt\.sort_order, gt\.created_at, gt\.id\)\s*>/i);
+    expect(completeMastery()).toMatch(/gt\.id <> v_target\.id[\s\S]*order by gt\.sort_order, gt\.created_at, gt\.id/i);
   });
 });
 

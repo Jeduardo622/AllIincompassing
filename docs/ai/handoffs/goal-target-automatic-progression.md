@@ -28,3 +28,10 @@
 - Result: pass-with-blocked-checks for the bounded Task 7 artifacts; feature release remains human-reviewed and not fully live-proven.
 - Residual risk: runtime concurrency, canonical replay, stale-target retry, and full browser sequencing still require a stable disposable Supabase stack.
 - PR handoff: a clearly labeled draft PR may be opened for human review, but it is not merge/release ready. Do not present the progression browser flow as fully proven until the dedicated harness has deterministic privileged setup/cleanup, real Auth, qualifying finalizations, deterministic stale conflict, and retry-payload assertions running GREEN on a disposable local stack.
+
+## Final code-review remediation
+
+- Manual mastery completion now chooses the globally lowest ordered eligible target, including an eligible target that sorts before the completed target, and only masters the goal when none remain.
+- Canonical finalization replay reconstructs the original evaluator response from immutable evaluation and automatic-transition rows. The public response mapping therefore reproduces `advanced`, `target_mastered`, and `goal_mastered` without inserting another evaluation/transition or consulting later mutable goal state for the mastery distinction.
+- Every phase-criteria mutation increments the target `progression_version`; only a mutation to the current phase resets `evaluation_window_started_at`. This makes stale noncurrent-phase edits conflict without changing the active evaluation window.
+- Focused progression/server/Edge/UI tests passed (`313`, with `2` credentialed live-database tests skipped); typecheck, lint, policy, tenant validation, and build passed. Runtime replay-after-reopen and concurrent criteria proof remain part of the disposable-database blocker above.

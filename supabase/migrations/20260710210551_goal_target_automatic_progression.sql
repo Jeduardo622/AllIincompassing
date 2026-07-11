@@ -552,6 +552,7 @@ declare
   v_next_target_id uuid;
   v_goal_status text;
   v_prior_evaluation public.goal_target_phase_evaluations;
+  v_prior_transition public.goal_target_transitions;
   v_now timestamptz := timezone('utc', now());
 begin
   select s.* into v_session
@@ -598,9 +599,32 @@ begin
     order by e.evaluated_at, e.id
     limit 1;
     if found then
-      return query select 'idempotent_replay', v_prior_evaluation.goal_id,
-        v_prior_evaluation.target_id, v_prior_evaluation.phase, v_prior_evaluation.phase,
-        null::uuid, (select g.status from public.goals g where g.id = v_goal_id), null::text;
+      select t.* into v_prior_transition
+      from public.goal_target_transitions t
+      where t.session_id = v_session.id
+        and t.goal_id = v_prior_evaluation.goal_id
+        and t.target_id = v_prior_evaluation.target_id
+        and t.source = 'automatic'
+      order by t.transitioned_at, t.id
+      limit 1;
+      if v_prior_transition.id is not null then
+        return query select 'advanced', v_prior_transition.goal_id,
+          v_prior_transition.target_id, v_prior_transition.previous_phase,
+          v_prior_transition.resulting_phase,
+          case when v_prior_transition.previous_phase = 'mastery'
+                    and v_prior_transition.resulting_target_id <> v_prior_transition.previous_target_id
+            then v_prior_transition.resulting_target_id else null::uuid end,
+          case when v_prior_transition.previous_phase = 'mastery'
+                    and v_prior_transition.resulting_target_id = v_prior_transition.previous_target_id
+            then 'mastered'::text else 'active'::text end,
+          null::text;
+      else
+        return query select v_prior_evaluation.result, v_prior_evaluation.goal_id,
+          v_prior_evaluation.target_id, v_prior_evaluation.phase, v_prior_evaluation.phase,
+          null::uuid, (select g.status from public.goals g where g.id = v_goal_id),
+          case when v_prior_evaluation.result = 'blocked_incomplete_criteria'
+            then 'Progression criteria incomplete.' else null::text end;
+      end if;
       continue;
     end if;
 
@@ -623,9 +647,28 @@ begin
       select 1 from public.goal_target_phase_evaluations prior_e
       where prior_e.session_id = v_session.id and prior_e.target_id = v_target.id
     ) then
-      return query select 'idempotent_replay', v_target.goal_id, v_target.id,
-        v_previous_phase, v_current_phase, null::uuid,
-        (select g.status from public.goals g where g.id = v_goal_id), null::text;
+      select e.* into v_prior_evaluation from public.goal_target_phase_evaluations e
+      where e.session_id = v_session.id and e.target_id = v_target.id
+      order by e.evaluated_at, e.id limit 1;
+      select t.* into v_prior_transition from public.goal_target_transitions t
+      where t.session_id = v_session.id and t.target_id = v_target.id and t.source = 'automatic'
+      order by t.transitioned_at, t.id limit 1;
+      if v_prior_transition.id is not null then
+        return query select 'advanced', v_prior_transition.goal_id, v_prior_transition.target_id,
+          v_prior_transition.previous_phase, v_prior_transition.resulting_phase,
+          case when v_prior_transition.previous_phase = 'mastery'
+                    and v_prior_transition.resulting_target_id <> v_prior_transition.previous_target_id
+            then v_prior_transition.resulting_target_id else null::uuid end,
+          case when v_prior_transition.previous_phase = 'mastery'
+                    and v_prior_transition.resulting_target_id = v_prior_transition.previous_target_id
+            then 'mastered'::text else 'active'::text end, null::text;
+      else
+        return query select v_prior_evaluation.result, v_prior_evaluation.goal_id,
+          v_prior_evaluation.target_id, v_prior_evaluation.phase, v_prior_evaluation.phase,
+          null::uuid, (select g.status from public.goals g where g.id = v_goal_id),
+          case when v_prior_evaluation.result = 'blocked_incomplete_criteria'
+            then 'Progression criteria incomplete.' else null::text end;
+      end if;
       continue;
     end if;
     select c.* into v_criterion
@@ -700,9 +743,29 @@ begin
     returning id into v_inserted_id;
 
     if v_inserted_id is null then
-      return query select 'idempotent_replay', v_target.goal_id, v_target.id,
-        v_previous_phase, v_target.current_phase, null::uuid,
-        (select g.status from public.goals g where g.id = v_goal_id), null::text;
+      select e.* into v_prior_evaluation from public.goal_target_phase_evaluations e
+      where e.session_id = v_session.id and e.target_id = v_target.id
+        and e.phase = v_target.current_phase and e.progression_version = v_target.progression_version
+      order by e.evaluated_at, e.id limit 1;
+      select t.* into v_prior_transition from public.goal_target_transitions t
+      where t.session_id = v_session.id and t.target_id = v_target.id and t.source = 'automatic'
+      order by t.transitioned_at, t.id limit 1;
+      if v_prior_transition.id is not null then
+        return query select 'advanced', v_prior_transition.goal_id, v_prior_transition.target_id,
+          v_prior_transition.previous_phase, v_prior_transition.resulting_phase,
+          case when v_prior_transition.previous_phase = 'mastery'
+                    and v_prior_transition.resulting_target_id <> v_prior_transition.previous_target_id
+            then v_prior_transition.resulting_target_id else null::uuid end,
+          case when v_prior_transition.previous_phase = 'mastery'
+                    and v_prior_transition.resulting_target_id = v_prior_transition.previous_target_id
+            then 'mastered'::text else 'active'::text end, null::text;
+      else
+        return query select v_prior_evaluation.result, v_prior_evaluation.goal_id,
+          v_prior_evaluation.target_id, v_prior_evaluation.phase, v_prior_evaluation.phase,
+          null::uuid, (select g.status from public.goals g where g.id = v_goal_id),
+          case when v_prior_evaluation.result = 'blocked_incomplete_criteria'
+            then 'Progression criteria incomplete.' else null::text end;
+      end if;
       continue;
     end if;
 
@@ -1139,16 +1202,17 @@ begin
     clinical_note = excluded.clinical_note, updated_by = v_actor, updated_at = v_now
   returning * into v_criterion;
 
-  if v_target.is_current and v_target.current_phase = target_phase then
-    update public.goal_targets
-    set evaluation_window_started_at = v_now, progression_version = progression_version + 1,
-        updated_by = v_actor, updated_at = v_now
-    where id = v_target.id;
-  end if;
+  update public.goal_targets
+  set evaluation_window_started_at = case
+        when v_target.is_current and v_target.current_phase = target_phase then v_now
+        else evaluation_window_started_at
+      end,
+      progression_version = progression_version + 1,
+      updated_by = v_actor, updated_at = v_now
+  where id = v_target.id;
 
   return to_jsonb(v_criterion) || jsonb_build_object(
-    'progression_version', case when v_target.is_current and v_target.current_phase = target_phase
-      then expected_version + 1 else expected_version end
+    'progression_version', expected_version + 1
   );
 end;
 $$;
@@ -1270,7 +1334,6 @@ begin
     and gt.status <> 'archived'
     and gt.status <> 'mastered'
     and gt.id <> v_target.id
-    and (gt.sort_order, gt.created_at, gt.id) > (v_target.sort_order, v_target.created_at, v_target.id)
   order by gt.sort_order, gt.created_at, gt.id
   limit 1
   for update;

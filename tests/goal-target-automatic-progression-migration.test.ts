@@ -11,6 +11,10 @@ const forwardSql = readFileSync(
   path.join(process.cwd(), "supabase", "migrations", "20260711140753_fix_goal_target_draft_version_validation.sql"),
   "utf8",
 );
+const measurementGuardSql = readFileSync(
+  path.join(process.cwd(), "supabase", "migrations", "20260711143506_validate_goal_target_trial_measurement_payloads.sql"),
+  "utf8",
+);
 
 describe("goal target automatic progression migration", () => {
   it("locks and validates expected target versions while preserving locked-note replay", () => {
@@ -33,6 +37,13 @@ describe("goal target automatic progression migration", () => {
     expect(forwardSql).toMatch(/guard_trial_event_session_finalization[\s\S]*least\(v_old_session_id, v_new_session_id\)[\s\S]*greatest\(v_old_session_id, v_new_session_id\)[\s\S]*before insert or update or delete on public\.trial_events/is);
     expect(forwardSql).toMatch(/pg_advisory_xact_lock\(hashtextextended\(target_session_id::text, 1\)\)[\s\S]*from public\.trial_events persisted/is);
     expect(forwardSql).not.toMatch(/create trigger[\s\S]*goal_targets|for update of targets/is);
+  });
+  it("validates raw trial payload shape at the database boundary", () => {
+    expect(measurementGuardSql).toMatch(/from public\.goal_targets[\s\S]*new\.organization_id[\s\S]*new\.client_id/is);
+    expect(measurementGuardSql).toMatch(/correctIncorrect[\s\S]*taskAnalysis[\s\S]*response is required[\s\S]*value is not allowed/is);
+    expect(measurementGuardSql).toMatch(/frequency[\s\S]*rate[\s\S]*duration[\s\S]*timeSample[\s\S]*latency[\s\S]*IRT[\s\S]*value is required[\s\S]*response is not allowed/is);
+    expect(measurementGuardSql).toMatch(/before insert or update[\s\S]*on public\.trial_events/is);
+    expect(measurementGuardSql).toMatch(/trial_events_value_nonnegative[\s\S]*value <> 'NaN'::numeric[\s\S]*new\.value = 'NaN'::numeric/is);
   });
   it("adds phase state and enforces one valid current target per goal", () => {
     expect(sql).toMatch(/create type public\.goal_target_phase as enum\s*\(\s*'baseline',\s*'teaching',\s*'generalization',\s*'mastery'\s*\)/is);

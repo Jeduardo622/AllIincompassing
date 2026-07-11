@@ -222,7 +222,7 @@ describe.runIf(Boolean(localDatabaseUrl))("live local goal-target progression da
     }
   });
 
-  it("fails closed before writes for malformed finalization payloads", async () => {
+  it("leaves no committed note or trial writes after malformed finalization rollback", async () => {
     const pool = new Pool({ connectionString: localDatabaseUrl, max: 1 });
     const client = await pool.connect();
     try {

@@ -1345,7 +1345,6 @@ describe('SessionModal', () => {
       expect(screen.getByLabelText(/Start Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
-      expect(screen.queryByRole('button', { name: /^Close Session$/i })).not.toBeInTheDocument();
 
       await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
 
@@ -1359,6 +1358,43 @@ describe('SessionModal', () => {
           start_time: '2026-03-31T10:00:00.000Z',
           end_time: '2026-03-31T11:00:00.000Z',
           status: 'in_progress',
+          notes: 'Original schedule note',
+        }));
+      });
+    });
+
+    it('allows BT data-only edit mode to close an in-progress session without unlocking schedule metadata', async () => {
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+      const lockedSession: Session = {
+        ...editSession,
+        status: 'in_progress',
+        notes: 'Original schedule note',
+        started_at: '2026-03-31T10:05:00.000Z',
+      };
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          onSubmit={onSubmit}
+          session={lockedSession}
+          dataCollectionOnly
+        />
+      );
+
+      const closeSessionButton = screen.getByRole('button', { name: /^Close Session$/i });
+      await waitFor(() => expect(closeSessionButton).not.toBeDisabled());
+      await userEvent.click(closeSessionButton);
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+          id: 'session-edit',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-31T10:00:00.000Z',
+          end_time: '2026-03-31T11:00:00.000Z',
+          status: 'completed',
           notes: 'Original schedule note',
         }));
       });

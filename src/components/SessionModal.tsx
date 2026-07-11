@@ -1514,6 +1514,10 @@ export function SessionModal({
           }
         }
       }
+      const isTerminalStatusSubmit =
+        working.status === 'completed' ||
+        working.status === 'cancelled' ||
+        working.status === 'no-show';
       const lockedSessionFields: Partial<Session> = isDataCollectionOnly && session
         ? {
             id: session.id,
@@ -1524,7 +1528,7 @@ export function SessionModal({
             goal_ids: session.goal_ids ?? [],
             start_time: session.start_time,
             end_time: session.end_time,
-            status: session.status,
+            status: isTerminalStatusSubmit ? working.status : session.status,
             notes: session.notes ?? '',
           }
         : {};
@@ -1707,9 +1711,6 @@ export function SessionModal({
   };
 
   const handleCloseSession = () => {
-    if (isDataCollectionOnly) {
-      return;
-    }
     setValue('status', 'completed', { shouldDirty: true });
     void handleSubmit(async (formData) => {
       await handleFormSubmit({
@@ -4013,7 +4014,7 @@ export function SessionModal({
                   Start Session
                 </button>
               ) : null}
-              {session?.id && isInProgressSession && !isDataCollectionOnly ? (
+              {session?.id && isInProgressSession ? (
                 <button
                   type="button"
                   onClick={handleCloseSession}

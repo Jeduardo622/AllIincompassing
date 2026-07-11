@@ -14,12 +14,19 @@ const { validateProgressionHarnessEnvironment } = require("../../cypress/progres
   };
 };
 
+const credentialedDatabaseUrl = (host: string, port: number): string => {
+  const url = new URL(`postgresql://${host}:${port}/postgres`);
+  url.username = "postgres";
+  url.password = "masked-value";
+  return url.toString();
+};
+
 const valid = {
   PROGRESSION_E2E_LOCAL_OPT_IN: "YES_LOCAL_SYNTHETIC_ONLY",
   PROGRESSION_E2E_PROJECT_ID: "AllIincompassing",
   CYPRESS_BASE_URL: "http://127.0.0.1:4173",
   SUPABASE_URL: "http://127.0.0.1:54321",
-  SUPABASE_DB_URL: "postgresql://postgres:secret@127.0.0.1:54322/postgres",
+  SUPABASE_DB_URL: credentialedDatabaseUrl("127.0.0.1", 54322),
 };
 
 describe("goal-target progression Cypress safety gate", () => {
@@ -47,7 +54,7 @@ describe("goal-target progression Cypress safety gate", () => {
     ["missing opt-in", { PROGRESSION_E2E_LOCAL_OPT_IN: undefined }],
     ["hosted app", { CYPRESS_BASE_URL: "https://app.example.com" }],
     ["hosted Supabase", { SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co" }],
-    ["remote database", { SUPABASE_DB_URL: "postgresql://postgres:secret@db.example.com:5432/postgres" }],
+    ["remote database", { SUPABASE_DB_URL: credentialedDatabaseUrl("db.example.com", 5432) }],
     ["unexpected project", { PROGRESSION_E2E_PROJECT_ID: "production" }],
     ["credential-bearing app URL", { CYPRESS_BASE_URL: "http://user:password@127.0.0.1:4173" }],
   ])("rejects %s before fixture mutation", (_label, override) => {
@@ -57,7 +64,7 @@ describe("goal-target progression Cypress safety gate", () => {
   it("does not include database credentials in rejection messages", () => {
     expect(() => validateProgressionHarnessEnvironment({
       ...valid,
-      SUPABASE_DB_URL: "postgresql://postgres:do-not-print@db.example.com:5432/postgres",
-    })).toThrowError(expect.not.stringContaining("do-not-print"));
+      SUPABASE_DB_URL: credentialedDatabaseUrl("db.example.com", 5432),
+    })).toThrowError(expect.not.stringContaining("masked-value"));
   });
 });

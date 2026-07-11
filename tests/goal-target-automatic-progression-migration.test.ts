@@ -11,7 +11,8 @@ const sql = readFileSync(
 describe("goal target automatic progression migration", () => {
   it("locks and validates expected target versions while preserving locked-note replay", () => {
     expect(sql).toMatch(/expected_target_versions jsonb default '\[\]'::jsonb/i);
-    expect(sql).toMatch(/for v_goal_id in[\s\S]*order by gt\.goal_id[\s\S]*pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/for v_goal_id in[\s\S]*order by affected\.goal_id[\s\S]*pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/for v_goal_id in[\s\S]*union[\s\S]*g\.id::text = any\(coalesce\(v_note\.goal_ids[\s\S]*g\.organization_id = v_note\.organization_id[\s\S]*g\.client_id = v_note\.client_id[\s\S]*order by affected\.goal_id/i);
     expect(sql).toMatch(/for v_expected in[\s\S]*order by gt\.goal_id nulls last, gt\.id nulls last[\s\S]*for update;[\s\S]*progression_version <>/i);
     expect(sql).not.toMatch(/for v_expected in select value from jsonb_array_elements\(expected_target_versions\)/i);
     expect(sql).toMatch(/if not v_was_locked then[\s\S]*jsonb_array_elements\(expected_target_versions\)/i);

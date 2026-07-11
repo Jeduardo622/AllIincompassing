@@ -203,6 +203,10 @@ describe("static manual mastery completion SQL contract", () => {
     expect(completeMastery()).toMatch(/pg_advisory_xact_lock/i);
   });
 
+  it("orders defensive evaluator goal locks canonically for mixed and note-only goals", () => {
+    expect(evaluator()).toMatch(/for v_goal_id in[\s\S]*select distinct candidate\.goal_id[\s\S]*order by candidate\.goal_id[\s\S]*pg_advisory_xact_lock/i);
+  });
+
   it("audits before mastery, activates the next eligible target, or masters the goal", () => {
     expect(completeMastery()).toMatch(/insert into public\.goal_target_transitions[\s\S]*update public\.goal_targets[\s\S]*status = 'mastered'/i);
     expect(completeMastery()).toMatch(/status <> 'archived'[\s\S]*sort_order/i);

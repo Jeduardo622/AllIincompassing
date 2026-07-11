@@ -599,6 +599,7 @@ begin
         and gt.goal_id::text = any(coalesce(v_note.goal_ids, '{}'::text[]))
         and gt.is_current and gt.status = 'active'
     ) candidate
+    order by candidate.goal_id
   loop
     perform pg_advisory_xact_lock(hashtextextended(v_goal_id::text, 0));
 
@@ -1078,13 +1079,30 @@ begin
     -- manual progression. Multiple goals and targets are locked canonically,
     -- never in caller JSON order.
     for v_goal_id in
-      select distinct gt.goal_id
-      from jsonb_array_elements(expected_target_versions) expected(value)
-      join public.goal_targets gt
-        on gt.id = nullif(expected.value->>'target_id', '')::uuid
-       and gt.organization_id = v_session.organization_id
-       and gt.client_id = v_session.client_id
-      order by gt.goal_id
+      select affected.goal_id
+      from (
+        select gt.goal_id
+        from jsonb_array_elements(expected_target_versions) expected(value)
+        join public.goal_targets gt
+          on gt.id = nullif(expected.value->>'target_id', '')::uuid
+         and gt.organization_id = v_session.organization_id
+         and gt.client_id = v_session.client_id
+        union
+        select g.id as goal_id
+        from public.goals g
+        where g.id::text = any(coalesce(v_note.goal_ids, '{}'::text[]))
+          and g.organization_id = v_note.organization_id
+          and g.client_id = v_note.client_id
+          and exists (
+            select 1 from public.goal_targets current_gt
+            where current_gt.goal_id = g.id
+              and current_gt.organization_id = v_note.organization_id
+              and current_gt.client_id = v_note.client_id
+              and current_gt.is_current
+              and current_gt.status = 'active'
+          )
+      ) affected
+      order by affected.goal_id
     loop
       perform pg_advisory_xact_lock(hashtextextended(v_goal_id::text, 0));
     end loop;

@@ -11,7 +11,9 @@ const sql = readFileSync(
 describe("goal target automatic progression migration", () => {
   it("locks and validates expected target versions while preserving locked-note replay", () => {
     expect(sql).toMatch(/expected_target_versions jsonb default '\[\]'::jsonb/i);
-    expect(sql).toMatch(/for v_expected in select value from jsonb_array_elements\(expected_target_versions\)[\s\S]*for update;[\s\S]*progression_version <>/i);
+    expect(sql).toMatch(/for v_goal_id in[\s\S]*order by gt\.goal_id[\s\S]*pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/for v_expected in[\s\S]*order by gt\.goal_id nulls last, gt\.id nulls last[\s\S]*for update;[\s\S]*progression_version <>/i);
+    expect(sql).not.toMatch(/for v_expected in select value from jsonb_array_elements\(expected_target_versions\)/i);
     expect(sql).toMatch(/if not v_was_locked then[\s\S]*jsonb_array_elements\(expected_target_versions\)/i);
     expect(sql).toMatch(/stale_target:/i);
     expect(sql).toMatch(/jsonb_array_length\(expected_target_versions\)[\s\S]*count\(distinct[^;]+target_id/is);
@@ -48,6 +50,8 @@ describe("goal target automatic progression migration", () => {
   });
 
   it("creates scoped normalized criteria and immutable history tables", () => {
+    expect(sql).toMatch(/goal_target_phase_criteria[\s\S]*target_id uuid not null references public\.goal_targets\(id\) on delete cascade/is);
+    expect(sql).toMatch(/goal_target_phase_evaluations[\s\S]*target_id uuid not null references public\.goal_targets\(id\)(?! on delete cascade)/is);
     expect(sql).toMatch(/create table[^;]+goal_target_phase_criteria/is);
     expect(sql).toMatch(/unique\s*\(target_id, phase\)/is);
     expect(sql).toMatch(/metric text[\s\S]*metric is null or metric in \('percent_correct', 'percent_independent', 'total_value', 'average_value'\)/is);
@@ -61,7 +65,12 @@ describe("goal target automatic progression migration", () => {
     expect(sql).toMatch(/unique\s*\(session_id, target_id, phase, progression_version\)/is);
     expect(sql).toMatch(/create table[^;]+goal_target_transitions/is);
     expect(sql).toMatch(/source text not null[\s\S]*source in \('automatic', 'manual'\)/is);
-    expect(sql).not.toMatch(/target_id uuid[^,;]+on delete cascade/is);
+    expect(sql).toMatch(/create index[^;]+on public\.goal_target_phase_evaluations\s*\(target_id, phase, progression_version, session_completed_at desc, session_id desc\)/is);
+    expect(sql).toMatch(/create index[^;]+on public\.goal_target_transitions\s*\(session_id, goal_id, target_id, source, transitioned_at, id\)/is);
+    const evaluationTable = sql.match(/create table if not exists public\.goal_target_phase_evaluations \([\s\S]*?\n\);/i)?.[0] ?? "";
+    const transitionTable = sql.match(/create table if not exists public\.goal_target_transitions \([\s\S]*?\n\);/i)?.[0] ?? "";
+    expect(evaluationTable).not.toMatch(/target_id uuid[^,;]+on delete cascade/is);
+    expect(transitionTable).not.toMatch(/(?:target_id|previous_target_id|resulting_target_id) uuid[^,;]+on delete cascade/is);
     expect(sql).not.toMatch(/session_id uuid[^,;]+on delete cascade/is);
   });
 

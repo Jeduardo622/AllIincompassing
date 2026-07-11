@@ -74,7 +74,7 @@ create table if not exists public.goal_target_phase_criteria (
   organization_id uuid not null references public.organizations(id),
   client_id uuid not null references public.clients(id),
   goal_id uuid not null references public.goals(id),
-  target_id uuid not null references public.goal_targets(id),
+  target_id uuid not null references public.goal_targets(id) on delete cascade,
   phase public.goal_target_phase not null,
   metric text check (metric is null or metric in ('percent_correct', 'percent_independent', 'total_value', 'average_value')),
   comparator text check (comparator is null or comparator in ('gte', 'lte')),
@@ -150,6 +150,14 @@ create table if not exists public.goal_target_transitions (
     source <> 'automatic' or session_id is not null
   )
 );
+
+create index if not exists goal_target_phase_evaluations_streak_idx
+  on public.goal_target_phase_evaluations
+  (target_id, phase, progression_version, session_completed_at desc, session_id desc);
+
+create index if not exists goal_target_transitions_automatic_replay_idx
+  on public.goal_target_transitions
+  (session_id, goal_id, target_id, source, transitioned_at, id);
 
 create or replace function app.set_goal_target_progression_scope()
 returns trigger
@@ -907,6 +915,7 @@ declare
   v_expected_count integer;
   v_expected_distinct_count integer;
   v_trial_target_count integer;
+  v_goal_id uuid;
 begin
   if v_actor_id is null then
     raise exception using errcode = '42501', message = 'authentication required';
@@ -1065,7 +1074,29 @@ begin
   -- Canonical replays of an already locked note return the persisted result without
   -- rejecting a now-old browser version. New finalizations lock and compare first.
   if not v_was_locked then
-    for v_expected in select value from jsonb_array_elements(expected_target_versions)
+    -- Every finalization writer follows the same goal-first lock hierarchy as
+    -- manual progression. Multiple goals and targets are locked canonically,
+    -- never in caller JSON order.
+    for v_goal_id in
+      select distinct gt.goal_id
+      from jsonb_array_elements(expected_target_versions) expected(value)
+      join public.goal_targets gt
+        on gt.id = nullif(expected.value->>'target_id', '')::uuid
+       and gt.organization_id = v_session.organization_id
+       and gt.client_id = v_session.client_id
+      order by gt.goal_id
+    loop
+      perform pg_advisory_xact_lock(hashtextextended(v_goal_id::text, 0));
+    end loop;
+
+    for v_expected in
+      select expected.value
+      from jsonb_array_elements(expected_target_versions) expected(value)
+      left join public.goal_targets gt
+        on gt.id = nullif(expected.value->>'target_id', '')::uuid
+       and gt.organization_id = v_session.organization_id
+       and gt.client_id = v_session.client_id
+      order by gt.goal_id nulls last, gt.id nulls last, expected.value->>'target_id'
     loop
       select gt.* into v_target
       from public.goal_targets gt
@@ -1100,7 +1131,7 @@ begin
     where gt.id = nullif(v_event->>'target_id', '')::uuid
       and gt.organization_id = v_session.organization_id
       and gt.client_id = v_session.client_id
-    for update;
+    ;
     if not found then
       raise exception using errcode = '42501', message = 'target is out of scope';
     end if;

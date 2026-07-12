@@ -18,7 +18,10 @@ import {
 import {
   assertNonAiSessionsEnvContract,
 } from "./lib/playwright-nonai-sessions-contract";
-import { openScheduleSessionModalFromCalendar } from "./lib/playwright-schedule-session-modal";
+import {
+  classifyScheduleReadinessFailure,
+  openScheduleSessionModalFromCalendar,
+} from "./lib/playwright-schedule-session-modal";
 
 /** Canonical /schedule + SessionModal regression: book → Start Session → terminal close (no-show/completed). */
 
@@ -1771,6 +1774,11 @@ export async function run() {
         capturedAccessToken = candidateToken;
         break;
       } catch {
+        const scheduleState = await classifyScheduleReadinessFailure(attemptPage)
+          .catch(() => "diagnostic_unavailable" as const);
+        console.error(
+          `[lifecycle] credential candidate rejected candidate=${candidate.label} scheduleState=${scheduleState}`,
+        );
         await attemptContext.close();
       }
     }

@@ -38,13 +38,31 @@ const validateTarget = (scheduleUrl: string, target: ScheduleSessionModalTarget)
   }
 };
 
-const describeScheduleFailureState = async (page: Page): Promise<string> => {
+export type ScheduleReadinessFailureState =
+  | "login_redirect"
+  | "unauthorized_redirect"
+  | "auth_profile_loading"
+  | "missing_organization"
+  | "schedule_data_error"
+  | "schedule_still_loading"
+  | "application_error_boundary"
+  | "schedule_not_ready";
+
+export const classifyScheduleReadinessFailure = async (
+  page: Page,
+): Promise<ScheduleReadinessFailureState> => {
   const pathname = new URL(page.url()).pathname.toLowerCase();
   if (pathname.includes("/login")) return "login_redirect";
   if (pathname.includes("/unauthorized")) return "unauthorized_redirect";
+  if ((await page.locator('[role="status"][aria-label="Checking role access..."]').count()) > 0) {
+    return "auth_profile_loading";
+  }
   if ((await page.locator('[data-testid="schedule-missing-org"]').count()) > 0) return "missing_organization";
   if ((await page.locator('[data-testid="schedule-data-load-error"]').count()) > 0) return "schedule_data_error";
   if ((await page.locator('[data-testid="schedule-loading"]').count()) > 0) return "schedule_still_loading";
+  if ((await page.getByRole("heading", { name: "Something went wrong", exact: true }).count()) > 0) {
+    return "application_error_boundary";
+  }
   return "schedule_not_ready";
 };
 
@@ -104,7 +122,7 @@ const normalizeWeekView = async (page: Page): Promise<void> => {
     .then(() => true)
     .catch(() => false);
   if (!ready) {
-    throw new Error(`Schedule did not reach calendar readiness: ${await describeScheduleFailureState(page)}`);
+    throw new Error(`Schedule did not reach calendar readiness: ${await classifyScheduleReadinessFailure(page)}`);
   }
   if ((await weekButton.getAttribute("aria-pressed")) !== "true") {
     await weekButton.click();

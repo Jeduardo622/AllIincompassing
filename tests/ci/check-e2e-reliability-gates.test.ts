@@ -263,6 +263,20 @@ describe("check-e2e-reliability-gates", () => {
     expect(blockedClose).toContain('openScheduleSessionModalFromCalendar(activePage, `${base}/schedule`, booked,');
   });
 
+  test("session lifecycle records a controlled Schedule state before rejecting credentials", () => {
+    const lifecycle = readFileSync(
+      path.join(repoRoot, "scripts", "playwright-session-lifecycle.ts"),
+      "utf8",
+    );
+
+    expect(lifecycle).toContain("classifyScheduleReadinessFailure(attemptPage)");
+    expect(lifecycle).toContain("scheduleState=${scheduleState}");
+    expect(lifecycle.indexOf("classifyScheduleReadinessFailure(attemptPage)")).toBeLessThan(
+      lifecycle.indexOf("await attemptContext.close()"),
+    );
+    expect(lifecycle).not.toContain("document.body.innerText");
+  });
+
   test("accepts ci:playwright runner invocation semantics", () => {
     const fixtureRoot = createFixture(`tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`);
 

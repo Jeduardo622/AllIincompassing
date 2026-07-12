@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Page } from "playwright";
 
 import {
+  classifyScheduleReadinessFailure,
   openScheduleSessionModalFromCalendar,
   SCHEDULE_SESSION_SEARCH_PERIODS,
 } from "../../scripts/lib/playwright-schedule-session-modal";
@@ -266,5 +267,49 @@ describe("openScheduleSessionModalFromCalendar", () => {
 
     await expect(openScheduleSessionModalFromCalendar(page, "https://app.example.com/schedule", target))
       .rejects.toThrow("week_view_not_selected");
+  });
+});
+
+describe("classifyScheduleReadinessFailure", () => {
+  const buildPage = (url: string, presentSelector?: string, errorBoundary = false): Page => ({
+    url: vi.fn().mockReturnValue(url),
+    locator: vi.fn((selector: string) => ({
+      count: vi.fn().mockResolvedValue(selector === presentSelector ? 1 : 0),
+    })),
+    getByRole: vi.fn(() => ({
+      count: vi.fn().mockResolvedValue(errorBoundary ? 1 : 0),
+    })),
+  } as unknown as Page);
+
+  it.each([
+    ["auth_profile_loading", '[role="status"][aria-label="Checking role access..."]'],
+    ["missing_organization", '[data-testid="schedule-missing-org"]'],
+    ["schedule_data_error", '[data-testid="schedule-data-load-error"]'],
+    ["schedule_still_loading", '[data-testid="schedule-loading"]'],
+  ] as const)("returns the controlled %s state", async (expected, selector) => {
+    await expect(classifyScheduleReadinessFailure(
+      buildPage("https://app.example.com/schedule", selector),
+    )).resolves.toBe(expected);
+  });
+
+  it.each([
+    ["https://app.example.com/login", "login_redirect"],
+    ["https://app.example.com/unauthorized", "unauthorized_redirect"],
+  ] as const)("classifies %s before inspecting rendered Schedule state", async (url, expected) => {
+    const page = buildPage(url, '[data-testid="schedule-loading"]');
+    await expect(classifyScheduleReadinessFailure(page)).resolves.toBe(expected);
+    expect(page.locator).not.toHaveBeenCalled();
+  });
+
+  it("recognizes the public application error boundary without capturing its text", async () => {
+    await expect(classifyScheduleReadinessFailure(
+      buildPage("https://app.example.com/schedule", undefined, true),
+    )).resolves.toBe("application_error_boundary");
+  });
+
+  it("falls back to a controlled state without serializing page content", async () => {
+    await expect(classifyScheduleReadinessFailure(
+      buildPage("https://app.example.com/schedule"),
+    )).resolves.toBe("schedule_not_ready");
   });
 });

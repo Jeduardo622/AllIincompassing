@@ -214,6 +214,18 @@ describe("check-e2e-reliability-gates", () => {
     );
   });
 
+  test("session note measurement opens collapsed schedule filters before selecting options", () => {
+    const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
+    const content = readFileSync(scriptPath, "utf8");
+
+    expect(content).toContain('filter({ has: page.locator("#client-filter") })');
+    expect(content).toContain('locator(":scope > summary")');
+    expect(content).toContain('await openScheduleFiltersIfCollapsed(page)');
+    expect(content.indexOf("await openScheduleFiltersIfCollapsed(page)")).toBeLessThan(
+      content.indexOf('selectScheduleFilterOptionIfPresent(page, "#therapist-filter", therapistId)'),
+    );
+  });
+
   test("accepts ci:playwright runner invocation semantics", () => {
     const fixtureRoot = createFixture(`tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`);
 

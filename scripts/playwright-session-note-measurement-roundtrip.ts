@@ -187,6 +187,23 @@ const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): P
   }
 };
 
+const openScheduleFiltersIfCollapsed = async (page: Page): Promise<void> => {
+  const filterDetails = page.locator("details").filter({ has: page.locator("#client-filter") }).first();
+  const exists = await filterDetails
+    .waitFor({ state: "attached", timeout: 2_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) {
+    return;
+  }
+
+  const isOpen = await filterDetails.evaluate((node) => (node instanceof HTMLDetailsElement ? node.open : true));
+  if (!isOpen) {
+    await filterDetails.locator(":scope > summary").click();
+  }
+  await page.locator("select#client-filter").waitFor({ state: "visible", timeout: 5_000 });
+};
+
 const selectScheduleFilterOptionIfPresent = async (
   page: Page,
   selector: string,
@@ -229,6 +246,7 @@ const openEditSessionModalFromCalendar = async (
     timeout: 60000,
   });
 
+  await openScheduleFiltersIfCollapsed(page);
   const selectedTherapist = await selectScheduleFilterOptionIfPresent(page, "#therapist-filter", therapistId);
   const selectedClient = await selectScheduleFilterOptionIfPresent(page, "#client-filter", clientId);
   if (selectedTherapist || selectedClient) {

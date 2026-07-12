@@ -199,6 +199,9 @@ export const assertRouteAccessible = async (
           .then(() => true)
           .catch(() => false);
         if (!ready) {
+          if (attempt < maxAttempts) {
+            continue;
+          }
           throw new Error(
             `Route ${routePath} loaded but readiness selector was not visible: ${readySelector}`,
           );

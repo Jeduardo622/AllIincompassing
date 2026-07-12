@@ -25,12 +25,32 @@ describe("assertRouteAccessible readiness", () => {
     expect(waitFor).toHaveBeenCalledWith({ state: "visible", timeout: 30_000 });
   });
 
+  it("retries the expected route when readiness appears after the first bounded wait", async () => {
+    const waitFor = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockResolvedValueOnce(undefined);
+    const page = buildPage(waitFor);
+
+    await assertRouteAccessible(page, "https://app.example.com", "/schedule", {
+      readySelector: 'button[aria-label="Day view"]',
+      timeoutMs: 100,
+    });
+
+    expect(page.goto).toHaveBeenCalledTimes(2);
+    expect(waitFor).toHaveBeenCalledTimes(2);
+  });
+
   it("fails closed when the readiness selector stays absent", async () => {
-    const page = buildPage(vi.fn().mockRejectedValue(new Error("timeout")));
+    const waitFor = vi.fn().mockRejectedValue(new Error("timeout"));
+    const page = buildPage(waitFor);
 
     await expect(assertRouteAccessible(page, "https://app.example.com", "/schedule", {
       readySelector: 'button[aria-label="Day view"]',
       timeoutMs: 100,
     })).rejects.toThrow('readiness selector was not visible: button[aria-label="Day view"]');
+
+    expect(page.goto).toHaveBeenCalledTimes(3);
+    expect(waitFor).toHaveBeenCalledTimes(3);
   });
 });

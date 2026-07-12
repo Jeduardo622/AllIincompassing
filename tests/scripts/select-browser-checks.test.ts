@@ -120,6 +120,20 @@ describe('select-browser-checks', () => {
     ]);
   });
 
+  it('requires hosted auth smoke when the shared Playwright route helper changes', () => {
+    const selection = runSelector('--changed-file', 'scripts/lib/playwright-smoke.ts');
+
+    expect(selection.tier0Required).toBe(true);
+    expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.tier0Specs).toEqual([
+      'cypress/e2e/routes_auth.cy.ts',
+      'cypress/e2e/routes_schedule.cy.ts',
+    ]);
+    expect(selection.reasons).toEqual([
+      'scripts/lib/playwright-smoke.ts: auth/session browser flow',
+    ]);
+  });
+
   it('keeps the PreAuth spec in the default local tier-0 Cypress run', () => {
     const runCypressSource = readFileSync('scripts/run-cypress.ts', 'utf8');
 

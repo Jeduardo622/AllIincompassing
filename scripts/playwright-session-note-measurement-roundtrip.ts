@@ -19,6 +19,7 @@ import {
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
 import { assertNonAiSessionsEnvContract } from "./lib/playwright-nonai-sessions-contract";
+import { openScheduleSessionModalFromCalendar } from "./lib/playwright-schedule-session-modal";
 import {
   bookSession,
   cancelSession,
@@ -185,117 +186,6 @@ const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): P
   } finally {
     clearTimeout(timeoutHandle);
   }
-};
-
-const openScheduleFiltersIfCollapsed = async (page: Page): Promise<void> => {
-  const filterDetails = page.locator("details").filter({ has: page.locator("#client-filter") }).first();
-  const exists = await filterDetails
-    .waitFor({ state: "attached", timeout: 2_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!exists) {
-    return;
-  }
-
-  const isOpen = await filterDetails.evaluate((node) => (node instanceof HTMLDetailsElement ? node.open : true));
-  if (!isOpen) {
-    await filterDetails.locator(":scope > summary").click();
-  }
-  await page.locator("select#client-filter").waitFor({ state: "visible", timeout: 5_000 });
-};
-
-const selectScheduleFilterOptionIfPresent = async (
-  page: Page,
-  selector: string,
-  value: string,
-): Promise<boolean> => {
-  const filter = page.locator(`select${selector}`).first();
-  const exists = await filter
-    .waitFor({ state: "attached", timeout: 5_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!exists) {
-    return false;
-  }
-
-  const deadline = Date.now() + 12_000;
-  while (Date.now() < deadline) {
-    const values = await filter.evaluate((select) =>
-      Array.from((select as HTMLSelectElement).options).map((option) => option.value),
-    );
-    if (values.includes(value)) {
-      await filter.selectOption(value);
-      return true;
-    }
-    await page.waitForTimeout(250);
-  }
-
-  return false;
-};
-
-const openEditSessionModalFromCalendar = async (
-  page: Page,
-  scheduleUrl: string,
-  sessionId: string,
-  therapistId: string,
-  clientId: string,
-  sessionStartIso?: string,
-): Promise<void> => {
-  await page.goto(`${scheduleUrl}?_${Date.now()}`, {
-    waitUntil: "networkidle",
-    timeout: 60000,
-  });
-
-  await openScheduleFiltersIfCollapsed(page);
-  const selectedTherapist = await selectScheduleFilterOptionIfPresent(page, "#therapist-filter", therapistId);
-  const selectedClient = await selectScheduleFilterOptionIfPresent(page, "#client-filter", clientId);
-  if (selectedTherapist || selectedClient) {
-    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
-    // Schedule applies filters after a 300 ms debounce; allow that refresh to render before card lookup.
-    await page.waitForTimeout(750);
-  }
-
-  let visitedPeriods = 0;
-  for (let periodAttempt = 0; periodAttempt < 8; periodAttempt += 1) {
-    visitedPeriods = periodAttempt + 1;
-    let sessionCardVisible = false;
-
-    for (let samePeriodAttempt = 0; samePeriodAttempt < 3; samePeriodAttempt += 1) {
-      const sessionCard = page.locator(`[data-session-id="${sessionId}"]`).first();
-      sessionCardVisible = await sessionCard
-        .waitFor({ state: "visible", timeout: samePeriodAttempt === 0 ? 12_000 : 4_000 })
-        .then(() => true)
-        .catch(() => false);
-      if (!sessionCardVisible) {
-        break;
-      }
-
-      try {
-        await sessionCard.scrollIntoViewIfNeeded();
-        await sessionCard.click();
-        const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
-        await dialog.waitFor({ state: "visible", timeout: 12_000 });
-        return;
-      } catch {
-        await page.waitForTimeout(500 + samePeriodAttempt * 250);
-      }
-    }
-
-    if (sessionCardVisible) {
-      continue;
-    }
-
-    const nextPeriodButton = page.getByRole("button", { name: /next period/i }).first();
-    if ((await nextPeriodButton.count()) === 0) {
-      break;
-    }
-    await nextPeriodButton.click();
-    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
-    await page.waitForTimeout(500 + periodAttempt * 250);
-  }
-  throw new Error(
-    `Session modal (Edit Session / Live session) did not open from the rendered schedule card after ${visitedPeriods} schedule period(s). sessionStartIso=${sessionStartIso ?? "unknown"}`,
-  );
 };
 
 const ensureGoalCaptureFieldsVisible = async (dialog: ReturnType<Page["locator"]>, goalId: string): Promise<void> => {
@@ -760,14 +650,9 @@ async function run(): Promise<void> {
     });
 
     await withStepTimeout("open-session-modal-clinical", async () => {
-      await openEditSessionModalFromCalendar(
-        activePage,
-        scheduleUrl,
-        booked.sessionId,
-        booked.therapistId,
-        booked.clientId,
-        booked.startIso,
-      );
+      await openScheduleSessionModalFromCalendar(activePage, scheduleUrl, booked, {
+        allowLockedTherapist: !isTruthy(process.env.PW_ASSERT_ALREADY_STARTED_UI),
+      });
       const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
       await selectFirstOptionIfEmpty(
         editDialog.first().locator('#session-note-auth-select, select[name="session_note_authorization_id"]'),

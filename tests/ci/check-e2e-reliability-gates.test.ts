@@ -202,28 +202,65 @@ describe("check-e2e-reliability-gates", () => {
   test("session note measurement filters the crowded schedule to its booked actor and client", () => {
     const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
     const content = readFileSync(scriptPath, "utf8");
-
-    expect(content).toContain("page.locator(`select${selector}`).first()");
-    expect(content).toContain('selectScheduleFilterOptionIfPresent(page, "#therapist-filter", therapistId)');
-    expect(content).toContain('selectScheduleFilterOptionIfPresent(page, "#client-filter", clientId)');
-    expect(content).toMatch(
-      /await\s+openEditSessionModalFromCalendar\([\s\S]*?booked\.sessionId,[\s\S]*?booked\.therapistId,[\s\S]*?booked\.clientId,[\s\S]*?booked\.startIso/,
+    const helper = readFileSync(
+      path.join(repoRoot, "scripts", "lib", "playwright-schedule-session-modal.ts"),
+      "utf8",
     );
-    expect(content.indexOf('selectScheduleFilterOptionIfPresent(page, "#client-filter", clientId)')).toBeLessThan(
-      content.indexOf('page.locator(`[data-session-id="${sessionId}"]`)'),
+
+    expect(helper).toContain("page.locator(`select${selector}`).first()");
+    expect(helper).toContain('selectExactScheduleFilter(page, "#therapist-filter", target.therapistId');
+    expect(helper).toContain('selectExactScheduleFilter(page, "#client-filter", target.clientId)');
+    expect(content).toContain("openScheduleSessionModalFromCalendar(activePage, scheduleUrl, booked,");
+    expect(helper.indexOf('selectExactScheduleFilter(page, "#client-filter", target.clientId)')).toBeLessThan(
+      helper.indexOf('page.locator(`[data-session-id="${target.sessionId}"]`)'),
     );
   });
 
   test("session note measurement opens collapsed schedule filters before selecting options", () => {
     const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
     const content = readFileSync(scriptPath, "utf8");
-
-    expect(content).toContain('filter({ has: page.locator("#client-filter") })');
-    expect(content).toContain('locator(":scope > summary")');
-    expect(content).toContain('await openScheduleFiltersIfCollapsed(page)');
-    expect(content.indexOf("await openScheduleFiltersIfCollapsed(page)")).toBeLessThan(
-      content.indexOf('selectScheduleFilterOptionIfPresent(page, "#therapist-filter", therapistId)'),
+    const helper = readFileSync(
+      path.join(repoRoot, "scripts", "lib", "playwright-schedule-session-modal.ts"),
+      "utf8",
     );
+
+    expect(helper).toContain('filter({ has: page.locator("#client-filter") })');
+    expect(helper).toContain('locator(":scope > summary")');
+    expect(helper).toContain('await openScheduleFiltersIfCollapsed(page)');
+    expect(helper.indexOf("await openScheduleFiltersIfCollapsed(page)")).toBeLessThan(
+      helper.indexOf('selectExactScheduleFilter(page, "#therapist-filter", target.therapistId'),
+    );
+    expect(content).toContain("openScheduleSessionModalFromCalendar(activePage, scheduleUrl, booked,");
+  });
+
+  test("all rendered Schedule session flows use the shared scoped modal opener", () => {
+    const helperPath = path.join(repoRoot, "scripts", "lib", "playwright-schedule-session-modal.ts");
+    const helper = readFileSync(helperPath, "utf8");
+
+    expect(helper).toContain('select#client-filter');
+    expect(helper).toContain('selectExactScheduleFilter(page, "#therapist-filter", target.therapistId');
+    expect(helper).toContain('button[aria-label="Week view"]');
+    expect(helper).toContain('filter({ has: page.locator("#client-filter") })');
+    expect(helper.indexOf('select#client-filter')).toBeLessThan(
+      helper.indexOf('page.locator(`[data-session-id="${target.sessionId}"]`)'),
+    );
+
+    for (const scriptName of [
+      "playwright-session-lifecycle.ts",
+      "playwright-session-note-measurement-roundtrip.ts",
+      "playwright-session-capture-adhoc-upsert.ts",
+      "playwright-schedule-blocked-close.ts",
+    ]) {
+      const content = readFileSync(path.join(repoRoot, "scripts", scriptName), "utf8");
+      expect(content).toContain('from "./lib/playwright-schedule-session-modal"');
+      expect(content).toContain("openScheduleSessionModalFromCalendar(");
+      expect(content).toContain("allowLockedTherapist: !isTruthy(process.env.PW_ASSERT_ALREADY_STARTED_UI)");
+      expect(content).not.toContain("const openEditSessionModalFromCalendar = async");
+    }
+
+    const blockedClose = readFileSync(path.join(repoRoot, "scripts", "playwright-schedule-blocked-close.ts"), "utf8");
+    expect(blockedClose).not.toContain("scheduleModal=edit");
+    expect(blockedClose).toContain('openScheduleSessionModalFromCalendar(activePage, `${base}/schedule`, booked,');
   });
 
   test("accepts ci:playwright runner invocation semantics", () => {

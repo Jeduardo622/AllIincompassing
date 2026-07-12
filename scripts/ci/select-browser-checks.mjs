@@ -82,10 +82,11 @@ const changedFilesForRange = ({ base, head }) => {
 const matchAny = (file, patterns) => patterns.some((pattern) => pattern.test(file));
 
 const classifyFile = (file) => {
-  if (matchAny(file, [
-    /^scripts\/ci\/select-browser-checks\.mjs$/,
-    /^scripts\/ci\/deploy-session-edge-bundle\.mjs$/,
-  ])) {
+  if (/^scripts\/ci\/select-browser-checks\.mjs$/.test(file)) {
+    return { specs: allSpecKeys, authSmoke: true, reason: "browser CI support script" };
+  }
+
+  if (/^scripts\/ci\/deploy-session-edge-bundle\.mjs$/.test(file)) {
     return { specs: allSpecKeys, authSmoke: false, reason: "browser CI support script" };
   }
 

@@ -187,16 +187,55 @@ const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): P
   }
 };
 
+const selectScheduleFilterOptionIfPresent = async (
+  page: Page,
+  selector: string,
+  value: string,
+): Promise<boolean> => {
+  const filter = page.locator(`select${selector}`).first();
+  const exists = await filter
+    .waitFor({ state: "attached", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) {
+    return false;
+  }
+
+  const deadline = Date.now() + 12_000;
+  while (Date.now() < deadline) {
+    const values = await filter.evaluate((select) =>
+      Array.from((select as HTMLSelectElement).options).map((option) => option.value),
+    );
+    if (values.includes(value)) {
+      await filter.selectOption(value);
+      return true;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  return false;
+};
+
 const openEditSessionModalFromCalendar = async (
   page: Page,
   scheduleUrl: string,
   sessionId: string,
+  therapistId: string,
+  clientId: string,
   sessionStartIso?: string,
 ): Promise<void> => {
   await page.goto(`${scheduleUrl}?_${Date.now()}`, {
     waitUntil: "networkidle",
     timeout: 60000,
   });
+
+  const selectedTherapist = await selectScheduleFilterOptionIfPresent(page, "#therapist-filter", therapistId);
+  const selectedClient = await selectScheduleFilterOptionIfPresent(page, "#client-filter", clientId);
+  if (selectedTherapist || selectedClient) {
+    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
+    // Schedule applies filters after a 300 ms debounce; allow that refresh to render before card lookup.
+    await page.waitForTimeout(750);
+  }
 
   let visitedPeriods = 0;
   for (let periodAttempt = 0; periodAttempt < 8; periodAttempt += 1) {
@@ -703,7 +742,14 @@ async function run(): Promise<void> {
     });
 
     await withStepTimeout("open-session-modal-clinical", async () => {
-      await openEditSessionModalFromCalendar(activePage, scheduleUrl, booked.sessionId, booked.startIso);
+      await openEditSessionModalFromCalendar(
+        activePage,
+        scheduleUrl,
+        booked.sessionId,
+        booked.therapistId,
+        booked.clientId,
+        booked.startIso,
+      );
       const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
       await selectFirstOptionIfEmpty(
         editDialog.first().locator('#session-note-auth-select, select[name="session_note_authorization_id"]'),

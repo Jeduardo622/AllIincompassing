@@ -23,6 +23,7 @@ import {
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
 import { assertNonAiSessionsEnvContract } from "./lib/playwright-nonai-sessions-contract";
+import { openScheduleSessionModalFromCalendar } from "./lib/playwright-schedule-session-modal";
 import {
   bookSession,
   cancelSession,
@@ -240,38 +241,6 @@ async function getSessionOrganizationId(sessionId: string): Promise<string> {
   return data.organization_id;
 }
 
-async function openRenderedSessionCard(page: Page, sessionId: string): Promise<boolean> {
-  const card = page.locator(`[data-session-id="${sessionId}"]`).first();
-  const openCard = async (): Promise<boolean> => {
-    const visible = await card.isVisible().catch(() => false);
-    if (!visible) {
-      return false;
-    }
-    await card.click();
-    const dialog = page.getByRole("dialog", { name: /edit session|live session/i });
-    return dialog.waitFor({ state: "visible", timeout: 30_000 })
-      .then(() => true)
-      .catch(() => false);
-  };
-
-  await page.getByRole("button", { name: /Week view/i }).click().catch(() => undefined);
-  await page.waitForLoadState("networkidle").catch(() => undefined);
-  if (await openCard()) {
-    return true;
-  }
-
-  for (let step = 0; step < 8; step += 1) {
-    await page.getByRole("button", { name: /Next period/i }).click();
-    await page.waitForLoadState("networkidle").catch(() => undefined);
-    await page.waitForTimeout(500);
-    if (await openCard()) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 async function run(): Promise<void> {
   loadPlaywrightEnv();
   const base = getEnv("PW_BASE_URL", "https://app.allincompassing.ai");
@@ -444,52 +413,20 @@ async function run(): Promise<void> {
       }));
 
     await withStepTimeout("open-edit-modal", async () => {
-      let lastUrl = activePage.url();
-      let lastBodyText = "";
-
-      // Prefer URL-driven modal state on deploy previews. Netlify's preview drawer
-      // can overlay the schedule grid and swallow rendered-card clicks.
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const expiresAt = Date.now() + 30 * 60 * 1000;
-        const editUrl = `${base}/schedule?scheduleModal=edit&scheduleSessionId=${encodeURIComponent(
-          booked.sessionId,
-        )}&scheduleExp=${expiresAt}`;
-
-        await activePage.goto(editUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
-        await activePage.waitForLoadState("networkidle").catch(() => undefined);
-
-        const dialog = activePage.getByRole("dialog", { name: /edit session|live session/i });
-        const dialogVisible = await dialog.waitFor({ state: "visible", timeout: 30_000 })
-          .then(() => true)
-          .catch(() => false);
-        lastUrl = activePage.url();
-        lastBodyText = await activePage.evaluate(() => document.body.innerText.slice(0, 1000)).catch(() => "");
-
-        if (!dialogVisible) {
-          console.warn(
-            `[blocked-close] edit modal did not open on attempt ${attempt}; url=${lastUrl}`,
-          );
-          await activePage.waitForTimeout(1000);
-          continue;
-        }
-
+      try {
+        await openScheduleSessionModalFromCalendar(activePage, `${base}/schedule`, booked, {
+          allowLockedTherapist: !isTruthy(process.env.PW_ASSERT_ALREADY_STARTED_UI),
+        });
         await activePage
           .locator('[role="dialog"][data-session-status="in_progress"]')
           .waitFor({ state: "visible", timeout: 90_000 });
         return;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "unknown scoped Schedule opener failure";
+        throw new Error(
+          `Edit modal did not open for browser-visible in-progress session ${booked.sessionId}: ${detail}`,
+        );
       }
-
-      const openedFromRenderedCard = await openRenderedSessionCard(activePage, booked.sessionId);
-      if (openedFromRenderedCard) {
-        await activePage
-          .locator('[role="dialog"][data-session-status="in_progress"]')
-          .waitFor({ state: "visible", timeout: 90_000 });
-        return;
-      }
-
-      throw new Error(
-        `Edit modal did not open for browser-visible in-progress session ${booked.sessionId}; url=${lastUrl}; body=${JSON.stringify(lastBodyText)}`,
-      );
     });
 
     await withStepTimeout("assert-api-session-in-progress", async () => {

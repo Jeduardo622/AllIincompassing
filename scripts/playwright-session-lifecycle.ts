@@ -18,6 +18,7 @@ import {
 import {
   assertNonAiSessionsEnvContract,
 } from "./lib/playwright-nonai-sessions-contract";
+import { openScheduleSessionModalFromCalendar } from "./lib/playwright-schedule-session-modal";
 
 /** Canonical /schedule + SessionModal regression: book → Start Session → terminal close (no-show/completed). */
 
@@ -717,83 +718,6 @@ export const buildBookingCandidateStarts = (
   }
 
   return candidates;
-};
-
-const selectScheduleFilterOptionIfPresent = async (
-  page: Page,
-  selector: string,
-  value: string,
-): Promise<boolean> => {
-  const filter = page.locator(`select${selector}`).first();
-  const exists = await filter
-    .waitFor({ state: "attached", timeout: 12_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!exists) {
-    return false;
-  }
-
-  const deadline = Date.now() + 12_000;
-  while (Date.now() < deadline) {
-    const values = await filter.evaluate((select) =>
-      Array.from((select as HTMLSelectElement).options).map((option) => option.value),
-    );
-    if (values.includes(value)) {
-      await filter.selectOption(value);
-      return true;
-    }
-    await page.waitForTimeout(250);
-  }
-
-  return false;
-};
-
-const openEditSessionModalFromCalendar = async (
-  page: Page,
-  scheduleUrl: string,
-  ids: LifecycleIds,
-): Promise<void> => {
-  await page.goto(`${scheduleUrl}?_${Date.now()}`, {
-    waitUntil: "networkidle",
-    timeout: 60000,
-  });
-
-  const selectedTherapist = await selectScheduleFilterOptionIfPresent(page, "#therapist-filter", ids.therapistId);
-  const selectedClient = await selectScheduleFilterOptionIfPresent(page, "#client-filter", ids.clientId);
-  if (selectedTherapist || selectedClient) {
-    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
-    await page.waitForTimeout(500);
-  }
-
-  let visitedPeriods = 0;
-  for (let periodAttempt = 0; periodAttempt < 8; periodAttempt += 1) {
-    visitedPeriods = periodAttempt + 1;
-    const sessionCard = page.locator(`[data-session-id="${ids.sessionId}"]`).first();
-    const visible = await sessionCard
-      .waitFor({ state: "visible", timeout: periodAttempt === 0 ? 12_000 : 5_000 })
-      .then(() => true)
-      .catch(() => false);
-
-    if (visible) {
-      await sessionCard.scrollIntoViewIfNeeded();
-      await sessionCard.click();
-      const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
-      await dialog.waitFor({ state: "visible", timeout: 12_000 });
-      return;
-    }
-
-    const nextPeriodButton = page.getByRole("button", { name: /next period/i }).first();
-    if ((await nextPeriodButton.count()) === 0) {
-      break;
-    }
-    await nextPeriodButton.click();
-    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
-    await page.waitForTimeout(500 + periodAttempt * 250);
-  }
-
-  throw new Error(
-    `Session modal (Edit Session / Live session) did not open from the rendered schedule card after ${visitedPeriods} schedule period(s). sessionStartIso=${ids.startIso}`,
-  );
 };
 
 async function openSessionModal(page: Page) {
@@ -1642,7 +1566,9 @@ async function startSessionViaScheduleModal(
   token: string,
   strictMode: boolean,
 ): Promise<void> {
-  await openEditSessionModalFromCalendar(page, scheduleUrl, ids);
+  await openScheduleSessionModalFromCalendar(page, scheduleUrl, ids, {
+    allowLockedTherapist: !isTruthy(process.env.PW_ASSERT_ALREADY_STARTED_UI),
+  });
   const startButton = page.getByRole("button", { name: /^Start Session$/i });
   await startButton.waitFor({ state: "visible", timeout: 20_000 });
   await expectStartButtonEnabled(page, startButton);
@@ -1707,7 +1633,9 @@ async function markTerminalViaScheduleModal(
   actorUserId: string,
   strictMode: boolean,
 ): Promise<void> {
-  await openEditSessionModalFromCalendar(page, scheduleUrl, ids);
+  await openScheduleSessionModalFromCalendar(page, scheduleUrl, ids, {
+    allowLockedTherapist: !isTruthy(process.env.PW_ASSERT_ALREADY_STARTED_UI),
+  });
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
   await page.locator("#status-select").selectOption(terminalStatus);
   page.once("dialog", (dialog) => {

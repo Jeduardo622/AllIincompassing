@@ -199,6 +199,21 @@ describe("check-e2e-reliability-gates", () => {
     expect(resolveOpportunityCountForMetric(8, Number.NaN)).toBe(8);
   });
 
+  test("session note measurement filters the crowded schedule to its booked actor and client", () => {
+    const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
+    const content = readFileSync(scriptPath, "utf8");
+
+    expect(content).toContain("page.locator(`select${selector}`).first()");
+    expect(content).toContain('selectScheduleFilterOptionIfPresent(page, "#therapist-filter", therapistId)');
+    expect(content).toContain('selectScheduleFilterOptionIfPresent(page, "#client-filter", clientId)');
+    expect(content).toMatch(
+      /await\s+openEditSessionModalFromCalendar\([\s\S]*?booked\.sessionId,[\s\S]*?booked\.therapistId,[\s\S]*?booked\.clientId,[\s\S]*?booked\.startIso/,
+    );
+    expect(content.indexOf('selectScheduleFilterOptionIfPresent(page, "#client-filter", clientId)')).toBeLessThan(
+      content.indexOf('page.locator(`[data-session-id="${sessionId}"]`)'),
+    );
+  });
+
   test("accepts ci:playwright runner invocation semantics", () => {
     const fixtureRoot = createFixture(`tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`);
 

@@ -182,9 +182,9 @@ export const assertRouteAccessible = async (
   const timeoutMs = options?.timeoutMs ?? 15000;
   const maxAttempts = 3;
   let lastPath = "";
+  await page.goto(`${baseUrl}${routePath}`, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.waitForLoadState("networkidle").catch(() => undefined);
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    await page.goto(`${baseUrl}${routePath}`, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForLoadState("networkidle").catch(() => undefined);
     const pathname = new URL(page.url()).pathname.toLowerCase();
     lastPath = pathname;
 
@@ -213,6 +213,8 @@ export const assertRouteAccessible = async (
     // Give auth/profile hydration a bounded chance before hard-failing.
     if (attempt < maxAttempts && pathname.includes("/unauthorized")) {
       await page.waitForTimeout(1500);
+      await page.goto(`${baseUrl}${routePath}`, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.waitForLoadState("networkidle").catch(() => undefined);
       continue;
     }
     break;

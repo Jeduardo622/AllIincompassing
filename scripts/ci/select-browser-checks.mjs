@@ -86,7 +86,7 @@ const classifyFile = (file) => {
     /^scripts\/ci\/select-browser-checks\.mjs$/,
     /^scripts\/ci\/deploy-session-edge-bundle\.mjs$/,
   ])) {
-    return { specs: allSpecKeys, authSmoke: false, reason: "browser CI support script" };
+    return { specs: allSpecKeys, authSmoke: true, reason: "browser CI support script" };
   }
 
   if (matchAny(file, [

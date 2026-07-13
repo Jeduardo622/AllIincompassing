@@ -122,3 +122,20 @@
 - focused green proof:
   - Node booking, role payload, edge authorization, and hold/confirm shared-helper contract tests -> pass, 5 files / 49 tests
 - deployment requirement: the shared edge bundle deploys only on a push to `main`; PR checks cannot serve as final production evidence. After human merge, require `deploy-session-edge`, dedicated BCBA lifecycle, measurement roundtrip, and zero-residue cleanup to pass on the main workflow.
+
+### PR #775 main-proof database follow-up
+
+- main run: `29265715986` on merge commit `44a3f92ad08650cf098dde6142e74e58216cc7ad`
+- passed before the decisive failure:
+  - main-only `deploy-session-edge`, including new `sessions-hold` and `sessions-confirm` bundles
+  - ordinary auth smoke and the full session browser smoke gate
+  - synthetic BCBA provision and both cleanup steps
+- decisive failure: the dedicated BCBA lifecycle repeatedly received 403 from `sessions-hold` and timed out in `book-session`; hosted edge logs confirmed the 403 responses.
+- root cause: the edge helper accepted exact persisted `bcba`, but the privileged seven-argument `acquire_session_hold` RPC repeated the role check with only therapist, admin, and super-admin.
+- bounded fix: one forward migration adds exact `bcba` to that existing target-therapist-scoped role check, fails closed unless the therapist, client, and optional session share the same active organization boundary, and preserves the remaining hold/conflict behavior plus service-role-only execution.
+- non-goals: no `confirm_session_hold` rewrite, RLS/grant widening, role aliases, edge-function changes, or generated type changes.
+- red/green proof:
+  - red: focused migration contract failed because the forward migration was absent
+  - green: migration contract plus shared edge authorization tests passed, 2 files / 7 tests
+- cleanup proof from the failed main run: the BCBA auth actor was deleted with `profiles=0`, `user_roles=0`, and `user_therapist_links=0` residual rows.
+- remaining proof: apply the migration through the human-reviewed main flow, then require the dedicated BCBA lifecycle and measurement roundtrip to pass with another zero-residue cleanup.

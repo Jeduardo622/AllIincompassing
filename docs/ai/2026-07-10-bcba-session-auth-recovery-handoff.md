@@ -154,3 +154,27 @@
 - Hosted structural verification confirms both active-status predicates, `SECURITY DEFINER`, and fixed `search_path=public`.
 - Focused migration, runtime-parity, and edge authorization tests pass, 3 files / 17 tests.
 - Remaining proof: fresh PR CI and review, human merge, then the main-run dedicated BCBA lifecycle, measurement roundtrip, and zero-residue cleanup.
+
+### Post-merge Supabase Validate fixture repair
+
+- main run: Supabase Validate `29276383954`, job `86906395257`
+- failure scope: five live RLS suites failed because their shared therapist fixture omitted the schema-required `first_name` and `last_name`; the security RLS suite also reused timestamp-only auth emails while the test environment freezes `Date`, causing `email_exists` on later runs.
+- classification: `low-risk autonomous`
+- lane: `standard`
+- bounded fix:
+  - seed the required therapist name fields in the shared live RLS harness and security RLS fixtures
+  - derive shared harness record emails from fixture UUIDs
+  - use `randomUUID()` for security-suite auth identities so repeated and parallel runs do not collide when time is frozen
+  - add a source contract test covering the required therapist fields and run-unique identity inputs
+- non-goals: no production schema, migration, RLS, grant, auth, runtime, workflow, or application behavior changes
+- local verification:
+  - red proof: the new fixture contract failed 5/5 assertions before the repair
+  - focused fixture contract -> pass, 1 file / 5 tests
+  - `npm run ci:check-focused` -> pass
+  - `npm run lint` -> pass
+  - `npm run typecheck` -> pass
+  - `npm run validate:tenant` -> pass
+  - `npm run build` -> pass
+  - `npm run test:ci` -> fixture contract and 384 files passed; aggregate failed only the existing Windows CRLF-sensitive workflow-text assertion in `check-e2e-reliability-gates.test.ts` (2681 tests passed, 1 failed, 3 skipped)
+- residual risk: the affected live database suites require hosted credentials, so the repair remains unproven until Supabase Validate reruns successfully on the focused PR.
+- next proof: merge the fixture-only repair after hosted Supabase Validate passes, then require the fresh main workflow to pass the dedicated BCBA lifecycle, measurement roundtrip, and zero-residue cleanup.

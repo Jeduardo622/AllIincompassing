@@ -484,11 +484,43 @@ type OrgRoleResolution = Awaited<ReturnType<typeof resolveOrgAndRoleWithStatus>>
 export async function resolveSchedulingOrgAndRoleWithStatus(
   accessToken: string,
   therapistId: string,
-): Promise<OrgRoleResolution & { resolvedViaServiceRole: boolean }> {
+): Promise<OrgRoleResolution & { isBcba: boolean; resolvedViaServiceRole: boolean }> {
   const roleResolution = await resolveOrgAndRoleWithStatus(accessToken);
-  if (roleResolution.upstreamError || roleResolution.organizationId) {
+  if (roleResolution.upstreamError) {
     return {
       ...roleResolution,
+      isBcba: false,
+      resolvedViaServiceRole: false,
+    };
+  }
+
+  if (roleResolution.organizationId) {
+    const alreadyAuthorizedWithoutBcba =
+      roleResolution.isAdmin ||
+      roleResolution.isSuperAdmin ||
+      (roleResolution.isOrgMember && !roleResolution.isTherapist);
+    if (alreadyAuthorizedWithoutBcba) {
+      return {
+        ...roleResolution,
+        isBcba: false,
+        resolvedViaServiceRole: false,
+      };
+    }
+
+    const { supabaseUrl, anonKey } = getSupabaseConfig();
+    const bcbaResult = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+      method: "POST",
+      headers: {
+        ...JSON_HEADERS,
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ role_name: "bcba", target_organization_id: roleResolution.organizationId }),
+    });
+    return {
+      ...roleResolution,
+      isBcba: bcbaResult.ok && bcbaResult.data === true,
+      upstreamError: !bcbaResult.ok && (bcbaResult.status >= 500 || bcbaResult.status === 0),
       resolvedViaServiceRole: false,
     };
   }
@@ -496,6 +528,7 @@ export async function resolveSchedulingOrgAndRoleWithStatus(
   if (!roleResolution.isSuperAdmin) {
     return {
       ...roleResolution,
+      isBcba: false,
       resolvedViaServiceRole: false,
     };
   }
@@ -504,6 +537,7 @@ export async function resolveSchedulingOrgAndRoleWithStatus(
   if (trimmedTherapistId.length === 0) {
     return {
       ...roleResolution,
+      isBcba: false,
       resolvedViaServiceRole: false,
     };
   }
@@ -533,6 +567,7 @@ export async function resolveSchedulingOrgAndRoleWithStatus(
     return {
       ...roleResolution,
       organizationId: userScopedTherapistRow.organization_id,
+      isBcba: false,
       resolvedViaServiceRole: false,
     };
   }
@@ -541,6 +576,7 @@ export async function resolveSchedulingOrgAndRoleWithStatus(
   if (!serviceRoleKey) {
     return {
       ...roleResolution,
+      isBcba: false,
       upstreamError:
         roleResolution.upstreamError || (!userScopedTherapistResult.ok && userScopedTherapistResult.status >= 500),
       resolvedViaServiceRole: false,
@@ -569,6 +605,7 @@ export async function resolveSchedulingOrgAndRoleWithStatus(
   return {
     ...roleResolution,
     organizationId: resolvedOrganizationId,
+    isBcba: false,
     upstreamError:
       roleResolution.upstreamError ||
       (resolvedOrganizationId === null &&

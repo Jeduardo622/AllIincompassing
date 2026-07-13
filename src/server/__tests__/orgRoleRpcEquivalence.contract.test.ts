@@ -266,6 +266,35 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
     });
   });
 
+  it("checks exact persisted BCBA authority for scheduling within the resolved organization", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse("org-1"))
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(true));
+
+    await expect(resolveSchedulingOrgAndRoleWithStatus(accessToken, "therapist-1")).resolves.toEqual({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isBcba: true,
+      isSuperAdmin: false,
+      upstreamError: false,
+      resolvedViaServiceRole: false,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(7);
+    const bcbaInit = fetchSpy.mock.calls[6]?.[1] as RequestInit;
+    expect(JSON.parse(String(bcbaInit.body))).toEqual({
+      role_name: "bcba",
+      target_organization_id: "org-1",
+    });
+    expect((bcbaInit.headers as Record<string, string>).Authorization).toBe(`Bearer ${accessToken}`);
+  });
+
   it("derives scheduling org context from the target therapist for super-admins without direct org context", async () => {
     fetchSpy
       .mockResolvedValueOnce(jsonResponse(true))
@@ -277,6 +306,7 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       isTherapist: false,
       isAdmin: false,
       isOrgMember: false,
+      isBcba: false,
       isSuperAdmin: true,
       upstreamError: false,
       resolvedViaServiceRole: false,
@@ -300,6 +330,7 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       isTherapist: false,
       isAdmin: false,
       isOrgMember: false,
+      isBcba: false,
       isSuperAdmin: true,
       upstreamError: false,
       resolvedViaServiceRole: true,
@@ -321,6 +352,7 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       isTherapist: false,
       isAdmin: false,
       isOrgMember: false,
+      isBcba: false,
       isSuperAdmin: true,
       upstreamError: false,
       resolvedViaServiceRole: true,
@@ -338,6 +370,7 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       isTherapist: false,
       isAdmin: false,
       isOrgMember: false,
+      isBcba: false,
       isSuperAdmin: true,
       upstreamError: false,
       resolvedViaServiceRole: false,

@@ -97,6 +97,7 @@ async function assertBookRequestScope(
     isTherapist,
     isAdmin,
     isOrgMember,
+    isBcba,
     isSuperAdmin,
     upstreamError: roleUpstreamError,
     resolvedViaServiceRole,
@@ -122,7 +123,7 @@ async function assertBookRequestScope(
   const canUseServiceRoleScopeFallback = isSuperAdmin && serviceRoleHeaders !== null;
   const usingServiceRoleScope = resolvedViaServiceRole;
 
-  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember)) {
+  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember && !isBcba)) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
@@ -134,7 +135,7 @@ async function assertBookRequestScope(
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
-  if (isTherapist && !isAdmin && !isSuperAdmin && body.session.therapist_id !== currentUserId) {
+  if (isTherapist && !isAdmin && !isSuperAdmin && !isBcba && body.session.therapist_id !== currentUserId) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 

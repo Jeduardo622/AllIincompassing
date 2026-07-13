@@ -103,10 +103,22 @@
   - `npm run validate:tenant` -> pass
   - `npm run test:routes:tier0` -> first run had one unrelated client-root redirect timing failure; bounded rerun passed, 7 specs / 220 tests
   - `npm run build` -> pass
-  - `npm run test:ci` -> changed booking tests pass; aggregate local run reached 381 passed files / 2667 passed tests and failed only the existing Windows CRLF-sensitive workflow-text assertion in `check-e2e-reliability-gates.test.ts`
+  - `npm run test:ci` -> changed booking and edge authorization tests pass; latest aggregate local run reached 382 passed files / 2671 passed tests and failed only the existing Windows CRLF-sensitive workflow-text assertion in `check-e2e-reliability-gates.test.ts`
 - blocked checks:
   - `npm run verify:local` -> not repeated because its `test:ci` stage deterministically reaches the unrelated Windows-only CRLF assertion above
   - credential-backed Playwright proof -> required on the hosted main workflow after human review and merge
 - reviewer: security/code review completed with no blocking authorization findings
 - result: `pass-with-blocked-checks`
 - residual risk: the booking path performs one additional fail-closed exact-role RPC when BCBA authority may be needed; final production proof remains pending until the PR is reviewed, merged, deployed, and the dedicated BCBA lifecycle and measurement checks pass with zero-residue cleanup
+
+### PR #774 review follow-up
+
+- P1 downstream edge authorization: `sessions-hold` and `sessions-confirm` both use the shared target-therapist authorization helper, which still omitted exact `bcba`; the helper now includes persisted BCBA without changing the target therapist or organization scope.
+- P2 therapist self-booking availability: exact BCBA authority is now queried in the Node booking boundary only when base roles do not authorize the caller or a therapist is booking another therapist row. Therapist self-booking no longer depends on the BCBA RPC.
+- cancellation non-goal: `sessions-cancel` also imports the shared helper, but its earlier explicit cancellation-role gate still excludes BCBA-only callers, so cancellation authority is unchanged.
+- red proof:
+  - exact BCBA returned 403 from the shared edge authorization helper
+  - therapist self-booking returned 502 when the unnecessary BCBA RPC returned 503
+- focused green proof:
+  - Node booking, role payload, edge authorization, and hold/confirm shared-helper contract tests -> pass, 5 files / 49 tests
+- deployment requirement: the shared edge bundle deploys only on a push to `main`; PR checks cannot serve as final production evidence. After human merge, require `deploy-session-edge`, dedicated BCBA lifecycle, measurement roundtrip, and zero-residue cleanup to pass on the main workflow.

@@ -16,6 +16,7 @@ import {
   currentUserCanManageLockedTrialEvent,
   currentUserCanManageProgramsGoals,
   currentUserCanTakeClientData,
+  currentUserIsBcbaForOrg,
   getSupabaseConfig,
   resolveOrgAndRoleWithStatus,
   resolveSchedulingOrgAndRoleWithStatus,
@@ -100,6 +101,24 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
     expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/rest/v1/rpc/current_user_can_manage_programs_goals");
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(init.body))).toEqual({ target_organization_id: "org-1" });
+  });
+
+  it("checks exact persisted BCBA authority within the requested organization", async () => {
+    fetchSpy.mockResolvedValueOnce(jsonResponse(true));
+
+    await expect(currentUserIsBcbaForOrg(accessToken, "org-1")).resolves.toEqual({
+      allowed: true,
+      upstreamError: false,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/rest/v1/rpc/user_has_role_for_org");
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({
+      role_name: "bcba",
+      target_organization_id: "org-1",
+    });
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${accessToken}`);
   });
 
   it("checks trial-event capture and lock helpers through exposed public RPC wrappers", async () => {
@@ -266,35 +285,6 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
     });
   });
 
-  it("checks exact persisted BCBA authority for scheduling within the resolved organization", async () => {
-    fetchSpy
-      .mockResolvedValueOnce(jsonResponse(false))
-      .mockResolvedValueOnce(jsonResponse("org-1"))
-      .mockResolvedValueOnce(jsonResponse(false))
-      .mockResolvedValueOnce(jsonResponse(false))
-      .mockResolvedValueOnce(jsonResponse(false))
-      .mockResolvedValueOnce(jsonResponse(false))
-      .mockResolvedValueOnce(jsonResponse(true));
-
-    await expect(resolveSchedulingOrgAndRoleWithStatus(accessToken, "therapist-1")).resolves.toEqual({
-      organizationId: "org-1",
-      isTherapist: false,
-      isAdmin: false,
-      isOrgMember: false,
-      isBcba: true,
-      isSuperAdmin: false,
-      upstreamError: false,
-      resolvedViaServiceRole: false,
-    });
-    expect(fetchSpy).toHaveBeenCalledTimes(7);
-    const bcbaInit = fetchSpy.mock.calls[6]?.[1] as RequestInit;
-    expect(JSON.parse(String(bcbaInit.body))).toEqual({
-      role_name: "bcba",
-      target_organization_id: "org-1",
-    });
-    expect((bcbaInit.headers as Record<string, string>).Authorization).toBe(`Bearer ${accessToken}`);
-  });
-
   it("derives scheduling org context from the target therapist for super-admins without direct org context", async () => {
     fetchSpy
       .mockResolvedValueOnce(jsonResponse(true))
@@ -306,7 +296,6 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       isTherapist: false,
       isAdmin: false,
       isOrgMember: false,
-      isBcba: false,
       isSuperAdmin: true,
       upstreamError: false,
       resolvedViaServiceRole: false,
@@ -330,7 +319,6 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       isTherapist: false,
       isAdmin: false,
       isOrgMember: false,
-      isBcba: false,
       isSuperAdmin: true,
       upstreamError: false,
       resolvedViaServiceRole: true,
@@ -352,7 +340,6 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       isTherapist: false,
       isAdmin: false,
       isOrgMember: false,
-      isBcba: false,
       isSuperAdmin: true,
       upstreamError: false,
       resolvedViaServiceRole: true,
@@ -370,7 +357,6 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       isTherapist: false,
       isAdmin: false,
       isOrgMember: false,
-      isBcba: false,
       isSuperAdmin: true,
       upstreamError: false,
       resolvedViaServiceRole: false,

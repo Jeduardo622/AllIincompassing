@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 
-type RoleName = "therapist" | "admin" | "super_admin";
+type RoleName = "therapist" | "admin" | "super_admin" | "bcba";
 
 interface AuthorizationFailure {
   status: number;
@@ -23,7 +23,7 @@ export async function evaluateTherapistAuthorization(
   client: SupabaseClient,
   therapistId: string,
 ): Promise<TherapistAuthorizationResult> {
-  const roles: RoleName[] = ["therapist", "admin", "super_admin"];
+  const roles: RoleName[] = ["therapist", "admin", "super_admin", "bcba"];
 
   for (const role of roles) {
     const { data, error } = await client.rpc("user_has_role_for_org", {

@@ -277,6 +277,19 @@ describe("check-e2e-reliability-gates", () => {
     expect(lifecycle).not.toContain("document.body.innerText");
   });
 
+  test("synthetic BCBA provisioning keeps authenticated preflight and unconditional cleanup contracts", () => {
+    const workflow = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
+    const provisionStep = workflow.match(/- name: Provision synthetic BCBA smoke actor[\s\S]*?run: npx tsx scripts\/provision-ci-smoke-bcba\.ts\n/)?.[0] ?? "";
+    const cleanupStart = workflow.indexOf("- name: Cleanup synthetic BCBA smoke actor");
+    const cleanupEnd = workflow.indexOf("- name: Cleanup auth smoke admin", cleanupStart);
+    const cleanupStep = cleanupStart >= 0 && cleanupEnd > cleanupStart
+      ? workflow.slice(cleanupStart, cleanupEnd)
+      : "";
+
+    expect(provisionStep).toContain("SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}");
+    expect(cleanupStep).toContain("if: always()");
+  });
+
   test("accepts ci:playwright runner invocation semantics", () => {
     const fixtureRoot = createFixture(`tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`);
 

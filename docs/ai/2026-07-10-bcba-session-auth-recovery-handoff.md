@@ -144,3 +144,13 @@
   - the repo filename was aligned to that canonical hosted version per migration-governance policy; no SQL body changed during the rename
   - hosted structural verification confirmed the exact BCBA role check, active same-org client/session guards, fixed `search_path`, and execute grants limited to `postgres` plus `service_role`
 - remaining proof: merge the human-reviewed repo lineage, then require the dedicated BCBA lifecycle and measurement roundtrip to pass with another zero-residue cleanup.
+
+### PR #776 active-status review follow-up
+
+- Codex P2 finding: the first database boundary required non-deleted therapist/client rows in one organization but did not reject lifecycle statuses such as `inactive`, `on_hold`, or `discharged`.
+- The first hosted migration remains immutable because production already recorded version `20260713180735`; changing only that file would create false version parity without updating the live function.
+- A new forward migration redefines the same seven-argument RPC with exact `t.status = 'active'` and `c.status = 'active'` predicates while preserving same-organization reassignment and service-role-only execution.
+- The forward migration was applied through the Supabase migration API and recorded canonically as `20260713183443_acquire_session_hold_active_status`.
+- Hosted structural verification confirms both active-status predicates, `SECURITY DEFINER`, and fixed `search_path=public`.
+- Focused migration, runtime-parity, and edge authorization tests pass, 3 files / 17 tests.
+- Remaining proof: fresh PR CI and review, human merge, then the main-run dedicated BCBA lifecycle, measurement roundtrip, and zero-residue cleanup.

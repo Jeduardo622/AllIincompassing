@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const migrationPath = resolve(
   process.cwd(),
-  "supabase/migrations/20260713180735_acquire_session_hold_bcba_authorization.sql",
+  "supabase/migrations/20260713183443_acquire_session_hold_active_status.sql",
 );
 
 describe("acquire_session_hold BCBA authorization migration", () => {
@@ -51,5 +51,24 @@ describe("acquire_session_hold BCBA authorization migration", () => {
     expect(optionalSessionGuard).not.toContain("s.therapist_id = p_therapist_id");
     expect(optionalSessionGuard).not.toContain("s.client_id = p_client_id");
     expect(sql.match(/'error_code', 'forbidden'/g)).toHaveLength(4);
+  });
+
+  it("requires active therapist and client rows at the hold boundary", () => {
+    const therapistBoundary = sql.match(
+      /select t\.organization_id into v_target_organization_id[\s\S]*?;/,
+    )?.[0];
+    expect(therapistBoundary).toContain("t.id = p_therapist_id");
+    expect(therapistBoundary).toContain("t.status = 'active'");
+    expect(therapistBoundary).toContain("t.deleted_at is null");
+
+    const clientBoundary = sql.match(
+      /if v_target_organization_id is null[\s\S]*?or not exists \([\s\S]*?from clients c[\s\S]*?\) then/,
+    )?.[0];
+    expect(clientBoundary).toContain("c.id = p_client_id");
+    expect(clientBoundary).toContain(
+      "c.organization_id = v_target_organization_id",
+    );
+    expect(clientBoundary).toContain("c.status = 'active'");
+    expect(clientBoundary).toContain("c.deleted_at is null");
   });
 });

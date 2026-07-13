@@ -122,3 +122,35 @@
 - focused green proof:
   - Node booking, role payload, edge authorization, and hold/confirm shared-helper contract tests -> pass, 5 files / 49 tests
 - deployment requirement: the shared edge bundle deploys only on a push to `main`; PR checks cannot serve as final production evidence. After human merge, require `deploy-session-edge`, dedicated BCBA lifecycle, measurement roundtrip, and zero-residue cleanup to pass on the main workflow.
+
+### PR #775 main-proof database follow-up
+
+- main run: `29265715986` on merge commit `44a3f92ad08650cf098dde6142e74e58216cc7ad`
+- passed before the decisive failure:
+  - main-only `deploy-session-edge`, including new `sessions-hold` and `sessions-confirm` bundles
+  - ordinary auth smoke and the full session browser smoke gate
+  - synthetic BCBA provision and both cleanup steps
+- decisive failure: the dedicated BCBA lifecycle repeatedly received 403 from `sessions-hold` and timed out in `book-session`; hosted edge logs confirmed the 403 responses.
+- root cause: the edge helper accepted exact persisted `bcba`, but the privileged seven-argument `acquire_session_hold` RPC repeated the role check with only therapist, admin, and super-admin.
+- bounded fix: one forward migration adds exact `bcba` to that existing target-therapist-scoped role check, fails closed unless the therapist, client, and optional session share the same active organization boundary, and preserves the remaining hold/conflict behavior plus service-role-only execution.
+- non-goals: no `confirm_session_hold` rewrite, RLS/grant widening, role aliases, edge-function changes, or generated type changes.
+- red/green proof:
+  - red: focused migration contract failed because the forward migration was absent
+  - green: migration contract plus shared edge authorization tests passed, 2 files / 7 tests
+- cleanup proof from the failed main run: the BCBA auth actor was deleted with `profiles=0`, `user_roles=0`, and `user_therapist_links=0` residual rows.
+- PR #776 hosted migration promotion:
+  - the Supabase preview applied the migration, but the PR runtime-parity job correctly failed because the production ledger was still missing it
+  - the exact reviewed migration was applied through the canonical Supabase migration API and recorded as `20260713180735_acquire_session_hold_bcba_authorization`
+  - the repo filename was aligned to that canonical hosted version per migration-governance policy; no SQL body changed during the rename
+  - hosted structural verification confirmed the exact BCBA role check, active same-org client/session guards, fixed `search_path`, and execute grants limited to `postgres` plus `service_role`
+- remaining proof: merge the human-reviewed repo lineage, then require the dedicated BCBA lifecycle and measurement roundtrip to pass with another zero-residue cleanup.
+
+### PR #776 active-status review follow-up
+
+- Codex P2 finding: the first database boundary required non-deleted therapist/client rows in one organization but did not reject lifecycle statuses such as `inactive`, `on_hold`, or `discharged`.
+- The first hosted migration remains immutable because production already recorded version `20260713180735`; changing only that file would create false version parity without updating the live function.
+- A new forward migration redefines the same seven-argument RPC with exact `t.status = 'active'` and `c.status = 'active'` predicates while preserving same-organization reassignment and service-role-only execution.
+- The forward migration was applied through the Supabase migration API and recorded canonically as `20260713183443_acquire_session_hold_active_status`.
+- Hosted structural verification confirms both active-status predicates, `SECURITY DEFINER`, and fixed `search_path=public`.
+- Focused migration, runtime-parity, and edge authorization tests pass, 3 files / 17 tests.
+- Remaining proof: fresh PR CI and review, human merge, then the main-run dedicated BCBA lifecycle, measurement roundtrip, and zero-residue cleanup.

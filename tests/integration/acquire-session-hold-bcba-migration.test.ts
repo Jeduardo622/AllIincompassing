@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const migrationPath = resolve(
   process.cwd(),
-  "supabase/migrations/20260713190000_acquire_session_hold_bcba_authorization.sql",
+  "supabase/migrations/20260713180735_acquire_session_hold_bcba_authorization.sql",
 );
 
 describe("acquire_session_hold BCBA authorization migration", () => {

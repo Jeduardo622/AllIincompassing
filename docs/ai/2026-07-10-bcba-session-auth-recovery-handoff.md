@@ -138,4 +138,9 @@
   - red: focused migration contract failed because the forward migration was absent
   - green: migration contract plus shared edge authorization tests passed, 2 files / 7 tests
 - cleanup proof from the failed main run: the BCBA auth actor was deleted with `profiles=0`, `user_roles=0`, and `user_therapist_links=0` residual rows.
-- remaining proof: apply the migration through the human-reviewed main flow, then require the dedicated BCBA lifecycle and measurement roundtrip to pass with another zero-residue cleanup.
+- PR #776 hosted migration promotion:
+  - the Supabase preview applied the migration, but the PR runtime-parity job correctly failed because the production ledger was still missing it
+  - the exact reviewed migration was applied through the canonical Supabase migration API and recorded as `20260713180735_acquire_session_hold_bcba_authorization`
+  - the repo filename was aligned to that canonical hosted version per migration-governance policy; no SQL body changed during the rename
+  - hosted structural verification confirmed the exact BCBA role check, active same-org client/session guards, fixed `search_path`, and execute grants limited to `postgres` plus `service_role`
+- remaining proof: merge the human-reviewed repo lineage, then require the dedicated BCBA lifecycle and measurement roundtrip to pass with another zero-residue cleanup.

@@ -115,6 +115,8 @@ let orgAContext: TenantContext | null = null;
 let orgBContext: TenantContext | null = null;
 let adminContext: AdminContext | null = null;
 let otherAdminContext: AdminContext | null = null;
+let orgAId = '';
+let orgBId = '';
 
 const createdLocationIds: string[] = [];
 const createdServiceLineIds: string[] = [];
@@ -150,6 +152,7 @@ const createdAuthorizationServiceIds: string[] = [];
 const createdClientSessionNoteIds: string[] = [];
 const createdClientNoteIds: string[] = [];
 const createdExtraTherapistIds: string[] = [];
+const createdFixtureAuthUserIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
 let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
@@ -189,6 +192,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   }
 
   const userId = createdUser.user.id;
+  createdFixtureAuthUserIds.push(userId);
   const therapistId = userId;
 
   const { error: therapistInsertError } = await serviceClient.from('therapists').insert({
@@ -207,8 +211,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   }
 
   const assignRoleResult = await serviceClient.rpc('assign_therapist_role', {
-    user_email: email,
-    therapist_id: therapistId,
+    p_therapist_id: therapistId,
   });
 
   if (assignRoleResult.error) {
@@ -232,6 +235,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   }
 
   const clientUserId = createdClientUser.user.id;
+  createdFixtureAuthUserIds.push(clientUserId);
 
   await serviceClient.from('profiles').update({ role: 'client' }).eq('id', clientUserId);
 
@@ -300,6 +304,7 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
   }
 
   const userId = createdUser.user.id;
+  createdFixtureAuthUserIds.push(userId);
 
   const assignResult = await serviceClient.rpc('assign_admin_role', {
     user_email: email,
@@ -1000,8 +1005,27 @@ beforeAll(async () => {
   }
 
   runTests = true;
-  const orgAId = randomUUID();
-  const orgBId = randomUUID();
+  orgAId = randomUUID();
+  orgBId = randomUUID();
+  const organizationInsert = await serviceClient
+    .from('organizations')
+    .insert([
+      {
+        id: orgAId,
+        name: 'Security RLS Organization A',
+        slug: `security-rls-org-a-${orgAId}`,
+      },
+      {
+        id: orgBId,
+        name: 'Security RLS Organization B',
+        slug: `security-rls-org-b-${orgBId}`,
+      },
+    ]);
+
+  if (organizationInsert.error) {
+    throw organizationInsert.error;
+  }
+
   orgAContext = await createTenantFixture('orga', orgAId);
   orgBContext = await createTenantFixture('orgb', orgBId);
   adminContext = await createAdminFixture(orgAId);
@@ -1505,6 +1529,10 @@ afterAll(async () => {
     }
   }
 
+  if (createdSessionHoldIds.length > 0) {
+    await serviceClient.from('session_holds').delete().in('id', createdSessionHoldIds);
+  }
+
   const contexts = [orgAContext, orgBContext].filter(Boolean) as TenantContext[];
   for (const context of contexts) {
     const userSessionId = userSessionIdsByUser.get(context.userId);
@@ -1531,10 +1559,6 @@ afterAll(async () => {
 
   if (createdTherapistCertificationIds.length > 0) {
     await serviceClient.from('therapist_certifications').delete().in('id', createdTherapistCertificationIds);
-  }
-
-  if (createdSessionHoldIds.length > 0) {
-    await serviceClient.from('session_holds').delete().in('id', createdSessionHoldIds);
   }
 
   if (createdClientGuardianIds.length > 0) {
@@ -1638,6 +1662,13 @@ afterAll(async () => {
       .eq('id', companySettingsId);
   }
 
+  if (orgAId && orgBId) {
+    await serviceClient
+      .from('admin_actions')
+      .delete()
+      .in('organization_id', [orgAId, orgBId]);
+  }
+
   if (adminContext) {
     await serviceClient.auth.admin.deleteUser(adminContext.userId);
   }
@@ -1648,6 +1679,14 @@ afterAll(async () => {
 
   if (createdAdminActionIds.length > 0) {
     await serviceClient.from('admin_actions').delete().in('id', createdAdminActionIds);
+  }
+
+  for (const userId of createdFixtureAuthUserIds) {
+    await serviceClient.auth.admin.deleteUser(userId);
+  }
+
+  if (orgAId && orgBId) {
+    await serviceClient.from('organizations').delete().in('id', [orgAId, orgBId]);
   }
 });
 
@@ -2007,8 +2046,7 @@ describe('row level security for multi-tenant tables', () => {
     }
 
     const assignRoleResult = await serviceClient.rpc('assign_therapist_role', {
-      user_email: otherTherapistEmail,
-      therapist_id: otherTherapistId,
+      p_therapist_id: otherTherapistId,
     });
 
     if (assignRoleResult.error) {

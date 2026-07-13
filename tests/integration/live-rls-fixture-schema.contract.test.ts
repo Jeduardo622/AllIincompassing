@@ -13,6 +13,14 @@ const therapistInsertBodies = (source: string) =>
     (match) => match[1],
   );
 
+const assignTherapistRoleBodies = (source: string) =>
+  Array.from(
+    source.matchAll(
+      /\.rpc\(["']assign_therapist_role["'],\s*\{([\s\S]*?)\n\s*\}\)/g,
+    ),
+    (match) => match[1],
+  );
+
 describe("live RLS fixture schema contract", () => {
   it("runs hosted database validation when live RLS fixtures merge to main", () => {
     const workflow = readRepoFile(".github/workflows/supabase-validate.yml");
@@ -56,6 +64,45 @@ describe("live RLS fixture schema contract", () => {
     expect(source).toContain("${clientId}@example.com");
   });
 
+  it("creates and removes organization rows around shared live RLS data", () => {
+    const source = readRepoFile("tests/integration/_helpers/liveRlsHarness.ts");
+    const organizationInsert = source.indexOf('.from("organizations").insert(');
+    const firstAuthFixture = source.indexOf(
+      "const orgAAdmin = await createTrackedAuthFixture",
+    );
+
+    expect(organizationInsert).toBeGreaterThan(-1);
+    expect(organizationInsert).toBeLessThan(firstAuthFixture);
+    expect(source).toContain(
+      '.from("organizations").delete().in("id", [orgAId, orgBId])',
+    );
+    expect(source).toContain("await cleanupCreatedResources();");
+    expect(source).toContain("throw new AggregateError(cleanupErrors");
+    expect(source).toContain(
+      '.from("admin_actions").delete().in("organization_id", organizationIds)',
+    );
+  });
+
+  it("creates and removes organization rows around the security RLS fixtures", () => {
+    const source = readRepoFile("src/tests/security/rls.spec.ts");
+    const organizationInsert = source.indexOf(".from('organizations')\n    .insert([");
+    const firstTenantFixture = source.indexOf(
+      "orgAContext = await createTenantFixture('orga', orgAId)",
+    );
+
+    expect(organizationInsert).toBeGreaterThan(-1);
+    expect(organizationInsert).toBeLessThan(firstTenantFixture);
+    expect(source).toContain("slug: `security-rls-org-a-${orgAId}`");
+    expect(source).toContain("slug: `security-rls-org-b-${orgBId}`");
+    expect(source).toContain(
+      ".from('organizations').delete().in('id', [orgAId, orgBId])",
+    );
+    expect(source).toMatch(
+      /\.from\('admin_actions'\)\s*\.delete\(\)\s*\.in\('organization_id', \[orgAId, orgBId\]\)/,
+    );
+    expect(source.match(/createdFixtureAuthUserIds\.push\(/g)).toHaveLength(3);
+  });
+
   it("seeds required therapist names in every security RLS fixture", () => {
     const source = readRepoFile("src/tests/security/rls.spec.ts");
     const inserts = therapistInsertBodies(source);
@@ -95,5 +142,17 @@ describe("live RLS fixture schema contract", () => {
     expect(adminSetup).toMatch(
       /const email = `admin\.\$\{randomUUID\(\)\}@example\.com`/,
     );
+  });
+
+  it("calls the current one-argument therapist role RPC in security fixtures", () => {
+    const source = readRepoFile("src/tests/security/rls.spec.ts");
+    const calls = assignTherapistRoleBodies(source);
+
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      expect(call).toContain("p_therapist_id:");
+      expect(call).not.toContain("user_email:");
+      expect(call).not.toMatch(/(^|\n)\s*therapist_id:/);
+    }
   });
 });

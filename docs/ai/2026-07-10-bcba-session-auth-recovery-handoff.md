@@ -187,3 +187,36 @@
 - security boundary: fixture changes do not broaden `pull_request.paths`; service-role tests remain unavailable to PR-head code and execute only after a trusted main merge.
 - contract proof: the fixture contract normalizes platform line endings, requires the three exact main-push paths, confirms they are absent from the PR filter, and preserves the push-only database job condition.
 - merge proof requirement: the merge of PR #777 must start `Supabase Validate`; `Run application tests` must execute all six formerly failing suites with no `23502`, no `email_exists`, and no skipped live RLS suite.
+
+#### Second hosted fixture drift repair
+
+- merged PR #777 triggered Supabase Validate run `29280537187`; the trusted `Run application tests` job executed and failed six suites after the first fixture defects were cleared.
+- remaining failure scope:
+  - five shared-harness suites referenced synthetic organization UUIDs before inserting matching `organizations` rows, producing `23503 session_holds_organization_id_fkey`.
+  - `src/tests/security/rls.spec.ts` called the retired two-argument `assign_therapist_role` shape; hosted PostgREST exposes `assign_therapist_role(p_therapist_id)`.
+- classification: `low-risk autonomous`; lane: `standard`.
+- bounded fix:
+  - create UUID-scoped organization rows before dependent live RLS fixtures and delete them last.
+  - use the current unary therapist-role RPC argument in both security fixtures.
+  - make shared-harness setup failure-safe with tracked auth users, reverse-dependency cleanup, surfaced cleanup errors, and UUID auth emails.
+  - move security-suite session-hold cleanup ahead of parent tenant fixture deletion.
+- non-goals: no migration, production schema, RLS, grant, application auth, runtime, or workflow changes.
+- focused proof:
+  - red contract: 2 new organization/cleanup assertions failed before implementation.
+  - fixture schema contract -> pass, 1 file / 9 tests.
+  - `npm run typecheck` -> pass.
+  - `npm run ci:check-focused` -> pass.
+  - `npm run lint` -> pass.
+  - `npm run validate:tenant` -> pass.
+  - `npm run build` -> pass.
+  - `npm run test:ci` -> the fixture contract and 384 files passed; the aggregate failed only the pre-existing Windows CRLF-sensitive workflow-text assertion in `check-e2e-reliability-gates.test.ts` (2685 tests passed, 1 failed, 3 skipped). The same merged-main unit-test job passes on Linux.
+- hosted proof requirement: after merge, Supabase Validate must execute all six affected suites with no `23503`, no `PGRST202`, and no skipped live RLS suite.
+
+Verification card:
+
+- lane: `standard`
+- required checks: focused fixture contract, policy, lint, typecheck, tenant safety, build, full unit suite, reviewer
+- executed checks: focused contract 9/9, policy pass, lint pass, typecheck pass, tenant safety pass, build pass, reviewer no P1/P2
+- blocked checks: hosted database suites require trusted main credentials; local full suite has one unrelated Windows CRLF-sensitive workflow-text failure while merged-main Linux unit tests pass
+- result: `review-ready`, pending PR CI and trusted post-merge Supabase Validate
+- residual risk: hosted schema behavior is not proven until the trusted main run executes all six affected suites without skips

@@ -89,7 +89,7 @@ const createAuthFixture = async (
     label: string;
   },
 ): Promise<AdminAuthFixture> => {
-  const email = `${options.label}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}@example.com`;
+  const email = `${options.label}.${randomUUID()}@example.com`;
   const password = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
   const userMetadata: Record<string, string> = {};
   if (options.organizationId) {
@@ -112,23 +112,34 @@ const createAuthFixture = async (
 
   const userId = createdUser.user.id;
 
-  if (options.role === "admin") {
-    if (!options.organizationId) {
-      throw new Error("Admin fixtures require an organization id");
+  try {
+    if (options.role === "admin") {
+      if (!options.organizationId) {
+        throw new Error("Admin fixtures require an organization id");
+      }
+      const assignResult = await serviceClient.rpc("assign_admin_role", {
+        user_email: email,
+        organization_id: options.organizationId,
+        reason: "integration-test bootstrap",
+      });
+      if (assignResult.error) {
+        throw assignResult.error;
+      }
+    } else if (options.role === "therapist") {
+      await assignNamedRole(serviceClient, userId, "therapist");
     }
-    const assignResult = await serviceClient.rpc("assign_admin_role", {
-      user_email: email,
-      organization_id: options.organizationId,
-      reason: "integration-test bootstrap",
-    });
-    if (assignResult.error) {
-      throw assignResult.error;
-    }
-  } else if (options.role === "therapist") {
-    await assignNamedRole(serviceClient, userId, "therapist");
-  }
 
-  return { userId, email, password, organizationId: options.organizationId };
+    return { userId, email, password, organizationId: options.organizationId };
+  } catch (fixtureError) {
+    const deleteResult = await serviceClient.auth.admin.deleteUser(userId);
+    if (deleteResult.error) {
+      throw new AggregateError(
+        [fixtureError, deleteResult.error],
+        `Failed to create and roll back auth fixture ${options.label}`,
+      );
+    }
+    throw fixtureError;
+  }
 };
 
 const seedOrgData = async (
@@ -293,25 +304,132 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
 
   const orgAId = randomUUID();
   const orgBId = randomUUID();
-  const orgAAdmin = await createAuthFixture(serviceClient, { organizationId: orgAId, role: "admin", label: "admin.org-a" });
-  const orgBAdmin = await createAuthFixture(serviceClient, { organizationId: orgBId, role: "admin", label: "admin.org-b" });
-  const orgATherapist = await createAuthFixture(serviceClient, {
-    organizationId: orgAId,
-    role: "therapist",
-    label: "therapist.org-a",
-  });
-  const orgBTherapist = await createAuthFixture(serviceClient, {
-    organizationId: orgBId,
-    role: "therapist",
-    label: "therapist.org-b",
-  });
-  const outsider = await createAuthFixture(serviceClient, {
-    organizationId: null,
-    role: "none",
-    label: "outsider",
-  });
-  const orgA = await seedOrgData(serviceClient, orgAId, "org-a", orgATherapist.userId);
-  const orgB = await seedOrgData(serviceClient, orgBId, "org-b", orgBTherapist.userId);
+  const authUserIds: string[] = [];
+
+  const cleanupCreatedResources = async (): Promise<void> => {
+    const cleanupErrors: Error[] = [];
+    const recordCleanup = async (
+      label: string,
+      action: () => Promise<{ error: { message: string } | null }>,
+    ): Promise<void> => {
+      try {
+        const result = await action();
+        if (result.error) {
+          cleanupErrors.push(new Error(`${label}: ${result.error.message}`));
+        }
+      } catch (error) {
+        cleanupErrors.push(
+          error instanceof Error ? new Error(`${label}: ${error.message}`) : new Error(`${label}: ${String(error)}`),
+        );
+      }
+    };
+
+    const organizationIds = [orgAId, orgBId];
+    await recordCleanup("session holds", () =>
+      serviceClient.from("session_holds").delete().in("organization_id", organizationIds),
+    );
+    await recordCleanup("billing records", () =>
+      serviceClient.from("billing_records").delete().in("organization_id", organizationIds),
+    );
+    await recordCleanup("sessions", () =>
+      serviceClient.from("sessions").delete().in("organization_id", organizationIds),
+    );
+    await recordCleanup("clients", () =>
+      serviceClient.from("clients").delete().in("organization_id", organizationIds),
+    );
+    await recordCleanup("therapists", () =>
+      serviceClient.from("therapists").delete().in("organization_id", organizationIds),
+    );
+    await recordCleanup("admin actions", () =>
+      serviceClient.from("admin_actions").delete().in("organization_id", organizationIds),
+    );
+    if (authUserIds.length > 0) {
+      await recordCleanup("user roles", () =>
+        serviceClient.from("user_roles").delete().in("user_id", authUserIds),
+      );
+    }
+    for (const userId of [...authUserIds].reverse()) {
+      await recordCleanup(`auth user ${userId}`, () => serviceClient.auth.admin.deleteUser(userId));
+    }
+    await recordCleanup("organizations", () =>
+      serviceClient.from("organizations").delete().in("id", [orgAId, orgBId]),
+    );
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, "Failed to clean up live RLS fixture resources");
+    }
+  };
+
+  let resources:
+    | {
+        orgAAdmin: AdminAuthFixture;
+        orgBAdmin: AdminAuthFixture;
+        orgATherapist: AdminAuthFixture;
+        orgBTherapist: AdminAuthFixture;
+        outsider: AdminAuthFixture;
+        orgA: OrgDataFixture;
+        orgB: OrgDataFixture;
+      }
+    | undefined;
+
+  try {
+    const organizationInsert = await serviceClient.from("organizations").insert([
+      {
+        id: orgAId,
+        name: "Live RLS Organization A",
+        slug: `live-rls-org-a-${orgAId}`,
+      },
+      {
+        id: orgBId,
+        name: "Live RLS Organization B",
+        slug: `live-rls-org-b-${orgBId}`,
+      },
+    ]);
+    if (organizationInsert.error) {
+      throw organizationInsert.error;
+    }
+
+    const createTrackedAuthFixture = async (
+      options: Parameters<typeof createAuthFixture>[1],
+    ): Promise<AdminAuthFixture> => {
+      const fixture = await createAuthFixture(serviceClient, options);
+      authUserIds.push(fixture.userId);
+      return fixture;
+    };
+
+    const orgAAdmin = await createTrackedAuthFixture({ organizationId: orgAId, role: "admin", label: "admin.org-a" });
+    const orgBAdmin = await createTrackedAuthFixture({ organizationId: orgBId, role: "admin", label: "admin.org-b" });
+    const orgATherapist = await createTrackedAuthFixture({
+      organizationId: orgAId,
+      role: "therapist",
+      label: "therapist.org-a",
+    });
+    const orgBTherapist = await createTrackedAuthFixture({
+      organizationId: orgBId,
+      role: "therapist",
+      label: "therapist.org-b",
+    });
+    const outsider = await createTrackedAuthFixture({
+      organizationId: null,
+      role: "none",
+      label: "outsider",
+    });
+    const orgA = await seedOrgData(serviceClient, orgAId, "org-a", orgATherapist.userId);
+    const orgB = await seedOrgData(serviceClient, orgBId, "org-b", orgBTherapist.userId);
+    resources = { orgAAdmin, orgBAdmin, orgATherapist, orgBTherapist, outsider, orgA, orgB };
+  } catch (setupError) {
+    try {
+      await cleanupCreatedResources();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [setupError, cleanupError],
+        "Failed to set up and roll back live RLS fixture resources",
+      );
+    }
+    throw setupError;
+  }
+
+  const { orgAAdmin, orgBAdmin, orgATherapist, orgBTherapist, outsider, orgA, orgB } = resources;
 
   const signInAdmin = async (admin: AdminAuthFixture): Promise<TypedClient> => {
     const client = createUserClient(supabaseUrl, supabaseAnonKey);
@@ -325,18 +443,7 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
     return client;
   };
 
-  const cleanup = async (): Promise<void> => {
-    await serviceClient.from("session_holds").delete().in("id", [orgA.sessionHoldId, orgB.sessionHoldId]);
-    await serviceClient.from("billing_records").delete().in("id", [orgA.billingRecordId, orgB.billingRecordId]);
-    await serviceClient.from("sessions").delete().in("id", [orgA.sessionId, orgB.sessionId]);
-    await serviceClient.from("clients").delete().in("id", [orgA.clientId, orgB.clientId]);
-    await serviceClient.from("therapists").delete().in("id", [orgA.therapistId, orgB.therapistId]);
-    await serviceClient.auth.admin.deleteUser(orgAAdmin.userId);
-    await serviceClient.auth.admin.deleteUser(orgBAdmin.userId);
-    await serviceClient.auth.admin.deleteUser(orgATherapist.userId);
-    await serviceClient.auth.admin.deleteUser(orgBTherapist.userId);
-    await serviceClient.auth.admin.deleteUser(outsider.userId);
-  };
+  const cleanup = cleanupCreatedResources;
 
   return {
     enabled: true,

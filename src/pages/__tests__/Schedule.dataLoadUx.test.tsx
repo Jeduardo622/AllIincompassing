@@ -147,6 +147,8 @@ describe("Schedule data-load UX", () => {
 
     const banner = await screen.findByTestId("schedule-data-load-error");
     expect(banner).toBeInTheDocument();
+    expect(banner).toHaveAttribute("data-schedule-error-path", "sessions");
+    expect(banner).toHaveAttribute("data-schedule-error-category", "unknown");
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.getByText(/Couldn't load schedule/i)).toBeInTheDocument();
     expect(screen.getByText(/get_sessions_optimized failed/i)).toBeInTheDocument();
@@ -181,7 +183,9 @@ describe("Schedule data-load UX", () => {
 
     renderWithProviders(<Schedule />);
 
-    expect(await screen.findByTestId("schedule-data-load-error")).toBeInTheDocument();
+    const banner = await screen.findByTestId("schedule-data-load-error");
+    expect(banner).toHaveAttribute("data-schedule-error-path", "dropdown");
+    expect(banner).toHaveAttribute("data-schedule-error-category", "unknown");
     expect(screen.getByText(/get_dropdown_data failed/i)).toBeInTheDocument();
   });
 

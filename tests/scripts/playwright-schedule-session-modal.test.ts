@@ -275,16 +275,39 @@ describe("classifyScheduleReadinessFailure", () => {
     url: vi.fn().mockReturnValue(url),
     locator: vi.fn((selector: string) => ({
       count: vi.fn().mockResolvedValue(selector === presentSelector ? 1 : 0),
+      getAttribute: vi.fn().mockResolvedValue(null),
     })),
     getByRole: vi.fn(() => ({
       count: vi.fn().mockResolvedValue(errorBoundary ? 1 : 0),
     })),
   } as unknown as Page);
 
+  it("reports the controlled Schedule data path and allowlisted error category", async () => {
+    const errorBanner = {
+      count: vi.fn().mockResolvedValue(1),
+      getAttribute: vi.fn(async (name: string) => ({
+        "data-schedule-error-path": "sessions",
+        "data-schedule-error-category": "insufficient_privilege",
+      })[name] ?? null),
+    };
+    const empty = {
+      count: vi.fn().mockResolvedValue(0),
+      getAttribute: vi.fn().mockResolvedValue(null),
+    };
+    const page = {
+      url: vi.fn().mockReturnValue("https://app.example.com/schedule"),
+      locator: vi.fn((selector: string) => selector === '[data-testid="schedule-data-load-error"]' ? errorBanner : empty),
+      getByRole: vi.fn(() => empty),
+    } as unknown as Page;
+
+    await expect(classifyScheduleReadinessFailure(page))
+      .resolves.toBe("schedule_data_error:sessions:insufficient_privilege");
+  });
+
   it.each([
     ["auth_profile_loading", '[role="status"][aria-label="Checking role access..."]'],
     ["missing_organization", '[data-testid="schedule-missing-org"]'],
-    ["schedule_data_error", '[data-testid="schedule-data-load-error"]'],
+    ["schedule_data_error:unknown:unknown", '[data-testid="schedule-data-load-error"]'],
     ["schedule_still_loading", '[data-testid="schedule-loading"]'],
   ] as const)("returns the controlled %s state", async (expected, selector) => {
     await expect(classifyScheduleReadinessFailure(

@@ -3,6 +3,7 @@ import { bookSession, deriveBookSessionOccurrences } from "../bookSession";
 import {
   consumeRateLimit,
   corsHeadersForRequest,
+  currentUserIsBcbaForOrg,
   errorResponse,
   fetchAuthenticatedUserIdWithStatus,
   fetchJson,
@@ -97,7 +98,6 @@ async function assertBookRequestScope(
     isTherapist,
     isAdmin,
     isOrgMember,
-    isBcba,
     isSuperAdmin,
     upstreamError: roleUpstreamError,
     resolvedViaServiceRole,
@@ -123,7 +123,7 @@ async function assertBookRequestScope(
   const canUseServiceRoleScopeFallback = isSuperAdmin && serviceRoleHeaders !== null;
   const usingServiceRoleScope = resolvedViaServiceRole;
 
-  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember && !isBcba)) {
+  if (!organizationId) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
@@ -132,6 +132,24 @@ async function assertBookRequestScope(
     return errorResponse(request, "upstream_error", "Unable to validate authenticated user", { status: 502 });
   }
   if (!currentUserId) {
+    return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
+  }
+
+  let isBcba = false;
+  const requiresBcbaAuthority =
+    !isAdmin &&
+    !isSuperAdmin &&
+    ((!isTherapist && !isOrgMember) ||
+      (isTherapist && body.session.therapist_id !== currentUserId));
+  if (requiresBcbaAuthority) {
+    const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
+    if (bcbaAuthority.upstreamError) {
+      return errorResponse(request, "upstream_error", "Unable to validate BCBA booking access", { status: 502 });
+    }
+    isBcba = bcbaAuthority.allowed;
+  }
+
+  if (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember && !isBcba) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 

@@ -135,6 +135,47 @@ const validPayload = {
   timeZone: "UTC",
 };
 
+const createSuccessfulBookResult = ({
+  sessionId,
+  createdBy,
+}: {
+  sessionId: string;
+  createdBy: string;
+}) => ({
+  session: {
+    id: sessionId,
+    client_id: "client-1",
+    therapist_id: "therapist-1",
+    program_id: "program-1",
+    goal_id: "goal-1",
+    start_time: "2025-01-01T10:00:00Z",
+    end_time: "2025-01-01T11:00:00Z",
+    status: "scheduled",
+    notes: "",
+    created_at: "2025-01-01T09:00:00Z",
+    created_by: createdBy,
+    updated_at: "2025-01-01T09:00:00Z",
+    updated_by: createdBy,
+    duration_minutes: 60,
+  },
+  sessions: [],
+  hold: {
+    holdKey: `hold-${sessionId}`,
+    holdId: `hold-${sessionId}`,
+    startTime: "2025-01-01T10:00:00Z",
+    endTime: "2025-01-01T11:00:00Z",
+    expiresAt: "2025-01-01T10:05:00Z",
+    holds: [],
+  },
+  cpt: {
+    code: "97153",
+    description: "Adaptive behavior treatment by protocol",
+    modifiers: [],
+    source: "fallback",
+    durationMinutes: 60,
+  },
+});
+
 const TEST_SUPABASE_URL = "https://testing.supabase.co";
 const TEST_SUPABASE_ANON_KEY = "testing-anon-key";
 const TEST_SUPABASE_EDGE_URL = "https://testing.supabase.co/functions/v1/";
@@ -485,45 +526,41 @@ describe("bookHandler", () => {
       }),
       http.get(`${TEST_SUPABASE_URL}/auth/v1/user`, () => HttpResponse.json({ id: "bcba-user" })),
     );
-    bookSessionMock.mockResolvedValueOnce({
-      session: {
-        id: "session-bcba",
-        client_id: "client-1",
-        therapist_id: "therapist-1",
-        program_id: "program-1",
-        goal_id: "goal-1",
-        start_time: "2025-01-01T10:00:00Z",
-        end_time: "2025-01-01T11:00:00Z",
-        status: "scheduled",
-        notes: "",
-        created_at: "2025-01-01T09:00:00Z",
-        created_by: "bcba-user",
-        updated_at: "2025-01-01T09:00:00Z",
-        updated_by: "bcba-user",
-        duration_minutes: 60,
-      },
-      sessions: [],
-      hold: {
-        holdKey: "hold-bcba",
-        holdId: "hold-bcba",
-        startTime: "2025-01-01T10:00:00Z",
-        endTime: "2025-01-01T11:00:00Z",
-        expiresAt: "2025-01-01T10:05:00Z",
-        holds: [],
-      },
-      cpt: {
-        code: "97153",
-        description: "Adaptive behavior treatment by protocol",
-        modifiers: [],
-        source: "fallback",
-        durationMinutes: 60,
-      },
-    });
+    bookSessionMock.mockResolvedValueOnce(createSuccessfulBookResult({
+      sessionId: "session-bcba",
+      createdBy: "bcba-user",
+    }));
 
     const bookHandler = await importBookHandler();
     const response = await bookHandler(createRequest(validPayload));
 
     expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not depend on BCBA authority when a therapist books their own row", async () => {
+    let bcbaRoleChecks = 0;
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/user_has_role_for_org`, async ({ request }) => {
+        const body = await request.json() as { role_name?: string };
+        if (body.role_name === "bcba") {
+          bcbaRoleChecks += 1;
+          return new HttpResponse(null, { status: 503 });
+        }
+        return HttpResponse.json(body.role_name === "therapist");
+      }),
+      http.get(`${TEST_SUPABASE_URL}/auth/v1/user`, () => HttpResponse.json({ id: "therapist-1" })),
+    );
+    bookSessionMock.mockResolvedValueOnce(createSuccessfulBookResult({
+      sessionId: "session-therapist-self",
+      createdBy: "therapist-1",
+    }));
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(200);
+    expect(bcbaRoleChecks).toBe(0);
     expect(bookSessionMock).toHaveBeenCalledTimes(1);
   });
 

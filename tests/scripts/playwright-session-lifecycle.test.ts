@@ -8,6 +8,8 @@ import {
   hasReachedLifecyclePairAttemptLimit,
   isCreateSessionButtonReady,
   isExpectedAlreadyStartedResponse,
+  getAlreadyStartedRecoveryUiError,
+  SESSION_EDIT_DIALOG_SELECTOR,
   shouldTryNextLifecyclePairAfterAttempts,
   waitForSessionStatus,
 } from "../../scripts/playwright-session-lifecycle";
@@ -56,6 +58,27 @@ describe("playwright session lifecycle booking starts", () => {
     expect(isExpectedAlreadyStartedResponse(false, 409, body)).toBe(false);
     expect(isExpectedAlreadyStartedResponse(true, 409, JSON.stringify({ rpcCode: "INVALID_STATUS" }))).toBe(false);
     expect(isExpectedAlreadyStartedResponse(true, 500, body)).toBe(false);
+  });
+
+  it("accepts live or closed UI after ALREADY_STARTED recovery but rejects stale edit state", () => {
+    expect(SESSION_EDIT_DIALOG_SELECTOR).toBe(
+      '[role="dialog"][data-session-modal-mode="edit"]',
+    );
+    expect(
+      getAlreadyStartedRecoveryUiError({ modalMode: "live", failureAlertVisible: false }),
+    ).toBeNull();
+    expect(
+      getAlreadyStartedRecoveryUiError({ modalMode: null, failureAlertVisible: false }),
+    ).toBeNull();
+    expect(
+      getAlreadyStartedRecoveryUiError({ modalMode: "edit", failureAlertVisible: false }),
+    ).toContain("edit dialog");
+  });
+
+  it("rejects a visible session-start failure alert after ALREADY_STARTED recovery", () => {
+    expect(
+      getAlreadyStartedRecoveryUiError({ modalMode: "live", failureAlertVisible: true }),
+    ).toContain("failure alert");
   });
 
   it("waits until the hosted session reaches the expected status", async () => {

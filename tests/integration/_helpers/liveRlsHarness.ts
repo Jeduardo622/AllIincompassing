@@ -142,7 +142,9 @@ const seedOrgData = async (
 
   const therapistInsert = await serviceClient.from("therapists").insert({
     id: therapistId,
-    email: `${label}.therapist.${Date.now()}@example.com`,
+    email: `${label}.therapist.${therapistId}@example.com`,
+    first_name: label.toUpperCase(),
+    last_name: "Therapist",
     full_name: `${label.toUpperCase()} Therapist`,
     specialties: ["aba"],
     max_clients: 5,
@@ -155,7 +157,7 @@ const seedOrgData = async (
 
   const clientInsert = await serviceClient.from("clients").insert({
     id: clientId,
-    email: `${label}.client.${Date.now()}@example.com`,
+    email: `${label}.client.${clientId}@example.com`,
     full_name: `${label.toUpperCase()} Client`,
     date_of_birth: "2016-01-01",
     one_to_one_units: 4,

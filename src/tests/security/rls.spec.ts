@@ -174,7 +174,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     throw new Error('Service client not initialized');
   }
 
-  const email = `${label}.${Date.now()}@example.com`;
+  const email = `${label}.${randomUUID()}@example.com`;
   const password = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
 
   const { data: createdUser, error: createUserError } = await serviceClient.auth.admin.createUser({
@@ -194,6 +194,8 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   const { error: therapistInsertError } = await serviceClient.from('therapists').insert({
     id: therapistId,
     email,
+    first_name: label.toUpperCase(),
+    last_name: 'Therapist',
     full_name: `${label.toUpperCase()} Therapist`,
     specialties: ['aba'],
     max_clients: 5,
@@ -215,7 +217,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
 
   await serviceClient.from('profiles').update({ role: 'therapist' }).eq('id', userId);
 
-  const clientEmail = `${label}.client.${Date.now()}@example.com`;
+  const clientEmail = `${label}.client.${randomUUID()}@example.com`;
   const clientPassword = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
 
   const { data: createdClientUser, error: clientUserError } = await serviceClient.auth.admin.createUser({
@@ -283,7 +285,7 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
     throw new Error('Service client not initialized');
   }
 
-  const email = `admin.${Date.now()}@example.com`;
+  const email = `admin.${randomUUID()}@example.com`;
   const password = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
 
   const { data: createdUser, error: createUserError } = await serviceClient.auth.admin.createUser({
@@ -1973,7 +1975,7 @@ describe('row level security for multi-tenant tables', () => {
       return;
     }
 
-    const otherTherapistEmail = `other.therapist.${Date.now()}@example.com`;
+    const otherTherapistEmail = `other.therapist.${randomUUID()}@example.com`;
     const otherTherapistPassword = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
     const { data: otherUser, error: otherUserError } = await serviceClient.auth.admin.createUser({
       email: otherTherapistEmail,
@@ -1992,6 +1994,8 @@ describe('row level security for multi-tenant tables', () => {
     const { error: therapistInsertError } = await serviceClient.from('therapists').insert({
       id: otherTherapistId,
       email: otherTherapistEmail,
+      first_name: 'Other',
+      last_name: 'Therapist',
       full_name: `Other Therapist ${randomSuffix()}`,
       specialties: ['aba'],
       max_clients: 5,

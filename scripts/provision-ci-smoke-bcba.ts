@@ -24,8 +24,14 @@ export const assertDedicatedSmokeBcbaEmail = (email: string): void => {
   }
 };
 
-export const getMissingBcbaProvisionSecrets = (env: NodeJS.ProcessEnv = process.env): string[] =>
-  ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"].filter((name) => !env[name]?.trim());
+export const getMissingBcbaProvisionSecrets = (
+  env: NodeJS.ProcessEnv = process.env,
+  requirePublishableKey = false,
+): string[] => [
+  "SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  ...(requirePublishableKey ? ["SUPABASE_PUBLISHABLE_KEY"] : []),
+].filter((name) => !env[name]?.trim());
 
 export const shouldSkipSecretlessPullRequest = (env: NodeJS.ProcessEnv = process.env): boolean =>
   env.GITHUB_EVENT_NAME === "pull_request" && getMissingBcbaProvisionSecrets(env).length > 0;
@@ -35,6 +41,93 @@ const createAdmin = (): SupabaseClient => createClient(
   getEnv("SUPABASE_SERVICE_ROLE_KEY"),
   { auth: { autoRefreshToken: false, persistSession: false } },
 );
+
+const createAuthenticatedProbeClient = (): SupabaseClient => createClient(
+  getEnv("SUPABASE_URL"),
+  getEnv("SUPABASE_PUBLISHABLE_KEY"),
+  { auth: { autoRefreshToken: false, persistSession: false } },
+);
+
+export interface SmokeBcbaProfileInvariant {
+  id?: string | null;
+  role?: string | null;
+  is_active?: boolean | null;
+  organization_id?: string | null;
+}
+
+export const assertSmokeBcbaProfileInvariant = (
+  profile: SmokeBcbaProfileInvariant | null,
+  expected: { userId: string; organizationId: string },
+): void => {
+  if (
+    !profile
+    || profile.id !== expected.userId
+    || profile.role !== "bcba"
+    || profile.is_active !== true
+    || profile.organization_id !== expected.organizationId
+  ) {
+    throw new Error("Synthetic BCBA profile did not persist the required identity, role, active state, and organization context.");
+  }
+};
+
+export const verifySmokeBcbaAuthenticatedReadiness = async (
+  client: SupabaseClient,
+  credentials: { email: string; password: string; userId: string; organizationId: string },
+): Promise<void> => {
+  const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
+    email: credentials.email,
+    password: credentials.password,
+  });
+  if (signInError) throw new Error("Synthetic BCBA authenticated readiness login failed.");
+
+  let readinessError: unknown = null;
+  try {
+    if (signInData.user?.id !== credentials.userId) {
+      throw new Error("Synthetic BCBA authenticated readiness resolved an unexpected identity.");
+    }
+    const { data: profile, error: profileError } = await client
+      .from("profiles")
+      .select("id,role,is_active,organization_id")
+      .eq("id", credentials.userId)
+      .maybeSingle();
+    if (profileError) {
+      throw new Error("Synthetic BCBA authenticated readiness could not read its profile.");
+    }
+    try {
+      assertSmokeBcbaProfileInvariant(profile, {
+        userId: credentials.userId,
+        organizationId: credentials.organizationId,
+      });
+    } catch {
+      throw new Error("Synthetic BCBA authenticated readiness did not resolve the expected organization.");
+    }
+
+    const now = Date.now();
+    const { error: sessionsError } = await client.rpc("get_sessions_optimized", {
+      p_start_date: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
+      p_end_date: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+      p_therapist_id: null,
+      p_client_id: null,
+    });
+    if (sessionsError) {
+      throw new Error("Synthetic BCBA authenticated readiness could not load org-scoped sessions.");
+    }
+  } catch (error) {
+    readinessError = error;
+  }
+
+  const { error: signOutError } = await client.auth.signOut();
+  if (readinessError && signOutError) {
+    const message = readinessError instanceof Error
+      ? readinessError.message
+      : "Synthetic BCBA authenticated readiness failed.";
+    throw new Error(`${message} Authenticated readiness logout also failed.`);
+  }
+  if (readinessError) throw readinessError;
+  if (signOutError) {
+    throw new Error("Synthetic BCBA authenticated readiness logout failed.");
+  }
+};
 
 const listUsers = async (client: SupabaseClient) => {
   const users = [];
@@ -125,6 +218,25 @@ const provision = async (): Promise<void> => {
   const { error: linkError } = await client.from("user_therapist_links").insert({ user_id: user.id, therapist_id: therapistId });
   if (linkError) throw linkError;
 
+  const { data: provisionedOrganizationId, error: provisionProfileError } = await client
+    .rpc("provision_ci_smoke_bcba_profile", { p_user_id: user.id });
+  if (provisionProfileError || provisionedOrganizationId !== organizationId) {
+    throw new Error("Synthetic BCBA authoritative profile provisioning failed.");
+  }
+  const { data: persistedProfile, error: persistedProfileError } = await client
+    .from("profiles")
+    .select("id,role,is_active,organization_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (persistedProfileError) throw persistedProfileError;
+  assertSmokeBcbaProfileInvariant(persistedProfile, { userId: user.id, organizationId });
+  await verifySmokeBcbaAuthenticatedReadiness(createAuthenticatedProbeClient(), {
+    email,
+    password,
+    userId: user.id,
+    organizationId,
+  });
+
   writeCredentials(email, password);
   console.log(JSON.stringify({ ok: true, action: "provisioned", email, userId: user.id, organizationId, therapistId }));
 };
@@ -162,7 +274,9 @@ const sweepOnly = async (): Promise<void> => {
 };
 
 const main = async (): Promise<void> => {
-  const missing = getMissingBcbaProvisionSecrets();
+  const cleanupRequested = process.argv.includes("--cleanup");
+  const sweepRequested = process.argv.includes("--sweep-only");
+  const missing = getMissingBcbaProvisionSecrets(process.env, !cleanupRequested && !sweepRequested);
   if (missing.length) {
     if (shouldSkipSecretlessPullRequest()) {
       console.log(JSON.stringify({ ok: true, action: "skipped", reason: "missing_pull_request_secrets", missing }));
@@ -170,10 +284,10 @@ const main = async (): Promise<void> => {
     }
     throw new Error(`Missing required Supabase admin secrets: ${missing.join(", ")}.`);
   }
-  if (process.argv.includes("--sweep-only")) {
+  if (sweepRequested) {
     await sweepOnly();
   } else {
-    await (process.argv.includes("--cleanup") ? cleanup() : provision());
+    await (cleanupRequested ? cleanup() : provision());
   }
 };
 

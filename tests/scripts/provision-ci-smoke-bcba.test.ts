@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   assertDedicatedSmokeBcbaEmail,
+  assertSmokeBcbaProfileInvariant,
   buildDefaultSmokeBcbaEmail,
   getMissingBcbaProvisionSecrets,
   shouldSkipSecretlessPullRequest,
+  verifySmokeBcbaAuthenticatedReadiness,
 } from "../../scripts/provision-ci-smoke-bcba";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 describe("provision-ci-smoke-bcba guards", () => {
   it("only accepts dedicated disposable BCBA emails", () => {
@@ -19,7 +22,150 @@ describe("provision-ci-smoke-bcba guards", () => {
   it("skips only secretless pull requests", () => {
     const env = { GITHUB_EVENT_NAME: "pull_request" } as NodeJS.ProcessEnv;
     expect(getMissingBcbaProvisionSecrets(env)).toEqual(["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+    expect(getMissingBcbaProvisionSecrets(env, true)).toEqual([
+      "SUPABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_PUBLISHABLE_KEY",
+    ]);
     expect(shouldSkipSecretlessPullRequest(env)).toBe(true);
     expect(shouldSkipSecretlessPullRequest({ ...env, GITHUB_EVENT_NAME: "push" })).toBe(false);
+  });
+
+  it("requires the persisted synthetic profile to retain BCBA tenant context", () => {
+    const expected = { userId: "user-1", organizationId: "org-1" };
+    expect(() => assertSmokeBcbaProfileInvariant({
+      id: "user-1",
+      role: "bcba",
+      is_active: true,
+      organization_id: "org-1",
+    }, expected)).not.toThrow();
+
+    for (const profile of [
+      null,
+      { id: "user-1", role: "client", is_active: true, organization_id: "org-1" },
+      { id: "user-1", role: "bcba", is_active: true, organization_id: null },
+      { id: "user-1", role: "bcba", is_active: false, organization_id: "org-1" },
+    ]) {
+      expect(() => assertSmokeBcbaProfileInvariant(profile, expected)).toThrow(/did not persist/);
+    }
+  });
+
+  it("proves authenticated organization resolution and the bounded sessions RPC", async () => {
+    const signOut = vi.fn().mockResolvedValue({ error: null });
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: { id: "user-1", role: "bcba", is_active: true, organization_id: "org-1" },
+      error: null,
+    });
+    const rpc = vi.fn().mockResolvedValue({ data: [], error: null });
+    const client = {
+      auth: {
+        signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+        signOut,
+      },
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({ maybeSingle })),
+        })),
+      })),
+      rpc,
+    } as unknown as SupabaseClient;
+
+    await expect(verifySmokeBcbaAuthenticatedReadiness(client, {
+      email: "playwright.ci.bcba.1.1@example.com",
+      password: "synthetic-password",
+      userId: "user-1",
+      organizationId: "org-1",
+    })).resolves.toBeUndefined();
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(["get_sessions_optimized"]);
+    const rpcArgs = rpc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(rpcArgs.p_therapist_id).toBeNull();
+    expect(rpcArgs.p_client_id).toBeNull();
+    expect(Date.parse(String(rpcArgs.p_start_date))).not.toBeNaN();
+    expect(Date.parse(String(rpcArgs.p_end_date))).not.toBeNaN();
+    expect(Date.parse(String(rpcArgs.p_end_date)) - Date.parse(String(rpcArgs.p_start_date)))
+      .toBe(48 * 60 * 60 * 1000);
+    expect(signOut).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing org", { id: "user-1", role: "bcba", is_active: true, organization_id: null }, null, /expected organization/],
+    ["sessions denied", { id: "user-1", role: "bcba", is_active: true, organization_id: "org-1" }, { code: "42501" }, /org-scoped sessions/],
+  ])("fails closed when authenticated readiness reports %s", async (_label, profile, rpcError, expected) => {
+    const signOut = vi.fn().mockResolvedValue({ error: null });
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: rpcError });
+    const client = {
+      auth: {
+        signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+        signOut,
+      },
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn().mockResolvedValue({ data: profile, error: null }),
+          })),
+        })),
+      })),
+      rpc,
+    } as unknown as SupabaseClient;
+
+    await expect(verifySmokeBcbaAuthenticatedReadiness(client, {
+      email: "playwright.ci.bcba.1.1@example.com",
+      password: "synthetic-password",
+      userId: "user-1",
+      organizationId: "org-1",
+    })).rejects.toThrow(expected);
+    expect(signOut).toHaveBeenCalled();
+    if (_label === "missing org") expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when authenticated readiness cannot sign out", async () => {
+    const client = {
+      auth: {
+        signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+        signOut: vi.fn().mockResolvedValue({ error: { message: "logout failed" } }),
+      },
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: { id: "user-1", role: "bcba", is_active: true, organization_id: "org-1" },
+              error: null,
+            }),
+          })),
+        })),
+      })),
+      rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
+    } as unknown as SupabaseClient;
+
+    await expect(verifySmokeBcbaAuthenticatedReadiness(client, {
+      email: "playwright.ci.bcba.1.1@example.com",
+      password: "synthetic-password",
+      userId: "user-1",
+      organizationId: "org-1",
+    })).rejects.toThrow(/logout failed/);
+  });
+
+  it("stops before profile or RPC work when authenticated readiness login fails", async () => {
+    const from = vi.fn();
+    const rpc = vi.fn();
+    const signOut = vi.fn();
+    const client = {
+      auth: {
+        signInWithPassword: vi.fn().mockResolvedValue({ data: { user: null }, error: { message: "denied" } }),
+        signOut,
+      },
+      from,
+      rpc,
+    } as unknown as SupabaseClient;
+
+    await expect(verifySmokeBcbaAuthenticatedReadiness(client, {
+      email: "playwright.ci.bcba.1.1@example.com",
+      password: "synthetic-password",
+      userId: "user-1",
+      organizationId: "org-1",
+    })).rejects.toThrow(/login failed/);
+    expect(from).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
   });
 });

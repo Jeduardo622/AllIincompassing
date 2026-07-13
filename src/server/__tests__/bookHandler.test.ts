@@ -477,6 +477,75 @@ describe("bookHandler", () => {
     expect(bookSessionMock).not.toHaveBeenCalled();
   });
 
+  it("allows persisted BCBA staff to book an in-org therapist row", async () => {
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/user_has_role_for_org`, async ({ request }) => {
+        const body = await request.json() as { role_name?: string };
+        return HttpResponse.json(body.role_name === "bcba");
+      }),
+      http.get(`${TEST_SUPABASE_URL}/auth/v1/user`, () => HttpResponse.json({ id: "bcba-user" })),
+    );
+    bookSessionMock.mockResolvedValueOnce({
+      session: {
+        id: "session-bcba",
+        client_id: "client-1",
+        therapist_id: "therapist-1",
+        program_id: "program-1",
+        goal_id: "goal-1",
+        start_time: "2025-01-01T10:00:00Z",
+        end_time: "2025-01-01T11:00:00Z",
+        status: "scheduled",
+        notes: "",
+        created_at: "2025-01-01T09:00:00Z",
+        created_by: "bcba-user",
+        updated_at: "2025-01-01T09:00:00Z",
+        updated_by: "bcba-user",
+        duration_minutes: 60,
+      },
+      sessions: [],
+      hold: {
+        holdKey: "hold-bcba",
+        holdId: "hold-bcba",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [],
+      },
+      cpt: {
+        code: "97153",
+        description: "Adaptive behavior treatment by protocol",
+        modifiers: [],
+        source: "fallback",
+        durationMinutes: 60,
+      },
+    });
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when persisted BCBA booking authority cannot be verified", async () => {
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/user_has_role_for_org`, async ({ request }) => {
+        const body = await request.json() as { role_name?: string };
+        return body.role_name === "bcba"
+          ? new HttpResponse(null, { status: 503 })
+          : HttpResponse.json(false);
+      }),
+      http.get(`${TEST_SUPABASE_URL}/auth/v1/user`, () => HttpResponse.json({ id: "bcba-user" })),
+    );
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ code: "upstream_error" });
+    expect(bookSessionMock).not.toHaveBeenCalled();
+  });
+
   it("returns 502 when org resolution dependency fails", async () => {
     server.use(
       http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_organization_id`, () =>

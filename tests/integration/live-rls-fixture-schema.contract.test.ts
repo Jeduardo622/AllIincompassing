@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const readRepoFile = (path: string) =>
-  readFileSync(resolve(process.cwd(), path), "utf8");
+  readFileSync(resolve(process.cwd(), path), "utf8").replace(/\r\n/g, "\n");
 
 const therapistInsertBodies = (source: string) =>
   Array.from(
@@ -14,6 +14,37 @@ const therapistInsertBodies = (source: string) =>
   );
 
 describe("live RLS fixture schema contract", () => {
+  it("runs hosted database validation when live RLS fixtures merge to main", () => {
+    const workflow = readRepoFile(".github/workflows/supabase-validate.yml");
+    const pullRequestSection = workflow.match(
+      /  pull_request:\n([\s\S]*?)  push:/,
+    )?.[1];
+    const pushSection = workflow.match(/  push:\n([\s\S]*?)\njobs:/)?.[1];
+    const testMainJob = workflow.match(
+      /  test-main:\n([\s\S]*?)\n  runtime-migration-parity:/,
+    )?.[1];
+
+    expect(workflow).toContain("permissions:\n  contents: read");
+    expect(pushSection).toContain(
+      "      - 'tests/integration/_helpers/liveRlsHarness.ts'",
+    );
+    expect(pushSection).toContain(
+      "      - 'tests/integration/live-rls-fixture-schema.contract.test.ts'",
+    );
+    expect(pushSection).toContain("      - 'src/tests/security/rls.spec.ts'");
+    expect(pushSection).toContain("      - main");
+    expect(pullRequestSection).not.toContain("liveRlsHarness.ts");
+    expect(pullRequestSection).not.toContain(
+      "live-rls-fixture-schema.contract.test.ts",
+    );
+    expect(pullRequestSection).not.toContain("rls.spec.ts");
+    expect(testMainJob).toContain("    if: github.event_name == 'push'");
+    expect(testMainJob).toContain(
+      "SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_SECRET_KEY }}",
+    );
+    expect(testMainJob).toContain("RUN_DB_IT: '1'");
+  });
+
   it("seeds required therapist names in the shared live RLS harness", () => {
     const source = readRepoFile("tests/integration/_helpers/liveRlsHarness.ts");
     const inserts = therapistInsertBodies(source);

@@ -1,5 +1,8 @@
 name: Supabase Validate
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:
@@ -10,6 +13,9 @@ on:
       - main
     paths:
       - 'supabase/migrations/**'
+      - 'tests/integration/_helpers/liveRlsHarness.ts'
+      - 'tests/integration/live-rls-fixture-schema.contract.test.ts'
+      - 'src/tests/security/rls.spec.ts'
 
 jobs:
   lint-migrations:

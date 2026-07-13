@@ -43,7 +43,15 @@ export type ScheduleReadinessFailureState =
   | "unauthorized_redirect"
   | "auth_profile_loading"
   | "missing_organization"
-  | "schedule_data_error"
+  | `schedule_data_error:${"sessions" | "dropdown" | "unknown"}:${
+      | "insufficient_privilege"
+      | "undefined_function"
+      | "undefined_table"
+      | "undefined_column"
+      | "schema_cache"
+      | "jwt"
+      | "raised_exception"
+      | "unknown"}`
   | "schedule_still_loading"
   | "application_error_boundary"
   | "schedule_not_ready";
@@ -58,7 +66,18 @@ export const classifyScheduleReadinessFailure = async (
     return "auth_profile_loading";
   }
   if ((await page.locator('[data-testid="schedule-missing-org"]').count()) > 0) return "missing_organization";
-  if ((await page.locator('[data-testid="schedule-data-load-error"]').count()) > 0) return "schedule_data_error";
+  const scheduleDataError = page.locator('[data-testid="schedule-data-load-error"]');
+  if ((await scheduleDataError.count()) > 0) {
+    const rawPath = await scheduleDataError.getAttribute("data-schedule-error-path");
+    const path = rawPath === "sessions" || rawPath === "dropdown" ? rawPath : "unknown";
+    const rawCategory = await scheduleDataError.getAttribute("data-schedule-error-category");
+    const allowedCategories = new Set([
+      "insufficient_privilege", "undefined_function", "undefined_table", "undefined_column",
+      "schema_cache", "jwt", "raised_exception", "unknown",
+    ]);
+    const category = rawCategory && allowedCategories.has(rawCategory) ? rawCategory : "unknown";
+    return `schedule_data_error:${path}:${category}` as ScheduleReadinessFailureState;
+  }
   if ((await page.locator('[data-testid="schedule-loading"]').count()) > 0) return "schedule_still_loading";
   if ((await page.getByRole("heading", { name: "Something went wrong", exact: true }).count()) > 0) {
     return "application_error_boundary";

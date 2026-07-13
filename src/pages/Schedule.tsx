@@ -73,6 +73,30 @@ import {
 } from "../features/scheduling/domain/sessionScope";
 import { filterSessionsBySelectedScope } from "../features/scheduling/domain/sessionFilters";
 import { shouldClearMissingSelection } from "../features/scheduling/domain/selectionGuard";
+
+type ScheduleDataErrorCategory =
+  | "insufficient_privilege"
+  | "undefined_function"
+  | "undefined_table"
+  | "undefined_column"
+  | "schema_cache"
+  | "jwt"
+  | "raised_exception"
+  | "unknown";
+
+const classifyScheduleDataErrorCode = (error: unknown): ScheduleDataErrorCategory => {
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code ?? "")
+    : "";
+  if (code === "42501") return "insufficient_privilege";
+  if (code === "42883") return "undefined_function";
+  if (code === "42P01") return "undefined_table";
+  if (code === "42703") return "undefined_column";
+  if (code === "PGRST202") return "schema_cache";
+  if (code === "PGRST301" || code === "PGRST302") return "jwt";
+  if (code === "P0001") return "raised_exception";
+  return "unknown";
+};
 import { buildScheduleModalOpenResetPlan } from "../features/scheduling/domain/modalOpenResetPlan";
 import { applyScheduleModalOpenPlan } from "../features/scheduling/domain/modalOpenPlanApply";
 import { applyScheduleResetBranch } from "../features/scheduling/domain/scheduleResetBranch";
@@ -713,6 +737,10 @@ export const Schedule = React.memo(() => {
   const dropdownPathFailed =
     !!activeOrganizationId && isDropdownError && directoryLoadRequiresDropdown;
   const scheduleDataLoadFailed = sessionsPathFailed || dropdownPathFailed;
+  const scheduleDataErrorPath = sessionsPathFailed ? "sessions" : dropdownPathFailed ? "dropdown" : "unknown";
+  const scheduleDataErrorCategory = classifyScheduleDataErrorCode(
+    sessionsPathFailed ? sessionsQueryError : dropdownPathFailed ? dropdownQueryError : null,
+  );
 
   const scheduleDataLoadErrorMessage = useMemo(() => {
     if (sessionsPathFailed && sessionsQueryError) {
@@ -2073,6 +2101,8 @@ export const Schedule = React.memo(() => {
         <div
           className="h-full flex items-center justify-center px-4"
           data-testid="schedule-data-load-error"
+          data-schedule-error-path={scheduleDataErrorPath}
+          data-schedule-error-category={scheduleDataErrorCategory}
           role="alert"
           aria-labelledby="schedule-data-load-error-title"
           aria-describedby="schedule-data-load-error-description"

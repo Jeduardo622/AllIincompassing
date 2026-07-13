@@ -220,3 +220,20 @@ Verification card:
 - blocked checks: hosted database suites require trusted main credentials; local full suite has one unrelated Windows CRLF-sensitive workflow-text failure while merged-main Linux unit tests pass
 - result: `review-ready`, pending PR CI and trusted post-merge Supabase Validate
 - residual risk: hosted schema behavior is not proven until the trusted main run executes all six affected suites without skips
+
+### Hosted ALREADY_STARTED modal proof repair
+
+- main CI run `29280537191`, job `86921889442`, passed authentication, booking, session fallback start, hosted status polling, and explicit `409 ALREADY_STARTED` recovery before timing out in the proof harness.
+- root cause: the lifecycle locator matched both `Edit Session` and `Live session`, then waited for that combined locator to become hidden. The successful recovery correctly transitioned the same visible dialog from edit mode to live mode, so the assertion could never finish.
+- classification: `low-risk autonomous`; lane: `standard`.
+- bounded fix:
+  - scope the hidden-state wait to `[data-session-modal-mode="edit"]`.
+  - accept either a visible live modal or a closed modal after recovery.
+  - continue rejecting a stale edit modal or visible session-start failure alert.
+- non-goals: no production modal, route, auth, workflow, database, or runtime behavior changes.
+- verification card:
+  - required checks: focused lifecycle regression, lint, typecheck, reviewer, hosted auth-browser-smoke.
+  - executed checks: red proof 2/2 new assertions failed before implementation; focused regression 15/15 pass; lint pass; typecheck pass.
+  - blocked checks: hosted auth-browser-smoke requires the trusted main workflow and synthetic credentials.
+  - result: `review-ready`, pending PR checks and trusted post-merge acceptance.
+  - residual risk: the full lifecycle and measurement roundtrip remain unproven until the merged-main hosted job passes both commands and cleanup.

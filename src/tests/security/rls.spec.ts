@@ -7,6 +7,8 @@ import { computeEnvironmentGuidance, resolveSupabaseTestEnv } from './supabaseEn
 import {
   buildCiRlsAppMetadata,
   persistCiRlsAppMetadata,
+  reconcileCiRlsFixtureRole,
+  type CiRlsFixtureRole,
 } from './ciRlsFixtureMetadata';
 import type { Database } from '../../lib/generated/database.types';
 
@@ -178,11 +180,16 @@ let clientRoleId: string | null = null;
 const userSessionIdsByUser = new Map<string, string>();
 const actorAccessTokensByEmail = new Map<string, string>();
 
-const provisionCiRlsProfile = async (userId: string, organizationId: string): Promise<void> => {
+const provisionCiRlsProfile = async (
+  userId: string,
+  organizationId: string,
+  expectedRole: CiRlsFixtureRole,
+): Promise<void> => {
   if (!serviceClient) {
     throw new Error('Service client not initialized');
   }
   await persistCiRlsAppMetadata(serviceClient, userId);
+  await reconcileCiRlsFixtureRole(serviceClient, userId, expectedRole);
   const result = await (serviceClient as SupabaseClient).rpc('provision_ci_rls_fixture_profile', {
     p_user_id: userId,
     p_organization_id: organizationId,
@@ -239,7 +246,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     throw assignRoleResult.error;
   }
 
-  await provisionCiRlsProfile(userId, organizationId);
+  await provisionCiRlsProfile(userId, organizationId, 'therapist');
 
   const clientEmail = `${label}.client.${randomUUID()}@example.com`;
   const clientPassword = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
@@ -280,7 +287,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   if (clientRoleResult.error) {
     throw clientRoleResult.error;
   }
-  await provisionCiRlsProfile(clientUserId, organizationId);
+  await provisionCiRlsProfile(clientUserId, organizationId, 'client');
 
   const sessionId = randomUUID();
   const start = new Date(Date.now() - 60 * 60 * 1000);
@@ -348,7 +355,7 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
     throw assignResult.error;
   }
 
-  await provisionCiRlsProfile(userId, organizationId);
+  await provisionCiRlsProfile(userId, organizationId, 'admin');
 
   return { email, password, userId, organizationId };
 };
@@ -2173,7 +2180,7 @@ describe('row level security for multi-tenant tables', () => {
       throw assignRoleResult.error;
     }
 
-    await provisionCiRlsProfile(otherTherapistId, orgAContext.organizationId);
+    await provisionCiRlsProfile(otherTherapistId, orgAContext.organizationId, 'therapist');
 
     const { data: authorizationRow, error: authorizationError } = await serviceClient
       .from('authorizations')

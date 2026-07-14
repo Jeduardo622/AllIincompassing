@@ -22,7 +22,8 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
 1. Pull request touches `supabase/migrations/**`.
    - `supabase-validate.yml` runs `lint-migrations`.
    - The lint step runs `supabase db lint --project-ref "$SUPABASE_PROJECT_REF"` when a project ref is configured.
-2. Push to `main` touches `supabase/migrations/**`.
+2. Push to `main` touches `supabase/migrations/**`, the Supabase Validate workflow,
+   or the hosted RLS fixture helpers/tests.
    - `supabase-validate.yml` runs `test-main`.
    - `test-main` runs `npm test -- --run --reporter=verbose` with `RUN_DB_IT=1`.
    - `supabase-validate.yml` also runs `runtime-migration-parity` to verify newly added migration versions from the merge range exist in the runtime DB's `supabase_migrations.schema_migrations`.
@@ -49,7 +50,13 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
 
 - Triggered by:
   - pull requests that touch `supabase/migrations/**` or `.github/workflows/supabase-validate.yml`
-  - pushes to `main` that touch `supabase/migrations/**`
+  - pushes to `main` that touch `supabase/migrations/**`,
+    `.github/workflows/supabase-validate.yml`,
+    `tests/integration/_helpers/liveRlsHarness.ts`,
+    `tests/integration/liveRlsHarness.unit.test.ts`,
+    `tests/integration/live-rls-fixture-schema.contract.test.ts`,
+    `src/tests/security/ciRlsFixtureMetadata.ts`, or
+    `src/tests/security/rls.spec.ts`
 - Jobs:
   - `lint-migrations` (PR only): checks migrations with Supabase CLI.
   - `test-main` (push only): runs unit/integration suites with hosted Supabase env vars and `RUN_DB_IT=1`.

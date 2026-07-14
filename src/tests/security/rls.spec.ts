@@ -4,6 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { computeEnvironmentGuidance, resolveSupabaseTestEnv } from './supabaseEnv';
+import {
+  buildCiRlsAppMetadata,
+  persistCiRlsAppMetadata,
+} from './ciRlsFixtureMetadata';
 import type { Database } from '../../lib/generated/database.types';
 
 type TypedClient = SupabaseClient<Database, 'public', Database['public']>;
@@ -174,15 +178,11 @@ let clientRoleId: string | null = null;
 const userSessionIdsByUser = new Map<string, string>();
 const actorAccessTokensByEmail = new Map<string, string>();
 
-const buildCiRlsAppMetadata = () => ({
-  ci_rls_fixture: true,
-  ci_rls_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-});
-
 const provisionCiRlsProfile = async (userId: string, organizationId: string): Promise<void> => {
   if (!serviceClient) {
     throw new Error('Service client not initialized');
   }
+  await persistCiRlsAppMetadata(serviceClient, userId);
   const result = await (serviceClient as SupabaseClient).rpc('provision_ci_rls_fixture_profile', {
     p_user_id: userId,
     p_organization_id: organizationId,

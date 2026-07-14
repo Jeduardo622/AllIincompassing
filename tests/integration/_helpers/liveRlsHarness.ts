@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../../../src/lib/generated/database.types";
 import {
+  buildCiRlsAppMetadata,
+  persistCiRlsAppMetadata,
+  type CiRlsAppMetadata,
+} from "../../../src/tests/security/ciRlsFixtureMetadata";
+import {
   computeEnvironmentGuidance,
   resolveSupabaseTestEnv,
 } from "../../../src/tests/security/supabaseEnv";
@@ -17,10 +22,13 @@ type AdminAuthFixture = {
 
 type LiveRlsFixtureRole = "admin" | "therapist" | "none";
 
-export const buildLiveRlsAppMetadata = () => ({
-  ci_rls_fixture: true,
-  ci_rls_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-});
+export const buildLiveRlsAppMetadata = buildCiRlsAppMetadata;
+
+export const persistLiveRlsAppMetadata = (
+  serviceClient: TypedClient,
+  userId: string,
+  metadata: CiRlsAppMetadata,
+) => persistCiRlsAppMetadata(serviceClient, userId, metadata);
 
 type OrgDataFixture = {
   therapistId: string;
@@ -106,12 +114,13 @@ const createAuthFixture = async (
     userMetadata.role = options.role;
   }
 
+  const appMetadata = buildLiveRlsAppMetadata();
   const { data: createdUser, error: createUserError } = await serviceClient.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
     user_metadata: userMetadata,
-    app_metadata: buildLiveRlsAppMetadata(),
+    app_metadata: appMetadata,
   });
 
   if (createUserError || !createdUser?.user) {
@@ -121,6 +130,8 @@ const createAuthFixture = async (
   const userId = createdUser.user.id;
 
   try {
+    await persistLiveRlsAppMetadata(serviceClient, userId, appMetadata);
+
     if (options.role === "admin") {
       if (!options.organizationId) {
         throw new Error("Admin fixtures require an organization id");

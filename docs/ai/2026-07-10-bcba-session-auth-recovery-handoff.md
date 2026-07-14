@@ -274,3 +274,21 @@ PR validation also exposed saturated hosted booking data: run `29291802604` foun
   - blocked checks: `RUN_DB_IT=1` live assertions require trusted CI Supabase secrets.
   - result: `human-review-ready`; hosted CI remains decisive.
   - residual risk: fixture correctness against current hosted RLS cannot be proven locally and the critical lane requires human approval before merge.
+
+### Synthetic BCBA authorization fixture
+
+- trusted main CI run `29299849202` proved the five-script session suite, including note measurement create/edit roundtrip, and explicitly logged `verified hosted 409 ALREADY_STARTED UI recovery` for the synthetic BCBA.
+- the final BCBA lifecycle then failed at `seed-session-goal-notes-for-no-show` because the actor's fixed therapist/client pair had no approved authorization.
+- classification: `high-risk human-reviewed`; lane: `critical`; human review is required before merge because the provisioner uses service-role writes to authorization tables.
+- bounded fix:
+  - validate the existing fixed therapist, resolve a deterministic linked client through `client_therapist_links`, and ensure both remain active and in the expected organization.
+  - create one run-owned approved authorization and service for that exact pair, with a broad synthetic date window.
+  - identify all clinical fixtures by `created_by = synthetic actor user id`; cleanup notes, services, and authorization before identity mappings and Auth deletion.
+  - include clinical tables in residual-row assertions.
+- non-goals: no production authorization behavior, schema, policy, function, workflow, or real tenant data changes.
+- verification card:
+  - required checks: focused provisioner tests, lint, typecheck, policy, tenant validation, test suite, build, security/tenant review, human review, trusted-main BCBA acceptance.
+  - executed checks: focused provisioner tests 10/10 pass; lint pass; typecheck pass; focused policy pass; tenant validation pass; build pass.
+  - blocked checks: provision/cleanup against hosted Supabase and the final acceptance proof require trusted CI secrets and a merged main commit.
+  - result: `human-review-ready`; focused reviewer found no P1/P2 after the client fixture was changed to resolve through the tenant-scoped therapist linkage.
+  - residual risk: the authorization fixture is tenant-sensitive and must not be merged without human review; the final BCBA lifecycle and cleanup remain unproven until trusted main reruns.

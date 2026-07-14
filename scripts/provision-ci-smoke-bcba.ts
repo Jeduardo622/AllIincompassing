@@ -55,6 +55,47 @@ export interface SmokeBcbaProfileInvariant {
   organization_id?: string | null;
 }
 
+export interface SmokeBcbaAuthorizationInvariant {
+  client_id?: string | null;
+  provider_id?: string | null;
+  organization_id?: string | null;
+  status?: string | null;
+}
+
+export interface SmokeBcbaClientLinkInvariant {
+  client_id?: string | null;
+  therapist_id?: string | null;
+  organization_id?: string | null;
+}
+
+export const assertSmokeBcbaClientLinkInvariant = (
+  link: SmokeBcbaClientLinkInvariant | null,
+  expected: { therapistId: string; organizationId: string },
+): asserts link is SmokeBcbaClientLinkInvariant & { client_id: string } => {
+  if (
+    !link?.client_id
+    || link.therapist_id !== expected.therapistId
+    || link.organization_id !== expected.organizationId
+  ) {
+    throw new Error("Synthetic BCBA therapist fixture has no tenant-bound linked client.");
+  }
+};
+
+export const assertSmokeBcbaAuthorizationInvariant = (
+  authorization: SmokeBcbaAuthorizationInvariant | null,
+  expected: { clientId: string; therapistId: string; organizationId: string },
+): void => {
+  if (
+    !authorization
+    || authorization.client_id !== expected.clientId
+    || authorization.provider_id !== expected.therapistId
+    || authorization.organization_id !== expected.organizationId
+    || authorization.status !== "approved"
+  ) {
+    throw new Error("Synthetic BCBA authorization did not persist the required client, provider, organization, and approved state.");
+  }
+};
+
 export const assertSmokeBcbaProfileInvariant = (
   profile: SmokeBcbaProfileInvariant | null,
   expected: { userId: string; organizationId: string },
@@ -152,6 +193,33 @@ const writeCredentials = (email: string, password: string): void => {
 };
 
 const cleanupMappings = async (client: SupabaseClient, userId: string): Promise<void> => {
+  const { data: authorizationRows, error: authorizationLookupError } = await client
+    .from("authorizations")
+    .select("id")
+    .eq("created_by", userId);
+  if (authorizationLookupError) throw authorizationLookupError;
+
+  const { error: noteCleanupError } = await client
+    .from("client_session_notes")
+    .delete()
+    .eq("created_by", userId);
+  if (noteCleanupError) throw noteCleanupError;
+
+  const authorizationIds = (authorizationRows ?? []).map(({ id }) => id);
+  if (authorizationIds.length > 0) {
+    const { error: serviceCleanupError } = await client
+      .from("authorization_services")
+      .delete()
+      .in("authorization_id", authorizationIds);
+    if (serviceCleanupError) throw serviceCleanupError;
+
+    const { error: authorizationCleanupError } = await client
+      .from("authorizations")
+      .delete()
+      .in("id", authorizationIds);
+    if (authorizationCleanupError) throw authorizationCleanupError;
+  }
+
   for (const table of ["user_therapist_links", "user_roles"] as const) {
     const { error } = await client.from(table).delete().eq("user_id", userId);
     if (error) throw error;
@@ -189,6 +257,24 @@ const provision = async (): Promise<void> => {
   if (!therapist || therapist.organization_id !== organizationId || therapist.deleted_at) {
     throw new Error("Synthetic BCBA therapist fixture is missing, deleted, or outside the expected organization.");
   }
+  const { data: clientLink, error: clientLinkError } = await client
+    .from("client_therapist_links")
+    .select("client_id,therapist_id,organization_id")
+    .eq("therapist_id", therapistId)
+    .eq("organization_id", organizationId)
+    .order("client_id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (clientLinkError) throw clientLinkError;
+  assertSmokeBcbaClientLinkInvariant(clientLink, { therapistId, organizationId });
+  const clientId = clientLink.client_id;
+
+  const { data: clientRow, error: clientError } = await client
+    .from("clients").select("id,organization_id,deleted_at").eq("id", clientId).maybeSingle();
+  if (clientError) throw clientError;
+  if (!clientRow || clientRow.organization_id !== organizationId || clientRow.deleted_at) {
+    throw new Error("Synthetic BCBA client fixture is missing, deleted, or outside the expected organization.");
+  }
   const { data: role, error: roleError } = await client.from("roles").select("id").eq("name", "bcba").maybeSingle();
   if (roleError) throw roleError;
   if (!role?.id) throw new Error("Role bcba is not provisioned.");
@@ -223,6 +309,47 @@ const provision = async (): Promise<void> => {
   if (provisionProfileError || provisionedOrganizationId !== organizationId) {
     throw new Error("Synthetic BCBA authoritative profile provisioning failed.");
   }
+
+  const startDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const endDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const { data: authorization, error: authorizationError } = await client
+    .from("authorizations")
+    .insert({
+      authorization_number: `CI-BCBA-${user.id}`,
+      client_id: clientId,
+      provider_id: therapistId,
+      diagnosis_code: "F84.0",
+      diagnosis_description: "Synthetic CI lifecycle fixture",
+      start_date: startDate,
+      end_date: endDate,
+      status: "approved",
+      organization_id: organizationId,
+      created_by: user.id,
+    })
+    .select("id,client_id,provider_id,organization_id,status")
+    .single();
+  if (authorizationError || !authorization) {
+    throw authorizationError ?? new Error("Synthetic BCBA authorization provisioning failed.");
+  }
+  assertSmokeBcbaAuthorizationInvariant(authorization, { clientId, therapistId, organizationId });
+
+  const { error: authorizationServiceError } = await client
+    .from("authorization_services")
+    .insert({
+      authorization_id: authorization.id,
+      service_code: "97153",
+      service_description: "Adaptive behavior treatment by protocol",
+      from_date: startDate,
+      to_date: endDate,
+      requested_units: 160,
+      approved_units: 160,
+      unit_type: "15-minute units",
+      decision_status: "approved",
+      organization_id: organizationId,
+      created_by: user.id,
+    });
+  if (authorizationServiceError) throw authorizationServiceError;
+
   const { data: persistedProfile, error: persistedProfileError } = await client
     .from("profiles")
     .select("id,role,is_active,organization_id")
@@ -238,7 +365,7 @@ const provision = async (): Promise<void> => {
   });
 
   writeCredentials(email, password);
-  console.log(JSON.stringify({ ok: true, action: "provisioned", email, userId: user.id, organizationId, therapistId }));
+  console.log(JSON.stringify({ ok: true, action: "provisioned", email, userId: user.id, organizationId, therapistId, clientId, authorizationId: authorization.id }));
 };
 
 const cleanup = async (): Promise<void> => {
@@ -256,7 +383,14 @@ const cleanup = async (): Promise<void> => {
   const remaining = await findUser(client, email);
   if (remaining) throw new Error("BCBA smoke Auth user remains after cleanup.");
   const residualCounts: Record<string, number> = {};
-  for (const [table, column] of [["profiles", "id"], ["user_roles", "user_id"], ["user_therapist_links", "user_id"]] as const) {
+  for (const [table, column] of [
+    ["profiles", "id"],
+    ["user_roles", "user_id"],
+    ["user_therapist_links", "user_id"],
+    ["client_session_notes", "created_by"],
+    ["authorization_services", "created_by"],
+    ["authorizations", "created_by"],
+  ] as const) {
     const { count, error: countError } = await client.from(table).select("*", { count: "exact", head: true }).eq(column, user.id);
     if (countError) throw countError;
     residualCounts[table] = count ?? -1;

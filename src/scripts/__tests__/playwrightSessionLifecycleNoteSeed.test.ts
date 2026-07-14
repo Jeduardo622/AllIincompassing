@@ -19,7 +19,7 @@ describe("buildLifecycleSessionNoteSeedPayload", () => {
         authorizationId: "auth-1",
         serviceCode: "97153",
         actorUserId: "user-1",
-        goalId: "goal-1",
+        goalIds: ["goal-1"],
       }),
     ).toEqual({
       authorization_id: "auth-1",
@@ -57,7 +57,7 @@ describe("buildLifecycleSessionNoteSeedPayload", () => {
         authorizationId: "auth-2",
         serviceCode: "H2019",
         actorUserId: "user-2",
-        goalId: "goal-2",
+        goalIds: ["goal-2"],
         noteText: "Completed through lifecycle smoke",
         narrative: "Seeded by playwright lifecycle",
       }),
@@ -69,6 +69,37 @@ describe("buildLifecycleSessionNoteSeedPayload", () => {
         end_time: "10:15:00",
         goal_notes: { "goal-2": "Completed through lifecycle smoke" },
         narrative: "Seeded by playwright lifecycle",
+      }),
+    );
+  });
+
+  it("seeds every unique session goal with a persisted note", () => {
+    expect(
+      buildLifecycleSessionNoteSeedPayload({
+        session: {
+          sessionId: "session-3",
+          organizationId: "org-3",
+          clientId: "client-3",
+          therapistId: "therapist-3",
+          sessionDate: "2026-06-12",
+          startTime: "2026-06-12T09:30:00.000Z",
+          endTime: "2026-06-12T10:15:00.000Z",
+          durationMinutes: 45,
+        },
+        authorizationId: "auth-3",
+        serviceCode: "97153",
+        actorUserId: "user-3",
+        goalIds: ["goal-2", "goal-1", "goal-2"],
+        noteText: "Lifecycle coverage",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        goal_ids: ["goal-2", "goal-1"],
+        goals_addressed: ["goal-2", "goal-1"],
+        goal_notes: {
+          "goal-2": "Lifecycle coverage",
+          "goal-1": "Lifecycle coverage",
+        },
       }),
     );
   });

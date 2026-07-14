@@ -71,21 +71,26 @@ export const buildLifecycleSessionNoteSeedPayload = (input: {
   authorizationId: string;
   serviceCode: string;
   actorUserId: string;
-  goalId: string;
+  goalIds: string[];
   noteText?: string;
   narrative?: string;
 }): LifecycleSessionNoteSeedPayload => {
   const noteText = input.noteText?.trim() || "Playwright lifecycle goal note";
   const narrative = input.narrative?.trim() || "Playwright lifecycle seeded session note";
+  const goalIds = Array.from(new Set(input.goalIds.filter((goalId) => goalId.length > 0)));
+  if (goalIds.length === 0) {
+    throw new Error("Unable to seed lifecycle session note without a session goal.");
+  }
+  const goalNotes = Object.fromEntries(goalIds.map((goalId) => [goalId, noteText]));
 
   return {
     authorization_id: input.authorizationId,
     client_id: input.session.clientId,
     created_by: input.actorUserId,
     end_time: toTimeOnly(input.session.endTime),
-    goal_ids: [input.goalId],
-    goal_notes: { [input.goalId]: noteText },
-    goals_addressed: [input.goalId],
+    goal_ids: goalIds,
+    goal_notes: goalNotes,
+    goals_addressed: goalIds,
     is_locked: false,
     narrative,
     organization_id: input.session.organizationId,

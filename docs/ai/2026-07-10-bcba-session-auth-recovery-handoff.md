@@ -311,3 +311,19 @@ PR validation also exposed saturated hosted booking data: run `29291802604` foun
   - blocked checks: applying the migration and running `RUN_DB_IT=1` require the trusted main Supabase workflow and secrets; the local full coverage suite timed out after 182 seconds in unrelated AI-documentation network/finalization tests before producing a result.
   - result: `human-review-ready`; final security/test review found no remaining P1/P2 after the additional-role and cleanup fixes.
   - residual risk: the service-only RPC and hosted fixture path remain unproven against the deployed schema until a trusted post-merge Supabase Validate run passes all six files.
+
+### Trusted-main IEHP generation test synchronization
+
+- trusted main CI run `29339215591` stopped in `unit-tests` before build and the hosted BCBA acceptance job could run.
+- root cause: both IEHP DOCX tests synchronized on the assessment document row, then synchronously queried a button whose label is updated by a later selected-assessment effect. Under full coverage load, the query could race that state update.
+- classification: `low-risk autonomous`; lane: `standard`.
+- bounded fix:
+  - await the existing accessible `Generate completed IEHP DOCX` button in both equivalent tests.
+  - preserve the existing enabled-state wait and all production component behavior.
+- non-goals: no component, route, auth, workflow, database, or runtime behavior changes.
+- verification card:
+  - required checks: focused repeated regressions, full component test file, policy, lint, typecheck, full unit coverage, build, reviewer, PR CI.
+  - executed checks: both focused IEHP tests passed five consecutive runs; full component file passed 98/98; policy, lint, typecheck, and build passed; tier-0 routes passed 220/220; full coverage reached 2691 passing tests with the IEHP tests green; focused reviewer found no P1/P2.
+  - blocked checks: local Windows full coverage has one unrelated CRLF-sensitive workflow-text assertion in `check-e2e-reliability-gates`; the same contract passes in Linux CI, which is authoritative for PR closure.
+  - result: `pass-with-blocked-checks`, pending PR CI.
+  - residual risk: trusted-main BCBA acceptance remains blocked until this unit gate fix merges and main reruns; Linux CI must confirm the complete coverage suite.

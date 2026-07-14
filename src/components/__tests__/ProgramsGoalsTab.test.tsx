@@ -4282,7 +4282,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("iehp-fba.docx");
-    const generateDocxButton = screen.getByRole("button", { name: /Generate completed IEHP DOCX/i });
+    const generateDocxButton = await screen.findByRole("button", { name: /Generate completed IEHP DOCX/i });
     await waitFor(() => {
       expect(generateDocxButton).not.toBeDisabled();
     });
@@ -4359,7 +4359,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("iehp-fba.docx");
-    const generateDocxButton = screen.getByRole("button", { name: /Generate completed IEHP DOCX/i });
+    const generateDocxButton = await screen.findByRole("button", { name: /Generate completed IEHP DOCX/i });
     await waitFor(() => {
       expect(generateDocxButton).not.toBeDisabled();
     });

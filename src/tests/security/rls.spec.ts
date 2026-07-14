@@ -153,6 +153,7 @@ const createdClientSessionNoteIds: string[] = [];
 const createdClientNoteIds: string[] = [];
 const createdExtraTherapistIds: string[] = [];
 const createdFixtureAuthUserIds: string[] = [];
+const createdRetentionSessionIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
 let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
@@ -171,6 +172,7 @@ let therapistCertificationIdsByOrg: OrgRecordIds | null = null;
 let clientRoleId: string | null = null;
 
 const userSessionIdsByUser = new Map<string, string>();
+const actorAccessTokensByEmail = new Map<string, string>();
 
 const createTenantFixture = async (label: string, organizationId: string): Promise<TenantContext> => {
   if (!serviceClient) {
@@ -355,20 +357,30 @@ const createTherapistCertificationFixture = async (
 };
 
 const signInWithPassword = async (email: string, password: string): Promise<TypedClient> => {
-  const client = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  let accessToken = actorAccessTokensByEmail.get(email);
+  if (!accessToken) {
+    const authClient = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const signInResult = await authClient.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-  const signInResult = await client.auth.signInWithPassword({
-    email,
-    password,
-  });
-
-  if (signInResult.error) {
-    throw signInResult.error;
+    if (signInResult.error) {
+      throw signInResult.error;
+    }
+    accessToken = signInResult.data.session?.access_token;
+    if (!accessToken) {
+      throw new Error(`Supabase sign-in did not return an access token for ${email}`);
+    }
+    actorAccessTokensByEmail.set(email, accessToken);
   }
 
-  return client;
+  return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
 };
 
 const signInTherapist = async (context: TenantContext): Promise<TypedClient> => {
@@ -610,9 +622,9 @@ const ensureAiSessionNotesSeeded = async (): Promise<void> => {
         session_id: context.sessionId,
         therapist_id: context.therapistId,
         client_id: context.clientId,
-        session_date: start.toISOString(),
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
+        session_date: start.toISOString().slice(0, 10),
+        start_time: start.toISOString().slice(11, 19),
+        end_time: end.toISOString().slice(11, 19),
         session_duration: 45,
         ai_generated_summary: `Automated summary ${label}`,
         ai_confidence_score: 0.88,
@@ -949,11 +961,13 @@ const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianCon
   await serviceClient.from('profiles').update({ role: 'client' }).eq('id', guardianId);
 
   const resolvedRoleId = await resolveClientRoleId();
-  await serviceClient
+  const roleInsert = await serviceClient
     .from('user_roles')
-    .insert({ user_id: guardianId, role_id: resolvedRoleId })
-    .onConflict('user_id, role_id')
-    .ignore();
+    .insert({ user_id: guardianId, role_id: resolvedRoleId });
+
+  if (roleInsert.error) {
+    throw roleInsert.error;
+  }
 
   const { data: insertedGuardian, error: guardianInsertError } = await serviceClient
     .from('client_guardians')
@@ -1609,6 +1623,10 @@ afterAll(async () => {
 
   if (createdSessionTranscriptIds.length > 0) {
     await serviceClient.from('session_transcripts').delete().in('id', createdSessionTranscriptIds);
+  }
+
+  if (createdRetentionSessionIds.length > 0) {
+    await serviceClient.from('sessions').delete().in('id', createdRetentionSessionIds);
   }
 
   if (createdAiCacheIds.length > 0) {
@@ -3263,8 +3281,25 @@ describe('session transcription consent enforcement', () => {
       return;
     }
 
-    const targetSessionId = orgAContext.sessionId;
+    const targetSessionId = randomUUID();
     const retentionCreatedAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const retentionStart = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+    const retentionEnd = new Date(retentionStart.getTime() + 60 * 60 * 1000);
+    const retentionSessionInsert = await serviceClient.from('sessions').insert({
+      id: targetSessionId,
+      client_id: orgAContext.clientId,
+      therapist_id: orgAContext.therapistId,
+      start_time: retentionStart.toISOString(),
+      end_time: retentionEnd.toISOString(),
+      status: 'completed',
+      organization_id: orgAContext.organizationId,
+      has_transcription_consent: true,
+    });
+
+    if (retentionSessionInsert.error) {
+      throw retentionSessionInsert.error;
+    }
+    createdRetentionSessionIds.push(targetSessionId);
 
     const transcriptInsert = await serviceClient
       .from('session_transcripts')

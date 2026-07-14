@@ -239,3 +239,20 @@ Verification card:
   - residual risk: the full lifecycle and measurement roundtrip remain unproven until the merged-main hosted job passes both commands and cleanup.
 
 PR validation also exposed saturated hosted booking data: run `29291802604` found eight authorized therapist-client pairs, but the first three had no conflict-free candidate window and the default three-pair bound stopped before the remaining candidates. The harness default now checks all eight already-bounded candidates while preserving the environment override, excluded-pair tracking, and the five-minute booking step timeout. Focused regression: 15/15 pass after a red default-bound assertion.
+
+### Hosted Supabase RLS fixture stabilization
+
+- main Supabase Validate run `29290517486` failed from deterministic test-fixture defects before its later Auth `429` cascade.
+- classification: `low-risk autonomous`; lane: `standard`; production schema, policies, auth code, workflows, and shared Supabase helpers are non-goals.
+- bounded repair in `src/tests/security/rls.spec.ts`:
+  - cache one access token per synthetic actor and create isolated request clients with that actor's bearer token, avoiding repeated password endpoint calls without sharing identities.
+  - replace unsupported post-insert conflict chaining with an error-checked role insert.
+  - send date/time-only values to `ai_session_notes` date/time columns.
+  - seed the retention transcript against its own tracked synthetic session to preserve the one-transcript-per-session constraint.
+- tenant boundary: every actor remains bound to its own JWT and organization; all cross-organization assertions remain unchanged.
+- verification card:
+  - required checks: focused RLS test, lint, typecheck, policy, tenant validation, test suite, build, reviewer, trusted hosted Supabase Validate.
+  - executed checks: focused local static path 121/121 pass; lint pass; typecheck pass; focused policy pass; tenant validation pass; build pass; independent tenant review found no P1/P2; the isolated Schedule close-readiness test passed 4/4 after one full-suite concurrency failure.
+  - blocked checks: the live RLS path and Auth rate-limit proof require trusted hosted Supabase credentials; local `test:ci` retains the pre-existing Windows workflow-text parsing failure in `check-e2e-reliability-gates` (12/13 pass), while Linux CI is authoritative for that contract.
+  - result: `review-ready` after remaining local gates and reviewer; hosted validation remains decisive.
+  - residual risk: unrelated live integration suites in the same failed run may require a subsequent isolated fixture repair after these first causes are removed.

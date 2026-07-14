@@ -34,10 +34,19 @@ describe("live RLS fixture schema contract", () => {
 
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(pushSection).toContain(
+      "      - '.github/workflows/supabase-validate.yml'",
+    );
+    expect(pushSection).toContain(
       "      - 'tests/integration/_helpers/liveRlsHarness.ts'",
     );
     expect(pushSection).toContain(
       "      - 'tests/integration/live-rls-fixture-schema.contract.test.ts'",
+    );
+    expect(pushSection).toContain(
+      "      - 'tests/integration/liveRlsHarness.unit.test.ts'",
+    );
+    expect(pushSection).toContain(
+      "      - 'src/tests/security/ciRlsFixtureMetadata.ts'",
     );
     expect(pushSection).toContain("      - 'src/tests/security/rls.spec.ts'");
     expect(pushSection).toContain("      - main");

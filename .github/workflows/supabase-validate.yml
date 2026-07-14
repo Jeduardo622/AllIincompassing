@@ -12,6 +12,7 @@ on:
     branches:
       - main
     paths:
+      - '.github/workflows/supabase-validate.yml'
       - 'supabase/migrations/**'
       - 'tests/integration/_helpers/liveRlsHarness.ts'
       - 'tests/integration/live-rls-fixture-schema.contract.test.ts'

@@ -182,6 +182,8 @@ describe("playwright session lifecycle booking starts", () => {
   });
 
   it("bounds hosted lifecycle target pair attempts", () => {
+    expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 7 })).toBe(false);
+    expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 8 })).toBe(true);
     expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 2, maxPairAttempts: 3 })).toBe(false);
     expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 3, maxPairAttempts: 3 })).toBe(true);
     expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 1, maxPairAttempts: 0 })).toBe(true);

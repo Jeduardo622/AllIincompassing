@@ -57,7 +57,7 @@ const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
 const UI_BOOK_RESPONSE_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_UI_BOOK_RESPONSE_TIMEOUT_MS ?? "45000");
 const CLEANUP_BEFORE_FAILURE_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_CLEANUP_BEFORE_FAILURE_TIMEOUT_MS ?? "5000");
-const MAX_LIFECYCLE_PAIR_ATTEMPTS = Number(process.env.PW_LIFECYCLE_MAX_PAIR_ATTEMPTS ?? "3");
+const MAX_LIFECYCLE_PAIR_ATTEMPTS = Number(process.env.PW_LIFECYCLE_MAX_PAIR_ATTEMPTS ?? "8");
 
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
   console.log(`[lifecycle] start ${label}`);

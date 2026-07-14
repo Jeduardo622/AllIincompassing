@@ -237,3 +237,5 @@ Verification card:
   - blocked checks: hosted auth-browser-smoke requires the trusted main workflow and synthetic credentials.
   - result: `review-ready`, pending PR checks and trusted post-merge acceptance.
   - residual risk: the full lifecycle and measurement roundtrip remain unproven until the merged-main hosted job passes both commands and cleanup.
+
+PR validation also exposed saturated hosted booking data: run `29291802604` found eight authorized therapist-client pairs, but the first three had no conflict-free candidate window and the default three-pair bound stopped before the remaining candidates. The harness default now checks all eight already-bounded candidates while preserving the environment override, excluded-pair tracking, and the five-minute booking step timeout. Focused regression: 15/15 pass after a red default-bound assertion.

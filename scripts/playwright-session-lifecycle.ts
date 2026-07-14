@@ -1250,11 +1250,9 @@ async function invokeStartSessionFallback(token: string, ids: LifecycleIds, stri
 
 const seedSessionGoalNotesViaServiceRole = async ({
   sessionId,
-  goalId,
   actorUserId,
 }: {
   sessionId: string;
-  goalId: string;
   actorUserId: string;
 }): Promise<void> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
@@ -1274,6 +1272,22 @@ const seedSessionGoalNotesViaServiceRole = async ({
     .single();
   if (sessionError || !sessionRow) {
     throw new Error(`Unable to load session for lifecycle note seed: ${sessionError?.message ?? "missing row"}`);
+  }
+
+  const { data: sessionGoalRows, error: sessionGoalsError } = await adminClient
+    .from("session_goals")
+    .select("goal_id")
+    .eq("session_id", sessionId);
+  if (sessionGoalsError) {
+    throw new Error(`Unable to load lifecycle session goals for note seed: ${sessionGoalsError.message}`);
+  }
+  const goalIds = Array.from(new Set(
+    (sessionGoalRows ?? [])
+      .map((row) => row.goal_id)
+      .filter((goalId): goalId is string => typeof goalId === "string" && goalId.length > 0),
+  ));
+  if (goalIds.length === 0) {
+    throw new Error("Unable to seed lifecycle session goal notes: session has no goal membership.");
   }
 
   const sessionDate =
@@ -1364,7 +1378,7 @@ const seedSessionGoalNotesViaServiceRole = async ({
     authorizationId,
     serviceCode,
     actorUserId,
-    goalId,
+    goalIds,
     noteText: "Playwright lifecycle completed goal note",
     narrative: "Playwright lifecycle seeded session note",
   });
@@ -1375,7 +1389,7 @@ const seedSessionGoalNotesViaServiceRole = async ({
   }
 };
 
-const ensureAtLeastOneSessionGoalForLifecycle = async ({
+const ensureBookedSessionGoalForLifecycle = async ({
   sessionId,
   goalId,
 }: {
@@ -1395,6 +1409,7 @@ const ensureAtLeastOneSessionGoalForLifecycle = async ({
     .from("session_goals")
     .select("goal_id")
     .eq("session_id", sessionId)
+    .eq("goal_id", goalId)
     .limit(1);
   if (existingError) {
     throw new Error(`session_goals lookup failed: ${existingError.message}`);
@@ -1424,9 +1439,9 @@ const ensureAtLeastOneSessionGoalForLifecycle = async ({
   }
 };
 
-const fetchLifecycleArtifactCounts = async (sessionId: string): Promise<{
-  sessionGoalsCount: number;
-  clientSessionNotesCount: number;
+const fetchLifecycleArtifactCoverage = async (sessionId: string): Promise<{
+  sessionGoalIds: string[];
+  clientSessionNoteGoalNotes: unknown[];
 }> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
@@ -1438,34 +1453,38 @@ const fetchLifecycleArtifactCounts = async (sessionId: string): Promise<{
     },
   });
 
-  const [{ count: sessionGoalsCount, error: sessionGoalsError }, { count: clientSessionNotesCount, error: clientSessionNotesError }] =
+  const [{ data: sessionGoalRows, error: sessionGoalsError }, { data: clientSessionNoteRows, error: clientSessionNotesError }] =
     await Promise.all([
       adminClient
         .from("session_goals")
-        .select("goal_id", { count: "exact", head: true })
+        .select("goal_id")
         .eq("session_id", sessionId),
       adminClient
         .from("client_session_notes")
-        .select("id", { count: "exact", head: true })
+        .select("goal_notes")
         .eq("session_id", sessionId),
     ]);
 
   if (sessionGoalsError) {
-    throw new Error(`Unable to count lifecycle session_goals: ${sessionGoalsError.message}`);
+    throw new Error(`Unable to load lifecycle session_goals coverage: ${sessionGoalsError.message}`);
   }
   if (clientSessionNotesError) {
-    throw new Error(`Unable to count lifecycle client_session_notes: ${clientSessionNotesError.message}`);
+    throw new Error(`Unable to load lifecycle client_session_notes coverage: ${clientSessionNotesError.message}`);
   }
 
   return {
-    sessionGoalsCount: sessionGoalsCount ?? 0,
-    clientSessionNotesCount: clientSessionNotesCount ?? 0,
+    sessionGoalIds: Array.from(new Set(
+      (sessionGoalRows ?? [])
+        .map((row) => row.goal_id)
+        .filter((goalId): goalId is string => typeof goalId === "string" && goalId.length > 0),
+    )),
+    clientSessionNoteGoalNotes: (clientSessionNoteRows ?? []).map((row) => row.goal_notes),
   };
 };
 
-const assertLifecycleArtifactCounts = async (sessionId: string, stage: string): Promise<void> => {
-  const counts = await fetchLifecycleArtifactCounts(sessionId);
-  assertLifecycleSessionArtifacts(stage, counts);
+const assertLifecycleArtifactCoverage = async (sessionId: string, stage: string): Promise<void> => {
+  const coverage = await fetchLifecycleArtifactCoverage(sessionId);
+  assertLifecycleSessionArtifacts(stage, coverage);
 };
 
 const completeSessionViaApiFallback = async ({
@@ -1705,16 +1724,15 @@ async function markTerminalViaScheduleModal(
       console.warn(
         `[lifecycle] ${terminalStatus} API fallback hit SESSION_NOTES_REQUIRED; repairing smoke artifacts and retrying.`,
       );
-      await ensureAtLeastOneSessionGoalForLifecycle({
+      await ensureBookedSessionGoalForLifecycle({
         sessionId,
         goalId: ids.goalId,
       });
       await seedSessionGoalNotesViaServiceRole({
         sessionId,
-        goalId: ids.goalId,
         actorUserId,
       });
-      await assertLifecycleArtifactCounts(sessionId, "before-close");
+      await assertLifecycleArtifactCoverage(sessionId, "before-close");
       await completeSessionViaApiFallback({
         baseUrl,
         token,
@@ -1857,7 +1875,7 @@ export async function run() {
     await withStepTimeout("start-session-modal", () =>
       startSessionViaScheduleModal(activePage, scheduleUrl, booked, token, strictParityMode));
     await withStepTimeout("ensure-session-goals-after-start", () =>
-      ensureAtLeastOneSessionGoalForLifecycle({
+      ensureBookedSessionGoalForLifecycle({
         sessionId: booked.sessionId,
         goalId: booked.goalId,
       }));
@@ -1865,11 +1883,10 @@ export async function run() {
       await withStepTimeout(`seed-session-goal-notes-for-${terminalStatus}`, () =>
         seedSessionGoalNotesViaServiceRole({
           sessionId: booked.sessionId,
-          goalId: booked.goalId,
           actorUserId,
         }));
       await withStepTimeout(`assert-lifecycle-artifacts-before-${terminalStatus}`, () =>
-        assertLifecycleArtifactCounts(booked.sessionId, "before-close"));
+        assertLifecycleArtifactCoverage(booked.sessionId, "before-close"));
     }
     await withStepTimeout(`${terminalStatus}-session-modal`, () =>
       markTerminalViaScheduleModal(
@@ -1886,7 +1903,7 @@ export async function run() {
     await withStepTimeout(`assert-session-${terminalStatus}`, () =>
       assertSessionRowStatus(booked.sessionId, terminalStatus));
     await withStepTimeout(`assert-lifecycle-artifacts-after-${terminalStatus}`, () =>
-      assertLifecycleArtifactCounts(booked.sessionId, "after-close"));
+      assertLifecycleArtifactCoverage(booked.sessionId, "after-close"));
 
     const latestDir = path.resolve(process.cwd(), "artifacts", "latest");
     if (!fs.existsSync(latestDir)) {

@@ -450,6 +450,7 @@ Verification card:
 PR #791 follow-up:
 
 - first PR unit run `29372715973` exposed that CI supplies Supabase secrets even when `RUN_DB_IT` is absent. Routing the RLS suites through Node unconditionally changed the ordinary mocked unit contract and produced 27 failures; this was a test-environment containment defect, not new hosted policy evidence.
-- the RLS files now use Node only when `RUN_DB_IT` is explicitly `1` or `true`; ordinary CI retains jsdom/MSW behavior, while the trusted main-only Supabase workflow already sets `RUN_DB_IT: '1'` and therefore retains real Node Auth/REST/Storage transport.
-- added a static workflow/config contract and reproduced the ordinary CI shape locally with synthetic Supabase environment values: all 124 security RLS tests passed. The four focused helper/contract files pass 38/38; lint and typecheck pass.
+- the first containment correction restored jsdom without `RUN_DB_IT`, but rerun `29373376848` proved ordinary CI still entered the hosted fixture lifecycle because `CI=true` independently enabled the suite; the real secret-backed run again produced 27 mixed live/mock failures.
+- suite execution, Node routing, and MSW passthrough now all require explicit `RUN_DB_IT`. Ordinary CI keeps static contracts but does not create hosted fixtures; the trusted main-only Supabase workflow already sets `RUN_DB_IT: '1'` and therefore retains real Node Auth/REST/Storage transport.
+- the workflow/config contract asserts all three gates share the explicit trust predicate. The four focused helper/contract files pass 38/38; lint, typecheck, and policy pass. Trusted hosted proof remains pending.
 - the PR `auth-browser-smoke` job was green only because change-scope deliberately skipped provisioning and acceptance. It is not counted as BCBA proof; the main push job remains decisive after human merge.

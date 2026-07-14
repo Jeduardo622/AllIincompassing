@@ -114,7 +114,7 @@ if (!environmentResolution.shouldRun && (isCiEnvironment || runDatabaseIntegrati
   });
 }
 
-const SHOULD_RUN_RLS_TESTS = environmentResolution.shouldRun;
+const SHOULD_RUN_RLS_TESTS = environmentResolution.shouldRun && runDatabaseIntegrationTests;
 
 let serviceClient: TypedClient | null = null;
 let runTests = false;
@@ -1038,7 +1038,7 @@ const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianCon
 
 beforeAll(async () => {
   if (!SHOULD_RUN_RLS_TESTS) {
-    console.warn('⏭️  Skipping RLS security tests - environment not configured.');
+    console.warn('⏭️  Skipping hosted RLS security tests - RUN_DB_IT is not explicitly enabled or the environment is incomplete.');
     return;
   }
 

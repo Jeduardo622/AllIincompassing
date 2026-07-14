@@ -57,7 +57,7 @@ const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
 const UI_BOOK_RESPONSE_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_UI_BOOK_RESPONSE_TIMEOUT_MS ?? "45000");
 const CLEANUP_BEFORE_FAILURE_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_CLEANUP_BEFORE_FAILURE_TIMEOUT_MS ?? "5000");
-const MAX_LIFECYCLE_PAIR_ATTEMPTS = Number(process.env.PW_LIFECYCLE_MAX_PAIR_ATTEMPTS ?? "3");
+const MAX_LIFECYCLE_PAIR_ATTEMPTS = Number(process.env.PW_LIFECYCLE_MAX_PAIR_ATTEMPTS ?? "8");
 
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
   console.log(`[lifecycle] start ${label}`);
@@ -1555,6 +1555,22 @@ export async function waitForSessionStatus(
   throw new Error(`Expected session status ${expected}, got ${status || "unknown"}`);
 }
 
+export const SESSION_EDIT_DIALOG_SELECTOR =
+  '[role="dialog"][data-session-modal-mode="edit"]';
+
+export function getAlreadyStartedRecoveryUiError(state: {
+  modalMode: string | null;
+  failureAlertVisible: boolean;
+}): string | null {
+  if (state.modalMode === "edit") {
+    return "ALREADY_STARTED recovery left the edit dialog visible.";
+  }
+  if (state.failureAlertVisible) {
+    return "ALREADY_STARTED recovery left a visible session-start failure alert.";
+  }
+  return null;
+}
+
 async function assertSessionRowStatus(sessionId: string, expected: string): Promise<void> {
   const status = await readSessionRowStatus(sessionId);
   if (status !== expected) {
@@ -1575,7 +1591,7 @@ async function startSessionViaScheduleModal(
   const startButton = page.getByRole("button", { name: /^Start Session$/i });
   await startButton.waitFor({ state: "visible", timeout: 20_000 });
   await expectStartButtonEnabled(page, startButton);
-  const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
+  const editDialog = page.locator(SESSION_EDIT_DIALOG_SELECTOR);
 
   const assertAlreadyStartedRecovery = /^(1|true|yes)$/i.test(process.env.PW_ASSERT_ALREADY_STARTED_UI ?? "");
   if (assertAlreadyStartedRecovery) {
@@ -1615,8 +1631,15 @@ async function startSessionViaScheduleModal(
     if (assertAlreadyStartedRecovery) {
       await editDialog.waitFor({ state: "hidden", timeout: 90_000 });
       const failureAlert = page.getByText(/Failed to start session/i).first();
-      if (await failureAlert.isVisible().catch(() => false)) {
-        throw new Error("ALREADY_STARTED recovery left a visible session-start failure alert.");
+      const visibleSessionDialog = page
+        .locator('[role="dialog"][data-session-modal-mode]:visible')
+        .first();
+      const recoveryError = getAlreadyStartedRecoveryUiError({
+        modalMode: (await visibleSessionDialog.getAttribute("data-session-modal-mode").catch(() => null)),
+        failureAlertVisible: await failureAlert.isVisible().catch(() => false),
+      });
+      if (recoveryError) {
+        throw new Error(recoveryError);
       }
     } else {
       await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);

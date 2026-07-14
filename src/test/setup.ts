@@ -1,10 +1,10 @@
 import { vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
 import { setupServer } from 'msw/node';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse, passthrough } from 'msw';
 import '@testing-library/jest-dom';
 import { installConsoleGuard } from './utils/consoleGuard';
 import { setRuntimeSupabaseConfig } from '../lib/runtimeConfig';
-import { handleUnhandledMswRequest } from './mswUnhandledRequest';
+import { handleUnhandledMswRequest, shouldBypassUnhandledMswRequest } from './mswUnhandledRequest';
 
 const isTestRuntime =
   process.env.VITEST === 'true' ||
@@ -699,6 +699,9 @@ const therapistIdsByOrg: Record<string, string[]> = {
 
 // Setup MSW server for mocking API calls (for integration tests or when Supabase mocks are bypassed)
 export const server = setupServer(
+  http.all('*', ({ request }) => (
+    shouldBypassUnhandledMswRequest(request) ? passthrough() : undefined
+  )),
   http.post('*/rest/v1/rpc/current_user_organization_id', async ({ request }) => {
     const token = getBearerToken(request.headers);
     const orgId = resolveOrgIdForToken(token);

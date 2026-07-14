@@ -62,6 +62,21 @@ describe("live RLS fixture schema contract", () => {
     expect(testMainJob).toContain("RUN_DB_IT: '1'");
   });
 
+  it("uses the Node transport only for explicitly trusted database integration runs", () => {
+    const config = readRepoFile("vitest.config.ts");
+    const securitySuite = readRepoFile("src/tests/security/rls.spec.ts");
+
+    expect(config).toContain("const runTrustedDatabaseIntegrationTests = ['1', 'true'].includes(");
+    expect(config).toContain(
+      "const liveRlsEnvironment = runTrustedDatabaseIntegrationTests ? 'node' : 'jsdom';",
+    );
+    expect(config).toContain("['src/tests/security/rls.spec.ts', liveRlsEnvironment]");
+    expect(config).toContain("['tests/integration/rls.*.test.ts', liveRlsEnvironment]");
+    expect(securitySuite).toContain(
+      "const SHOULD_RUN_RLS_TESTS = environmentResolution.shouldRun && runDatabaseIntegrationTests;",
+    );
+  });
+
   it("seeds required therapist names in the shared live RLS harness", () => {
     const source = readRepoFile("tests/integration/_helpers/liveRlsHarness.ts");
     const inserts = therapistInsertBodies(source);

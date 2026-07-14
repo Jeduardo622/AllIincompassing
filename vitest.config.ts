@@ -2,6 +2,11 @@ process.env.NODE_ENV = 'development';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
+const runTrustedDatabaseIntegrationTests = ['1', 'true'].includes(
+  (process.env.RUN_DB_IT ?? '').toLowerCase(),
+);
+const liveRlsEnvironment = runTrustedDatabaseIntegrationTests ? 'node' : 'jsdom';
+
 export default defineConfig({
   plugins: [react()],
   // Keep local verification deterministic by preventing Vitest from
@@ -69,6 +74,8 @@ export default defineConfig({
       ['src/scripts/**', 'node'],
       ['tests/edge/**', 'node'],
       ['src/lib/__tests__/schedulingOrchestrator.test.ts', 'node'],
+      ['src/tests/security/rls.spec.ts', liveRlsEnvironment],
+      ['tests/integration/rls.*.test.ts', liveRlsEnvironment],
     ],
     define: {
       'process.env.NODE_ENV': JSON.stringify('test'),

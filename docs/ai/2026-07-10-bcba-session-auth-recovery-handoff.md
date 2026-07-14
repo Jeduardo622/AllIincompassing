@@ -410,3 +410,47 @@ Verification card:
   - secret-backed `playwright:session-complete` and full auth browser smoke require hosted CI credentials.
 - result: `review-ready-with-blocked-checks`, pending fresh PR #790 hosted CI.
 - residual risk: only the hosted strict lifecycle can prove the modal now emits and receives `sessions-complete`; if exact persisted coverage is logged before click but no request is emitted, stop and add bounded request/readiness diagnostics rather than increasing timeouts.
+
+### WIN-217 BCBA provisioning and trusted RLS transport repair
+
+- branch: `codex/win-217-bcba-rls-validation-repair`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- root causes:
+  - main CI assumed the fixed BCBA therapist already had a `client_therapist_links` row, while the hosted fixture instead has one client shared by same-tenant sessions and approved authorizations.
+  - the trusted `admin_actions` test omitted the organization required by the deployed tenant-scoped policy.
+  - MSW wildcard handlers intercepted marked live Supabase REST/Auth requests, and jsdom `Blob` uploads stalled all six Storage policy tests.
+- bounded fix:
+  - deterministically resolve exactly one client from the intersection of same-org therapist sessions and approved authorizations, then retain the existing active-client tenant checks.
+  - include and assert `organization_id` in the admin action fixture.
+  - require `RUN_DB_IT`, the configured Supabase host, and an exact internal test marker before MSW passthrough; run live RLS files under Node and upload `Uint8Array` bodies.
+- non-goals: no migration, production policy, grant, workflow, runtime auth, tenant model, timeout, or real customer-data change.
+
+Verification card:
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: CI smoke fixture plus database/RLS/Storage integration-test harness
+- required checks: focused RED/GREEN tests; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run test:routes:tier0`; independent code, security, and Supabase review; trusted hosted Supabase Validate; main auth browser smoke.
+- executed checks:
+  - RED proof: 2 files / 7 tests failed before implementation for the missing resolver and permissive unmarked bypass.
+  - focused GREEN tests: 3 files / 28 tests passed.
+  - secretless RLS load paths: 124 security tests and 16 integration tests passed.
+  - `npm run ci:check-focused`, `npm run lint -- --quiet`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build` passed.
+  - `npm run test:ci` reached 2710 passing tests; focused reruns reproduce only the two unrelated Windows baseline failures described below.
+  - tier-0 routes reached 212 passes; one spec had two preview-server 404 session-setup failures while the other six specs passed.
+  - independent code, security, and Supabase reviews found no actionable findings.
+- blocked checks:
+  - local Windows `test:ci` remains blocked by the existing CRLF-sensitive workflow-text assertion and jsdom `Blob.text()` mismatch; neither affected file changed.
+  - local tier-0 completion is blocked by transient preview-server 404s during `routes_client.cy.ts` session setup.
+  - trusted Supabase Auth/REST/Storage validation and the production-style BCBA lifecycle require protected CI credentials.
+- result: `human-review-ready-with-blocked-checks`; pending PR CI, human review, merge, trusted Supabase Validate, and main auth browser smoke.
+- residual risk: local tests cannot prove actual hosted Auth/REST/Storage transit or the fixed hosted BCBA fixture; those two trusted post-merge checks remain decisive.
+
+PR #791 follow-up:
+
+- first PR unit run `29372715973` exposed that CI supplies Supabase secrets even when `RUN_DB_IT` is absent. Routing the RLS suites through Node unconditionally changed the ordinary mocked unit contract and produced 27 failures; this was a test-environment containment defect, not new hosted policy evidence.
+- the first containment correction restored jsdom without `RUN_DB_IT`, but rerun `29373376848` proved ordinary CI still entered the hosted fixture lifecycle because `CI=true` independently enabled the suite; the real secret-backed run again produced 27 mixed live/mock failures.
+- suite execution, Node routing, and MSW passthrough now all require explicit `RUN_DB_IT`. Ordinary CI keeps static contracts but does not create hosted fixtures; the trusted main-only Supabase workflow already sets `RUN_DB_IT: '1'` and therefore retains real Node Auth/REST/Storage transport.
+- the workflow/config contract asserts all three gates share the explicit trust predicate. The four focused helper/contract files pass 38/38; lint, typecheck, and policy pass. Trusted hosted proof remains pending.
+- the PR `auth-browser-smoke` job was green only because change-scope deliberately skipped provisioning and acceptance. It is not counted as BCBA proof; the main push job remains decisive after human merge.

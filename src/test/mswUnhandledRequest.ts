@@ -7,6 +7,12 @@ type MswUnhandledRequestPrint = {
 
 const truthyFlags = new Set(['1', 'true', 'yes', 'on']);
 
+export const LIVE_SUPABASE_REQUEST_HEADER = 'x-internal-live-supabase-test';
+export const LIVE_SUPABASE_REQUEST_HEADER_VALUE = 'rls-integration';
+export const LIVE_SUPABASE_REQUEST_HEADERS = {
+  [LIVE_SUPABASE_REQUEST_HEADER]: LIVE_SUPABASE_REQUEST_HEADER_VALUE,
+} as const;
+
 const isTruthyFlag = (value: string | undefined): boolean => (
   value ? truthyFlags.has(value.toLowerCase()) : false
 );
@@ -35,6 +41,10 @@ export const shouldBypassUnhandledMswRequest = (
   env: EnvLike = process.env,
 ): boolean => {
   if (!isTruthyFlag(env.RUN_DB_IT)) {
+    return false;
+  }
+
+  if (request.headers.get(LIVE_SUPABASE_REQUEST_HEADER) !== LIVE_SUPABASE_REQUEST_HEADER_VALUE) {
     return false;
   }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertSmokeBcbaAuthorizationInvariant,
+  assertSmokeBcbaClientLinkInvariant,
   assertDedicatedSmokeBcbaEmail,
   assertSmokeBcbaProfileInvariant,
   buildDefaultSmokeBcbaEmail,
@@ -47,6 +49,44 @@ describe("provision-ci-smoke-bcba guards", () => {
       { id: "user-1", role: "bcba", is_active: false, organization_id: "org-1" },
     ]) {
       expect(() => assertSmokeBcbaProfileInvariant(profile, expected)).toThrow(/did not persist/);
+    }
+  });
+
+  it("requires the synthetic authorization to remain approved and tenant-bound", () => {
+    const expected = { clientId: "client-1", therapistId: "therapist-1", organizationId: "org-1" };
+    expect(() => assertSmokeBcbaAuthorizationInvariant({
+      client_id: "client-1",
+      provider_id: "therapist-1",
+      organization_id: "org-1",
+      status: "approved",
+    }, expected)).not.toThrow();
+
+    for (const authorization of [
+      null,
+      { client_id: "client-2", provider_id: "therapist-1", organization_id: "org-1", status: "approved" },
+      { client_id: "client-1", provider_id: "therapist-2", organization_id: "org-1", status: "approved" },
+      { client_id: "client-1", provider_id: "therapist-1", organization_id: "org-2", status: "approved" },
+      { client_id: "client-1", provider_id: "therapist-1", organization_id: "org-1", status: "pending" },
+    ]) {
+      expect(() => assertSmokeBcbaAuthorizationInvariant(authorization, expected)).toThrow(/did not persist/);
+    }
+  });
+
+  it("requires the resolved client link to match the fixed therapist and tenant", () => {
+    const expected = { therapistId: "therapist-1", organizationId: "org-1" };
+    expect(() => assertSmokeBcbaClientLinkInvariant({
+      client_id: "client-1",
+      therapist_id: "therapist-1",
+      organization_id: "org-1",
+    }, expected)).not.toThrow();
+
+    for (const link of [
+      null,
+      { client_id: null, therapist_id: "therapist-1", organization_id: "org-1" },
+      { client_id: "client-1", therapist_id: "therapist-2", organization_id: "org-1" },
+      { client_id: "client-1", therapist_id: "therapist-1", organization_id: "org-2" },
+    ]) {
+      expect(() => assertSmokeBcbaClientLinkInvariant(link, expected)).toThrow(/linked client/);
     }
   });
 

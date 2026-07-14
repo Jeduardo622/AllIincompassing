@@ -5,6 +5,7 @@ import {
   buildBookingConflictWindowFilters,
   cleanupBeforeNoResponseFailure,
   filterNonOverlappingBookingStarts,
+  fillMissingLifecycleGoalNotes,
   hasReachedLifecyclePairAttemptLimit,
   isCreateSessionButtonReady,
   isExpectedAlreadyStartedResponse,
@@ -58,6 +59,27 @@ describe("playwright session lifecycle booking starts", () => {
     expect(isExpectedAlreadyStartedResponse(false, 409, body)).toBe(false);
     expect(isExpectedAlreadyStartedResponse(true, 409, JSON.stringify({ rpcCode: "INVALID_STATUS" }))).toBe(false);
     expect(isExpectedAlreadyStartedResponse(true, 500, body)).toBe(false);
+  });
+
+  it("fills only empty per-goal note fields before terminal submission", async () => {
+    const values = ["already captured", ""];
+    const fills: Array<{ index: number; value: string }> = [];
+    const fakePage = {
+      locator: () => ({
+        count: async () => values.length,
+        nth: (index: number) => ({
+          inputValue: async () => values[index],
+          fill: async (value: string) => {
+            values[index] = value;
+            fills.push({ index, value });
+          },
+        }),
+      }),
+    } as unknown as Parameters<typeof fillMissingLifecycleGoalNotes>[0];
+
+    await expect(fillMissingLifecycleGoalNotes(fakePage, "seeded smoke note")).resolves.toBe(1);
+    expect(values).toEqual(["already captured", "seeded smoke note"]);
+    expect(fills).toEqual([{ index: 1, value: "seeded smoke note" }]);
   });
 
   it("accepts live or closed UI after ALREADY_STARTED recovery but rejects stale edit state", () => {

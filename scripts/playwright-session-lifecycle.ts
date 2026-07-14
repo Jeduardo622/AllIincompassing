@@ -1164,6 +1164,32 @@ export const isExpectedAlreadyStartedResponse = (
   }
 };
 
+/**
+ * The lifecycle fixture seeds the required note rows with the service role before
+ * reopening the Schedule modal. React Hook Form can still initialize before those
+ * rows are reflected in the modal, so terminal submission may fail client-side
+ * validation without issuing the sessions-complete request. Fill only empty
+ * per-goal fields; never overwrite a note already present in the UI.
+ */
+export async function fillMissingLifecycleGoalNotes(
+  page: Page,
+  noteText = "Synthetic lifecycle smoke note",
+): Promise<number> {
+  const noteFields = page.locator('textarea[id^="goal-note-"]');
+  const fieldCount = await noteFields.count();
+  let filledCount = 0;
+  for (let index = 0; index < fieldCount; index += 1) {
+    const field = noteFields.nth(index);
+    const currentValue = await field.inputValue();
+    if (currentValue.trim().length > 0) {
+      continue;
+    }
+    await field.fill(noteText);
+    filledCount += 1;
+  }
+  return filledCount;
+}
+
 /** Same contract as UI/`sessions-start` + RPC fallback; used when the modal does not surface a `sessions-start` response in time. */
 async function invokeStartSessionFallback(token: string, ids: LifecycleIds, strictMode: boolean): Promise<void> {
   const payload: SessionStartPayload = {
@@ -1664,6 +1690,7 @@ async function markTerminalViaScheduleModal(
   });
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
   await page.locator("#status-select").selectOption(terminalStatus);
+  await fillMissingLifecycleGoalNotes(page);
   page.once("dialog", (dialog) => {
     void dialog.accept().catch(() => undefined);
   });

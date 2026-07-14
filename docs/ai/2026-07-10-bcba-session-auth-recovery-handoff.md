@@ -446,3 +446,10 @@ Verification card:
   - trusted Supabase Auth/REST/Storage validation and the production-style BCBA lifecycle require protected CI credentials.
 - result: `human-review-ready-with-blocked-checks`; pending PR CI, human review, merge, trusted Supabase Validate, and main auth browser smoke.
 - residual risk: local tests cannot prove actual hosted Auth/REST/Storage transit or the fixed hosted BCBA fixture; those two trusted post-merge checks remain decisive.
+
+PR #791 follow-up:
+
+- first PR unit run `29372715973` exposed that CI supplies Supabase secrets even when `RUN_DB_IT` is absent. Routing the RLS suites through Node unconditionally changed the ordinary mocked unit contract and produced 27 failures; this was a test-environment containment defect, not new hosted policy evidence.
+- the RLS files now use Node only when `RUN_DB_IT` is explicitly `1` or `true`; ordinary CI retains jsdom/MSW behavior, while the trusted main-only Supabase workflow already sets `RUN_DB_IT: '1'` and therefore retains real Node Auth/REST/Storage transport.
+- added a static workflow/config contract and reproduced the ordinary CI shape locally with synthetic Supabase environment values: all 124 security RLS tests passed. The four focused helper/contract files pass 38/38; lint and typecheck pass.
+- the PR `auth-browser-smoke` job was green only because change-scope deliberately skipped provisioning and acceptance. It is not counted as BCBA proof; the main push job remains decisive after human merge.

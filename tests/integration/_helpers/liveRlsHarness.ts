@@ -17,17 +17,9 @@ type AdminAuthFixture = {
 
 type LiveRlsFixtureRole = "admin" | "therapist" | "none";
 
-export const buildLiveRlsProfileFixture = (fixture: {
-  userId: string;
-  email: string;
-  organizationId: string | null;
-  role: LiveRlsFixtureRole;
-}) => ({
-  id: fixture.userId,
-  email: fixture.email,
-  organization_id: fixture.organizationId,
-  role: fixture.role === "none" ? "client" as const : fixture.role,
-  is_active: true,
+export const buildLiveRlsAppMetadata = () => ({
+  ci_rls_fixture: true,
+  ci_rls_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
 });
 
 type OrgDataFixture = {
@@ -119,6 +111,7 @@ const createAuthFixture = async (
     password,
     email_confirm: true,
     user_metadata: userMetadata,
+    app_metadata: buildLiveRlsAppMetadata(),
   });
 
   if (createUserError || !createdUser?.user) {
@@ -144,16 +137,14 @@ const createAuthFixture = async (
       await assignNamedRole(serviceClient, userId, "therapist");
     }
 
-    const profileResult = await serviceClient
-      .from("profiles")
-      .upsert(buildLiveRlsProfileFixture({
-        userId,
-        email,
-        organizationId: options.organizationId,
-        role: options.role,
-      }), { onConflict: "id" });
-    if (profileResult.error) {
-      throw profileResult.error;
+    if (options.role === "admin") {
+      const profileResult = await (serviceClient as SupabaseClient).rpc(
+        "provision_ci_rls_fixture_profile",
+        { p_user_id: userId, p_organization_id: options.organizationId },
+      );
+      if (profileResult.error || profileResult.data !== options.organizationId) {
+        throw profileResult.error ?? new Error("Synthetic RLS profile provisioning returned the wrong organization");
+      }
     }
 
     return { userId, email, password, organizationId: options.organizationId };
@@ -443,6 +434,18 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
     });
     const orgA = await seedOrgData(serviceClient, orgAId, "org-a", orgATherapist.userId);
     const orgB = await seedOrgData(serviceClient, orgBId, "org-b", orgBTherapist.userId);
+    for (const [actor, organizationId] of [
+      [orgATherapist, orgAId],
+      [orgBTherapist, orgBId],
+    ] as const) {
+      const profileResult = await (serviceClient as SupabaseClient).rpc(
+        "provision_ci_rls_fixture_profile",
+        { p_user_id: actor.userId, p_organization_id: organizationId },
+      );
+      if (profileResult.error || profileResult.data !== organizationId) {
+        throw profileResult.error ?? new Error("Synthetic RLS therapist profile provisioning returned the wrong organization");
+      }
+    }
     resources = { orgAAdmin, orgBAdmin, orgATherapist, orgBTherapist, outsider, orgA, orgB };
   } catch (setupError) {
     try {

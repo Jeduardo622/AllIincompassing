@@ -174,6 +174,24 @@ let clientRoleId: string | null = null;
 const userSessionIdsByUser = new Map<string, string>();
 const actorAccessTokensByEmail = new Map<string, string>();
 
+const buildCiRlsAppMetadata = () => ({
+  ci_rls_fixture: true,
+  ci_rls_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+});
+
+const provisionCiRlsProfile = async (userId: string, organizationId: string): Promise<void> => {
+  if (!serviceClient) {
+    throw new Error('Service client not initialized');
+  }
+  const result = await (serviceClient as SupabaseClient).rpc('provision_ci_rls_fixture_profile', {
+    p_user_id: userId,
+    p_organization_id: organizationId,
+  });
+  if (result.error || result.data !== organizationId) {
+    throw result.error ?? new Error('Synthetic RLS profile provisioning returned the wrong organization');
+  }
+};
+
 const createTenantFixture = async (label: string, organizationId: string): Promise<TenantContext> => {
   if (!serviceClient) {
     throw new Error('Service client not initialized');
@@ -187,6 +205,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     password,
     email_confirm: true,
     user_metadata: { organization_id: organizationId },
+    app_metadata: buildCiRlsAppMetadata(),
   });
 
   if (createUserError || !createdUser?.user) {
@@ -220,16 +239,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     throw assignRoleResult.error;
   }
 
-  const therapistProfileResult = await serviceClient.from('profiles').upsert({
-    id: userId,
-    email,
-    role: 'therapist',
-    is_active: true,
-    organization_id: organizationId,
-  }, { onConflict: 'id' });
-  if (therapistProfileResult.error) {
-    throw therapistProfileResult.error;
-  }
+  await provisionCiRlsProfile(userId, organizationId);
 
   const clientEmail = `${label}.client.${randomUUID()}@example.com`;
   const clientPassword = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
@@ -239,6 +249,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     password: clientPassword,
     email_confirm: true,
     user_metadata: { organization_id: organizationId },
+    app_metadata: buildCiRlsAppMetadata(),
   });
 
   if (clientUserError || !createdClientUser?.user) {
@@ -247,27 +258,6 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
 
   const clientUserId = createdClientUser.user.id;
   createdFixtureAuthUserIds.push(clientUserId);
-
-  const clientProfileResult = await serviceClient.from('profiles').upsert({
-    id: clientUserId,
-    email: clientEmail,
-    role: 'client',
-    is_active: true,
-    organization_id: organizationId,
-  }, { onConflict: 'id' });
-  if (clientProfileResult.error) {
-    throw clientProfileResult.error;
-  }
-
-  const resolvedClientRoleId = await resolveClientRoleId();
-  const clientRoleResult = await serviceClient.from('user_roles').insert({
-    user_id: clientUserId,
-    role_id: resolvedClientRoleId,
-    is_active: true,
-  });
-  if (clientRoleResult.error) {
-    throw clientRoleResult.error;
-  }
 
   const { error: clientInsertError } = await serviceClient.from('clients').insert({
     id: clientUserId,
@@ -280,6 +270,17 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   if (clientInsertError) {
     throw clientInsertError;
   }
+
+  const resolvedClientRoleId = await resolveClientRoleId();
+  const clientRoleResult = await serviceClient.from('user_roles').insert({
+    user_id: clientUserId,
+    role_id: resolvedClientRoleId,
+    is_active: true,
+  });
+  if (clientRoleResult.error) {
+    throw clientRoleResult.error;
+  }
+  await provisionCiRlsProfile(clientUserId, organizationId);
 
   const sessionId = randomUUID();
   const start = new Date(Date.now() - 60 * 60 * 1000);
@@ -327,6 +328,7 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
     password,
     email_confirm: true,
     user_metadata: { organization_id: organizationId },
+    app_metadata: buildCiRlsAppMetadata(),
   });
 
   if (createUserError || !createdUser?.user) {
@@ -346,16 +348,7 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
     throw assignResult.error;
   }
 
-  const profileResult = await serviceClient.from('profiles').upsert({
-    id: userId,
-    email,
-    role: 'admin',
-    is_active: true,
-    organization_id: organizationId,
-  }, { onConflict: 'id' });
-  if (profileResult.error) {
-    throw profileResult.error;
-  }
+  await provisionCiRlsProfile(userId, organizationId);
 
   return { email, password, userId, organizationId };
 };
@@ -988,6 +981,7 @@ const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianCon
     password,
     email_confirm: true,
     user_metadata: { organization_id: tenant.organizationId },
+    app_metadata: buildCiRlsAppMetadata(),
   });
 
   if (createGuardianError || !createdUser?.user) {
@@ -996,8 +990,6 @@ const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianCon
 
   const guardianId = createdUser.user.id;
   createdGuardianUserIds.push(guardianId);
-
-  await serviceClient.from('profiles').update({ role: 'client' }).eq('id', guardianId);
 
   const resolvedRoleId = await resolveClientRoleId();
   const roleInsert = await serviceClient
@@ -1126,6 +1118,70 @@ beforeAll(async () => {
     companySettingsId = insertResult.data.id;
     originalCompanyName = insertResult.data.company_name;
   }
+});
+
+describe('synthetic RLS profile provisioning guardrails', () => {
+  it('rejects a tenant mismatch for an otherwise valid synthetic therapist', async () => {
+    if (!runTests || !serviceClient || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping synthetic profile tenant-mismatch test - setup incomplete.');
+      return;
+    }
+
+    const result = await (serviceClient as SupabaseClient).rpc('provision_ci_rls_fixture_profile', {
+      p_user_id: orgAContext.userId,
+      p_organization_id: orgBContext.organizationId,
+    });
+
+    expect(result.error?.code).toBe('42501');
+  });
+
+  it('rejects an expired synthetic actor marker', async () => {
+    if (!runTests || !serviceClient || !orgAContext) {
+      console.log('⏭️  Skipping expired synthetic profile test - setup incomplete.');
+      return;
+    }
+
+    const expiredMetadata = {
+      ci_rls_fixture: true,
+      ci_rls_expires_at: new Date(Date.now() - 60 * 1000).toISOString(),
+    };
+    const expireResult = await serviceClient.auth.admin.updateUserById(orgAContext.userId, {
+      app_metadata: expiredMetadata,
+    });
+    if (expireResult.error) {
+      throw expireResult.error;
+    }
+
+    const result = await (serviceClient as SupabaseClient).rpc('provision_ci_rls_fixture_profile', {
+      p_user_id: orgAContext.userId,
+      p_organization_id: orgAContext.organizationId,
+    });
+    const restoreResult = await serviceClient.auth.admin.updateUserById(orgAContext.userId, {
+      app_metadata: buildCiRlsAppMetadata(),
+    });
+    if (restoreResult.error) {
+      throw restoreResult.error;
+    }
+    expect(result.error?.code).toBe('42501');
+  });
+
+  it('denies the provisioning RPC to an authenticated therapist', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping synthetic profile grant test - setup incomplete.');
+      return;
+    }
+
+    const therapistClient = await signInTherapist(orgAContext);
+    try {
+      const result = await (therapistClient as SupabaseClient).rpc('provision_ci_rls_fixture_profile', {
+        p_user_id: orgAContext.userId,
+        p_organization_id: orgAContext.organizationId,
+      });
+      expect(result.error).toBeTruthy();
+    } finally {
+      await therapistClient.auth.signOut();
+    }
+  });
 });
 
 describe('admin organization scoping', () => {
@@ -1738,6 +1794,12 @@ afterAll(async () => {
     await serviceClient.from('admin_actions').delete().in('id', createdAdminActionIds);
   }
 
+  if (createdFixtureAuthUserIds.length > 0) {
+    await serviceClient.from('user_roles').delete().in('user_id', createdFixtureAuthUserIds);
+    await serviceClient.from('clients').delete().in('id', createdFixtureAuthUserIds);
+    await serviceClient.from('therapists').delete().in('id', createdFixtureAuthUserIds);
+  }
+
   for (const userId of createdFixtureAuthUserIds) {
     await serviceClient.auth.admin.deleteUser(userId);
   }
@@ -2078,6 +2140,7 @@ describe('row level security for multi-tenant tables', () => {
       password: otherTherapistPassword,
       email_confirm: true,
       user_metadata: { organization_id: orgAContext.organizationId },
+      app_metadata: buildCiRlsAppMetadata(),
     });
 
     if (otherUserError || !otherUser?.user) {
@@ -2110,7 +2173,7 @@ describe('row level security for multi-tenant tables', () => {
       throw assignRoleResult.error;
     }
 
-    await serviceClient.from('profiles').update({ role: 'therapist' }).eq('id', otherTherapistId);
+    await provisionCiRlsProfile(otherTherapistId, orgAContext.organizationId);
 
     const { data: authorizationRow, error: authorizationError } = await serviceClient
       .from('authorizations')

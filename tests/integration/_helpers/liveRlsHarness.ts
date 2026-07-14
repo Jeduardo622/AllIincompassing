@@ -15,6 +15,21 @@ type AdminAuthFixture = {
   organizationId: string | null;
 };
 
+type LiveRlsFixtureRole = "admin" | "therapist" | "none";
+
+export const buildLiveRlsProfileFixture = (fixture: {
+  userId: string;
+  email: string;
+  organizationId: string | null;
+  role: LiveRlsFixtureRole;
+}) => ({
+  id: fixture.userId,
+  email: fixture.email,
+  organization_id: fixture.organizationId,
+  role: fixture.role === "none" ? "client" as const : fixture.role,
+  is_active: true,
+});
+
 type OrgDataFixture = {
   therapistId: string;
   clientId: string;
@@ -85,7 +100,7 @@ const createAuthFixture = async (
   serviceClient: TypedClient,
   options: {
     organizationId: string | null;
-    role: "admin" | "therapist" | "none";
+    role: LiveRlsFixtureRole;
     label: string;
   },
 ): Promise<AdminAuthFixture> => {
@@ -127,6 +142,18 @@ const createAuthFixture = async (
       }
     } else if (options.role === "therapist") {
       await assignNamedRole(serviceClient, userId, "therapist");
+    }
+
+    const profileResult = await serviceClient
+      .from("profiles")
+      .upsert(buildLiveRlsProfileFixture({
+        userId,
+        email,
+        organizationId: options.organizationId,
+        role: options.role,
+      }), { onConflict: "id" });
+    if (profileResult.error) {
+      throw profileResult.error;
     }
 
     return { userId, email, password, organizationId: options.organizationId };

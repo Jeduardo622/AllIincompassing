@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildLiveRlsAppMetadata,
   persistLiveRlsAppMetadata,
+  reconcileLiveRlsRole,
 } from "./_helpers/liveRlsHarness.ts";
 
 describe("live RLS harness actor metadata", () => {
@@ -48,5 +49,66 @@ describe("live RLS harness actor metadata", () => {
         buildLiveRlsAppMetadata(),
       ),
     ).rejects.toThrow("Synthetic RLS actor metadata was not persisted with an unexpired marker");
+  });
+
+  it("reconciles the complete active role set to the expected fixture role", async () => {
+    const expectedRoleId = "00000000-0000-4000-8000-000000000010";
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: expectedRoleId }, error: null });
+    const roleEq = vi.fn().mockReturnValue({ maybeSingle });
+    const roleSelect = vi.fn().mockReturnValue({ eq: roleEq });
+    const deactivateUserEq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq: deactivateUserEq });
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    const activeStatusEq = vi.fn().mockResolvedValue({
+      data: [{ role_id: expectedRoleId }],
+      error: null,
+    });
+    const activeUserEq = vi.fn().mockReturnValue({ eq: activeStatusEq });
+    const activeSelect = vi.fn().mockReturnValue({ eq: activeUserEq });
+    const appMetadata = buildLiveRlsAppMetadata();
+    const getUserById = vi.fn().mockResolvedValue({
+      data: {
+        user: {
+          email: "admin.fixture@example.com",
+          app_metadata: appMetadata,
+        },
+      },
+      error: null,
+    });
+    const from = vi.fn((table: string) =>
+      table === "roles"
+        ? { select: roleSelect }
+        : { update, upsert, select: activeSelect },
+    );
+
+    await reconcileLiveRlsRole(
+      { auth: { admin: { getUserById } }, from } as never,
+      "00000000-0000-4000-8000-000000000001",
+      "admin",
+    );
+
+    expect(from).toHaveBeenNthCalledWith(1, "roles");
+    expect(from).toHaveBeenNthCalledWith(2, "user_roles");
+    expect(from).toHaveBeenNthCalledWith(3, "user_roles");
+    expect(from).toHaveBeenNthCalledWith(4, "user_roles");
+    expect(update).toHaveBeenCalledWith({ is_active: false });
+    expect(deactivateUserEq).toHaveBeenCalledWith(
+      "user_id",
+      "00000000-0000-4000-8000-000000000001",
+    );
+    expect(upsert).toHaveBeenCalledWith(
+      {
+        user_id: "00000000-0000-4000-8000-000000000001",
+        role_id: expectedRoleId,
+        is_active: true,
+        expires_at: null,
+      },
+      { onConflict: "user_id,role_id" },
+    );
+    expect(activeUserEq).toHaveBeenCalledWith(
+      "user_id",
+      "00000000-0000-4000-8000-000000000001",
+    );
+    expect(activeStatusEq).toHaveBeenCalledWith("is_active", true);
   });
 });

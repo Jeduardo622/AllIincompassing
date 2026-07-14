@@ -344,3 +344,20 @@ PR validation also exposed saturated hosted booking data: run `29291802604` foun
   - blocked checks: the six live RLS suites require trusted CI secrets and remain decisive; local Windows full coverage reached 2697 passing tests with two unrelated failures in the CRLF-sensitive workflow parser and the Node Blob test implementation.
   - result: `human-review-ready`; pending PR checks, human review, and trusted hosted validation.
   - residual risk: Admin API create behavior is the only prerequisite not directly observable after failed-run cleanup; explicit update plus readback makes that prerequisite deterministic and observable on the next hosted run.
+
+### Hosted RLS authoritative-role reconciliation follow-up
+
+- trusted main Supabase Validate run `29343649846` proved Auth marker update/readback was not sufficient: all six live RLS files still failed the composite role guard after 2557 other tests passed.
+- classification: `high-risk human-reviewed`; lane: `critical`; the change remains test-only but uses service-role writes to authoritative `user_roles` rows for newly created synthetic actors.
+- bounded fix:
+  - require a just-created dotted `@example.com` actor with a true, unexpired Auth app-metadata marker before any role mutation.
+  - deactivate role rows only for that synthetic user ID, upsert the explicitly expected `admin`, `therapist`, or `client` role as active/non-expiring, and read back the complete active set.
+  - fail closed unless the active set is the exact expected singleton before calling the unchanged service-only profile RPC.
+  - route all normal provisioning paths through the shared marker -> role -> RPC preflight; keep wrong-tenant, expired-marker, and authenticated-caller guardrail calls raw.
+- non-goals: no migration, function, RLS policy, grant, workflow, production auth/role behavior, real user mutation, or tenant derivation change.
+- verification card:
+  - required checks: red/green role-reconciliation contract, focused hosted-RLS static paths, lint, typecheck, policy, tenant validation, build, code/security/test review, human review, and trusted hosted Supabase Validate.
+  - executed checks: the role-reconciliation contract failed before implementation and passed 4/4 afterward, including explicit actor scoping on the destructive update and verification read; nine focused hosted-RLS files passed 158/158; lint, typecheck, policy, tenant validation, and build passed; independent code review found one scoping-assertion test gap and the final contract closes it; final security review found no P1/P2.
+  - blocked checks: trusted live suites require CI secrets and remain decisive.
+  - result: `human-review-ready`; pending PR CI, human merge, and trusted hosted validation.
+  - residual risk: the previous RPC error combines multiple predicates, so only the trusted run can confirm authoritative role state was the remaining failed precondition.

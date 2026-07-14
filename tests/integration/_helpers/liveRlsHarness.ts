@@ -4,7 +4,9 @@ import type { Database } from "../../../src/lib/generated/database.types";
 import {
   buildCiRlsAppMetadata,
   persistCiRlsAppMetadata,
+  reconcileCiRlsFixtureRole,
   type CiRlsAppMetadata,
+  type CiRlsFixtureRole,
 } from "../../../src/tests/security/ciRlsFixtureMetadata";
 import {
   computeEnvironmentGuidance,
@@ -29,6 +31,12 @@ export const persistLiveRlsAppMetadata = (
   userId: string,
   metadata: CiRlsAppMetadata,
 ) => persistCiRlsAppMetadata(serviceClient, userId, metadata);
+
+export const reconcileLiveRlsRole = (
+  serviceClient: TypedClient,
+  userId: string,
+  expectedRole: CiRlsFixtureRole,
+) => reconcileCiRlsFixtureRole(serviceClient, userId, expectedRole);
 
 type OrgDataFixture = {
   therapistId: string;
@@ -146,6 +154,10 @@ const createAuthFixture = async (
       }
     } else if (options.role === "therapist") {
       await assignNamedRole(serviceClient, userId, "therapist");
+    }
+
+    if (options.role !== "none") {
+      await reconcileLiveRlsRole(serviceClient, userId, options.role);
     }
 
     if (options.role === "admin") {

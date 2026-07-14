@@ -4,18 +4,6 @@ import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
 interface AssignTherapistRequest { userId: string; therapistId: string; }
 
-const extractOrganizationId = (source: Record<string, unknown> | null | undefined): string | null => {
-  if (!source) return null;
-  const possibleKeys = ['organization_id', 'organizationId'] as const;
-  for (const key of possibleKeys) {
-    const value = source[key];
-    if (typeof value === 'string' && value.length > 0) {
-      return value;
-    }
-  }
-  return null;
-};
-
 export default createProtectedRoute(async (req: Request, userContext) => {
   if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
@@ -25,21 +13,32 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     const { userId, therapistId }: AssignTherapistRequest = await req.json();
     if (!userId || !therapistId) return new Response(JSON.stringify({ error: 'User ID and therapist ID are required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    const { data: authUserResult, error: authUserError } = await adminClient.auth.getUser();
-    if (authUserError || !authUserResult?.user) {
-      console.error('Error resolving authenticated admin:', authUserError);
-      logApiAccess('POST', '/assign-therapist-user', userContext, 401);
-      return new Response(JSON.stringify({ error: 'Unable to verify admin context' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    // Profile organization is server-controlled; auth user_metadata is user-editable
+    // and must never authorize tenant-scoped assignment.
+    const serviceRoleClient = supabaseAdmin;
+    const { data: profileRows, error: profileError } = await serviceRoleClient
+      .from('profiles')
+      .select('id, organization_id, is_active')
+      .in('id', [userContext.user.id, userId]);
+    if (profileError) {
+      console.error('Error resolving assignment profiles:', profileError);
+      logApiAccess('POST', '/assign-therapist-user', userContext, 500);
+      return new Response(JSON.stringify({ error: 'Unable to verify organization context' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const callerOrganizationId = extractOrganizationId(authUserResult.user.user_metadata as Record<string, unknown> | null | undefined);
-    if (!callerOrganizationId) {
+    const callerProfile = profileRows?.find((profile) => profile.id === userContext.user.id);
+    const targetProfile = profileRows?.find((profile) => profile.id === userId);
+    const callerOrganizationId = callerProfile?.organization_id ?? null;
+    if (!callerOrganizationId || callerProfile?.is_active !== true) {
       logApiAccess('POST', '/assign-therapist-user', userContext, 403);
       return new Response(JSON.stringify({ error: 'Admin organization context is required' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+    if (!targetProfile?.organization_id || targetProfile.is_active !== true || targetProfile.organization_id !== callerOrganizationId) {
+      logApiAccess('POST', '/assign-therapist-user', userContext, 403);
+      return new Response(JSON.stringify({ error: 'Cannot assign therapists for users outside your organization' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     // Service role access is required for Supabase auth.admin endpoints; we scope results to the caller's organization before use.
-    const serviceRoleClient = supabaseAdmin;
     const { data: userData, error: userError } = await serviceRoleClient.auth.admin.getUserById(userId);
     if (userError || !userData.user) {
       console.error('Error fetching user:', userError);
@@ -48,12 +47,6 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     }
 
     const targetUser = userData.user;
-    const targetOrganizationId = extractOrganizationId(targetUser.user_metadata as Record<string, unknown> | null | undefined);
-    if (!targetOrganizationId || targetOrganizationId !== callerOrganizationId) {
-      logApiAccess('POST', '/assign-therapist-user', userContext, 403);
-      return new Response(JSON.stringify({ error: 'Cannot assign therapists for users outside your organization' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
     const userEmail = targetUser.email;
     if (!userEmail) {
       return new Response(JSON.stringify({ error: 'Target user email is missing' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -61,7 +54,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
     const { data: therapistData, error: therapistError } = await adminClient
       .from('therapists')
-      .select('id, full_name, is_active, deleted_at')
+      .select('id, full_name, status, organization_id, deleted_at')
       .eq('id', therapistId)
       .single();
     if (therapistError || !therapistData) {
@@ -75,13 +68,12 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       return new Response(JSON.stringify({ error: 'Cannot assign archived therapist' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const therapistOrganizationId = extractOrganizationId(therapistData as unknown as Record<string, unknown>);
-    if (therapistOrganizationId && therapistOrganizationId !== callerOrganizationId) {
+    if (!therapistData.organization_id || therapistData.organization_id !== callerOrganizationId) {
       logApiAccess('POST', '/assign-therapist-user', userContext, 403);
       return new Response(JSON.stringify({ error: 'Cannot assign therapists from a different organization' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    if (!therapistData.is_active) return new Response(JSON.stringify({ error: 'Cannot assign to inactive therapist' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (therapistData.status !== 'active') return new Response(JSON.stringify({ error: 'Cannot assign to inactive therapist' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const { data: existingClient } = await adminClient
       .from('clients')

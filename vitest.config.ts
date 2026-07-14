@@ -69,6 +69,8 @@ export default defineConfig({
       ['src/scripts/**', 'node'],
       ['tests/edge/**', 'node'],
       ['src/lib/__tests__/schedulingOrchestrator.test.ts', 'node'],
+      ['src/tests/security/rls.spec.ts', 'node'],
+      ['tests/integration/rls.*.test.ts', 'node'],
     ],
     define: {
       'process.env.NODE_ENV': JSON.stringify('test'),

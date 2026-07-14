@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   assertSmokeBcbaAuthorizationInvariant,
-  assertSmokeBcbaClientLinkInvariant,
   assertDedicatedSmokeBcbaEmail,
   assertSmokeBcbaProfileInvariant,
   buildDefaultSmokeBcbaEmail,
   getMissingBcbaProvisionSecrets,
   shouldSkipSecretlessPullRequest,
+  resolveSmokeBcbaClientId,
   verifySmokeBcbaAuthenticatedReadiness,
 } from "../../scripts/provision-ci-smoke-bcba";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -72,22 +72,36 @@ describe("provision-ci-smoke-bcba guards", () => {
     }
   });
 
-  it("requires the resolved client link to match the fixed therapist and tenant", () => {
+  it("resolves the one client shared by same-tenant sessions and approved authorizations", () => {
     const expected = { therapistId: "therapist-1", organizationId: "org-1" };
-    expect(() => assertSmokeBcbaClientLinkInvariant({
-      client_id: "client-1",
-      therapist_id: "therapist-1",
-      organization_id: "org-1",
-    }, expected)).not.toThrow();
+    expect(resolveSmokeBcbaClientId([
+      { client_id: "client-2", therapist_id: "therapist-1", organization_id: "org-1" },
+      { client_id: "client-1", therapist_id: "therapist-1", organization_id: "org-1" },
+    ], [
+      { client_id: "client-1", provider_id: "therapist-1", organization_id: "org-1", status: "approved" },
+    ], expected)).toBe("client-1");
+  });
 
-    for (const link of [
-      null,
-      { client_id: null, therapist_id: "therapist-1", organization_id: "org-1" },
-      { client_id: "client-1", therapist_id: "therapist-2", organization_id: "org-1" },
-      { client_id: "client-1", therapist_id: "therapist-1", organization_id: "org-2" },
-    ]) {
-      expect(() => assertSmokeBcbaClientLinkInvariant(link, expected)).toThrow(/linked client/);
-    }
+  it.each([
+    ["no common client", [{ client_id: "client-1", therapist_id: "therapist-1", organization_id: "org-1" }], []],
+    ["ambiguous clients", [
+      { client_id: "client-1", therapist_id: "therapist-1", organization_id: "org-1" },
+      { client_id: "client-2", therapist_id: "therapist-1", organization_id: "org-1" },
+    ], [
+      { client_id: "client-1", provider_id: "therapist-1", organization_id: "org-1", status: "approved" },
+      { client_id: "client-2", provider_id: "therapist-1", organization_id: "org-1", status: "approved" },
+    ]],
+    ["cross-tenant session", [{ client_id: "client-1", therapist_id: "therapist-1", organization_id: "org-2" }], [
+      { client_id: "client-1", provider_id: "therapist-1", organization_id: "org-1", status: "approved" },
+    ]],
+    ["wrong provider", [{ client_id: "client-1", therapist_id: "therapist-1", organization_id: "org-1" }], [
+      { client_id: "client-1", provider_id: "therapist-2", organization_id: "org-1", status: "approved" },
+    ]],
+  ])("fails closed for %s", (_label, sessions, authorizations) => {
+    expect(() => resolveSmokeBcbaClientId(sessions, authorizations, {
+      therapistId: "therapist-1",
+      organizationId: "org-1",
+    })).toThrow(/exactly one active tenant-bound client/);
   });
 
   it("proves authenticated organization resolution and the bounded sessions RPC", async () => {

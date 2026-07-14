@@ -62,23 +62,49 @@ export interface SmokeBcbaAuthorizationInvariant {
   status?: string | null;
 }
 
-export interface SmokeBcbaClientLinkInvariant {
+export interface SmokeBcbaSessionInvariant {
   client_id?: string | null;
   therapist_id?: string | null;
   organization_id?: string | null;
 }
 
-export const assertSmokeBcbaClientLinkInvariant = (
-  link: SmokeBcbaClientLinkInvariant | null,
+export const resolveSmokeBcbaClientId = (
+  sessions: SmokeBcbaSessionInvariant[],
+  authorizations: SmokeBcbaAuthorizationInvariant[],
   expected: { therapistId: string; organizationId: string },
-): asserts link is SmokeBcbaClientLinkInvariant & { client_id: string } => {
-  if (
-    !link?.client_id
-    || link.therapist_id !== expected.therapistId
-    || link.organization_id !== expected.organizationId
-  ) {
-    throw new Error("Synthetic BCBA therapist fixture has no tenant-bound linked client.");
+): string => {
+  const sessionClientIds = new Set<string>();
+  for (const session of sessions) {
+    if (
+      !session.client_id
+      || session.therapist_id !== expected.therapistId
+      || session.organization_id !== expected.organizationId
+    ) {
+      throw new Error("Synthetic BCBA therapist fixture must resolve exactly one active tenant-bound client through sessions and authorizations.");
+    }
+    sessionClientIds.add(session.client_id);
   }
+
+  const authorizationClientIds = new Set<string>();
+  for (const authorization of authorizations) {
+    if (
+      !authorization.client_id
+      || authorization.provider_id !== expected.therapistId
+      || authorization.organization_id !== expected.organizationId
+      || authorization.status !== "approved"
+    ) {
+      throw new Error("Synthetic BCBA therapist fixture must resolve exactly one active tenant-bound client through sessions and authorizations.");
+    }
+    authorizationClientIds.add(authorization.client_id);
+  }
+
+  const commonClientIds = [...sessionClientIds]
+    .filter((clientId) => authorizationClientIds.has(clientId))
+    .sort();
+  if (commonClientIds.length !== 1) {
+    throw new Error("Synthetic BCBA therapist fixture must resolve exactly one active tenant-bound client through sessions and authorizations.");
+  }
+  return commonClientIds[0];
 };
 
 export const assertSmokeBcbaAuthorizationInvariant = (
@@ -257,17 +283,28 @@ const provision = async (): Promise<void> => {
   if (!therapist || therapist.organization_id !== organizationId || therapist.deleted_at) {
     throw new Error("Synthetic BCBA therapist fixture is missing, deleted, or outside the expected organization.");
   }
-  const { data: clientLink, error: clientLinkError } = await client
-    .from("client_therapist_links")
+  const { data: sessionRows, error: sessionError } = await client
+    .from("sessions")
     .select("client_id,therapist_id,organization_id")
     .eq("therapist_id", therapistId)
     .eq("organization_id", organizationId)
-    .order("client_id", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (clientLinkError) throw clientLinkError;
-  assertSmokeBcbaClientLinkInvariant(clientLink, { therapistId, organizationId });
-  const clientId = clientLink.client_id;
+    .order("client_id", { ascending: true });
+  if (sessionError) throw sessionError;
+
+  const { data: authorizationRows, error: authorizationLookupError } = await client
+    .from("authorizations")
+    .select("client_id,provider_id,organization_id,status")
+    .eq("provider_id", therapistId)
+    .eq("organization_id", organizationId)
+    .eq("status", "approved")
+    .order("client_id", { ascending: true });
+  if (authorizationLookupError) throw authorizationLookupError;
+
+  const clientId = resolveSmokeBcbaClientId(
+    sessionRows ?? [],
+    authorizationRows ?? [],
+    { therapistId, organizationId },
+  );
 
   const { data: clientRow, error: clientError } = await client
     .from("clients").select("id,organization_id,deleted_at").eq("id", clientId).maybeSingle();

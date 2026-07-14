@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type PostgrestError, type SupabaseClient } from '@supabase/supabase-js';
+import { LIVE_SUPABASE_REQUEST_HEADERS } from '../../test/mswUnhandledRequest';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -400,6 +401,7 @@ const signInWithPassword = async (email: string, password: string): Promise<Type
   if (!accessToken) {
     const authClient = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
+      global: { headers: LIVE_SUPABASE_REQUEST_HEADERS },
     });
     const signInResult = await authClient.auth.signInWithPassword({
       email,
@@ -418,7 +420,7 @@ const signInWithPassword = async (email: string, password: string): Promise<Type
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    global: { headers: { ...LIVE_SUPABASE_REQUEST_HEADERS, Authorization: `Bearer ${accessToken}` } },
   });
 };
 
@@ -447,8 +449,8 @@ const expectRlsViolation = (error: PostgrestError | null, fallbackRowCount = 0) 
   expect(fallbackRowCount).toBe(0);
 };
 
-const createTextBlob = (text: string): Blob => {
-  return new Blob([text], { type: 'text/plain' });
+const createTextBody = (text: string): Uint8Array => {
+  return new TextEncoder().encode(text);
 };
 
 const buildClientDocumentPath = (clientId: string, label: string): string => {
@@ -1042,6 +1044,7 @@ beforeAll(async () => {
 
   serviceClient = createClient<Database>(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: LIVE_SUPABASE_REQUEST_HEADERS },
   });
 
   try {
@@ -2907,6 +2910,7 @@ describe('user_profiles row level security', () => {
 
     const anonymousClient = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
+      global: { headers: LIVE_SUPABASE_REQUEST_HEADERS },
     });
 
     const result = await anonymousClient
@@ -3510,14 +3514,16 @@ describe('admin action logs enforce admin-only access', () => {
           admin_user_id: adminContext.userId,
           action_type: 'rls-test',
           target_user_id: adminContext.userId,
+          organization_id: adminContext.organizationId,
           action_details: { scope: 'rls', message: 'admin verification' },
         })
-        .select('id, admin_user_id')
+        .select('id, admin_user_id, organization_id')
         .single();
 
       expect(insertResult.error).toBeNull();
       const inserted = insertResult.data;
       expect(inserted?.admin_user_id).toBe(adminContext.userId);
+      expect(inserted?.organization_id).toBe(adminContext.organizationId);
 
       if (inserted?.id) {
         insertedActionId = inserted.id;
@@ -3530,12 +3536,13 @@ describe('admin action logs enforce admin-only access', () => {
 
       const selectResult = await adminClient
         .from('admin_actions')
-        .select('id, admin_user_id')
+        .select('id, admin_user_id, organization_id')
         .eq('id', insertedActionId)
         .single();
 
       expect(selectResult.error).toBeNull();
       expect(selectResult.data?.admin_user_id).toBe(adminContext.userId);
+      expect(selectResult.data?.organization_id).toBe(adminContext.organizationId);
     } finally {
       await adminClient.auth.signOut();
     }
@@ -3768,7 +3775,7 @@ describe('storage client document access policies', () => {
     try {
       const uploadResult = await adminClient.storage
         .from('client-documents')
-        .upload(path, createTextBlob('Admin storage test'), {
+        .upload(path, createTextBody('Admin storage test'), {
           contentType: 'text/plain',
           upsert: true,
         });
@@ -3800,7 +3807,7 @@ describe('storage client document access policies', () => {
     try {
       const uploadResult = await therapistClient.storage
         .from('client-documents')
-        .upload(path, createTextBlob('Therapist storage test'), {
+        .upload(path, createTextBody('Therapist storage test'), {
           contentType: 'text/plain',
           upsert: true,
         });
@@ -3832,7 +3839,7 @@ describe('storage client document access policies', () => {
     try {
       const uploadResult = await client.storage
         .from('client-documents')
-        .upload(path, createTextBlob('Client storage test'), {
+        .upload(path, createTextBody('Client storage test'), {
           contentType: 'text/plain',
           upsert: true,
         });
@@ -3864,7 +3871,7 @@ describe('storage client document access policies', () => {
     try {
       const uploadResult = await otherTherapist.storage
         .from('client-documents')
-        .upload(path, createTextBlob('Unauthorized storage test'), {
+        .upload(path, createTextBody('Unauthorized storage test'), {
           contentType: 'text/plain',
           upsert: true,
         });
@@ -3885,7 +3892,7 @@ describe('storage client document access policies', () => {
     const path = buildClientDocumentPath(orgAContext.clientId, 'protected');
     const seedResult = await serviceClient.storage
       .from('client-documents')
-      .upload(path, createTextBlob('Protected content'), {
+      .upload(path, createTextBody('Protected content'), {
         contentType: 'text/plain',
         upsert: true,
       });
@@ -3915,7 +3922,7 @@ describe('storage client document access policies', () => {
     const path = buildClientDocumentPath(orgBContext.clientId, 'restricted');
     const seedResult = await serviceClient.storage
       .from('client-documents')
-      .upload(path, createTextBlob('Restricted content'), {
+      .upload(path, createTextBody('Restricted content'), {
         contentType: 'text/plain',
         upsert: true,
       });

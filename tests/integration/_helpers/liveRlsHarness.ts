@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../../../src/lib/generated/database.types";
+import { LIVE_SUPABASE_REQUEST_HEADERS } from "../../../src/test/mswUnhandledRequest";
 import {
   buildCiRlsAppMetadata,
   persistCiRlsAppMetadata,
@@ -295,6 +296,7 @@ const createUserClient = (
 ): TypedClient =>
   createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: LIVE_SUPABASE_REQUEST_HEADERS },
   });
 
 export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
@@ -341,6 +343,7 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
   const serviceRoleKey = environmentResolution.supabaseServiceRoleKey as string;
   const serviceClient = createClient<Database>(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: LIVE_SUPABASE_REQUEST_HEADERS },
   });
 
   const orgAId = randomUUID();

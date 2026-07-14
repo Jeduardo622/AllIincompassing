@@ -2,13 +2,20 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   handleUnhandledMswRequest,
+  LIVE_SUPABASE_REQUEST_HEADER,
+  LIVE_SUPABASE_REQUEST_HEADER_VALUE,
   shouldBypassUnhandledMswRequest,
 } from '../mswUnhandledRequest';
+
+const liveHeaders = {
+  [LIVE_SUPABASE_REQUEST_HEADER]: LIVE_SUPABASE_REQUEST_HEADER_VALUE,
+};
 
 describe('MSW unhandled request routing', () => {
   it('bypasses configured Supabase live requests when DB integration tests are enabled', () => {
     const request = new Request('https://db.example.supabase.co/auth/v1/admin/users', {
       method: 'POST',
+      headers: liveHeaders,
     });
 
     expect(shouldBypassUnhandledMswRequest(request, {
@@ -26,12 +33,14 @@ describe('MSW unhandled request routing', () => {
     expect(shouldBypassUnhandledMswRequest(
       new Request('https://db.example.supabase.co/rest/v1/rpc/assign_admin_role', {
         method: 'POST',
+        headers: liveHeaders,
       }),
       env,
     )).toBe(true);
     expect(shouldBypassUnhandledMswRequest(
       new Request('https://db.example.supabase.co/auth/v1/token?grant_type=password', {
         method: 'POST',
+        headers: liveHeaders,
       }),
       env,
     )).toBe(true);
@@ -51,6 +60,27 @@ describe('MSW unhandled request routing', () => {
   it('keeps strict unhandled request errors for unrelated hosts', () => {
     const request = new Request('https://api.example.com/auth/v1/admin/users', {
       method: 'POST',
+      headers: liveHeaders,
+    });
+
+    expect(shouldBypassUnhandledMswRequest(request, {
+      RUN_DB_IT: '1',
+      SUPABASE_URL: 'https://db.example.supabase.co',
+    })).toBe(false);
+  });
+
+  it('keeps strict unhandled request errors for unmarked configured-host requests', () => {
+    const request = new Request('https://db.example.supabase.co/rest/v1/widgets');
+
+    expect(shouldBypassUnhandledMswRequest(request, {
+      RUN_DB_IT: '1',
+      SUPABASE_URL: 'https://db.example.supabase.co',
+    })).toBe(false);
+  });
+
+  it('keeps strict unhandled request errors for the wrong internal marker', () => {
+    const request = new Request('https://db.example.supabase.co/rest/v1/widgets', {
+      headers: { [LIVE_SUPABASE_REQUEST_HEADER]: 'not-the-live-suite' },
     });
 
     expect(shouldBypassUnhandledMswRequest(request, {

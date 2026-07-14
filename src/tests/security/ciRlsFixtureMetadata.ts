@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { vi } from 'vitest';
 
 export type CiRlsAppMetadata = {
   ci_rls_fixture: true;
@@ -7,9 +8,13 @@ export type CiRlsAppMetadata = {
 
 export type CiRlsFixtureRole = 'admin' | 'therapist' | 'client';
 
+const getRlsWallClockNow = (): number => vi.getRealSystemTime();
+
 export const buildCiRlsAppMetadata = (): CiRlsAppMetadata => ({
   ci_rls_fixture: true,
-  ci_rls_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  // The shared Vitest setup freezes Date for deterministic tests. Hosted
+  // Postgres uses wall-clock time, so fixture expiry must use the real clock.
+  ci_rls_expires_at: new Date(getRlsWallClockNow() + 60 * 60 * 1000).toISOString(),
 });
 
 export const persistCiRlsAppMetadata = async (
@@ -31,7 +36,7 @@ export const persistCiRlsAppMetadata = async (
 
   const persisted = readResult.data.user.app_metadata;
   const expiresAt = Date.parse(String(persisted.ci_rls_expires_at ?? ''));
-  if (persisted.ci_rls_fixture !== true || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+  if (persisted.ci_rls_fixture !== true || !Number.isFinite(expiresAt) || expiresAt <= getRlsWallClockNow()) {
     throw new Error('Synthetic RLS actor metadata was not persisted with an unexpired marker');
   }
 };
@@ -52,7 +57,7 @@ export const reconcileCiRlsFixtureRole = async (
     !/^.+\..+@example\.com$/i.test(actor.email ?? '')
     || actor.app_metadata.ci_rls_fixture !== true
     || !Number.isFinite(expiresAt)
-    || expiresAt <= Date.now()
+    || expiresAt <= getRlsWallClockNow()
   ) {
     throw new Error('Synthetic RLS actor is not eligible for role reconciliation');
   }
@@ -96,7 +101,7 @@ export const reconcileCiRlsFixtureRole = async (
     throw activeResult.error;
   }
 
-  const now = Date.now();
+  const now = getRlsWallClockNow();
   const activeRoleIds = (activeResult.data ?? [])
     .filter((row) => !row.expires_at || Date.parse(row.expires_at) > now)
     .map((row) => row.role_id);

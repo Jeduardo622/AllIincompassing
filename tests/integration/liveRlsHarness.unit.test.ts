@@ -7,7 +7,7 @@ import {
 
 describe("live RLS harness actor metadata", () => {
   it("marks the actor as an expiring service-created fixture", () => {
-    const before = Date.now();
+    const before = vi.getRealSystemTime();
     const metadata = buildLiveRlsAppMetadata();
     expect(metadata.ci_rls_fixture).toBe(true);
     expect(new Date(metadata.ci_rls_expires_at).getTime()).toBeGreaterThan(before);
@@ -47,6 +47,26 @@ describe("live RLS harness actor metadata", () => {
         { auth: { admin: { updateUserById, getUserById } } } as never,
         "00000000-0000-4000-8000-000000000001",
         buildLiveRlsAppMetadata(),
+      ),
+    ).rejects.toThrow("Synthetic RLS actor metadata was not persisted with an unexpired marker");
+  });
+
+  it("rejects a marker expired against the real wall clock", async () => {
+    const expiredMetadata = {
+      ...buildLiveRlsAppMetadata(),
+      ci_rls_expires_at: new Date(vi.getRealSystemTime() - 60_000).toISOString(),
+    };
+    const updateUserById = vi.fn().mockResolvedValue({ data: { user: {} }, error: null });
+    const getUserById = vi.fn().mockResolvedValue({
+      data: { user: { app_metadata: expiredMetadata } },
+      error: null,
+    });
+
+    await expect(
+      persistLiveRlsAppMetadata(
+        { auth: { admin: { updateUserById, getUserById } } } as never,
+        "00000000-0000-4000-8000-000000000001",
+        expiredMetadata,
       ),
     ).rejects.toThrow("Synthetic RLS actor metadata was not persisted with an unexpired marker");
   });
@@ -110,5 +130,28 @@ describe("live RLS harness actor metadata", () => {
       "00000000-0000-4000-8000-000000000001",
     );
     expect(activeStatusEq).toHaveBeenCalledWith("is_active", true);
+  });
+
+  it("rejects a role fixture expired against the real wall clock", async () => {
+    const getUserById = vi.fn().mockResolvedValue({
+      data: {
+        user: {
+          email: "admin.fixture@example.com",
+          app_metadata: {
+            ...buildLiveRlsAppMetadata(),
+            ci_rls_expires_at: new Date(vi.getRealSystemTime() - 60_000).toISOString(),
+          },
+        },
+      },
+      error: null,
+    });
+
+    await expect(
+      reconcileLiveRlsRole(
+        { auth: { admin: { getUserById } }, from: vi.fn() } as never,
+        "00000000-0000-4000-8000-000000000001",
+        "admin",
+      ),
+    ).rejects.toThrow("Synthetic RLS actor is not eligible for role reconciliation");
   });
 });

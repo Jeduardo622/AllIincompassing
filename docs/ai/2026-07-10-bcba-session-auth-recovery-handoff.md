@@ -292,3 +292,22 @@ PR validation also exposed saturated hosted booking data: run `29291802604` foun
   - blocked checks: provision/cleanup against hosted Supabase and the final acceptance proof require trusted CI secrets and a merged main commit.
   - result: `human-review-ready`; focused reviewer found no P1/P2 after the client fixture was changed to resolve through the tenant-scoped therapist linkage.
   - residual risk: the authorization fixture is tenant-sensitive and must not be merged without human review; the final BCBA lifecycle and cleanup remain unproven until trusted main reruns.
+
+### Hosted RLS profile-guard provisioning follow-up
+
+- merged PR #781 triggered Supabase Validate run `29333204173`; runtime migration parity passed, but all six live RLS files stopped during setup with `42501 role is immutable for this role`.
+- root cause: service-key PostgREST fixture upserts do not populate the request JWT role setting used by the profile immutability guard, so the explicit profile hydration added in PR #781 is rejected before any tenant assertion runs.
+- classification: `high-risk human-reviewed`; lane: `critical`; the repair adds one service-only security-definer function and updates hosted tenant fixtures.
+- bounded fix:
+  - require a synthetic `@example.com` auth user carrying an unexpired service-authored app-metadata marker.
+  - require exactly one active role across the complete authoritative `user_roles` set and reject unexpected or additional roles, including `super_admin`.
+  - derive the organization from the non-deleted therapist/client record or admin auth metadata and require it to match the requested tenant.
+  - use the existing transaction-local profile-guard bypass only inside the function, revoke execution from public/anon/authenticated, and grant it only to `service_role`.
+  - call the function only after each fixture's authoritative role and tenant record exist; leave the no-organization outsider fail-closed.
+- non-goals: no production RLS-policy relaxation, user-facing auth behavior, workflow change, real user/data mutation, or broader profile-guard bypass.
+- verification card:
+  - required checks: migration contract, focused live-RLS static paths, lint, typecheck, policy, tenant validation, build, security review, test review, human review, and trusted hosted Supabase Validate.
+  - executed checks: red migration contract failed before the migration existed; eight focused files 146/146 passed; lint pass; typecheck pass; policy pass; tenant validation pass; build pass; security review identified and the patch closed an additional-role fail-closed gap; hosted-path tests now cover wrong-tenant, expired-marker, and authenticated-caller rejection.
+  - blocked checks: applying the migration and running `RUN_DB_IT=1` require the trusted main Supabase workflow and secrets; the local full coverage suite timed out after 182 seconds in unrelated AI-documentation network/finalization tests before producing a result.
+  - result: `human-review-ready`; final security/test review found no remaining P1/P2 after the additional-role and cleanup fixes.
+  - residual risk: the service-only RPC and hosted fixture path remain unproven against the deployed schema until a trusted post-merge Supabase Validate run passes all six files.

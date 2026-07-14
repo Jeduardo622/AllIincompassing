@@ -256,3 +256,21 @@ PR validation also exposed saturated hosted booking data: run `29291802604` foun
   - blocked checks: the live RLS path and Auth rate-limit proof require trusted hosted Supabase credentials; local `test:ci` retains the pre-existing Windows workflow-text parsing failure in `check-e2e-reliability-gates` (12/13 pass), while Linux CI is authoritative for that contract.
   - result: `review-ready` after remaining local gates and reviewer; hosted validation remains decisive.
   - residual risk: unrelated live integration suites in the same failed run may require a subsequent isolated fixture repair after these first causes are removed.
+
+### Hosted Supabase Validate fixture hydration
+
+- main run `29303205785` failed 47 live integration assertions across six files while runtime migration parity passed.
+- shared evidence showed newly created actors resolving to default or stale hosted rows (including `test-session-1`), empty tenant reads, and `42501` authorization failures.
+- classification: `high-risk human-reviewed`; lane: `critical`; the change is test-only but uses service-role fixture writes against hosted tenant-sensitive tables.
+- bounded fix:
+  - explicitly upsert active, tenant-bound profiles for synthetic therapist, client, and admin actors and fail on hydration errors.
+  - add the authoritative active `user_roles` mapping for client actors instead of relying on `profiles.role` alone.
+  - preserve a null-organization, unprivileged outsider profile for fail-closed assertions.
+  - compare hosted timestamp values by instant rather than PostgreSQL's equivalent UTC offset formatting.
+- non-goals: no RLS policy, migration, function, workflow, production auth, or tenant behavior changes.
+- verification card:
+  - required checks: focused fixture/RLS tests, lint, typecheck, policy, tenant validation, build, tenant-focused review, human review, trusted hosted Supabase Validate rerun.
+  - executed checks: seven focused files 141/141 pass; lint pass; typecheck pass; focused policy pass; tenant validation pass; build pass; focused reviewer found no P1/P2.
+  - blocked checks: `RUN_DB_IT=1` live assertions require trusted CI Supabase secrets.
+  - result: `human-review-ready`; hosted CI remains decisive.
+  - residual risk: fixture correctness against current hosted RLS cannot be proven locally and the critical lane requires human approval before merge.

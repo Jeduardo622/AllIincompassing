@@ -220,7 +220,16 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     throw assignRoleResult.error;
   }
 
-  await serviceClient.from('profiles').update({ role: 'therapist' }).eq('id', userId);
+  const therapistProfileResult = await serviceClient.from('profiles').upsert({
+    id: userId,
+    email,
+    role: 'therapist',
+    is_active: true,
+    organization_id: organizationId,
+  }, { onConflict: 'id' });
+  if (therapistProfileResult.error) {
+    throw therapistProfileResult.error;
+  }
 
   const clientEmail = `${label}.client.${randomUUID()}@example.com`;
   const clientPassword = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
@@ -239,7 +248,26 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   const clientUserId = createdClientUser.user.id;
   createdFixtureAuthUserIds.push(clientUserId);
 
-  await serviceClient.from('profiles').update({ role: 'client' }).eq('id', clientUserId);
+  const clientProfileResult = await serviceClient.from('profiles').upsert({
+    id: clientUserId,
+    email: clientEmail,
+    role: 'client',
+    is_active: true,
+    organization_id: organizationId,
+  }, { onConflict: 'id' });
+  if (clientProfileResult.error) {
+    throw clientProfileResult.error;
+  }
+
+  const resolvedClientRoleId = await resolveClientRoleId();
+  const clientRoleResult = await serviceClient.from('user_roles').insert({
+    user_id: clientUserId,
+    role_id: resolvedClientRoleId,
+    is_active: true,
+  });
+  if (clientRoleResult.error) {
+    throw clientRoleResult.error;
+  }
 
   const { error: clientInsertError } = await serviceClient.from('clients').insert({
     id: clientUserId,
@@ -316,6 +344,17 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
 
   if (assignResult.error) {
     throw assignResult.error;
+  }
+
+  const profileResult = await serviceClient.from('profiles').upsert({
+    id: userId,
+    email,
+    role: 'admin',
+    is_active: true,
+    organization_id: organizationId,
+  }, { onConflict: 'id' });
+  if (profileResult.error) {
+    throw profileResult.error;
   }
 
   return { email, password, userId, organizationId };
@@ -3020,7 +3059,7 @@ describe('session holds enforce role-scoped access', () => {
         .single();
 
       expect(updateResult.error).toBeNull();
-      expect(updateResult.data?.end_time).toBe(updatedEnd);
+      expect(new Date(updateResult.data?.end_time ?? '').toISOString()).toBe(updatedEnd);
 
       const deleteResult = await supabaseOrgA
         .from('session_holds')

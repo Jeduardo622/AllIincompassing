@@ -1,26 +1,44 @@
-export interface LifecycleSessionArtifactCounts {
-  sessionGoalsCount: number;
-  clientSessionNotesCount: number;
+export interface LifecycleSessionArtifactCoverage {
+  sessionGoalIds: string[];
+  clientSessionNoteGoalNotes: unknown[];
 }
 
 export const getMissingLifecycleArtifacts = (
-  counts: LifecycleSessionArtifactCounts,
+  coverage: LifecycleSessionArtifactCoverage,
 ): string[] => {
   const missing: string[] = [];
-  if (counts.sessionGoalsCount < 1) {
+  if (coverage.sessionGoalIds.length < 1) {
     missing.push("session_goals");
   }
-  if (counts.clientSessionNotesCount < 1) {
+  if (coverage.clientSessionNoteGoalNotes.length < 1) {
     missing.push("client_session_notes");
+    return missing;
+  }
+
+  const persistedGoalIds = new Set<string>();
+  for (const goalNotes of coverage.clientSessionNoteGoalNotes) {
+    if (!goalNotes || typeof goalNotes !== "object" || Array.isArray(goalNotes)) {
+      continue;
+    }
+    for (const [goalId, note] of Object.entries(goalNotes)) {
+      if (typeof note === "string" && note.trim().length > 0) {
+        persistedGoalIds.add(goalId);
+      }
+    }
+  }
+  for (const goalId of Array.from(new Set(coverage.sessionGoalIds))) {
+    if (!persistedGoalIds.has(goalId)) {
+      missing.push(`client_session_notes.goal_notes[${goalId}]`);
+    }
   }
   return missing;
 };
 
 export const assertLifecycleSessionArtifacts = (
   stage: string,
-  counts: LifecycleSessionArtifactCounts,
+  coverage: LifecycleSessionArtifactCoverage,
 ): void => {
-  const missing = getMissingLifecycleArtifacts(counts);
+  const missing = getMissingLifecycleArtifacts(coverage);
   if (missing.length === 0) {
     return;
   }

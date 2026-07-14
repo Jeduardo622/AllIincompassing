@@ -378,3 +378,35 @@ PR validation also exposed saturated hosted booking data: run `29291802604` foun
   - blocked checks: local `test:ci` reached the unrelated server contract group but 15 assertions failed because this isolated worktree has no `VITE_SUPABASE_URL`; trusted Linux PR CI is authoritative. Runtime compilation, exact migration application, ACL readback, and the six live suites require the protected hosted project and human-reviewed promotion.
   - result: `human-review-ready-with-blocked-checks`; pending PR CI, human merge, migration promotion, and trusted hosted evidence.
   - residual risk: the next hosted failure will identify the rejected database predicate but may require one more contained repair; no BCBA lifecycle proof is complete until hosted RLS validation and the final production-style acceptance both pass.
+
+### PR #790 exact lifecycle goal-note coverage follow-up
+
+- branch: `codex/win-217-no-show-lifecycle`
+- classification: `low-risk autonomous`
+- lane: `standard`
+- hosted failure: CI run `29352677270`, job `87153978141`, passed preflight and no-show, then the completed lifecycle timed out without observing `sessions-complete` while the modal remained open.
+- root cause: the harness asserted only that at least one `session_goals` row and one `client_session_notes` row existed. Production close readiness requires a non-empty persisted `goal_notes` entry for every linked session goal; filling an unsaved modal textarea did not satisfy that contract.
+- bounded fix:
+  - guarantee the specifically booked goal is linked without removing unrelated existing session goals.
+  - seed one synthetic note payload covering every unique linked goal.
+  - validate exact persisted per-goal coverage across all note rows before and after terminal close.
+  - remove the UI-only textarea filler introduced by the first PR #790 attempt.
+- non-goals: no production UI, Schedule readiness, API/server, auth, workflow, migration, RLS, tenant-policy, timeout, or fallback-policy changes.
+
+Verification card:
+
+- required checks: focused lifecycle tests; policy; lint; typecheck; `test:ci`; build; tier-0 routes; `verify:local`; independent review; hosted auth browser smoke.
+- executed checks:
+  - RED proof: the two helper suites produced 6 failures / 2 passes against the old count-only and single-goal behavior.
+  - focused lifecycle tests -> pass, 3 files / 23 tests.
+  - `npm run ci:check-focused` -> pass.
+  - `npm run lint` -> pass.
+  - `npm run typecheck` -> pass.
+  - `npm run build` -> pass.
+  - `npm run test:routes:tier0` -> pass, 7 specs / 220 tests.
+  - independent code review -> no actionable findings; strict CI remains fail-closed.
+- blocked checks:
+  - `npm run verify:local` reaches unrelated local `test:ci` failures before coverage/build/browser stages: the existing Windows workflow-text parser assertion receives an empty provision step, and Schedule event tests exhibit suite-order duplicate-modal state. The Schedule event file passes alone, 5/5; build and tier-0 were run separately and pass. The prior Linux PR unit job passed on the unchanged workflow state.
+  - secret-backed `playwright:session-complete` and full auth browser smoke require hosted CI credentials.
+- result: `review-ready-with-blocked-checks`, pending fresh PR #790 hosted CI.
+- residual risk: only the hosted strict lifecycle can prove the modal now emits and receives `sessions-complete`; if exact persisted coverage is logged before click but no request is emitted, stop and add bounded request/readiness diagnostics rather than increasing timeouts.

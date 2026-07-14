@@ -361,3 +361,20 @@ PR validation also exposed saturated hosted booking data: run `29291802604` foun
   - blocked checks: trusted live suites require CI secrets and remain decisive.
   - result: `human-review-ready`; pending PR CI, human merge, and trusted hosted validation.
   - residual risk: the previous RPC error combines multiple predicates, so only the trusted run can confirm authoritative role state was the remaining failed precondition.
+
+### Hosted RLS profile-guard predicate diagnostics
+
+- trusted main Supabase Validate run `29345329595` passed 2558 tests after PR #786 reconciled and read back each synthetic actor's exact authoritative role, but the same six hosted suites still failed with the RPC's composite `42501`.
+- live `pg_get_functiondef` inspection confirmed production matches the committed function; Auth audit evidence confirms dotted synthetic emails, and the harness confirms the expected active/non-expiring role singleton before the RPC. The remaining unobserved boundary is the database view of `auth.users.raw_app_meta_data` marker/expiry.
+- classification: `high-risk human-reviewed`; lane: `critical`; the forward migration replaces only the existing service-only function body with staged fail-closed checks.
+- bounded change:
+  - preserve the function signature, `SECURITY DEFINER`, empty search path, service-role-only ACL, existing role allowlist/cardinality, authoritative tenant derivation, profile update, bypass reset, and return semantics.
+  - separate actor existence, dotted email, raw marker, parseable/future expiry, active role cardinality, and allowed-role checks.
+  - return only stage-specific generic `42501` messages plus boolean/count detail; never include actor IDs, emails, metadata, role values, or tenant IDs.
+- non-goals: no policy, RLS, table, role taxonomy, caller grant, workflow, production-user mutation, or acceptance-criteria relaxation; this diagnostic migration does not yet claim to repair the hidden actor-state defect.
+- verification card:
+  - required checks: RED/green migration contract; focused hosted-RLS tests; policy; lint; typecheck; `test:ci`; tenant validation; build; independent code/test/security review; human review; exact migration promotion; live ACL/function-definition verification; trusted Supabase Validate.
+  - executed checks: the generated empty migration failed 4/4 contract tests before implementation and passed 4/4 after; nine focused files passed 159/159; the 14 server contracts affected by the missing local public test configuration pass with explicit synthetic values; policy and migration governance passed; tenant validation passed; lint passed; typecheck passed; build passed; live production definition/ACL inspection confirmed the predecessor function is deployed and service-role-only; final specification, architecture, code, test, and security review found no remaining P1/P2 after the tenant-read and contract-strengthening fixes.
+  - blocked checks: local `test:ci` reached the unrelated server contract group but 15 assertions failed because this isolated worktree has no `VITE_SUPABASE_URL`; trusted Linux PR CI is authoritative. Runtime compilation, exact migration application, ACL readback, and the six live suites require the protected hosted project and human-reviewed promotion.
+  - result: `human-review-ready-with-blocked-checks`; pending PR CI, human merge, migration promotion, and trusted hosted evidence.
+  - residual risk: the next hosted failure will identify the rejected database predicate but may require one more contained repair; no BCBA lifecycle proof is complete until hosted RLS validation and the final production-style acceptance both pass.

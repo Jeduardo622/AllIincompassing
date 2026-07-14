@@ -327,3 +327,20 @@ PR validation also exposed saturated hosted booking data: run `29291802604` foun
   - blocked checks: local Windows full coverage has one unrelated CRLF-sensitive workflow-text assertion in `check-e2e-reliability-gates`; the same contract passes in Linux CI, which is authoritative for PR closure.
   - result: `pass-with-blocked-checks`, pending PR CI.
   - residual risk: trusted-main BCBA acceptance remains blocked until this unit gate fix merges and main reruns; Linux CI must confirm the complete coverage suite.
+
+### Hosted RLS Auth marker hydration follow-up
+
+- trusted main Supabase Validate run `29340501370` passed runtime migration parity but all six live RLS files stopped at the first synthetic actor with `42501 One active synthetic RLS role is required`.
+- a rollback-only production database probe proved the deployed RPC succeeds when the actor has `marker=true`, an unexpired marker timestamp, and exactly one active `admin` role; the probe deliberately raised at completion so all synthetic rows rolled back.
+- classification: `high-risk human-reviewed`; lane: `critical`; the bounded repair remains test-only but mutates hosted Auth app metadata with the service role.
+- bounded fix:
+  - explicitly persist the expiring `ci_rls_fixture` app-metadata marker after each hosted Auth actor is created.
+  - read the actor back through the Admin API and fail before role/profile provisioning unless the marker is present and unexpired.
+  - keep the existing service-only RPC, complete role-cardinality check, tenant derivation, grants, and fail-closed assertions unchanged.
+- non-goals: no migration, RLS policy, function, grant, workflow, production auth behavior, role taxonomy, or real tenant data change.
+- verification card:
+  - required checks: red/green marker helper contract, lint, typecheck, focused RLS paths, policy, tenant validation, build, security/test review, human review, and trusted hosted Supabase Validate.
+  - executed checks: the helper contract failed before implementation and passed 3/3 afterward; seven focused files passed 145/145; lint passed; typecheck passed; policy passed; tenant validation passed; build passed; rollback-only hosted RPC probe passed with `{admin}` and the exact marker preconditions; independent code and security review found no remaining P1/P2.
+  - blocked checks: the six live RLS suites require trusted CI secrets and remain decisive; local Windows full coverage reached 2697 passing tests with two unrelated failures in the CRLF-sensitive workflow parser and the Node Blob test implementation.
+  - result: `human-review-ready`; pending PR checks, human review, and trusted hosted validation.
+  - residual risk: Admin API create behavior is the only prerequisite not directly observable after failed-run cleanup; explicit update plus readback makes that prerequisite deterministic and observable on the next hosted run.

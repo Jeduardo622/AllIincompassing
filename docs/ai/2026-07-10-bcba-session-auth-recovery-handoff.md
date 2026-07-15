@@ -554,3 +554,15 @@ Verification card:
 - local verification: the workflow contract was RED before the split and passes after it, 1 file / 14 tests. `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build` pass. `npm run test:ci` reaches 2,730 passing tests and the same two unchanged Windows portability failures: jsdom `Blob.text()` and CRLF-sensitive workflow-step extraction.
 - required hosted sequence: independent critical-lane review -> human review -> merge -> fresh main Supabase Validate -> runtime parity and all six serialized hosted files green -> zero-residue Supabase readback.
 - residual risk: local execution cannot supply protected hosted credentials; the serialized main-only workflow and post-run residue query remain decisive.
+
+### WIN-217 secret-free RPC contract isolation follow-up
+
+- branch: `codex/win-217-isolate-unit-supabase-env`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- hosted evidence: after PR #796 merged, main Supabase Validate run `29430099521` passed runtime migration parity but failed 13 assertions in `orgRoleRpcEquivalence.contract.test.ts` before the serialized hosted phase began.
+- root cause: the contract mocked the exported `getSupabaseConfig`, while functions inside the same module call its original lexical binding. Removing hosted credentials from the ordinary unit phase exposed that hidden ambient-environment dependency.
+- bounded fix: replace the ineffective same-module mock with test-local `.invalid` Supabase URL and synthetic anon-key stubs; reject unexpected fetches by default. Keep the workflow split, production credentials, runtime code, database authority, and hosted test selection unchanged.
+- RED/GREEN proof: with all Supabase URL/key variables removed and the env loader pointed at a nonexistent file, the target produced 13 failures before the fix and passes 14/14 after it.
+- required hosted sequence: independent critical-lane review -> human review -> merge -> fresh main Supabase Validate -> secret-free ordinary suite green -> all six serialized hosted files green -> zero-residue Supabase readback.
+- residual risk: the complete Windows unit suite retains two unrelated local portability failures already recorded above; Linux CI and the fresh main-only hosted phase remain decisive.

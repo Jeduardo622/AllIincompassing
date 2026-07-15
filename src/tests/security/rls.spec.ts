@@ -189,6 +189,7 @@ let clientRoleId: string | null = null;
 
 const userSessionIdsByUser = new Map<string, string>();
 const actorAccessTokensByEmail = new Map<string, string>();
+const actorAccessTokensByClient = new WeakMap<TypedClient, string>();
 
 const provisionCiRlsProfile = async (
   userId: string,
@@ -499,10 +500,12 @@ const signInWithPassword = async (email: string, password: string): Promise<Type
     actorAccessTokensByEmail.set(email, accessToken);
   }
 
-  return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const client = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
     global: { headers: { ...LIVE_SUPABASE_REQUEST_HEADERS, Authorization: `Bearer ${accessToken}` } },
   });
+  actorAccessTokensByClient.set(client, accessToken);
+  return client;
 };
 
 const signInTherapist = async (context: TenantContext): Promise<TypedClient> => {
@@ -530,11 +533,48 @@ const invokeAssignTherapistUser = async (
   const startedAt = process.hrtime.bigint();
   console.info(`[assign-therapist-user:${correlationId}] request started`);
 
-  const result = await client.functions.invoke('assign-therapist-user', {
-    body,
-    headers: { 'x-request-id': correlationId },
-    signal: AbortSignal.timeout(45_000),
-  });
+  const accessToken = actorAccessTokensByClient.get(client);
+  if (!accessToken) {
+    throw new Error('Authenticated Edge test token is missing');
+  }
+
+  const response = await fetch(
+    `${SUPABASE_URL}/functions/v1/assign-therapist-user`,
+    {
+      method: 'POST',
+      headers: {
+        ...LIVE_SUPABASE_REQUEST_HEADERS,
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'x-request-id': correlationId,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000),
+    },
+  );
+  const responseText = await response.text();
+  let data: Record<string, unknown> | null = null;
+  if (responseText.length > 0) {
+    try {
+      data = JSON.parse(responseText) as Record<string, unknown>;
+    } catch {
+      data = { error: 'Non-JSON Edge Function response' };
+    }
+  }
+  const result = response.ok
+    ? { data, error: null }
+    : {
+        data: null,
+        error: {
+          name: 'FunctionsHttpError',
+          message:
+            (typeof data?.message === 'string' && data.message) ||
+            (typeof data?.error === 'string' && data.error) ||
+            `Edge Function returned ${response.status}`,
+          context: response,
+        },
+      };
 
   const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
   const errorStatus = getFunctionErrorStatus(result.error);

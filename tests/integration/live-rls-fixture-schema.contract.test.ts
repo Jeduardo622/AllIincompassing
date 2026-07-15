@@ -328,8 +328,19 @@ describe("live RLS fixture schema contract", () => {
         "await provisionCiRlsProfile(guardianId, tenant.organizationId, 'client')",
       ),
     );
-    expect(source).toContain("headers: { 'x-request-id': correlationId }");
+    expect(source).toContain("`${SUPABASE_URL}/functions/v1/assign-therapist-user`");
+    expect(source).toContain("'x-request-id': correlationId");
+    expect(source).toContain('const actorAccessTokensByClient = new WeakMap<TypedClient, string>()');
+    expect(source).toContain('actorAccessTokensByClient.set(client, accessToken)');
+    expect(source).toContain('const accessToken = actorAccessTokensByClient.get(client)');
+    expect(source).toContain("Authorization: `Bearer ${accessToken}`");
+    expect(source).toContain("apikey: SUPABASE_ANON_KEY");
     expect(source).toContain('signal: AbortSignal.timeout(45_000)');
+    expect(source).not.toContain("client.functions.invoke('assign-therapist-user'");
+    expect(source).not.toContain('client.auth.getSession()');
+    expect(source).toContain('response.ok');
+    expect(source).toContain('context: response');
+    expect(source).toContain("data = { error: 'Non-JSON Edge Function response' }");
     expect(source.match(/}, 75_000\);/g)).toHaveLength(2);
     expect(source).toContain("`error-${result.error.name}:${result.error.message}`");
     expect(source).not.toContain("'x-correlation-id'");

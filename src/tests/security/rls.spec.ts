@@ -386,6 +386,8 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
   const userId = createdUser.user.id;
   createdFixtureAuthUserIds.push(userId);
 
+  await provisionCiRlsProfile(userId, organizationId, 'admin');
+
   const assignResult = await serviceClient.rpc('assign_admin_role', {
     user_email: email,
     organization_id: organizationId,
@@ -395,8 +397,6 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
   if (assignResult.error) {
     throw assignResult.error;
   }
-
-  await provisionCiRlsProfile(userId, organizationId, 'admin');
 
   return { email, password, userId, organizationId };
 };

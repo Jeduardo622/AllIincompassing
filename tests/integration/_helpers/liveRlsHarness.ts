@@ -145,14 +145,6 @@ const createAuthFixture = async (
       if (!options.organizationId) {
         throw new Error("Admin fixtures require an organization id");
       }
-      const assignResult = await serviceClient.rpc("assign_admin_role", {
-        user_email: email,
-        organization_id: options.organizationId,
-        reason: "integration-test bootstrap",
-      });
-      if (assignResult.error) {
-        throw assignResult.error;
-      }
     } else if (options.role === "therapist") {
       await assignNamedRole(serviceClient, userId, "therapist");
     }
@@ -168,6 +160,15 @@ const createAuthFixture = async (
       );
       if (profileResult.error || profileResult.data !== options.organizationId) {
         throw profileResult.error ?? new Error("Synthetic RLS profile provisioning returned the wrong organization");
+      }
+
+      const assignResult = await serviceClient.rpc("assign_admin_role", {
+        user_email: email,
+        organization_id: options.organizationId,
+        reason: "integration-test bootstrap",
+      });
+      if (assignResult.error) {
+        throw assignResult.error;
       }
     }
 

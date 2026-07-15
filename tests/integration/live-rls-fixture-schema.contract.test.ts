@@ -193,6 +193,60 @@ describe("live RLS fixture schema contract", () => {
     expect(messageSource).toContain('"provision_ci_rls_fixture_profile"');
   });
 
+  it("provisions canonical admin profiles before invoking assign_admin_role", () => {
+    const harnessSource = readRepoFile("tests/integration/_helpers/liveRlsHarness.ts");
+    const securitySource = readRepoFile("src/tests/security/rls.spec.ts");
+    const messageSource = readRepoFile("tests/integration/rls.message-threads.access.test.ts");
+
+    const harnessAdminSetup = harnessSource.match(
+      /const createAuthFixture[\s\S]*?\n};\n\nconst seedOrgData/,
+    )?.[0];
+    const securityAdminSetup = securitySource.match(
+      /const createAdminFixture[\s\S]*?\n};\n\nconst createTherapistCertificationFixture/,
+    )?.[0];
+    const securityProvisioner = securitySource.match(
+      /const provisionCiRlsProfile[\s\S]*?\n};\n\nconst createTenantFixture/,
+    )?.[0];
+    const messageAdminSetup = messageSource.match(
+      /beforeAll\(async \(\) => \{[\s\S]*?\n}\);\n\nafterAll/,
+    )?.[0];
+
+    expect(harnessAdminSetup).toBeTruthy();
+    expect(securityAdminSetup).toBeTruthy();
+    expect(securityProvisioner).toBeTruthy();
+    expect(messageAdminSetup).toBeTruthy();
+
+    const expectOrdered = (source: string, tokens: string[]) => {
+      const indexes = tokens.map((token) => source.indexOf(token));
+      for (const index of indexes) {
+        expect(index).toBeGreaterThan(-1);
+      }
+      expect(indexes).toEqual([...indexes].sort((left, right) => left - right));
+    };
+
+    expectOrdered(harnessAdminSetup!, [
+      "await persistLiveRlsAppMetadata(",
+      "await reconcileLiveRlsRole(",
+      '"provision_ci_rls_fixture_profile"',
+      'rpc("assign_admin_role"',
+    ]);
+    expectOrdered(securityProvisioner!, [
+      "await persistCiRlsAppMetadata(",
+      "await reconcileCiRlsFixtureRole(",
+      "rpc('provision_ci_rls_fixture_profile'",
+    ]);
+    expectOrdered(securityAdminSetup!, [
+      "await provisionCiRlsProfile(userId, organizationId, 'admin')",
+      "rpc('assign_admin_role'",
+    ]);
+    expectOrdered(messageAdminSetup!, [
+      "await persistLiveRlsAppMetadata(",
+      "await reconcileLiveRlsRole(",
+      '"provision_ci_rls_fixture_profile"',
+      'rpc("assign_admin_role"',
+    ]);
+  });
+
   it("seeds valid session-linked artifacts and guardian organization context", () => {
     const source = readRepoFile("src/tests/security/rls.spec.ts");
 

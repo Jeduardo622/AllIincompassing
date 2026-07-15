@@ -489,3 +489,20 @@ Verification card:
 - blocked checks: `npm run ci:playwright`, trusted Supabase validation, migration/runtime parity, deployed Edge parity, and non-skipped BCBA acceptance require protected hosted CI. Full `verify:local` remains failed because it includes the two recorded `test:ci` failures. The Edge Function is not in the automatic session bundle and requires reviewed post-merge deployment with `verify_jwt=true` readback.
 - result: `pass-with-blocked-checks` for the bounded local implementation; PR CI, human approval, hosted promotion, fresh green Supabase Validate, and non-skipped BCBA acceptance remain required before completion.
 - residual risk: the forward migration changes live tenant boundaries and the Edge repair is not proven until reviewed code is deployed; `manage_admin_users` remains strict in the test because neither checked-in nor live SQL supports weakening the cross-org denial contract.
+
+### WIN-217 post-merge trusted validation repair
+
+- branch: `codex/win-217-post-merge-trusted-rls`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- triggering evidence: PR #792 merged and deployed successfully, but main Supabase Validate run `29418796988` failed one cross-org admin RPC assertion, two unbounded Edge invocations, three overlapping session fixtures, one equivalent-timestamp assertion, two tenantless note-template reads, and guardian profile setup.
+- bounded fix:
+  - derive `assign_admin_role` and `manage_admin_users` authority from the current JWT plus active canonical profiles; keep `assign_admin_role` service-only, keep `manage_admin_users` authenticated/service-role callable, and preserve same-org denial.
+  - use signup-generated guardian profile state without mutating protected auth fields.
+  - isolate session time ranges, write template `organization_id`, normalize equivalent UTC output, and bound/correlate Edge requests at 15 seconds.
+- local verification:
+  - focused contracts: 3 files / 20 tests passed.
+  - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build` passed.
+  - `npm run test:ci` still has the unchanged local Node/jsdom `Blob.text()` failure; the affected live-fixture contract was updated and passes focused.
+- required hosted sequence: human review -> apply the exact reviewed migration through Supabase -> read back functions/grants/ledger -> green PR runtime parity -> merge -> fresh main Supabase Validate with `RUN_DB_IT=1` -> inspect correlated same-org/cross-org Edge outcomes and zero fixture residue.
+- residual risk: no production migration promotion is authorized until human review; the fresh hosted suite remains the only decisive proof for live RPC, Edge transport, and cleanup behavior.

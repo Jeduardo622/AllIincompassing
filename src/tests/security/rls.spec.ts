@@ -480,6 +480,34 @@ const signInGuardian = async (context: GuardianContext): Promise<TypedClient> =>
   return signInWithPassword(context.email, context.password);
 };
 
+const invokeAssignTherapistUser = async (
+  client: TypedClient,
+  body: { userId: string; therapistId: string },
+  scenario: 'same-org' | 'cross-org',
+) => {
+  const correlationId = `ci-rls-${scenario}-${randomUUID()}`;
+  const startedAt = process.hrtime.bigint();
+  console.info(`[assign-therapist-user:${correlationId}] request started`);
+
+  const result = await client.functions.invoke('assign-therapist-user', {
+    body,
+    headers: { 'x-request-id': correlationId },
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+  const errorStatus = getFunctionErrorStatus(result.error);
+  const outcome = result.error
+    ? errorStatus
+      ? `http-${errorStatus}`
+      : `error-${result.error.name}:${result.error.message}`
+    : 'success';
+  console.info(
+    `[assign-therapist-user:${correlationId}] request completed in ${elapsedMs.toFixed(0)}ms with outcome ${outcome}`,
+  );
+  return result;
+};
+
 const expectRlsViolation = (error: PostgrestError | null, fallbackRowCount = 0) => {
   if (error) {
     expect(error.message.toLowerCase()).toMatch(/row-level security|not allowed|permission|violat/);
@@ -552,6 +580,20 @@ const generateHoldWindow = (
     end: endDate.toISOString(),
     expires: expiresDate.toISOString(),
   };
+};
+
+let isolatedSessionWindowOffset = 0;
+
+const generateIsolatedSessionWindow = (
+  baseEndTime: string,
+): { start: string; end: string } => {
+  isolatedSessionWindowOffset += 1;
+  const startDate = new Date(
+    new Date(baseEndTime).getTime() + isolatedSessionWindowOffset * 2 * 60 * 60 * 1000,
+  );
+  const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+
+  return { start: startDate.toISOString(), end: endDate.toISOString() };
 };
 
 const ensureSessionCptEntriesSeeded = async (): Promise<void> => {
@@ -941,6 +983,7 @@ const ensureSessionNoteTemplatesSeeded = async (): Promise<void> => {
         template_structure: { sections: ['summary'] },
         created_by: context.therapistId,
         compliance_requirements: { region: 'test' },
+        organization_id: context.organizationId,
       })
       .select('id')
       .single();
@@ -1049,24 +1092,23 @@ const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianCon
   const roleInsert = await serviceClient
     .from('user_roles')
     .insert({ user_id: guardianId, role_id: resolvedRoleId });
-
   if (roleInsert.error) {
     throw roleInsert.error;
   }
 
   const guardianProfileResult = await serviceClient
     .from('profiles')
-    .update({
-      organization_id: tenant.organizationId,
-      role: 'client',
-      is_active: true,
-    })
+    .select('organization_id, role, is_active')
     .eq('id', guardianId)
-    .select('id')
     .single();
   if (guardianProfileResult.error || !guardianProfileResult.data) {
-    throw guardianProfileResult.error ?? new Error('Synthetic guardian profile provisioning failed');
+    throw guardianProfileResult.error ?? new Error('Synthetic guardian profile readback failed');
   }
+  expect(guardianProfileResult.data).toMatchObject({
+    organization_id: tenant.organizationId,
+    role: 'client',
+    is_active: true,
+  });
 
   const { data: insertedGuardian, error: guardianInsertError } = await serviceClient
     .from('client_guardians')
@@ -1303,12 +1345,14 @@ describe('admin organization scoping', () => {
 
     const adminClient = await signInAdmin(adminContext);
     try {
-      const { data, error } = await adminClient.functions.invoke('assign-therapist-user', {
-        body: {
+      const { data, error } = await invokeAssignTherapistUser(
+        adminClient,
+        {
           userId: orgAContext.clientUserId,
           therapistId: orgAContext.therapistId,
         },
-      });
+        'same-org',
+      );
 
       expect(error).toBeNull();
       expect(data?.success).toBe(true);
@@ -2391,12 +2435,14 @@ describe('row level security for multi-tenant tables', () => {
 
     const adminClient = await signInAdmin(adminContext);
     try {
-      const { error } = await adminClient.functions.invoke('assign-therapist-user', {
-        body: {
+      const { error } = await invokeAssignTherapistUser(
+        adminClient,
+        {
           userId: orgBContext.clientUserId,
           therapistId: orgBContext.therapistId,
         },
-      });
+        'cross-org',
+      );
 
       expect(error).toBeTruthy();
       expect(getFunctionErrorStatus(error)).toBe(403);
@@ -2641,7 +2687,7 @@ describe('row level security for multi-tenant tables', () => {
 
     const { data: baseSession, error: baseSessionError } = await serviceClient
       .from('sessions')
-      .select('goal_id, program_id')
+      .select('goal_id, program_id, end_time')
       .eq('id', orgAContext.sessionId)
       .single();
 
@@ -2650,8 +2696,7 @@ describe('row level security for multi-tenant tables', () => {
     }
 
     const targetSessionId = randomUUID();
-    const targetStart = new Date(Date.now() - 45 * 60 * 1000);
-    const targetEnd = new Date(Date.now() + 15 * 60 * 1000);
+    const targetWindow = generateIsolatedSessionWindow(baseSession.end_time);
 
     const { error: insertSessionError } = await serviceClient
       .from('sessions')
@@ -2662,8 +2707,8 @@ describe('row level security for multi-tenant tables', () => {
         organization_id: orgAContext.organizationId,
         program_id: baseSession.program_id,
         goal_id: baseSession.goal_id,
-        start_time: targetStart.toISOString(),
-        end_time: targetEnd.toISOString(),
+        start_time: targetWindow.start,
+        end_time: targetWindow.end,
         status: 'scheduled',
       });
 
@@ -2720,7 +2765,7 @@ describe('row level security for multi-tenant tables', () => {
 
     const { data: baseSession, error: baseSessionError } = await serviceClient
       .from('sessions')
-      .select('goal_id, program_id')
+      .select('goal_id, program_id, end_time')
       .eq('id', orgAContext.sessionId)
       .single();
 
@@ -2729,8 +2774,7 @@ describe('row level security for multi-tenant tables', () => {
     }
 
     const targetSessionId = randomUUID();
-    const targetStart = new Date(Date.now() - 45 * 60 * 1000);
-    const targetEnd = new Date(Date.now() + 15 * 60 * 1000);
+    const targetWindow = generateIsolatedSessionWindow(baseSession.end_time);
 
     const { error: insertSessionError } = await serviceClient
       .from('sessions')
@@ -2741,8 +2785,8 @@ describe('row level security for multi-tenant tables', () => {
         organization_id: orgAContext.organizationId,
         program_id: baseSession.program_id,
         goal_id: baseSession.goal_id,
-        start_time: targetStart.toISOString(),
-        end_time: targetEnd.toISOString(),
+        start_time: targetWindow.start,
+        end_time: targetWindow.end,
         status: 'scheduled',
       });
 
@@ -2799,7 +2843,7 @@ describe('row level security for multi-tenant tables', () => {
 
     const { data: baseSession, error: baseSessionError } = await serviceClient
       .from('sessions')
-      .select('goal_id, program_id')
+      .select('goal_id, program_id, end_time')
       .eq('id', orgAContext.sessionId)
       .single();
 
@@ -2808,8 +2852,7 @@ describe('row level security for multi-tenant tables', () => {
     }
 
     const targetSessionId = randomUUID();
-    const targetStart = new Date(Date.now() - 50 * 60 * 1000);
-    const targetEnd = new Date(Date.now() + 10 * 60 * 1000);
+    const targetWindow = generateIsolatedSessionWindow(baseSession.end_time);
 
     const { error: insertSessionError } = await serviceClient
       .from('sessions')
@@ -2820,8 +2863,8 @@ describe('row level security for multi-tenant tables', () => {
         organization_id: orgAContext.organizationId,
         program_id: baseSession.program_id,
         goal_id: baseSession.goal_id,
-        start_time: targetStart.toISOString(),
-        end_time: targetEnd.toISOString(),
+        start_time: targetWindow.start,
+        end_time: targetWindow.end,
         status: 'scheduled',
       });
 
@@ -3142,7 +3185,7 @@ describe('session holds enforce role-scoped access', () => {
         .single();
 
       expect(updateResult.error).toBeNull();
-      expect(updateResult.data?.end_time).toBe(newEndTime);
+      expect(new Date(updateResult.data?.end_time ?? '').toISOString()).toBe(newEndTime);
 
       const deleteResult = await adminClient
         .from('session_holds')

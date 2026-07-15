@@ -201,7 +201,12 @@ describe("live RLS fixture schema contract", () => {
     expect(source).toContain("goal_id: goalId");
     expect(source).toContain(".eq('id', context.goalId)");
     expect(source).toContain(".eq('id', context.programId)");
-    expect(source).toContain("Synthetic guardian profile provisioning failed");
+    expect(source).toContain("Synthetic guardian profile readback failed");
+    expect(source).toContain(".select('organization_id, role, is_active')");
+    expect(source).not.toContain("await provisionCiRlsProfile(guardianId");
+    expect(source).toContain("headers: { 'x-request-id': correlationId }");
+    expect(source).toContain("`error-${result.error.name}:${result.error.message}`");
+    expect(source).not.toContain("'x-correlation-id'");
   });
 
   it("uses the deployed therapist status schema before assigning a therapist", () => {

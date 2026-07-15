@@ -177,6 +177,26 @@ describe("live RLS fixture schema contract", () => {
     }
   });
 
+  it("creates the mapped therapist link before guarded profile provisioning", () => {
+    const source = readRepoFile("src/tests/security/rls.spec.ts");
+    const mappedFixture = source.match(
+      /const createMappedTherapistFixture[\s\S]*?const createTherapistCertificationFixture/,
+    )?.[0];
+
+    expect(mappedFixture).toBeTruthy();
+    const profileProvision = mappedFixture!.indexOf(
+      "await provisionCiRlsProfile(userId, tenant.organizationId, 'therapist')",
+    );
+    const therapistLink = mappedFixture!.indexOf(
+      ".from('user_therapist_links').insert({",
+    );
+
+    expect(therapistLink).toBeGreaterThan(-1);
+    expect(profileProvision).toBeGreaterThan(therapistLink);
+    expect(mappedFixture).toContain("therapist_id: tenant.therapistId");
+    expect(mappedFixture).not.toContain(".from('therapists').insert({");
+  });
+
   it("uses a run-unique therapist auth email when Date is frozen", () => {
     const source = readRepoFile("src/tests/security/rls.spec.ts");
     const fixtureSetup = source.match(

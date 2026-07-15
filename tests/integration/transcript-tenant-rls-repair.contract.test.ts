@@ -7,7 +7,7 @@ describe('transcript tenant RLS repair migration', () => {
   const sql = readFileSync(
     join(process.cwd(), 'supabase', 'migrations', migrationFile),
     'utf8',
-  ).toLowerCase();
+  ).replace(/\r\n/g, '\n').toLowerCase();
 
   for (const table of ['session_transcripts', 'session_transcript_segments']) {
     it(`removes the globally scoped policies from ${table}`, () => {

@@ -430,7 +430,6 @@ const createMappedTherapistFixture = async (
 
   const userId = data.user.id;
   createdFixtureAuthUserIds.push(userId);
-  await provisionCiRlsProfile(userId, tenant.organizationId, 'therapist');
   const linkResult = await serviceClient.from('user_therapist_links').insert({
     user_id: userId,
     therapist_id: tenant.therapistId,
@@ -438,6 +437,7 @@ const createMappedTherapistFixture = async (
   if (linkResult.error) {
     throw linkResult.error;
   }
+  await provisionCiRlsProfile(userId, tenant.organizationId, 'therapist');
 
   return { email, password, userId };
 };

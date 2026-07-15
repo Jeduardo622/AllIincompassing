@@ -566,3 +566,12 @@ Verification card:
 - RED/GREEN proof: with all Supabase URL/key variables removed and the env loader pointed at a nonexistent file, the target produced 13 failures before the fix and passes 14/14 after it.
 - required hosted sequence: independent critical-lane review -> human review -> merge -> fresh main Supabase Validate -> secret-free ordinary suite green -> all six serialized hosted files green -> zero-residue Supabase readback.
 - residual risk: the complete Windows unit suite retains two unrelated local portability failures already recorded above; Linux CI and the fresh main-only hosted phase remain decisive.
+
+### WIN-217 Supabase Validate trigger closure
+
+- branch: `codex/win-217-trigger-rpc-contract-validation`
+- classification/lane: `high-risk human-reviewed` / `critical` because `.github/workflows/**` is protected.
+- scope: add only the isolated RPC contract to the existing `main` push paths and pin that path in the workflow contract; do not change PR behavior, permissions, secrets, jobs, test selection, timeouts, or database authority.
+- RED/GREEN proof: the workflow contract failed 1/14 before the trigger was added and passes 14/14 after it. Policy, lint, typecheck, tenant validation, and build pass.
+- required hosted sequence: human review -> merge -> fresh main Supabase Validate -> secret-free ordinary suite green -> all six serialized hosted suites green -> zero-residue Supabase readback.
+- residual risk: local checks cannot execute the protected hosted phase; the merge-triggered main run remains decisive.

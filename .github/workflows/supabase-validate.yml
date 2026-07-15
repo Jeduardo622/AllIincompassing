@@ -18,6 +18,7 @@ on:
       - 'tests/integration/live-rls-fixture-schema.contract.test.ts'
       - 'tests/integration/liveRlsHarness.unit.test.ts'
       - 'src/tests/security/ciRlsFixtureMetadata.ts'
+      - 'src/server/__tests__/orgRoleRpcEquivalence.contract.test.ts'
       - 'src/tests/security/rls.spec.ts'
       - 'tests/integration/rls.message-threads.access.test.ts'
       - 'tests/integration/rls.session-holds.access.test.ts'

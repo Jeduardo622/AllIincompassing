@@ -162,7 +162,8 @@ describe("live RLS fixture schema contract", () => {
     expect(source).toMatch(
       /\.from\('admin_actions'\)\s*\.delete\(\)\s*\.in\('organization_id', \[orgAId, orgBId\]\)/,
     );
-    expect(source.match(/createdFixtureAuthUserIds\.push\(/g)).toHaveLength(3);
+    expect(source.match(/createdFixtureAuthUserIds\.push\(/g)).toHaveLength(4);
+    expect(source).toContain(".from('user_therapist_links').insert({");
   });
 
   it("seeds required therapist names in every security RLS fixture", () => {
@@ -295,8 +296,12 @@ describe("live RLS fixture schema contract", () => {
     expect(source).toContain(".eq('id', context.programId)");
     expect(source).toContain("Synthetic guardian profile readback failed");
     expect(source).toContain(".select('organization_id, role, is_active')");
-    expect(source).not.toContain("await provisionCiRlsProfile(guardianId");
+    expect(source).toContain(
+      "await provisionCiRlsProfile(guardianId, tenant.organizationId, 'client')",
+    );
     expect(source).toContain("headers: { 'x-request-id': correlationId }");
+    expect(source).toContain('signal: AbortSignal.timeout(45_000)');
+    expect(source.match(/}, 75_000\);/g)).toHaveLength(2);
     expect(source).toContain("`error-${result.error.name}:${result.error.message}`");
     expect(source).not.toContain("'x-correlation-id'");
   });

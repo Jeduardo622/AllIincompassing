@@ -1,23 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../api/shared", async () => {
-  const actual = await vi.importActual<typeof import("../api/shared")>("../api/shared");
-  return {
-    ...actual,
-    getSupabaseConfig: vi.fn(() => ({
-      supabaseUrl: "https://test.supabase.co",
-      anonKey: "anon-key",
-    })),
-  };
-});
-
 import {
   currentUserCanCaptureTrialEvent,
   currentUserCanManageLockedTrialEvent,
   currentUserCanManageProgramsGoals,
   currentUserCanTakeClientData,
   currentUserIsBcbaForOrg,
-  getSupabaseConfig,
   resolveOrgAndRoleWithStatus,
   resolveSchedulingOrgAndRoleWithStatus,
   sessionHasLockedNote,
@@ -25,7 +13,6 @@ import {
 import type { Database } from "../../lib/generated/database.types";
 
 const accessToken = "header.payload.signature";
-const originalServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function jsonResponse(data: unknown, status = 200): Response {
   const text = data === "" ? "" : JSON.stringify(data);
@@ -36,20 +23,20 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn<typeof globalThis, "fetch">>;
 
   beforeEach(() => {
-    vi.mocked(getSupabaseConfig).mockReturnValue({
-      supabaseUrl: "https://test.supabase.co",
-      anonKey: "anon-key",
-    });
-    fetchSpy = vi.spyOn(globalThis, "fetch");
+    vi.stubEnv("CODEX_ENV_PATH", ".tmp/nonexistent-rpc-contract-env");
+    vi.stubEnv("SUPABASE_URL", "https://unit-test.supabase.invalid");
+    vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "unit-test-anon-key");
+    vi.stubEnv("SUPABASE_ANON_KEY", "unit-test-anon-key");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    vi.stubEnv("SUPABASE_SECRET_KEY", "");
+    fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("Unexpected unmocked fetch"));
   });
 
   afterEach(() => {
     fetchSpy.mockRestore();
-    if (typeof originalServiceRoleKey === "string") {
-      process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRoleKey;
-    } else {
-      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    }
+    vi.unstubAllEnvs();
   });
 
   it("calls current_user_is_super_admin, current_user_organization_id, then user_has_role_for_org for therapist/admin/org_admin/org_member", async () => {

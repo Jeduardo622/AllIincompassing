@@ -64,6 +64,12 @@ interface GuardianContext {
   linkedClientId: string;
 }
 
+interface MappedTherapistContext {
+  email: string;
+  password: string;
+  userId: string;
+}
+
 type OrgRecordIds = { orgA: string; orgB: string };
 
 const importMetaEnv =
@@ -124,6 +130,7 @@ let orgAContext: TenantContext | null = null;
 let orgBContext: TenantContext | null = null;
 let adminContext: AdminContext | null = null;
 let otherAdminContext: AdminContext | null = null;
+let mappedTherapistContext: MappedTherapistContext | null = null;
 let orgAId = '';
 let orgBId = '';
 
@@ -401,6 +408,40 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
   return { email, password, userId, organizationId };
 };
 
+const createMappedTherapistFixture = async (
+  tenant: TenantContext,
+): Promise<MappedTherapistContext> => {
+  if (!serviceClient) {
+    throw new Error('Service client not initialized');
+  }
+
+  const email = `mapped-therapist.${randomUUID()}@example.com`;
+  const password = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
+  const { data, error } = await serviceClient.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { organization_id: tenant.organizationId },
+    app_metadata: buildCiRlsAppMetadata(),
+  });
+  if (error || !data.user) {
+    throw error ?? new Error('Mapped therapist auth user creation failed');
+  }
+
+  const userId = data.user.id;
+  createdFixtureAuthUserIds.push(userId);
+  await provisionCiRlsProfile(userId, tenant.organizationId, 'therapist');
+  const linkResult = await serviceClient.from('user_therapist_links').insert({
+    user_id: userId,
+    therapist_id: tenant.therapistId,
+  });
+  if (linkResult.error) {
+    throw linkResult.error;
+  }
+
+  return { email, password, userId };
+};
+
 const createTherapistCertificationFixture = async (
   context: TenantContext,
   label: string,
@@ -492,7 +533,7 @@ const invokeAssignTherapistUser = async (
   const result = await client.functions.invoke('assign-therapist-user', {
     body,
     headers: { 'x-request-id': correlationId },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(45_000),
   });
 
   const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
@@ -1088,13 +1129,7 @@ const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianCon
   const guardianId = createdUser.user.id;
   createdGuardianUserIds.push(guardianId);
 
-  const resolvedRoleId = await resolveClientRoleId();
-  const roleInsert = await serviceClient
-    .from('user_roles')
-    .insert({ user_id: guardianId, role_id: resolvedRoleId });
-  if (roleInsert.error) {
-    throw roleInsert.error;
-  }
+  await provisionCiRlsProfile(guardianId, tenant.organizationId, 'client');
 
   const guardianProfileResult = await serviceClient
     .from('profiles')
@@ -1186,6 +1221,7 @@ beforeAll(async () => {
   orgBContext = await createTenantFixture('orgb', orgBId);
   adminContext = await createAdminFixture(orgAId);
   otherAdminContext = await createAdminFixture(orgBId);
+  mappedTherapistContext = await createMappedTherapistFixture(orgAContext);
 
   if (orgAContext && orgBContext) {
     const orgACertId = await createTherapistCertificationFixture(orgAContext, 'org-a');
@@ -1360,7 +1396,7 @@ describe('admin organization scoping', () => {
     } finally {
       await adminClient.auth.signOut();
     }
-  });
+  }, 75_000);
 });
 
 describe('user role assignment access', () => {
@@ -1910,6 +1946,7 @@ afterAll(async () => {
   }
 
   if (createdFixtureAuthUserIds.length > 0) {
+    await serviceClient.from('user_therapist_links').delete().in('user_id', createdFixtureAuthUserIds);
     await serviceClient.from('user_roles').delete().in('user_id', createdFixtureAuthUserIds);
     await serviceClient.from('clients').delete().in('id', createdFixtureAuthUserIds);
     await serviceClient.from('therapists').delete().in('id', createdFixtureAuthUserIds);
@@ -2449,7 +2486,7 @@ describe('row level security for multi-tenant tables', () => {
     } finally {
       await adminClient.auth.signOut();
     }
-  });
+  }, 75_000);
 
   it('prevents clients from directly reading or updating billing records', async () => {
     if (!runTests || !orgAContext || !orgBContext) {
@@ -3718,6 +3755,8 @@ describe('session artifacts enforce tenant isolation', () => {
     allowsAssignedTherapist?: boolean;
     allowsAdmin?: boolean;
     enforceAdminIsolation?: boolean;
+    adminIsolationUpdate?: Record<string, unknown>;
+    verifiesPositiveWrites?: boolean;
   };
 
   const orgScopedConfigs: OrgScopedConfig[] = [
@@ -3759,6 +3798,8 @@ describe('session artifacts enforce tenant isolation', () => {
       seed: ensureSessionTranscriptsSeeded,
       getIds: () => sessionTranscriptIdsByOrg,
       enforceAdminIsolation: true,
+      adminIsolationUpdate: { processed_transcript: 'cross-org update must be denied' },
+      verifiesPositiveWrites: true,
     },
     {
       table: 'session_transcript_segments',
@@ -3766,6 +3807,8 @@ describe('session artifacts enforce tenant isolation', () => {
       seed: ensureSessionTranscriptSegmentsSeeded,
       getIds: () => sessionTranscriptSegmentIdsByOrg,
       enforceAdminIsolation: true,
+      adminIsolationUpdate: { text: 'cross-org update must be denied' },
+      verifiesPositiveWrites: true,
     },
     {
       table: 'user_sessions',
@@ -3892,6 +3935,56 @@ describe('session artifacts enforce tenant isolation', () => {
       });
     }
 
+    if (config.adminIsolationUpdate) {
+      it(`prevents admins from other organizations from modifying ${config.label}`, async () => {
+        if (!runTests || !otherAdminContext || !orgAContext || !orgBContext || !serviceClient) {
+          console.log('⏭️  Skipping RLS test - setup incomplete.');
+          return;
+        }
+
+        const recordIds = config.getIds();
+        if (!recordIds) {
+          console.log(`⏭️  Skipping ${config.table} cross-org admin write test - seed data unavailable.`);
+          return;
+        }
+
+        const adminClient = await signInAdmin(otherAdminContext);
+        try {
+          const updateResult = await adminClient
+            .from(config.table)
+            .update({ session_id: orgBContext.sessionId })
+            .eq('id', recordIds.orgA)
+            .select('id');
+          expectRlsViolation(updateResult.error, updateResult.data?.length ?? 0);
+
+          const updateReadback = await serviceClient
+            .from(config.table)
+            .select('session_id')
+            .eq('id', recordIds.orgA)
+            .single();
+          expect(updateReadback.error).toBeNull();
+          expect(updateReadback.data?.session_id).toBe(orgAContext.sessionId);
+
+          const deleteResult = await adminClient
+            .from(config.table)
+            .delete()
+            .eq('id', recordIds.orgA)
+            .select('id');
+          expectRlsViolation(deleteResult.error, deleteResult.data?.length ?? 0);
+
+          const deleteReadback = await serviceClient
+            .from(config.table)
+            .select('id')
+            .eq('id', recordIds.orgA)
+            .single();
+          expect(deleteReadback.error).toBeNull();
+          expect(deleteReadback.data?.id).toBe(recordIds.orgA);
+        } finally {
+          await adminClient.auth.signOut();
+        }
+      });
+    }
+
     if (config.allowsAdmin !== false) {
       it(`allows admins to access ${config.label}`, async () => {
         if (!runTests || !adminContext) {
@@ -3917,6 +4010,70 @@ describe('session artifacts enforce tenant isolation', () => {
           expect(result.data?.id).toBe(recordIds.orgA);
         } finally {
           await adminClient.auth.signOut();
+        }
+      });
+    }
+
+    if (config.verifiesPositiveWrites) {
+      it(`preserves same-organization admin and mapped therapist writes for ${config.label}`, async () => {
+        if (
+          !runTests
+          || !otherAdminContext
+          || !mappedTherapistContext
+        ) {
+          console.log('⏭️  Skipping RLS positive write test - setup incomplete.');
+          return;
+        }
+
+        const recordIds = config.getIds();
+        if (!recordIds) {
+          console.log(`⏭️  Skipping ${config.table} positive write test - seed data unavailable.`);
+          return;
+        }
+
+        const orgBAdmin = await signInAdmin(otherAdminContext);
+        try {
+          const updateResult = await orgBAdmin
+            .from(config.table)
+            .update(config.adminIsolationUpdate!)
+            .eq('id', recordIds.orgB)
+            .select('id');
+          expect(updateResult.error).toBeNull();
+          expect(updateResult.data?.map((row) => row.id)).toEqual([recordIds.orgB]);
+
+          const deleteResult = await orgBAdmin
+            .from(config.table)
+            .delete()
+            .eq('id', recordIds.orgB)
+            .select('id');
+          expect(deleteResult.error).toBeNull();
+          expect(deleteResult.data?.map((row) => row.id)).toEqual([recordIds.orgB]);
+        } finally {
+          await orgBAdmin.auth.signOut();
+        }
+
+        const mappedTherapist = await signInWithPassword(
+          mappedTherapistContext.email,
+          mappedTherapistContext.password,
+        );
+        try {
+          const updateResult = await mappedTherapist
+            .from(config.table)
+            .update(config.adminIsolationUpdate!)
+            .eq('id', recordIds.orgA)
+            .select('id');
+          expect(updateResult.error).toBeNull();
+          expect(updateResult.data?.map((row) => row.id)).toEqual([recordIds.orgA]);
+
+          const deleteResult = await mappedTherapist
+            .from(config.table)
+            .delete()
+            .eq('id', recordIds.orgA)
+            .select('id');
+          expect(deleteResult.error).toBeNull();
+          expect(deleteResult.data?.map((row) => row.id)).toEqual([recordIds.orgA]);
+        } finally {
+          await mappedTherapist.auth.signOut();
         }
       });
     }

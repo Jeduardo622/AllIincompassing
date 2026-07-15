@@ -1,12 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Database } from "../../src/lib/generated/database.types";
 import {
   computeEnvironmentGuidance,
   resolveSupabaseTestEnv,
 } from "../../src/tests/security/supabaseEnv";
-import { setupLiveRlsHarness, type LiveRlsHarness } from "./_helpers/liveRlsHarness.ts";
+import {
+  buildLiveRlsAppMetadata,
+  createLiveRlsClient,
+  persistLiveRlsAppMetadata,
+  reconcileLiveRlsRole,
+  setupLiveRlsHarness,
+  type LiveRlsHarness,
+} from "./_helpers/liveRlsHarness.ts";
 
 type TypedClient = SupabaseClient<Database, "public", Database["public"]>;
 
@@ -48,23 +55,25 @@ beforeAll(async () => {
     return;
   }
 
-  serviceClient = createClient<Database>(
+  serviceClient = createLiveRlsClient(
     environmentResolution.supabaseUrl as string,
     environmentResolution.supabaseServiceRoleKey as string,
-    { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
   const email = `observer.admin.${Date.now()}.${randomUUID().slice(0, 8)}@example.com`;
   const password = `P@ssw0rd-${randomUUID().slice(0, 8)}`;
+  const observerAppMetadata = buildLiveRlsAppMetadata();
   const { data: createdUser, error: createUserError } = await serviceClient.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
     user_metadata: { organization_id: harness.orgAId, role: "admin" },
+    app_metadata: observerAppMetadata,
   });
   if (createUserError || !createdUser?.user) {
     throw createUserError ?? new Error("Observer admin creation failed");
   }
+  orgAObserverAdmin = { userId: createdUser.user.id, email, password };
 
   const assignResult = await serviceClient.rpc("assign_admin_role", {
     user_email: email,
@@ -75,7 +84,15 @@ beforeAll(async () => {
     throw assignResult.error;
   }
 
-  orgAObserverAdmin = { userId: createdUser.user.id, email, password };
+  await persistLiveRlsAppMetadata(serviceClient, createdUser.user.id, observerAppMetadata);
+  await reconcileLiveRlsRole(serviceClient, createdUser.user.id, "admin");
+  const profileResult = await (serviceClient as SupabaseClient).rpc(
+    "provision_ci_rls_fixture_profile",
+    { p_user_id: createdUser.user.id, p_organization_id: harness.orgAId },
+  );
+  if (profileResult.error || profileResult.data !== harness.orgAId) {
+    throw profileResult.error ?? new Error("Observer admin profile provisioning failed");
+  }
 });
 
 afterAll(async () => {
@@ -173,9 +190,10 @@ describe("RLS staff messaging (live Supabase)", () => {
       throw new Error(computeEnvironmentGuidance(env.missing));
     }
 
-    const observerClient = createClient<Database>(env.supabaseUrl as string, env.supabaseAnonKey as string, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const observerClient = createLiveRlsClient(
+      env.supabaseUrl as string,
+      env.supabaseAnonKey as string,
+    );
     const signIn = await observerClient.auth.signInWithPassword({
       email: orgAObserverAdmin.email,
       password: orgAObserverAdmin.password,
@@ -240,7 +258,9 @@ describe("RLS staff messaging (live Supabase)", () => {
     });
 
     expect(error).not.toBeNull();
-    expect((error?.message ?? "").toLowerCase()).toMatch(/therapists may only create direct threads|42501/);
+    expect((error?.message ?? "").toLowerCase()).toMatch(
+      /only admins may create group threads|therapists may only create direct threads|42501/,
+    );
   });
 
   it("allows admin group thread creation within active same-org staff", async () => {
@@ -305,9 +325,10 @@ describe("RLS staff messaging (live Supabase)", () => {
       throw new Error(computeEnvironmentGuidance(env.missing));
     }
 
-    const observerClient = createClient<Database>(env.supabaseUrl as string, env.supabaseAnonKey as string, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const observerClient = createLiveRlsClient(
+      env.supabaseUrl as string,
+      env.supabaseAnonKey as string,
+    );
     const signIn = await observerClient.auth.signInWithPassword({
       email: orgAObserverAdmin.email,
       password: orgAObserverAdmin.password,

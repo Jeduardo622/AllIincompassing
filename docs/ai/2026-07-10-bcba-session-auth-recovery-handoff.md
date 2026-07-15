@@ -454,3 +454,38 @@ PR #791 follow-up:
 - suite execution, Node routing, and MSW passthrough now all require explicit `RUN_DB_IT`. Ordinary CI keeps static contracts but does not create hosted fixtures; the trusted main-only Supabase workflow already sets `RUN_DB_IT: '1'` and therefore retains real Node Auth/REST/Storage transport.
 - the workflow/config contract asserts all three gates share the explicit trust predicate. The four focused helper/contract files pass 38/38; lint, typecheck, and policy pass. Trusted hosted proof remains pending.
 - the PR `auth-browser-smoke` job was green only because change-scope deliberately skipped provisioning and acceptance. It is not counted as BCBA proof; the main push job remains decisive after human merge.
+
+### WIN-217 trusted RLS authorization-boundary follow-up
+
+- branch: `codex/win-217-trusted-rls-followup`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- current hosted evidence: main CI run `29374337742` is green but scope-skipped BCBA provision/acceptance/cleanup; Supabase Validate run `29374337756` exposed fixture drift plus real client-authorization and session-CPT tenant leaks after the original admin-action and Storage timeout failures were repaired.
+- bounded fix:
+  - bind client authorization reads to the requested client and add client-owned document create-and-read access only for the caller's canonical client path; overwrite remains out of scope.
+  - replace every permissive `session_cpt_entries` policy with organization/session-scoped admin, super-admin, therapist, and service-role policies.
+  - restore the checked-in therapist-certification contract: same-org admins and the owning active therapist may manage a certification; cross-org actors remain denied.
+  - repair live fixture foreign keys, program/goal links, guardian/observer profiles, stale service-only expectations, Edge error status assertions, and marked live transport.
+  - update `assign-therapist-user` to use the deployed therapist `status`/`deleted_at` schema and server-controlled caller/target profiles instead of nonexistent `is_active` and mutable auth metadata.
+  - classify `assign-therapist-user` changes as an admin/auth browser surface so the trusted main workflow executes BCBA provision, acceptance, and cleanup instead of scope-skipping them.
+- non-goals: no workflow job changes, generic authenticated storage access, broad role-helper rewrite, production data backfill, or weakening of the unresolved cross-org `manage_admin_users` denial contract.
+
+Verification card:
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database/RLS/migration/tenant isolation, Edge integration, and trusted hosted test harness
+- required checks: focused contracts; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run test:routes:tier0`; `npm run ci:playwright`; `npm run verify:local`; independent critical-lane review; fresh hosted Supabase Validate; non-skipped main BCBA acceptance.
+- executed checks:
+  - focused contracts -> pass, 5 files / 41 tests, including active-role, assigned-therapist, client create/read, session/org consistency, canonical-profile assertions, and exact BCBA auth-smoke selector coverage.
+  - `npm run ci:check-focused` -> pass, with DB-URL-backed advisor/grant checks explicitly skipped locally.
+  - `npm run lint` -> pass.
+  - `npm run typecheck` -> pass.
+  - `npm run validate:tenant` -> pass.
+  - `npm run build` -> pass.
+  - `npm run test:ci` -> fail locally after 2,721 passes on two unchanged Windows/Node 24 portability assertions: CRLF-sensitive workflow step extraction and jsdom Blob without `text()`.
+  - `npm run test:routes:tier0` -> fail locally after 212 passes because the preview server returned transient 404 responses during two `routes_client.cy.ts` session setup visits; the other six specs passed.
+- live PR evidence: PR #792 CI run `29376998559` correctly failed `runtime-migration-parity` because migration `20260714230523_repair_trusted_rls_authorization_boundaries` has not yet been promoted to the hosted migration ledger; the exact reviewed migration must be promoted before that required PR gate can pass.
+- blocked checks: `npm run ci:playwright`, trusted Supabase validation, migration/runtime parity, deployed Edge parity, and non-skipped BCBA acceptance require protected hosted CI. Full `verify:local` remains failed because it includes the two recorded `test:ci` failures. The Edge Function is not in the automatic session bundle and requires reviewed post-merge deployment with `verify_jwt=true` readback.
+- result: `pass-with-blocked-checks` for the bounded local implementation; PR CI, human approval, hosted promotion, fresh green Supabase Validate, and non-skipped BCBA acceptance remain required before completion.
+- residual risk: the forward migration changes live tenant boundaries and the Edge repair is not proven until reviewed code is deployed; `manage_admin_users` remains strict in the test because neither checked-in nor live SQL supports weakening the cross-org denial contract.

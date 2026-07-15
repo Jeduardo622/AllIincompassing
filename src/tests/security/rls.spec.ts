@@ -43,6 +43,8 @@ interface TenantContext {
   clientUserId: string;
   clientEmail: string;
   clientPassword: string;
+  programId: string;
+  goalId: string;
   sessionId: string;
   organizationId: string;
 }
@@ -290,6 +292,40 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   }
   await provisionCiRlsProfile(clientUserId, organizationId, 'client');
 
+  const programResult = await serviceClient
+    .from('programs')
+    .insert({
+      client_id: clientUserId,
+      name: `${label.toUpperCase()} RLS Program`,
+      description: 'Synthetic program for hosted RLS tests',
+      organization_id: organizationId,
+      created_by: therapistId,
+    })
+    .select('id')
+    .single();
+  if (programResult.error || !programResult.data) {
+    throw programResult.error ?? new Error('Program fixture creation failed');
+  }
+  const programId = programResult.data.id;
+
+  const goalResult = await serviceClient
+    .from('goals')
+    .insert({
+      client_id: clientUserId,
+      program_id: programId,
+      title: `${label.toUpperCase()} RLS Goal`,
+      description: 'Synthetic goal for hosted RLS tests',
+      original_text: 'Synthetic goal for hosted RLS tests',
+      organization_id: organizationId,
+      created_by: therapistId,
+    })
+    .select('id')
+    .single();
+  if (goalResult.error || !goalResult.data) {
+    throw goalResult.error ?? new Error('Goal fixture creation failed');
+  }
+  const goalId = goalResult.data.id;
+
   const sessionId = randomUUID();
   const start = new Date(Date.now() - 60 * 60 * 1000);
   const end = new Date(Date.now());
@@ -302,6 +338,8 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     end_time: end.toISOString(),
     status: 'completed',
     organization_id: organizationId,
+    program_id: programId,
+    goal_id: goalId,
     has_transcription_consent: true,
   });
 
@@ -318,6 +356,8 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     clientUserId,
     clientEmail,
     clientPassword,
+    programId,
+    goalId,
     sessionId,
     organizationId,
   };
@@ -447,6 +487,11 @@ const expectRlsViolation = (error: PostgrestError | null, fallbackRowCount = 0) 
   }
 
   expect(fallbackRowCount).toBe(0);
+};
+
+const getFunctionErrorStatus = (error: unknown): number | undefined => {
+  const context = (error as { context?: { status?: number } } | null)?.context;
+  return context?.status;
 };
 
 const createTextBody = (text: string): Uint8Array => {
@@ -925,11 +970,11 @@ const ensureSessionTranscriptSegmentsSeeded = async (): Promise<void> => {
     throw new Error('Session transcripts must be seeded before segments');
   }
 
-  const insertSegmentForTranscript = async (transcriptId: string, offset: number) => {
+  const insertSegmentForContext = async (context: TenantContext, offset: number) => {
     const { data, error } = await serviceClient
       .from('session_transcript_segments')
       .insert({
-        session_id: transcriptId,
+        session_id: context.sessionId,
         start_time: offset,
         end_time: offset + 10,
         speaker: 'therapist',
@@ -948,8 +993,8 @@ const ensureSessionTranscriptSegmentsSeeded = async (): Promise<void> => {
     return data.id;
   };
 
-  const orgASegmentId = await insertSegmentForTranscript(sessionTranscriptIdsByOrg.orgA, 0);
-  const orgBSegmentId = await insertSegmentForTranscript(sessionTranscriptIdsByOrg.orgB, 0);
+  const orgASegmentId = await insertSegmentForContext(orgAContext, 0);
+  const orgBSegmentId = await insertSegmentForContext(orgBContext, 0);
 
   sessionTranscriptSegmentIdsByOrg = { orgA: orgASegmentId, orgB: orgBSegmentId };
 };
@@ -1007,6 +1052,20 @@ const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianCon
 
   if (roleInsert.error) {
     throw roleInsert.error;
+  }
+
+  const guardianProfileResult = await serviceClient
+    .from('profiles')
+    .update({
+      organization_id: tenant.organizationId,
+      role: 'client',
+      is_active: true,
+    })
+    .eq('id', guardianId)
+    .select('id')
+    .single();
+  if (guardianProfileResult.error || !guardianProfileResult.data) {
+    throw guardianProfileResult.error ?? new Error('Synthetic guardian profile provisioning failed');
   }
 
   const { data: insertedGuardian, error: guardianInsertError } = await serviceClient
@@ -1210,7 +1269,7 @@ describe('admin organization scoping', () => {
       });
 
       expect(error).toBeTruthy();
-      expect(error?.message.toLowerCase()).toMatch(/organization/);
+      expect(error?.message.toLowerCase()).toMatch(/permission|assign_admin_role/);
     } finally {
       await adminClient.auth.signOut();
     }
@@ -1665,6 +1724,8 @@ afterAll(async () => {
     }
 
     await serviceClient.from('sessions').delete().eq('id', context.sessionId);
+    await serviceClient.from('goals').delete().eq('id', context.goalId);
+    await serviceClient.from('programs').delete().eq('id', context.programId);
     await serviceClient.from('clients').delete().eq('id', context.clientId);
     await serviceClient.from('user_therapist_links').delete().eq('user_id', context.userId);
     await serviceClient.from('therapists').delete().eq('id', context.therapistId);
@@ -2237,37 +2298,29 @@ describe('row level security for multi-tenant tables', () => {
     }
   });
 
-  it('allows clients to manage only sessions that belong to them', async () => {
+  it('prevents clients from directly reading or updating sessions', async () => {
     if (!runTests || !orgAContext || !orgBContext) {
       console.log('⏭️  Skipping RLS test - setup incomplete.');
       return;
     }
 
     const client = await signInClient(orgAContext);
-    let originalNotes: string | null = null;
     try {
       const ownSession = await client
         .from('sessions')
-        .select('id, client_id, notes')
-        .eq('id', orgAContext.sessionId)
-        .maybeSingle();
+        .select('id, client_id')
+        .eq('id', orgAContext.sessionId);
 
       expect(ownSession.error).toBeNull();
-      expect(ownSession.data?.id).toBe(orgAContext.sessionId);
-      expect(ownSession.data?.client_id).toBe(orgAContext.clientId);
-
-      originalNotes = ownSession.data?.notes ?? null;
-      const updatedNotes = `Client note ${randomSuffix()}`;
+      expect(ownSession.data).toHaveLength(0);
 
       const updateResult = await client
         .from('sessions')
-        .update({ notes: updatedNotes })
+        .update({ notes: `Unauthorized client note ${randomSuffix()}` })
         .eq('id', orgAContext.sessionId)
-        .select('notes')
-        .maybeSingle();
+        .select('id');
 
-      expect(updateResult.error).toBeNull();
-      expect(updateResult.data?.notes).toBe(updatedNotes);
+      expectRlsViolation(updateResult.error, updateResult.data?.length ?? 0);
 
       const crossRead = await client
         .from('sessions')
@@ -2287,16 +2340,72 @@ describe('row level security for multi-tenant tables', () => {
       const crossCount = Array.isArray(crossUpdate.data) ? crossUpdate.data.length : 0;
       expectRlsViolation(crossUpdate.error, crossCount);
     } finally {
-      await client
-        .from('sessions')
-        .update({ notes: originalNotes })
-        .eq('id', orgAContext.sessionId);
-
       await client.auth.signOut();
     }
   });
 
-  it('restricts billing records to the authenticated client session scope', async () => {
+  it('allows clients to read their own authorization rows', async () => {
+    if (!runTests || !orgAContext || !serviceClient) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const { data: authorizationRow, error: authorizationError } = await serviceClient
+      .from('authorizations')
+      .insert({
+        authorization_number: `AUTH-OWN-${Date.now()}-${randomSuffix()}`,
+        client_id: orgAContext.clientId,
+        provider_id: orgAContext.therapistId,
+        diagnosis_code: 'F84.0',
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
+        organization_id: orgAContext.organizationId,
+        created_by: orgAContext.userId,
+      })
+      .select('id')
+      .single();
+    if (authorizationError || !authorizationRow) {
+      throw authorizationError ?? new Error('Failed to insert own authorization fixture');
+    }
+    createdAuthorizationIds.push(authorizationRow.id);
+
+    const client = await signInClient(orgAContext);
+    try {
+      const ownRead = await client
+        .from('authorizations')
+        .select('id, client_id')
+        .eq('id', authorizationRow.id)
+        .single();
+      expect(ownRead.error).toBeNull();
+      expect(ownRead.data?.client_id).toBe(orgAContext.clientId);
+    } finally {
+      await client.auth.signOut();
+    }
+  });
+
+  it('prevents admins from assigning cross-organization users or therapists', async () => {
+    if (!runTests || !adminContext || !orgBContext) {
+      console.log('⏭️  Skipping cross-organization edge function test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const { error } = await adminClient.functions.invoke('assign-therapist-user', {
+        body: {
+          userId: orgBContext.clientUserId,
+          therapistId: orgBContext.therapistId,
+        },
+      });
+
+      expect(error).toBeTruthy();
+      expect(getFunctionErrorStatus(error)).toBe(403);
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('prevents clients from directly reading or updating billing records', async () => {
     if (!runTests || !orgAContext || !orgBContext) {
       console.log('⏭️  Skipping RLS test - setup incomplete.');
       return;
@@ -2308,8 +2417,6 @@ describe('row level security for multi-tenant tables', () => {
     }
 
     const client = await signInClient(orgAContext);
-    let originalStatus: string | null = null;
-    let targetRecordId: string | null = null;
     try {
       const ownRecords = await client
         .from('billing_records')
@@ -2317,29 +2424,15 @@ describe('row level security for multi-tenant tables', () => {
         .eq('session_id', orgAContext.sessionId);
 
       expect(ownRecords.error).toBeNull();
-      const ownRows = Array.isArray(ownRecords.data) ? ownRecords.data : [];
-      expect(ownRows.length).toBeGreaterThan(0);
-      ownRows.forEach(row => {
-        expect(row.session_id).toBe(orgAContext.sessionId);
-      });
-
-      targetRecordId = ownRows[0]?.id ?? null;
-      if (!targetRecordId) {
-        throw new Error('Expected at least one billing record id for the client session');
-      }
-
-      originalStatus = ownRows[0]?.status ?? null;
-      const newStatus = originalStatus === 'pending' ? 'review' : 'pending';
+      expect(ownRecords.data).toHaveLength(0);
 
       const updateResult = await client
         .from('billing_records')
-        .update({ status: newStatus })
-        .eq('id', targetRecordId)
-        .select('status')
-        .maybeSingle();
+        .update({ status: 'unauthorized' })
+        .eq('id', billingRecordIdsByOrg.orgA)
+        .select('id');
 
-      expect(updateResult.error).toBeNull();
-      expect(updateResult.data?.status).toBe(newStatus);
+      expectRlsViolation(updateResult.error, updateResult.data?.length ?? 0);
 
       const crossRead = await client
         .from('billing_records')
@@ -2359,13 +2452,6 @@ describe('row level security for multi-tenant tables', () => {
       const crossCount = Array.isArray(crossUpdate.data) ? crossUpdate.data.length : 0;
       expectRlsViolation(crossUpdate.error, crossCount);
     } finally {
-      if (targetRecordId) {
-        await client
-          .from('billing_records')
-          .update({ status: originalStatus })
-          .eq('id', targetRecordId);
-      }
-
       await client.auth.signOut();
     }
   });
@@ -2895,6 +2981,40 @@ describe('row level security for multi-tenant tables', () => {
       expect(error).toBeNull();
       expect(Array.isArray(data)).toBe(true);
       expect(data).toHaveLength(0);
+
+      const ownRead = await supabaseAdmin
+        .from('session_cpt_entries')
+        .select('id, cpt_code_id, session_id')
+        .eq('id', sessionCptEntryIdsByOrg.orgA)
+        .single();
+      expect(ownRead.error).toBeNull();
+      expect(ownRead.data?.session_id).toBe(orgAContext.sessionId);
+
+      if (!ownRead.data?.cpt_code_id) {
+        throw new Error('Expected same-organization CPT entry fixture');
+      }
+
+      const mismatchedInsert = await supabaseAdmin
+        .from('session_cpt_entries')
+        .insert({
+          session_id: orgBContext.sessionId,
+          cpt_code_id: ownRead.data.cpt_code_id,
+          line_number: 99,
+          units: 1,
+          billed_minutes: 15,
+          rate: 1,
+          is_primary: false,
+          organization_id: orgAContext.organizationId,
+        })
+        .select('id');
+      expectRlsViolation(mismatchedInsert.error, mismatchedInsert.data?.length ?? 0);
+
+      const mismatchedUpdate = await supabaseAdmin
+        .from('session_cpt_entries')
+        .update({ session_id: orgBContext.sessionId })
+        .eq('id', sessionCptEntryIdsByOrg.orgA)
+        .select('id');
+      expectRlsViolation(mismatchedUpdate.error, mismatchedUpdate.data?.length ?? 0);
     } finally {
       await supabaseAdmin.auth.signOut();
     }
@@ -2972,7 +3092,7 @@ describe('session holds enforce role-scoped access', () => {
     await ensureSessionHoldsSeeded();
   });
 
-  it('allows admins to manage session holds for any therapist', async () => {
+  it('allows admins to manage session holds only within their organization', async () => {
     if (!runTests || !adminContext || !orgAContext || !orgBContext || !sessionHoldIdsByOrg) {
       console.log('⏭️  Skipping RLS test - setup incomplete.');
       return;
@@ -2985,11 +3105,10 @@ describe('session holds enforce role-scoped access', () => {
       const existingHoldResult = await adminClient
         .from('session_holds')
         .select('id, therapist_id')
-        .eq('id', sessionHoldIdsByOrg.orgB)
-        .single();
+        .eq('id', sessionHoldIdsByOrg.orgB);
 
       expect(existingHoldResult.error).toBeNull();
-      expect(existingHoldResult.data?.therapist_id).toBe(orgBContext.therapistId);
+      expect(existingHoldResult.data).toHaveLength(0);
 
       const { start, end, expires } = generateHoldWindow(240);
       const insertResult = await adminClient
@@ -3247,8 +3366,7 @@ describe('session hold edge function authorization', () => {
       });
 
       expect(error).toBeTruthy();
-      const typedError = error as { status?: number; message?: string } | null;
-      expect(typedError?.status).toBe(403);
+      expect(getFunctionErrorStatus(error)).toBe(403);
 
       if (data) {
         const responseBody = data as { success?: boolean; error?: string };
@@ -3297,8 +3415,7 @@ describe('session hold edge function authorization', () => {
       });
 
       expect(error).toBeTruthy();
-      const typedError = error as { status?: number; message?: string } | null;
-      expect(typedError?.status).toBe(403);
+      expect(getFunctionErrorStatus(error)).toBe(403);
 
       if (data) {
         const responseBody = data as { success?: boolean; error?: string };
@@ -3841,7 +3958,7 @@ describe('storage client document access policies', () => {
         .from('client-documents')
         .upload(path, createTextBody('Client storage test'), {
           contentType: 'text/plain',
-          upsert: true,
+          upsert: false,
         });
 
       expect(uploadResult.error).toBeNull();
@@ -3855,6 +3972,28 @@ describe('storage client document access policies', () => {
 
       const downloadedText = await downloadResult.data.text();
       expect(downloadedText).toBe('Client storage test');
+    } finally {
+      await client.auth.signOut();
+    }
+  });
+
+  it('prevents clients from uploading documents into another client path', async () => {
+    if (!runTests || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const client = await signInClient(orgAContext);
+    const path = buildClientDocumentPath(orgBContext.clientId, 'cross-client');
+    try {
+      const uploadResult = await client.storage
+        .from('client-documents')
+        .upload(path, createTextBody('Unauthorized client storage test'), {
+          contentType: 'text/plain',
+          upsert: false,
+        });
+
+      expect(uploadResult.error).toBeTruthy();
     } finally {
       await client.auth.signOut();
     }

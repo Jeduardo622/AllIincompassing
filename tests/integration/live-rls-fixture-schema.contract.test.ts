@@ -179,4 +179,42 @@ describe("live RLS fixture schema contract", () => {
       expect(call).not.toMatch(/(^|\n)\s*therapist_id:/);
     }
   });
+
+  it("marks every live message-thread Supabase client and provisions the observer profile", () => {
+    const harnessSource = readRepoFile("tests/integration/_helpers/liveRlsHarness.ts");
+    const messageSource = readRepoFile("tests/integration/rls.message-threads.access.test.ts");
+
+    expect(harnessSource).toContain("export const createLiveRlsClient");
+    expect(messageSource).toContain("createLiveRlsClient(");
+    expect(messageSource).not.toMatch(/\bcreateClient<Database>\(/);
+    expect(messageSource).toContain("app_metadata: observerAppMetadata");
+    expect(messageSource).toContain("persistLiveRlsAppMetadata(");
+    expect(messageSource).toContain("reconcileLiveRlsRole(");
+    expect(messageSource).toContain('"provision_ci_rls_fixture_profile"');
+  });
+
+  it("seeds valid session-linked artifacts and guardian organization context", () => {
+    const source = readRepoFile("src/tests/security/rls.spec.ts");
+
+    expect(source).toContain("session_id: context.sessionId");
+    expect(source).toContain("program_id: programId");
+    expect(source).toContain("goal_id: goalId");
+    expect(source).toContain(".eq('id', context.goalId)");
+    expect(source).toContain(".eq('id', context.programId)");
+    expect(source).toContain("Synthetic guardian profile provisioning failed");
+  });
+
+  it("uses the deployed therapist status schema before assigning a therapist", () => {
+    const source = readRepoFile("supabase/functions/assign-therapist-user/index.ts");
+
+    expect(source).toContain(".select('id, full_name, status, organization_id, deleted_at')");
+    expect(source).toContain("therapistData.status !== 'active'");
+    expect(source).not.toContain("therapistData.is_active");
+    expect(source).toContain(".from('profiles')");
+    expect(source).toContain('callerProfile?.organization_id');
+    expect(source).toContain('targetProfile.organization_id');
+    expect(source).toContain('targetProfile.is_active !== true');
+    expect(source).not.toContain('extractOrganizationId');
+    expect(source).not.toContain('targetUser.user_metadata as');
+  });
 });

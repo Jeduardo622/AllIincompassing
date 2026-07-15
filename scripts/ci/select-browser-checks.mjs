@@ -123,6 +123,10 @@ const classifyFile = (file) => {
     return { specs: ["schedule", "auth"], authSmoke: false, reason: "session cancellation edge flow" };
   }
 
+  if (/^supabase\/functions\/assign-therapist-user\//.test(file)) {
+    return { specs: ["admin", "auth"], authSmoke: true, reason: "therapist provisioning auth flow" };
+  }
+
   if (matchAny(file, [
     /^cypress\/e2e\/routes_auth\.cy\.ts$/,
     /^scripts\/playwright-/,

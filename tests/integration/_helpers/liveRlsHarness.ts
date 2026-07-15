@@ -290,11 +290,11 @@ const seedOrgData = async (
   };
 };
 
-const createUserClient = (
+export const createLiveRlsClient = (
   supabaseUrl: string,
-  supabaseAnonKey: string,
+  supabaseKey: string,
 ): TypedClient =>
-  createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  createClient<Database>(supabaseUrl, supabaseKey, {
     auth: { autoRefreshToken: false, persistSession: false },
     global: { headers: LIVE_SUPABASE_REQUEST_HEADERS },
   });
@@ -341,10 +341,7 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
   const supabaseUrl = environmentResolution.supabaseUrl as string;
   const supabaseAnonKey = environmentResolution.supabaseAnonKey as string;
   const serviceRoleKey = environmentResolution.supabaseServiceRoleKey as string;
-  const serviceClient = createClient<Database>(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-    global: { headers: LIVE_SUPABASE_REQUEST_HEADERS },
-  });
+  const serviceClient = createLiveRlsClient(supabaseUrl, serviceRoleKey);
 
   const orgAId = randomUUID();
   const orgBId = randomUUID();
@@ -488,7 +485,7 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
   const { orgAAdmin, orgBAdmin, orgATherapist, orgBTherapist, outsider, orgA, orgB } = resources;
 
   const signInAdmin = async (admin: AdminAuthFixture): Promise<TypedClient> => {
-    const client = createUserClient(supabaseUrl, supabaseAnonKey);
+    const client = createLiveRlsClient(supabaseUrl, supabaseAnonKey);
     const signInResult = await client.auth.signInWithPassword({
       email: admin.email,
       password: admin.password,

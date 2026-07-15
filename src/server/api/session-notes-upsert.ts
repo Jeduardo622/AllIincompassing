@@ -6,6 +6,7 @@ import { getOptionalServerEnv } from "../env";
 import {
   corsHeadersForRequest,
   currentUserCanCaptureTrialEvent,
+  currentUserIsBcbaForOrg,
   errorResponse,
   fetchAuthenticatedUserIdWithStatus,
   fetchJson,
@@ -954,8 +955,19 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (roleUpstreamError) {
     return errorResponse(request, "upstream_error", "Unable to validate organization access", { status: 502 });
   }
-  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember)) {
+  if (!organizationId) {
     return errorResponse(request, "forbidden", "Forbidden");
+  }
+
+  const hasResolvedSessionNoteRole = isTherapist || isAdmin || isSuperAdmin || isOrgMember;
+  if (!hasResolvedSessionNoteRole) {
+    const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
+    if (bcbaAuthority.upstreamError) {
+      return errorResponse(request, "upstream_error", "Unable to validate BCBA access", { status: 502 });
+    }
+    if (!bcbaAuthority.allowed) {
+      return errorResponse(request, "forbidden", "Forbidden");
+    }
   }
 
   const { userId: actorUserId, upstreamError: actorUpstreamError } = await fetchAuthenticatedUserIdWithStatus(accessToken);

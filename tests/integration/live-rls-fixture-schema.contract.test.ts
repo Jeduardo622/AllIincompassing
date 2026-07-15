@@ -54,6 +54,9 @@ describe("live RLS fixture schema contract", () => {
     expect(pushSection).toContain(
       "      - 'src/tests/security/ciRlsFixtureMetadata.ts'",
     );
+    expect(pushSection).toContain(
+      "      - 'src/server/__tests__/orgRoleRpcEquivalence.contract.test.ts'",
+    );
     expect(pushSection).toContain("      - 'src/tests/security/rls.spec.ts'");
     expect(pushSection).toContain("      - 'tests/integration/rls.message-threads.access.test.ts'");
     expect(pushSection).toContain("      - 'tests/integration/rls.session-holds.access.test.ts'");

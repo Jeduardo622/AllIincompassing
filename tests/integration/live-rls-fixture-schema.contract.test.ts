@@ -31,6 +31,12 @@ describe("live RLS fixture schema contract", () => {
     const testMainJob = workflow.match(
       /  test-main:\n([\s\S]*?)\n  runtime-migration-parity:/,
     )?.[1];
+    const unitTestStep = testMainJob?.match(
+      /      - name: Run unit tests\n([\s\S]*?)      - name: Run hosted database tests serially/,
+    )?.[1];
+    const hostedTestStep = testMainJob?.match(
+      /      - name: Run hosted database tests serially\n([\s\S]*?)      - name: Record Supabase validate evidence/,
+    )?.[1];
 
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(pushSection).toContain(
@@ -49,6 +55,11 @@ describe("live RLS fixture schema contract", () => {
       "      - 'src/tests/security/ciRlsFixtureMetadata.ts'",
     );
     expect(pushSection).toContain("      - 'src/tests/security/rls.spec.ts'");
+    expect(pushSection).toContain("      - 'tests/integration/rls.message-threads.access.test.ts'");
+    expect(pushSection).toContain("      - 'tests/integration/rls.session-holds.access.test.ts'");
+    expect(pushSection).toContain("      - 'tests/integration/rls.sessions.read-write.test.ts'");
+    expect(pushSection).toContain("      - 'tests/integration/rls.therapists.clients.billing.test.ts'");
+    expect(pushSection).toContain("      - 'tests/integration/rpc.dashboard.org-scope.test.ts'");
     expect(pushSection).toContain("      - main");
     expect(pullRequestSection).not.toContain("liveRlsHarness.ts");
     expect(pullRequestSection).not.toContain(
@@ -56,10 +67,34 @@ describe("live RLS fixture schema contract", () => {
     );
     expect(pullRequestSection).not.toContain("rls.spec.ts");
     expect(testMainJob).toContain("    if: github.event_name == 'push'");
-    expect(testMainJob).toContain(
+    expect(testMainJob).toContain("    timeout-minutes: 30");
+    expect(unitTestStep).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(unitTestStep).not.toContain("RUN_DB_IT");
+    expect(unitTestStep).toContain("--exclude=src/lib/__tests__/DatabaseIntegration.test.ts");
+    expect(unitTestStep).toContain("--exclude=src/lib/__tests__/multiTenantAccess.test.ts");
+    expect(unitTestStep).toContain("--exclude=src/tests/security/rls.spec.ts");
+    expect(unitTestStep).toContain("--exclude=tests/integration/rls.message-threads.access.test.ts");
+    expect(unitTestStep).toContain("--exclude=tests/integration/rls.session-holds.access.test.ts");
+    expect(unitTestStep).toContain("--exclude=tests/integration/rls.sessions.read-write.test.ts");
+    expect(unitTestStep).toContain("--exclude=tests/integration/rls.therapists.clients.billing.test.ts");
+    expect(unitTestStep).toContain("--exclude=tests/integration/rpc.dashboard.org-scope.test.ts");
+    expect(hostedTestStep).toContain("--no-file-parallelism");
+    expect(hostedTestStep).toContain("--maxWorkers=1");
+    expect(hostedTestStep).toContain("--hookTimeout=120000");
+    expect(hostedTestStep).toContain("--testTimeout=60000");
+    expect(hostedTestStep).not.toContain("src/lib/__tests__/DatabaseIntegration.test.ts");
+    expect(hostedTestStep).not.toContain("src/lib/__tests__/multiTenantAccess.test.ts");
+    expect(hostedTestStep).toContain("src/tests/security/rls.spec.ts");
+    expect(hostedTestStep).toContain("tests/integration/rls.message-threads.access.test.ts");
+    expect(hostedTestStep).toContain("tests/integration/rls.session-holds.access.test.ts");
+    expect(hostedTestStep).toContain("tests/integration/rls.sessions.read-write.test.ts");
+    expect(hostedTestStep).toContain("tests/integration/rls.therapists.clients.billing.test.ts");
+    expect(hostedTestStep).toContain("tests/integration/rpc.dashboard.org-scope.test.ts");
+    expect(hostedTestStep).toContain(
       "SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_SECRET_KEY }}",
     );
-    expect(testMainJob).toContain("RUN_DB_IT: '1'");
+    expect(hostedTestStep).toContain("RUN_DB_IT: '1'");
+    expect(hostedTestStep).toContain("VITEST_HANG_TIMEOUT_MS: '180000'");
   });
 
   it("uses the Node transport only for explicitly trusted database integration runs", () => {

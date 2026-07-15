@@ -527,3 +527,16 @@ Verification card:
 - blocked checks: local `test:ci` reaches the same two unrelated Windows baseline failures recorded above: jsdom `Blob.text()` and CRLF-sensitive workflow-step extraction. Hosted acceptance requires protected main-only CI credentials and intentionally cannot execute on the PR event.
 - result: `human-review-ready-with-blocked-checks`; the protected server change is not complete until the PR is human-reviewed/merged and a fresh main run passes the measurement roundtrip plus zero-residue cleanup.
 - residual risk: local mocks cannot prove the deployed API adapter and production caller JWT traverse the same path; the trusted main-only BCBA acceptance remains decisive.
+
+### WIN-217 post-merge admin fixture bootstrap repair
+
+- branch: `codex/win-217-admin-fixture-bootstrap`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- hosted failure: post-merge Supabase Validate run `29424318934` passed runtime migration parity, then six live RLS suites failed during admin fixture setup with SQLSTATE `42501` and `Target user canonical organization mismatch`.
+- root cause: trusted fixtures invoked `assign_admin_role` before the CI-only provisioner established the synthetic user's canonical profile organization. The repaired production RPC correctly rejects null or mismatched canonical tenant state.
+- bounded fix: preserve production SQL and grants; reorder all three synthetic admin bootstrap paths to persist the expiring fixture marker, reconcile exactly one admin role, provision/read back the canonical profile, and only then invoke `assign_admin_role` as an idempotent authorization/audit smoke.
+- regression proof: a new secret-free contract requires the complete bootstrap order and verifies that every call is present; focused fixture and migration contracts pass, 3 files / 23 tests.
+- verification: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build` pass. Local `npm run test:ci` reaches the two unchanged baseline failures: jsdom `Blob.text()` and CRLF-sensitive workflow-step extraction.
+- required hosted sequence: human review -> merge the fixture-only follow-up -> fresh main Supabase Validate with all six suites collected and passing -> verify zero marked fixture users/roles remain.
+- residual risk: the decisive live proof is main-only because protected Supabase credentials are unavailable to local and pull-request test jobs.

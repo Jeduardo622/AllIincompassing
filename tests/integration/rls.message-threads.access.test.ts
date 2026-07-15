@@ -75,15 +75,6 @@ beforeAll(async () => {
   }
   orgAObserverAdmin = { userId: createdUser.user.id, email, password };
 
-  const assignResult = await serviceClient.rpc("assign_admin_role", {
-    user_email: email,
-    organization_id: harness.orgAId,
-    reason: "integration-test observer admin",
-  });
-  if (assignResult.error) {
-    throw assignResult.error;
-  }
-
   await persistLiveRlsAppMetadata(serviceClient, createdUser.user.id, observerAppMetadata);
   await reconcileLiveRlsRole(serviceClient, createdUser.user.id, "admin");
   const profileResult = await (serviceClient as SupabaseClient).rpc(
@@ -92,6 +83,15 @@ beforeAll(async () => {
   );
   if (profileResult.error || profileResult.data !== harness.orgAId) {
     throw profileResult.error ?? new Error("Observer admin profile provisioning failed");
+  }
+
+  const assignResult = await serviceClient.rpc("assign_admin_role", {
+    user_email: email,
+    organization_id: harness.orgAId,
+    reason: "integration-test observer admin",
+  });
+  if (assignResult.error) {
+    throw assignResult.error;
   }
 });
 

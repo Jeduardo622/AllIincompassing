@@ -308,6 +308,9 @@ describe("live RLS fixture schema contract", () => {
 
   it("seeds valid session-linked artifacts and guardian organization context", () => {
     const source = readRepoFile("src/tests/security/rls.spec.ts");
+    const guardianSetup = source.match(
+      /const createGuardianFixture[\s\S]*?\n};\n\nbeforeAll/,
+    )?.[0];
 
     expect(source).toContain("session_id: context.sessionId");
     expect(source).toContain("program_id: programId");
@@ -318,6 +321,12 @@ describe("live RLS fixture schema contract", () => {
     expect(source).toContain(".select('organization_id, role, is_active')");
     expect(source).toContain(
       "await provisionCiRlsProfile(guardianId, tenant.organizationId, 'client')",
+    );
+    expect(guardianSetup).toBeTruthy();
+    expect(guardianSetup!.indexOf(".from('client_guardians')")).toBeLessThan(
+      guardianSetup!.indexOf(
+        "await provisionCiRlsProfile(guardianId, tenant.organizationId, 'client')",
+      ),
     );
     expect(source).toContain("headers: { 'x-request-id': correlationId }");
     expect(source).toContain('signal: AbortSignal.timeout(45_000)');
@@ -338,5 +347,51 @@ describe("live RLS fixture schema contract", () => {
     expect(source).toContain('targetProfile.is_active !== true');
     expect(source).not.toContain('extractOrganizationId');
     expect(source).not.toContain('targetUser.user_metadata as');
+    expect(source).not.toContain('createProtectedRoute');
+    expect(source).not.toContain('RouteOptions.admin');
+    expect(source).toContain('handleCors(req)');
+    expect(source).toContain('getUserOrThrow(adminClient)');
+    expect(source).toContain('resolveAssignmentAdminRole(adminClient, callerOrganizationId)');
+    expect(source).toContain("client.rpc('current_user_is_super_admin')");
+    expect(source).toContain("client.rpc('user_has_role_for_org'");
+    expect(source).not.toContain('assertAdminOrSuperAdmin');
+  });
+
+  it("authorizes synthetic guardian profiles only from unambiguous active client links", () => {
+    const migration = readRepoFile(
+      "supabase/migrations/20260715212045_support_ci_rls_guardian_client.sql",
+    );
+
+    expect(migration).toContain("from public.client_guardians cg");
+    expect(migration).toContain("join public.clients c on c.id = cg.client_id");
+    expect(migration).toContain("cg.guardian_id = p_user_id");
+    expect(migration).toContain("cg.deleted_at is null");
+    expect(migration).toContain("cg.organization_id = c.organization_id");
+    expect(migration).toContain("c.deleted_at is null");
+    expect(migration).toContain("count(distinct client_authority.organization_id)");
+    expect(migration).toContain("Synthetic RLS actor client mapping is ambiguous");
+    expect(migration).toContain("u.raw_app_meta_data ->> 'ci_rls_fixture' = 'true'");
+    expect(migration).toContain("lower(actor_email) like '%.%@example.com'");
+    expect(migration).toContain("actor_expiry_text::timestamptz > now()");
+    expect(migration).toContain("coalesce(ur.is_active, true) = true");
+    expect(migration).toContain("ur.expires_at is null or ur.expires_at > now()");
+    expect(migration).toContain("distinct_role_count <> 1");
+    expect(migration).toContain("r.name in ('client', 'therapist', 'admin')");
+    expect(migration).toContain("Synthetic RLS actor therapist mapping is ambiguous");
+    expect(migration).toContain("resolved_organization_id <> p_organization_id");
+    expect(migration).toContain("set_config('app.bypass_profile_role_guard', 'on', true)");
+    expect(migration.match(/set_config\('app\.bypass_profile_role_guard', 'off', true\)/g)).toHaveLength(2);
+    expect(migration).toContain("if updated_rows <> 1 then");
+    expect(migration).toContain("security definer");
+    expect(migration).toContain("set search_path = ''");
+    expect(migration).toContain("revoke execute on function public.provision_ci_rls_fixture_profile(uuid, uuid) from public");
+    expect(migration).toContain("revoke execute on function public.provision_ci_rls_fixture_profile(uuid, uuid) from anon");
+    expect(migration).toContain("to service_role");
+    expect(migration).toContain("from authenticated");
+    expect(migration.match(/grant execute on function public\.provision_ci_rls_fixture_profile\(uuid, uuid\) to service_role/g)).toHaveLength(1);
+    expect(migration).not.toContain("create table");
+    expect(migration).not.toContain("alter table");
+    expect(migration).not.toContain("create policy");
+    expect(migration).not.toContain("drop policy");
   });
 });

@@ -1129,22 +1129,6 @@ const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianCon
   const guardianId = createdUser.user.id;
   createdGuardianUserIds.push(guardianId);
 
-  await provisionCiRlsProfile(guardianId, tenant.organizationId, 'client');
-
-  const guardianProfileResult = await serviceClient
-    .from('profiles')
-    .select('organization_id, role, is_active')
-    .eq('id', guardianId)
-    .single();
-  if (guardianProfileResult.error || !guardianProfileResult.data) {
-    throw guardianProfileResult.error ?? new Error('Synthetic guardian profile readback failed');
-  }
-  expect(guardianProfileResult.data).toMatchObject({
-    organization_id: tenant.organizationId,
-    role: 'client',
-    is_active: true,
-  });
-
   const { data: insertedGuardian, error: guardianInsertError } = await serviceClient
     .from('client_guardians')
     .insert({
@@ -1162,6 +1146,22 @@ const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianCon
   }
 
   createdClientGuardianIds.push(insertedGuardian.id);
+
+  await provisionCiRlsProfile(guardianId, tenant.organizationId, 'client');
+
+  const guardianProfileResult = await serviceClient
+    .from('profiles')
+    .select('organization_id, role, is_active')
+    .eq('id', guardianId)
+    .single();
+  if (guardianProfileResult.error || !guardianProfileResult.data) {
+    throw guardianProfileResult.error ?? new Error('Synthetic guardian profile readback failed');
+  }
+  expect(guardianProfileResult.data).toMatchObject({
+    organization_id: tenant.organizationId,
+    role: 'client',
+    is_active: true,
+  });
 
   return {
     email,

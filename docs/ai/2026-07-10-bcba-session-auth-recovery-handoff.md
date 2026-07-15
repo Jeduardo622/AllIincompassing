@@ -506,3 +506,24 @@ Verification card:
   - `npm run test:ci` still has the unchanged local Node/jsdom `Blob.text()` failure; the affected live-fixture contract was updated and passes focused.
 - required hosted sequence: human review -> apply the exact reviewed migration through Supabase -> read back functions/grants/ledger -> green PR runtime parity -> merge -> fresh main Supabase Validate with `RUN_DB_IT=1` -> inspect correlated same-org/cross-org Edge outcomes and zero fixture residue.
 - residual risk: no production migration promotion is authorized until human review; the fresh hosted suite remains the only decisive proof for live RPC, Edge transport, and cleanup behavior.
+
+### WIN-217 BCBA session-note authorization follow-up
+
+- branch: `codex/win-217-bcba-session-note-auth`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- hosted failure: main CI run `29418796830` passed synthetic BCBA provisioning, auth, session smoke, lifecycle acceptance, and cleanup, then the measurement roundtrip received HTTP 403 from `POST /api/session-notes/upsert`.
+- root cause: the endpoint's initial authorization gate recognized therapist, admin, super-admin, and org-member roles but omitted the canonical exact `bcba` role. The downstream production `current_user_can_capture_trial_event` RPC already admits exact BCBA actors for the active organization.
+- bounded fix:
+  - only when the existing role gate has no match, call the canonical organization-scoped BCBA helper.
+  - admit only an exact positive BCBA result; preserve 403 for other roles and fail closed with 502 when BCBA role resolution is unavailable.
+  - keep organization, authorization, client, billing, session, therapist, goal, trial-event, and caller-JWT enforcement unchanged.
+- non-goals: no migration, global role-resolver change, role alias, workflow/provisioner change, service-role bypass, or relaxation of tenant/data checks.
+
+Verification card:
+
+- required checks: RED/GREEN handler tests; generic role-resolution contracts; policy; lint; typecheck; `test:ci`; build; tenant validation; independent code/test/security review; human review; hosted main BCBA acceptance.
+- executed checks: two focused authorization tests failed with the original 403 behavior before implementation; focused handler and role contracts pass, 2 files / 61 tests; policy, lint, typecheck, tenant validation, build, and tier-0 routes (7 specs / 220 tests) pass; independent code/security review found no remaining actionable findings; production Supabase definition readback confirms the downstream capture RPC grants exact BCBA authority through the canonical organization-scoped role helper.
+- blocked checks: local `test:ci` reaches the same two unrelated Windows baseline failures recorded above: jsdom `Blob.text()` and CRLF-sensitive workflow-step extraction. Hosted acceptance requires protected main-only CI credentials and intentionally cannot execute on the PR event.
+- result: `human-review-ready-with-blocked-checks`; the protected server change is not complete until the PR is human-reviewed/merged and a fresh main run passes the measurement roundtrip plus zero-residue cleanup.
+- residual risk: local mocks cannot prove the deployed API adapter and production caller JWT traverse the same path; the trusted main-only BCBA acceptance remains decisive.

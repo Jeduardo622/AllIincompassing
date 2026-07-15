@@ -10,6 +10,7 @@ vi.mock("../api/shared", async () => {
     resolveOrgAndRoleWithStatus: vi.fn(),
     fetchAuthenticatedUserIdWithStatus: vi.fn(),
     currentUserCanCaptureTrialEvent: vi.fn(),
+    currentUserIsBcbaForOrg: vi.fn(),
     getSupabaseConfig: vi.fn(),
     fetchJson: vi.fn(),
   };
@@ -21,6 +22,7 @@ vi.mock("../sessionCaptureBillingGate", () => ({
 
 import {
   currentUserCanCaptureTrialEvent,
+  currentUserIsBcbaForOrg,
   fetchAuthenticatedUserIdWithStatus,
   fetchJson,
   getAccessToken,
@@ -137,11 +139,92 @@ describe("sessionNotesUpsertHandler", () => {
       allowed: true,
       upstreamError: false,
     });
+    vi.mocked(currentUserIsBcbaForOrg).mockResolvedValue({
+      allowed: false,
+      upstreamError: false,
+    });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: BASE_URL,
       anonKey: "anon-key",
     });
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+  });
+
+  it("admits an organization-scoped BCBA through the session-note authorization gate", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserIsBcbaForOrg).mockResolvedValue({ allowed: true, upstreamError: false });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({}),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(currentUserIsBcbaForOrg).toHaveBeenCalledWith(ACCESS_TOKEN, "org-1");
+    expect(fetchAuthenticatedUserIdWithStatus).toHaveBeenCalledWith(ACCESS_TOKEN);
+  });
+
+  it("fails closed when BCBA role resolution has an upstream error", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserIsBcbaForOrg).mockResolvedValue({ allowed: false, upstreamError: true });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({}),
+    }));
+
+    expect(response.status).toBe(502);
+    expect(fetchAuthenticatedUserIdWithStatus).not.toHaveBeenCalled();
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("preserves forbidden for users without an existing session-note role or BCBA authority", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({}),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(currentUserIsBcbaForOrg).toHaveBeenCalledWith(ACCESS_TOKEN, "org-1");
+    expect(fetchAuthenticatedUserIdWithStatus).not.toHaveBeenCalled();
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("does not make existing allowed roles depend on BCBA role resolution", async () => {
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({}),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(currentUserIsBcbaForOrg).not.toHaveBeenCalled();
   });
 
   afterEach(() => {

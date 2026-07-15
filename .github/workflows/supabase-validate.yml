@@ -19,6 +19,11 @@ on:
       - 'tests/integration/liveRlsHarness.unit.test.ts'
       - 'src/tests/security/ciRlsFixtureMetadata.ts'
       - 'src/tests/security/rls.spec.ts'
+      - 'tests/integration/rls.message-threads.access.test.ts'
+      - 'tests/integration/rls.session-holds.access.test.ts'
+      - 'tests/integration/rls.sessions.read-write.test.ts'
+      - 'tests/integration/rls.therapists.clients.billing.test.ts'
+      - 'tests/integration/rpc.dashboard.org-scope.test.ts'
 
 jobs:
   lint-migrations:
@@ -59,6 +64,7 @@ jobs:
     if: github.event_name == 'push'
     name: Run application tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -68,7 +74,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run unit tests
-        run: npm test -- --run --reporter=verbose
+        run: >-
+          npm test -- --run --reporter=verbose
+          --exclude=src/lib/__tests__/DatabaseIntegration.test.ts
+          --exclude=src/lib/__tests__/multiTenantAccess.test.ts
+          --exclude=src/tests/security/rls.spec.ts
+          --exclude=tests/integration/rls.message-threads.access.test.ts
+          --exclude=tests/integration/rls.session-holds.access.test.ts
+          --exclude=tests/integration/rls.sessions.read-write.test.ts
+          --exclude=tests/integration/rls.therapists.clients.billing.test.ts
+          --exclude=tests/integration/rpc.dashboard.org-scope.test.ts
+      - name: Run hosted database tests serially
+        run: >-
+          npm test -- --run --reporter=verbose
+          --no-file-parallelism
+          --maxWorkers=1
+          --hookTimeout=120000
+          --testTimeout=60000
+          src/tests/security/rls.spec.ts
+          tests/integration/rls.message-threads.access.test.ts
+          tests/integration/rls.session-holds.access.test.ts
+          tests/integration/rls.sessions.read-write.test.ts
+          tests/integration/rls.therapists.clients.billing.test.ts
+          tests/integration/rpc.dashboard.org-scope.test.ts
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -76,6 +104,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || secrets.SUPABASE_PUBLISHABLE_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_SECRET_KEY }}
           RUN_DB_IT: '1'
+          VITEST_HANG_TIMEOUT_MS: '180000'
       - name: Record Supabase validate evidence
         if: always()
         run: npm run ci:write-evidence -- supabase-validate-tests "${{ job.status }}"

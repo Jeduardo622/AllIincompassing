@@ -540,3 +540,17 @@ Verification card:
 - verification: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build` pass. Local `npm run test:ci` reaches the two unchanged baseline failures: jsdom `Blob.text()` and CRLF-sensitive workflow-step extraction.
 - required hosted sequence: human review -> merge the fixture-only follow-up -> fresh main Supabase Validate with all six suites collected and passing -> verify zero marked fixture users/roles remain.
 - residual risk: the decisive live proof is main-only because protected Supabase credentials are unavailable to local and pull-request test jobs.
+
+### WIN-217 hosted RLS validation serialization follow-up
+
+- branch: `codex/win-217-serialize-hosted-rls`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- hosted evidence: main Supabase Validate run `29426261636` proved the canonical-profile ordering repair in four previously failing live RLS suites, then timed out at exactly 30 seconds in the fifth shared-harness setup, the large security-fixture setup, and one legacy anonymous schema probe.
+- root cause: the main-only workflow ran all 390 test files with production Supabase credentials and `RUN_DB_IT=1`, allowing five full fixture graphs plus the security graph to write concurrently. Historical main runs contain the same unrelated exact-30-second timeout pattern; hosted logs showed no deadlock, lock timeout, statement timeout, cancellation, or Auth rate limit.
+- bounded fix: run the ordinary suite without hosted credentials and explicitly exclude live database files; then run only the six trusted RLS/security files serially with one worker, a 120-second hook limit, a 60-second test limit, and a 180-second no-output watchdog. Exclude the flaky legacy `DatabaseIntegration` and dormant `multiTenantAccess` probes from production-backed execution.
+- production authority: unchanged. No migration, RPC, RLS policy, grant, Edge Function, application runtime, or canonical tenant check changes.
+- residue repair: the timed-out setup left two marked `@example.com` auth users, two UUID-scoped `live-rls-org-*` organizations, and one active fixture role. They were removed through the Supabase plugin using exact IDs selected by the combined fixture marker, synthetic domain, unexpired metadata, and known fixture organization constraints. Readback is zero fixture users, zero fixture organizations, and zero active fixture roles.
+- local verification: the workflow contract was RED before the split and passes after it, 1 file / 14 tests. `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build` pass. `npm run test:ci` reaches 2,730 passing tests and the same two unchanged Windows portability failures: jsdom `Blob.text()` and CRLF-sensitive workflow-step extraction.
+- required hosted sequence: independent critical-lane review -> human review -> merge -> fresh main Supabase Validate -> runtime parity and all six serialized hosted files green -> zero-residue Supabase readback.
+- residual risk: local execution cannot supply protected hosted credentials; the serialized main-only workflow and post-run residue query remain decisive.

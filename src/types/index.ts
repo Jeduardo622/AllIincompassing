@@ -500,6 +500,18 @@ export interface SessionTargetTrialData {
   opportunities?: number | null;
   /** Verbal / physical prompts and reactions for this target's trial data. */
   trial_prompt_note?: string | null;
+  /** Bounded aggregate prompt capture for legacy targets without a configured target UUID. */
+  prompt_counts?: SessionPromptCount[] | null;
+}
+
+export type SessionPromptType = 'verbal' | 'gesture' | 'model' | 'visual' | 'physical';
+export type SessionPromptLevel = 'full' | 'partial' | null;
+
+export interface SessionPromptCount {
+  prompt_type: SessionPromptType;
+  prompt_level: SessionPromptLevel;
+  correct_trials: number;
+  incorrect_trials: number;
 }
 
 export interface SessionGoalMeasurementEntry {

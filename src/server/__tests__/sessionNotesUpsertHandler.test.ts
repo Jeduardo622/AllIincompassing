@@ -1686,6 +1686,19 @@ describe("sessionNotesUpsertHandler", () => {
           prompt_level: null,
           note: null,
           trial_prompt_note: null,
+          targets: ["Legacy A"],
+          target: "Legacy A",
+          target_trials: [{
+            target: "Legacy A",
+            metric_value: 2,
+            incorrect_trials: 1,
+            prompt_counts: [{
+              prompt_type: "verbal",
+              prompt_level: "full",
+              correct_trials: 1,
+              incorrect_trials: 0,
+            }],
+          }],
         },
       },
     };
@@ -1693,6 +1706,31 @@ describe("sessionNotesUpsertHandler", () => {
     const savedAfterPatch = {
       ...existingRow,
       goal_notes: { [gidA]: "server kept skill note", [gidB]: "merged bx from client" },
+      goal_measurements: {
+        ...existingRow.goal_measurements,
+        [gidB]: {
+          version: 1,
+          data: {
+            metric_label: "Count",
+            metric_unit: null,
+            metric_value: 1,
+            incorrect_trials: 1,
+            targets: ["Legacy B"],
+            target: "Legacy B",
+            target_trials: [{
+              target: "Legacy B",
+              metric_value: 1,
+              incorrect_trials: 1,
+              prompt_counts: [{
+                prompt_type: "gesture",
+                prompt_level: null,
+                correct_trials: 1,
+                incorrect_trials: 1,
+              }],
+            }],
+          },
+        },
+      },
     };
 
     let fullNoteSelectGets = 0;
@@ -1736,9 +1774,24 @@ describe("sessionNotesUpsertHandler", () => {
         return { ok: true, status: 200, data: [savedAfterPatch] };
       }
       if (requestUrl.includes("/rest/v1/client_session_notes?id=eq.") && method === "PATCH") {
-        const parsedBody = JSON.parse(String(init.body)) as { goal_notes?: Record<string, string> };
+        const parsedBody = JSON.parse(String(init.body)) as {
+          goal_notes?: Record<string, string>;
+          goal_measurements?: Record<string, { data?: { target_trials?: Array<{ prompt_counts?: unknown[] }> } }>;
+        };
         expect(parsedBody.goal_notes?.[gidA]).toBe("server kept skill note");
         expect(parsedBody.goal_notes?.[gidB]).toBe("merged bx from client");
+        expect(parsedBody.goal_measurements?.[gidA]?.data?.target_trials?.[0]?.prompt_counts).toEqual([{
+          prompt_type: "verbal",
+          prompt_level: "full",
+          correct_trials: 1,
+          incorrect_trials: 0,
+        }]);
+        expect(parsedBody.goal_measurements?.[gidB]?.data?.target_trials?.[0]?.prompt_counts).toEqual([{
+          prompt_type: "gesture",
+          prompt_level: null,
+          correct_trials: 1,
+          incorrect_trials: 1,
+        }]);
         return { ok: true, status: 200, data: [{ id: noteId }] };
       }
       throw new Error(`Unexpected request: ${requestUrl} ${method}`);
@@ -1758,7 +1811,24 @@ describe("sessionNotesUpsertHandler", () => {
             [gidA]: "CLIENT STALE MUST NOT WIN",
             [gidB]: "merged bx from client",
           },
-          goalMeasurements: null,
+          goalMeasurements: {
+            [gidB]: {
+              version: 1,
+              data: {
+                targets: ["Legacy B"],
+                target_trials: [{
+                  target: "Legacy B",
+                  metric_value: 0,
+                  incorrect_trials: 0,
+                  prompt_counts: [
+                    { prompt_type: "gesture", prompt_level: null, correct_trials: 1, incorrect_trials: 0 },
+                    { prompt_type: "gesture", prompt_level: null, correct_trials: 0, incorrect_trials: 1 },
+                    { prompt_type: "unknown", prompt_level: null, correct_trials: 9, incorrect_trials: 9 },
+                  ],
+                }],
+              },
+            },
+          },
           captureMergeGoalIds: [gidB],
         }),
       }),

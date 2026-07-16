@@ -74,10 +74,10 @@
 
 ## Live PR Status
 
-- passing: migration lint, Lighthouse, Netlify deploy preview, header rules, and redirect rules
+- passing: Supabase Preview on fresh rerun, migration lint, Lighthouse, Netlify deploy preview, header rules, and redirect rules
 - pending at last refresh: tenant safety and required human review
-- failing: Supabase Preview exits before the WIN-219 migration because its preview migration ledger attempts to insert duplicate legacy version `20250319174915` (`schema_migrations_pkey`, SQLSTATE `23505`)
-- required remediation: repair the external preview migration history and rerun Supabase Preview; do not merge while this required check is failing
+- transient history: the first Supabase Preview attempt exited before WIN-219 on duplicate legacy version `20250319174915` (`schema_migrations_pkey`, SQLSTATE `23505`); the fresh final-branch rerun passed
+- required remediation: none for the transient preview attempt; do not merge until tenant safety and required human review complete
 
 ## Handoff Summary
 

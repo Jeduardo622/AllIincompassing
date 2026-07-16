@@ -112,6 +112,22 @@ const responseOptionsByMeasurementType: Record<string, Array<{ response: NonNull
   ],
 };
 
+const promptCaptureOptions = [
+  { label: 'Full verbal', promptType: 'verbal', promptLevel: 'full' },
+  { label: 'Partial verbal', promptType: 'verbal', promptLevel: 'partial' },
+  { label: 'Gesture', promptType: 'gesture', promptLevel: null },
+  { label: 'Model', promptType: 'model', promptLevel: null },
+  { label: 'Visual', promptType: 'visual', promptLevel: null },
+  { label: 'Full physical', promptType: 'physical', promptLevel: 'full' },
+  { label: 'Partial physical', promptType: 'physical', promptLevel: 'partial' },
+] as const;
+
+export const setPromptCorrectnessForTarget = (
+  current: Record<string, boolean>,
+  targetId: string,
+  checked: boolean,
+): Record<string, boolean> => ({ ...current, [targetId]: checked });
+
 const getValueMeasurementMeta = (measurementType: string) =>
   valueRequiredMeasurementTypes.has(measurementType)
     ? valueMeasurementMeta[measurementType] ?? { label: 'Value', unit: 'value', step: 0.1 }
@@ -422,6 +438,7 @@ export function SessionModal({
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [pendingTrialEvents, setPendingTrialEvents] = useState<SessionCaptureTrialEventInput[]>([]);
+  const [promptCorrectByTargetId, setPromptCorrectByTargetId] = useState<Record<string, boolean>>({});
   const [pendingNumericTrialValues, setPendingNumericTrialValues] = useState<Record<string, string>>({});
   const [progressionNotices, setProgressionNotices] = useState<string[]>([]);
   const [progressionConflict, setProgressionConflict] = useState<string | null>(null);
@@ -847,6 +864,7 @@ export function SessionModal({
 
   useEffect(() => {
     setPendingTrialEvents([]);
+    setPromptCorrectByTargetId({});
     setPendingNumericTrialValues({});
   }, [session?.id, clientId]);
 
@@ -2000,6 +2018,7 @@ export function SessionModal({
       targetIndex: number,
       configuredTarget: GoalTarget,
       response: NonNullable<TrialEvent['response']>,
+      prompt?: { promptType: string; promptLevel: string | null },
     ) => {
       const field = isPositiveResponse(response) ? 'metric_value' : 'incorrect_trials';
       const dirtyPath =
@@ -2009,6 +2028,10 @@ export function SessionModal({
         target_id: configuredTarget.id,
         trial_number: getNextRawTrialNumber(configuredTarget.id),
         response,
+        ...(prompt ? {
+          prompt_type: prompt.promptType,
+          prompt_level: prompt.promptLevel,
+        } : {}),
         metadata: { source: 'schedule_capture', goal_id: goalId, target_index: targetIndex },
       };
       setPendingTrialEvents((current) => [...current, newEvent]);
@@ -3774,32 +3797,74 @@ export function SessionModal({
                                                 + correct or achieved · − incorrect or no response.
                                               </p>
                                               {configuredTarget && responseCaptureOptions.length > 0 ? (
-                                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                                  {responseCaptureOptions.map((option) => (
-                                                    <button
-                                                      key={option.response}
-                                                      type="button"
-                                                      aria-label={
-                                                        option.response === 'correct'
-                                                          ? `Increase correct trials for target ${targetIndex + 1}`
-                                                          : option.response === 'incorrect'
-                                                            ? `Increase incorrect or no-response trials for target ${targetIndex + 1}`
-                                                            : `Record ${option.label.toLowerCase()} response for target ${targetIndex + 1}`
-                                                      }
-                                                      className={[
-                                                        'rounded-md px-3 py-2 text-xs font-semibold shadow-sm',
-                                                        isPositiveResponse(option.response)
-                                                          ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                                          : 'bg-rose-600 text-white hover:bg-rose-700',
-                                                      ].join(' ')}
-                                                      onClick={() => recordResponseTrial(selectedGoalId, sourceIndex, configuredTarget, option.response)}
+                                                <div>
+                                                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                                                    {responseCaptureOptions.map((option) => (
+                                                      <button
+                                                        key={option.response}
+                                                        type="button"
+                                                        aria-label={
+                                                          option.response === 'correct'
+                                                            ? `Increase correct trials for target ${targetIndex + 1}`
+                                                            : option.response === 'incorrect'
+                                                              ? `Increase incorrect or no-response trials for target ${targetIndex + 1}`
+                                                              : `Record ${option.label.toLowerCase()} response for target ${targetIndex + 1}`
+                                                        }
+                                                        className={[
+                                                          'rounded-md px-3 py-2 text-xs font-semibold shadow-sm',
+                                                          isPositiveResponse(option.response)
+                                                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                                            : 'bg-rose-600 text-white hover:bg-rose-700',
+                                                        ].join(' ')}
+                                                        onClick={() => recordResponseTrial(selectedGoalId, sourceIndex, configuredTarget, option.response)}
+                                                      >
+                                                        {option.label}
+                                                      </button>
+                                                    ))}
+                                                    <span className="text-xs tabular-nums text-gray-600 dark:text-gray-300">
+                                                      +{targetCorrectDisplay} · −{targetIncorrectDisplay}
+                                                    </span>
+                                                  </div>
+                                                  <div className="mt-3 rounded-md border border-indigo-200 bg-white/80 p-2 dark:border-indigo-800 dark:bg-dark/70">
+                                                    <label className="flex min-h-10 items-center gap-2 text-xs font-medium text-gray-800 dark:text-gray-200">
+                                                      <input
+                                                        type="checkbox"
+                                                        checked={promptCorrectByTargetId[configuredTarget.id] ?? true}
+                                                        onChange={(event) => setPromptCorrectByTargetId((current) =>
+                                                          setPromptCorrectnessForTarget(
+                                                            current,
+                                                            configuredTarget.id,
+                                                            event.target.checked,
+                                                          ))}
+                                                        aria-label={`Prompted response was correct for target ${targetIndex + 1}: ${configuredTarget.name}`}
+                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                      />
+                                                      Prompted response was correct
+                                                    </label>
+                                                    <div
+                                                      className="mt-2 flex flex-wrap gap-2"
+                                                      role="group"
+                                                      aria-label={`Prompt types for target ${targetIndex + 1}: ${configuredTarget.name}`}
                                                     >
-                                                      {option.label}
-                                                    </button>
-                                                  ))}
-                                                  <span className="text-xs tabular-nums text-gray-600 dark:text-gray-300">
-                                                    +{targetCorrectDisplay} · −{targetIncorrectDisplay}
-                                                  </span>
+                                                      {promptCaptureOptions.map((prompt) => (
+                                                        <button
+                                                          key={prompt.label}
+                                                          type="button"
+                                                          aria-label={`Record ${prompt.label.toLowerCase()} prompt for target ${targetIndex + 1}: ${configuredTarget.name}`}
+                                                          className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 shadow-sm hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-100 dark:hover:bg-indigo-900/60"
+                                                          onClick={() => recordResponseTrial(
+                                                            selectedGoalId,
+                                                            sourceIndex,
+                                                            configuredTarget,
+                                                            (promptCorrectByTargetId[configuredTarget.id] ?? true) ? 'correct' : 'incorrect',
+                                                            { promptType: prompt.promptType, promptLevel: prompt.promptLevel },
+                                                          )}
+                                                        >
+                                                          {prompt.label}
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                  </div>
                                                 </div>
                                               ) : (
                                                 <div className="mt-3 flex flex-wrap items-center gap-3">

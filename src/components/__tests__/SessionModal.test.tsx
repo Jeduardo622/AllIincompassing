@@ -1,7 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { fireEvent } from '@testing-library/react';
-import { SessionModal, dedupeProgressionNotices, formatProgressionNotices, selectSessionCaptureTargets } from '../SessionModal';
+import { SessionModal, dedupeProgressionNotices, formatProgressionNotices, selectSessionCaptureTargets, setPromptCorrectnessForTarget } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
 import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-linked-fetch';
 import type { Session } from '../../types';
@@ -32,6 +32,14 @@ describe('SessionModal', () => {
     const archived = { ...base, id: 'archived', name: 'Archived', status: 'archived', is_current: false };
     expect(selectSessionCaptureTargets([current, stale, archived], new Set())).toEqual([current]);
     expect(selectSessionCaptureTargets([current, stale, archived], new Set(['stale']))).toEqual([current, stale]);
+  });
+
+  it('keeps prompt correctness isolated by configured target', () => {
+    const current = { 'target-1': false, 'target-2': true };
+    expect(setPromptCorrectnessForTarget(current, 'target-1', true)).toEqual({
+      'target-1': true,
+      'target-2': true,
+    });
   });
 
   it('formats every progression outcome and incomplete-criteria warning', () => {
@@ -2219,6 +2227,12 @@ describe('SessionModal', () => {
     );
 
     await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
+    expect(screen.queryByRole('checkbox', {
+      name: /Prompted response was correct for target 1/i,
+    })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {
+      name: /Record full verbal prompt for target 1/i,
+    })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
       target: { value: 'Duration observed' },
     });
@@ -2470,7 +2484,7 @@ describe('SessionModal', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   }, 15000);
 
-  it('submits task-analysis responses as raw trial events', async () => {
+  it('records prompt-specific trials as raw trial events', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const targetId = '88888888-8888-4888-8888-888888888882';
     const buildChain = (rows: unknown[], singleRow: unknown = null) => {
@@ -2516,6 +2530,9 @@ describe('SessionModal', () => {
             status: 'active',
             sort_order: 0,
             is_current: true,
+            current_phase: 'baseline',
+            evaluation_window_started_at: '2024-01-01T00:00:00Z',
+            progression_version: 7,
             created_by: null,
             updated_by: null,
             created_at: '2024-01-01T00:00:00Z',
@@ -2524,32 +2541,54 @@ describe('SessionModal', () => {
         ]);
       }
       if (table === 'trial_events') {
-        return buildChain([]);
+        return buildChain([
+          {
+            id: 'trial-existing-prompt',
+            organization_id: 'org-a',
+            client_id: 'test-client-1',
+            session_id: 'session-task-analysis-trials',
+            target_id: targetId,
+            goal_id: 'goal-1',
+            therapist_id: 'test-therapist-1',
+            trial_number: 4,
+            response: 'correct',
+            prompt_type: null,
+            prompt_level: null,
+            value: null,
+            event_timestamp: '2026-03-01T10:05:00.000Z',
+            metadata: {},
+            created_by: null,
+            updated_by: null,
+            created_at: '2026-03-01T10:05:00.000Z',
+            updated_at: '2026-03-01T10:05:00.000Z',
+          },
+        ]);
       }
       return buildChain([]);
     });
 
-    renderWithProviders(
+    const session = {
+      id: 'session-task-analysis-trials',
+      therapist_id: 'test-therapist-1',
+      client_id: 'test-client-1',
+      program_id: 'program-1',
+      goal_id: 'goal-1',
+      start_time: '2026-03-01T10:00:00.000Z',
+      end_time: '2026-03-01T11:00:00.000Z',
+      status: 'in_progress',
+      notes: '',
+      created_at: '2026-03-01T09:00:00.000Z',
+      created_by: null,
+      updated_at: '2026-03-01T09:00:00.000Z',
+      updated_by: null,
+      started_at: null,
+    } satisfies Session;
+    const { rerender } = renderWithProviders(
       <SessionModal
         {...defaultProps}
         onSubmit={onSubmit}
         existingSessions={[]}
-        session={{
-          id: 'session-task-analysis-trials',
-          therapist_id: 'test-therapist-1',
-          client_id: 'test-client-1',
-          program_id: 'program-1',
-          goal_id: 'goal-1',
-          start_time: '2026-03-01T10:00:00.000Z',
-          end_time: '2026-03-01T11:00:00.000Z',
-          status: 'in_progress',
-          notes: '',
-          created_at: '2026-03-01T09:00:00.000Z',
-          created_by: null,
-          updated_at: '2026-03-01T09:00:00.000Z',
-          updated_by: null,
-          started_at: null,
-        } satisfies Session}
+        session={session}
       />,
     );
 
@@ -2557,30 +2596,76 @@ describe('SessionModal', () => {
     fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
       target: { value: 'Task analysis observed' },
     });
+    const promptLabels = [
+      'Full verbal',
+      'Partial verbal',
+      'Gesture',
+      'Model',
+      'Visual',
+      'Full physical',
+      'Partial physical',
+    ];
+    for (const label of promptLabels) {
+      expect(screen.getByRole('button', {
+        name: new RegExp(`Record ${label.toLowerCase()} prompt for target 1`, 'i'),
+      })).toBeInTheDocument();
+    }
+
+    const correctness = screen.getByRole('checkbox', {
+      name: /Prompted response was correct for target 1/i,
+    });
+    expect(correctness).toBeChecked();
+
+    await userEvent.click(correctness);
+    expect(correctness).not.toBeChecked();
+    rerender(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        existingSessions={[]}
+        session={{ ...session, id: 'session-task-analysis-trials-next' }}
+      />,
+    );
+    await waitFor(() => expect(correctness).toBeChecked());
+
     await userEvent.click(screen.getByRole('button', { name: /Record independent response for target 1/i }));
     await userEvent.click(screen.getByRole('button', { name: /Record prompted response for target 1/i }));
-    expect(screen.getByText('+2 · −0')).toBeInTheDocument();
+    for (const label of promptLabels.slice(0, -1)) {
+      await userEvent.click(screen.getByRole('button', {
+        name: new RegExp(`Record ${label.toLowerCase()} prompt for target 1`, 'i'),
+      }));
+    }
+    await userEvent.click(correctness);
+    await userEvent.click(screen.getByRole('button', {
+      name: /Record partial physical prompt for target 1/i,
+    }));
+    expect(screen.getByText('+9 · −1')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-        session_note_trial_events: [
-          expect.objectContaining({
-            target_id: targetId,
-            trial_number: 1,
-            response: 'independent',
-          }),
-          expect.objectContaining({
-            target_id: targetId,
-            trial_number: 2,
-            response: 'prompted',
-          }),
-        ],
+        session_note_trial_events: expect.any(Array),
       }));
     });
     const submitted = onSubmit.mock.calls[0]?.[0] as {
+      session_note_trial_events?: Array<Record<string, unknown>>;
       session_note_goal_measurements?: Record<string, SessionGoalMeasurementEntry>;
     };
+    expect(submitted.session_note_trial_events).toEqual([
+      expect.objectContaining({ target_id: targetId, trial_number: 5, response: 'independent', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 6, response: 'prompted', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 7, response: 'correct', prompt_type: 'verbal', prompt_level: 'full', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 8, response: 'correct', prompt_type: 'verbal', prompt_level: 'partial', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 9, response: 'correct', prompt_type: 'gesture', prompt_level: null, expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 10, response: 'correct', prompt_type: 'model', prompt_level: null, expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 11, response: 'correct', prompt_type: 'visual', prompt_level: null, expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 12, response: 'correct', prompt_type: 'physical', prompt_level: 'full', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 13, response: 'incorrect', prompt_type: 'physical', prompt_level: 'partial', expected_progression_version: 7 }),
+    ]);
+    expect(submitted.session_note_trial_events?.[0]).not.toHaveProperty('prompt_type');
+    expect(submitted.session_note_trial_events?.[0]).not.toHaveProperty('prompt_level');
+    expect(submitted.session_note_trial_events?.[1]).not.toHaveProperty('prompt_type');
+    expect(submitted.session_note_trial_events?.[1]).not.toHaveProperty('prompt_level');
     expect(submitted.session_note_goal_measurements?.['goal-1']?.data.measurement_type).toBe('taskAnalysis');
   }, 15000);
 

@@ -7,7 +7,8 @@ begin;
 alter table public.client_session_notes
   add column if not exists bt_aba_template_id uuid references public.session_note_templates(id),
   add column if not exists bt_aba_template_snapshot jsonb,
-  add column if not exists bt_aba_responses jsonb;
+  add column if not exists bt_aba_responses jsonb,
+  add column if not exists bt_aba_finalization_result jsonb;
 
 create table if not exists public.session_note_attestations (
   id uuid primary key default gen_random_uuid(),
@@ -45,28 +46,10 @@ create policy session_note_attestations_authenticated_select
   );
 
 drop policy if exists session_note_attestations_authenticated_insert on public.session_note_attestations;
-create policy session_note_attestations_authenticated_insert
-  on public.session_note_attestations for insert to authenticated
-  with check (
-    organization_id = app.current_user_organization_id()
-    and signer_user_id = auth.uid()
-    and attestation_role = 'bt'
-    and exists (
-      select 1
-      from public.client_session_notes note
-      join public.sessions session on session.id = note.session_id
-      where note.id = session_note_attestations.note_id
-        and note.organization_id = session_note_attestations.organization_id
-        and note.is_locked
-        and note.signed_at is not null
-        and session.organization_id = session_note_attestations.organization_id
-        and session.therapist_id = auth.uid()
-        and public.current_user_can_capture_trial_event(session.organization_id, session.client_id)
-    )
-  );
 
 revoke all on table public.session_note_attestations from public, anon;
-grant select, insert on table public.session_note_attestations to authenticated;
+revoke all on table public.session_note_attestations from authenticated;
+grant select on table public.session_note_attestations to authenticated;
 grant all on table public.session_note_attestations to service_role;
 
 with bt_template as (
@@ -142,6 +125,105 @@ where not exists (
     and existing.template_name = bt_template.template_name
 );
 
+-- Keep the canonical idempotent supervision-request creator compatible with
+-- deployments where auth users and therapist profile IDs are distinct.
+create or replace function public.create_supervision_session_note_request_for_completed_session(
+  p_session_id uuid
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_actor_org uuid;
+  v_request_id uuid;
+  v_session record;
+  v_actor_is_admin boolean := false;
+begin
+  if v_actor is null then
+    raise exception using errcode = '28000', message = 'Authentication required';
+  end if;
+  if p_session_id is null then
+    raise exception using errcode = '22023', message = 'Session id required';
+  end if;
+
+  v_actor_org := app.resolve_user_organization_id(v_actor);
+  if v_actor_org is null then
+    raise exception using errcode = '42501', message = 'Organization context required';
+  end if;
+
+  select
+    session.id,
+    session.organization_id,
+    session.client_id,
+    session.therapist_id,
+    session.status,
+    upper(btrim(coalesce(therapist.title, ''))) in ('BT', 'RBT') as is_bt_rbt
+  into v_session
+  from public.sessions session
+  join public.therapists therapist
+    on therapist.id = session.therapist_id
+   and therapist.organization_id = session.organization_id
+  where session.id = p_session_id
+    and session.organization_id = v_actor_org;
+
+  if v_session.id is null then
+    raise exception using errcode = '42501', message = 'Session not found in caller organization';
+  end if;
+  if v_session.status <> 'completed' then
+    return null;
+  end if;
+  if coalesce(v_session.is_bt_rbt, false) is not true then
+    return null;
+  end if;
+
+  v_actor_is_admin := app.user_has_role_for_org(
+    v_actor,
+    v_actor_org,
+    array['admin', 'super_admin', 'org_admin', 'org_super_admin']
+  );
+
+  if coalesce(v_actor_is_admin, false) is not true
+     and not (
+       v_session.therapist_id = v_actor
+       or exists (
+         select 1
+         from public.user_therapist_links utl
+         where utl.user_id = v_actor
+           and utl.therapist_id = v_session.therapist_id
+       )
+     ) then
+    raise exception using errcode = '42501', message = 'Caller cannot create supervision request for this session';
+  end if;
+
+  insert into public.supervision_session_note_requests (
+    organization_id,
+    session_id,
+    client_id,
+    bt_therapist_id,
+    requested_by,
+    status
+  ) values (
+    v_actor_org,
+    v_session.id,
+    v_session.client_id,
+    v_session.therapist_id,
+    v_actor,
+    'pending'
+  )
+  on conflict (session_id) do update
+    set updated_at = timezone('utc', now())
+  returning id into v_request_id;
+
+  return v_request_id;
+end;
+$$;
+
+revoke all on function public.create_supervision_session_note_request_for_completed_session(uuid) from public, anon;
+grant execute on function public.create_supervision_session_note_request_for_completed_session(uuid) to authenticated, service_role;
+
 create or replace function public.save_bt_aba_session_note_draft(
   p_session_id uuid,
   p_template_id uuid,
@@ -160,6 +242,7 @@ declare
   v_note public.client_session_notes;
   v_authorization public.authorizations;
   v_service_code text;
+  v_is_assigned_bt boolean := false;
 begin
   if v_actor is null then
     raise exception using errcode = '42501', message = 'authentication required';
@@ -177,8 +260,37 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'session is out of scope';
   end if;
+  select
+    coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['bt']::text[]
+    ), false)
+    and not coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist']::text[]
+    ), false)
+    and exists (
+      select 1
+      from public.therapists therapist
+      where therapist.id = v_session.therapist_id
+        and therapist.organization_id = v_session.organization_id
+        and therapist.status = 'active'
+        and therapist.deleted_at is null
+        and upper(btrim(coalesce(therapist.title, ''))) in ('BT', 'RBT')
+        and (
+          v_session.therapist_id = v_actor
+          or exists (
+            select 1
+            from public.user_therapist_links utl
+            where utl.user_id = v_actor
+              and utl.therapist_id = v_session.therapist_id
+          )
+        )
+    )
+  into v_is_assigned_bt;
+
   if v_session.organization_id <> app.current_user_organization_id()
-     or v_session.therapist_id <> v_actor
+     or not v_is_assigned_bt
      or not public.current_user_can_capture_trial_event(v_session.organization_id, v_session.client_id) then
     raise exception using errcode = '42501', message = 'caller is not the assigned BT';
   end if;
@@ -278,15 +390,13 @@ declare
   v_signature_value text;
   v_note_json jsonb;
   v_progression_results jsonb := '[]'::jsonb;
+  v_is_assigned_bt boolean := false;
+  v_result jsonb;
 begin
   if v_actor is null then
     raise exception using errcode = '42501', message = 'authentication required';
   end if;
-  if p_session_id is null or p_note_id is null
-     or jsonb_typeof(coalesce(p_note_payload, '{}'::jsonb)) <> 'object'
-     or jsonb_typeof(coalesce(p_responses, '{}'::jsonb)) <> 'object'
-     or jsonb_typeof(coalesce(p_trial_events, '[]'::jsonb)) <> 'array'
-     or jsonb_typeof(coalesce(p_expected_target_versions, '[]'::jsonb)) <> 'array' then
+  if p_session_id is null or p_note_id is null then
     raise exception using errcode = '22023', message = 'invalid BT ABA finalization payload';
   end if;
 
@@ -298,8 +408,37 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'session is out of scope';
   end if;
+  select
+    coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['bt']::text[]
+    ), false)
+    and not coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist']::text[]
+    ), false)
+    and exists (
+      select 1
+      from public.therapists therapist
+      where therapist.id = v_session.therapist_id
+        and therapist.organization_id = v_session.organization_id
+        and therapist.status = 'active'
+        and therapist.deleted_at is null
+        and upper(btrim(coalesce(therapist.title, ''))) in ('BT', 'RBT')
+        and (
+          v_session.therapist_id = v_actor
+          or exists (
+            select 1
+            from public.user_therapist_links utl
+            where utl.user_id = v_actor
+              and utl.therapist_id = v_session.therapist_id
+          )
+        )
+    )
+  into v_is_assigned_bt;
+
   if v_session.organization_id <> app.current_user_organization_id()
-     or v_session.therapist_id <> v_actor
+     or not v_is_assigned_bt
      or not public.current_user_can_capture_trial_event(v_session.organization_id, v_session.client_id) then
     raise exception using errcode = '42501', message = 'caller is not the assigned BT';
   end if;
@@ -318,9 +457,30 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'BT ABA note is out of scope';
   end if;
-  if v_session.status = 'completed'
-     and (not v_note.is_locked or v_note.bt_aba_template_id is null or v_note.bt_aba_responses is null) then
-    raise exception using errcode = '23514', message = 'completed session does not have a finalized BT ABA note';
+  if v_session.status = 'completed' then
+    if not v_note.is_locked
+       or v_note.signed_at is null
+       or v_note.bt_aba_template_id is null
+       or v_note.bt_aba_responses is null
+       or v_note.bt_aba_finalization_result is null
+       or not exists (
+         select 1
+         from public.session_note_attestations attestation
+         where attestation.note_id = v_note.id
+           and attestation.organization_id = v_session.organization_id
+           and attestation.signer_user_id = v_actor
+           and attestation.attestation_role = 'bt'
+       ) then
+      raise exception using errcode = '23514', message = 'completed session does not have a finalized BT ABA note';
+    end if;
+    return v_note.bt_aba_finalization_result;
+  end if;
+
+  if jsonb_typeof(coalesce(p_note_payload, '{}'::jsonb)) <> 'object'
+     or jsonb_typeof(coalesce(p_responses, '{}'::jsonb)) <> 'object'
+     or jsonb_typeof(coalesce(p_trial_events, '[]'::jsonb)) <> 'array'
+     or jsonb_typeof(coalesce(p_expected_target_versions, '[]'::jsonb)) <> 'array' then
+    raise exception using errcode = '22023', message = 'invalid BT ABA finalization payload';
   end if;
 
   select template.* into v_template
@@ -423,12 +583,18 @@ begin
 
   perform public.create_supervision_session_note_request_for_completed_session(v_session.id);
 
-  return jsonb_build_object(
+  v_result := jsonb_build_object(
     'status', 'completed',
     'note_id', v_note.id,
     'note', v_note_json,
     'progression_results', coalesce(v_progression_results, '[]'::jsonb)
   );
+
+  update public.client_session_notes
+  set bt_aba_finalization_result = v_result
+  where id = v_note.id;
+
+  return v_result;
 end;
 $$;
 

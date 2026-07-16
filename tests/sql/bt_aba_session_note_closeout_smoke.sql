@@ -21,6 +21,10 @@ begin
      or has_function_privilege('anon', 'public.finalize_bt_aba_session_note(uuid,uuid,jsonb,jsonb,jsonb,jsonb)', 'execute') then
     raise exception 'anon unexpectedly has BT ABA RPC execution';
   end if;
+  if has_table_privilege('authenticated', 'public.session_note_attestations', 'insert')
+     or not has_table_privilege('authenticated', 'public.session_note_attestations', 'select') then
+    raise exception 'authenticated attestation privileges are not read-only';
+  end if;
 end
 $contract$;
 
@@ -56,18 +60,21 @@ insert into auth.users (
 values
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b010', 'authenticated', 'authenticated', 'win221-bt@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb),
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b011', 'authenticated', 'authenticated', 'win221-unrelated@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb),
-  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b012', 'authenticated', 'authenticated', 'win221-cross@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b002"}'::jsonb);
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b012', 'authenticated', 'authenticated', 'win221-cross@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b002"}'::jsonb),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b013', 'authenticated', 'authenticated', 'win221-bcba@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb);
 
 select set_config('app.bypass_profile_role_guard', 'on', true);
 update public.profiles
-set role = 'bt'::public.role_type,
+set role = case when id = '00000000-0000-4000-8000-00000000b013'
+      then 'bcba'::public.role_type else 'bt'::public.role_type end,
     organization_id = case when id = '00000000-0000-4000-8000-00000000b012'
       then '00000000-0000-4000-8000-00000000b002'::uuid
       else '00000000-0000-4000-8000-00000000b001'::uuid end
 where id in (
   '00000000-0000-4000-8000-00000000b010',
   '00000000-0000-4000-8000-00000000b011',
-  '00000000-0000-4000-8000-00000000b012'
+  '00000000-0000-4000-8000-00000000b012',
+  '00000000-0000-4000-8000-00000000b013'
 );
 select set_config('app.bypass_profile_role_guard', 'off', true);
 
@@ -81,15 +88,26 @@ from (values
 cross join public.roles roles
 where roles.name = 'bt';
 
+insert into public.user_roles (user_id, role_id, is_active)
+select '00000000-0000-4000-8000-00000000b013', roles.id, true
+from public.roles roles
+where roles.name = 'bcba';
+
 insert into public.therapists (id, email, full_name, first_name, last_name, title, status, organization_id)
 values
-  ('00000000-0000-4000-8000-00000000b010', 'win221-bt@example.invalid', 'WIN-221 BT', 'WIN-221', 'BT', 'BT', 'active', '00000000-0000-4000-8000-00000000b001'),
+  ('00000000-0000-4000-8000-00000000b015', 'win221-bt-profile@example.invalid', 'WIN-221 BT Profile', 'WIN-221', 'BT Profile', 'RBT', 'active', '00000000-0000-4000-8000-00000000b001'),
   ('00000000-0000-4000-8000-00000000b011', 'win221-unrelated@example.invalid', 'WIN-221 Unrelated', 'WIN-221', 'Unrelated', 'BT', 'active', '00000000-0000-4000-8000-00000000b001'),
   ('00000000-0000-4000-8000-00000000b012', 'win221-cross@example.invalid', 'WIN-221 Cross', 'WIN-221', 'Cross', 'BT', 'active', '00000000-0000-4000-8000-00000000b002');
 
+insert into public.user_therapist_links (user_id, therapist_id)
+values
+  ('00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b015'),
+  ('00000000-0000-4000-8000-00000000b012', '00000000-0000-4000-8000-00000000b015'),
+  ('00000000-0000-4000-8000-00000000b013', '00000000-0000-4000-8000-00000000b015');
+
 insert into public.clients (id, full_name, status, organization_id, therapist_id, created_by, updated_by)
 values ('00000000-0000-4000-8000-00000000b020', 'WIN-221 Synthetic Client', 'active',
-  '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010',
+  '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b015',
   '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010');
 
 insert into public.authorizations (
@@ -97,7 +115,7 @@ insert into public.authorizations (
   start_date, end_date, status, organization_id, created_by
 )
 values ('00000000-0000-4000-8000-00000000b030', 'WIN-221-AUTH',
-  '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b010',
+  '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015',
   'F84.0', current_date - 1, current_date + 1, 'approved',
   '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010');
 
@@ -115,8 +133,8 @@ insert into public.sessions (
   has_transcription_consent, organization_id, created_by, updated_by, session_date, started_at
 )
 values
-  ('00000000-0000-4000-8000-00000000b040', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b010', now() - interval '1 hour', now(), 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '1 hour'),
-  ('00000000-0000-4000-8000-00000000b041', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b010', now() - interval '3 hours', now() - interval '2 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '3 hours'),
+  ('00000000-0000-4000-8000-00000000b040', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '1 hour', now(), 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '1 hour'),
+  ('00000000-0000-4000-8000-00000000b041', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '3 hours', now() - interval '2 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '3 hours'),
   ('00000000-0000-4000-8000-00000000b042', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b012', now() - interval '5 hours', now() - interval '4 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '5 hours');
 
 set local role authenticated;
@@ -158,6 +176,19 @@ begin
 end
 $unrelated$;
 
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b013', true);
+do $elevated_non_bt$
+declare template_id uuid;
+begin
+  select id into template_id from public.session_note_templates
+  where organization_id = '00000000-0000-4000-8000-00000000b001' and template_type = 'bt_aba_session_note';
+  begin
+    perform public.save_bt_aba_session_note_draft('00000000-0000-4000-8000-00000000b040', template_id, '{}'::jsonb, '{}'::jsonb);
+    raise exception 'capture-capable BCBA unexpectedly wrote a BT draft';
+  exception when sqlstate '42501' then null; end;
+end
+$elevated_non_bt$;
+
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b012', true);
 do $cross_org$
 declare template_id uuid;
@@ -177,6 +208,7 @@ declare
   v_note_id uuid;
   failure_note_id uuid;
   result jsonb;
+  first_result jsonb;
   valid_responses jsonb := '{
     "purpose_of_session":["RBT/BT worked on goals as stated in the treatment plan"],
     "client_status":"Client participated",
@@ -203,13 +235,22 @@ begin
   select id into v_note_id from public.client_session_notes where session_id = '00000000-0000-4000-8000-00000000b040';
   result := public.finalize_bt_aba_session_note('00000000-0000-4000-8000-00000000b040', v_note_id, payload, valid_responses, '[]'::jsonb, '[]'::jsonb);
   if result->>'status' <> 'completed' then raise exception 'assigned BT finalize failed: %', result; end if;
-  result := public.finalize_bt_aba_session_note('00000000-0000-4000-8000-00000000b040', v_note_id, payload, valid_responses, '[]'::jsonb, '[]'::jsonb);
-  if result->>'status' <> 'completed' then raise exception 'idempotent retry failed: %', result; end if;
+  first_result := result;
+  result := public.finalize_bt_aba_session_note(
+    '00000000-0000-4000-8000-00000000b040', v_note_id,
+    '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb
+  );
+  if result is distinct from first_result then
+    raise exception 'invalid-payload idempotent retry did not return the persisted result: first %, retry %', first_result, result;
+  end if;
 
   if (select status from public.sessions where id = '00000000-0000-4000-8000-00000000b040') <> 'completed'
      or (select count(*) from public.session_note_attestations where note_id = v_note_id and attestation_role = 'bt') <> 1
      or (select count(*) from public.session_audit_logs where session_id = '00000000-0000-4000-8000-00000000b040' and event_type = 'session_completed') <> 1
-     or (select count(*) from public.supervision_session_note_requests where session_id = '00000000-0000-4000-8000-00000000b040') <> 1 then
+     or (select count(*) from public.supervision_session_note_requests
+         where session_id = '00000000-0000-4000-8000-00000000b040'
+           and requested_by = '00000000-0000-4000-8000-00000000b010'
+           and bt_therapist_id = '00000000-0000-4000-8000-00000000b015') <> 1 then
     raise exception 'finalization side effects were missing or duplicated';
   end if;
 end

@@ -15,16 +15,18 @@ describe('BT ABA session note closeout migration', () => {
     expect(sql).toMatch(/add column if not exists bt_aba_template_id uuid/i);
     expect(sql).toMatch(/add column if not exists bt_aba_template_snapshot jsonb/i);
     expect(sql).toMatch(/add column if not exists bt_aba_responses jsonb/i);
+    expect(sql).toMatch(/add column if not exists bt_aba_finalization_result jsonb/i);
     expect(sql).toMatch(/create table if not exists public\.session_note_attestations/i);
     expect(sql).toMatch(/unique\s*\(\s*note_id\s*,\s*attestation_role\s*,\s*signer_user_id\s*\)/i);
   });
 
-  it('enables tenant RLS and binds authenticated writes to the signer', () => {
+  it('enables tenant RLS and keeps attestation writes behind the atomic RPC', () => {
     expect(sql).toMatch(/alter table public\.session_note_attestations enable row level security/i);
     expect(sql).toMatch(/organization_id = app\.current_user_organization_id\(\)/i);
-    expect(sql).toMatch(/signer_user_id = auth\.uid\(\)/i);
     expect(sql).toMatch(/revoke all on table public\.session_note_attestations from public, anon/i);
-    expect(sql).toMatch(/grant select, insert on table public\.session_note_attestations to authenticated/i);
+    expect(sql).toMatch(/grant select on table public\.session_note_attestations to authenticated/i);
+    expect(sql).not.toMatch(/create policy session_note_attestations_authenticated_insert/i);
+    expect(sql).not.toMatch(/grant [^;]*insert[^;]* on table public\.session_note_attestations to authenticated/i);
   });
 
   it('seeds the approved organization-scoped template idempotently', () => {
@@ -41,8 +43,11 @@ describe('BT ABA session note closeout migration', () => {
     const draft = functionBody('save_bt_aba_session_note_draft');
     expect(draft).toMatch(/for update/i);
     expect(draft).toMatch(/v_session\.status <> 'in_progress'/i);
-    expect(draft).toMatch(/v_session\.therapist_id <> v_actor/i);
     expect(draft).toMatch(/v_session\.organization_id <> app\.current_user_organization_id\(\)/i);
+    expect(draft).toMatch(/app\.current_user_has_exact_role_for_org\([\s\S]*array\['bt'\]::text\[\][\s\S]*array\['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'\]::text\[\]/i);
+    expect(draft).toMatch(/from public\.user_therapist_links utl[\s\S]*utl\.user_id = v_actor[\s\S]*utl\.therapist_id = v_session\.therapist_id/i);
+    expect(draft).toMatch(/v_session\.therapist_id = v_actor/i);
+    expect(draft).toMatch(/therapist\.organization_id = v_session\.organization_id[\s\S]*therapist\.status = 'active'[\s\S]*therapist\.deleted_at is null[\s\S]*upper\(btrim\(coalesce\(therapist\.title, ''\)\)\) in \('BT', 'RBT'\)/i);
     expect(draft).toMatch(/v_note\.is_locked/i);
     expect(draft).toMatch(/bt_aba_template_id\s*=\s*p_template_id/i);
     expect(draft).toMatch(/bt_aba_template_snapshot\s*=\s*v_template\.template_structure/i);
@@ -54,7 +59,8 @@ describe('BT ABA session note closeout migration', () => {
     expect(sql).toMatch(/create or replace function public\.finalize_bt_aba_session_note/i);
     expect(finalize).toMatch(/pg_advisory_xact_lock/i);
     expect(finalize).toMatch(/v_session\.status <> 'in_progress'/i);
-    expect(finalize).toMatch(/v_session\.therapist_id <> v_actor/i);
+    expect(finalize).toMatch(/from public\.user_therapist_links utl[\s\S]*utl\.user_id = v_actor[\s\S]*utl\.therapist_id = v_session\.therapist_id/i);
+    expect(finalize).toMatch(/app\.current_user_has_exact_role_for_org\([\s\S]*array\['bt'\]::text\[\][\s\S]*array\['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'\]::text\[\]/i);
     expect(finalize).toMatch(/required BT ABA session note response missing/i);
     expect(finalize).toMatch(/bt_signature[\s\S]*signature_method[\s\S]*signature_value/i);
 
@@ -68,7 +74,32 @@ describe('BT ABA session note closeout migration', () => {
     expect(auditCall).toBeLessThan(supervisionCall);
     expect(finalize).toMatch(/event_type\s*=\s*'session_completed'/i);
     expect(finalize).toMatch(/on conflict \(note_id, attestation_role, signer_user_id\) do nothing/i);
-    expect(finalize).toMatch(/return jsonb_build_object\([\s\S]*'status', 'completed'/i);
+    expect(finalize).toMatch(/update public\.client_session_notes[\s\S]*bt_aba_finalization_result = v_result/i);
+    expect(finalize).toMatch(/v_result := jsonb_build_object\([\s\S]*'status', 'completed'[\s\S]*return v_result/i);
+    expect(finalize).not.toMatch(/insert into public\.supervision_session_note_requests/i);
+  });
+
+  it('routes linked distinct-user BT supervision through the canonical idempotent creator', () => {
+    const creator = functionBody('create_supervision_session_note_request_for_completed_session');
+    const finalize = functionBody('finalize_bt_aba_session_note');
+    expect(creator).toMatch(/v_session\.therapist_id = v_actor/i);
+    expect(creator).toMatch(/from public\.user_therapist_links utl[\s\S]*utl\.user_id = v_actor[\s\S]*utl\.therapist_id = v_session\.therapist_id/i);
+    expect(creator).toMatch(/on conflict \(session_id\) do update/i);
+    expect(finalize.match(/create_supervision_session_note_request_for_completed_session/g)).toHaveLength(1);
+  });
+
+  it('returns the persisted completed result before validating retry payloads or repeating side effects', () => {
+    const finalize = functionBody('finalize_bt_aba_session_note');
+    const replayStart = finalize.indexOf("if v_session.status = 'completed' then");
+    const payloadValidation = finalize.indexOf("jsonb_typeof(coalesce(p_responses", replayStart);
+    const replay = finalize.slice(replayStart, payloadValidation);
+    expect(replay).toMatch(/v_note\.is_locked/i);
+    expect(replay).toMatch(/v_note\.bt_aba_finalization_result is null/i);
+    expect(replay).toMatch(/session_note_attestations/i);
+    expect(replay).toMatch(/return v_note\.bt_aba_finalization_result/i);
+    expect(replay).not.toMatch(/required BT ABA session note response missing|finalize_session_note_with_progression|record_session_audit|create_supervision_session_note_request/i);
+    expect(replayStart).toBeGreaterThan(-1);
+    expect(replayStart).toBeLessThan(payloadValidation);
   });
 
   it('keeps RPC exposure least privileged', () => {

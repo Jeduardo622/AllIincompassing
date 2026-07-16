@@ -26,18 +26,21 @@ const btAbaSessionNoteMigration = readFileSync(
 );
 
 describe('BT ABA session note attestation RLS contract', () => {
-  it('keeps reads organization-scoped and writes caller-owned', () => {
+  it('keeps reads organization-scoped and disallows direct authenticated writes', () => {
     expect(btAbaSessionNoteMigration).toContain(
       'alter table public.session_note_attestations enable row level security;',
     );
     expect(btAbaSessionNoteMigration).toMatch(
       /create policy session_note_attestations_authenticated_select[\s\S]*organization_id = app\.current_user_organization_id\(\)/i,
     );
+    expect(btAbaSessionNoteMigration).not.toMatch(
+      /create policy session_note_attestations_authenticated_(insert|update|delete)/i,
+    );
     expect(btAbaSessionNoteMigration).toMatch(
-      /create policy session_note_attestations_authenticated_insert[\s\S]*organization_id = app\.current_user_organization_id\(\)[\s\S]*signer_user_id = auth\.uid\(\)/i,
+      /grant select on table public\.session_note_attestations to authenticated/i,
     );
     expect(btAbaSessionNoteMigration).not.toMatch(
-      /create policy session_note_attestations_authenticated_(update|delete)/i,
+      /grant [^;]*insert[^;]* on table public\.session_note_attestations to authenticated/i,
     );
   });
 

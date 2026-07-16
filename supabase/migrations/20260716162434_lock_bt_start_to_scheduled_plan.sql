@@ -1,8 +1,111 @@
 -- @migration-intent: Allow assigned BTs to start scheduled sessions without permitting client-supplied program or goal linkage changes.
 -- @migration-dependencies: 20260709162000_harden_goal_domain_and_session_link_authz.sql
--- @migration-rollback: Re-run 20260709162000_harden_goal_domain_and_session_link_authz.sql to restore the prior start-session behavior.
+-- @migration-rollback: Drop confirm_session_hold_with_enrichment, rename confirm_session_hold_with_enrichment_before_goal_rebuild back, restore its service_role-only grants, then re-run 20260709162000_harden_goal_domain_and_session_link_authz.sql.
 
 begin;
+
+alter function public.confirm_session_hold_with_enrichment(uuid, jsonb, jsonb, uuid[], uuid)
+  rename to confirm_session_hold_with_enrichment_before_goal_rebuild;
+
+create function public.confirm_session_hold_with_enrichment(
+  p_hold_key uuid,
+  p_session jsonb,
+  p_cpt jsonb default null,
+  p_goal_ids uuid[] default null,
+  p_actor_id uuid default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_result jsonb;
+  v_session_id uuid;
+  v_organization_id uuid;
+  v_client_id uuid;
+  v_primary_goal_id uuid;
+  v_goal_ids uuid[];
+  v_expected_goal_count integer := 0;
+  v_valid_goal_count integer := 0;
+begin
+  v_result := public.confirm_session_hold_with_enrichment_before_goal_rebuild(
+    p_hold_key,
+    p_session,
+    p_cpt,
+    p_goal_ids,
+    p_actor_id
+  );
+
+  if not coalesce((v_result->>'success')::boolean, false) then
+    return v_result;
+  end if;
+
+  v_session_id := nullif(v_result->'session'->>'id', '')::uuid;
+  if v_session_id is null then
+    raise exception 'Session identifier missing from confirmation result';
+  end if;
+
+  select s.organization_id, s.client_id, s.goal_id
+    into v_organization_id, v_client_id, v_primary_goal_id
+  from public.sessions s
+  where s.id = v_session_id
+  for update;
+
+  if v_organization_id is null or v_client_id is null then
+    raise exception 'Session % not found after confirmation', v_session_id;
+  end if;
+
+  v_goal_ids := coalesce(p_goal_ids, array[]::uuid[]);
+  v_goal_ids := array_append(v_goal_ids, v_primary_goal_id);
+  v_goal_ids := array(
+    select distinct goal_id
+    from unnest(v_goal_ids) as goal_id
+    where goal_id is not null
+    order by goal_id
+  );
+  v_expected_goal_count := coalesce(array_length(v_goal_ids, 1), 0);
+
+  delete from public.session_goals sg
+  where sg.session_id = v_session_id;
+
+  insert into public.session_goals (
+    session_id,
+    goal_id,
+    organization_id,
+    client_id,
+    program_id
+  )
+  select
+    v_session_id,
+    g.id,
+    v_organization_id,
+    v_client_id,
+    g.program_id
+  from public.goals g
+  join public.programs p on p.id = g.program_id
+  where g.id = any(v_goal_ids)
+    and g.organization_id = v_organization_id
+    and g.client_id = v_client_id
+    and p.organization_id = v_organization_id
+    and p.client_id = v_client_id;
+
+  get diagnostics v_valid_goal_count = row_count;
+  if v_valid_goal_count <> v_expected_goal_count then
+    raise exception 'One or more session goals are outside the confirmed session tenant plan';
+  end if;
+
+  return v_result;
+end;
+$$;
+
+revoke execute on function public.confirm_session_hold_with_enrichment_before_goal_rebuild(uuid, jsonb, jsonb, uuid[], uuid) from public;
+revoke execute on function public.confirm_session_hold_with_enrichment_before_goal_rebuild(uuid, jsonb, jsonb, uuid[], uuid) from anon;
+revoke execute on function public.confirm_session_hold_with_enrichment_before_goal_rebuild(uuid, jsonb, jsonb, uuid[], uuid) from authenticated;
+revoke execute on function public.confirm_session_hold_with_enrichment_before_goal_rebuild(uuid, jsonb, jsonb, uuid[], uuid) from service_role;
+revoke execute on function public.confirm_session_hold_with_enrichment(uuid, jsonb, jsonb, uuid[], uuid) from public;
+revoke execute on function public.confirm_session_hold_with_enrichment(uuid, jsonb, jsonb, uuid[], uuid) from anon;
+revoke execute on function public.confirm_session_hold_with_enrichment(uuid, jsonb, jsonb, uuid[], uuid) from authenticated;
+grant execute on function public.confirm_session_hold_with_enrichment(uuid, jsonb, jsonb, uuid[], uuid) to service_role;
 
 create or replace function public.start_session_with_goals(
   p_session_id uuid,
@@ -235,7 +338,6 @@ begin
     where sg.session_id = v_session.id
       and sg.client_id = v_session.client_id
       and sg.organization_id = v_session.organization_id
-      and sg.program_id = v_session.program_id
       and g.program_id = sg.program_id
       and g.client_id = v_session.client_id
       and g.organization_id = v_session.organization_id

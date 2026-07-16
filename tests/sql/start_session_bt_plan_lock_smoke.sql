@@ -4,12 +4,19 @@
 begin;
 
 insert into public.organizations (id, name, slug, metadata)
-values (
-  '00000000-0000-4000-8000-00000000f001',
-  'Codex BT Start Smoke',
-  'codex-bt-start-smoke',
-  '{"tags":["codex-smoke"],"notes":"synthetic BT start smoke"}'::jsonb
-);
+values
+  (
+    '00000000-0000-4000-8000-00000000f001',
+    'Codex BT Start Smoke',
+    'codex-bt-start-smoke',
+    '{"tags":["codex-smoke"],"notes":"synthetic BT start smoke"}'::jsonb
+  ),
+  (
+    '00000000-0000-4000-8000-00000000f002',
+    'Codex Other Tenant',
+    'codex-bt-start-other-tenant',
+    '{"tags":["codex-smoke"],"notes":"synthetic cross-tenant guard"}'::jsonb
+  );
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password,
@@ -68,6 +75,13 @@ values (
   '00000000-0000-4000-8000-00000000f010',
   '00000000-0000-4000-8000-00000000f010',
   '00000000-0000-4000-8000-00000000f010'
+), (
+  '00000000-0000-4000-8000-00000000f021',
+  'Codex Other Tenant Client', 'active',
+  '00000000-0000-4000-8000-00000000f002',
+  null,
+  '00000000-0000-4000-8000-00000000f010',
+  '00000000-0000-4000-8000-00000000f010'
 );
 
 insert into public.programs (
@@ -87,6 +101,14 @@ values
     '00000000-0000-4000-8000-00000000f001',
     '00000000-0000-4000-8000-00000000f020',
     'Codex Alternate Program', 'active',
+    '00000000-0000-4000-8000-00000000f010',
+    '00000000-0000-4000-8000-00000000f010'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000f032',
+    '00000000-0000-4000-8000-00000000f002',
+    '00000000-0000-4000-8000-00000000f021',
+    'Codex Cross-Tenant Program', 'active',
     '00000000-0000-4000-8000-00000000f010',
     '00000000-0000-4000-8000-00000000f010'
   );
@@ -122,6 +144,15 @@ values
     'Codex Paused Goal', 'Synthetic', 'Synthetic', 'paused',
     '00000000-0000-4000-8000-00000000f010',
     '00000000-0000-4000-8000-00000000f010'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000f043',
+    '00000000-0000-4000-8000-00000000f002',
+    '00000000-0000-4000-8000-00000000f021',
+    '00000000-0000-4000-8000-00000000f032',
+    'Codex Cross-Tenant Goal', 'Synthetic', 'Synthetic', 'active',
+    '00000000-0000-4000-8000-00000000f010',
+    '00000000-0000-4000-8000-00000000f010'
   );
 
 insert into public.sessions (
@@ -153,7 +184,8 @@ from (
     ('00000000-0000-4000-8000-00000000f054'::uuid, '00000000-0000-4000-8000-00000000f011'::uuid, 'scheduled'::text, null::timestamptz, 4),
     ('00000000-0000-4000-8000-00000000f055'::uuid, '00000000-0000-4000-8000-00000000f010'::uuid, 'in_progress'::text, null::timestamptz, 5),
     ('00000000-0000-4000-8000-00000000f056'::uuid, '00000000-0000-4000-8000-00000000f010'::uuid, 'scheduled'::text, null::timestamptz, 6),
-    ('00000000-0000-4000-8000-00000000f057'::uuid, '00000000-0000-4000-8000-00000000f010'::uuid, 'scheduled'::text, null::timestamptz, 7)
+    ('00000000-0000-4000-8000-00000000f057'::uuid, '00000000-0000-4000-8000-00000000f010'::uuid, 'scheduled'::text, null::timestamptz, 7),
+    ('00000000-0000-4000-8000-00000000f058'::uuid, '00000000-0000-4000-8000-00000000f010'::uuid, 'scheduled'::text, null::timestamptz, 8)
 ) as v(id, therapist_id, status, started_at, slot);
 
 insert into public.session_goals (
@@ -168,7 +200,7 @@ select
 from public.sessions s
 where s.id between
   '00000000-0000-4000-8000-00000000f050' and
-  '00000000-0000-4000-8000-00000000f057';
+  '00000000-0000-4000-8000-00000000f058';
 
 insert into public.session_goals (
   session_id, goal_id, organization_id, client_id, program_id
@@ -185,7 +217,104 @@ values (
   '00000000-0000-4000-8000-00000000f001',
   '00000000-0000-4000-8000-00000000f020',
   '00000000-0000-4000-8000-00000000f031'
+), (
+  '00000000-0000-4000-8000-00000000f058',
+  '00000000-0000-4000-8000-00000000f042',
+  '00000000-0000-4000-8000-00000000f001',
+  '00000000-0000-4000-8000-00000000f020',
+  '00000000-0000-4000-8000-00000000f030'
 );
+
+create or replace function public.confirm_session_hold_with_enrichment_before_goal_rebuild(
+  p_hold_key uuid,
+  p_session jsonb,
+  p_cpt jsonb default null,
+  p_goal_ids uuid[] default null,
+  p_actor_id uuid default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_session_id uuid := nullif(p_session->>'id', '')::uuid;
+begin
+  update public.sessions
+  set notes = coalesce(p_session->>'notes', notes)
+  where id = v_session_id;
+
+  return jsonb_build_object(
+    'success', true,
+    'session', jsonb_build_object('id', v_session_id)
+  );
+end;
+$$;
+
+do $confirmation_rebuild$
+declare
+  result jsonb;
+begin
+  result := public.confirm_session_hold_with_enrichment(
+    gen_random_uuid(),
+    jsonb_build_object(
+      'id', '00000000-0000-4000-8000-00000000f058',
+      'notes', 'confirmed current plan'
+    ),
+    null,
+    array['00000000-0000-4000-8000-00000000f041']::uuid[],
+    '00000000-0000-4000-8000-00000000f010'
+  );
+
+  if coalesce((result->>'success')::boolean, false) is not true
+    or (select count(*) from public.session_goals
+        where session_id = '00000000-0000-4000-8000-00000000f058') <> 2
+    or not exists (
+      select 1 from public.session_goals
+      where session_id = '00000000-0000-4000-8000-00000000f058'
+        and goal_id = '00000000-0000-4000-8000-00000000f040'
+        and program_id = '00000000-0000-4000-8000-00000000f030'
+    )
+    or not exists (
+      select 1 from public.session_goals
+      where session_id = '00000000-0000-4000-8000-00000000f058'
+        and goal_id = '00000000-0000-4000-8000-00000000f041'
+        and program_id = '00000000-0000-4000-8000-00000000f031'
+    )
+    or exists (
+      select 1 from public.session_goals
+      where session_id = '00000000-0000-4000-8000-00000000f058'
+        and goal_id = '00000000-0000-4000-8000-00000000f042'
+    ) then
+    raise exception 'confirmation did not rebuild the exact current multi-program goal plan: %', result;
+  end if;
+
+  begin
+    perform public.confirm_session_hold_with_enrichment(
+      gen_random_uuid(),
+      jsonb_build_object(
+        'id', '00000000-0000-4000-8000-00000000f058',
+        'notes', 'invalid cross-tenant attempt'
+      ),
+      null,
+      array['00000000-0000-4000-8000-00000000f043']::uuid[],
+      '00000000-0000-4000-8000-00000000f010'
+    );
+    raise exception 'cross-tenant confirmation unexpectedly succeeded';
+  exception
+    when others then
+      if sqlerrm = 'cross-tenant confirmation unexpectedly succeeded' then
+        raise;
+      end if;
+  end;
+
+  if (select notes from public.sessions
+      where id = '00000000-0000-4000-8000-00000000f058') <> 'confirmed current plan'
+    or (select count(*) from public.session_goals
+        where session_id = '00000000-0000-4000-8000-00000000f058') <> 2 then
+    raise exception 'invalid confirmation did not roll back its session and goal-link changes';
+  end if;
+end
+$confirmation_rebuild$;
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000f010', true);
@@ -263,13 +392,33 @@ begin
       '00000000-0000-4000-8000-00000000f041'
     ]::uuid[]
   );
-  if result->>'error_code' <> 'INVALID_STORED_PLAN'
-    or exists (
+  if coalesce((result->>'success')::boolean, false) is not true
+    or not exists (
       select 1 from public.sessions
       where id = '00000000-0000-4000-8000-00000000f057'
-        and (status <> 'scheduled' or started_at is not null)
+        and status = 'in_progress'
+        and started_at is not null
     ) then
-    raise exception 'cross-program stored goal did not fail closed: %', result;
+    raise exception 'valid multi-program canonical session plan failed: %', result;
+  end if;
+
+  result := public.start_session_with_goals(
+    '00000000-0000-4000-8000-00000000f058',
+    '00000000-0000-4000-8000-00000000f030',
+    '00000000-0000-4000-8000-00000000f040',
+    array[
+      '00000000-0000-4000-8000-00000000f040',
+      '00000000-0000-4000-8000-00000000f041'
+    ]::uuid[]
+  );
+  if coalesce((result->>'success')::boolean, false) is not true
+    or not exists (
+      select 1 from public.sessions
+      where id = '00000000-0000-4000-8000-00000000f058'
+        and status = 'in_progress'
+        and started_at is not null
+    ) then
+    raise exception 'exact BT could not start the rebuilt confirmation plan: %', result;
   end if;
 
   result := public.start_session_with_goals(
@@ -318,11 +467,21 @@ begin
       '00000000-0000-4000-8000-00000000f052',
       '00000000-0000-4000-8000-00000000f053',
       '00000000-0000-4000-8000-00000000f054',
-      '00000000-0000-4000-8000-00000000f055',
-      '00000000-0000-4000-8000-00000000f057'
+      '00000000-0000-4000-8000-00000000f055'
     )
   ) then
     raise exception 'a rejected exact BT start wrote an audit row';
+  end if;
+  if (select count(*) from public.session_goals
+      where session_id = '00000000-0000-4000-8000-00000000f057') <> 2 then
+    raise exception 'BT start mutated the canonical multi-program session_goals set';
+  end if;
+  if (select count(*) from public.session_goals
+      where session_id = '00000000-0000-4000-8000-00000000f058') <> 2
+    or (select count(*) from public.session_audit_logs
+        where session_id = '00000000-0000-4000-8000-00000000f058'
+          and event_type = 'session_started') <> 1 then
+    raise exception 'rebuilt confirmation plan was mutated or not audited at BT start';
   end if;
 end
 $audit_smoke$;

@@ -20,6 +20,14 @@ const extractFunction = (): string => {
   return match?.[0] ?? '';
 };
 
+const extractConfirmationFunction = (): string => {
+  const match = sql.match(
+    /create function public\.confirm_session_hold_with_enrichment\([\s\S]*?\n\$\$;/i,
+  );
+  expect(match, 'confirm_session_hold_with_enrichment should be wrapped').not.toBeNull();
+  return match?.[0] ?? '';
+};
+
 describe('BT session-start plan lock migration', () => {
   it('separates exact BT actors from super-admin and higher-capability role holders', () => {
     const functionSql = extractFunction();
@@ -50,8 +58,20 @@ describe('BT session-start plan lock migration', () => {
 
     expect(functionSql).toMatch(/from public\.programs p[\s\S]*p\.id = v_session\.program_id[\s\S]*p\.client_id = v_session\.client_id[\s\S]*p\.organization_id = v_session\.organization_id[\s\S]*p\.status = 'active'/i);
     expect(functionSql).toMatch(/from public\.goals g[\s\S]*g\.id = v_session\.goal_id[\s\S]*g\.program_id = v_session\.program_id[\s\S]*g\.client_id = v_session\.client_id[\s\S]*g\.organization_id = v_session\.organization_id[\s\S]*g\.status = 'active'/i);
-    expect(functionSql).toMatch(/from public\.session_goals sg[\s\S]*join public\.goals g[\s\S]*join public\.programs p[\s\S]*sg\.session_id = v_session\.id[\s\S]*sg\.client_id = v_session\.client_id[\s\S]*sg\.organization_id = v_session\.organization_id[\s\S]*sg\.program_id = v_session\.program_id[\s\S]*g\.program_id = sg\.program_id[\s\S]*g\.status = 'active'[\s\S]*p\.status = 'active'/i);
+    expect(functionSql).toMatch(/from public\.session_goals sg[\s\S]*join public\.goals g[\s\S]*join public\.programs p[\s\S]*sg\.session_id = v_session\.id[\s\S]*sg\.client_id = v_session\.client_id[\s\S]*sg\.organization_id = v_session\.organization_id[\s\S]*g\.program_id = sg\.program_id[\s\S]*g\.status = 'active'[\s\S]*p\.status = 'active'/i);
     expect(functionSql).toContain("'error_code', 'INVALID_STORED_PLAN'");
+  });
+
+  it('rebuilds confirmed session goal links from the current submitted booking plan', () => {
+    const functionSql = extractConfirmationFunction();
+
+    expect(sql).toMatch(/alter function public\.confirm_session_hold_with_enrichment[\s\S]*rename to confirm_session_hold_with_enrichment_before_goal_rebuild/i);
+    expect(functionSql).toMatch(/confirm_session_hold_with_enrichment_before_goal_rebuild/i);
+    expect(functionSql).toMatch(/array_append\(v_goal_ids, v_primary_goal_id\)/i);
+    expect(functionSql).toMatch(/select distinct goal_id[\s\S]*from unnest\(v_goal_ids\)/i);
+    expect(functionSql).toMatch(/delete from public\.session_goals sg[\s\S]*sg\.session_id = v_session_id/i);
+    expect(functionSql).toMatch(/insert into public\.session_goals[\s\S]*g\.program_id[\s\S]*where g\.id = any\(v_goal_ids\)/i);
+    expect(functionSql).toMatch(/g\.organization_id = v_organization_id[\s\S]*g\.client_id = v_client_id/i);
   });
 
   it('starts restricted BT sessions without mutating their stored plan', () => {

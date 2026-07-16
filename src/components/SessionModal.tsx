@@ -521,6 +521,8 @@ export function SessionModal({
   const [btAbaBusy, setBtAbaBusy] = useState(false);
   const [btAbaError, setBtAbaError] = useState<string | null>(null);
   const [btAbaNoteId, setBtAbaNoteId] = useState<string | null>(null);
+  const [btAbaFinalized, setBtAbaFinalized] = useState(false);
+  const btAbaTransitionRef = useRef<'idle' | 'finalizing' | 'finalized'>('idle');
   const closeoutCaptureRef = useRef<{
     notePayload: BtAbaSessionNotePayload;
     trialEvents: SessionCaptureTrialEventInput[];
@@ -549,7 +551,12 @@ export function SessionModal({
   const shouldHideGoalCaptureFields = hideGoalCaptureFields;
   const shouldShowPromptCorrectnessToggle = !isBtClinicalCaptureSession;
 
-  const { data: btAbaNoteState, refetch: refetchBtAbaNoteState } = useQuery({
+  const {
+    data: btAbaNoteState,
+    error: btAbaNoteLoadError,
+    isError: isBtAbaNoteLoadError,
+    refetch: refetchBtAbaNoteState,
+  } = useQuery({
     queryKey: ['bt-aba-session-note', session?.id],
     queryFn: () => getBtAbaSessionNote(session!.id),
     enabled: Boolean(isBtClinicalCaptureSession && session?.id),
@@ -562,6 +569,8 @@ export function SessionModal({
   useEffect(() => {
     setModalStep('capture');
     setBtAbaError(null);
+    setBtAbaFinalized(false);
+    btAbaTransitionRef.current = 'idle';
     closeoutCaptureRef.current = null;
   }, [session?.id]);
 
@@ -641,7 +650,7 @@ export function SessionModal({
       }
       const { data, error } = await supabase
         .from('sessions')
-        .select('program_id, goal_id, started_at')
+        .select('program_id, goal_id, started_at, location_type')
         .eq('id', session.id)
         .eq('organization_id', activeOrganizationId)
         .maybeSingle();
@@ -1831,7 +1840,7 @@ export function SessionModal({
   };
 
   const handleAttemptClose = useCallback(() => {
-    if (isSubmitting) {
+    if (isSubmitting || btAbaBusy || btAbaFinalized) {
       return;
     }
     if (!hasUnsavedSessionChanges) {
@@ -1844,7 +1853,7 @@ export function SessionModal({
     if (shouldDiscard) {
       onClose();
     }
-  }, [hasUnsavedSessionChanges, isSubmitting, onClose]);
+  }, [btAbaBusy, btAbaFinalized, hasUnsavedSessionChanges, isSubmitting, onClose]);
 
   const handleStartSession = async () => {
     if (
@@ -1952,16 +1961,19 @@ export function SessionModal({
   };
 
   const handleFinalizeBtAba = async (responses: BtAbaSessionNoteResponses) => {
+    if (btAbaTransitionRef.current !== 'idle') return;
     if (!session?.id || !btAbaNoteId || !closeoutCaptureRef.current) {
       const message = 'Save the ABA session note draft before finalizing.';
       setBtAbaError(message);
       showError(message);
       return;
     }
+    btAbaTransitionRef.current = 'finalizing';
     setBtAbaBusy(true);
     setBtAbaError(null);
+    let result: BtAbaFinalizeResult;
     try {
-      const result = await finalizeBtAbaSessionNote({
+      result = await finalizeBtAbaSessionNote({
         sessionId: session.id,
         noteId: btAbaNoteId,
         notePayload: closeoutCaptureRef.current.notePayload,
@@ -1970,11 +1982,25 @@ export function SessionModal({
         expectedTargetVersions: closeoutCaptureRef.current.expectedTargetVersions,
       });
       if (result.status !== 'completed') throw new Error('Session finalization did not complete. Please retry.');
-      await onBtAbaSessionFinalized?.({ ...result, sessionId: session.id });
     } catch (error) {
+      btAbaTransitionRef.current = 'idle';
       const message = error instanceof Error ? error.message : 'Unable to finalize the ABA session note.';
       setBtAbaError(message);
       showError(message);
+      setBtAbaBusy(false);
+      return;
+    }
+
+    btAbaTransitionRef.current = 'finalized';
+    setBtAbaFinalized(true);
+    try {
+      await onBtAbaSessionFinalized?.({ ...result, sessionId: session.id });
+    } catch (error) {
+      logger.warn('BT ABA session completed but schedule refresh callback failed', {
+        metadata: { sessionId: session.id, reason: error instanceof Error ? error.message : String(error) },
+      });
+      showError('Session completed, but the schedule refresh failed. Refresh the page to see the completed session.');
+      onClose();
     } finally {
       setBtAbaBusy(false);
     }
@@ -2672,6 +2698,33 @@ export function SessionModal({
   }, [goalsById, linkedSessionNote, session?.id, setValue, hasUnsavedSessionChanges]);
 
   useEffect(() => {
+    if (
+      !isOpen ||
+      !isBtClinicalCaptureSession ||
+      session?.status !== 'in_progress' ||
+      btAbaNoteState?.status !== 'draft' ||
+      !btAbaNoteState.responses ||
+      !btAbaNoteState.noteId
+    ) {
+      return;
+    }
+    closeoutCaptureRef.current = {
+      notePayload: {
+        goals_addressed: linkedSessionNote?.goals_addressed ?? getValues('session_note_goals_addressed') ?? [],
+        goal_ids: linkedSessionNote?.goal_ids ?? getValues('session_note_goal_ids') ?? null,
+        goal_measurements: linkedSessionNote?.goal_measurements ?? getValues('session_note_goal_measurements') ?? null,
+        goal_notes: linkedSessionNote?.goal_notes ?? getValues('session_note_goal_notes') ?? null,
+        narrative: linkedSessionNote?.narrative ?? getValues('session_note_narrative') ?? '',
+      },
+      trialEvents: [],
+      expectedTargetVersions: [],
+    };
+    setBtAbaNoteId(btAbaNoteState.noteId);
+    setBtAbaError(null);
+    setModalStep('closeout');
+  }, [btAbaNoteState, getValues, isBtClinicalCaptureSession, isOpen, linkedSessionNote, session?.status]);
+
+  useEffect(() => {
     if (!isOpen) {
       setIsPlanSummaryExpanded(false);
     }
@@ -2693,6 +2746,26 @@ export function SessionModal({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [isOpen, isInProgressSession, session?.id]);
+
+  const closeoutDataPoints = useMemo(() => {
+    const seen = new Set<string>();
+    return [...existingTrialEvents, ...(closeoutCaptureRef.current?.trialEvents ?? [])]
+      .filter((event) => {
+        const key = `${event.target_id}:${event.trial_number}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((event) => {
+        const persistedGoalId = 'goal_id' in event && typeof event.goal_id === 'string' ? event.goal_id : null;
+        const goalForEvent = persistedGoalId ?? goalTargetsById.get(event.target_id)?.goal_id ?? null;
+        return {
+          label: goalTargetsById.get(event.target_id)?.name ?? event.target_id,
+          value: event.response ?? event.value ?? '',
+          linked: Boolean(goalForEvent && sessionNoteGoalIds.includes(goalForEvent)),
+        };
+      });
+  }, [existingTrialEvents, goalTargetsById, modalStep, sessionNoteGoalIds]);
 
   if (!isOpen) return null;
 
@@ -2740,7 +2813,7 @@ export function SessionModal({
             ref={closeButtonRef}
             type="button"
             onClick={handleAttemptClose}
-            disabled={isSubmitting}
+            disabled={isSubmitting || btAbaBusy || btAbaFinalized}
             aria-label="Close session modal"
             title="Close session modal"
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
@@ -2755,6 +2828,11 @@ export function SessionModal({
           <p id={dialogDescriptionId} className="sr-only">
             Use this form to create or update a therapy session.
           </p>
+          {isBtAbaNoteLoadError ? (
+            <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {btAbaNoteLoadError instanceof Error ? btAbaNoteLoadError.message : 'Unable to load the saved ABA session note draft.'}
+            </p>
+          ) : null}
           {modalStep === 'closeout' && session?.id ? (
             <div className="space-y-4">
               {btAbaError ? <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{btAbaError}</p> : null}
@@ -2766,9 +2844,9 @@ export function SessionModal({
                   behaviorTechnicianName: selectedTherapist?.full_name ?? 'Unknown behavior technician',
                   serviceDate: format(parseISO(session.start_time), 'yyyy-MM-dd'),
                   sessionTime: `${format(parseISO(session.start_time), 'HH:mm')} - ${format(parseISO(session.end_time), 'HH:mm')}`,
-                  placeOfService: selectedClientServices.join(', ') || 'Not recorded',
-                  billingCode: getValues('session_note_service_code') || firstServiceCodeOnAuthorization(primaryBillingAuthorization) || 'Not recorded',
-                  modifiers: [],
+                  placeOfService: sessionDetails?.location_type?.trim() || 'Not recorded',
+                  billingCode: linkedSessionNote?.service_code || getValues('session_note_service_code') || firstServiceCodeOnAuthorization(primaryBillingAuthorization) || 'Not recorded',
+                  modifiers: ['Not recorded'],
                   programs: selectedProgramIds.map((selectedProgramId) => ({
                     name: programsById.get(selectedProgramId)?.name ?? 'Program',
                     goals: sessionNoteGoalIds
@@ -2776,18 +2854,16 @@ export function SessionModal({
                       .filter((selectedGoal): selectedGoal is Goal => Boolean(selectedGoal?.program_id === selectedProgramId))
                       .map((selectedGoal) => selectedGoal.title),
                   })),
-                  collectedDataPointCount: existingTrialEvents.length + (closeoutCaptureRef.current?.trialEvents.length ?? 0),
-                  linkedDataPoints: [...existingTrialEvents, ...(closeoutCaptureRef.current?.trialEvents ?? [])]
-                    .map((event) => ({ label: event.target_id, value: event.response ?? event.value ?? '' })),
-                  allDataPoints: [...existingTrialEvents, ...(closeoutCaptureRef.current?.trialEvents ?? [])]
-                    .map((event) => ({ label: event.target_id, value: event.response ?? event.value ?? '' })),
+                  collectedDataPointCount: closeoutDataPoints.length,
+                  linkedDataPoints: closeoutDataPoints.filter((point) => point.linked),
+                  allDataPoints: closeoutDataPoints,
                   collectedBy: selectedTherapist?.full_name ?? 'Unknown behavior technician',
                 }}
                 onSaveDraft={handleSaveBtAbaDraft}
                 onFinalize={handleFinalizeBtAba}
                 busy={btAbaBusy}
               />
-              <button type="button" disabled={btAbaBusy} onClick={() => setModalStep('capture')} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">Back to capture</button>
+              <button type="button" disabled={btAbaBusy || btAbaFinalized} onClick={() => setModalStep('capture')} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">Back to capture</button>
             </div>
           ) : (
           <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5 sm:space-y-6">
@@ -4477,7 +4553,7 @@ export function SessionModal({
                 <button
                   type="button"
                   onClick={handleCloseSession}
-                  disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
+                  disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives || isBtAbaNoteLoadError}
                   className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-300 dark:hover:bg-violet-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-violet-200 sm:bg-violet-50/90 sm:px-4 sm:font-medium sm:text-violet-800 sm:shadow-sm sm:hover:bg-violet-100"
                 >
                   Close Session

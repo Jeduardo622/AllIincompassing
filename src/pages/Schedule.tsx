@@ -397,6 +397,7 @@ export const Schedule = React.memo(() => {
   const attemptedUrlSessionLookupRef = useRef<Set<string>>(new Set());
   const wasModalOpenRef = useRef(false);
   const completedAwaitingFinalizationRef = useRef<Set<string>>(new Set());
+  const btAbaCompletedSessionsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1456,17 +1457,29 @@ export const Schedule = React.memo(() => {
   }, [queryClient]);
 
   const handleBtAbaSessionFinalized = useCallback(async ({ sessionId }: { sessionId: string }) => {
+    if (btAbaCompletedSessionsRef.current.has(sessionId)) return;
+    btAbaCompletedSessionsRef.current.add(sessionId);
     showSuccess('Session marked as completed');
-    invalidateSessionNoteCachesAfterSessionWrite(queryClient, {
-      sessionId,
-      clientId: selectedSession?.client_id,
-      organizationId: activeOrganizationId,
-    });
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['sessions'] }),
-      queryClient.invalidateQueries({ queryKey: ['sessions-batch'] }),
-    ]);
-    applyScheduleResetBranch({ kind: 'submit-cancel' }, scheduleResetSetters);
+    try {
+      if (selectedSession?.client_id) {
+        invalidateSessionNoteCachesAfterSessionWrite(queryClient, {
+          sessionId,
+          clientId: selectedSession.client_id,
+          organizationId: activeOrganizationId,
+        });
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+        queryClient.invalidateQueries({ queryKey: ['sessions-batch'] }),
+      ]);
+    } catch (error) {
+      logger.warn('BT ABA session completed but schedule cache refresh failed', {
+        metadata: { sessionId, reason: toError(error, 'Schedule refresh failed').message },
+      });
+      showError('Session completed, but the schedule refresh failed. Refresh the page to see the completed session.');
+    } finally {
+      applyScheduleResetBranch({ kind: 'submit-cancel' }, scheduleResetSetters);
+    }
   }, [activeOrganizationId, queryClient, scheduleResetSetters, selectedSession?.client_id]);
 
   const toRescheduledWindow = useCallback(

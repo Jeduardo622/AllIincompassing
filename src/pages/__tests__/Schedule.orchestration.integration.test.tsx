@@ -799,7 +799,9 @@ describe("Schedule orchestration integration hardening", () => {
     expect(showSuccessMock).not.toHaveBeenCalledWith("Session data collection saved");
 
     fireEvent.click(screen.getByLabelText("report-bt-atomic-completion"));
+    fireEvent.click(screen.getByLabelText("report-bt-atomic-completion"));
     await waitFor(() => expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed"));
+    expect(showSuccessMock.mock.calls.filter(([message]) => message === "Session marked as completed")).toHaveLength(1);
     expect(bookSessionViaApiMock).not.toHaveBeenCalled();
     expect(showErrorMock).not.toHaveBeenCalled();
   });

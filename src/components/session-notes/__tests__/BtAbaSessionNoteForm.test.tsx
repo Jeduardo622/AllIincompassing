@@ -217,6 +217,13 @@ describe('BtAbaSessionNoteForm', () => {
     expect(screen.getByLabelText('Client Status')).toBeDisabled();
   });
 
+  it('keeps unlinked-data association visible but unavailable during closeout', () => {
+    render(<BtAbaSessionNoteForm {...makeProps()} initialResponses={{ ...emptyResponses, link_unlinked_data: true }} />);
+    expect(screen.getByLabelText('Link unlinked data for this service date')).toBeDisabled();
+    expect(screen.getByLabelText('Link unlinked data for this service date')).not.toBeChecked();
+    expect(screen.getByText('Linking data is not available during closeout; associate unlinked data before finalizing.')).toBeVisible();
+  });
+
   it('submits the complete normalized final payload', async () => {
     const user = userEvent.setup();
     const props = makeProps();
@@ -230,7 +237,6 @@ describe('BtAbaSessionNoteForm', () => {
     await user.type(screen.getByLabelText('Summary of Progress Toward Treatment Goals'), 'Made measurable progress');
     await user.type(screen.getByLabelText("Client's Response to Treatment"), 'Responded positively');
     await user.click(screen.getByLabelText('Include all data points'));
-    await user.click(screen.getByLabelText('Link unlinked data for this service date'));
     await user.type(screen.getByLabelText('Type Behavior Technician signature'), 'Jordan BT');
     await user.click(screen.getByRole('button', { name: 'Finalize Session' }));
 
@@ -243,7 +249,7 @@ describe('BtAbaSessionNoteForm', () => {
       progress_toward_goals: 'Made measurable progress',
       client_response_to_treatment: 'Responded positively',
       data_point_scope: 'all',
-      link_unlinked_data: true,
+      link_unlinked_data: false,
       bt_signature: { method: 'typed', value: 'Jordan BT' },
     });
   });

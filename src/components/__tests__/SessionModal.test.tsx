@@ -58,18 +58,27 @@ const validBtAbaResponses: BtAbaSessionNoteResponses = {
 vi.mock('../session-notes/BtAbaSessionNoteForm', () => ({
   BtAbaSessionNoteForm: ({
     initialResponses,
+    context,
     onSaveDraft,
     onFinalize,
+    busy,
   }: {
     initialResponses: BtAbaSessionNoteResponses;
+    context: { placeOfService: string; billingCode: string; modifiers: string[]; linkedDataPoints: unknown[]; allDataPoints: unknown[] };
     onSaveDraft: (responses: BtAbaSessionNoteResponses) => Promise<void>;
     onFinalize: (responses: BtAbaSessionNoteResponses) => Promise<void>;
+    busy: boolean;
   }) => (
     <section>
       <h2>ABA Session Note</h2>
       <p>Draft client status: {initialResponses.client_status}</p>
-      <button type="button" onClick={() => void onSaveDraft(validBtAbaResponses)}>Save ABA Draft</button>
-      <button type="button" onClick={() => void onFinalize(validBtAbaResponses)}>Finalize ABA Session</button>
+      <p>Place: {context.placeOfService}</p>
+      <p>Billing: {context.billingCode}</p>
+      <p>Modifiers: {context.modifiers.join(', ') || 'Not recorded'}</p>
+      <p>Linked count: {context.linkedDataPoints.length}</p>
+      <p>All count: {context.allDataPoints.length}</p>
+      <button type="button" disabled={busy} onClick={() => void onSaveDraft(validBtAbaResponses)}>Save ABA Draft</button>
+      <button type="button" disabled={busy} onClick={() => void onFinalize(validBtAbaResponses)}>Finalize ABA Session</button>
     </section>
   ),
 }));
@@ -285,6 +294,13 @@ describe('SessionModal', () => {
     existingSessions: [],
     timeZone: "America/New_York",
   };
+  const btInProgressSession = {
+    id: 'session-bt-review', therapist_id: 'test-therapist-1', client_id: 'test-client-1',
+    program_id: 'program-1', goal_id: 'goal-1', goal_ids: ['goal-1'],
+    start_time: '2026-03-01T10:00:00.000Z', end_time: '2026-03-01T11:00:00.000Z',
+    status: 'in_progress', notes: '', created_at: '2026-03-01T09:00:00.000Z', created_by: null,
+    updated_at: '2026-03-01T09:00:00.000Z', updated_by: null, started_at: '2026-03-01T10:00:00.000Z',
+  } satisfies Session;
 
   it('renders the modal when open', () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
@@ -911,10 +927,11 @@ describe('SessionModal', () => {
       .mockResolvedValue({ status: 'completed', noteId: 'note-restored', progressionResults: [] });
     vi.mocked(saveBtAbaSessionNoteDraft).mockResolvedValue({ status: 'draft', noteId: 'note-restored' });
     const onBtAbaSessionFinalized = vi.fn().mockResolvedValue(undefined);
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderWithProviders(
       <SessionModal
         {...defaultProps}
-        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onSubmit={onSubmit}
         onBtAbaSessionFinalized={onBtAbaSessionFinalized}
         dataCollectionOnly
         session={{
@@ -927,7 +944,8 @@ describe('SessionModal', () => {
       />,
     );
 
-    await userEvent.click(await screen.findByRole('button', { name: /^Close Session$/i }));
+    expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
     expect(await screen.findByText('Draft client status: Engaged')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save ABA Draft' }));
@@ -949,6 +967,93 @@ describe('SessionModal', () => {
     expect(onBtAbaSessionFinalized).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: 'session-bt-restored', noteId: 'note-restored', status: 'completed',
     }));
+  });
+
+  it('surfaces persisted BT draft loading failure before closeout can advance', async () => {
+    vi.mocked(getBtAbaSessionNote).mockRejectedValue(new Error('Draft lookup failed'));
+    renderWithProviders(<SessionModal {...defaultProps} session={btInProgressSession} dataCollectionOnly />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Draft lookup failed');
+    expect(screen.queryByRole('heading', { name: 'ABA Session Note' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Close Session$/i })).toBeDisabled();
+  });
+
+  it('does not reinterpret completed RPC success as finalization failure when refresh callback rejects', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed', templateId: 'template-bt-1', responses: validBtAbaResponses as unknown as Record<string, unknown>, status: 'draft',
+    });
+    vi.mocked(finalizeBtAbaSessionNote).mockResolvedValue({ status: 'completed', noteId: 'note-completed', progressionResults: [] });
+    const onClose = vi.fn();
+    const onBtAbaSessionFinalized = vi.fn().mockRejectedValue(new Error('Refresh failed'));
+    renderWithProviders(
+      <SessionModal {...defaultProps} onClose={onClose} session={btInProgressSession} dataCollectionOnly onBtAbaSessionFinalized={onBtAbaSessionFinalized} />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Finalize ABA Session' }));
+    await waitFor(() => expect(finalizeBtAbaSessionNote).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(toastMocks.showError).toHaveBeenCalledWith(expect.stringMatching(/completed.*refresh/i));
+    expect(toastMocks.showError).not.toHaveBeenCalledWith('Refresh failed');
+  });
+
+  it('guards rapid duplicate finalization with one RPC and one completion callback', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-once', templateId: 'template-bt-1', responses: validBtAbaResponses as unknown as Record<string, unknown>, status: 'draft',
+    });
+    let resolveFinalize!: (value: Awaited<ReturnType<typeof finalizeBtAbaSessionNote>>) => void;
+    vi.mocked(finalizeBtAbaSessionNote).mockImplementation(() => new Promise((resolve) => { resolveFinalize = resolve; }));
+    const onBtAbaSessionFinalized = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal {...defaultProps} session={btInProgressSession} dataCollectionOnly onBtAbaSessionFinalized={onBtAbaSessionFinalized} />,
+    );
+
+    const finalizeButton = await screen.findByRole('button', { name: 'Finalize ABA Session' });
+    fireEvent.click(finalizeButton);
+    fireEvent.click(finalizeButton);
+    expect(finalizeBtAbaSessionNote).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Close session modal' })).toBeDisabled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
+
+    resolveFinalize({ status: 'completed', noteId: 'note-once', progressionResults: [] });
+    await waitFor(() => expect(onBtAbaSessionFinalized).toHaveBeenCalledTimes(1));
+  });
+
+  it('uses canonical billing context and distinguishes linked from all trial events', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-context', templateId: 'template-bt-1', responses: validBtAbaResponses as unknown as Record<string, unknown>, status: 'draft',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-context', date: '2026-03-01', start_time: '10:00:00', end_time: '11:00:00',
+      service_code: '97153', therapist_name: 'Test Therapist', goals_addressed: ['Default Goal'], goal_ids: ['goal-1'],
+      narrative: '', is_locked: false, client_id: 'test-client-1', authorization_id: 'auth-1',
+    });
+    const trialRows = [
+      { id: 'trial-linked', organization_id: 'org-a', client_id: 'test-client-1', session_id: btInProgressSession.id, target_id: 'target-1', goal_id: 'goal-1', therapist_id: 'test-therapist-1', trial_number: 1, response: 'correct', event_timestamp: '', metadata: {}, created_at: '', updated_at: '' },
+      { id: 'trial-unlinked', organization_id: 'org-a', client_id: 'test-client-1', session_id: btInProgressSession.id, target_id: 'target-2', goal_id: 'goal-other', therapist_id: 'test-therapist-1', trial_number: 2, response: 'incorrect', event_timestamp: '', metadata: {}, created_at: '', updated_at: '' },
+    ];
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain), eq: vi.fn(() => chain), neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })), maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: rows, error: null })),
+      };
+      return chain;
+    };
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain(mockPrograms);
+      if (table === 'goals') return buildChain(mockGoals);
+      if (table === 'trial_events') return buildChain(trialRows);
+      if (table === 'sessions') return buildChain([], { program_id: 'program-1', goal_id: 'goal-1', started_at: btInProgressSession.started_at, location_type: null });
+      return buildChain([]);
+    });
+
+    renderWithProviders(<SessionModal {...defaultProps} session={btInProgressSession} dataCollectionOnly />);
+    expect(await screen.findByText('Place: Not recorded')).toBeInTheDocument();
+    expect(screen.getByText('Billing: 97153')).toBeInTheDocument();
+    expect(screen.getByText('Modifiers: Not recorded')).toBeInTheDocument();
+    expect(screen.getByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('All count: 2')).toBeInTheDocument();
   });
 
   it('closes an in-progress historical session even when stored program and goal are no longer active', async () => {

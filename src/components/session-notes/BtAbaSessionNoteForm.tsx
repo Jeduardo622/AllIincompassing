@@ -76,14 +76,14 @@ function CheckboxGroup({ field, label, options, values, disabled, error, onToggl
 }
 
 export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, onFinalize, busy }: BtAbaSessionNoteFormProps) {
-  const [responses, setResponses] = useState<BtAbaSessionNoteResponses>(initialResponses);
+  const [responses, setResponses] = useState<BtAbaSessionNoteResponses>({ ...initialResponses, link_unlinked_data: false });
   const [errors, setErrors] = useState<Errors>({});
   const formRef = useRef<HTMLFormElement>(null);
   const latestInitialResponses = useRef(initialResponses);
   latestInitialResponses.current = initialResponses;
 
   useEffect(() => {
-    setResponses(latestInitialResponses.current);
+    setResponses({ ...latestInitialResponses.current, link_unlinked_data: false });
     setErrors({});
   }, [context.sessionId]);
 
@@ -267,9 +267,12 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="radio" name="data-point-scope" checked={responses.data_point_scope === 'all'} disabled={busy} onChange={() => setField('data_point_scope', 'all')} /> Include all data points</label>
         </fieldset>
         <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
-          <input type="checkbox" checked={responses.link_unlinked_data} disabled={busy} onChange={(event) => setField('link_unlinked_data', event.target.checked)} className="mt-0.5" />
+          <input type="checkbox" checked={false} disabled aria-describedby="link-unlinked-data-unavailable" className="mt-0.5" />
           Link unlinked data for this service date
         </label>
+        <p id="link-unlinked-data-unavailable" className="text-sm text-gray-600 dark:text-gray-300">
+          Linking data is not available during closeout; associate unlinked data before finalizing.
+        </p>
       </section>
 
       <section className={sectionClass}>

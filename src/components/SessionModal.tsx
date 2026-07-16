@@ -525,6 +525,7 @@ export function SessionModal({
     isDataCollectionOnly && (session?.status === 'scheduled' || session?.status === 'in_progress'),
   );
   const shouldHideGoalCaptureFields = hideGoalCaptureFields;
+  const shouldShowPromptCorrectnessToggle = !isBtClinicalCaptureSession;
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
 
@@ -3996,23 +3997,25 @@ export function SessionModal({
                                                     </span>
                                                   </div>
                                                   <div className="mt-3 rounded-md border border-indigo-200 bg-white/80 p-2 dark:border-indigo-800 dark:bg-dark/70">
-                                                    <label className="flex min-h-10 items-center gap-2 text-xs font-medium text-gray-800 dark:text-gray-200">
-                                                      <input
-                                                        type="checkbox"
-                                                        checked={promptCorrectByTargetId[promptCorrectnessKey] ?? true}
-                                                        onChange={(event) => setPromptCorrectByTargetId((current) =>
-                                                          setPromptCorrectnessForTarget(
-                                                            current,
-                                                            promptCorrectnessKey,
-                                                            event.target.checked,
-                                                          ))}
-                                                        aria-label={`Prompted response was correct for target ${targetIndex + 1}: ${configuredTarget.name}`}
-                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                      />
-                                                      Prompted response was correct
-                                                    </label>
+                                                    {shouldShowPromptCorrectnessToggle ? (
+                                                      <label className="flex min-h-10 items-center gap-2 text-xs font-medium text-gray-800 dark:text-gray-200">
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={promptCorrectByTargetId[promptCorrectnessKey] ?? true}
+                                                          onChange={(event) => setPromptCorrectByTargetId((current) =>
+                                                            setPromptCorrectnessForTarget(
+                                                              current,
+                                                              promptCorrectnessKey,
+                                                              event.target.checked,
+                                                            ))}
+                                                          aria-label={`Prompted response was correct for target ${targetIndex + 1}: ${configuredTarget.name}`}
+                                                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
+                                                        Prompted response was correct
+                                                      </label>
+                                                    ) : null}
                                                     <div
-                                                      className="mt-2 flex flex-wrap gap-2"
+                                                      className={`${shouldShowPromptCorrectnessToggle ? 'mt-2' : ''} flex flex-wrap gap-2`}
                                                       role="group"
                                                       aria-label={`Prompt types for target ${targetIndex + 1}: ${configuredTarget.name}`}
                                                     >
@@ -4120,23 +4123,25 @@ export function SessionModal({
                                             </div>
                                             {!configuredTarget ? (
                                             <div className="w-full rounded-md border border-indigo-200 bg-white/80 p-2 dark:border-indigo-800 dark:bg-dark/70">
-                                              <label className="flex min-h-10 items-center gap-2 text-xs font-medium text-gray-800 dark:text-gray-200">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={promptCorrectByTargetId[promptCorrectnessKey] ?? true}
-                                                  onChange={(event) => setPromptCorrectByTargetId((current) =>
-                                                    setPromptCorrectnessForTarget(
-                                                      current,
-                                                      promptCorrectnessKey,
-                                                      event.target.checked,
-                                                    ))}
-                                                  aria-label={`Prompted response was correct for target ${targetIndex + 1}: ${targetValue}`}
-                                                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                                Prompted response was correct
-                                              </label>
+                                              {shouldShowPromptCorrectnessToggle ? (
+                                                <label className="flex min-h-10 items-center gap-2 text-xs font-medium text-gray-800 dark:text-gray-200">
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={promptCorrectByTargetId[promptCorrectnessKey] ?? true}
+                                                    onChange={(event) => setPromptCorrectByTargetId((current) =>
+                                                      setPromptCorrectnessForTarget(
+                                                        current,
+                                                        promptCorrectnessKey,
+                                                        event.target.checked,
+                                                      ))}
+                                                    aria-label={`Prompted response was correct for target ${targetIndex + 1}: ${targetValue}`}
+                                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                  />
+                                                  Prompted response was correct
+                                                </label>
+                                              ) : null}
                                               <div
-                                                className="mt-2 flex flex-wrap gap-2"
+                                                className={`${shouldShowPromptCorrectnessToggle ? 'mt-2' : ''} flex flex-wrap gap-2`}
                                                 role="group"
                                                 aria-label={`Prompt types for target ${targetIndex + 1}: ${targetValue}`}
                                               >

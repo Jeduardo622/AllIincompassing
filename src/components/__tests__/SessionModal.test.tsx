@@ -3074,6 +3074,135 @@ describe('SessionModal', () => {
     expect(submitted.session_note_goal_measurements?.['goal-1']?.data.measurement_type).toBe('taskAnalysis');
   }, 15000);
 
+  it.each(['scheduled', 'in_progress'] as const)(
+    'hides prompted response correctness controls during %s BT data-collection capture',
+    async (status) => {
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+      const targetId = '88888888-8888-4888-8888-8888888888bt';
+      const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      };
+
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'programs') {
+          return buildChain(mockPrograms);
+        }
+        if (table === 'goals') {
+          return buildChain(mockGoals.map((goal) =>
+            goal.id === 'goal-1' ? { ...goal, measurement_type: 'taskAnalysis' } : goal,
+          ));
+        }
+        if (table === 'authorizations') {
+          return buildChain([
+            {
+              id: 'auth-1',
+              authorization_number: 'AUTH-001',
+              services: [{ service_code: '97153' }],
+            },
+          ]);
+        }
+        if (table === 'goal_targets') {
+          return buildChain([
+            {
+              id: targetId,
+              organization_id: 'org-a',
+              client_id: 'test-client-1',
+              goal_id: 'goal-1',
+              name: 'Match peer greeting in 4/5 trials',
+              measurement_type: 'taskAnalysis',
+              graph_config: {},
+              status: 'active',
+              sort_order: 0,
+              is_current: true,
+              current_phase: 'baseline',
+              evaluation_window_started_at: '2024-01-01T00:00:00Z',
+              progression_version: 7,
+              created_by: null,
+              updated_by: null,
+              created_at: '2024-01-01T00:00:00Z',
+              updated_at: '2024-01-01T00:00:00Z',
+            },
+          ]);
+        }
+        if (table === 'trial_events') {
+          return buildChain([]);
+        }
+        return buildChain([]);
+      });
+
+      const session = {
+        id: `session-task-analysis-bt-capture-${status}`,
+        therapist_id: 'test-therapist-1',
+        client_id: 'test-client-1',
+        program_id: 'program-1',
+        goal_id: 'goal-1',
+        start_time: '2026-03-01T10:00:00.000Z',
+        end_time: '2026-03-01T11:00:00.000Z',
+        status,
+        notes: '',
+        created_at: '2026-03-01T09:00:00.000Z',
+        created_by: null,
+        updated_at: '2026-03-01T09:00:00.000Z',
+        updated_by: null,
+        started_at: status === 'in_progress' ? '2026-03-01T10:00:00.000Z' : null,
+      } satisfies Session;
+      const { rerender } = renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          onSubmit={onSubmit}
+          existingSessions={[]}
+          dataCollectionOnly
+          session={session}
+        />,
+      );
+
+      await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
+
+      expect(screen.queryByRole('checkbox', {
+        name: /Prompted response was correct for target 1/i,
+      })).not.toBeInTheDocument();
+      const promptLabels = [
+        'full verbal',
+        'partial verbal',
+        'gesture',
+        'model',
+        'visual',
+        'full physical',
+        'partial physical',
+      ];
+      for (const label of promptLabels) {
+        expect(screen.getByRole('button', {
+          name: new RegExp(`Record ${label} prompt for target 1`, 'i'),
+        })).toBeInTheDocument();
+      }
+      await userEvent.click(screen.getByRole('button', {
+        name: /Record full verbal prompt for target 1/i,
+      }));
+      expect(screen.getByText('+1 · −0')).toBeInTheDocument();
+
+      rerender(
+        <SessionModal
+          {...defaultProps}
+          onSubmit={onSubmit}
+          existingSessions={[]}
+          session={session}
+        />,
+      );
+      expect(await screen.findByRole('checkbox', {
+        name: /Prompted response was correct for target 1/i,
+      })).toBeInTheDocument();
+    },
+    15000,
+  );
+
   it('keeps aggregate counts nulled when reopening a raw-trial-backed target without new trial clicks', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const targetId = '88888888-8888-4888-8888-888888888889';
@@ -3497,6 +3626,7 @@ describe('SessionModal', () => {
       <SessionModal
         {...defaultProps}
         onSubmit={onSubmit}
+        dataCollectionOnly
         session={{
           id: 'session-target-removal',
           therapist_id: 'test-therapist-1',
@@ -3532,6 +3662,12 @@ describe('SessionModal', () => {
     fireEvent.change(targetFields[targetFields.length - 1], {
       target: { value: 'Target A' },
     });
+    expect(screen.queryByRole('checkbox', {
+      name: /Prompted response was correct for target 1: Target A/i,
+    })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', {
+      name: /Record full verbal prompt for target 1: Target A/i,
+    })).toBeInTheDocument();
     const addTargetButtons = screen.getAllByRole('button', { name: /add target/i });
     await userEvent.click(addTargetButtons[addTargetButtons.length - 1]);
     const secondTargetFields = screen.getAllByLabelText(/^Target 2$/i);

@@ -26,17 +26,18 @@ The existing supervising-admin Supervision Session Note is separate. Parent/guar
 
 ## Browser evidence contract
 
-The dedicated script refuses credentials whose email is not visibly synthetic and fails before launching Chromium when the required environment contract is incomplete. It:
+The dedicated script is destructive only on an explicitly acknowledged disposable Supabase project. It refuses the production project `wnnjeqheqxxyrgsjmygy`, refuses a runtime URL whose project ref differs from the acknowledgement, refuses credentials whose email is not visibly synthetic, and fails before Chromium or any database write when the environment contract is incomplete. It:
 
 1. authenticates `PW_BT_EMAIL` / `PW_BT_PASSWORD`;
-2. verifies the authoritative `bt` role has no elevated role, and the selected active BT/RBT therapist is the actor or their explicit link in the active organization;
-3. creates only a scoped synthetic assigned session, starts it, captures goal data, and opens closeout;
-4. proves incomplete validation, saves a draft, reloads, and proves restoration;
-5. exercises drawn signature plus clear/retry, then uses the typed fallback;
-6. finalizes through `/api/session-notes/upsert`, proves `completed`, locked note contents, and one actor-owned BT attestation; and
-7. cleans up only the recorded fixture session/program/goal identifiers.
+2. resolves the direct `/auth/v1/user` response, derives authoritative organization scope from the authenticated `current_user_organization_id` RPC, and requires the persisted profile to agree;
+3. uses service-role reads to validate the explicit therapist, client, program, and goal IDs are active, same-organization, correctly linked, marker-bearing disposable fixtures with a current approved therapist-client authorization;
+4. creates only one exact marked session on that validated graph, starts it, captures the explicit goal, and opens closeout;
+5. proves incomplete validation, saves a draft, reloads, and proves restoration;
+6. exercises drawn signature plus clear/retry, then uses the typed fallback;
+7. finalizes through `/api/session-notes/upsert`, proves the modal closes, exactly one completion signal appears, the refreshed Schedule card reports `data-session-status="completed"`, the note is locked, and one actor-owned BT attestation exists; and
+8. deletes the exact marker-matched session by ID and verifies its notes, attestations, trials, audit, supervision request, session-goal, CPT, and progression graph has no residual rows. It never changes a completed session to `cancelled`; an incomplete cleanup fails with an instruction to tear down the disposable branch.
 
-Required runtime inputs are `PW_BASE_URL`, `PW_BT_EMAIL`, `PW_BT_PASSWORD`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (or `SUPABASE_ANON_KEY`), and `SUPABASE_SERVICE_ROLE_KEY`. No credential or customer identifier is embedded in the repository.
+Required runtime inputs are `PW_BASE_URL`, `PW_BT_EMAIL`, `PW_BT_PASSWORD`, explicit `PW_BT_CLIENT_ID`, `PW_BT_PROGRAM_ID`, and `PW_BT_GOAL_ID`, a strong `PW_BT_FIXTURE_MARKER` present in every validated fixture identity field, `PW_BT_DISPOSABLE_PROJECT_REF`, `PW_BT_DISPOSABLE_ACK=I_ACKNOWLEDGE_DISPOSABLE_SUPABASE`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (or `SUPABASE_ANON_KEY`), and `SUPABASE_SERVICE_ROLE_KEY`. No credential or customer identifier is embedded in the repository, and no arbitrary client/program/goal selection is permitted.
 
 Authorized-reviewer browser visibility is **blocked**, not passed: the repository has no established safe synthetic reviewer credential/fixture path for this new note. Add that proof only after a dedicated reviewer persona and fixture contract are provisioned. Service-role artifact inspection in the script proves persistence, not reviewer UI authorization.
 
@@ -47,7 +48,7 @@ Authorized-reviewer browser visibility is **blocked**, not passed: the repositor
 - Database/API cross-layer review removed caller-controlled billing identity and routes assignment preflight through the protected RPC contract.
 - UI review added exact shared labels/options, conditional Other rules, exclusive N/A behavior, accessible first-error focus, bounded multi-stroke drawing, typed fallback, and same-session unsaved-state preservation.
 - Lifecycle review added durable draft auto-open, visible load/finalize failures, synchronous duplicate-finalize prevention, completion/refresh separation, canonical context derivation, and one completion callback/toast/reset.
-- Test/documentation review added a synthetic exact-BT browser proof with fail-closed preflight and honestly deferred reviewer visibility.
+- Test/documentation review corrected the browser boundary to require an explicit marker-validated fixture graph and disposable-project acknowledgement before any write, assert visible Schedule completion processing, delete rather than cancel completed fixtures, and honestly defer reviewer visibility.
 
 ## Supabase compatibility and live-state boundary
 
@@ -63,14 +64,14 @@ The parent agent must replace each `PENDING`/`BLOCKED` entry with exact final ou
 |---|---|---|
 | Focused BT ABA contract/components/server/migration tests | Task-level focused suites passed; latest task totals include contract/components `30/30`, migration/RLS `142/142`, combined handler/migration/RLS `200/200`, and lifecycle/orchestration `131` tests | `PENDING` fresh cumulative run |
 | `npm run ci:check-focused` | Fresh Task 6 pass; DB overlap, preview drift, privileged-function DB grants, and auth parity were skipped without DB/CI configuration | Parent should repeat after final review changes |
-| `npm run lint` | Fresh Task 6 pass with zero warnings; new script is ignored by the global ESLint configuration and its direct invocation also succeeded with `--no-warn-ignored` | Parent should repeat after final review changes |
+| `npm run lint` | Fresh Task 6 pass with zero warnings; the normally ignored script also passed a direct `eslint --no-ignore --max-warnings 0` run | Parent should repeat after final review changes |
 | `npm run typecheck` | Fresh Task 6 pass | Parent should repeat after final review changes |
 | `npm run test:ci` | Earlier bounded run timed out with unrelated baseline AI documentation localhost errors | `PENDING` fresh final run or exact failure evidence |
 | `npm run validate:tenant` | Passed in database task | `PENDING` fresh final run |
 | `npm run test:routes:tier0` | Not run in Task 6 implementation | `PENDING` |
 | `npm run build` | Fresh Task 6 pass | Parent should repeat after final review changes |
 | `npm run ci:playwright` | Not run with protected credentials in Task 6 implementation | `BLOCKED` until credentialed environment/CI |
-| `npm run playwright:bt-aba-session-note` | Missing-env preflight intentionally failed before browser with a precise `PW_BT_EMAIL` error | `BLOCKED` until exact synthetic BT fixture credentials and migrated DB are available |
+| `npm run playwright:bt-aba-session-note` | Missing-env preflight names every absent explicit input; separate no-network preflights refuse the production ref and a runtime/acknowledged project-ref mismatch before Chromium or writes | `BLOCKED` until the marker-validated disposable exact-BT graph and migrated DB are available |
 | `npm run verify:local` | Not run after integrated change | `PENDING`; preserve any DB/credential skips |
 | `npx supabase db reset` + SQL smoke | Local Supabase startup timed out | `BLOCKED` executable DB runtime required |
 | Hosted/preview migration replay and advisors | No hosted mutation performed | `BLOCKED` supervised disposable preview or approved hosted path required |

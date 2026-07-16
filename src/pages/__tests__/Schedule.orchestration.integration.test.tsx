@@ -116,6 +116,7 @@ vi.mock("../../components/SessionModal", () => ({
     session,
     retryHint,
     dataCollectionOnly,
+    allowStartSession,
     hideGoalCaptureFields,
   }: {
     isOpen: boolean;
@@ -124,6 +125,7 @@ vi.mock("../../components/SessionModal", () => ({
     session?: { id: string };
     retryHint?: string | null;
     dataCollectionOnly?: boolean;
+    allowStartSession?: boolean;
     hideGoalCaptureFields?: boolean;
   }) =>
     isOpen ? (
@@ -131,6 +133,7 @@ vi.mock("../../components/SessionModal", () => ({
         <div data-testid="modal-mode">{session ? "edit" : "create"}</div>
         <div data-testid="retry-hint">{retryHint ?? ""}</div>
         <div data-testid="data-collection-only">{dataCollectionOnly ? "true" : "false"}</div>
+        <div data-testid="allow-start-session">{allowStartSession ? "true" : "false"}</div>
         <div data-testid="hide-goal-capture-fields">{hideGoalCaptureFields ? "true" : "false"}</div>
         <button
           aria-label="submit-complete-with-stale-trial"
@@ -641,6 +644,22 @@ describe("Schedule orchestration integration hardening", () => {
     }));
     expect(bookSessionViaApiMock.mock.calls[0][1]).toBeUndefined();
     expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("allows a BT to start an existing scheduled appointment in data-only mode", async () => {
+    scheduleFixtures.sessions[0].status = "scheduled";
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("data-collection-only")).toHaveTextContent("true");
+    expect(screen.getByTestId("allow-start-session")).toHaveTextContent("true");
   });
 
   it("BT live capture persistence saves data collection without updating appointment metadata", async () => {

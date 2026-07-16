@@ -1400,6 +1400,59 @@ describe('SessionModal', () => {
       });
     });
 
+    it('denies starting a scheduled data-only session when allowStartSession is omitted', async () => {
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={editSession}
+          dataCollectionOnly
+        />
+      );
+
+      await screen.findByRole('option', { name: /Default Goal/i });
+      expect(screen.queryByRole('button', { name: /Start Session/i })).not.toBeInTheDocument();
+    });
+
+    it('allows a scheduled BT data-only session to start without unlocking schedule metadata', async () => {
+      vi.mocked(startSessionFromModal).mockResolvedValue(undefined);
+      const onSessionStarted = vi.fn();
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={editSession}
+          dataCollectionOnly
+          allowStartSession
+          onSessionStarted={onSessionStarted}
+        />
+      );
+
+      expect(screen.getByRole('combobox', { name: /Therapist/i })).toBeDisabled();
+      expect(screen.getByRole('combobox', { name: /Client/i })).toBeDisabled();
+      expect(screen.getByRole('combobox', { name: /Program/i })).toBeDisabled();
+      expect(screen.getByRole('combobox', { name: /Primary Goal/i })).toBeDisabled();
+      expect(screen.getByRole('combobox', { name: /Status/i })).toBeDisabled();
+      expect(screen.getByLabelText(/Start Time/i)).toBeDisabled();
+      expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
+      expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
+
+      const startButton = await screen.findByRole('button', { name: /Start Session/i });
+      await waitFor(() => expect(startButton).not.toBeDisabled());
+      await userEvent.click(startButton);
+
+      await waitFor(() => {
+        expect(vi.mocked(startSessionFromModal)).toHaveBeenCalledWith({
+          sessionId: 'session-edit',
+          programId: 'program-1',
+          goalId: 'goal-1',
+          goalIds: ['goal-1'],
+        });
+        expect(vi.mocked(startSessionFromModal)).toHaveBeenCalledOnce();
+        expect(onSessionStarted).toHaveBeenCalledOnce();
+        expect(defaultProps.onClose).toHaveBeenCalledOnce();
+      });
+    });
+
     it('allows BT data-only edit mode to close an in-progress session without unlocking schedule metadata', async () => {
       const onSubmit = vi.fn().mockResolvedValue(undefined);
       const lockedSession: Session = {

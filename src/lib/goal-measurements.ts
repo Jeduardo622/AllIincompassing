@@ -1,4 +1,10 @@
-import type { Goal, SessionGoalMeasurementData, SessionGoalMeasurementEntry, SessionTargetTrialData } from '../types';
+import type {
+  Goal,
+  SessionGoalMeasurementData,
+  SessionGoalMeasurementEntry,
+  SessionPromptCount,
+  SessionTargetTrialData,
+} from '../types';
 
 export const GOAL_MEASUREMENT_VERSION = 1 as const;
 
@@ -54,12 +60,70 @@ const normalizeEditableStringList = (value: unknown): string[] => {
 const getPrimaryNonEmptyTarget = (targets: readonly string[]): string | null =>
   targets.map((target) => toOptionalString(target)).find((target): target is string => Boolean(target)) ?? null;
 
+const canonicalPromptPairs = [
+  ['verbal', 'full'],
+  ['verbal', 'partial'],
+  ['gesture', null],
+  ['model', null],
+  ['visual', null],
+  ['physical', 'full'],
+  ['physical', 'partial'],
+] as const;
+
+const toNonNegativeSafeInteger = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+};
+
+const addSafeCounts = (left: number, right: number): number =>
+  Math.min(Number.MAX_SAFE_INTEGER, left + right);
+
+export const normalizePromptCounts = (value: unknown): SessionPromptCount[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const totals = new Map<string, { correct: number; incorrect: number }>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const source = entry as Record<string, unknown>;
+    const promptType = toOptionalString(source.prompt_type);
+    const promptLevel = source.prompt_level === null ? null : toOptionalString(source.prompt_level);
+    const canonical = canonicalPromptPairs.find(([type, level]) => type === promptType && level === promptLevel);
+    if (!canonical) {
+      continue;
+    }
+    const key = `${canonical[0]}:${canonical[1] ?? ''}`;
+    const existing = totals.get(key) ?? { correct: 0, incorrect: 0 };
+    totals.set(key, {
+      correct: addSafeCounts(existing.correct, toNonNegativeSafeInteger(source.correct_trials)),
+      incorrect: addSafeCounts(existing.incorrect, toNonNegativeSafeInteger(source.incorrect_trials)),
+    });
+  }
+
+  return canonicalPromptPairs.flatMap(([promptType, promptLevel]) => {
+    const total = totals.get(`${promptType}:${promptLevel ?? ''}`);
+    if (!total || (total.correct === 0 && total.incorrect === 0)) {
+      return [];
+    }
+    return [{
+      prompt_type: promptType,
+      prompt_level: promptLevel,
+      correct_trials: total.correct,
+      incorrect_trials: total.incorrect,
+    }];
+  });
+};
+
 const hasTargetTrialData = (trial: SessionTargetTrialData | null | undefined): trial is SessionTargetTrialData =>
   Boolean(
     trial &&
       ((trial.metric_value !== null && trial.metric_value !== undefined) ||
         (trial.incorrect_trials !== null && trial.incorrect_trials !== undefined) ||
         (trial.opportunities !== null && trial.opportunities !== undefined) ||
+        (trial.prompt_counts?.length ?? 0) > 0 ||
         (trial.trial_prompt_note?.trim().length ?? 0) > 0 ||
         (trial.target?.trim().length ?? 0) > 0),
   );
@@ -75,12 +139,22 @@ const normalizeTargetTrials = (
   return value
     .map((entry, index) => {
       const source = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+      const promptCounts = normalizePromptCounts(source.prompt_counts);
+      const promptedCorrect = promptCounts.reduce((total, count) => addSafeCounts(total, count.correct_trials), 0);
+      const promptedIncorrect = promptCounts.reduce((total, count) => addSafeCounts(total, count.incorrect_trials), 0);
+      const sourceMetricValue = toOptionalNumber(source.metric_value ?? source.count ?? source.value);
+      const sourceIncorrectTrials = toOptionalNumber(source.incorrect_trials ?? source.incorrectTrials);
       const trial: SessionTargetTrialData = {
         target: toOptionalString(source.target) ?? toOptionalString(targets[index]) ?? null,
-        metric_value: toOptionalNumber(source.metric_value ?? source.count ?? source.value),
-        incorrect_trials: toOptionalNumber(source.incorrect_trials ?? source.incorrectTrials),
+        metric_value: promptCounts.length > 0
+          ? Math.max(sourceMetricValue ?? 0, promptedCorrect)
+          : sourceMetricValue,
+        incorrect_trials: promptCounts.length > 0
+          ? Math.max(sourceIncorrectTrials ?? 0, promptedIncorrect)
+          : sourceIncorrectTrials,
         opportunities: toOptionalNumber(source.opportunities ?? source.trials),
         trial_prompt_note: toOptionalString(source.trial_prompt_note ?? source.trialPromptNote),
+        ...(promptCounts.length > 0 ? { prompt_counts: promptCounts } : {}),
       };
       return hasTargetTrialData(trial) ? trial : null;
     })
@@ -91,12 +165,20 @@ const buildLegacyTargetTrial = (
   sourceData: Record<string, unknown>,
   targets: readonly string[],
 ): SessionTargetTrialData | null => {
+  const promptCounts = normalizePromptCounts(sourceData.prompt_counts);
+  const promptedCorrect = promptCounts.reduce((total, count) => addSafeCounts(total, count.correct_trials), 0);
+  const promptedIncorrect = promptCounts.reduce((total, count) => addSafeCounts(total, count.incorrect_trials), 0);
+  const sourceMetricValue = toOptionalNumber(sourceData.metric_value ?? sourceData.count ?? sourceData.value);
+  const sourceIncorrectTrials = toOptionalNumber(sourceData.incorrect_trials ?? sourceData.incorrectTrials);
   const trial: SessionTargetTrialData = {
     target: getPrimaryNonEmptyTarget(targets),
-    metric_value: toOptionalNumber(sourceData.metric_value ?? sourceData.count ?? sourceData.value),
-    incorrect_trials: toOptionalNumber(sourceData.incorrect_trials ?? sourceData.incorrectTrials),
+    metric_value: promptCounts.length > 0 ? Math.max(sourceMetricValue ?? 0, promptedCorrect) : sourceMetricValue,
+    incorrect_trials: promptCounts.length > 0
+      ? Math.max(sourceIncorrectTrials ?? 0, promptedIncorrect)
+      : sourceIncorrectTrials,
     opportunities: toOptionalNumber(sourceData.opportunities ?? sourceData.trials),
     trial_prompt_note: toOptionalString(sourceData.trial_prompt_note ?? sourceData.trialPromptNote),
+    ...(promptCounts.length > 0 ? { prompt_counts: promptCounts } : {}),
   };
   return hasTargetTrialData(trial) ? trial : null;
 };

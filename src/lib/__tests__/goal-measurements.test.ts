@@ -123,6 +123,61 @@ describe('goal-measurements helpers', () => {
     });
   });
 
+  it('preserves canonical aggregate prompt counts for legacy target trials', () => {
+    expect(
+      normalizeGoalMeasurementEntry({
+        targets: ['Permission to look before touch'],
+        target_trials: [
+          {
+            target: 'Permission to look before touch',
+            metric_value: 2,
+            incorrect_trials: 1,
+            prompt_counts: [
+              { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: 0 },
+              { prompt_type: 'gesture', prompt_level: null, correct_trials: 0, incorrect_trials: 1 },
+            ],
+          },
+        ],
+      }),
+    ).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        target_trials: [expect.objectContaining({
+          prompt_counts: [
+            { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: 0 },
+            { prompt_type: 'gesture', prompt_level: null, correct_trials: 0, incorrect_trials: 1 },
+          ],
+        })],
+      }),
+    }));
+  });
+
+  it('canonicalizes, bounds, and deduplicates legacy prompt counts', () => {
+    const normalized = normalizeGoalMeasurementEntry({
+      targets: ['Target'],
+      target_trials: [{
+        target: 'Target',
+        metric_value: 0,
+        incorrect_trials: 0,
+        prompt_counts: [
+          { prompt_type: 'gesture', prompt_level: null, correct_trials: 1, incorrect_trials: 0, client_id: 'discard-me' },
+          { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: -4 },
+          { prompt_type: 'gesture', prompt_level: null, correct_trials: 2, incorrect_trials: 1 },
+          { prompt_type: 'unknown', prompt_level: null, correct_trials: 100, incorrect_trials: 100 },
+          { prompt_type: 'visual', prompt_level: null, correct_trials: 0, incorrect_trials: 0 },
+        ],
+      }],
+    });
+
+    expect(normalized?.data.target_trials).toEqual([expect.objectContaining({
+      metric_value: 4,
+      incorrect_trials: 1,
+      prompt_counts: [
+        { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: 0 },
+        { prompt_type: 'gesture', prompt_level: null, correct_trials: 3, incorrect_trials: 1 },
+      ],
+    })]);
+  });
+
   it('builds a goal-scoped measurement entry with goal defaults', () => {
     expect(
       buildGoalMeasurementEntry(

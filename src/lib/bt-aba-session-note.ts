@@ -19,6 +19,58 @@ export type BtAbaSessionNoteResponses = {
 
 export const BT_ABA_SESSION_NOTE_TEMPLATE_TYPE = 'bt_aba_session_note' as const;
 
+export const BT_ABA_PURPOSE_OPTIONS = [
+  'RBT/BT worked on goals as stated in the treatment plan',
+  'RBT/BT worked on pairing self with reinforcers',
+  'Other',
+] as const;
+
+export const BT_ABA_SKILL_STRATEGY_OPTIONS = [
+  'Role playing or modeling',
+  'Generalization training',
+  'Natural environment teaching',
+  'Discrete trial training',
+  'Shaping/Chaining',
+  'Providing support with prompt fading',
+  'Behavior Momentum',
+  'Other',
+  'N/A',
+] as const;
+
+export const BT_ABA_BEHAVIOR_STRATEGY_OPTIONS = [
+  'Modeling',
+  'Verbal reminders provided',
+  'Contingent rewards/reinforcers',
+  'Guided Compliance',
+  'First/Then statements',
+  'Visual supports',
+  'Differential Reinforcement',
+  'Other',
+  'N/A',
+] as const;
+
+export const BT_ABA_SUPERVISOR_SUPPORT_OPTIONS = [
+  'Supervisor did not attend this session',
+  'Problem-solved concerns',
+  'Supervisor provided some direct support',
+  'Modeled strategies/interventions',
+  'Discussed programs/progress/data collection',
+  'Other',
+] as const;
+
+export const BT_ABA_FIELD_LABELS = {
+  purpose_of_session: 'Purpose of Session',
+  client_status: 'Client Status',
+  skill_strategies: 'Skill Strategies',
+  behavior_strategies: 'Behavior Strategies',
+  supervisor_support: 'Supervisor Support and Discussion Included',
+  progress_toward_goals: 'Summary of Progress Toward Treatment Goals',
+  client_response_to_treatment: "Client's Response to Treatment",
+  data_point_scope: 'Data Point Scope',
+  link_unlinked_data: 'Link Unlinked Data',
+  bt_signature: 'Behavior Technician Signature',
+} as const;
+
 const requiredSelections = z.array(z.string().trim().min(1)).min(1);
 
 const btAbaSessionNoteResponsesSchema: z.ZodType<BtAbaSessionNoteResponses> = z.object({

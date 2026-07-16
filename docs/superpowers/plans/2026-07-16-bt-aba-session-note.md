@@ -13,6 +13,7 @@
 - Linear issue: WIN-221.
 - Classification: `high-risk human-reviewed`; lane: `critical`.
 - Keep the existing supervising-admin Supervision Session Note workflow separate.
+- Preserve the existing completed-session audit event and supervising-admin request side effects inside the new atomic transaction.
 - A session remains `in_progress` until BT ABA note finalization succeeds.
 - Behavior Technician signature is required; parent, midtier, and BCBA attestations are optional and actor-owned.
 - Never allow cross-organization access or an unrelated BT to draft/finalize the note.
@@ -120,7 +121,7 @@ expect(sql).toMatch(/revoke execute .* from public, anon/i);
 expect(sql).toMatch(/v_session\.status <> 'in_progress'/i);
 ```
 
-The SQL smoke must prove assigned same-org BT draft/finalize success, unrelated BT denial, cross-org denial, required-field failure, idempotent retry, and `session.status = 'completed'` only after success.
+The SQL smoke must prove assigned same-org BT draft/finalize success, unrelated BT denial, cross-org denial, required-field failure, idempotent retry, `session.status = 'completed'` only after success, one completion audit event, and one idempotent supervising-admin request.
 
 - [ ] **Step 3: Run migration tests and confirm RED**
 
@@ -159,7 +160,7 @@ Seed `template_type = 'bt_aba_session_note'` for every existing organization wit
 
 `save_bt_aba_session_note_draft` must lock the session/note, require `in_progress`, verify caller maps to the session therapist in the same organization, reject locked notes, and update only the BT template fields.
 
-`finalize_bt_aba_session_note` must take an advisory transaction lock, repeat authorization checks, validate required responses and BT signature, call existing note/progression finalization, insert the caller-owned BT attestation, and update `sessions.status` to `completed` in the same transaction. A repeated call returns the existing finalized result without duplicating progression or attestation.
+`finalize_bt_aba_session_note` must take an advisory transaction lock, repeat authorization checks, validate required responses and BT signature, update `sessions.status` to `completed` inside the transaction, call the existing note/progression finalizer (which requires completed status), insert the caller-owned BT attestation, write the canonical session completion audit event, and invoke the idempotent supervising-admin request creator. A repeated call returns the existing finalized result without duplicating progression, audit events, requests, or attestations. Any exception rolls the session update back to `in_progress`.
 
 - [ ] **Step 7: Run migration, RLS, and SQL smoke tests**
 

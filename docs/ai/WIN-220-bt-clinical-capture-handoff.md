@@ -54,7 +54,7 @@
   - `npm run build`
   - `npm run verify:local`
 - executed checks:
-  - `npx vitest run --config vitest.config.ts src/components/__tests__/SessionModal.test.tsx src/pages/__tests__/Schedule.orchestration.integration.test.tsx --reporter=dot`: pass (`92` passed)
+  - `npx vitest run --config vitest.config.ts src/components/__tests__/SessionModal.test.tsx src/pages/__tests__/Schedule.orchestration.integration.test.tsx --reporter=dot`: pass after rebasing onto `origin/main` (`94` passed)
   - focused scheduled/in-progress BT modal regressions: pass (`3` passed)
   - focused scheduled/in-progress/close BT Schedule orchestration regressions: pass (`3` passed)
   - `npm run ci:check-focused`: pass

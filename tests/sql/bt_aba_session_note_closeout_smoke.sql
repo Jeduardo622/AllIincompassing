@@ -11,6 +11,9 @@ begin
   if to_regprocedure('public.finalize_bt_aba_session_note(uuid,uuid,jsonb,jsonb,jsonb,jsonb)') is null then
     raise exception 'finalize BT ABA note RPC is missing';
   end if;
+  if to_regprocedure('public.get_bt_aba_session_note(uuid)') is null then
+    raise exception 'get BT ABA note RPC is missing';
+  end if;
   if not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public' and c.relname = 'session_note_attestations' and c.relrowsecurity
@@ -18,7 +21,8 @@ begin
     raise exception 'session_note_attestations RLS is not enabled';
   end if;
   if has_function_privilege('anon', 'public.save_bt_aba_session_note_draft(uuid,uuid,jsonb,jsonb)', 'execute')
-     or has_function_privilege('anon', 'public.finalize_bt_aba_session_note(uuid,uuid,jsonb,jsonb,jsonb,jsonb)', 'execute') then
+     or has_function_privilege('anon', 'public.finalize_bt_aba_session_note(uuid,uuid,jsonb,jsonb,jsonb,jsonb)', 'execute')
+     or has_function_privilege('anon', 'public.get_bt_aba_session_note(uuid)', 'execute') then
     raise exception 'anon unexpectedly has BT ABA RPC execution';
   end if;
   if has_table_privilege('authenticated', 'public.session_note_attestations', 'insert')
@@ -106,18 +110,27 @@ values
   ('00000000-0000-4000-8000-00000000b013', '00000000-0000-4000-8000-00000000b015');
 
 insert into public.clients (id, full_name, status, organization_id, therapist_id, created_by, updated_by)
-values ('00000000-0000-4000-8000-00000000b020', 'WIN-221 Synthetic Client', 'active',
-  '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b015',
-  '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010');
+values
+  ('00000000-0000-4000-8000-00000000b020', 'WIN-221 Synthetic Client', 'active',
+    '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b015',
+    '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010'),
+  ('00000000-0000-4000-8000-00000000b021', 'WIN-221 Authorization-Only Client', 'active',
+    '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b015',
+    '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010');
 
 insert into public.authorizations (
   id, authorization_number, client_id, provider_id, diagnosis_code,
   start_date, end_date, status, organization_id, created_by
 )
-values ('00000000-0000-4000-8000-00000000b030', 'WIN-221-AUTH',
-  '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015',
-  'F84.0', current_date - 1, current_date + 1, 'approved',
-  '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010');
+values
+  ('00000000-0000-4000-8000-00000000b030', 'WIN-221-AUTH',
+    '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015',
+    'F84.0', current_date - 1, current_date + 1, 'approved',
+    '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010'),
+  ('00000000-0000-4000-8000-00000000b032', 'WIN-221-AUTH-ONLY',
+    '00000000-0000-4000-8000-00000000b021', '00000000-0000-4000-8000-00000000b015',
+    'F84.0', current_date - 1, current_date + 1, 'pending',
+    '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010');
 
 insert into public.authorization_services (
   id, authorization_id, service_code, service_description, from_date, to_date,
@@ -135,7 +148,8 @@ insert into public.sessions (
 values
   ('00000000-0000-4000-8000-00000000b040', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '1 hour', now(), 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '1 hour'),
   ('00000000-0000-4000-8000-00000000b041', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '3 hours', now() - interval '2 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '3 hours'),
-  ('00000000-0000-4000-8000-00000000b042', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b012', now() - interval '5 hours', now() - interval '4 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '5 hours');
+  ('00000000-0000-4000-8000-00000000b042', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b012', now() - interval '5 hours', now() - interval '4 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '5 hours'),
+  ('00000000-0000-4000-8000-00000000b043', '00000000-0000-4000-8000-00000000b021', '00000000-0000-4000-8000-00000000b015', now() - interval '7 hours', now() - interval '6 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '7 hours');
 
 create temporary table win221_finalization_results (result jsonb not null);
 grant select, insert on table win221_finalization_results to authenticated;
@@ -148,25 +162,64 @@ do $drafts$
 declare
   template_id uuid;
   result jsonb;
+  read_result jsonb;
 begin
   select id into template_id from public.session_note_templates
   where organization_id = '00000000-0000-4000-8000-00000000b001'
     and template_type = 'bt_aba_session_note';
   result := public.save_bt_aba_session_note_draft(
     '00000000-0000-4000-8000-00000000b040', template_id,
-    '{"authorization_id":"00000000-0000-4000-8000-00000000b030","requested_service_code":"97153","goals_addressed":[],"goal_ids":[],"narrative":"Synthetic closeout"}'::jsonb,
+    '{"authorization_id":"00000000-0000-4000-8000-00000000b099","requested_service_code":"CALLER-CONTROLLED","goals_addressed":[],"goal_ids":[],"narrative":"Synthetic closeout"}'::jsonb,
     '{"client_status":"draft"}'::jsonb
   );
   if result->>'status' <> 'draft' then raise exception 'assigned BT draft failed: %', result; end if;
+  read_result := public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b040');
+  if read_result->>'note_id' is distinct from result->>'note_id'
+     or read_result->>'template_id' is distinct from template_id::text
+     or read_result->>'status' <> 'draft' then
+    raise exception 'assigned exact BT read failed: %', read_result;
+  end if;
   perform public.save_bt_aba_session_note_draft(
     '00000000-0000-4000-8000-00000000b041', template_id,
     '{"authorization_id":"00000000-0000-4000-8000-00000000b030","requested_service_code":"97153","goals_addressed":[],"goal_ids":[],"narrative":"Rollback case"}'::jsonb,
     '{}'::jsonb
   );
+  result := public.save_bt_aba_session_note_draft(
+    '00000000-0000-4000-8000-00000000b043', template_id,
+    '{"goals_addressed":[],"goal_ids":[],"narrative":"Authorization-only relaxed capture"}'::jsonb,
+    '{}'::jsonb
+  );
+  if result->>'status' <> 'draft' then
+    raise exception 'authorization-only relaxed capture failed: %', result;
+  end if;
 end
 $drafts$;
 
+reset role;
+do $canonical_billing$
+begin
+  if not exists (
+    select 1 from public.client_session_notes note
+    where note.session_id = '00000000-0000-4000-8000-00000000b040'
+      and note.authorization_id = '00000000-0000-4000-8000-00000000b030'
+      and note.service_code = '97153'
+  ) then
+    raise exception 'caller-supplied billing identity was trusted';
+  end if;
+  if not exists (
+    select 1 from public.client_session_notes note
+    where note.session_id = '00000000-0000-4000-8000-00000000b043'
+      and note.authorization_id = '00000000-0000-4000-8000-00000000b032'
+      and note.service_code = 'UNSPECIFIED'
+  ) then
+    raise exception 'authorization-only relaxed capture did not persist canonical fallback billing';
+  end if;
+end
+$canonical_billing$;
+
+set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b011', true);
+
 do $unrelated$
 declare template_id uuid;
 begin
@@ -175,6 +228,10 @@ begin
   begin
     perform public.save_bt_aba_session_note_draft('00000000-0000-4000-8000-00000000b040', template_id, '{}'::jsonb, '{}'::jsonb);
     raise exception 'unrelated BT unexpectedly wrote a draft';
+  exception when sqlstate '42501' then null; end;
+  begin
+    perform public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b040');
+    raise exception 'unrelated BT unexpectedly read BT ABA note';
   exception when sqlstate '42501' then null; end;
 end
 $unrelated$;
@@ -188,6 +245,10 @@ begin
   begin
     perform public.save_bt_aba_session_note_draft('00000000-0000-4000-8000-00000000b040', template_id, '{}'::jsonb, '{}'::jsonb);
     raise exception 'capture-capable BCBA unexpectedly wrote a BT draft';
+  exception when sqlstate '42501' then null; end;
+  begin
+    perform public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b040');
+    raise exception 'non-BT unexpectedly read BT ABA note';
   exception when sqlstate '42501' then null; end;
 end
 $elevated_non_bt$;
@@ -223,7 +284,7 @@ declare
     "link_unlinked_data":false,
     "bt_signature":{"method":"typed","value":"Synthetic BT"}
   }'::jsonb;
-  payload jsonb := '{"authorization_id":"00000000-0000-4000-8000-00000000b030","requested_service_code":"97153","goals_addressed":[],"goal_ids":[],"narrative":"Synthetic closeout"}'::jsonb;
+  payload jsonb := '{"authorization_id":"00000000-0000-4000-8000-00000000b099","requested_service_code":"CALLER-CONTROLLED","goals_addressed":[],"goal_ids":[],"narrative":"Synthetic closeout"}'::jsonb;
 begin
   select id into failure_note_id from public.client_session_notes where session_id = '00000000-0000-4000-8000-00000000b041';
   begin

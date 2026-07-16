@@ -1,6 +1,6 @@
 -- @migration-intent: Add the tenant-safe structured BT ABA Session Note closeout contract defined by WIN-221.
 -- @migration-dependencies: 20260711140753_fix_goal_target_draft_version_validation.sql,20260716162434_lock_bt_start_to_scheduled_plan.sql
--- @migration-rollback: Drop WIN-221 RPCs and policies, restore the prior create_supervision_session_note_request_for_completed_session definition from 20260629233000_create_supervision_session_note_workflow.sql, then remove session_note_attestations and the BT ABA columns from client_session_notes after dependent application code is rolled back.
+-- @migration-rollback: Drop get_bt_aba_session_note and the WIN-221 write RPCs and policies, restore the prior create_supervision_session_note_request_for_completed_session definition from 20260629233000_create_supervision_session_note_workflow.sql, then remove session_note_attestations and the BT ABA columns from client_session_notes after dependent application code is rolled back.
 
 begin;
 
@@ -250,6 +250,7 @@ declare
   v_note public.client_session_notes;
   v_authorization public.authorizations;
   v_service_code text;
+  v_strict_billing boolean := false;
   v_is_assigned_bt boolean := false;
 begin
   if v_actor is null then
@@ -315,20 +316,52 @@ begin
     raise exception using errcode = '42501', message = 'BT ABA template is out of scope';
   end if;
 
+  v_strict_billing := app.session_capture_strict_billing_gate(v_session.organization_id);
   select authorization.* into v_authorization
   from public.authorizations authorization
-  where authorization.id = nullif(p_note_payload->>'authorization_id', '')::uuid
-    and authorization.organization_id = v_session.organization_id
-    and authorization.client_id = v_session.client_id;
+  where authorization.organization_id = v_session.organization_id
+    and authorization.client_id = v_session.client_id
+    and (
+      not v_strict_billing
+      or (
+        authorization.status = 'approved'
+        and v_session.start_time::date between authorization.start_date and authorization.end_date
+      )
+    )
+  order by
+    case when authorization.status = 'approved'
+           and v_session.start_time::date between authorization.start_date and authorization.end_date then 0 else 1 end,
+    authorization.updated_at desc,
+    authorization.id
+  limit 1;
   if not found then
-    raise exception using errcode = '42501', message = 'authorization is out of scope';
+    raise exception using errcode = '23514', message = 'no valid authorization is available for this session';
   end if;
+
   select service.service_code into v_service_code
   from public.authorization_services service
   where service.authorization_id = v_authorization.id
-  order by case when service.service_code = nullif(p_note_payload->>'requested_service_code', '') then 0 else 1 end,
-    service.created_at, service.id
+    and service.organization_id = v_session.organization_id
+    and (
+      not v_strict_billing
+      or (
+        service.decision_status = 'approved'
+        and v_session.start_time::date between service.from_date and service.to_date
+        and coalesce(service.approved_units, 0) > 0
+      )
+    )
+  order by
+    case when service.decision_status = 'approved'
+           and v_session.start_time::date between service.from_date and service.to_date
+           and coalesce(service.approved_units, 0) > 0 then 0 else 1 end,
+    service.updated_at desc,
+    service.id
   limit 1;
+  if not found and v_strict_billing then
+    raise exception using errcode = '23514', message = 'no valid authorization service is available for this session';
+  elsif not found then
+    v_service_code := 'UNSPECIFIED';
+  end if;
 
   select note.* into v_note
   from public.client_session_notes note
@@ -364,7 +397,9 @@ begin
     ) returning * into v_note;
   else
     update public.client_session_notes note
-    set bt_aba_template_id = p_template_id,
+    set authorization_id = v_authorization.id,
+        service_code = v_service_code,
+        bt_aba_template_id = p_template_id,
         bt_aba_template_snapshot = v_template.template_structure,
         bt_aba_responses = coalesce(p_responses, '{}'::jsonb)
     where note.id = v_note.id
@@ -372,6 +407,95 @@ begin
   end if;
 
   return jsonb_build_object('status', 'draft', 'note_id', v_note.id);
+end;
+$$;
+
+create or replace function public.get_bt_aba_session_note(p_session_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_session public.sessions;
+  v_note public.client_session_notes;
+  v_template public.session_note_templates;
+  v_is_assigned_bt boolean := false;
+begin
+  if v_actor is null then
+    raise exception using errcode = '42501', message = 'authentication required';
+  end if;
+  if p_session_id is null then
+    raise exception using errcode = '22023', message = 'session id is required';
+  end if;
+
+  select session.* into v_session
+  from public.sessions session
+  where session.id = p_session_id;
+  if not found or v_session.organization_id <> app.current_user_organization_id() then
+    raise exception using errcode = '42501', message = 'session is out of scope';
+  end if;
+
+  select
+    coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['bt']::text[]
+    ), false)
+    and not coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist']::text[]
+    ), false)
+    and exists (
+      select 1
+      from public.therapists therapist
+      where therapist.id = v_session.therapist_id
+        and therapist.organization_id = v_session.organization_id
+        and therapist.status = 'active'
+        and therapist.deleted_at is null
+        and upper(btrim(coalesce(therapist.title, ''))) in ('BT', 'RBT')
+        and (
+          v_session.therapist_id = v_actor
+          or exists (
+            select 1
+            from public.user_therapist_links utl
+            where utl.user_id = v_actor
+              and utl.therapist_id = v_session.therapist_id
+          )
+        )
+    )
+  into v_is_assigned_bt;
+
+  if not v_is_assigned_bt then
+    raise exception using errcode = '42501', message = 'caller is not the assigned BT';
+  end if;
+
+  select note.* into v_note
+  from public.client_session_notes note
+  where note.session_id = v_session.id
+    and note.organization_id = v_session.organization_id
+    and note.client_id = v_session.client_id
+    and note.therapist_id = v_session.therapist_id
+  order by note.created_at desc, note.id desc
+  limit 1;
+
+  select template.* into v_template
+  from public.session_note_templates template
+  where template.organization_id = v_session.organization_id
+    and template.template_type = 'bt_aba_session_note'
+    and (v_note.bt_aba_template_id is null or template.id = v_note.bt_aba_template_id)
+  order by template.created_at desc, template.id desc
+  limit 1;
+  if not found then
+    raise exception using errcode = '23514', message = 'BT ABA template is unavailable';
+  end if;
+
+  return jsonb_build_object(
+    'note_id', v_note.id,
+    'template_id', v_template.id,
+    'responses', case when v_note.id is null then null else coalesce(v_note.bt_aba_responses, '{}'::jsonb) end,
+    'status', case when v_note.id is null then null when v_note.is_locked then 'completed' else 'draft' end
+  );
 end;
 $$;
 
@@ -399,6 +523,10 @@ declare
   v_note_json jsonb;
   v_progression_results jsonb := '[]'::jsonb;
   v_is_assigned_bt boolean := false;
+  v_authorization public.authorizations;
+  v_service_code text;
+  v_strict_billing boolean := false;
+  v_canonical_note_payload jsonb;
   v_result jsonb;
 begin
   if v_actor is null then
@@ -494,6 +622,59 @@ begin
     raise exception using errcode = '22023', message = 'invalid BT ABA finalization payload';
   end if;
 
+  v_strict_billing := app.session_capture_strict_billing_gate(v_session.organization_id);
+  select authorization.* into v_authorization
+  from public.authorizations authorization
+  where authorization.organization_id = v_session.organization_id
+    and authorization.client_id = v_session.client_id
+    and (
+      not v_strict_billing
+      or (
+        authorization.status = 'approved'
+        and v_session.start_time::date between authorization.start_date and authorization.end_date
+      )
+    )
+  order by
+    case when authorization.status = 'approved'
+           and v_session.start_time::date between authorization.start_date and authorization.end_date then 0 else 1 end,
+    authorization.updated_at desc,
+    authorization.id
+  limit 1;
+  if not found then
+    raise exception using errcode = '23514', message = 'no valid authorization is available for this session';
+  end if;
+
+  select service.service_code into v_service_code
+  from public.authorization_services service
+  where service.authorization_id = v_authorization.id
+    and service.organization_id = v_session.organization_id
+    and (
+      not v_strict_billing
+      or (
+        service.decision_status = 'approved'
+        and v_session.start_time::date between service.from_date and service.to_date
+        and coalesce(service.approved_units, 0) > 0
+      )
+    )
+  order by
+    case when service.decision_status = 'approved'
+           and v_session.start_time::date between service.from_date and service.to_date
+           and coalesce(service.approved_units, 0) > 0 then 0 else 1 end,
+    service.updated_at desc,
+    service.id
+  limit 1;
+  if not found and v_strict_billing then
+    raise exception using errcode = '23514', message = 'no valid authorization service is available for this session';
+  elsif not found then
+    v_service_code := 'UNSPECIFIED';
+  end if;
+  v_canonical_note_payload :=
+    (p_note_payload - 'authorization_id' - 'requested_service_code')
+    || jsonb_build_object(
+      'authorization_id', v_authorization.id,
+      'requested_service_code', v_service_code
+    );
+
   select template.* into v_template
   from public.session_note_templates template
   where template.id = v_note.bt_aba_template_id
@@ -545,7 +726,9 @@ begin
 
   if v_session.status = 'in_progress' then
     update public.client_session_notes note
-    set bt_aba_responses = p_responses,
+    set authorization_id = v_authorization.id,
+        service_code = v_service_code,
+        bt_aba_responses = p_responses,
         bt_aba_template_snapshot = v_template.template_structure
     where note.id = v_note.id;
 
@@ -559,7 +742,7 @@ begin
   from public.finalize_session_note_with_progression(
     v_session.id,
     v_note.id,
-    p_note_payload,
+    v_canonical_note_payload,
     coalesce(p_trial_events, '[]'::jsonb),
     coalesce(p_expected_target_versions, '[]'::jsonb)
   ) finalized;
@@ -611,6 +794,8 @@ $$;
 
 revoke execute on function public.save_bt_aba_session_note_draft(uuid, uuid, jsonb, jsonb) from public, anon;
 grant execute on function public.save_bt_aba_session_note_draft(uuid, uuid, jsonb, jsonb) to authenticated, service_role;
+revoke execute on function public.get_bt_aba_session_note(uuid) from public, anon;
+grant execute on function public.get_bt_aba_session_note(uuid) to authenticated, service_role;
 revoke execute on function public.finalize_bt_aba_session_note(uuid, uuid, jsonb, jsonb, jsonb, jsonb) from public, anon;
 grant execute on function public.finalize_bt_aba_session_note(uuid, uuid, jsonb, jsonb, jsonb, jsonb) to authenticated, service_role;
 

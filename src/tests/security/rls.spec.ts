@@ -54,6 +54,9 @@ describe('BT ABA session note attestation RLS contract', () => {
     expect(btAbaSessionNoteMigration).toMatch(
       /revoke execute on function public\.finalize_bt_aba_session_note\(uuid, uuid, jsonb, jsonb, jsonb, jsonb\) from public, anon/i,
     );
+    expect(btAbaSessionNoteMigration).toMatch(
+      /revoke execute on function public\.get_bt_aba_session_note\(uuid\) from public, anon/i,
+    );
   });
 });
 

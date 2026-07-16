@@ -55,6 +55,39 @@ describe('BT ABA session note closeout migration', () => {
     expect(draft).toMatch(/bt_aba_responses\s*=\s*coalesce\(p_responses/i);
   });
 
+  it('derives billing identity from the locked session instead of caller note payload', () => {
+    const draft = functionBody('save_bt_aba_session_note_draft');
+    const finalize = functionBody('finalize_bt_aba_session_note');
+    for (const body of [draft, finalize]) {
+      expect(body).not.toMatch(/p_note_payload\s*->>\s*'authorization_id'|p_note_payload\s*->>\s*'requested_service_code'/i);
+      expect(body).toMatch(/from public\.authorizations authorization[\s\S]*authorization\.organization_id = v_session\.organization_id[\s\S]*authorization\.client_id = v_session\.client_id/i);
+      expect(body).toMatch(/authorization\.status = 'approved'[\s\S]*v_session\.start_time::date between authorization\.start_date and authorization\.end_date/i);
+      expect(body).toMatch(/from public\.authorization_services service[\s\S]*service\.authorization_id = v_authorization\.id/i);
+      expect(body).toMatch(/service\.decision_status = 'approved'[\s\S]*v_session\.start_time::date between service\.from_date and service\.to_date/i);
+      expect(body).toMatch(/if not found and v_strict_billing then[\s\S]*v_service_code := 'UNSPECIFIED'/i);
+      expect(body.indexOf('from public.authorizations authorization')).toBeLessThan(body.indexOf('from public.authorization_services service'));
+    }
+    expect(draft).toMatch(/authorization_id\s*=\s*v_authorization\.id[\s\S]*service_code\s*=\s*v_service_code/i);
+    expect(finalize).toMatch(/v_canonical_note_payload[\s\S]*jsonb_build_object\([\s\S]*'authorization_id', v_authorization\.id[\s\S]*'requested_service_code', v_service_code/i);
+    expect(finalize).toMatch(/finalize_session_note_with_progression\([\s\S]*v_canonical_note_payload/i);
+    expect(smoke).toMatch(/caller-supplied billing identity was trusted/i);
+    expect(smoke).toMatch(/authorization-only relaxed capture failed/i);
+  });
+
+  it('provides a narrow tenant-safe assigned-BT read RPC', () => {
+    const reader = functionBody('get_bt_aba_session_note');
+    expect(reader).toMatch(/v_session\.organization_id <> app\.current_user_organization_id\(\)/i);
+    expect(reader).toMatch(/app\.current_user_has_exact_role_for_org\([\s\S]*array\['bt'\]::text\[\][\s\S]*array\['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'\]::text\[\]/i);
+    expect(reader).toMatch(/therapist\.organization_id = v_session\.organization_id[\s\S]*therapist\.status = 'active'[\s\S]*therapist\.deleted_at is null[\s\S]*upper\(btrim\(coalesce\(therapist\.title, ''\)\)\) in \('BT', 'RBT'\)/i);
+    expect(reader).toMatch(/v_session\.therapist_id = v_actor[\s\S]*from public\.user_therapist_links utl[\s\S]*utl\.user_id = v_actor[\s\S]*utl\.therapist_id = v_session\.therapist_id/i);
+    expect(reader).toMatch(/from public\.client_session_notes note[\s\S]*note\.session_id = v_session\.id[\s\S]*note\.organization_id = v_session\.organization_id[\s\S]*note\.client_id = v_session\.client_id[\s\S]*note\.therapist_id = v_session\.therapist_id/i);
+    expect(reader).toMatch(/from public\.session_note_templates template[\s\S]*template\.organization_id = v_session\.organization_id[\s\S]*template\.template_type = 'bt_aba_session_note'/i);
+    expect(reader).toMatch(/jsonb_build_object\([\s\S]*'note_id'[\s\S]*'template_id'[\s\S]*'responses'[\s\S]*'status'/i);
+    expect(sql).toMatch(/revoke execute on function public\.get_bt_aba_session_note\(uuid\) from public, anon/i);
+    expect(sql).toMatch(/grant execute on function public\.get_bt_aba_session_note\(uuid\) to authenticated, service_role/i);
+    expect(smoke).toMatch(/assigned exact BT read failed[\s\S]*unrelated BT unexpectedly read BT ABA note[\s\S]*non-BT unexpectedly read BT ABA note/i);
+  });
+
   it('finalizes atomically in the required order and preserves completion side effects', () => {
     const finalize = functionBody('finalize_bt_aba_session_note');
     expect(sql).toMatch(/create or replace function public\.finalize_bt_aba_session_note/i);
@@ -113,11 +146,13 @@ describe('BT ABA session note closeout migration', () => {
 
   it('documents restoration of the prior supervision helper on rollback', () => {
     expect(sql).toMatch(/@migration-rollback:[^\n]*restore the prior create_supervision_session_note_request_for_completed_session definition/i);
+    expect(sql).toMatch(/@migration-rollback:[^\n]*drop get_bt_aba_session_note/i);
   });
 
   it('keeps RPC exposure least privileged', () => {
     expect(sql).toMatch(/revoke execute on function public\.save_bt_aba_session_note_draft\(uuid, uuid, jsonb, jsonb\) from public, anon/i);
     expect(sql).toMatch(/revoke execute on function public\.finalize_bt_aba_session_note\(uuid, uuid, jsonb, jsonb, jsonb, jsonb\) from public, anon/i);
+    expect(sql).toMatch(/revoke execute on function public\.get_bt_aba_session_note\(uuid\) from public, anon/i);
     expect(sql).toMatch(/grant execute on function public\.save_bt_aba_session_note_draft\(uuid, uuid, jsonb, jsonb\) to authenticated, service_role/i);
     expect(sql).toMatch(/grant execute on function public\.finalize_bt_aba_session_note\(uuid, uuid, jsonb, jsonb, jsonb, jsonb\) to authenticated, service_role/i);
   });

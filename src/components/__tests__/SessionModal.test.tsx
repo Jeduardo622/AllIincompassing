@@ -1387,13 +1387,34 @@ describe('SessionModal', () => {
       expect(select.value).toBe('in_progress');
     });
 
-    it('locks session metadata while allowing data-only save in edit mode', async () => {
+    it('locks scheduled-session metadata while allowing BT clinical capture to be edited and saved', async () => {
       const onSubmit = vi.fn().mockResolvedValue(undefined);
+      const buildChain = (rows: unknown[]) => {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      };
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'programs') return buildChain(mockPrograms);
+        if (table === 'goals') return buildChain(mockGoals);
+        if (table === 'authorizations') {
+          return buildChain([{
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          }]);
+        }
+        return buildChain([]);
+      });
       const lockedSession: Session = {
         ...editSession,
-        status: 'in_progress',
         notes: 'Original schedule note',
-        started_at: '2026-03-31T10:05:00.000Z',
       };
 
       renderWithProviders(
@@ -1414,7 +1435,10 @@ describe('SessionModal', () => {
       expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
 
-      await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
+      fireEvent.change(await screen.findByLabelText(/^Per-goal note$/i), {
+        target: { value: 'BT clinical capture update' },
+      });
+      await userEvent.click(screen.getByRole('button', { name: /Save clinical capture/i }));
 
       await waitFor(() => {
         expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
@@ -1425,10 +1449,34 @@ describe('SessionModal', () => {
           goal_id: 'goal-1',
           start_time: '2026-03-31T10:00:00.000Z',
           end_time: '2026-03-31T11:00:00.000Z',
-          status: 'in_progress',
+          status: 'scheduled',
           notes: 'Original schedule note',
+          session_note_persist_requested: true,
+          session_note_goal_notes: expect.objectContaining({
+            'goal-1': 'BT clinical capture update',
+          }),
         }));
       });
+    });
+
+    it('labels in-progress BT saves as clinical capture without changing the BCBA save label', () => {
+      const inProgressSession: Session = {
+        ...editSession,
+        status: 'in_progress',
+        started_at: '2026-03-31T10:05:00.000Z',
+      };
+
+      const { rerender } = renderWithProviders(
+        <SessionModal {...defaultProps} session={inProgressSession} dataCollectionOnly />,
+      );
+
+      expect(screen.getByRole('button', { name: /Save clinical capture/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Save progress/i })).not.toBeInTheDocument();
+
+      rerender(<SessionModal {...defaultProps} session={inProgressSession} />);
+
+      expect(screen.getByRole('button', { name: /Save progress/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Save clinical capture/i })).not.toBeInTheDocument();
     });
 
     it('allows BT data-only edit mode to close an in-progress session without unlocking schedule metadata', async () => {

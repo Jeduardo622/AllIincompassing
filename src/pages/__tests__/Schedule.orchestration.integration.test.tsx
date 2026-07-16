@@ -643,9 +643,7 @@ describe("Schedule orchestration integration hardening", () => {
     expect(showErrorMock).not.toHaveBeenCalled();
   });
 
-  it("BT live capture persistence saves data collection without updating appointment metadata", async () => {
-    scheduleFixtures.sessions[0].status = "in_progress";
-
+  it("BT scheduled-session capture saves clinical data without updating appointment metadata", async () => {
     renderWithProviders(<Schedule />, {
       auth: { role: "bt", organizationId: "org-1" },
     });
@@ -661,6 +659,7 @@ describe("Schedule orchestration integration hardening", () => {
       expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
     });
     expect(bookSessionViaApiMock).not.toHaveBeenCalled();
+    expect(completeSessionFromModalMock).not.toHaveBeenCalled();
     expect(invalidateSessionNoteCachesAfterSessionWriteMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -668,6 +667,28 @@ describe("Schedule orchestration integration hardening", () => {
         clientId: "client-1",
       }),
     );
+    expect(showSuccessMock).toHaveBeenCalledWith("Session data collection saved");
+    expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("BT in-progress capture saves clinical data without updating or completing the appointment", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    expect(screen.getByTestId("data-collection-only")).toHaveTextContent("true");
+    fireEvent.click(screen.getByLabelText("submit-capture-persist"));
+
+    await waitFor(() => {
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
+    });
+    expect(bookSessionViaApiMock).not.toHaveBeenCalled();
+    expect(completeSessionFromModalMock).not.toHaveBeenCalled();
     expect(showSuccessMock).toHaveBeenCalledWith("Session data collection saved");
     expect(showErrorMock).not.toHaveBeenCalled();
   });

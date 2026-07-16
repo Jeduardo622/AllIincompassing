@@ -26,6 +26,7 @@ import type {
   Goal,
   Program,
   SessionNoteUpsertResult,
+  SessionPromptCount,
 } from '../types';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
 import { logger } from '../lib/logger/logger';
@@ -50,6 +51,7 @@ import {
   hasMeaningfulGoalMeasurementEntry,
   mergeUniqueGoalIds,
   normalizeGoalMeasurementEntry,
+  normalizePromptCounts,
 } from '../lib/goal-measurements';
 import {
   getTherapistMinTrialsTarget,
@@ -127,6 +129,63 @@ export const setPromptCorrectnessForTarget = (
   targetId: string,
   checked: boolean,
 ): Record<string, boolean> => ({ ...current, [targetId]: checked });
+
+export const incrementLegacyPromptCount = (
+  current: SessionPromptCount[] | null | undefined,
+  prompt: { promptType: SessionPromptCount['prompt_type']; promptLevel: SessionPromptCount['prompt_level'] },
+  correct: boolean,
+): SessionPromptCount[] => normalizePromptCounts([
+  ...(current ?? []),
+  {
+    prompt_type: prompt.promptType,
+    prompt_level: prompt.promptLevel,
+    correct_trials: correct ? 1 : 0,
+    incorrect_trials: correct ? 0 : 1,
+  },
+]);
+
+export const decrementLegacyPromptCounts = (
+  current: SessionPromptCount[] | null | undefined,
+  field: 'correct_trials' | 'incorrect_trials',
+  amount: number,
+): SessionPromptCount[] => {
+  const next = normalizePromptCounts(current).map((count) => ({ ...count }));
+  let remaining = Math.max(0, amount);
+  for (let index = next.length - 1; index >= 0 && remaining > 0; index -= 1) {
+    const removable = Math.min(next[index][field], remaining);
+    next[index][field] -= removable;
+    remaining -= removable;
+  }
+  return normalizePromptCounts(next);
+};
+
+export const remapLegacyPromptCorrectnessAfterRemoval = (
+  current: Record<string, boolean>,
+  goalId: string,
+  removedIndex: number,
+  previousLength: number,
+): Record<string, boolean> => {
+  const next = { ...current };
+  for (let index = removedIndex; index < previousLength - 1; index += 1) {
+    const nextKey = `legacy:${goalId}:${index + 1}`;
+    const currentKey = `legacy:${goalId}:${index}`;
+    if (Object.prototype.hasOwnProperty.call(current, nextKey)) {
+      next[currentKey] = current[nextKey];
+    } else {
+      delete next[currentKey];
+    }
+  }
+  delete next[`legacy:${goalId}:${previousLength - 1}`];
+  return next;
+};
+
+const sumLegacyPromptCounts = (
+  counts: SessionPromptCount[] | null | undefined,
+  field: 'correct_trials' | 'incorrect_trials',
+): number => normalizePromptCounts(counts).reduce(
+  (total, count) => Math.min(Number.MAX_SAFE_INTEGER, total + count[field]),
+  0,
+);
 
 const getValueMeasurementMeta = (measurementType: string) =>
   valueRequiredMeasurementTypes.has(measurementType)
@@ -462,6 +521,9 @@ export function SessionModal({
   const queryClient = useQueryClient();
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
   const canUseStartSessionAction = !isDataCollectionOnly || allowStartSession;
+  const isBtClinicalCaptureSession = Boolean(
+    isDataCollectionOnly && (session?.status === 'scheduled' || session?.status === 'in_progress'),
+  );
   const shouldHideGoalCaptureFields = hideGoalCaptureFields;
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
@@ -1862,13 +1924,16 @@ export function SessionModal({
         ? 'Choose therapist, client, and time before creating this appointment.'
         : 'Choose therapist, client, time, and plan details before creating this appointment.';
     }
+    if (isBtClinicalCaptureSession) {
+      return 'Appointment details are locked. Edit the clinical capture below, then save it with this session.';
+    }
     if (isInProgressSession) {
       return shouldHideGoalCaptureFields
         ? 'Review scheduling details and save updates while the visit is active.'
         : 'Log trials and per-goal notes, then save to sync. Use Close session when the visit ends.';
     }
     return 'Review core details first, then add notes before saving.';
-  }, [session, isInProgressSession, shouldHideGoalCaptureFields]);
+  }, [isBtClinicalCaptureSession, session, isInProgressSession, shouldHideGoalCaptureFields]);
   const sessionNoteGoalIds = useMemo(
     () => mergeUniqueGoalIds(
       Array.isArray(goalIds) ? goalIds : [],
@@ -2059,7 +2124,23 @@ export function SessionModal({
             ? Number(raw)
             : 0;
       const safe = Number.isFinite(cur) ? cur : 0;
-      setValue(path, Math.max(0, safe + delta), { shouldDirty: true, shouldTouch: true });
+      const nextCount = Math.max(0, safe + delta);
+      if (delta < 0) {
+        const promptCountsPath =
+          `session_note_goal_measurements.${goalId}.data.target_trials.${targetIndex}.prompt_counts` as const;
+        const promptField = field === 'metric_value' ? 'correct_trials' : 'incorrect_trials';
+        const currentPromptCounts = getValues(promptCountsPath) as SessionPromptCount[] | null | undefined;
+        const promptedTotal = sumLegacyPromptCounts(currentPromptCounts, promptField);
+        const promptReduction = Math.max(0, promptedTotal - nextCount);
+        if (promptReduction > 0) {
+          setValue(
+            promptCountsPath,
+            decrementLegacyPromptCounts(currentPromptCounts, promptField, promptReduction),
+            { shouldDirty: true, shouldTouch: true },
+          );
+        }
+      }
+      setValue(path, nextCount, { shouldDirty: true, shouldTouch: true });
     },
     [getNextRawTrialNumber, getRawTrialCount, getValues, setValue],
   );
@@ -2090,6 +2171,38 @@ export function SessionModal({
       setValue(dirtyPath, nextDisplayedCount, { shouldDirty: true, shouldTouch: true });
     },
     [getNextRawTrialNumber, getRawTrialCount, setValue],
+  );
+
+  const recordPromptTrial = useCallback(
+    (
+      goalId: string,
+      targetIndex: number,
+      configuredTarget: GoalTarget | null,
+      prompt: { promptType: SessionPromptCount['prompt_type']; promptLevel: SessionPromptCount['prompt_level'] },
+      correct: boolean,
+    ) => {
+      if (configuredTarget && responseRequiredMeasurementTypes.has(configuredTarget.measurement_type)) {
+        recordResponseTrial(
+          goalId,
+          targetIndex,
+          configuredTarget,
+          correct ? 'correct' : 'incorrect',
+          prompt,
+        );
+        return;
+      }
+
+      const aggregateField = correct ? 'metric_value' : 'incorrect_trials';
+      bumpTrialCount(goalId, targetIndex, aggregateField, 1, null);
+      const promptCountsPath =
+        `session_note_goal_measurements.${goalId}.data.target_trials.${targetIndex}.prompt_counts` as const;
+      const current = getValues(promptCountsPath) as SessionPromptCount[] | null | undefined;
+      setValue(promptCountsPath, incrementLegacyPromptCount(current, prompt, correct), {
+        shouldDirty: true,
+        shouldTouch: true,
+      });
+    },
+    [bumpTrialCount, getValues, recordResponseTrial, setValue],
   );
 
   const recordNumericTrial = useCallback(
@@ -2171,6 +2284,8 @@ export function SessionModal({
       const nextTargetTrials = Array.isArray(currentTargetTrials)
         ? currentTargetTrials.filter((_, index) => index !== targetIndex)
         : undefined;
+      setPromptCorrectByTargetId((current) =>
+        remapLegacyPromptCorrectnessAfterRemoval(current, goalId, targetIndex, existingTargets.length));
       updateGoalTargets(goalId, nextTargets.length > 0 ? nextTargets : [''], nextTargetTrials);
     },
     [getValues, updateGoalTargets],
@@ -2594,7 +2709,7 @@ export function SessionModal({
                 <p className="font-medium">Session in progress</p>
                 <p className="mt-1">
                   {isDataCollectionOnly
-                    ? 'Session details are read-only. Save progress to sync data collection.'
+                    ? 'Session details are read-only. Save clinical capture to sync data collection.'
                     : shouldHideGoalCaptureFields
                       ? 'Session details stay focused on scheduling fields while active.'
                       : 'You can adjust program and goals while active; save to keep the plan in sync with the schedule.'}
@@ -3727,6 +3842,8 @@ export function SessionModal({
                                           ? 0
                                           : getRawTrialCount(configuredTarget.id, configuredTarget.measurement_type, 'incorrect_trials', 'pending'))
                                       : targetIncorrectDisplay;
+                                    const promptCorrectnessKey = configuredTarget?.id ??
+                                      `legacy:${selectedGoalId}:${sourceIndex}`;
                                     const targetOpportunitiesDisplay = getTargetTrialNullableValue(sourceIndex, 'opportunities');
                                     const targetTrialBoundsError = getCorrectTrialsOpportunityError(
                                       targetCorrectDisplay,
@@ -3882,11 +3999,11 @@ export function SessionModal({
                                                     <label className="flex min-h-10 items-center gap-2 text-xs font-medium text-gray-800 dark:text-gray-200">
                                                       <input
                                                         type="checkbox"
-                                                        checked={promptCorrectByTargetId[configuredTarget.id] ?? true}
+                                                        checked={promptCorrectByTargetId[promptCorrectnessKey] ?? true}
                                                         onChange={(event) => setPromptCorrectByTargetId((current) =>
                                                           setPromptCorrectnessForTarget(
                                                             current,
-                                                            configuredTarget.id,
+                                                            promptCorrectnessKey,
                                                             event.target.checked,
                                                           ))}
                                                         aria-label={`Prompted response was correct for target ${targetIndex + 1}: ${configuredTarget.name}`}
@@ -3905,12 +4022,12 @@ export function SessionModal({
                                                           type="button"
                                                           aria-label={`Record ${prompt.label.toLowerCase()} prompt for target ${targetIndex + 1}: ${configuredTarget.name}`}
                                                           className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 shadow-sm hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-100 dark:hover:bg-indigo-900/60"
-                                                          onClick={() => recordResponseTrial(
+                                                          onClick={() => recordPromptTrial(
                                                             selectedGoalId,
                                                             sourceIndex,
                                                             configuredTarget,
-                                                            (promptCorrectByTargetId[configuredTarget.id] ?? true) ? 'correct' : 'incorrect',
                                                             { promptType: prompt.promptType, promptLevel: prompt.promptLevel },
+                                                            promptCorrectByTargetId[promptCorrectnessKey] ?? true,
                                                           )}
                                                         >
                                                           {prompt.label}
@@ -4001,6 +4118,48 @@ export function SessionModal({
                                                 -5
                                               </button>
                                             </div>
+                                            {!configuredTarget ? (
+                                            <div className="w-full rounded-md border border-indigo-200 bg-white/80 p-2 dark:border-indigo-800 dark:bg-dark/70">
+                                              <label className="flex min-h-10 items-center gap-2 text-xs font-medium text-gray-800 dark:text-gray-200">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={promptCorrectByTargetId[promptCorrectnessKey] ?? true}
+                                                  onChange={(event) => setPromptCorrectByTargetId((current) =>
+                                                    setPromptCorrectnessForTarget(
+                                                      current,
+                                                      promptCorrectnessKey,
+                                                      event.target.checked,
+                                                    ))}
+                                                  aria-label={`Prompted response was correct for target ${targetIndex + 1}: ${targetValue}`}
+                                                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                Prompted response was correct
+                                              </label>
+                                              <div
+                                                className="mt-2 flex flex-wrap gap-2"
+                                                role="group"
+                                                aria-label={`Prompt types for target ${targetIndex + 1}: ${targetValue}`}
+                                              >
+                                                {promptCaptureOptions.map((prompt) => (
+                                                  <button
+                                                    key={prompt.label}
+                                                    type="button"
+                                                    aria-label={`Record ${prompt.label.toLowerCase()} prompt for target ${targetIndex + 1}: ${targetValue}`}
+                                                    className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 shadow-sm hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-100 dark:hover:bg-indigo-900/60"
+                                                    onClick={() => recordPromptTrial(
+                                                      selectedGoalId,
+                                                      sourceIndex,
+                                                      configuredTarget,
+                                                      { promptType: prompt.promptType, promptLevel: prompt.promptLevel },
+                                                      promptCorrectByTargetId[promptCorrectnessKey] ?? true,
+                                                    )}
+                                                  >
+                                                    {prompt.label}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </div>
+                                            ) : null}
                                           </div>
                                               )}
                                             </>
@@ -4159,7 +4318,7 @@ export function SessionModal({
                   <>
                     <CheckCircle2 className="w-4 h-4 mr-2" />
                     {session
-                      ? (isInProgressSession ? 'Save progress' : 'Update Session')
+                      ? (isBtClinicalCaptureSession ? 'Save clinical capture' : (isInProgressSession ? 'Save progress' : 'Update Session'))
                       : 'Create Session'}
                   </>
                 )}

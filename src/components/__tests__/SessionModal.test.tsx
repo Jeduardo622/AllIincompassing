@@ -1,7 +1,15 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { fireEvent } from '@testing-library/react';
-import { SessionModal, dedupeProgressionNotices, formatProgressionNotices, selectSessionCaptureTargets, setPromptCorrectnessForTarget } from '../SessionModal';
+import {
+  SessionModal,
+  decrementLegacyPromptCounts,
+  dedupeProgressionNotices,
+  formatProgressionNotices,
+  remapLegacyPromptCorrectnessAfterRemoval,
+  selectSessionCaptureTargets,
+  setPromptCorrectnessForTarget,
+} from '../SessionModal';
 import { supabase } from '../../lib/supabase';
 import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-linked-fetch';
 import type { Session } from '../../types';
@@ -47,6 +55,29 @@ describe('SessionModal', () => {
       'target-1': true,
       'target-2': true,
     });
+  });
+
+  it('keeps legacy prompt correctness aligned when an earlier target is removed', () => {
+    expect(remapLegacyPromptCorrectnessAfterRemoval({
+      'legacy:goal-1:0': true,
+      'legacy:goal-1:1': false,
+      'legacy:goal-1:2': true,
+      configured: false,
+    }, 'goal-1', 0, 3)).toEqual({
+      'legacy:goal-1:0': false,
+      'legacy:goal-1:1': true,
+      configured: false,
+    });
+  });
+
+  it('removes prompted aggregates when a legacy decrement crosses the prompt floor', () => {
+    expect(decrementLegacyPromptCounts([
+      { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: 0 },
+      { prompt_type: 'gesture', prompt_level: null, correct_trials: 2, incorrect_trials: 1 },
+    ], 'correct_trials', 2)).toEqual([
+      { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: 0 },
+      { prompt_type: 'gesture', prompt_level: null, correct_trials: 0, incorrect_trials: 1 },
+    ]);
   });
 
   it('formats every progression outcome and incomplete-criteria warning', () => {
@@ -1409,13 +1440,34 @@ describe('SessionModal', () => {
       expect(select.value).toBe('in_progress');
     });
 
-    it('locks session metadata while allowing data-only save in edit mode', async () => {
+    it('locks scheduled-session metadata while allowing BT clinical capture to be edited and saved', async () => {
       const onSubmit = vi.fn().mockResolvedValue(undefined);
+      const buildChain = (rows: unknown[]) => {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      };
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'programs') return buildChain(mockPrograms);
+        if (table === 'goals') return buildChain(mockGoals);
+        if (table === 'authorizations') {
+          return buildChain([{
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          }]);
+        }
+        return buildChain([]);
+      });
       const lockedSession: Session = {
         ...editSession,
-        status: 'in_progress',
         notes: 'Original schedule note',
-        started_at: '2026-03-31T10:05:00.000Z',
       };
 
       renderWithProviders(
@@ -1436,7 +1488,10 @@ describe('SessionModal', () => {
       expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
 
-      await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
+      fireEvent.change(await screen.findByLabelText(/^Per-goal note$/i), {
+        target: { value: 'BT clinical capture update' },
+      });
+      await userEvent.click(screen.getByRole('button', { name: /Save clinical capture/i }));
 
       await waitFor(() => {
         expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
@@ -1447,8 +1502,12 @@ describe('SessionModal', () => {
           goal_id: 'goal-1',
           start_time: '2026-03-31T10:00:00.000Z',
           end_time: '2026-03-31T11:00:00.000Z',
-          status: 'in_progress',
+          status: 'scheduled',
           notes: 'Original schedule note',
+          session_note_persist_requested: true,
+          session_note_goal_notes: expect.objectContaining({
+            'goal-1': 'BT clinical capture update',
+          }),
         }));
       });
     });
@@ -1658,6 +1717,26 @@ describe('SessionModal', () => {
         expect(onSessionStarted).toHaveBeenCalledOnce();
         expect(defaultProps.onClose).toHaveBeenCalledOnce();
       });
+    });
+
+    it('labels in-progress BT saves as clinical capture without changing the BCBA save label', () => {
+      const inProgressSession: Session = {
+        ...editSession,
+        status: 'in_progress',
+        started_at: '2026-03-31T10:05:00.000Z',
+      };
+
+      const { rerender } = renderWithProviders(
+        <SessionModal {...defaultProps} session={inProgressSession} dataCollectionOnly />,
+      );
+
+      expect(screen.getByRole('button', { name: /Save clinical capture/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Save progress/i })).not.toBeInTheDocument();
+
+      rerender(<SessionModal {...defaultProps} session={inProgressSession} />);
+
+      expect(screen.getByRole('button', { name: /Save progress/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Save clinical capture/i })).not.toBeInTheDocument();
     });
 
     it('allows BT data-only edit mode to close an in-progress session without unlocking schedule metadata', async () => {
@@ -3783,7 +3862,7 @@ describe('SessionModal', () => {
     });
   }, 10000);
 
-  it('filters saved plan-goal targets to target_criteria when resaving legacy capture', async () => {
+  it('filters saved plan-goal targets and persists prompt buttons for legacy capture', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const planTarget = 'Match peer greeting in 4/5 trials';
     const legacyFreeformTarget = 'Legacy freeform target';
@@ -3814,9 +3893,9 @@ describe('SessionModal', () => {
               },
               {
                 target: planTarget,
-                metric_value: 2,
+                metric_value: 4,
                 incorrect_trials: 1,
-                opportunities: 3,
+                opportunities: 6,
                 trial_prompt_note: 'Plan target prompt note',
               },
             ],
@@ -3930,6 +4009,30 @@ describe('SessionModal', () => {
     expect(planTargetButton).toHaveTextContent(planTarget);
     expect(screen.queryByText(legacyFreeformTarget)).not.toBeInTheDocument();
 
+    const promptCorrectness = screen.getByRole('checkbox', {
+      name: /Prompted response was correct for target 1/i,
+    });
+    expect(promptCorrectness).toBeChecked();
+    for (const label of ['full verbal', 'partial verbal', 'gesture', 'model', 'visual', 'full physical', 'partial physical']) {
+      expect(screen.getByRole('button', {
+        name: new RegExp(`Record ${label} prompt for target 1`, 'i'),
+      })).toBeInTheDocument();
+    }
+    await userEvent.click(screen.getByRole('button', {
+      name: /Record full verbal prompt for target 1/i,
+    }));
+    const subtractFiveCorrect = screen.getByRole('button', {
+      name: /Subtract 5 correct trials for target 1/i,
+    });
+    expect(subtractFiveCorrect).toBeEnabled();
+    await userEvent.click(subtractFiveCorrect);
+    await userEvent.click(screen.getByRole('button', {
+      name: /Record full verbal prompt for target 1/i,
+    }));
+    await userEvent.click(promptCorrectness);
+    await userEvent.click(screen.getByRole('button', {
+      name: /Record gesture prompt for target 1/i,
+    }));
     await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
     fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 1/i), {
       target: { value: 'Edited plan target prompt note' },
@@ -3944,18 +4047,22 @@ describe('SessionModal', () => {
           'goal-1': {
             version: 1,
             data: expect.objectContaining({
-              metric_value: 3,
-              incorrect_trials: 1,
-              opportunities: 3,
+              metric_value: 2,
+              incorrect_trials: 2,
+              opportunities: 6,
               targets: [planTarget],
               target: planTarget,
               target_trials: [
                 expect.objectContaining({
                   target: planTarget,
-                  metric_value: 3,
-                  incorrect_trials: 1,
-                  opportunities: 3,
+                  metric_value: 2,
+                  incorrect_trials: 2,
+                  opportunities: 6,
                   trial_prompt_note: 'Edited plan target prompt note',
+                  prompt_counts: [
+                    { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: 0 },
+                    { prompt_type: 'gesture', prompt_level: null, correct_trials: 0, incorrect_trials: 1 },
+                  ],
                 }),
               ],
               trial_prompt_note: 'Edited plan target prompt note',
@@ -3964,6 +4071,8 @@ describe('SessionModal', () => {
         },
       }));
     });
+    const submitted = onSubmit.mock.calls[0]?.[0] as { session_note_trial_events?: unknown[] };
+    expect(submitted.session_note_trial_events ?? []).toEqual([]);
   }, 10000);
 
   it('shows inline trial bounds validation and blocks save progress when correct trials exceed opportunities', async () => {

@@ -72,6 +72,13 @@
 - pr-ready: yes for critical-lane human review, subject to fresh required CI
 - merge-ready: no; human review, live required checks, and hosted migration/runtime parity are mandatory
 
+## Live PR Status
+
+- passing: migration lint, Lighthouse, Netlify deploy preview, header rules, and redirect rules
+- pending at last refresh: tenant safety and required human review
+- failing: Supabase Preview exits before the WIN-219 migration because its preview migration ledger attempts to insert duplicate legacy version `20250319174915` (`schema_migrations_pkey`, SQLSTATE `23505`)
+- required remediation: repair the external preview migration history and rerun Supabase Preview; do not merge while this required check is failing
+
 ## Handoff Summary
 
 The BT Start Session action is restored only for a valid assigned scheduled appointment and remains incapable of editing scheduling or treatment-plan metadata. The UI fails closed on missing or stale canonical plan data, and the database independently enforces the same immutable plan and role boundary. Local focused, policy, tenant, build, coverage, route, migration, and SQL checks pass; fresh protected CI and human review are the remaining merge gates.

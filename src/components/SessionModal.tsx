@@ -518,6 +518,9 @@ export function SessionModal({
   const conflictHeadingId = 'session-modal-conflicts-heading';
   const queryClient = useQueryClient();
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
+  const isBtClinicalCaptureSession = Boolean(
+    isDataCollectionOnly && (session?.status === 'scheduled' || session?.status === 'in_progress'),
+  );
   const shouldHideGoalCaptureFields = hideGoalCaptureFields;
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
@@ -1869,13 +1872,16 @@ export function SessionModal({
         ? 'Choose therapist, client, and time before creating this appointment.'
         : 'Choose therapist, client, time, and plan details before creating this appointment.';
     }
+    if (isBtClinicalCaptureSession) {
+      return 'Appointment details are locked. Edit the clinical capture below, then save it with this session.';
+    }
     if (isInProgressSession) {
       return shouldHideGoalCaptureFields
         ? 'Review scheduling details and save updates while the visit is active.'
         : 'Log trials and per-goal notes, then save to sync. Use Close session when the visit ends.';
     }
     return 'Review core details first, then add notes before saving.';
-  }, [session, isInProgressSession, shouldHideGoalCaptureFields]);
+  }, [isBtClinicalCaptureSession, session, isInProgressSession, shouldHideGoalCaptureFields]);
   const sessionNoteGoalIds = useMemo(
     () => mergeUniqueGoalIds(
       Array.isArray(goalIds) ? goalIds : [],
@@ -2651,7 +2657,7 @@ export function SessionModal({
                 <p className="font-medium">Session in progress</p>
                 <p className="mt-1">
                   {isDataCollectionOnly
-                    ? 'Session details are read-only. Save progress to sync data collection.'
+                    ? 'Session details are read-only. Save clinical capture to sync data collection.'
                     : shouldHideGoalCaptureFields
                       ? 'Session details stay focused on scheduling fields while active.'
                       : 'You can adjust program and goals while active; save to keep the plan in sync with the schedule.'}
@@ -4259,7 +4265,7 @@ export function SessionModal({
                   <>
                     <CheckCircle2 className="w-4 h-4 mr-2" />
                     {session
-                      ? (isInProgressSession ? 'Save progress' : 'Update Session')
+                      ? (isBtClinicalCaptureSession ? 'Save clinical capture' : (isInProgressSession ? 'Save progress' : 'Update Session'))
                       : 'Create Session'}
                   </>
                 )}

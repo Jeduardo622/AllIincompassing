@@ -17,6 +17,7 @@ import {
   resolveOrgAndRoleWithStatus,
 } from "./shared";
 import { resolveSessionCaptureStrictBillingPolicy } from "../sessionCaptureBillingGate";
+import { validateBtAbaSessionNoteResponses } from "../../lib/bt-aba-session-note";
 
 type SessionNoteRow = {
   id: string;
@@ -115,6 +116,48 @@ const upsertSchema = z.object({
     .optional()
     .default([]),
 });
+
+const btAbaNotePayloadSchema = z.object({
+  goals_addressed: z.array(z.string()).default([]),
+  goal_ids: z.array(z.string().min(1).refine((id) => isValidSessionNoteGoalKey(id))).nullable().default(null),
+  goal_measurements: z.record(z.unknown()).nullable().default(null),
+  goal_notes: z.record(z.string()).nullable().default(null),
+  narrative: z.string().default(""),
+}).strict();
+
+const btAbaTrialEventSchema = z.object({
+  target_id: z.string().uuid(),
+  trial_number: z.number().int().positive(),
+  response: z.enum(["correct", "incorrect", "noResponse", "independent", "prompted", "notObserved"]).optional().nullable(),
+  prompt_type: z.string().trim().optional().nullable(),
+  prompt_level: z.string().trim().optional().nullable(),
+  value: z.number().nonnegative().optional().nullable(),
+  timestamp: z.string().datetime().optional(),
+  metadata: z.record(z.unknown()).optional(),
+}).strict();
+
+const btAbaDraftSchema = z.object({
+  action: z.literal("draft_bt_aba"),
+  sessionId: z.string().uuid(),
+  templateId: z.string().uuid(),
+  notePayload: btAbaNotePayloadSchema,
+  responses: z.record(z.unknown()),
+}).strict();
+
+const btAbaFinalizeSchema = z.object({
+  action: z.literal("finalize_bt_aba"),
+  sessionId: z.string().uuid(),
+  noteId: z.string().uuid(),
+  notePayload: btAbaNotePayloadSchema,
+  responses: z.unknown(),
+  trialEvents: z.array(btAbaTrialEventSchema).max(500).default([]),
+  expectedTargetVersions: z.array(z.object({
+    target_id: z.string().uuid(),
+    progression_version: z.number().int().nonnegative(),
+  }).strict()).max(500).default([]),
+}).strict();
+
+type BtAbaAction = z.infer<typeof btAbaDraftSchema> | z.infer<typeof btAbaFinalizeSchema>;
 
 type SessionCaptureTrialEventInput = z.infer<typeof upsertSchema>["trialEvents"][number];
 
@@ -930,6 +973,193 @@ const rollbackSessionTrialEventRows = async (args: {
   );
 };
 
+type BtAbaSessionScope = {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  therapist_id: string;
+  status: string;
+};
+
+const currentActorIsAssignedToBtSession = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  actorUserId: string;
+  sessionId: string;
+}): Promise<{ allowed: boolean; upstreamError: boolean }> => {
+  const sessionResult = await fetchJson<BtAbaSessionScope[]>(
+    `${args.supabaseUrl}/rest/v1/sessions?select=id,organization_id,client_id,therapist_id,status` +
+      `&id=eq.${encodeURIComponent(args.sessionId)}` +
+      `&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
+    { method: "GET", headers: args.headers },
+  );
+  if (!sessionResult.ok) return { allowed: false, upstreamError: true };
+  const session = sessionResult.data?.[0];
+  if (!session) return { allowed: false, upstreamError: false };
+  if (session.therapist_id === args.actorUserId) return { allowed: true, upstreamError: false };
+
+  const linkResult = await fetchJson<Array<{ therapist_id: string }>>(
+    `${args.supabaseUrl}/rest/v1/user_therapist_links?select=therapist_id` +
+      `&user_id=eq.${encodeURIComponent(args.actorUserId)}` +
+      `&therapist_id=eq.${encodeURIComponent(session.therapist_id)}&limit=1`,
+    { method: "GET", headers: args.headers },
+  );
+  if (!linkResult.ok) return { allowed: false, upstreamError: true };
+  return { allowed: Boolean(linkResult.data?.[0]), upstreamError: false };
+};
+
+const btAbaRpcErrorResponse = (
+  request: Request,
+  result: { status: number; data: unknown },
+  fallbackMessage: string,
+): Response => {
+  const serialized = JSON.stringify(result.data ?? {}).toLowerCase();
+  if (result.status === 401 || result.status === 403 || serialized.includes("42501")) {
+    return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
+  }
+  if (result.status === 409 || serialized.includes("23514")) {
+    return errorResponse(request, "conflict", fallbackMessage, { status: 409 });
+  }
+  if (result.status === 400 || serialized.includes("22023")) {
+    return errorResponse(request, "validation_error", fallbackMessage, { status: 400 });
+  }
+  return errorResponse(request, "upstream_error", fallbackMessage, {
+    status: result.status >= 500 ? result.status : 502,
+  });
+};
+
+const handleBtAbaAction = async (args: {
+  request: Request;
+  action: BtAbaAction;
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  actorUserId: string;
+}): Promise<Response> => {
+  const assignment = await currentActorIsAssignedToBtSession({
+    supabaseUrl: args.supabaseUrl,
+    headers: args.headers,
+    organizationId: args.organizationId,
+    actorUserId: args.actorUserId,
+    sessionId: args.action.sessionId,
+  });
+  if (assignment.upstreamError) {
+    return errorResponse(args.request, "upstream_error", "Unable to validate session assignment", { status: 502 });
+  }
+  if (!assignment.allowed) {
+    return errorResponse(args.request, "forbidden", "Forbidden", { status: 403 });
+  }
+
+  if (args.action.action === "draft_bt_aba") {
+    const result = await fetchJson<{ status: string; note_id: string }>(
+      `${args.supabaseUrl}/rest/v1/rpc/save_bt_aba_session_note_draft`,
+      {
+        method: "POST",
+        headers: args.headers,
+        body: JSON.stringify({
+          p_session_id: args.action.sessionId,
+          p_template_id: args.action.templateId,
+          p_note_payload: args.action.notePayload,
+          p_responses: args.action.responses,
+        }),
+      },
+    );
+    if (!result.ok || result.data?.status !== "draft" || !result.data.note_id) {
+      return btAbaRpcErrorResponse(args.request, result, "Unable to save BT ABA session note draft");
+    }
+    return jsonForRequest(args.request, { status: "draft", noteId: result.data.note_id });
+  }
+
+  const validatedResponses = validateBtAbaSessionNoteResponses(args.action.responses);
+  if (!validatedResponses.success) {
+    return errorResponse(args.request, "validation_error", "Invalid BT ABA session note responses", { status: 400 });
+  }
+  const result = await fetchJson<{
+    status: string;
+    note_id: string;
+    note?: SessionNoteRow;
+    progression_results?: GoalTargetProgressionResult[];
+  }>(`${args.supabaseUrl}/rest/v1/rpc/finalize_bt_aba_session_note`, {
+    method: "POST",
+    headers: args.headers,
+    body: JSON.stringify({
+      p_session_id: args.action.sessionId,
+      p_note_id: args.action.noteId,
+      p_note_payload: args.action.notePayload,
+      p_responses: validatedResponses.data,
+      p_trial_events: args.action.trialEvents,
+      p_expected_target_versions: args.action.expectedTargetVersions,
+    }),
+  });
+  if (!result.ok || result.data?.status !== "completed" || !result.data.note_id) {
+    return btAbaRpcErrorResponse(args.request, result, "Unable to finalize BT ABA session note");
+  }
+  return jsonForRequest(args.request, {
+    status: "completed",
+    noteId: result.data.note_id,
+    ...(result.data.note ? { note: mapRowToSessionNote(result.data.note) } : {}),
+    progressionResults: result.data.progression_results ?? [],
+  });
+};
+
+const handleBtAbaGet = async (args: {
+  request: Request;
+  sessionId: string;
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  actorUserId: string;
+}): Promise<Response> => {
+  const assignment = await currentActorIsAssignedToBtSession(args);
+  if (assignment.upstreamError) {
+    return errorResponse(args.request, "upstream_error", "Unable to validate session assignment", { status: 502 });
+  }
+  if (!assignment.allowed) {
+    return errorResponse(args.request, "forbidden", "Forbidden", { status: 403 });
+  }
+
+  const noteResult = await fetchJson<Array<{
+    id: string;
+    bt_aba_template_id: string | null;
+    bt_aba_responses: Record<string, unknown> | null;
+    is_locked: boolean;
+  }>>(
+    `${args.supabaseUrl}/rest/v1/client_session_notes?select=id,bt_aba_template_id,bt_aba_responses,is_locked` +
+      `&session_id=eq.${encodeURIComponent(args.sessionId)}` +
+      `&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
+    { method: "GET", headers: args.headers },
+  );
+  if (!noteResult.ok) {
+    return errorResponse(args.request, "upstream_error", "Unable to load BT ABA session note", { status: 502 });
+  }
+  const note = noteResult.data?.[0] ?? null;
+  if (note?.bt_aba_template_id) {
+    return jsonForRequest(args.request, {
+      noteId: note.id,
+      templateId: note.bt_aba_template_id,
+      responses: note.bt_aba_responses ?? {},
+      status: note.is_locked ? "completed" : "draft",
+    });
+  }
+
+  const templateResult = await fetchJson<Array<{ id: string }>>(
+    `${args.supabaseUrl}/rest/v1/session_note_templates?select=id` +
+      `&organization_id=eq.${encodeURIComponent(args.organizationId)}` +
+      `&template_type=eq.bt_aba_session_note&order=created_at.desc&limit=1`,
+    { method: "GET", headers: args.headers },
+  );
+  if (!templateResult.ok) {
+    return errorResponse(args.request, "upstream_error", "Unable to load BT ABA session note template", { status: 502 });
+  }
+  return jsonForRequest(args.request, {
+    noteId: note?.id ?? null,
+    templateId: templateResult.data?.[0]?.id ?? null,
+    responses: note?.bt_aba_responses ?? null,
+    status: note ? "draft" : null,
+  });
+};
+
 export async function sessionNotesUpsertHandler(request: Request): Promise<Response> {
   if (isDisallowedOriginRequest(request)) {
     return errorResponse(request, "forbidden", "Origin not allowed", { status: 403 });
@@ -939,7 +1169,7 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     return new Response("ok", { status: 200, headers: corsHeadersForRequest(request) });
   }
 
-  if (request.method !== "POST") {
+  if (request.method !== "POST" && request.method !== "GET") {
     return errorResponse(request, "validation_error", "Method not allowed", { status: 405 });
   }
 
@@ -978,29 +1208,67 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     return errorResponse(request, "forbidden", "Forbidden");
   }
 
-  let payload: z.infer<typeof upsertSchema>;
-  try {
-    const body = await request.json();
-    const parsed = upsertSchema.safeParse(body);
-    if (!parsed.success) {
-      return errorResponse(request, "validation_error", "Invalid request body");
-    }
-    payload = parsed.data;
-  } catch {
-    return errorResponse(request, "validation_error", "Invalid JSON body");
-  }
-
-  const sessionDuration = calculateSessionDurationMinutes(payload.startTime, payload.endTime);
-  if (sessionDuration <= 0) {
-    return errorResponse(request, "validation_error", "End time must be later than start time.");
-  }
-
   const { supabaseUrl, anonKey } = getSupabaseConfig();
   const headers = {
     "Content-Type": "application/json",
     apikey: anonKey,
     Authorization: `Bearer ${accessToken}`,
   };
+
+  if (request.method === "GET") {
+    const parsedSessionId = z.string().uuid().safeParse(new URL(request.url).searchParams.get("sessionId"));
+    if (!parsedSessionId.success) {
+      return errorResponse(request, "validation_error", "A valid sessionId is required", { status: 400 });
+    }
+    return handleBtAbaGet({
+      request,
+      sessionId: parsedSessionId.data,
+      supabaseUrl,
+      headers,
+      organizationId,
+      actorUserId,
+    });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(request, "validation_error", "Invalid JSON body");
+  }
+
+  const requestedAction = body && typeof body === "object" && !Array.isArray(body)
+    ? (body as { action?: unknown }).action
+    : undefined;
+  if (requestedAction !== undefined) {
+    const actionResult = requestedAction === "draft_bt_aba"
+      ? btAbaDraftSchema.safeParse(body)
+      : requestedAction === "finalize_bt_aba"
+        ? btAbaFinalizeSchema.safeParse(body)
+        : null;
+    if (!actionResult?.success) {
+      return errorResponse(request, "validation_error", "Invalid request body");
+    }
+    return handleBtAbaAction({
+      request,
+      action: actionResult.data,
+      supabaseUrl,
+      headers,
+      organizationId,
+      actorUserId,
+    });
+  }
+
+  const parsed = upsertSchema.safeParse(body);
+  if (!parsed.success) {
+    return errorResponse(request, "validation_error", "Invalid request body");
+  }
+  const payload = parsed.data;
+
+  const sessionDuration = calculateSessionDurationMinutes(payload.startTime, payload.endTime);
+  if (sessionDuration <= 0) {
+    return errorResponse(request, "validation_error", "End time must be later than start time.");
+  }
 
   const billingPolicy = await resolveSessionCaptureStrictBillingPolicy(accessToken, organizationId);
   if (billingPolicy.upstreamError) {

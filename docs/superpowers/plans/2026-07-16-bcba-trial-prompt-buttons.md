@@ -109,7 +109,7 @@ expect(screen.queryByRole('button', {
 Run:
 
 ```powershell
-npm test -- src/components/__tests__/SessionModal.test.tsx -t "records prompt-specific trials"
+npx vitest run src/components/__tests__/SessionModal.test.tsx -t "records prompt-specific trials"
 ```
 
 Expected: FAIL because the `Prompted response was correct` checkbox and prompt buttons do not exist yet. If the selected test name differs after editing, use the exact new test name with `-t` and record it in the task report.
@@ -222,7 +222,7 @@ Keep this block inside `configuredTarget && responseCaptureOptions.length > 0` s
 Run:
 
 ```powershell
-npm test -- src/components/__tests__/SessionModal.test.tsx -t "records prompt-specific trials"
+npx vitest run src/components/__tests__/SessionModal.test.tsx -t "records prompt-specific trials"
 ```
 
 Expected: PASS with both prompt events, counts, and canonical fields proven.
@@ -232,7 +232,7 @@ Expected: PASS with both prompt events, counts, and canonical fields proven.
 Run:
 
 ```powershell
-npm test -- src/components/__tests__/SessionModal.test.tsx
+npx vitest run src/components/__tests__/SessionModal.test.tsx
 ```
 
 Expected: all SessionModal tests PASS without new warnings or unhandled errors.

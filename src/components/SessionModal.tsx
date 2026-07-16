@@ -405,6 +405,7 @@ interface SessionModalProps {
   onRetryAction?: (() => void) | undefined;
   onSessionStarted?: () => void | Promise<void>;
   dataCollectionOnly?: boolean;
+  allowStartSession?: boolean;
   hideGoalCaptureFields?: boolean;
 }
 
@@ -427,6 +428,7 @@ export function SessionModal({
   onRetryAction,
   onSessionStarted,
   dataCollectionOnly = false,
+  allowStartSession = false,
   hideGoalCaptureFields = false,
 }: SessionModalProps) {
   const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
@@ -459,6 +461,7 @@ export function SessionModal({
   const conflictHeadingId = 'session-modal-conflicts-heading';
   const queryClient = useQueryClient();
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
+  const canUseStartSessionAction = !isDataCollectionOnly || allowStartSession;
   const shouldHideGoalCaptureFields = hideGoalCaptureFields;
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
@@ -1699,7 +1702,7 @@ export function SessionModal({
   }, [hasUnsavedSessionChanges, isSubmitting, onClose]);
 
   const handleStartSession = async () => {
-    if (isDataCollectionOnly) {
+    if (!canUseStartSessionAction) {
       return;
     }
     if (!session?.id) {
@@ -4069,7 +4072,7 @@ export function SessionModal({
               >
                 Cancel
               </button>
-              {session?.id && session.status === 'scheduled' && !hasStartedSession && !isDataCollectionOnly ? (
+              {session?.id && session.status === 'scheduled' && !hasStartedSession && canUseStartSessionAction ? (
                 <button
                   type="button"
                   onClick={handleStartSession}

@@ -361,11 +361,16 @@ describe("live RLS fixture schema contract", () => {
     expect(source).not.toContain('createProtectedRoute');
     expect(source).not.toContain('RouteOptions.admin');
     expect(source).toContain('handleCors(req)');
-    expect(source).toContain('getUserOrThrow(adminClient)');
+    expect(source).toContain('getGatewayVerifiedCallerId(req)');
+    expect(source).toContain('extractBearerToken');
+    expect(source).not.toContain('getUserOrThrow');
     expect(source).toContain('resolveAssignmentAdminRole(adminClient, callerOrganizationId)');
     expect(source).toContain("client.rpc('current_user_is_super_admin')");
     expect(source).toContain("client.rpc('user_has_role_for_org'");
     expect(source).not.toContain('assertAdminOrSuperAdmin');
+
+    const config = readRepoFile('supabase/config.toml');
+    expect(config).toContain('[functions.assign-therapist-user]\nverify_jwt = true');
   });
 
   it("authorizes synthetic guardian profiles only from unambiguous active client links", () => {

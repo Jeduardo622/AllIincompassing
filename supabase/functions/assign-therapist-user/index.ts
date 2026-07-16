@@ -1,18 +1,35 @@
 import {
   corsHeadersForRequest,
+  extractBearerToken,
   handleCors,
   logApiAccess,
   type Role,
   type UserContext,
 } from "../_shared/auth-middleware.ts";
 import { supabaseAdmin, createRequestClient } from "../_shared/database.ts";
-import { getUserOrThrow } from "../_shared/auth.ts";
 import { errorEnvelope, getRequestId } from "../lib/http/error.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 
 interface AssignTherapistRequest { userId: string; therapistId: string; }
 
 const assignmentAdminRoles = ['bcba', 'org_super_admin', 'org_admin', 'admin'] as const;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function getGatewayVerifiedCallerId(req: Request): string {
+  const token = extractBearerToken(req);
+  const segments = token?.split('.') ?? [];
+  if (segments.length !== 3 || !segments[1]) throw new Response('Unauthorized', { status: 401 });
+
+  try {
+    const normalized = segments[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const payload = JSON.parse(atob(padded)) as { sub?: unknown };
+    if (typeof payload.sub !== 'string' || !UUID_PATTERN.test(payload.sub)) throw new Error('Invalid subject');
+    return payload.sub;
+  } catch {
+    throw new Response('Unauthorized', { status: 401 });
+  }
+}
 
 export async function resolveAssignmentAdminRole(
   client: SupabaseClient,
@@ -45,9 +62,13 @@ export default async (req: Request): Promise<Response> => {
   if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: responseHeaders });
 
   let userContext: UserContext | null = null;
+  const requestId = getRequestId(req);
   try {
     const adminClient = createRequestClient(req);
-    const caller = await getUserOrThrow(adminClient);
+    // The Edge gateway verifies signature and expiry. We only extract the UUID
+    // subject here as a profile lookup key; JWT-backed RPCs authorize the caller
+    // independently before any mutation is attempted.
+    const callerId = getGatewayVerifiedCallerId(req);
 
     const { userId, therapistId }: AssignTherapistRequest = await req.json();
     if (!userId || !therapistId) return new Response(JSON.stringify({ error: 'User ID and therapist ID are required' }), { status: 400, headers: responseHeaders });
@@ -55,17 +76,19 @@ export default async (req: Request): Promise<Response> => {
     // Profile organization is server-controlled; auth user_metadata is user-editable
     // and must never authorize tenant-scoped assignment.
     const serviceRoleClient = supabaseAdmin;
+    console.info('assign-therapist-user stage=profile_lookup_start', { requestId });
     const { data: profileRows, error: profileError } = await serviceRoleClient
       .from('profiles')
       .select('id, email, organization_id, is_active')
-      .in('id', [caller.id, userId]);
+      .in('id', [callerId, userId]);
+    console.info('assign-therapist-user stage=profile_lookup_complete', { requestId });
     if (profileError) {
       console.error('Error resolving assignment profiles:', profileError);
       logApiAccess('POST', '/assign-therapist-user', userContext, 500);
       return new Response(JSON.stringify({ error: 'Unable to verify organization context' }), { status: 500, headers: responseHeaders });
     }
 
-    const callerProfile = profileRows?.find((profile) => profile.id === caller.id);
+    const callerProfile = profileRows?.find((profile) => profile.id === callerId);
     const targetProfile = profileRows?.find((profile) => profile.id === userId);
     const callerOrganizationId = callerProfile?.organization_id ?? null;
     if (!callerOrganizationId || callerProfile?.is_active !== true) {
@@ -73,16 +96,18 @@ export default async (req: Request): Promise<Response> => {
       return new Response(JSON.stringify({ error: 'Admin organization context is required' }), { status: 403, headers: responseHeaders });
     }
 
+    console.info('assign-therapist-user stage=role_check_start', { requestId });
     const callerRole = await resolveAssignmentAdminRole(adminClient, callerOrganizationId);
+    console.info('assign-therapist-user stage=role_check_complete', { requestId });
     if (!callerRole) {
       logApiAccess('POST', '/assign-therapist-user', null, 403);
       return new Response(JSON.stringify({ error: 'Insufficient permissions' }), { status: 403, headers: responseHeaders });
     }
 
     userContext = {
-      user: { id: caller.id, email: caller.email ?? null },
+      user: { id: callerId, email: typeof callerProfile.email === 'string' ? callerProfile.email : null },
       profile: {
-        id: caller.id,
+        id: callerId,
         email: typeof callerProfile.email === 'string' ? callerProfile.email : null,
         role: callerRole,
         is_active: true,
@@ -203,7 +228,7 @@ export default async (req: Request): Promise<Response> => {
     if (linkError) throw new Error(`Error creating therapist link: ${linkError.message}`);
 
     const { error: logError } = await adminClient.from('admin_actions').insert({
-      admin_user_id: caller.id,
+      admin_user_id: callerId,
       action_type: 'therapist_assignment',
       target_user_id: userId,
       organization_id: callerOrganizationId,

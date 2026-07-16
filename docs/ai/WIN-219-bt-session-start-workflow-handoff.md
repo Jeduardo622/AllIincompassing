@@ -7,6 +7,7 @@
 - why: this restores a role-sensitive session lifecycle action and hardens the tenant-scoped `start_session` database RPC
 - triggering paths: `src/pages/Schedule.tsx`, `src/components/SessionModal.tsx`, `scripts/ci/**`, and `supabase/migrations/**`
 - issue: [WIN-219](https://linear.app/winningedgeai/issue/WIN-219/restore-start-session-for-scheduled-bt-appointments)
+- pull request: [#811](https://github.com/Jeduardo622/AllIincompassing/pull/811)
 - branch: `codex/bt-session-start-workflow-fix`
 
 ## Scope
@@ -28,7 +29,7 @@
 
 - specification and architecture review: approved the explicit `allowStartSession` capability boundary
 - implementation and test engineering: completed the bounded UI, RPC, runtime-contract, and SQL coverage
-- code review: approved after canonical-query, supplemental-goal, and loading-state fixes; final synchronized-diff review pending
+- code review: approved after canonical-query, supplemental-goal, and loading-state fixes; synchronized-diff review found no blocker
 - security/Supabase review: approved with no remaining tenant-isolation or authorization findings
 - test review: approved; no remaining focused test blocker
 

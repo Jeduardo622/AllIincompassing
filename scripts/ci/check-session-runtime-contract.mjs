@@ -68,8 +68,32 @@ const REQUIRED_BODY_PATTERNS = [
     message: "start_session_with_goals must be SECURITY DEFINER",
   },
   {
-    pattern: /set\s+search_path\s+(?:=|to)\s*'?public'?/i,
-    message: "start_session_with_goals must set search_path = public",
+    pattern: /set\s+search_path\s+(?:=|to)\s*''/i,
+    message: "start_session_with_goals must set an empty search_path",
+  },
+  {
+    pattern: /select[\s\S]{0,80}not\s+v_is_super_admin[\s\S]{0,600}into\s+v_is_restricted_bt_actor/i,
+    message: "start_session_with_goals must identify restricted exact BT actors",
+  },
+  {
+    pattern: /p_program_id\s+is\s+distinct\s+from\s+v_session\.program_id/i,
+    message: "start_session_with_goals must reject BT program linkage drift",
+  },
+  {
+    pattern: /p_goal_id\s+is\s+distinct\s+from\s+v_session\.goal_id/i,
+    message: "start_session_with_goals must reject BT primary-goal linkage drift",
+  },
+  {
+    pattern: /v_submitted_goal_ids\s+is\s+distinct\s+from\s+v_stored_goal_ids/i,
+    message: "start_session_with_goals must reject BT goal-set linkage drift",
+  },
+  {
+    pattern: /from\s+public\.programs\s+p/i,
+    message: "start_session_with_goals must validate the stored BT program",
+  },
+  {
+    pattern: /from\s+public\.session_goals\s+sg/i,
+    message: "start_session_with_goals must validate stored BT session goals",
   },
 ];
 

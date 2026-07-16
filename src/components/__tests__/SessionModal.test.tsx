@@ -7,6 +7,13 @@ import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-l
 import type { Session } from '../../types';
 import { startSessionFromModal } from '../../features/scheduling/domain/sessionStart';
 
+const toastMocks = vi.hoisted(() => ({
+  showError: vi.fn(),
+  showSuccess: vi.fn(),
+}));
+
+vi.mock('../../lib/toast', () => toastMocks);
+
 vi.mock('../../features/scheduling/domain/sessionStart', () => ({
   startSessionFromModal: vi.fn(),
 }));
@@ -118,6 +125,8 @@ describe('SessionModal', () => {
   beforeEach(() => {
     vi.mocked(startSessionFromModal).mockReset();
     vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue(null);
+    toastMocks.showError.mockClear();
+    toastMocks.showSuccess.mockClear();
     defaultProps.onClose.mockClear();
     defaultProps.onSubmit.mockClear();
 
@@ -907,7 +916,7 @@ describe('SessionModal', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('calls onSessionStarted after a successful Start Session', async () => {
+    it('calls onSessionStarted after a successful Start Session', async () => {
     vi.mocked(startSessionFromModal).mockResolvedValue(undefined);
     const onSessionStarted = vi.fn();
 
@@ -942,7 +951,49 @@ describe('SessionModal', () => {
       expect(vi.mocked(startSessionFromModal)).toHaveBeenCalledOnce();
       expect(onSessionStarted).toHaveBeenCalledOnce();
       expect(defaultProps.onClose).toHaveBeenCalled();
+      expect(toastMocks.showSuccess).toHaveBeenCalledWith('Session started');
     });
+  });
+
+  it('preserves non-data edit behavior when starting with another valid program and goal', async () => {
+      vi.mocked(startSessionFromModal).mockResolvedValue(undefined);
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={{
+            id: 'session-edit',
+            therapist_id: 'test-therapist-1',
+            client_id: 'test-client-1',
+            program_id: 'program-1',
+            goal_id: 'goal-1',
+            start_time: '2026-03-01T10:00:00.000Z',
+            end_time: '2026-03-01T11:00:00.000Z',
+            status: 'scheduled',
+            notes: '',
+            created_at: '2026-03-01T09:00:00.000Z',
+            created_by: null,
+            updated_at: '2026-03-01T09:00:00.000Z',
+            updated_by: null,
+            started_at: null,
+          } satisfies Session}
+        />
+      );
+
+      await userEvent.selectOptions(await screen.findByRole('combobox', { name: /Program/i }), 'program-2');
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: /Primary Goal/i }), 'goal-2');
+      const startButton = screen.getByRole('button', { name: /Start Session/i });
+      await waitFor(() => expect(startButton).not.toBeDisabled());
+      await userEvent.click(startButton);
+
+      await waitFor(() => {
+        expect(vi.mocked(startSessionFromModal)).toHaveBeenCalledWith({
+          sessionId: 'session-edit',
+          programId: 'program-2',
+          goalId: 'goal-2',
+          goalIds: ['goal-1', 'goal-2'],
+        });
+      });
   });
 
   it('does not start a scheduled session with unavailable live program and goal selections', async () => {
@@ -988,6 +1039,8 @@ describe('SessionModal', () => {
       <SessionModal
         {...defaultProps}
         onSessionStarted={onSessionStarted}
+        dataCollectionOnly
+        allowStartSession
         session={{
           id: 'session-unavailable-start',
           therapist_id: 'test-therapist-1',
@@ -1413,6 +1466,153 @@ describe('SessionModal', () => {
       expect(screen.queryByRole('button', { name: /Start Session/i })).not.toBeInTheDocument();
     });
 
+    it('keeps Start Session disabled when a stored supplemental goal is inactive', async () => {
+      const inactiveSupplementalGoal = {
+        ...mockGoals[0],
+        id: 'goal-inactive-supplemental',
+        title: 'Inactive Supplemental Goal',
+        status: 'paused',
+      };
+      const buildThenableChain = (rows: unknown[], singleRow: unknown = null) => {
+        const chain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+          then: (
+            resolve: (value: { data: unknown[]; error: null }) => unknown,
+            reject: (reason: unknown) => unknown,
+          ) => Promise.resolve({ data: rows, error: null }).then(resolve, reject),
+        };
+        return chain;
+      };
+
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'sessions') {
+          return buildThenableChain([], {
+            program_id: 'program-1',
+            goal_id: 'goal-1',
+            started_at: null,
+          }) as never;
+        }
+        if (table === 'session_goals') {
+          return buildThenableChain([
+            { goal_id: 'goal-1' },
+            { goal_id: inactiveSupplementalGoal.id },
+          ]) as never;
+        }
+        if (table === 'programs') {
+          return buildThenableChain(mockPrograms) as never;
+        }
+        if (table === 'goals') {
+          return buildThenableChain([...mockGoals, inactiveSupplementalGoal]) as never;
+        }
+        return buildThenableChain([]) as never;
+      });
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={editSession}
+          dataCollectionOnly
+          allowStartSession
+        />
+      );
+
+      const startButton = await screen.findByRole('button', { name: /Start Session/i });
+      await waitFor(() => expect(startButton).toBeDisabled());
+      await userEvent.click(startButton);
+      expect(vi.mocked(startSessionFromModal)).not.toHaveBeenCalled();
+
+    });
+
+    it('keeps Start Session disabled when canonical session goals cannot be loaded', async () => {
+      const buildChain = (rows: unknown[], singleRow: unknown = null, queryError: unknown = null) => {
+        const result = { data: queryError ? null : rows, error: queryError };
+        const chain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => result),
+          maybeSingle: vi.fn(async () => ({ data: queryError ? null : singleRow, error: queryError })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+          then: (
+            resolve: (value: typeof result) => unknown,
+            reject: (reason: unknown) => unknown,
+          ) => Promise.resolve(result).then(resolve, reject),
+        };
+        return chain;
+      };
+
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'sessions') {
+          return buildChain([], {
+            program_id: 'program-1',
+            goal_id: 'goal-1',
+            started_at: null,
+          }) as never;
+        }
+        if (table === 'session_goals') {
+          return buildChain([], null, { message: 'session goals unavailable' }) as never;
+        }
+        if (table === 'programs') {
+          return buildChain(mockPrograms) as never;
+        }
+        if (table === 'goals') {
+          return buildChain(mockGoals) as never;
+        }
+        return buildChain([]) as never;
+      });
+
+      const { rerender } = renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={editSession}
+          dataCollectionOnly
+          allowStartSession
+        />
+      );
+
+      const startButton = await screen.findByRole('button', { name: /Start Session/i });
+      await waitFor(() => expect(startButton).toBeDisabled());
+      await userEvent.click(startButton);
+      expect(vi.mocked(startSessionFromModal)).not.toHaveBeenCalled();
+
+      rerender(
+        <SessionModal
+          {...defaultProps}
+          session={{
+            ...editSession,
+            status: 'in_progress',
+            started_at: '2026-03-31T10:05:00.000Z',
+          }}
+          dataCollectionOnly
+        />
+      );
+      expect(await screen.findByRole('button', { name: /^Close Session$/i })).not.toBeDisabled();
+    });
+
+    it('hides start session for an in-progress data-only session even when allowStartSession is true', async () => {
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={{
+            ...editSession,
+            status: 'in_progress',
+            started_at: '2026-03-31T10:05:00.000Z',
+          }}
+          dataCollectionOnly
+          allowStartSession
+        />
+      );
+
+      await screen.findByRole('option', { name: /Default Goal/i });
+      expect(screen.queryByRole('button', { name: /Start Session/i })).not.toBeInTheDocument();
+      expect(vi.mocked(startSessionFromModal)).not.toHaveBeenCalled();
+    });
+
     it('allows a scheduled BT data-only session to start without unlocking schedule metadata', async () => {
       vi.mocked(startSessionFromModal).mockResolvedValue(undefined);
       const onSessionStarted = vi.fn();
@@ -1435,6 +1635,13 @@ describe('SessionModal', () => {
       expect(screen.getByLabelText(/Start Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
+      await screen.findByRole('option', { name: /Default Goal/i });
+      expect(screen.getByRole('button', { name: /Default Program/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Second Program/i })).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: /Second Program/i })).toBeDisabled();
+      for (const goalCheckbox of screen.getAllByRole('checkbox', { name: /Default Goal/i })) {
+        expect(goalCheckbox).toBeDisabled();
+      }
 
       const startButton = await screen.findByRole('button', { name: /Start Session/i });
       await waitFor(() => expect(startButton).not.toBeDisabled());
@@ -4236,6 +4443,8 @@ describe('SessionModal', () => {
       <SessionModal
         {...defaultProps}
         onSessionStarted={onSessionStarted}
+        dataCollectionOnly
+        allowStartSession
         session={{
           id: 'session-fail-start',
           therapist_id: 'test-therapist-1',
@@ -4264,5 +4473,7 @@ describe('SessionModal', () => {
     });
     expect(onSessionStarted).not.toHaveBeenCalled();
     expect(defaultProps.onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(toastMocks.showError).toHaveBeenCalledWith('RPC failure');
   });
 });

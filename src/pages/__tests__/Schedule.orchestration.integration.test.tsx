@@ -21,22 +21,23 @@ const originalSessionWindow = {
   end_time: currentSessionEnd.toISOString(),
 };
 
+const originalSessionFixture = {
+  id: "session-1",
+  therapist_id: "therapist-1",
+  client_id: "client-1",
+  program_id: "program-1",
+  goal_id: "goal-1",
+  start_time: originalSessionWindow.start_time,
+  end_time: originalSessionWindow.end_time,
+  status: "scheduled",
+  started_at: null as string | null,
+  notes: "Initial session",
+  therapist: { id: "therapist-1", full_name: "Dr. Myles" },
+  client: { id: "client-1", full_name: "Jamie Client" },
+};
+
 const scheduleFixtures = {
-  sessions: [
-    {
-      id: "session-1",
-      therapist_id: "therapist-1",
-      client_id: "client-1",
-      program_id: "program-1",
-      goal_id: "goal-1",
-      start_time: originalSessionWindow.start_time,
-      end_time: originalSessionWindow.end_time,
-      status: "scheduled",
-      notes: "Initial session",
-      therapist: { id: "therapist-1", full_name: "Dr. Myles" },
-      client: { id: "client-1", full_name: "Jamie Client" },
-    },
-  ],
+  sessions: [{ ...originalSessionFixture }],
   therapists: [
     {
       id: "therapist-1",
@@ -356,9 +357,8 @@ const waitForScheduleGridReady = () =>
   }, { timeout: 10_000 });
 
 describe("Schedule orchestration integration hardening", () => {
-  const resetScheduleFixtureWindow = () => {
-    scheduleFixtures.sessions[0].start_time = originalSessionWindow.start_time;
-    scheduleFixtures.sessions[0].end_time = originalSessionWindow.end_time;
+  const resetScheduleFixture = () => {
+    Object.assign(scheduleFixtures.sessions[0], originalSessionFixture);
   };
 
   const openExistingSessionForEdit = async () => {
@@ -375,7 +375,7 @@ describe("Schedule orchestration integration hardening", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
-    resetScheduleFixtureWindow();
+    resetScheduleFixture();
     upsertClientSessionNoteForSessionMock.mockResolvedValue({
       id: "linked-note-1",
     });
@@ -647,8 +647,6 @@ describe("Schedule orchestration integration hardening", () => {
   });
 
   it("allows a BT to start an existing scheduled appointment in data-only mode", async () => {
-    scheduleFixtures.sessions[0].status = "scheduled";
-
     renderWithProviders(<Schedule />, {
       auth: { role: "bt", organizationId: "org-1" },
     });
@@ -660,6 +658,58 @@ describe("Schedule orchestration integration hardening", () => {
 
     expect(screen.getByTestId("data-collection-only")).toHaveTextContent("true");
     expect(screen.getByTestId("allow-start-session")).toHaveTextContent("true");
+  });
+
+  it("does not allow a BT to start an appointment that already has started_at", async () => {
+    scheduleFixtures.sessions[0].started_at = "2026-07-16T10:00:00.000Z";
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+
+    expect(await screen.findByTestId("allow-start-session")).toHaveTextContent("false");
+  });
+
+  it.each(["in_progress", "completed", "cancelled"])(
+    "does not allow a BT to start an existing %s appointment",
+    async (status) => {
+      scheduleFixtures.sessions[0].status = status;
+
+      renderWithProviders(<Schedule />, {
+        auth: { role: "bt", organizationId: "org-1" },
+      });
+      await screen.findByRole("heading", { name: /Schedule/i });
+      await waitForScheduleGridReady();
+      await openExistingSessionForEdit();
+
+      expect(await screen.findByTestId("allow-start-session")).toHaveTextContent("false");
+    },
+  );
+
+  it("does not allow a non-BT to use the BT start-session exception", async () => {
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bcba", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+
+    expect(await screen.findByTestId("allow-start-session")).toHaveTextContent("false");
+  });
+
+  it("does not enable the BT start-session exception when there is no existing appointment", async () => {
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+
+    expect(await screen.findByTestId("modal-mode")).toHaveTextContent("create");
+    expect(screen.getByTestId("allow-start-session")).toHaveTextContent("false");
   });
 
   it("BT live capture persistence saves data collection without updating appointment metadata", async () => {

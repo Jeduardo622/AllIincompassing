@@ -1,4 +1,6 @@
 import { describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import {
   buildDatabaseSslConfig,
@@ -12,7 +14,7 @@ create or replace function public.start_session_with_goals(...)
 returns void
 language plpgsql
 security definer
-SET search_path TO 'public'
+SET search_path TO ''
 begin
   select coalesce(app.current_user_has_exact_role_for_org(
     v_session.organization_id,
@@ -36,6 +38,34 @@ begin
       and t.deleted_at is null
   )
   into v_has_start_authority;
+
+  select not v_is_super_admin
+    and coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['bt']::text[]
+    ), false)
+    and not coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist']::text[]
+    ), false)
+  into v_is_restricted_bt_actor;
+
+  if v_is_restricted_bt_actor then
+    if p_program_id is distinct from v_session.program_id
+      or p_goal_id is distinct from v_session.goal_id
+      or v_submitted_goal_ids is distinct from v_stored_goal_ids then
+      return jsonb_build_object('error_code', 'PLAN_MISMATCH');
+    end if;
+
+    select count(*) from public.programs p
+    where p.id = v_session.program_id and p.status = 'active';
+    select count(*) from public.session_goals sg
+    join public.goals g on g.id = sg.goal_id and g.status = 'active'
+    join public.programs p on p.id = sg.program_id and p.status = 'active';
+
+    update public.sessions
+    set started_at = v_started_at, status = 'in_progress';
+  end if;
 end;
 `,
   executeGrants: {
@@ -60,6 +90,29 @@ end;
 };
 
 describe("check-session-runtime-contract", () => {
+  test("accepts the checked-in BT plan-lock migration function", () => {
+    const migrationSql = readFileSync(
+      path.join(
+        process.cwd(),
+        "supabase",
+        "migrations",
+        "20260716162434_lock_bt_start_to_scheduled_plan.sql",
+      ),
+      "utf8",
+    );
+    const functionDefinition = migrationSql.match(
+      /create or replace function public\.start_session_with_goals\([\s\S]*?\n\$\$;/i,
+    )?.[0];
+
+    expect(functionDefinition).toBeTruthy();
+    expect(
+      evaluateStartSessionRuntimeContract({
+        ...validContract,
+        functionDefinition,
+      }).violations,
+    ).toEqual([]);
+  });
+
   test("requires the explicitly trusted Supabase CA without disabling certificate verification", () => {
     const ssl = buildDatabaseSslConfig("trusted-ca");
 
@@ -113,14 +166,44 @@ describe("check-session-runtime-contract", () => {
       message: "start_session_with_goals must be SECURITY DEFINER",
     },
     {
-      name: "SET search_path TO 'public'",
-      before: "SET search_path TO 'public'",
-      message: "start_session_with_goals must set search_path = public",
+      name: "SET search_path TO ''",
+      before: "SET search_path TO ''",
+      message: "start_session_with_goals must set an empty search_path",
     },
     {
       name: "public.current_user_is_super_admin()",
       before: "or coalesce(public.current_user_is_super_admin(), false)",
       message: "start_session_with_goals must allow public.current_user_is_super_admin()",
+    },
+    {
+      name: "restricted exact BT plan guard",
+      before: "select not v_is_super_admin",
+      message: "start_session_with_goals must identify restricted exact BT actors",
+    },
+    {
+      name: "program linkage equality",
+      before: "p_program_id is distinct from v_session.program_id",
+      message: "start_session_with_goals must reject BT program linkage drift",
+    },
+    {
+      name: "primary goal linkage equality",
+      before: "p_goal_id is distinct from v_session.goal_id",
+      message: "start_session_with_goals must reject BT primary-goal linkage drift",
+    },
+    {
+      name: "canonical goal-set equality",
+      before: "v_submitted_goal_ids is distinct from v_stored_goal_ids",
+      message: "start_session_with_goals must reject BT goal-set linkage drift",
+    },
+    {
+      name: "active stored program validation",
+      before: "from public.programs p",
+      message: "start_session_with_goals must validate the stored BT program",
+    },
+    {
+      name: "canonical session goal validation",
+      before: "from public.session_goals sg",
+      message: "start_session_with_goals must validate stored BT session goals",
     },
   ])("rejects missing runtime marker: $name", ({ before, message }) => {
     const result = evaluateStartSessionRuntimeContract({

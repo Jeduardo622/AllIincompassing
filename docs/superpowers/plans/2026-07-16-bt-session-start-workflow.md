@@ -2,17 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restore the authorized Start Session action for scheduled BT appointments without unlocking appointment metadata or changing backend authorization.
+**Goal:** Restore the authorized Start Session action for scheduled BT appointments without unlocking appointment metadata or allowing client-supplied plan changes.
 
-**Architecture:** Keep `dataCollectionOnly` as the metadata-locking boundary. Add an explicit, default-deny `allowStartSession` prop to `SessionModal`, wire it from `Schedule` only for an existing scheduled unstarted BT appointment, and retain all existing state, plan-validity, and backend authorization checks.
+**Architecture:** Keep `dataCollectionOnly` as the metadata-locking boundary. Add an explicit, default-deny `allowStartSession` prop to `SessionModal`, wire it from `Schedule` only for an existing scheduled unstarted BT appointment, and harden the RPC so exact BT actors can start only the appointment's already-linked active program and goal set.
 
-**Tech Stack:** React 18, TypeScript, React Hook Form, Vitest, Testing Library.
+**Tech Stack:** React 18, TypeScript, React Hook Form, Vitest, Testing Library, PostgreSQL/PLpgSQL, Supabase CLI.
 
 ## Global Constraints
 
 - Linear issue: WIN-219.
 - Classification: `high-risk human-reviewed`; lane: `critical`.
-- Do not change auth context, routes, server handlers, Edge Functions, RPCs, migrations, RLS, tenant policy, or deployment configuration.
+- Do not change auth context, routes, server handlers, Edge Functions, RLS policies, tenant membership rules, or deployment configuration.
+- The only protected-path change is a narrow `start_session_with_goals` migration created with the Supabase CLI; do not apply it to hosted Supabase from this branch.
 - BT therapist/client/program/goal/time/status/notes metadata must remain locked.
 - `allowStartSession` must default to `false`.
 - Existing backend authorization remains authoritative and fail-closed.
@@ -123,7 +124,38 @@ Run the two focused files from Task 1. Expected: all tests pass.
 
 Keep the prop and derived permission names explicit. Do not extract shared auth utilities or alter role capabilities.
 
-### Task 3: Verify, review, and hand off
+### Task 3: Lock exact-BT start to the scheduled plan
+
+**Files:**
+- Create: `supabase/migrations/20260716162434_lock_bt_start_to_scheduled_plan.sql`
+- Create: `tests/start-session-bt-plan-lock-migration.test.ts`
+- Modify: `scripts/ci/check-session-runtime-contract.mjs`
+- Modify: `tests/ci/check-session-runtime-contract.test.ts`
+- Create: `tests/sql/start_session_bt_plan_lock_smoke.sql`
+
+**Interfaces:**
+- Consumes: the locked session row, exact organization role, stored `program_id` / `goal_id`, and existing `session_goals`.
+- Produces: a fail-closed exact-BT branch that rejects missing, inactive, cross-tenant, or client-mismatched plan linkage before update.
+
+- [ ] **Step 1: Add failing migration contract coverage**
+
+Assert the new migration identifies exact BT actors separately, requires submitted program/primary/goal set to equal the scheduled linkage, validates the stored program and goals as active and same-client/same-organization, and preserves execute grants.
+
+- [ ] **Step 2: Implement the narrow RPC replacement**
+
+Use the Supabase-CLI-created migration. Preserve existing role authorization and non-BT behavior. For exact BT only, canonicalize the current `session_goals` set plus the primary goal and reject any submitted mismatch before the existing update/insert/audit path.
+
+- [ ] **Step 3: Run focused RED/GREEN verification**
+
+Run the migration contract test and the start-session runtime-contract test. Record the initial failure and final pass.
+
+Apply the full migration history to a fresh isolated local Supabase stack, run database lint, and execute the synthetic SQL smoke transaction covering exact-BT success/immutability, mismatch and inactive-plan rejection, assignment/status denial, and dual-role compatibility.
+
+- [ ] **Step 4: Run Supabase/security review**
+
+Require `supabase-reviewer` and `security-engineer` approval before broader verification.
+
+### Task 4: Verify, review, and hand off
 
 **Files:**
 - Create: `docs/ai/WIN-219-bt-session-start-workflow-handoff.md`
@@ -164,4 +196,3 @@ Require a passing verification card and `pr-ready: yes` before pushing.
 - [ ] **Step 5: Commit, push, and open the PR**
 
 Use focused commits referencing WIN-219. Update Linear to `In Review` with the PR link and exact verification status. Do not merge without required human review.
-

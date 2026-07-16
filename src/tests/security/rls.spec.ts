@@ -20,6 +20,40 @@ const goalTargetProgressionMigration = readFileSync(
   'utf8',
 );
 
+const btAbaSessionNoteMigration = readFileSync(
+  path.join(process.cwd(), 'supabase', 'migrations', '20260716212837_bt_aba_session_note_closeout.sql'),
+  'utf8',
+);
+
+describe('BT ABA session note attestation RLS contract', () => {
+  it('keeps reads organization-scoped and writes caller-owned', () => {
+    expect(btAbaSessionNoteMigration).toContain(
+      'alter table public.session_note_attestations enable row level security;',
+    );
+    expect(btAbaSessionNoteMigration).toMatch(
+      /create policy session_note_attestations_authenticated_select[\s\S]*organization_id = app\.current_user_organization_id\(\)/i,
+    );
+    expect(btAbaSessionNoteMigration).toMatch(
+      /create policy session_note_attestations_authenticated_insert[\s\S]*organization_id = app\.current_user_organization_id\(\)[\s\S]*signer_user_id = auth\.uid\(\)/i,
+    );
+    expect(btAbaSessionNoteMigration).not.toMatch(
+      /create policy session_note_attestations_authenticated_(update|delete)/i,
+    );
+  });
+
+  it('denies anonymous table and RPC access', () => {
+    expect(btAbaSessionNoteMigration).toMatch(
+      /revoke all on table public\.session_note_attestations from public, anon/i,
+    );
+    expect(btAbaSessionNoteMigration).toMatch(
+      /revoke execute on function public\.save_bt_aba_session_note_draft\(uuid, uuid, jsonb, jsonb\) from public, anon/i,
+    );
+    expect(btAbaSessionNoteMigration).toMatch(
+      /revoke execute on function public\.finalize_bt_aba_session_note\(uuid, uuid, jsonb, jsonb, jsonb, jsonb\) from public, anon/i,
+    );
+  });
+});
+
 describe('goal target progression RLS contract', () => {
   it('enables RLS and scopes all three progression tables to the caller organization', () => {
     for (const table of [

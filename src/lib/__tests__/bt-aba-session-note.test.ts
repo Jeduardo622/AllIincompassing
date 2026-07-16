@@ -66,6 +66,10 @@ describe('BT ABA session note contract', () => {
     ]);
     expect(BT_ABA_FIELD_LABELS).toMatchObject({
       purpose_of_session: 'Purpose of Session',
+      purpose_other: 'Describe Other',
+      skill_strategies_other: 'Describe Other Skill Strategy',
+      behavior_strategies_other: 'Describe Other Behavior Strategy',
+      supervisor_support_other: 'Describe Other Supervisor Support',
       progress_toward_goals: 'Summary of Progress Toward Treatment Goals',
       client_response_to_treatment: "Client's Response to Treatment",
       bt_signature: 'Behavior Technician Signature',

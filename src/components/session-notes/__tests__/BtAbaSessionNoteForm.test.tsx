@@ -129,12 +129,66 @@ describe('BtAbaSessionNoteForm', () => {
 
     const purpose = screen.getByRole('group', { name: 'Purpose of Session' });
     await user.click(within(purpose).getByLabelText('Other'));
-    expect(screen.getByLabelText('Describe other purpose')).toBeVisible();
+    expect(screen.getByLabelText('Describe Other')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Finalize Session' }));
     expect(screen.getByText('Other narrative is required when Other is selected')).toBeVisible();
 
     await user.click(within(purpose).getByLabelText('Other'));
-    expect(screen.queryByLabelText('Describe other purpose')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Describe Other')).not.toBeInTheDocument();
+  });
+
+  it('focuses and describes an empty drawn signature when it is the only finalization error', async () => {
+    const user = userEvent.setup();
+    const props = makeProps();
+    const completeExceptSignature: BtAbaSessionNoteResponses = {
+      purpose_of_session: ['RBT/BT worked on goals as stated in the treatment plan'],
+      client_status: 'Engaged',
+      skill_strategies: ['Natural environment teaching'],
+      behavior_strategies: ['Differential Reinforcement'],
+      supervisor_support: ['Supervisor did not attend this session'],
+      progress_toward_goals: 'Made progress',
+      client_response_to_treatment: 'Responded positively',
+      data_point_scope: 'linked',
+      link_unlinked_data: false,
+      bt_signature: { method: 'drawn', value: '' },
+    };
+    render(<BtAbaSessionNoteForm {...props} initialResponses={completeExceptSignature} />);
+
+    await user.click(screen.getByRole('button', { name: 'Finalize Session' }));
+
+    const pad = screen.getByRole('application', { name: 'Draw Behavior Technician signature' });
+    expect(pad).toHaveFocus();
+    expect(pad).toHaveAttribute('data-field', 'bt_signature');
+    expect(pad).toHaveAttribute('aria-invalid', 'true');
+    expect(pad).toHaveAttribute('aria-describedby', 'bt-signature-error');
+  });
+
+  it('preserves local edits when props rerender for the same session', async () => {
+    const user = userEvent.setup();
+    const props = makeProps();
+    const { rerender } = render(<BtAbaSessionNoteForm {...props} />);
+    await user.type(screen.getByLabelText('Client Status'), 'Locally edited');
+
+    rerender(<BtAbaSessionNoteForm {...makeProps()} initialResponses={{ ...emptyResponses }} />);
+
+    expect(screen.getByLabelText('Client Status')).toHaveValue('Locally edited');
+  });
+
+  it('rehydrates responses when the session changes', async () => {
+    const user = userEvent.setup();
+    const props = makeProps();
+    const { rerender } = render(<BtAbaSessionNoteForm {...props} />);
+    await user.type(screen.getByLabelText('Client Status'), 'Old session edit');
+
+    rerender(
+      <BtAbaSessionNoteForm
+        {...props}
+        context={{ ...context, sessionId: 'session-2' }}
+        initialResponses={{ ...emptyResponses, client_status: 'Recovered session draft' }}
+      />,
+    );
+
+    expect(screen.getByLabelText('Client Status')).toHaveValue('Recovered session draft');
   });
 
   it('keeps N/A exclusive in skill and behavior strategy groups', async () => {

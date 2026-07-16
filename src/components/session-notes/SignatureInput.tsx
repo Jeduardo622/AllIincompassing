@@ -32,7 +32,7 @@ const parsePoints = (value: string): SignaturePoint[] => {
 };
 
 const serializePoints = (points: SignaturePoint[]) => `${PREFIX}${JSON.stringify(points.slice(-MAX_POINTS))}`;
-const clamp = (value: number) => Math.min(1, Math.max(0, value));
+const clamp = (value: number) => Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 
 export function SignatureInput({ value, onChange, disabled = false, error }: SignatureInputProps) {
   const drawing = useRef(false);
@@ -41,6 +41,15 @@ export function SignatureInput({ value, onChange, disabled = false, error }: Sig
     () => parsePoints(value.method === 'drawn' ? value.value : ''),
     [value],
   );
+  const strokes = useMemo(() => points.reduce<Array<Array<[number, number]>>>((result, point) => {
+    if (point === null) {
+      if (result.at(-1)?.length) result.push([]);
+      return result;
+    }
+    if (!result.length) result.push([]);
+    result.at(-1)?.push(point);
+    return result;
+  }, []).filter((stroke) => stroke.length), [points]);
 
   const selectMethod = (method: SignatureValue['method']) => {
     if (disabled || method === value.method) return;
@@ -76,10 +85,6 @@ export function SignatureInput({ value, onChange, disabled = false, error }: Sig
     onChange({ method: 'drawn', value: serializePoints(activePoints.current) });
   };
 
-  const polylinePoints = points
-    .map((point) => point ? `${point[0] * 300},${point[1] * 120}` : ' ')
-    .join(' ');
-
   return (
     <section aria-labelledby="bt-signature-heading" className="space-y-3">
       <h3 id="bt-signature-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">
@@ -114,6 +119,9 @@ export function SignatureInput({ value, onChange, disabled = false, error }: Sig
           role="application"
           aria-label="Draw Behavior Technician signature"
           aria-disabled={disabled ? 'true' : undefined}
+          aria-invalid={error ? 'true' : undefined}
+          aria-describedby={error ? 'bt-signature-error' : undefined}
+          data-field="bt_signature"
           className="h-32 w-full touch-none rounded-md border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600"
           tabIndex={disabled ? -1 : 0}
           onPointerDown={startDrawing}
@@ -122,7 +130,16 @@ export function SignatureInput({ value, onChange, disabled = false, error }: Sig
           onPointerCancel={stopDrawing}
         >
           <svg viewBox="0 0 300 120" className="h-full w-full" aria-hidden="true">
-            <polyline points={polylinePoints} fill="none" stroke="currentColor" strokeWidth="2" />
+            {strokes.map((stroke, index) => (
+              <polyline
+                key={index}
+                data-testid="signature-stroke"
+                points={stroke.map(([x, y]) => `${x * 300},${y * 120}`).join(' ')}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+            ))}
           </svg>
         </div>
       ) : (

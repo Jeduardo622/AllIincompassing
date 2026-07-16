@@ -5,6 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SignatureInput } from '../SignatureInput';
 
+const pointerEvent = (type: string, clientX: number, clientY: number) =>
+  new MouseEvent(type, { bubbles: true, clientX, clientY });
+
 describe('SignatureInput', () => {
   it('supports a typed keyboard fallback and clear/retry', async () => {
     const user = userEvent.setup();
@@ -31,9 +34,9 @@ describe('SignatureInput', () => {
       value: () => ({ left: 10, top: 20, width: 300, height: 120, right: 310, bottom: 140, x: 10, y: 20, toJSON: () => ({}) }),
     });
 
-    fireEvent.pointerDown(pad, { pointerId: 1, clientX: -100, clientY: -100 });
-    fireEvent.pointerMove(pad, { pointerId: 1, clientX: 500, clientY: 500 });
-    fireEvent.pointerUp(pad, { pointerId: 1, clientX: 500, clientY: 500 });
+    fireEvent(pad, pointerEvent('pointerdown', -100, -100));
+    fireEvent(pad, pointerEvent('pointermove', 500, 500));
+    fireEvent(pad, pointerEvent('pointerup', 500, 500));
 
     const signature = onChange.mock.calls.at(-1)?.[0];
     expect(signature.method).toBe('drawn');
@@ -44,6 +47,27 @@ describe('SignatureInput', () => {
     rerender(<SignatureInput value={signature} onChange={onChange} />);
     await user.click(screen.getByRole('button', { name: 'Clear signature' }));
     expect(onChange).toHaveBeenLastCalledWith({ method: 'drawn', value: '' });
+  });
+
+  it('renders separate SVG strokes for separate pointer gestures', () => {
+    const Harness = () => {
+      const [value, setValue] = useState({ method: 'drawn' as const, value: '' });
+      return <SignatureInput value={value} onChange={(next) => setValue(next as typeof value)} />;
+    };
+    render(<Harness />);
+    const pad = screen.getByRole('application', { name: 'Draw Behavior Technician signature' });
+    Object.defineProperty(pad, 'getBoundingClientRect', {
+      value: () => ({ left: 0, top: 0, width: 300, height: 120, right: 300, bottom: 120, x: 0, y: 0, toJSON: () => ({}) }),
+    });
+
+    fireEvent(pad, pointerEvent('pointerdown', 10, 10));
+    fireEvent(pad, pointerEvent('pointermove', 20, 20));
+    fireEvent(pad, pointerEvent('pointerup', 20, 20));
+    fireEvent(pad, pointerEvent('pointerdown', 100, 50));
+    fireEvent(pad, pointerEvent('pointermove', 120, 60));
+    fireEvent(pad, pointerEvent('pointerup', 120, 60));
+
+    expect(screen.getAllByTestId('signature-stroke')).toHaveLength(2);
   });
 
   it('disables every signature control while busy', () => {

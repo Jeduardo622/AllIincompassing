@@ -60,10 +60,14 @@ export const BT_ABA_SUPERVISOR_SUPPORT_OPTIONS = [
 
 export const BT_ABA_FIELD_LABELS = {
   purpose_of_session: 'Purpose of Session',
+  purpose_other: 'Describe Other',
   client_status: 'Client Status',
   skill_strategies: 'Skill Strategies',
+  skill_strategies_other: 'Describe Other Skill Strategy',
   behavior_strategies: 'Behavior Strategies',
+  behavior_strategies_other: 'Describe Other Behavior Strategy',
   supervisor_support: 'Supervisor Support and Discussion Included',
+  supervisor_support_other: 'Describe Other Supervisor Support',
   progress_toward_goals: 'Summary of Progress Toward Treatment Goals',
   client_response_to_treatment: "Client's Response to Treatment",
   data_point_scope: 'Data Point Scope',

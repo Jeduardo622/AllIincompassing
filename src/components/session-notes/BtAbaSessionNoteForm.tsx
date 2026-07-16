@@ -79,10 +79,13 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
   const [responses, setResponses] = useState<BtAbaSessionNoteResponses>(initialResponses);
   const [errors, setErrors] = useState<Errors>({});
   const formRef = useRef<HTMLFormElement>(null);
+  const latestInitialResponses = useRef(initialResponses);
+  latestInitialResponses.current = initialResponses;
 
   useEffect(() => {
-    setResponses(initialResponses);
-  }, [initialResponses]);
+    setResponses(latestInitialResponses.current);
+    setErrors({});
+  }, [context.sessionId]);
 
   const setField = <Key extends ResponseKey>(field: Key, value: BtAbaSessionNoteResponses[Key]) => {
     setResponses((current) => ({ ...current, [field]: value }));
@@ -212,7 +215,7 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
 
       <section className={sectionClass}>
         <CheckboxGroup field="purpose_of_session" label={BT_ABA_FIELD_LABELS.purpose_of_session} options={BT_ABA_PURPOSE_OPTIONS} values={responses.purpose_of_session} disabled={busy} error={errors.purpose_of_session} onToggle={(option, checked) => toggleSelection('purpose_of_session', option, checked)} />
-        {renderOther('purpose_of_session', 'purpose_other', 'Describe other purpose')}
+        {renderOther('purpose_of_session', 'purpose_other', BT_ABA_FIELD_LABELS.purpose_other)}
       </section>
 
       <section aria-labelledby="interventions-heading" className={sectionClass}>
@@ -223,15 +226,15 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
           {errors.client_status && <p id="client-status-error" role="alert" className="text-sm text-red-600">{errors.client_status}</p>}
         </div>
         <CheckboxGroup field="skill_strategies" label={BT_ABA_FIELD_LABELS.skill_strategies} options={BT_ABA_SKILL_STRATEGY_OPTIONS} values={responses.skill_strategies} disabled={busy} error={errors.skill_strategies} onToggle={(option, checked) => toggleSelection('skill_strategies', option, checked)} />
-        {renderOther('skill_strategies', 'skill_strategies_other', 'Describe other skill strategy')}
+        {renderOther('skill_strategies', 'skill_strategies_other', BT_ABA_FIELD_LABELS.skill_strategies_other)}
         <CheckboxGroup field="behavior_strategies" label={BT_ABA_FIELD_LABELS.behavior_strategies} options={BT_ABA_BEHAVIOR_STRATEGY_OPTIONS} values={responses.behavior_strategies} disabled={busy} error={errors.behavior_strategies} onToggle={(option, checked) => toggleSelection('behavior_strategies', option, checked)} />
-        {renderOther('behavior_strategies', 'behavior_strategies_other', 'Describe other behavior strategy')}
+        {renderOther('behavior_strategies', 'behavior_strategies_other', BT_ABA_FIELD_LABELS.behavior_strategies_other)}
       </section>
 
       <section aria-labelledby="clinical-summary-heading" className={sectionClass}>
         <h3 id="clinical-summary-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">Supervision and Clinical Summary</h3>
         <CheckboxGroup field="supervisor_support" label={BT_ABA_FIELD_LABELS.supervisor_support} options={BT_ABA_SUPERVISOR_SUPPORT_OPTIONS} values={responses.supervisor_support} disabled={busy} error={errors.supervisor_support} onToggle={(option, checked) => toggleSelection('supervisor_support', option, checked)} />
-        {renderOther('supervisor_support', 'supervisor_support_other', 'Describe other supervisor support')}
+        {renderOther('supervisor_support', 'supervisor_support_other', BT_ABA_FIELD_LABELS.supervisor_support_other)}
         <div>
           <label htmlFor="progress-toward-goals" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.progress_toward_goals}</label>
           <textarea id="progress-toward-goals" data-field="progress_toward_goals" rows={4} value={responses.progress_toward_goals} disabled={busy} aria-invalid={errors.progress_toward_goals ? 'true' : undefined} aria-describedby={errors.progress_toward_goals ? 'progress-error' : undefined} onChange={(event) => setField('progress_toward_goals', event.target.value)} className={inputClass} />

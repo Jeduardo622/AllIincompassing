@@ -6,6 +6,7 @@ const sql = readFileSync(
   join(process.cwd(), 'supabase/migrations/20260716212837_bt_aba_session_note_closeout.sql'),
   'utf8',
 );
+const smoke = readFileSync(join(process.cwd(), 'tests/sql/bt_aba_session_note_closeout_smoke.sql'), 'utf8');
 
 const functionBody = (name: string) =>
   sql.match(new RegExp(`create or replace function public\\.${name}[\\s\\S]*?\\n\\$\\$;`, 'i'))?.[0] ?? '';
@@ -82,24 +83,36 @@ describe('BT ABA session note closeout migration', () => {
   it('routes linked distinct-user BT supervision through the canonical idempotent creator', () => {
     const creator = functionBody('create_supervision_session_note_request_for_completed_session');
     const finalize = functionBody('finalize_bt_aba_session_note');
-    expect(creator).toMatch(/v_session\.therapist_id = v_actor/i);
+    expect(creator).toMatch(/v_session\.therapist_id <> v_actor/i);
     expect(creator).toMatch(/from public\.user_therapist_links utl[\s\S]*utl\.user_id = v_actor[\s\S]*utl\.therapist_id = v_session\.therapist_id/i);
+    expect(creator).toMatch(/v_actor_is_admin[\s\S]*v_session\.therapist_id <> v_actor[\s\S]*current_user_has_exact_role_for_org\([\s\S]*array\['bt'\]::text\[\][\s\S]*array\['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'\]::text\[\][\s\S]*user_therapist_links/i);
     expect(creator).toMatch(/on conflict \(session_id\) do update/i);
     expect(finalize.match(/create_supervision_session_note_request_for_completed_session/g)).toHaveLength(1);
+    expect(smoke).toMatch(/non-BT linked caller unexpectedly created a supervision request/i);
   });
 
   it('returns the persisted completed result before validating retry payloads or repeating side effects', () => {
     const finalize = functionBody('finalize_bt_aba_session_note');
     const replayStart = finalize.indexOf("if v_session.status = 'completed' then");
+    const strictAuthority = finalize.indexOf('app.current_user_has_exact_role_for_org');
+    const noteLoad = finalize.indexOf('select note.* into v_note');
     const payloadValidation = finalize.indexOf("jsonb_typeof(coalesce(p_responses", replayStart);
-    const replay = finalize.slice(replayStart, payloadValidation);
+    const replay = finalize.slice(replayStart, strictAuthority);
     expect(replay).toMatch(/v_note\.is_locked/i);
     expect(replay).toMatch(/v_note\.bt_aba_finalization_result is null/i);
     expect(replay).toMatch(/session_note_attestations/i);
     expect(replay).toMatch(/return v_note\.bt_aba_finalization_result/i);
-    expect(replay).not.toMatch(/required BT ABA session note response missing|finalize_session_note_with_progression|record_session_audit|create_supervision_session_note_request/i);
+    expect(replay).not.toMatch(/current_user_has_exact_role_for_org|current_user_can_capture_trial_event|user_therapist_links|therapist\.status|required BT ABA session note response missing|finalize_session_note_with_progression|record_session_audit|create_supervision_session_note_request/i);
+    expect(noteLoad).toBeGreaterThan(-1);
+    expect(noteLoad).toBeLessThan(replayStart);
     expect(replayStart).toBeGreaterThan(-1);
+    expect(replayStart).toBeLessThan(strictAuthority);
     expect(replayStart).toBeLessThan(payloadValidation);
+    expect(smoke).toMatch(/set is_active = false[\s\S]*delete from public\.user_therapist_links[\s\S]*set status = 'inactive'[\s\S]*invalid-payload signer replay/i);
+  });
+
+  it('documents restoration of the prior supervision helper on rollback', () => {
+    expect(sql).toMatch(/@migration-rollback:[^\n]*restore the prior create_supervision_session_note_request_for_completed_session definition/i);
   });
 
   it('keeps RPC exposure least privileged', () => {

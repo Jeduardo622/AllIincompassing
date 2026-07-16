@@ -1,6 +1,6 @@
 -- @migration-intent: Add the tenant-safe structured BT ABA Session Note closeout contract defined by WIN-221.
 -- @migration-dependencies: 20260711140753_fix_goal_target_draft_version_validation.sql,20260716162434_lock_bt_start_to_scheduled_plan.sql
--- @migration-rollback: Drop WIN-221 RPCs and policies, then remove session_note_attestations and the BT ABA columns from client_session_notes after dependent application code is rolled back.
+-- @migration-rollback: Drop WIN-221 RPCs and policies, restore the prior create_supervision_session_note_request_for_completed_session definition from 20260629233000_create_supervision_session_note_workflow.sql, then remove session_note_attestations and the BT ABA columns from client_session_notes after dependent application code is rolled back.
 
 begin;
 
@@ -186,9 +186,17 @@ begin
   );
 
   if coalesce(v_actor_is_admin, false) is not true
+     and v_session.therapist_id <> v_actor
      and not (
-       v_session.therapist_id = v_actor
-       or exists (
+       coalesce(app.current_user_has_exact_role_for_org(
+         v_actor_org,
+         array['bt']::text[]
+       ), false)
+       and not coalesce(app.current_user_has_exact_role_for_org(
+         v_actor_org,
+         array['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist']::text[]
+       ), false)
+       and exists (
          select 1
          from public.user_therapist_links utl
          where utl.user_id = v_actor
@@ -408,39 +416,8 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'session is out of scope';
   end if;
-  select
-    coalesce(app.current_user_has_exact_role_for_org(
-      v_session.organization_id,
-      array['bt']::text[]
-    ), false)
-    and not coalesce(app.current_user_has_exact_role_for_org(
-      v_session.organization_id,
-      array['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist']::text[]
-    ), false)
-    and exists (
-      select 1
-      from public.therapists therapist
-      where therapist.id = v_session.therapist_id
-        and therapist.organization_id = v_session.organization_id
-        and therapist.status = 'active'
-        and therapist.deleted_at is null
-        and upper(btrim(coalesce(therapist.title, ''))) in ('BT', 'RBT')
-        and (
-          v_session.therapist_id = v_actor
-          or exists (
-            select 1
-            from public.user_therapist_links utl
-            where utl.user_id = v_actor
-              and utl.therapist_id = v_session.therapist_id
-          )
-        )
-    )
-  into v_is_assigned_bt;
-
-  if v_session.organization_id <> app.current_user_organization_id()
-     or not v_is_assigned_bt
-     or not public.current_user_can_capture_trial_event(v_session.organization_id, v_session.client_id) then
-    raise exception using errcode = '42501', message = 'caller is not the assigned BT';
+  if v_session.organization_id <> app.current_user_organization_id() then
+    raise exception using errcode = '42501', message = 'session is out of scope';
   end if;
   if v_session.status <> 'in_progress' and v_session.status <> 'completed' then
     raise exception using errcode = '23514', message = 'session cannot be finalized';
@@ -474,6 +451,40 @@ begin
       raise exception using errcode = '23514', message = 'completed session does not have a finalized BT ABA note';
     end if;
     return v_note.bt_aba_finalization_result;
+  end if;
+
+  select
+    coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['bt']::text[]
+    ), false)
+    and not coalesce(app.current_user_has_exact_role_for_org(
+      v_session.organization_id,
+      array['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist']::text[]
+    ), false)
+    and exists (
+      select 1
+      from public.therapists therapist
+      where therapist.id = v_session.therapist_id
+        and therapist.organization_id = v_session.organization_id
+        and therapist.status = 'active'
+        and therapist.deleted_at is null
+        and upper(btrim(coalesce(therapist.title, ''))) in ('BT', 'RBT')
+        and (
+          v_session.therapist_id = v_actor
+          or exists (
+            select 1
+            from public.user_therapist_links utl
+            where utl.user_id = v_actor
+              and utl.therapist_id = v_session.therapist_id
+          )
+        )
+    )
+  into v_is_assigned_bt;
+
+  if not v_is_assigned_bt
+     or not public.current_user_can_capture_trial_event(v_session.organization_id, v_session.client_id) then
+    raise exception using errcode = '42501', message = 'caller is not the assigned BT';
   end if;
 
   if jsonb_typeof(coalesce(p_note_payload, '{}'::jsonb)) <> 'object'

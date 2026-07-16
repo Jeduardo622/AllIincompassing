@@ -137,6 +137,9 @@ values
   ('00000000-0000-4000-8000-00000000b041', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '3 hours', now() - interval '2 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '3 hours'),
   ('00000000-0000-4000-8000-00000000b042', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b012', now() - interval '5 hours', now() - interval '4 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '5 hours');
 
+create temporary table win221_finalization_results (result jsonb not null);
+grant select, insert on table win221_finalization_results to authenticated;
+
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b010', true);
@@ -208,7 +211,6 @@ declare
   v_note_id uuid;
   failure_note_id uuid;
   result jsonb;
-  first_result jsonb;
   valid_responses jsonb := '{
     "purpose_of_session":["RBT/BT worked on goals as stated in the treatment plan"],
     "client_status":"Client participated",
@@ -235,15 +237,59 @@ begin
   select id into v_note_id from public.client_session_notes where session_id = '00000000-0000-4000-8000-00000000b040';
   result := public.finalize_bt_aba_session_note('00000000-0000-4000-8000-00000000b040', v_note_id, payload, valid_responses, '[]'::jsonb, '[]'::jsonb);
   if result->>'status' <> 'completed' then raise exception 'assigned BT finalize failed: %', result; end if;
-  first_result := result;
-  result := public.finalize_bt_aba_session_note(
+  insert into win221_finalization_results values (result);
+end
+$finalization$;
+
+reset role;
+update public.user_roles roles
+set is_active = false
+where roles.user_id = '00000000-0000-4000-8000-00000000b010'
+  and roles.role_id = (select id from public.roles where name = 'bt');
+delete from public.user_therapist_links
+where user_id = '00000000-0000-4000-8000-00000000b010'
+  and therapist_id = '00000000-0000-4000-8000-00000000b015';
+update public.therapists
+set status = 'inactive'
+where id = '00000000-0000-4000-8000-00000000b015';
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b010', true);
+do $signer_replay$
+declare
+  v_note_id uuid;
+  replay_result jsonb;
+begin
+  select id into v_note_id from public.client_session_notes
+  where session_id = '00000000-0000-4000-8000-00000000b040';
+  replay_result := public.finalize_bt_aba_session_note(
     '00000000-0000-4000-8000-00000000b040', v_note_id,
     '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb
   );
-  if result is distinct from first_result then
-    raise exception 'invalid-payload idempotent retry did not return the persisted result: first %, retry %', first_result, result;
+  if replay_result is distinct from (select result from win221_finalization_results limit 1) then
+    raise exception 'invalid-payload signer replay did not return the persisted result: %', replay_result;
   end if;
+end
+$signer_replay$;
 
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b013', true);
+do $linked_non_bt_supervision$
+begin
+  begin
+    perform public.create_supervision_session_note_request_for_completed_session(
+      '00000000-0000-4000-8000-00000000b040'
+    );
+    raise exception 'non-BT linked caller unexpectedly created a supervision request';
+  exception when sqlstate '42501' then null; end;
+end
+$linked_non_bt_supervision$;
+
+reset role;
+do $side_effect_assertions$
+declare v_note_id uuid;
+begin
+  select id into v_note_id from public.client_session_notes
+  where session_id = '00000000-0000-4000-8000-00000000b040';
   if (select status from public.sessions where id = '00000000-0000-4000-8000-00000000b040') <> 'completed'
      or (select count(*) from public.session_note_attestations where note_id = v_note_id and attestation_role = 'bt') <> 1
      or (select count(*) from public.session_audit_logs where session_id = '00000000-0000-4000-8000-00000000b040' and event_type = 'session_completed') <> 1
@@ -251,9 +297,9 @@ begin
          where session_id = '00000000-0000-4000-8000-00000000b040'
            and requested_by = '00000000-0000-4000-8000-00000000b010'
            and bt_therapist_id = '00000000-0000-4000-8000-00000000b015') <> 1 then
-    raise exception 'finalization side effects were missing or duplicated';
+    raise exception 'signer replay changed finalization side effects';
   end if;
 end
-$finalization$;
+$side_effect_assertions$;
 
 rollback;

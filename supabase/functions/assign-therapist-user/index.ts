@@ -54,7 +54,7 @@ export async function resolveAssignmentAdminRole(
   return null;
 }
 
-export default async (req: Request): Promise<Response> => {
+export async function handler(req: Request): Promise<Response> {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
@@ -258,4 +258,10 @@ export default async (req: Request): Promise<Response> => {
     logApiAccess('POST', '/assign-therapist-user', userContext, 500);
     return new Response(JSON.stringify({ success: false, error: (error as any).message || 'Failed to assign therapist to user' }), { status: 500, headers: responseHeaders });
   }
-};
+}
+
+if (typeof Deno !== 'undefined' && typeof Deno.serve === 'function') {
+  Deno.serve(handler);
+}
+
+export default handler;

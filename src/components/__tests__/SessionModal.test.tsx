@@ -1011,8 +1011,13 @@ describe('SessionModal', () => {
         />
       );
 
-      await userEvent.selectOptions(await screen.findByRole('combobox', { name: /Program/i }), 'program-2');
-      await userEvent.selectOptions(screen.getByRole('combobox', { name: /Primary Goal/i }), 'goal-2');
+      const programSelect = await screen.findByRole('combobox', { name: /Program/i });
+      await screen.findByRole('option', { name: 'Second Program' });
+      await userEvent.selectOptions(programSelect, 'program-2');
+
+      const goalSelect = screen.getByRole('combobox', { name: /Primary Goal/i });
+      await screen.findByRole('option', { name: 'Second Goal' });
+      await userEvent.selectOptions(goalSelect, 'goal-2');
       const startButton = screen.getByRole('button', { name: /Start Session/i });
       await waitFor(() => expect(startButton).not.toBeDisabled());
       await userEvent.click(startButton);
@@ -1585,6 +1590,67 @@ describe('SessionModal', () => {
       await userEvent.click(startButton);
       expect(vi.mocked(startSessionFromModal)).not.toHaveBeenCalled();
 
+    });
+
+    it('allows Start Session for an active canonical multi-program goal set', async () => {
+      vi.mocked(startSessionFromModal).mockResolvedValue(undefined);
+      const buildThenableChain = (rows: unknown[], singleRow: unknown = null) => {
+        const chain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+          then: (
+            resolve: (value: { data: unknown[]; error: null }) => unknown,
+            reject: (reason: unknown) => unknown,
+          ) => Promise.resolve({ data: rows, error: null }).then(resolve, reject),
+        };
+        return chain;
+      };
+
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'sessions') {
+          return buildThenableChain([], {
+            program_id: 'program-1',
+            goal_id: 'goal-1',
+            started_at: null,
+          }) as never;
+        }
+        if (table === 'session_goals') {
+          return buildThenableChain([{ goal_id: 'goal-1' }, { goal_id: 'goal-2' }]) as never;
+        }
+        if (table === 'programs') {
+          return buildThenableChain(mockPrograms) as never;
+        }
+        if (table === 'goals') {
+          return buildThenableChain(mockGoals) as never;
+        }
+        return buildThenableChain([]) as never;
+      });
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={editSession}
+          dataCollectionOnly
+          allowStartSession
+        />
+      );
+
+      const startButton = await screen.findByRole('button', { name: /Start Session/i });
+      await waitFor(() => expect(startButton).not.toBeDisabled());
+      await userEvent.click(startButton);
+
+      await waitFor(() => {
+        expect(vi.mocked(startSessionFromModal)).toHaveBeenCalledWith({
+          sessionId: 'session-edit',
+          programId: 'program-1',
+          goalId: 'goal-1',
+          goalIds: ['goal-1', 'goal-2'],
+        });
+      });
     });
 
     it('keeps Start Session disabled when canonical session goals cannot be loaded', async () => {

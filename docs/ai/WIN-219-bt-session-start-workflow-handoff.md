@@ -43,7 +43,7 @@
   - lint, typecheck, policy checks, tenant validation, migration governance, coverage, and build
   - full `test:ci`, tier-0 route gate, authenticated Playwright, and real local migration execution
 - executed checks:
-  - focused Vitest suite: pass (`108/108` across modal, migration, and runtime-contract files; migration/runtime subset independently passed `27/27`)
+  - focused Vitest suite: pass (`109/109` across modal, migration, and runtime-contract files; migration/runtime subset independently passed `27/27`)
   - `npm run typecheck`: pass
   - `npm run lint`: pass
   - `npm run validate:tenant`: pass
@@ -52,7 +52,7 @@
   - `npm run ci:verify-coverage`: pass (`92.69%` line coverage; required `86%`)
   - `npm run build`: pass (`2160` modules transformed)
   - `PREVIEW_PORT=4174 npm run test:routes:tier0`: pass (`220/220`); port override avoided an existing unrelated preview process on `4173`
-  - `npm run test:ci`: `2791` passed, `3` skipped, `2` failed on unchanged `origin/main` surfaces
+  - `npm run test:ci`: `2792` passed, `3` skipped, `2` failed on unchanged `origin/main` surfaces
   - `npm run ci:playwright:env-readiness`: readiness `fail`; target URL, durable personas, IDs, and Supabase protected runtime inputs are absent locally
   - isolated Supabase migration application: pass from a fresh reset against a temporary project stack; original local project configuration was restored and the temporary stack removed
   - `supabase db lint --local --level error`: no WIN-219 function error; six pre-existing unrelated database errors remain
@@ -62,7 +62,16 @@
   - `tests/ci/check-e2e-reliability-gates.test.ts`: CRLF checkout causes its LF-specific workflow extraction to return an empty provision step; changed branch does not modify the workflow or test
   - authenticated Playwright: protected hosted credentials and runtime inputs are unavailable locally; required PR CI must supply them
 - result: focused implementation evidence passes; two confirmed baseline Windows failures and the protected hosted gate remain for CI
-- residual risk: the migration has not been applied to a hosted environment, so deployed UI/runtime parity must remain gated by migration/runtime-contract CI and human review
+- residual risk: hosted runtime parity and browser lifecycle remain gated by fresh required CI and human review; shared hosted booking fixtures can still collide across runs
+
+### CI failure repair (2026-07-16)
+
+- Hosted runtime parity was restored on project `wnnjeqheqxxyrgsjmygy` by applying only the reviewed `lock_bt_start_to_scheduled_plan` migration; hosted ledger version: `20260716190224`.
+- Preflight found legacy denormalized `session_goals.program_id` values on valid multi-program plans. The exact-BT lock now resolves each canonical goal through `goals.program_id` while retaining goal/link/program tenant, active-status, exact-set, role, and assignment checks.
+- Aggregate post-apply validation found zero future scheduled links invalid under the canonical goal-to-program relationship. Function definitions, empty search paths, and execute grants match the intended protected contract.
+- The BT UI readiness predicate now accepts active canonical goals across active tenant-scoped programs instead of requiring every supplemental goal to use the primary program.
+- The SessionModal CI race was fixed by awaiting fetched program and goal options before selecting them in the test.
+- The auth browser failure was classified as shared hosted fixture contention after repeated `409` slot conflicts; the same job completed its preceding no-show lifecycle, and the unchanged harness failed before booking the completion fixture.
 
 ## PR Hygiene
 

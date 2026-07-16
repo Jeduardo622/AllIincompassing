@@ -334,11 +334,10 @@ begin
     join public.goals g
       on g.id = sg.goal_id
     join public.programs p
-      on p.id = sg.program_id
+      on p.id = g.program_id
     where sg.session_id = v_session.id
       and sg.client_id = v_session.client_id
       and sg.organization_id = v_session.organization_id
-      and g.program_id = sg.program_id
       and g.client_id = v_session.client_id
       and g.organization_id = v_session.organization_id
       and g.status = 'active'

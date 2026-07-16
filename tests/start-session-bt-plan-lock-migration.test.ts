@@ -58,7 +58,8 @@ describe('BT session-start plan lock migration', () => {
 
     expect(functionSql).toMatch(/from public\.programs p[\s\S]*p\.id = v_session\.program_id[\s\S]*p\.client_id = v_session\.client_id[\s\S]*p\.organization_id = v_session\.organization_id[\s\S]*p\.status = 'active'/i);
     expect(functionSql).toMatch(/from public\.goals g[\s\S]*g\.id = v_session\.goal_id[\s\S]*g\.program_id = v_session\.program_id[\s\S]*g\.client_id = v_session\.client_id[\s\S]*g\.organization_id = v_session\.organization_id[\s\S]*g\.status = 'active'/i);
-    expect(functionSql).toMatch(/from public\.session_goals sg[\s\S]*join public\.goals g[\s\S]*join public\.programs p[\s\S]*sg\.session_id = v_session\.id[\s\S]*sg\.client_id = v_session\.client_id[\s\S]*sg\.organization_id = v_session\.organization_id[\s\S]*g\.program_id = sg\.program_id[\s\S]*g\.status = 'active'[\s\S]*p\.status = 'active'/i);
+    expect(functionSql).toMatch(/from public\.session_goals sg[\s\S]*join public\.goals g[\s\S]*join public\.programs p[\s\S]*p\.id = g\.program_id[\s\S]*sg\.session_id = v_session\.id[\s\S]*sg\.client_id = v_session\.client_id[\s\S]*sg\.organization_id = v_session\.organization_id[\s\S]*g\.status = 'active'[\s\S]*p\.status = 'active'/i);
+    expect(functionSql).not.toMatch(/g\.program_id = sg\.program_id/i);
     expect(functionSql).toContain("'error_code', 'INVALID_STORED_PLAN'");
   });
 

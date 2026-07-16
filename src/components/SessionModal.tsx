@@ -897,7 +897,7 @@ export function SessionModal({
     canonicalStartGoalIds.length > 0 &&
     canonicalStartGoalIds.every((id) => {
       const goal = goalsById.get(id);
-      return goal?.status === 'active' && goal.program_id === programId;
+      return goal?.status === 'active' && activePrograms.some((program) => program.id === goal.program_id);
     });
   const hasProgramValue = typeof programId === 'string' && programId.length > 0;
   const hasGoalValue = typeof goalId === 'string' && goalId.length > 0;

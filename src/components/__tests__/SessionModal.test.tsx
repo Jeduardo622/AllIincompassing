@@ -2615,6 +2615,8 @@ describe('SessionModal', () => {
     });
     expect(correctness).toBeChecked();
 
+    await userEvent.click(screen.getByRole('button', { name: /Record independent response for target 1/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Record prompted response for target 1/i }));
     for (const label of promptLabels.slice(0, -1)) {
       await userEvent.click(screen.getByRole('button', {
         name: new RegExp(`Record ${label.toLowerCase()} prompt for target 1`, 'i'),
@@ -2624,7 +2626,7 @@ describe('SessionModal', () => {
     await userEvent.click(screen.getByRole('button', {
       name: /Record partial physical prompt for target 1/i,
     }));
-    expect(screen.getByText('+7 · −1')).toBeInTheDocument();
+    expect(screen.getByText('+9 · −1')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
 
     await waitFor(() => {
@@ -2637,14 +2639,20 @@ describe('SessionModal', () => {
       session_note_goal_measurements?: Record<string, SessionGoalMeasurementEntry>;
     };
     expect(submitted.session_note_trial_events).toEqual([
-      expect.objectContaining({ target_id: targetId, trial_number: 5, response: 'correct', prompt_type: 'verbal', prompt_level: 'full', expected_progression_version: 7 }),
-      expect.objectContaining({ target_id: targetId, trial_number: 6, response: 'correct', prompt_type: 'verbal', prompt_level: 'partial', expected_progression_version: 7 }),
-      expect.objectContaining({ target_id: targetId, trial_number: 7, response: 'correct', prompt_type: 'gesture', prompt_level: null, expected_progression_version: 7 }),
-      expect.objectContaining({ target_id: targetId, trial_number: 8, response: 'correct', prompt_type: 'model', prompt_level: null, expected_progression_version: 7 }),
-      expect.objectContaining({ target_id: targetId, trial_number: 9, response: 'correct', prompt_type: 'visual', prompt_level: null, expected_progression_version: 7 }),
-      expect.objectContaining({ target_id: targetId, trial_number: 10, response: 'correct', prompt_type: 'physical', prompt_level: 'full', expected_progression_version: 7 }),
-      expect.objectContaining({ target_id: targetId, trial_number: 11, response: 'incorrect', prompt_type: 'physical', prompt_level: 'partial', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 5, response: 'independent', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 6, response: 'prompted', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 7, response: 'correct', prompt_type: 'verbal', prompt_level: 'full', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 8, response: 'correct', prompt_type: 'verbal', prompt_level: 'partial', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 9, response: 'correct', prompt_type: 'gesture', prompt_level: null, expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 10, response: 'correct', prompt_type: 'model', prompt_level: null, expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 11, response: 'correct', prompt_type: 'visual', prompt_level: null, expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 12, response: 'correct', prompt_type: 'physical', prompt_level: 'full', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 13, response: 'incorrect', prompt_type: 'physical', prompt_level: 'partial', expected_progression_version: 7 }),
     ]);
+    expect(submitted.session_note_trial_events?.[0]).not.toHaveProperty('prompt_type');
+    expect(submitted.session_note_trial_events?.[0]).not.toHaveProperty('prompt_level');
+    expect(submitted.session_note_trial_events?.[1]).not.toHaveProperty('prompt_type');
+    expect(submitted.session_note_trial_events?.[1]).not.toHaveProperty('prompt_level');
     expect(submitted.session_note_goal_measurements?.['goal-1']?.data.measurement_type).toBe('taskAnalysis');
   }, 15000);
 

@@ -21,22 +21,23 @@ const originalSessionWindow = {
   end_time: currentSessionEnd.toISOString(),
 };
 
+const originalSessionFixture = {
+  id: "session-1",
+  therapist_id: "therapist-1",
+  client_id: "client-1",
+  program_id: "program-1",
+  goal_id: "goal-1",
+  start_time: originalSessionWindow.start_time,
+  end_time: originalSessionWindow.end_time,
+  status: "scheduled",
+  started_at: null as string | null,
+  notes: "Initial session",
+  therapist: { id: "therapist-1", full_name: "Dr. Myles" },
+  client: { id: "client-1", full_name: "Jamie Client" },
+};
+
 const scheduleFixtures = {
-  sessions: [
-    {
-      id: "session-1",
-      therapist_id: "therapist-1",
-      client_id: "client-1",
-      program_id: "program-1",
-      goal_id: "goal-1",
-      start_time: originalSessionWindow.start_time,
-      end_time: originalSessionWindow.end_time,
-      status: "scheduled",
-      notes: "Initial session",
-      therapist: { id: "therapist-1", full_name: "Dr. Myles" },
-      client: { id: "client-1", full_name: "Jamie Client" },
-    },
-  ],
+  sessions: [{ ...originalSessionFixture }],
   therapists: [
     {
       id: "therapist-1",
@@ -116,6 +117,7 @@ vi.mock("../../components/SessionModal", () => ({
     session,
     retryHint,
     dataCollectionOnly,
+    allowStartSession,
     hideGoalCaptureFields,
   }: {
     isOpen: boolean;
@@ -124,6 +126,7 @@ vi.mock("../../components/SessionModal", () => ({
     session?: { id: string };
     retryHint?: string | null;
     dataCollectionOnly?: boolean;
+    allowStartSession?: boolean;
     hideGoalCaptureFields?: boolean;
   }) =>
     isOpen ? (
@@ -131,6 +134,7 @@ vi.mock("../../components/SessionModal", () => ({
         <div data-testid="modal-mode">{session ? "edit" : "create"}</div>
         <div data-testid="retry-hint">{retryHint ?? ""}</div>
         <div data-testid="data-collection-only">{dataCollectionOnly ? "true" : "false"}</div>
+        <div data-testid="allow-start-session">{allowStartSession ? "true" : "false"}</div>
         <div data-testid="hide-goal-capture-fields">{hideGoalCaptureFields ? "true" : "false"}</div>
         <button
           aria-label="submit-complete-with-stale-trial"
@@ -353,9 +357,8 @@ const waitForScheduleGridReady = () =>
   }, { timeout: 10_000 });
 
 describe("Schedule orchestration integration hardening", () => {
-  const resetScheduleFixtureWindow = () => {
-    scheduleFixtures.sessions[0].start_time = originalSessionWindow.start_time;
-    scheduleFixtures.sessions[0].end_time = originalSessionWindow.end_time;
+  const resetScheduleFixture = () => {
+    Object.assign(scheduleFixtures.sessions[0], originalSessionFixture);
   };
 
   const openExistingSessionForEdit = async () => {
@@ -372,7 +375,7 @@ describe("Schedule orchestration integration hardening", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
-    resetScheduleFixtureWindow();
+    resetScheduleFixture();
     upsertClientSessionNoteForSessionMock.mockResolvedValue({
       id: "linked-note-1",
     });
@@ -641,6 +644,72 @@ describe("Schedule orchestration integration hardening", () => {
     }));
     expect(bookSessionViaApiMock.mock.calls[0][1]).toBeUndefined();
     expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("allows a BT to start an existing scheduled appointment in data-only mode", async () => {
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("data-collection-only")).toHaveTextContent("true");
+    expect(screen.getByTestId("allow-start-session")).toHaveTextContent("true");
+  });
+
+  it("does not allow a BT to start an appointment that already has started_at", async () => {
+    scheduleFixtures.sessions[0].started_at = "2026-07-16T10:00:00.000Z";
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+
+    expect(await screen.findByTestId("allow-start-session")).toHaveTextContent("false");
+  });
+
+  it.each(["in_progress", "completed", "cancelled"])(
+    "does not allow a BT to start an existing %s appointment",
+    async (status) => {
+      scheduleFixtures.sessions[0].status = status;
+
+      renderWithProviders(<Schedule />, {
+        auth: { role: "bt", organizationId: "org-1" },
+      });
+      await screen.findByRole("heading", { name: /Schedule/i });
+      await waitForScheduleGridReady();
+      await openExistingSessionForEdit();
+
+      expect(await screen.findByTestId("allow-start-session")).toHaveTextContent("false");
+    },
+  );
+
+  it("does not allow a non-BT to use the BT start-session exception", async () => {
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bcba", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+
+    expect(await screen.findByTestId("allow-start-session")).toHaveTextContent("false");
+  });
+
+  it("does not enable the BT start-session exception when there is no existing appointment", async () => {
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+
+    expect(await screen.findByTestId("modal-mode")).toHaveTextContent("create");
+    expect(screen.getByTestId("allow-start-session")).toHaveTextContent("false");
   });
 
   it("BT scheduled-session capture saves clinical data without updating appointment metadata", async () => {

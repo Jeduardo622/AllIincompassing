@@ -464,6 +464,7 @@ interface SessionModalProps {
   onRetryAction?: (() => void) | undefined;
   onSessionStarted?: () => void | Promise<void>;
   dataCollectionOnly?: boolean;
+  allowStartSession?: boolean;
   hideGoalCaptureFields?: boolean;
 }
 
@@ -486,6 +487,7 @@ export function SessionModal({
   onRetryAction,
   onSessionStarted,
   dataCollectionOnly = false,
+  allowStartSession = false,
   hideGoalCaptureFields = false,
 }: SessionModalProps) {
   const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
@@ -518,6 +520,7 @@ export function SessionModal({
   const conflictHeadingId = 'session-modal-conflicts-heading';
   const queryClient = useQueryClient();
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
+  const canUseStartSessionAction = !isDataCollectionOnly || allowStartSession;
   const isBtClinicalCaptureSession = Boolean(
     isDataCollectionOnly && (session?.status === 'scheduled' || session?.status === 'in_progress'),
   );
@@ -586,7 +589,12 @@ export function SessionModal({
     | Record<string, SessionGoalMeasurementEntry | Record<string, unknown>>
     | undefined;
 
-  const { data: sessionDetails } = useQuery({
+  const {
+    data: sessionDetails,
+    isFetched: isSessionDetailsFetched,
+    isFetching: isSessionDetailsFetching,
+    isError: isSessionDetailsError,
+  } = useQuery({
     queryKey: ['session-details', session?.id, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!session?.id || !activeOrganizationId) {
@@ -606,7 +614,12 @@ export function SessionModal({
     enabled: Boolean(session?.id && activeOrganizationId),
   });
 
-  const { data: sessionGoalRows = [] } = useQuery({
+  const {
+    data: sessionGoalRows = [],
+    isFetched: isSessionGoalsFetched,
+    isFetching: isSessionGoalsFetching,
+    isError: isSessionGoalsError,
+  } = useQuery({
     queryKey: ['session-goals', session?.id, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!session?.id || !activeOrganizationId) {
@@ -866,6 +879,26 @@ export function SessionModal({
     () => selectedGoalsForSession.map((goal) => goal.title).join(', '),
     [selectedGoalsForSession],
   );
+  const canonicalStartGoalIds = useMemo(
+    () => resolveSessionCloseRequiredGoalIds({
+      sessionGoalIds: sessionGoalRows.map((row) => row.goal_id),
+      primaryGoalId: sessionDetails?.goal_id ?? session?.goal_id ?? null,
+    }).sort(),
+    [session?.goal_id, sessionDetails?.goal_id, sessionGoalRows],
+  );
+  const selectedStartGoalIds = useMemo(
+    () => mergeUniqueGoalIds(Array.isArray(goalIds) ? goalIds : [], goalId ? [goalId] : []).sort(),
+    [goalId, goalIds],
+  );
+  const hasExactCanonicalStartGoalSet =
+    canonicalStartGoalIds.length === selectedStartGoalIds.length &&
+    canonicalStartGoalIds.every((id, index) => id === selectedStartGoalIds[index]);
+  const hasStartableCanonicalGoals =
+    canonicalStartGoalIds.length > 0 &&
+    canonicalStartGoalIds.every((id) => {
+      const goal = goalsById.get(id);
+      return goal?.status === 'active' && activePrograms.some((program) => program.id === goal.program_id);
+    });
   const hasProgramValue = typeof programId === 'string' && programId.length > 0;
   const hasGoalValue = typeof goalId === 'string' && goalId.length > 0;
   const hasProgramOptionForValue = hasProgramValue
@@ -1761,7 +1794,13 @@ export function SessionModal({
   }, [hasUnsavedSessionChanges, isSubmitting, onClose]);
 
   const handleStartSession = async () => {
-    if (isDataCollectionOnly) {
+    if (
+      !canUseStartSessionAction ||
+      !canStartSession ||
+      isDependentDataLoading ||
+      isStartPlanDataLoading ||
+      session?.status !== 'scheduled'
+    ) {
       return;
     }
     if (!session?.id) {
@@ -1844,7 +1883,19 @@ export function SessionModal({
     (session?.status === 'in_progress' || hasStartedSession);
   const isDependentDataLoading =
     Boolean(clientId) &&
-    (isProgramsFetching || isGoalsFetching || !isProgramsFetched || !isGoalsFetched);
+    (isProgramsFetching ||
+      isGoalsFetching ||
+      !isProgramsFetched ||
+      !isGoalsFetched);
+  const isStartPlanDataLoading =
+    isDataCollectionOnly &&
+    Boolean(session?.id) &&
+    (isSessionDetailsFetching ||
+      !isSessionDetailsFetched ||
+      isSessionDetailsError ||
+      isSessionGoalsFetching ||
+      !isSessionGoalsFetched ||
+      isSessionGoalsError);
   const canStartSession = Boolean(
     session?.id &&
       !hasStartedSession &&
@@ -1852,7 +1903,8 @@ export function SessionModal({
       programId &&
       goalId &&
       hasProgramOptionForValue &&
-      hasGoalOptionForValue,
+      hasGoalOptionForValue &&
+      (!isDataCollectionOnly || (hasStartableCanonicalGoals && hasExactCanonicalStartGoalSet)),
   );
   const sessionModalMode = useMemo(() => {
     if (!session) {
@@ -3000,6 +3052,7 @@ export function SessionModal({
                         key={program.id}
                         type="button"
                         onClick={() => toggleProgramSelection(program.id)}
+                        disabled={isDataCollectionOnly}
                         className={`rounded-full border px-3 py-2 text-sm font-medium transition ${
                           isSelected
                             ? 'border-blue-500 bg-blue-600 text-white shadow-sm'
@@ -4228,11 +4281,11 @@ export function SessionModal({
               >
                 Cancel
               </button>
-              {session?.id && session.status === 'scheduled' && !hasStartedSession && !isDataCollectionOnly ? (
+              {session?.id && session.status === 'scheduled' && !hasStartedSession && canUseStartSessionAction ? (
                 <button
                   type="button"
                   onClick={handleStartSession}
-                  disabled={!canStartSession || isDependentDataLoading}
+                  disabled={!canStartSession || isDependentDataLoading || isStartPlanDataLoading}
                   className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-emerald-200 sm:bg-emerald-50/90 sm:px-4 sm:font-medium sm:text-emerald-800 sm:shadow-sm sm:hover:bg-emerald-100"
                 >
                   Start Session

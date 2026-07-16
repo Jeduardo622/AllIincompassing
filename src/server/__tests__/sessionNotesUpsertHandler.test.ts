@@ -176,6 +176,14 @@ describe("sessionNotesUpsertHandler", () => {
   };
 
   const arrangeAssignedBtSession = (rpcResult: { ok: boolean; status: number; data: unknown }) => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
     vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
       userId: basePayload.therapistId,
       upstreamError: false,
@@ -203,6 +211,9 @@ describe("sessionNotesUpsertHandler", () => {
   };
 
   it("rejects a malformed BT ABA action payload before calling a write RPC", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
     const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
       method: "POST",
       headers: HEADERS,
@@ -214,6 +225,9 @@ describe("sessionNotesUpsertHandler", () => {
   });
 
   it("rejects an unrelated BT without calling a write RPC", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
     vi.mocked(fetchJson).mockImplementation(async (url) => {
       if (String(url).includes("/rest/v1/sessions?")) {
         return {
@@ -271,6 +285,9 @@ describe("sessionNotesUpsertHandler", () => {
   });
 
   it("recognizes an assigned BT through the canonical user-therapist link", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
     vi.mocked(fetchJson).mockImplementation(async (url) => {
       const requestUrl = String(url);
       if (requestUrl.includes("/rest/v1/sessions?")) {
@@ -334,8 +351,13 @@ describe("sessionNotesUpsertHandler", () => {
         noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         notePayload: validBtAbaNotePayload,
         responses: validBtAbaResponses,
-        trialEvents: [],
-        expectedTargetVersions: [],
+        trialEvents: [{
+          target_id: targetId,
+          trial_number: 1,
+          response: "correct",
+          expected_progression_version: 7,
+        }],
+        expectedTargetVersions: [{ target_id: targetId, progression_version: 7 }],
       }),
     }));
 
@@ -344,6 +366,10 @@ describe("sessionNotesUpsertHandler", () => {
       status: "completed",
       noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       progressionResults: [],
+    });
+    const finalizeCall = vi.mocked(fetchJson).mock.calls.find(([url]) => String(url).includes("/rpc/finalize_bt_aba_session_note"));
+    expect(JSON.parse(String(finalizeCall?.[1]?.body))).toMatchObject({
+      p_trial_events: [{ target_id: targetId, expected_progression_version: 7 }],
     });
   });
 
@@ -396,6 +422,9 @@ describe("sessionNotesUpsertHandler", () => {
   });
 
   it("loads a durable BT ABA draft only for the assigned BT", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
     vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
       userId: basePayload.therapistId,
       upstreamError: false,
@@ -411,13 +440,13 @@ describe("sessionNotesUpsertHandler", () => {
           status: "in_progress",
         }] };
       }
-      if (requestUrl.includes("/rest/v1/client_session_notes?")) {
-        return { ok: true, status: 200, data: [{
-          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          bt_aba_template_id: "66666666-6666-4666-8666-666666666666",
-          bt_aba_responses: validBtAbaResponses,
-          is_locked: false,
-        }] };
+      if (requestUrl.includes("/rest/v1/rpc/get_bt_aba_session_note")) {
+        return { ok: true, status: 200, data: {
+          note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          template_id: "66666666-6666-4666-8666-666666666666",
+          responses: validBtAbaResponses,
+          status: "draft",
+        } };
       }
       return { ok: true, status: 200, data: [] };
     });
@@ -433,6 +462,26 @@ describe("sessionNotesUpsertHandler", () => {
       templateId: "66666666-6666-4666-8666-666666666666",
       status: "draft",
     });
+    expect(fetchJson).toHaveBeenCalledWith(`${BASE_URL}/rest/v1/rpc/get_bt_aba_session_note`, expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: `Bearer ${ACCESS_TOKEN}` }),
+      body: JSON.stringify({ p_session_id: basePayload.sessionId }),
+    }));
+  });
+
+  it("keeps the legacy upsert forbidden for a caller without a legacy session-note role", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify(basePayload),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(fetchAuthenticatedUserIdWithStatus).not.toHaveBeenCalled();
   });
 
   it("admits an organization-scoped BCBA through the session-note authorization gate", async () => {

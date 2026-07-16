@@ -134,6 +134,7 @@ const btAbaTrialEventSchema = z.object({
   value: z.number().nonnegative().optional().nullable(),
   timestamp: z.string().datetime().optional(),
   metadata: z.record(z.unknown()).optional(),
+  expected_progression_version: z.number().int().nonnegative().optional(),
 }).strict();
 
 const btAbaDraftSchema = z.object({
@@ -1119,44 +1120,24 @@ const handleBtAbaGet = async (args: {
     return errorResponse(args.request, "forbidden", "Forbidden", { status: 403 });
   }
 
-  const noteResult = await fetchJson<Array<{
-    id: string;
-    bt_aba_template_id: string | null;
-    bt_aba_responses: Record<string, unknown> | null;
-    is_locked: boolean;
-  }>>(
-    `${args.supabaseUrl}/rest/v1/client_session_notes?select=id,bt_aba_template_id,bt_aba_responses,is_locked` +
-      `&session_id=eq.${encodeURIComponent(args.sessionId)}` +
-      `&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
-    { method: "GET", headers: args.headers },
-  );
-  if (!noteResult.ok) {
-    return errorResponse(args.request, "upstream_error", "Unable to load BT ABA session note", { status: 502 });
-  }
-  const note = noteResult.data?.[0] ?? null;
-  if (note?.bt_aba_template_id) {
-    return jsonForRequest(args.request, {
-      noteId: note.id,
-      templateId: note.bt_aba_template_id,
-      responses: note.bt_aba_responses ?? {},
-      status: note.is_locked ? "completed" : "draft",
-    });
-  }
-
-  const templateResult = await fetchJson<Array<{ id: string }>>(
-    `${args.supabaseUrl}/rest/v1/session_note_templates?select=id` +
-      `&organization_id=eq.${encodeURIComponent(args.organizationId)}` +
-      `&template_type=eq.bt_aba_session_note&order=created_at.desc&limit=1`,
-    { method: "GET", headers: args.headers },
-  );
-  if (!templateResult.ok) {
-    return errorResponse(args.request, "upstream_error", "Unable to load BT ABA session note template", { status: 502 });
+  const result = await fetchJson<{
+    note_id: string | null;
+    template_id: string | null;
+    responses: Record<string, unknown> | null;
+    status: "draft" | "completed" | null;
+  }>(`${args.supabaseUrl}/rest/v1/rpc/get_bt_aba_session_note`, {
+    method: "POST",
+    headers: args.headers,
+    body: JSON.stringify({ p_session_id: args.sessionId }),
+  });
+  if (!result.ok || !result.data) {
+    return btAbaRpcErrorResponse(args.request, result, "Unable to load BT ABA session note");
   }
   return jsonForRequest(args.request, {
-    noteId: note?.id ?? null,
-    templateId: templateResult.data?.[0]?.id ?? null,
-    responses: note?.bt_aba_responses ?? null,
-    status: note ? "draft" : null,
+    noteId: result.data.note_id,
+    templateId: result.data.template_id,
+    responses: result.data.responses,
+    status: result.data.status,
   });
 };
 
@@ -1189,14 +1170,31 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     return errorResponse(request, "forbidden", "Forbidden");
   }
 
-  const hasResolvedSessionNoteRole = isTherapist || isAdmin || isSuperAdmin || isOrgMember;
-  if (!hasResolvedSessionNoteRole) {
-    const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
-    if (bcbaAuthority.upstreamError) {
-      return errorResponse(request, "upstream_error", "Unable to validate BCBA access", { status: 502 });
+  let body: unknown;
+  if (request.method === "POST") {
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(request, "validation_error", "Invalid JSON body");
     }
-    if (!bcbaAuthority.allowed) {
-      return errorResponse(request, "forbidden", "Forbidden");
+  }
+  const requestedAction = body && typeof body === "object" && !Array.isArray(body)
+    ? (body as { action?: unknown }).action
+    : undefined;
+  const isBtAbaRequest = request.method === "GET"
+    || requestedAction === "draft_bt_aba"
+    || requestedAction === "finalize_bt_aba";
+
+  if (!isBtAbaRequest) {
+    const hasResolvedSessionNoteRole = isTherapist || isAdmin || isSuperAdmin || isOrgMember;
+    if (!hasResolvedSessionNoteRole) {
+      const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
+      if (bcbaAuthority.upstreamError) {
+        return errorResponse(request, "upstream_error", "Unable to validate BCBA access", { status: 502 });
+      }
+      if (!bcbaAuthority.allowed) {
+        return errorResponse(request, "forbidden", "Forbidden");
+      }
     }
   }
 
@@ -1230,16 +1228,6 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     });
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse(request, "validation_error", "Invalid JSON body");
-  }
-
-  const requestedAction = body && typeof body === "object" && !Array.isArray(body)
-    ? (body as { action?: unknown }).action
-    : undefined;
   if (requestedAction !== undefined) {
     const actionResult = requestedAction === "draft_bt_aba"
       ? btAbaDraftSchema.safeParse(body)

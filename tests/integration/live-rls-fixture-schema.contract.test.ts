@@ -361,6 +361,7 @@ describe("live RLS fixture schema contract", () => {
     expect(source).not.toContain('createProtectedRoute');
     expect(source).not.toContain('RouteOptions.admin');
     expect(source).toContain('handleCors(req)');
+    expect(source).toContain('Deno.serve(handler)');
     expect(source).toContain('getGatewayVerifiedCallerId(req)');
     expect(source).toContain('extractBearerToken');
     expect(source).not.toContain('getUserOrThrow');

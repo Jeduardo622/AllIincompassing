@@ -203,6 +203,18 @@ describe("sessionNotesUpsertHandler", () => {
           }],
         };
       }
+      if (requestUrl.includes("/rest/v1/rpc/get_bt_aba_session_note")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            template_id: "66666666-6666-4666-8666-666666666666",
+            responses: validBtAbaResponses,
+            status: "draft",
+          },
+        };
+      }
       if (requestUrl.includes("/rest/v1/rpc/")) {
         return rpcResult;
       }
@@ -229,7 +241,8 @@ describe("sessionNotesUpsertHandler", () => {
       organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
     });
     vi.mocked(fetchJson).mockImplementation(async (url) => {
-      if (String(url).includes("/rest/v1/sessions?")) {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/sessions?")) {
         return {
           ok: true,
           status: 200,
@@ -241,6 +254,9 @@ describe("sessionNotesUpsertHandler", () => {
             status: "in_progress",
           }],
         };
+      }
+      if (requestUrl.includes("/rest/v1/rpc/get_bt_aba_session_note")) {
+        return { ok: false, status: 403, data: { code: "42501", message: "caller is not the assigned BT" } };
       }
       return { ok: true, status: 200, data: [] };
     });
@@ -258,7 +274,8 @@ describe("sessionNotesUpsertHandler", () => {
     }));
 
     expect(response.status).toBe(403);
-    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/rest/v1/rpc/"))).toBe(false);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/rpc/get_bt_aba_session_note"))).toBe(true);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/rpc/save_bt_aba_session_note_draft"))).toBe(false);
   });
 
   it("saves a BT ABA draft through the protected RPC", async () => {
@@ -303,8 +320,13 @@ describe("sessionNotesUpsertHandler", () => {
           }],
         };
       }
-      if (requestUrl.includes("/rest/v1/user_therapist_links?")) {
-        return { ok: true, status: 200, data: [{ therapist_id: basePayload.therapistId }] };
+      if (requestUrl.includes("/rest/v1/rpc/get_bt_aba_session_note")) {
+        return { ok: true, status: 200, data: {
+          note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          template_id: "66666666-6666-4666-8666-666666666666",
+          responses: validBtAbaResponses,
+          status: "draft",
+        } };
       }
       if (requestUrl.includes("/rest/v1/rpc/save_bt_aba_session_note_draft")) {
         return { ok: true, status: 200, data: { status: "draft", note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } };
@@ -325,9 +347,8 @@ describe("sessionNotesUpsertHandler", () => {
     }));
 
     expect(response.status).toBe(200);
-    expect(fetchJson).toHaveBeenCalledWith(expect.stringContaining(
-      `/rest/v1/user_therapist_links?select=therapist_id&user_id=eq.actor-1&therapist_id=eq.${basePayload.therapistId}`,
-    ), expect.any(Object));
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("user_therapist_links"))).toBe(false);
+    expect(fetchJson).toHaveBeenCalledWith(`${BASE_URL}/rest/v1/rpc/get_bt_aba_session_note`, expect.any(Object));
   });
 
   it("returns completed only after the BT ABA finalization RPC succeeds", async () => {
@@ -467,6 +488,7 @@ describe("sessionNotesUpsertHandler", () => {
       headers: expect.objectContaining({ Authorization: `Bearer ${ACCESS_TOKEN}` }),
       body: JSON.stringify({ p_session_id: basePayload.sessionId }),
     }));
+    expect(vi.mocked(fetchJson).mock.calls.filter(([url]) => String(url).includes("/rpc/get_bt_aba_session_note"))).toHaveLength(1);
   });
 
   it("keeps the legacy upsert forbidden for a caller without a legacy session-note role", async () => {

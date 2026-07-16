@@ -974,40 +974,11 @@ const rollbackSessionTrialEventRows = async (args: {
   );
 };
 
-type BtAbaSessionScope = {
-  id: string;
-  organization_id: string;
-  client_id: string;
-  therapist_id: string;
-  status: string;
-};
-
-const currentActorIsAssignedToBtSession = async (args: {
-  supabaseUrl: string;
-  headers: Record<string, string>;
-  organizationId: string;
-  actorUserId: string;
-  sessionId: string;
-}): Promise<{ allowed: boolean; upstreamError: boolean }> => {
-  const sessionResult = await fetchJson<BtAbaSessionScope[]>(
-    `${args.supabaseUrl}/rest/v1/sessions?select=id,organization_id,client_id,therapist_id,status` +
-      `&id=eq.${encodeURIComponent(args.sessionId)}` +
-      `&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
-    { method: "GET", headers: args.headers },
-  );
-  if (!sessionResult.ok) return { allowed: false, upstreamError: true };
-  const session = sessionResult.data?.[0];
-  if (!session) return { allowed: false, upstreamError: false };
-  if (session.therapist_id === args.actorUserId) return { allowed: true, upstreamError: false };
-
-  const linkResult = await fetchJson<Array<{ therapist_id: string }>>(
-    `${args.supabaseUrl}/rest/v1/user_therapist_links?select=therapist_id` +
-      `&user_id=eq.${encodeURIComponent(args.actorUserId)}` +
-      `&therapist_id=eq.${encodeURIComponent(session.therapist_id)}&limit=1`,
-    { method: "GET", headers: args.headers },
-  );
-  if (!linkResult.ok) return { allowed: false, upstreamError: true };
-  return { allowed: Boolean(linkResult.data?.[0]), upstreamError: false };
+type BtAbaReadResult = {
+  note_id: string | null;
+  template_id: string | null;
+  responses: Record<string, unknown> | null;
+  status: "draft" | "completed" | null;
 };
 
 const btAbaRpcErrorResponse = (
@@ -1030,27 +1001,42 @@ const btAbaRpcErrorResponse = (
   });
 };
 
+const loadAuthorizedBtAbaSessionNote = async (args: {
+  request: Request;
+  sessionId: string;
+  supabaseUrl: string;
+  headers: Record<string, string>;
+}): Promise<{ data: BtAbaReadResult | null; response: Response | null }> => {
+  const result = await fetchJson<BtAbaReadResult>(
+    `${args.supabaseUrl}/rest/v1/rpc/get_bt_aba_session_note`,
+    {
+      method: "POST",
+      headers: args.headers,
+      body: JSON.stringify({ p_session_id: args.sessionId }),
+    },
+  );
+  if (!result.ok || !result.data) {
+    return {
+      data: null,
+      response: btAbaRpcErrorResponse(args.request, result, "Unable to load BT ABA session note"),
+    };
+  }
+  return { data: result.data, response: null };
+};
+
 const handleBtAbaAction = async (args: {
   request: Request;
   action: BtAbaAction;
   supabaseUrl: string;
   headers: Record<string, string>;
-  organizationId: string;
-  actorUserId: string;
 }): Promise<Response> => {
-  const assignment = await currentActorIsAssignedToBtSession({
+  const authority = await loadAuthorizedBtAbaSessionNote({
+    request: args.request,
+    sessionId: args.action.sessionId,
     supabaseUrl: args.supabaseUrl,
     headers: args.headers,
-    organizationId: args.organizationId,
-    actorUserId: args.actorUserId,
-    sessionId: args.action.sessionId,
   });
-  if (assignment.upstreamError) {
-    return errorResponse(args.request, "upstream_error", "Unable to validate session assignment", { status: 502 });
-  }
-  if (!assignment.allowed) {
-    return errorResponse(args.request, "forbidden", "Forbidden", { status: 403 });
-  }
+  if (authority.response) return authority.response;
 
   if (args.action.action === "draft_bt_aba") {
     const result = await fetchJson<{ status: string; note_id: string }>(
@@ -1109,35 +1095,20 @@ const handleBtAbaGet = async (args: {
   sessionId: string;
   supabaseUrl: string;
   headers: Record<string, string>;
-  organizationId: string;
-  actorUserId: string;
 }): Promise<Response> => {
-  const assignment = await currentActorIsAssignedToBtSession(args);
-  if (assignment.upstreamError) {
-    return errorResponse(args.request, "upstream_error", "Unable to validate session assignment", { status: 502 });
-  }
-  if (!assignment.allowed) {
-    return errorResponse(args.request, "forbidden", "Forbidden", { status: 403 });
-  }
-
-  const result = await fetchJson<{
-    note_id: string | null;
-    template_id: string | null;
-    responses: Record<string, unknown> | null;
-    status: "draft" | "completed" | null;
-  }>(`${args.supabaseUrl}/rest/v1/rpc/get_bt_aba_session_note`, {
-    method: "POST",
+  const authority = await loadAuthorizedBtAbaSessionNote({
+    request: args.request,
+    sessionId: args.sessionId,
+    supabaseUrl: args.supabaseUrl,
     headers: args.headers,
-    body: JSON.stringify({ p_session_id: args.sessionId }),
   });
-  if (!result.ok || !result.data) {
-    return btAbaRpcErrorResponse(args.request, result, "Unable to load BT ABA session note");
-  }
+  if (authority.response) return authority.response;
+  const result = authority.data;
   return jsonForRequest(args.request, {
-    noteId: result.data.note_id,
-    templateId: result.data.template_id,
-    responses: result.data.responses,
-    status: result.data.status,
+    noteId: result?.note_id ?? null,
+    templateId: result?.template_id ?? null,
+    responses: result?.responses ?? null,
+    status: result?.status ?? null,
   });
 };
 
@@ -1223,8 +1194,6 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
       sessionId: parsedSessionId.data,
       supabaseUrl,
       headers,
-      organizationId,
-      actorUserId,
     });
   }
 
@@ -1242,8 +1211,6 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
       action: actionResult.data,
       supabaseUrl,
       headers,
-      organizationId,
-      actorUserId,
     });
   }
 

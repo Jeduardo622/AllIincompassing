@@ -14,6 +14,12 @@ import { supabase } from '../../lib/supabase';
 import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-linked-fetch';
 import type { Session } from '../../types';
 import { startSessionFromModal } from '../../features/scheduling/domain/sessionStart';
+import {
+  finalizeBtAbaSessionNote,
+  getBtAbaSessionNote,
+  saveBtAbaSessionNoteDraft,
+} from '../../lib/session-notes';
+import type { BtAbaSessionNoteResponses } from '../../lib/bt-aba-session-note';
 
 const toastMocks = vi.hoisted(() => ({
   showError: vi.fn(),
@@ -28,6 +34,44 @@ vi.mock('../../features/scheduling/domain/sessionStart', () => ({
 
 vi.mock('../../lib/session-note-linked-fetch', () => ({
   fetchLinkedClientSessionNoteForSession: vi.fn(),
+}));
+
+vi.mock('../../lib/session-notes', () => ({
+  getBtAbaSessionNote: vi.fn(),
+  saveBtAbaSessionNoteDraft: vi.fn(),
+  finalizeBtAbaSessionNote: vi.fn(),
+}));
+
+const validBtAbaResponses: BtAbaSessionNoteResponses = {
+  purpose_of_session: ['RBT/BT worked on goals as stated in the treatment plan'],
+  client_status: 'Engaged',
+  skill_strategies: ['Natural environment teaching'],
+  behavior_strategies: ['Modeling'],
+  supervisor_support: ['Supervisor did not attend this session'],
+  progress_toward_goals: 'Made progress.',
+  client_response_to_treatment: 'Responded well.',
+  data_point_scope: 'linked',
+  link_unlinked_data: false,
+  bt_signature: { method: 'typed', value: 'Test BT' },
+};
+
+vi.mock('../session-notes/BtAbaSessionNoteForm', () => ({
+  BtAbaSessionNoteForm: ({
+    initialResponses,
+    onSaveDraft,
+    onFinalize,
+  }: {
+    initialResponses: BtAbaSessionNoteResponses;
+    onSaveDraft: (responses: BtAbaSessionNoteResponses) => Promise<void>;
+    onFinalize: (responses: BtAbaSessionNoteResponses) => Promise<void>;
+  }) => (
+    <section>
+      <h2>ABA Session Note</h2>
+      <p>Draft client status: {initialResponses.client_status}</p>
+      <button type="button" onClick={() => void onSaveDraft(validBtAbaResponses)}>Save ABA Draft</button>
+      <button type="button" onClick={() => void onFinalize(validBtAbaResponses)}>Finalize ABA Session</button>
+    </section>
+  ),
 }));
 
 type SupabaseQueryChain = {
@@ -160,6 +204,21 @@ describe('SessionModal', () => {
     toastMocks.showSuccess.mockClear();
     defaultProps.onClose.mockClear();
     defaultProps.onSubmit.mockClear();
+    vi.mocked(getBtAbaSessionNote).mockReset();
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-bt-1',
+      templateId: 'template-bt-1',
+      responses: null,
+      status: 'draft',
+    });
+    vi.mocked(saveBtAbaSessionNoteDraft).mockReset();
+    vi.mocked(saveBtAbaSessionNoteDraft).mockResolvedValue({ status: 'draft', noteId: 'note-bt-1' });
+    vi.mocked(finalizeBtAbaSessionNote).mockReset();
+    vi.mocked(finalizeBtAbaSessionNote).mockResolvedValue({
+      status: 'completed',
+      noteId: 'note-bt-1',
+      progressionResults: [],
+    });
 
     const buildChain = (rows: unknown[]) => {
       const chain: SupabaseQueryChain = {
@@ -803,6 +862,93 @@ describe('SessionModal', () => {
       }));
     });
     confirmSpy.mockRestore();
+  });
+
+  it('saves BT capture before opening closeout without submitting completed status', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        dataCollectionOnly
+        session={{
+          id: 'session-bt-close',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          goal_ids: ['goal-1'],
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: '2026-03-01T10:00:00.000Z',
+        } satisfies Session}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Close Session$/i }));
+
+    expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ status: 'in_progress' }));
+    expect(onSubmit).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+  });
+
+  it('restores a persisted BT draft and finalizes atomically before reporting completion', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-restored',
+      templateId: 'template-restored',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'draft',
+    });
+    vi.mocked(finalizeBtAbaSessionNote)
+      .mockRejectedValueOnce(new Error('Atomic finalization failed'))
+      .mockResolvedValue({ status: 'completed', noteId: 'note-restored', progressionResults: [] });
+    vi.mocked(saveBtAbaSessionNoteDraft).mockResolvedValue({ status: 'draft', noteId: 'note-restored' });
+    const onBtAbaSessionFinalized = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onBtAbaSessionFinalized={onBtAbaSessionFinalized}
+        dataCollectionOnly
+        session={{
+          id: 'session-bt-restored', therapist_id: 'test-therapist-1', client_id: 'test-client-1',
+          program_id: 'program-1', goal_id: 'goal-1', goal_ids: ['goal-1'],
+          start_time: '2026-03-01T10:00:00.000Z', end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress', notes: '', created_at: '2026-03-01T09:00:00.000Z', created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z', updated_by: null, started_at: '2026-03-01T10:00:00.000Z',
+        } satisfies Session}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Close Session$/i }));
+    expect(await screen.findByText('Draft client status: Engaged')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save ABA Draft' }));
+    await waitFor(() => expect(saveBtAbaSessionNoteDraft).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-bt-restored', templateId: 'template-restored', responses: validBtAbaResponses,
+    })));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finalize ABA Session' }));
+    await waitFor(() => expect(finalizeBtAbaSessionNote).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-bt-restored', noteId: 'note-restored', responses: validBtAbaResponses,
+      trialEvents: expect.any(Array), expectedTargetVersions: expect.any(Array),
+    })));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Atomic finalization failed');
+    expect(screen.getByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
+    expect(onBtAbaSessionFinalized).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finalize ABA Session' }));
+    await waitFor(() => expect(onBtAbaSessionFinalized).toHaveBeenCalledTimes(1));
+    expect(onBtAbaSessionFinalized).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-bt-restored', noteId: 'note-restored', status: 'completed',
+    }));
   });
 
   it('closes an in-progress historical session even when stored program and goal are no longer active', async () => {
@@ -1805,7 +1951,7 @@ describe('SessionModal', () => {
       expect(screen.queryByRole('button', { name: /Save clinical capture/i })).not.toBeInTheDocument();
     });
 
-    it('allows BT data-only edit mode to close an in-progress session without unlocking schedule metadata', async () => {
+    it('advances BT data-only edit mode to closeout without unlocking schedule metadata', async () => {
       const onSubmit = vi.fn().mockResolvedValue(undefined);
       const lockedSession: Session = {
         ...editSession,
@@ -1836,10 +1982,12 @@ describe('SessionModal', () => {
           goal_id: 'goal-1',
           start_time: '2026-03-31T10:00:00.000Z',
           end_time: '2026-03-31T11:00:00.000Z',
-          status: 'completed',
+          status: 'in_progress',
           notes: 'Original schedule note',
+          session_note_begin_closeout: true,
         }));
       });
+      expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
     });
   });
 

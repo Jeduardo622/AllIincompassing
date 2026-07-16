@@ -27,7 +27,10 @@ import type {
   Program,
   SessionNoteUpsertResult,
   SessionPromptCount,
+  BtAbaSessionNotePayload,
+  BtAbaFinalizeResult,
 } from '../types';
+import type { BtAbaSessionNoteResponses } from '../lib/bt-aba-session-note';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
 import { logger } from '../lib/logger/logger';
 import { AlternativeTimes } from './AlternativeTimes';
@@ -65,6 +68,12 @@ import {
 } from '../lib/session-adhoc-targets';
 import { resolveSessionCloseRequiredGoalIds } from '../lib/sessionCloseRequiredGoals';
 import {
+  finalizeBtAbaSessionNote,
+  getBtAbaSessionNote,
+  saveBtAbaSessionNoteDraft,
+} from '../lib/session-notes';
+import { BtAbaSessionNoteForm } from './session-notes/BtAbaSessionNoteForm';
+import {
   firstServiceCodeOnAuthorization,
   pickPrimaryBillingAuthorization,
   SESSION_CAPTURE_RELAXED_FALLBACK_SERVICE_CODE,
@@ -86,6 +95,8 @@ export interface SessionModalClinicalNotesPayload {
   session_note_capture_merge_goal_ids?: string[];
   /** Raw trial-level events generated from configured goal targets during Schedule capture. */
   session_note_trial_events?: SessionCaptureTrialEventInput[];
+  /** Keeps the BT modal open while capture transitions to the required closeout note. */
+  session_note_begin_closeout?: boolean;
 }
 
 const responseRequiredMeasurementTypes = new Set(['correctIncorrect', 'taskAnalysis']);
@@ -466,6 +477,7 @@ interface SessionModalProps {
   dataCollectionOnly?: boolean;
   allowStartSession?: boolean;
   hideGoalCaptureFields?: boolean;
+  onBtAbaSessionFinalized?: (result: BtAbaFinalizeResult & { sessionId: string }) => void | Promise<void>;
 }
 
 export function SessionModal({
@@ -489,6 +501,7 @@ export function SessionModal({
   dataCollectionOnly = false,
   allowStartSession = false,
   hideGoalCaptureFields = false,
+  onBtAbaSessionFinalized,
 }: SessionModalProps) {
   const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
   const [selectedProgramIds, setSelectedProgramIds] = useState<string[]>(() =>
@@ -504,6 +517,15 @@ export function SessionModal({
   const [progressionNotices, setProgressionNotices] = useState<string[]>([]);
   const [progressionConflict, setProgressionConflict] = useState<string | null>(null);
   const [staleProgressionTargetIds, setStaleProgressionTargetIds] = useState<string[]>([]);
+  const [modalStep, setModalStep] = useState<'capture' | 'closeout'>('capture');
+  const [btAbaBusy, setBtAbaBusy] = useState(false);
+  const [btAbaError, setBtAbaError] = useState<string | null>(null);
+  const [btAbaNoteId, setBtAbaNoteId] = useState<string | null>(null);
+  const closeoutCaptureRef = useRef<{
+    notePayload: BtAbaSessionNotePayload;
+    trialEvents: SessionCaptureTrialEventInput[];
+    expectedTargetVersions: Array<{ target_id: string; progression_version: number }>;
+  } | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const sessionCaptureSectionRef = useRef<HTMLElement | null>(null);
@@ -526,6 +548,22 @@ export function SessionModal({
   );
   const shouldHideGoalCaptureFields = hideGoalCaptureFields;
   const shouldShowPromptCorrectnessToggle = !isBtClinicalCaptureSession;
+
+  const { data: btAbaNoteState, refetch: refetchBtAbaNoteState } = useQuery({
+    queryKey: ['bt-aba-session-note', session?.id],
+    queryFn: () => getBtAbaSessionNote(session!.id),
+    enabled: Boolean(isBtClinicalCaptureSession && session?.id),
+  });
+
+  useEffect(() => {
+    setBtAbaNoteId(btAbaNoteState?.noteId ?? null);
+  }, [btAbaNoteState?.noteId, session?.id]);
+
+  useEffect(() => {
+    setModalStep('capture');
+    setBtAbaError(null);
+    closeoutCaptureRef.current = null;
+  }, [session?.id]);
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
 
@@ -814,6 +852,19 @@ export function SessionModal({
   const selectedClient = clients.find(c => c.id === clientId);
   const selectedTherapistServices = selectedTherapist?.service_type ?? [];
   const selectedClientServices = selectedClient?.service_preference ?? [];
+  const initialBtAbaResponses = useMemo<BtAbaSessionNoteResponses>(() => ({
+    purpose_of_session: [],
+    client_status: '',
+    skill_strategies: [],
+    behavior_strategies: [],
+    supervisor_support: [],
+    progress_toward_goals: '',
+    client_response_to_treatment: '',
+    data_point_scope: 'linked',
+    link_unlinked_data: false,
+    bt_signature: { method: 'typed', value: '' },
+    ...(btAbaNoteState?.responses ?? {}),
+  }), [btAbaNoteState?.responses]);
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const activePrograms = programs.filter((program) => program.status === 'active');
   const availableGoals = useMemo(
@@ -1759,6 +1810,7 @@ export function SessionModal({
       );
       reset(getValues());
       setSaveState('saved');
+      return transformed;
     } catch (error) {
       logger.error('Failed to submit session', {
         error,
@@ -1774,7 +1826,7 @@ export function SessionModal({
         setStaleProgressionTargetIds(context?.stale_target_id ? [context.stale_target_id] : []);
         void queryClient.invalidateQueries({ queryKey: ['client-goal-targets', clientId, activeOrganizationId ?? 'MISSING_ORG'] });
       }
-      return;
+      return null;
     }
   };
 
@@ -1831,6 +1883,38 @@ export function SessionModal({
   };
 
   const handleCloseSession = () => {
+    if (isBtClinicalCaptureSession && session?.id) {
+      void handleSubmit(async (formData) => {
+        const transformed = await handleFormSubmit({
+          ...formData,
+          status: 'in_progress',
+          session_note_begin_closeout: true,
+        });
+        if (!transformed) return;
+        const refreshedBtAbaNote = await refetchBtAbaNoteState();
+        setBtAbaNoteId(refreshedBtAbaNote.data?.noteId ?? null);
+        const trialEvents = transformed.session_note_trial_events ?? [];
+        closeoutCaptureRef.current = {
+          notePayload: {
+            goals_addressed: transformed.session_note_goals_addressed ?? [],
+            goal_ids: transformed.session_note_goal_ids ?? null,
+            goal_measurements: transformed.session_note_goal_measurements ?? null,
+            goal_notes: transformed.session_note_goal_notes ?? null,
+            narrative: transformed.session_note_narrative ?? '',
+          },
+          trialEvents,
+          expectedTargetVersions: trialEvents
+            .filter((event) => typeof event.expected_progression_version === 'number')
+            .map((event) => ({
+              target_id: event.target_id,
+              progression_version: event.expected_progression_version as number,
+            })),
+        };
+        setBtAbaError(null);
+        setModalStep('closeout');
+      })();
+      return;
+    }
     setValue('status', 'completed', { shouldDirty: true });
     void handleSubmit(async (formData) => {
       await handleFormSubmit({
@@ -1838,6 +1922,62 @@ export function SessionModal({
         status: 'completed',
       });
     })();
+  };
+
+  const handleSaveBtAbaDraft = async (responses: BtAbaSessionNoteResponses) => {
+    if (!session?.id || !btAbaNoteState?.templateId || !closeoutCaptureRef.current) {
+      const message = 'The ABA session note is still loading. Please retry.';
+      setBtAbaError(message);
+      showError(message);
+      return;
+    }
+    setBtAbaBusy(true);
+    setBtAbaError(null);
+    try {
+      const result = await saveBtAbaSessionNoteDraft({
+        sessionId: session.id,
+        templateId: btAbaNoteState.templateId,
+        notePayload: closeoutCaptureRef.current.notePayload,
+        responses,
+      });
+      setBtAbaNoteId(result.noteId);
+      showSuccess('ABA session note draft saved');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save the ABA session note draft.';
+      setBtAbaError(message);
+      showError(message);
+    } finally {
+      setBtAbaBusy(false);
+    }
+  };
+
+  const handleFinalizeBtAba = async (responses: BtAbaSessionNoteResponses) => {
+    if (!session?.id || !btAbaNoteId || !closeoutCaptureRef.current) {
+      const message = 'Save the ABA session note draft before finalizing.';
+      setBtAbaError(message);
+      showError(message);
+      return;
+    }
+    setBtAbaBusy(true);
+    setBtAbaError(null);
+    try {
+      const result = await finalizeBtAbaSessionNote({
+        sessionId: session.id,
+        noteId: btAbaNoteId,
+        notePayload: closeoutCaptureRef.current.notePayload,
+        responses,
+        trialEvents: closeoutCaptureRef.current.trialEvents,
+        expectedTargetVersions: closeoutCaptureRef.current.expectedTargetVersions,
+      });
+      if (result.status !== 'completed') throw new Error('Session finalization did not complete. Please retry.');
+      await onBtAbaSessionFinalized?.({ ...result, sessionId: session.id });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to finalize the ABA session note.';
+      setBtAbaError(message);
+      showError(message);
+    } finally {
+      setBtAbaBusy(false);
+    }
   };
 
   // Function to ensure time input is on 15-minute intervals
@@ -2615,6 +2755,41 @@ export function SessionModal({
           <p id={dialogDescriptionId} className="sr-only">
             Use this form to create or update a therapy session.
           </p>
+          {modalStep === 'closeout' && session?.id ? (
+            <div className="space-y-4">
+              {btAbaError ? <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{btAbaError}</p> : null}
+              <BtAbaSessionNoteForm
+                initialResponses={initialBtAbaResponses}
+                context={{
+                  sessionId: session.id,
+                  clientName: selectedClient?.full_name ?? 'Unknown client',
+                  behaviorTechnicianName: selectedTherapist?.full_name ?? 'Unknown behavior technician',
+                  serviceDate: format(parseISO(session.start_time), 'yyyy-MM-dd'),
+                  sessionTime: `${format(parseISO(session.start_time), 'HH:mm')} - ${format(parseISO(session.end_time), 'HH:mm')}`,
+                  placeOfService: selectedClientServices.join(', ') || 'Not recorded',
+                  billingCode: getValues('session_note_service_code') || firstServiceCodeOnAuthorization(primaryBillingAuthorization) || 'Not recorded',
+                  modifiers: [],
+                  programs: selectedProgramIds.map((selectedProgramId) => ({
+                    name: programsById.get(selectedProgramId)?.name ?? 'Program',
+                    goals: sessionNoteGoalIds
+                      .map((selectedGoalId) => goalsById.get(selectedGoalId))
+                      .filter((selectedGoal): selectedGoal is Goal => Boolean(selectedGoal?.program_id === selectedProgramId))
+                      .map((selectedGoal) => selectedGoal.title),
+                  })),
+                  collectedDataPointCount: existingTrialEvents.length + (closeoutCaptureRef.current?.trialEvents.length ?? 0),
+                  linkedDataPoints: [...existingTrialEvents, ...(closeoutCaptureRef.current?.trialEvents ?? [])]
+                    .map((event) => ({ label: event.target_id, value: event.response ?? event.value ?? '' })),
+                  allDataPoints: [...existingTrialEvents, ...(closeoutCaptureRef.current?.trialEvents ?? [])]
+                    .map((event) => ({ label: event.target_id, value: event.response ?? event.value ?? '' })),
+                  collectedBy: selectedTherapist?.full_name ?? 'Unknown behavior technician',
+                }}
+                onSaveDraft={handleSaveBtAbaDraft}
+                onFinalize={handleFinalizeBtAba}
+                busy={btAbaBusy}
+              />
+              <button type="button" disabled={btAbaBusy} onClick={() => setModalStep('capture')} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">Back to capture</button>
+            </div>
+          ) : (
           <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5 sm:space-y-6">
             {retryHint && (
               <div
@@ -4268,9 +4443,11 @@ export function SessionModal({
               </section>
             )}
           </form>
+          )}
         </div>
 
         {/* Footer */}
+        {modalStep === 'capture' ? (
         <div className="sticky bottom-0 z-10 border-t border-gray-200/80 bg-white/90 px-4 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md dark:border-gray-700 dark:bg-dark-lighter/90 sm:px-5 sm:py-4 sm:pb-4">
           <div className="flex flex-col gap-3">
             <div
@@ -4331,6 +4508,7 @@ export function SessionModal({
             </div>
           </div>
         </div>
+        ) : null}
       </div>
     </div>
   );

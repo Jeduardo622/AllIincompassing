@@ -80,3 +80,9 @@
 - generated artifact drift: none
 - Linear: WIN-218 is `In Progress`; move to `In Review` after PR creation
 - current local verification blocker: fresh PR CI must pass the unchanged Linux-only gates before this handoff can be marked `pr-ready: yes`
+
+## Review Follow-up: Session Reset
+
+- finding: prompt correctness could remain unchecked when the mounted modal changed session or client while reusing the same target ID.
+- fix: the existing `[session?.id, clientId]` capture reset now also clears `promptCorrectByTargetId`.
+- regression proof: the prompt trial test unchecks the control, rerenders the mounted modal with a new session ID, and requires the checkbox to return to checked before recording the next session's trials.

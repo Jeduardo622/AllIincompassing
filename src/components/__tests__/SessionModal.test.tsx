@@ -2567,27 +2567,28 @@ describe('SessionModal', () => {
       return buildChain([]);
     });
 
-    renderWithProviders(
+    const session = {
+      id: 'session-task-analysis-trials',
+      therapist_id: 'test-therapist-1',
+      client_id: 'test-client-1',
+      program_id: 'program-1',
+      goal_id: 'goal-1',
+      start_time: '2026-03-01T10:00:00.000Z',
+      end_time: '2026-03-01T11:00:00.000Z',
+      status: 'in_progress',
+      notes: '',
+      created_at: '2026-03-01T09:00:00.000Z',
+      created_by: null,
+      updated_at: '2026-03-01T09:00:00.000Z',
+      updated_by: null,
+      started_at: null,
+    } satisfies Session;
+    const { rerender } = renderWithProviders(
       <SessionModal
         {...defaultProps}
         onSubmit={onSubmit}
         existingSessions={[]}
-        session={{
-          id: 'session-task-analysis-trials',
-          therapist_id: 'test-therapist-1',
-          client_id: 'test-client-1',
-          program_id: 'program-1',
-          goal_id: 'goal-1',
-          start_time: '2026-03-01T10:00:00.000Z',
-          end_time: '2026-03-01T11:00:00.000Z',
-          status: 'in_progress',
-          notes: '',
-          created_at: '2026-03-01T09:00:00.000Z',
-          created_by: null,
-          updated_at: '2026-03-01T09:00:00.000Z',
-          updated_by: null,
-          started_at: null,
-        } satisfies Session}
+        session={session}
       />,
     );
 
@@ -2614,6 +2615,18 @@ describe('SessionModal', () => {
       name: /Prompted response was correct for target 1/i,
     });
     expect(correctness).toBeChecked();
+
+    await userEvent.click(correctness);
+    expect(correctness).not.toBeChecked();
+    rerender(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        existingSessions={[]}
+        session={{ ...session, id: 'session-task-analysis-trials-next' }}
+      />,
+    );
+    await waitFor(() => expect(correctness).toBeChecked());
 
     await userEvent.click(screen.getByRole('button', { name: /Record independent response for target 1/i }));
     await userEvent.click(screen.getByRole('button', { name: /Record prompted response for target 1/i }));

@@ -864,6 +864,7 @@ export function SessionModal({
 
   useEffect(() => {
     setPendingTrialEvents([]);
+    setPromptCorrectByTargetId({});
     setPendingNumericTrialValues({});
   }, [session?.id, clientId]);
 

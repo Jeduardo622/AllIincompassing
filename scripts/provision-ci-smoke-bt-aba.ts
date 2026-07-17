@@ -29,7 +29,7 @@ export type BtFixtureGraph = {
   organization: FixtureRow;
   profile: FixtureRow;
   therapist: FixtureRow;
-  roleMappings: Array<{ name: string; isActive: boolean }>;
+  roleMappings: Array<{ name: string; isActive: boolean; expiresAt: string | null }>;
   client: FixtureRow;
   program: FixtureRow;
   goal: FixtureRow;
@@ -144,7 +144,9 @@ export const assertBtFixtureGraph = (graph: BtFixtureGraph): void => {
   ] as const) {
     requireEqual(row.organization_id, organizationId, `${label} organization`);
   }
-  requireEqual(graph.profile.role, "bt", "Profile role");
+  // profiles.role remains the legacy therapist family while user_roles is the
+  // authoritative employee-role source for this BT actor.
+  requireEqual(graph.profile.role, "therapist", "Profile legacy role");
   requireEqual(graph.profile.is_active, true, "Profile active state");
   requireEqual(graph.therapist.status, "active", "Therapist state");
   requireEqual(graph.therapist.deleted_at, null, "Therapist deletion state");
@@ -155,6 +157,8 @@ export const assertBtFixtureGraph = (graph: BtFixtureGraph): void => {
     graph.roleMappings.length !== 1
     || graph.roleMappings[0]?.name.toLowerCase() !== "bt"
     || graph.roleMappings[0]?.isActive !== true
+    || !graph.roleMappings[0]?.expiresAt
+    || graph.roleMappings[0].expiresAt <= new Date().toISOString()
   ) {
     throw new Error("Authoritative user_roles mapping must contain exactly one active bt role.");
   }
@@ -274,6 +278,7 @@ const provision = async (): Promise<void> => {
   const authorizationServiceId = randomUUID();
   const email = buildBtSmokeEmail(marker);
   const password = `C1-${randomBytes(24).toString("base64url")}!Aa`;
+  const fixtureExpiry = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
   const client = createClient(supabaseUrl, secretKey, { auth: { autoRefreshToken: false, persistSession: false } });
   let actorId: string | undefined;
   try {
@@ -286,7 +291,14 @@ const provision = async (): Promise<void> => {
     password,
     email_confirm: true,
     user_metadata: { ...buildBtAuthMetadata(marker, organizationId), first_name: `BT-${marker}`, last_name: `Actor-${marker}` },
-    app_metadata: { fixture_marker: marker, disposable_project_ref: projectRef, organization_id: organizationId, organizationId },
+    app_metadata: {
+      fixture_marker: marker,
+      disposable_project_ref: projectRef,
+      organization_id: organizationId,
+      organizationId,
+      ci_rls_fixture: "true",
+      ci_rls_expires_at: fixtureExpiry,
+    },
   });
   if (authError || !authData.user) throw new Error(`Unable to create marker-owned BT auth user: ${authError?.message ?? "missing user"}.`);
   actorId = authData.user.id;
@@ -295,21 +307,32 @@ const provision = async (): Promise<void> => {
     .update({ created_by: actorId }).eq("id", organizationId);
   if (organizationCreatorError) throw new Error(`Unable to attach marker-owned organization creator: ${organizationCreatorError.message}.`);
 
-  const { error: profileError } = await client.from("profiles").upsert({
-    id: actorId, email, role: "bt", first_name: `BT-${marker}`, last_name: `Actor-${marker}`, is_active: true, organization_id: organizationId,
-  }, { onConflict: "id" });
-  if (profileError) throw new Error(`Unable to provision marker-owned BT profile: ${profileError.message}.`);
-
   await insertOne(client, "therapists", {
     id: actorId, organization_id: organizationId, email, full_name: `BT ${marker}`, first_name: `BT-${marker}`,
     last_name: `Actor-${marker}`, title: "BT", status: "active", specialties: [marker], service_type: ["aba"],
   }, "id,organization_id,email,full_name,title,status,deleted_at");
 
-  const { data: role, error: roleError } = await client.from("roles").select("id,name").eq("name", "bt").maybeSingle();
-  if (roleError || !role?.id) throw new Error(`Unable to resolve authoritative bt role: ${roleError?.message ?? "missing role"}.`);
+  const { data: rolesForProvisioning, error: roleError } = await client.from("roles")
+    .select("id,name").in("name", ["therapist", "bt"]);
+  const therapistRole = rolesForProvisioning?.find((role) => role.name === "therapist");
+  const btRole = rolesForProvisioning?.find((role) => role.name === "bt");
+  if (roleError || !therapistRole?.id || !btRole?.id) {
+    throw new Error(`Unable to resolve therapist and bt roles: ${roleError?.message ?? "missing role"}.`);
+  }
   const { error: staleRolesError } = await client.from("user_roles").delete().eq("user_id", actorId);
   if (staleRolesError) throw new Error(`Unable to clear non-authoritative role mappings: ${staleRolesError.message}.`);
-  const { error: userRoleError } = await client.from("user_roles").insert({ user_id: actorId, role_id: role.id, is_active: true });
+  const { error: temporaryRoleError } = await client.from("user_roles")
+    .insert({ user_id: actorId, role_id: therapistRole.id, is_active: true, expires_at: fixtureExpiry });
+  if (temporaryRoleError) throw new Error(`Unable to assign temporary therapist mapping: ${temporaryRoleError.message}.`);
+  const { data: provisionedOrganizationId, error: profileProvisionError } = await client
+    .rpc("provision_ci_rls_fixture_profile", { p_user_id: actorId, p_organization_id: organizationId });
+  if (profileProvisionError || provisionedOrganizationId !== organizationId) {
+    throw new Error(`Unable to provision marker-owned BT profile scope: ${profileProvisionError?.message ?? "organization mismatch"}.`);
+  }
+  const { error: temporaryRoleCleanupError } = await client.from("user_roles").delete().eq("user_id", actorId);
+  if (temporaryRoleCleanupError) throw new Error(`Unable to clear temporary therapist mapping: ${temporaryRoleCleanupError.message}.`);
+  const { error: userRoleError } = await client.from("user_roles")
+    .insert({ user_id: actorId, role_id: btRole.id, is_active: true, expires_at: fixtureExpiry });
   if (userRoleError) throw new Error(`Unable to assign authoritative bt role: ${userRoleError.message}.`);
 
   const fixtureClient = await insertOne(client, "clients", {
@@ -341,7 +364,7 @@ const provision = async (): Promise<void> => {
   const [profile, therapist, roles] = await Promise.all([
     one(client.from("profiles").select("id,organization_id,role,is_active").eq("id", actorId).maybeSingle(), "profile"),
     one(client.from("therapists").select("id,organization_id,email,full_name,title,status,deleted_at").eq("id", actorId).maybeSingle(), "therapist"),
-    client.from("user_roles").select("is_active,roles(name)").eq("user_id", actorId),
+    client.from("user_roles").select("is_active,expires_at,roles(name)").eq("user_id", actorId),
   ]);
   if (roles.error) throw new Error(`Unable to read back authoritative roles: ${roles.error.message}.`);
   const roleMappings = (roles.data ?? []).flatMap((row) => {
@@ -349,6 +372,7 @@ const provision = async (): Promise<void> => {
     return (Array.isArray(nested) ? nested : nested ? [nested] : []).map(({ name }) => ({
       name: String(name ?? ""),
       isActive: row.is_active === true,
+      expiresAt: typeof row.expires_at === "string" ? row.expires_at : null,
     }));
   });
   assertBtFixtureGraph({

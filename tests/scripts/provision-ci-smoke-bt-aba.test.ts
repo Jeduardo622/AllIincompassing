@@ -31,9 +31,9 @@ const validGraph = () => ({
   marker: MARKER,
   actorId: ACTOR_ID,
   organization: { id: ORGANIZATION_ID, name: `BT proof ${MARKER}`, slug: `bt-proof-${MARKER}` },
-  profile: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, role: "bt", is_active: true },
+  profile: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, role: "therapist", is_active: true },
   therapist: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, email: buildBtSmokeEmail(MARKER), full_name: `BT ${MARKER}`, title: "BT", status: "active", deleted_at: null },
-  roleMappings: [{ name: "bt", isActive: true }],
+  roleMappings: [{ name: "bt", isActive: true, expiresAt: "2099-01-01T00:00:00.000Z" }],
   client: { id: CLIENT_ID, organization_id: ORGANIZATION_ID, email: `client.${MARKER}@example.com`, full_name: `Client ${MARKER}`, notes: MARKER, status: "active", deleted_at: null },
   program: { id: PROGRAM_ID, organization_id: ORGANIZATION_ID, client_id: CLIENT_ID, name: `Program ${MARKER}`, description: MARKER, status: "active" },
   goal: { id: GOAL_ID, organization_id: ORGANIZATION_ID, client_id: CLIENT_ID, program_id: PROGRAM_ID, title: `Goal ${MARKER}`, description: MARKER, original_text: MARKER, status: "active" },
@@ -137,6 +137,20 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
     const provisionSource = source.slice(source.indexOf("const provision = async"));
     expect(provisionSource.indexOf('created_by: null')).toBeLessThan(provisionSource.indexOf('auth.admin.createUser'));
     expect(provisionSource).toContain('buildBtAuthMetadata(marker, organizationId)');
+  });
+
+  it("uses the existing service-only fixture RPC before installing the authoritative bt mapping", () => {
+    const source = readFileSync(path.join(process.cwd(), "scripts/provision-ci-smoke-bt-aba.ts"), "utf8");
+    const provisionSource = source.slice(source.indexOf("const provision = async"));
+    const temporaryTherapist = provisionSource.indexOf('role_id: therapistRole.id');
+    const profileRpc = provisionSource.indexOf('rpc("provision_ci_rls_fixture_profile"');
+    const authoritativeBt = provisionSource.indexOf('role_id: btRole.id');
+    expect(provisionSource).toContain('ci_rls_fixture: "true"');
+    expect(provisionSource).toContain('ci_rls_expires_at: fixtureExpiry');
+    expect(provisionSource.match(/role_id: (?:therapistRole|btRole)\.id, is_active: true, expires_at: fixtureExpiry/g)).toHaveLength(2);
+    expect(temporaryTherapist).toBeGreaterThan(-1);
+    expect(profileRpc).toBeGreaterThan(temporaryTherapist);
+    expect(authoritativeBt).toBeGreaterThan(profileRpc);
   });
 
   it("exports harness aliases, exact fixture IDs, and disposable acknowledgements", () => {

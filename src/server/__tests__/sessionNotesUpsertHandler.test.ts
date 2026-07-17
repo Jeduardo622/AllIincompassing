@@ -11,6 +11,7 @@ vi.mock("../api/shared", async () => {
     resolveOrgAndRoleWithStatus: vi.fn(),
     fetchAuthenticatedUserIdWithStatus: vi.fn(),
     currentUserCanCaptureTrialEvent: vi.fn(),
+    currentUserCanTakeClientData: vi.fn(),
     currentUserIsBcbaForOrg: vi.fn(),
     getSupabaseConfig: vi.fn(),
     fetchJson: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("../../lib/api", () => ({ callApi: vi.fn() }));
 
 import {
   currentUserCanCaptureTrialEvent,
+  currentUserCanTakeClientData,
   currentUserIsBcbaForOrg,
   fetchAuthenticatedUserIdWithStatus,
   fetchJson,
@@ -141,6 +143,10 @@ describe("sessionNotesUpsertHandler", () => {
     });
     vi.mocked(currentUserCanCaptureTrialEvent).mockResolvedValue({
       allowed: true,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({
+      allowed: false,
       upstreamError: false,
     });
     vi.mocked(currentUserIsBcbaForOrg).mockResolvedValue({
@@ -503,6 +509,60 @@ describe("sessionNotesUpsertHandler", () => {
     }));
 
     expect(response.status).toBe(403);
+    expect(fetchAuthenticatedUserIdWithStatus).not.toHaveBeenCalled();
+  });
+
+  it("passes a valid assigned-BT legacy capture through the role gate before actor validation", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({ userId: null, upstreamError: false });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify(basePayload),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(currentUserCanTakeClientData).toHaveBeenCalledWith(ACCESS_TOKEN, "org-1", basePayload.clientId);
+    expect(currentUserIsBcbaForOrg).not.toHaveBeenCalled();
+    expect(fetchAuthenticatedUserIdWithStatus).toHaveBeenCalledWith(ACCESS_TOKEN);
+  });
+
+  it("fails closed when assigned-client capability resolution has an upstream error", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: false, upstreamError: true });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify(basePayload),
+    }));
+
+    expect(response.status).toBe(502);
+    expect(currentUserIsBcbaForOrg).not.toHaveBeenCalled();
+    expect(fetchAuthenticatedUserIdWithStatus).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke assigned-client capability for an unknown action payload", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: false, upstreamError: true });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({ ...basePayload, action: "unknown" }),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(currentUserCanTakeClientData).not.toHaveBeenCalled();
+    expect(currentUserIsBcbaForOrg).toHaveBeenCalledWith(ACCESS_TOKEN, "org-1");
     expect(fetchAuthenticatedUserIdWithStatus).not.toHaveBeenCalled();
   });
 

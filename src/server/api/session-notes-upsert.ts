@@ -6,6 +6,7 @@ import { getOptionalServerEnv } from "../env";
 import {
   corsHeadersForRequest,
   currentUserCanCaptureTrialEvent,
+  currentUserCanTakeClientData,
   currentUserIsBcbaForOrg,
   errorResponse,
   fetchAuthenticatedUserIdWithStatus,
@@ -1159,12 +1160,23 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (!isBtAbaRequest) {
     const hasResolvedSessionNoteRole = isTherapist || isAdmin || isSuperAdmin || isOrgMember;
     if (!hasResolvedSessionNoteRole) {
-      const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
-      if (bcbaAuthority.upstreamError) {
-        return errorResponse(request, "upstream_error", "Unable to validate BCBA access", { status: 502 });
+      const legacyPayload = requestedAction === undefined
+        ? upsertSchema.safeParse(body)
+        : { success: false as const };
+      const clientDataAuthority = legacyPayload.success
+        ? await currentUserCanTakeClientData(accessToken, organizationId, legacyPayload.data.clientId)
+        : { allowed: false, upstreamError: false };
+      if (clientDataAuthority.upstreamError) {
+        return errorResponse(request, "upstream_error", "Unable to validate client data access", { status: 502 });
       }
-      if (!bcbaAuthority.allowed) {
-        return errorResponse(request, "forbidden", "Forbidden");
+      if (!clientDataAuthority.allowed) {
+        const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
+        if (bcbaAuthority.upstreamError) {
+          return errorResponse(request, "upstream_error", "Unable to validate BCBA access", { status: 502 });
+        }
+        if (!bcbaAuthority.allowed) {
+          return errorResponse(request, "forbidden", "Forbidden");
+        }
       }
     }
   }

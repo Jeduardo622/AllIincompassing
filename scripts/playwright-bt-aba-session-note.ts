@@ -27,6 +27,44 @@ const STEP_TIMEOUT_MS = Number(process.env.PW_BT_ABA_STEP_TIMEOUT_MS ?? "300000"
 const CLEANUP_TIMEOUT_MS = Number(process.env.PW_BT_ABA_CLEANUP_TIMEOUT_MS ?? "10000");
 const DRY_RUN_SESSION_ID = "55555555-5555-4555-8555-555555555555";
 
+export const isExactLegacyCaptureUpsertRequest = (
+  url: string,
+  method: string,
+  postData: string | null,
+  sessionId: string,
+): boolean => {
+  if (method !== "POST" || !postData) return false;
+  try {
+    const parsedUrl = new URL(url);
+    const payload = JSON.parse(postData) as { action?: unknown; sessionId?: unknown };
+    return parsedUrl.pathname === "/api/session-notes/upsert"
+      && payload.action === undefined
+      && payload.sessionId === sessionId;
+  } catch {
+    return false;
+  }
+};
+
+const redactCaptureDiagnostic = (value: unknown): string => String(value ?? "unknown")
+  .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi, "[uuid]")
+  .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+  .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[token]")
+  .replace(/[\r\n\t]+/g, " ")
+  .slice(0, 240);
+
+export const formatRedactedCaptureFailure = (status: number, responseBody: string): string => {
+  let code = "unknown";
+  let message = "request failed";
+  try {
+    const parsed = JSON.parse(responseBody) as { code?: unknown; message?: unknown; error?: unknown };
+    if (typeof parsed.code === "string" && /^[a-z_]{1,64}$/i.test(parsed.code)) code = parsed.code;
+    message = redactCaptureDiagnostic(parsed.message ?? parsed.error ?? message);
+  } catch {
+    // The response body is intentionally omitted when it is not the expected API error envelope.
+  }
+  return `Legacy session capture failed: status=${status} code=${code} message=${message}`;
+};
+
 type SafetyConfig = {
   baseUrl: string;
   supabaseUrl: string;
@@ -458,7 +496,18 @@ async function run(): Promise<void> {
       const dialog = page!.locator('[role="dialog"]').first();
       await dialog.getByTestId("session-modal-capture-section").waitFor({ state: "visible" });
       await dialog.locator(`#goal-note-${booked.goalId}`).fill(`Synthetic goal note ${config.fixtureMarker}`);
-      await dialog.getByRole("button", { name: "Close Session", exact: true }).click();
+      const [captureResponse] = await Promise.all([
+        page!.waitForResponse((response) => isExactLegacyCaptureUpsertRequest(
+          response.url(),
+          response.request().method(),
+          response.request().postData(),
+          booked.sessionId,
+        )),
+        dialog.getByRole("button", { name: "Close Session", exact: true }).click(),
+      ]);
+      if (!captureResponse.ok()) {
+        throw new Error(formatRedactedCaptureFailure(captureResponse.status(), await captureResponse.text()));
+      }
       await dialog.getByRole("heading", { name: "ABA Session Note", exact: true }).waitFor({ state: "visible" });
     });
 

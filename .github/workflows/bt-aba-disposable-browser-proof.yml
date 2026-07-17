@@ -1,20 +1,20 @@
 name: BT ABA disposable browser proof
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       commit_sha:
-        description: Exact 40-character lowercase PR head commit SHA
         required: true
         type: string
       pull_request_number:
-        description: Open same-repository pull request targeting main
         required: true
         type: string
       approval_acknowledgement:
-        description: Enter I_APPROVE_BT_ABA_DISPOSABLE_PROOF to approve protected execution
         required: true
         type: string
+    secrets:
+      SUPABASE_ACCESS_TOKEN:
+        required: true
 
 jobs:
   validate:

@@ -16,6 +16,9 @@ type WorkflowStep = {
 type WorkflowJob = {
   needs?: string | string[];
   if?: string;
+  uses?: string;
+  secrets?: string;
+  with?: Record<string, unknown>;
   env?: Record<string, string>;
   outputs?: Record<string, string>;
   permissions?: Record<string, string>;
@@ -24,7 +27,21 @@ type WorkflowJob = {
 };
 
 type ProofWorkflow = {
-  on?: { workflow_dispatch?: { inputs?: Record<string, { required?: boolean; type?: string }> } };
+  on?: {
+    workflow_call?: {
+      inputs?: Record<string, { required?: boolean; type?: string }>;
+      secrets?: Record<string, { required?: boolean }>;
+    };
+    workflow_dispatch?: {
+      inputs?: Record<string, {
+        required?: boolean;
+        type?: string;
+        default?: unknown;
+        options?: string[];
+      }>;
+    };
+  };
+  permissions?: Record<string, string>;
   jobs?: Record<string, WorkflowJob>;
 };
 
@@ -32,6 +49,7 @@ const workflowPath = path.join(
   process.cwd(),
   '.github/workflows/bt-aba-disposable-browser-proof.yml',
 );
+const dispatcherPath = path.join(process.cwd(), '.github/workflows/supabase-preview.yml');
 
 const loadWorkflow = (): { source: string; workflow: ProofWorkflow } => {
   const source = readFileSync(workflowPath, 'utf8');
@@ -44,19 +62,22 @@ const findStep = (job: WorkflowJob | undefined, name: string): WorkflowStep | un
 describe('manual disposable BT/ABA browser proof workflow', () => {
   it('requires an owner-approved immutable open same-repository PR head', () => {
     const { source, workflow } = loadWorkflow();
-    const inputs = workflow.on?.workflow_dispatch?.inputs ?? {};
+    const inputs = workflow.on?.workflow_call?.inputs ?? {};
     const validation = workflow.jobs?.validate;
     const validationSource = JSON.stringify(validation);
     const approvalStep = findStep(validation, 'Validate owner approval and open PR head');
     const checkoutStep = findStep(validation, 'Checkout validated commit');
     const headStep = findStep(validation, 'Verify immutable validation checkout');
 
-    expect(Object.keys(workflow.on ?? {})).toEqual(['workflow_dispatch']);
+    expect(Object.keys(workflow.on ?? {})).toEqual(['workflow_call']);
     expect(inputs).not.toHaveProperty('ref');
     expect(inputs).toMatchObject({
       commit_sha: { required: true, type: 'string' },
       pull_request_number: { required: true, type: 'string' },
       approval_acknowledgement: { required: true, type: 'string' },
+    });
+    expect(workflow.on?.workflow_call?.secrets).toEqual({
+      SUPABASE_ACCESS_TOKEN: { required: true },
     });
     expect(source).not.toContain('pull_request:');
     expect(source).not.toContain('push:');
@@ -185,5 +206,48 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(source).toContain('npm run playwright:bt-aba-session-note');
     expect(source).toContain('artifacts/latest/**');
     expect(source).not.toMatch(/artifacts:[\s\S]*branch-secrets\.env/);
+  });
+
+  it('routes BT mode through the existing manual Supabase Preview dispatcher', () => {
+    const source = readFileSync(dispatcherPath, 'utf8');
+    const dispatcher = parse(source) as ProofWorkflow;
+    const inputs = dispatcher.on?.workflow_dispatch?.inputs ?? {};
+    const preview = dispatcher.jobs?.preview;
+    const protectedProof = dispatcher.jobs?.bt_aba_disposable_proof;
+
+    expect(Object.keys(dispatcher.on ?? {})).toEqual(['workflow_dispatch']);
+    expect(inputs.mode).toMatchObject({
+      required: true,
+      type: 'choice',
+      default: 'local-preview',
+      options: ['local-preview', 'bt-aba-disposable-proof'],
+    });
+    expect(inputs.ref).toMatchObject({
+      required: false,
+      type: 'string',
+      default: 'feat/rls-rollout-mcp',
+    });
+    expect(inputs).toHaveProperty('commit_sha');
+    expect(inputs).toHaveProperty('pull_request_number');
+    expect(inputs).toHaveProperty('approval_acknowledgement');
+    expect(preview?.if).toBe("inputs.mode != 'bt-aba-disposable-proof'");
+    expect(preview?.env ?? {}).not.toHaveProperty('SUPABASE_ACCESS_TOKEN');
+    expect(findStep(preview, 'Start local Supabase (ephemeral)')).toBeDefined();
+    expect(findStep(preview, 'Run preview smoke suite')?.run).toBe('npm run preview:smoke');
+    expect(protectedProof).toMatchObject({
+      if: "inputs.mode == 'bt-aba-disposable-proof'",
+      uses: './.github/workflows/bt-aba-disposable-browser-proof.yml',
+      secrets: 'inherit',
+      with: {
+        commit_sha: '${{ inputs.commit_sha }}',
+        pull_request_number: '${{ inputs.pull_request_number }}',
+        approval_acknowledgement: '${{ inputs.approval_acknowledgement }}',
+      },
+    });
+    expect(protectedProof?.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+    });
+    expect(source.match(/secrets\.SUPABASE_ACCESS_TOKEN/g)).toBeNull();
   });
 });

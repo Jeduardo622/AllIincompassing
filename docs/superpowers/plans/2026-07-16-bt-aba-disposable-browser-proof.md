@@ -4,7 +4,7 @@
 
 **Goal:** Produce decisive browser evidence that an exact assigned BT can draft, restore, sign, and atomically finalize the mandatory ABA Session Note on an isolated non-production Supabase branch.
 
-**Architecture:** A manual GitHub workflow creates a fresh data-less Supabase branch and exports only masked branch credentials. A synthetic-fixture provisioner creates an entirely marker-owned tenant graph, while an opt-in local preview server forwards only `/api/session-notes/upsert` to the real server handler. The existing Playwright lifecycle runs against that branch, then an unconditional teardown deletes the whole branch and verifies absence.
+**Architecture:** The existing default-branch `supabase-preview.yml` manual dispatcher routes an explicit BT proof mode into a protected reusable workflow. The reusable workflow creates a fresh data-less Supabase branch and exports only masked branch credentials. A synthetic-fixture provisioner creates an entirely marker-owned tenant graph, while an opt-in local preview server forwards only `/api/session-notes/upsert` to the real server handler. The existing Playwright lifecycle runs against that branch, then an unconditional teardown deletes the whole branch and verifies absence.
 
 **Tech Stack:** GitHub Actions, Supabase CLI/Management API, TypeScript, Supabase JS, Node HTTP, Vite, Playwright, Vitest.
 
@@ -165,47 +165,35 @@ git commit -m "test: route BT note API in protected preview"
 
 **Files:**
 - Create: `.github/workflows/bt-aba-disposable-browser-proof.yml`
+- Modify: `.github/workflows/supabase-preview.yml`
 - Modify: `package.json`
 - Test: `tests/workflows/bt-aba-disposable-browser-proof.test.ts`
 
 **Interfaces:**
-- Consumes: `SUPABASE_ACCESS_TOKEN` and workflow input `ref`.
+- Consumes: the existing Supabase Preview dispatcher with `mode=bt-aba-disposable-proof`, immutable PR inputs, and `SUPABASE_ACCESS_TOKEN` inherited by the reusable workflow.
 - Produces: redacted browser evidence artifact and a verified-deleted disposable branch.
 
 - [ ] **Step 1: Write a failing workflow contract test**
 
 ```ts
-expect(workflow.on).toHaveProperty("workflow_dispatch");
-expect(source).not.toContain("pull_request:");
-expect(source).toContain("if: always()");
-expect(source).toContain("--cleanup");
-expect(source).not.toContain("--with-data");
+expect(Object.keys(protectedWorkflow.on)).toEqual(["workflow_call"]);
+expect(Object.keys(dispatcher.on)).toEqual(["workflow_dispatch"]);
+expect(dispatcher.on.workflow_dispatch.inputs.mode.default).toBe("local-preview");
+expect(dispatcher.jobs.preview.if).toContain("!= 'bt-aba-disposable-proof'");
+expect(dispatcher.jobs.bt_aba_disposable_proof.uses)
+  .toBe("./.github/workflows/bt-aba-disposable-browser-proof.yml");
 ```
 
 - [ ] **Step 2: Run the test and confirm failure**
 
 Run: `npm test -- tests/workflows/bt-aba-disposable-browser-proof.test.ts`
-Expected: FAIL because the workflow does not exist.
+Expected: FAIL until the protected workflow is reusable-only and the existing dispatcher routes the explicit BT mode.
 
 - [ ] **Step 3: Implement the workflow**
 
 Pin checkout, setup-node, setup-cli, and upload-artifact actions by commit SHA. Sequence: checkout, install, create/poll branch, apply migrations to the branch, retrieve and mask keys, provision fixture, build branch-bound preview, install Chromium, launch preview with API opt-in, run `playwright:bt-aba-session-note`, upload redacted artifacts, and always delete/verify the branch.
 
-```yaml
-on:
-  workflow_dispatch:
-    inputs:
-      ref:
-        required: true
-jobs:
-  proof:
-    permissions:
-      contents: read
-    steps:
-      - name: Delete and verify disposable branch
-        if: always()
-        run: npm run bt-aba:disposable-branch -- --cleanup
-```
+The existing `.github/workflows/supabase-preview.yml` remains `workflow_dispatch`-only and defaults to its unchanged local-preview mode. Its conditional BT job calls `./.github/workflows/bt-aba-disposable-browser-proof.yml` with immutable PR inputs and `secrets: inherit`. The protected file is `workflow_call`-only, validates owner approval and the open same-repository PR head, and runs cleanup in a separate bounded job.
 
 - [ ] **Step 4: Validate workflow and focused tests**
 
@@ -230,8 +218,8 @@ git commit -m "ci: add protected BT closeout browser proof"
 
 - [ ] **Step 1: Push and dispatch**
 
-Run: `git push origin codex/win-221-bt-aba-session-note` then dispatch the new workflow for that exact branch.
-Expected: one manual run starts on the feature branch.
+Run: `git push origin codex/win-221-bt-aba-session-note` then dispatch the existing Supabase Preview workflow from the default branch with `mode=bt-aba-disposable-proof`, the exact PR head SHA, PR number, and approval acknowledgement.
+Expected: one manual dispatcher run invokes the protected reusable workflow at the validated PR head.
 
 - [ ] **Step 2: Verify decisive lifecycle evidence**
 

@@ -5,7 +5,7 @@ Files:
 - `tests/bcbaSupervisionReviewWorkflowMigration.test.ts`
 
 Commits:
-- Pending local commit at report write time.
+- `2d46ef9` `feat: route BT notes to assigned BCBA`
 
 Implementation summary:
 - Added the migration contract test first and proved RED when Vitest failed because the migration file did not exist.

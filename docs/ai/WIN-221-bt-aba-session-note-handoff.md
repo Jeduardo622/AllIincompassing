@@ -56,7 +56,7 @@ Authorized-reviewer browser visibility is **blocked**, not passed: the repositor
 
 Read-only Supabase documentation/advisor review confirmed that a `SECURITY DEFINER` function executable by `authenticated` is a privileged API: it must validate caller scope and inputs, use a fixed search path, and revoke default `PUBLIC`/`anon` execution. It also confirmed that RLS and table/function grants are independent controls. The migration follows those requirements with tenant-derived checks, explicit grants, and revocations.
 
-No hosted migration or production write was performed for WIN-221. Static migration governance and RLS contracts pass, but executable PostgreSQL proof is still required. Local `npx supabase start` was bounded and timed out without starting the database, so `db reset`, SQL compilation, rollback semantics, live grants, and the synthetic SQL smoke were not proved locally.
+No production migration or production write was performed for WIN-221. Supabase PR preview `zutoyqdrpddtgkgooijx` applied `20260716212837_bt_aba_session_note_closeout.sql`, completed seeding/function deployment, and reached `FUNCTIONS_DEPLOYED` with a healthy preview project. The full synthetic SQL smoke then passed through the Supabase connector inside its explicit `BEGIN`/`ROLLBACK`, proving compilation, caller-bound grants/RLS checks, draft/read/finalize/replay behavior, failure rollback, and side-effect idempotency without retaining fixture data. Local `npx supabase start` still timed out, so the hosted disposable preview is the executable database proof.
 
 ## Mandatory command matrix
 
@@ -76,17 +76,17 @@ Final local verification was run from the clean isolated worktree after all impl
 | `npm run ci:playwright` | **BLOCKED** at credential preflight before browser launch: missing `PW_SUPERADMIN_EMAIL/PASSWORD` or `PW_ADMIN_EMAIL/PASSWORD` | Credentialed environment/CI required |
 | `npm run playwright:bt-aba-session-note` | Missing-env preflight names every absent fixture, exact billing, and teardown-ack input; separate no-network preflights refuse the production ref and a runtime/acknowledged project-ref mismatch before Chromium or writes. Deterministic `PW_BT_ABA_DRY_RUN_FAILURE_MODE=pre-browser` and `screenshot-failure` probes both exit nonzero and emit the validated project ref with `sessionId="not-created"`. The `post-insert-logging-failure` probe emits exact ID `55555555-5555-4555-8555-555555555555`; the `hanging-cleanup` probe times out screenshot, context close, and browser close in order, then emits teardown. | `BLOCKED` until a wrapper provisions the marker-validated migrated branch, runs proof, preserves evidence, and deletes the whole branch |
 | `npm run verify:local` | **FAIL at chained `test:ci`** after policy/lint/typecheck passed; reproduced the same single CRLF workflow-parser failure, so later chained coverage/build/tier-0 steps did not execute there | Standalone coverage/build/tier-0 passes are recorded above; Linux CI rerun required |
-| `npx supabase db reset` + SQL smoke | Local Supabase startup timed out | `BLOCKED` executable DB runtime required |
-| Hosted/preview migration replay and advisors | No hosted mutation performed | `BLOCKED` supervised disposable preview or approved hosted path required |
+| `npx supabase db reset` + SQL smoke | Local Supabase startup timed out; full SQL smoke **PASS** on disposable preview `zutoyqdrpddtgkgooijx` through the Supabase connector and rolled back | Hosted executable proof complete; local Docker proof remains unavailable |
+| Hosted/preview migration replay and advisors | **PASS** — migration applied and branch reached `FUNCTIONS_DEPLOYED`; security/performance advisors were read back and retain project-wide baseline warnings | Human Supabase/security review remains mandatory before merge |
 
 ## Verification card
 
 - Lane: `critical`
 - Required checks: focused tests; policy; lint; typecheck; `test:ci`; tenant validation; Tier-0 routes; build; credentialed Playwright; `verify:local`; executable migration replay and SQL smoke.
-- Executed checks: focused `352/352` after final rebase; policy; lint; typecheck; coverage; tenant validation; production build; Tier-0 routes `220/220`; broad `test:ci`; `verify:local`; protected Playwright preflight; BT lifecycle missing-env preflight.
-- Blocked checks: local/preview PostgreSQL replay and SQL smoke; credentialed exact-BT disposable-branch browser lifecycle; authorized-reviewer browser visibility; protected Playwright credentials; DB-connected policy/advisor checks.
-- Result: `fail` — required broad `test:ci`/`verify:local` retain one unrelated Windows CRLF workflow-parser failure, and executable database/browser gates are blocked. The focused change and all runnable domain gates pass.
-- Residual risk: PL/pgSQL compilation/rollback and live RLS/grant behavior are not yet executable proof; reviewer UI visibility is not covered; protected environment browser behavior remains unproved.
+- Executed checks: focused `352/352` after final rebase; migration-focused `11/11` after the preview fix; policy; lint; typecheck; coverage; tenant validation; production build; Tier-0 routes `220/220`; broad `test:ci`; `verify:local`; protected Playwright preflight; BT lifecycle missing-env preflight; disposable Supabase migration replay and full transactional SQL smoke.
+- Blocked checks: credentialed exact-BT disposable-branch browser lifecycle; authorized-reviewer browser visibility; protected Playwright credentials; local Docker database replay.
+- Result: `fail` — executable database gates now pass, but required broad `test:ci`/`verify:local` retain one unrelated Windows CRLF workflow-parser failure and protected browser gates remain blocked. The focused change and all runnable domain/database gates pass.
+- Residual risk: reviewer UI visibility is not covered; protected environment browser behavior remains unproved; project-wide Supabase advisor baseline warnings require separate triage and were not broadened into WIN-221.
 
 ## PR-hygiene card
 
@@ -104,12 +104,11 @@ Final local verification was run from the clean isolated worktree after all impl
 - Protected-path drift: expected migration and server API files only; lane remains `critical`.
 - Verification summary: present above; result is fail with blocked protected gates.
 - PR handoff: ready for a **draft review PR**, not ready to merge.
-- PR-ready: `NO` until Linux CI clears the baseline workflow parser, the migration/SQL smoke executes on a disposable database, the disposable-branch browser wrapper runs, and mandatory human Supabase/security approval is recorded.
+- PR-ready: `NO` until Linux CI clears the baseline workflow parser, the disposable-branch browser wrapper runs, and mandatory human Supabase/security approval is recorded. Disposable preview migration and SQL smoke proof are complete.
 
 ## Merge blockers and follow-up
 
-1. Compile and replay the migration against a reset local or disposable Supabase database and run `tests/sql/bt_aba_session_note_closeout_smoke.sql` with `ON_ERROR_STOP=1`.
-2. Add an orchestrator wrapper that provisions a migrated disposable branch, runs the exact-BT lifecycle, captures the emitted project ref/session ID evidence, and deletes the entire branch on both success and failure. The credentialed run remains blocked until that wrapper exists.
-3. Obtain human Supabase/security review of migration, grants/RLS, fixed-search-path privileged functions, replay semantics, and transaction rollback.
-4. Complete the mandatory command matrix and final `verify-change` / `pr-hygiene` verdicts.
-5. Provision a dedicated safe synthetic reviewer persona/path, then add reviewer-visibility browser proof without broadening BT authority.
+1. Add an orchestrator wrapper that provisions a migrated disposable branch, runs the exact-BT lifecycle, captures the emitted project ref/session ID evidence, and deletes the entire branch on both success and failure. The credentialed run remains blocked until that wrapper exists.
+2. Obtain human Supabase/security review of migration, grants/RLS, fixed-search-path privileged functions, replay semantics, and transaction rollback.
+3. Complete the remaining mandatory browser command matrix and final `verify-change` / `pr-hygiene` verdicts.
+4. Provision a dedicated safe synthetic reviewer persona/path, then add reviewer-visibility browser proof without broadening BT authority.

@@ -160,13 +160,10 @@ select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b010
 
 do $drafts$
 declare
-  template_id uuid;
+  template_id uuid := '00000000-0000-4000-8000-00000000b005';
   result jsonb;
   read_result jsonb;
 begin
-  select id into template_id from public.session_note_templates
-  where organization_id = '00000000-0000-4000-8000-00000000b001'
-    and template_type = 'bt_aba_session_note';
   result := public.save_bt_aba_session_note_draft(
     '00000000-0000-4000-8000-00000000b040', template_id,
     '{"authorization_id":"00000000-0000-4000-8000-00000000b099","requested_service_code":"CALLER-CONTROLLED","goals_addressed":[],"goal_ids":[],"narrative":"Synthetic closeout"}'::jsonb,
@@ -221,10 +218,8 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b011', true);
 
 do $unrelated$
-declare template_id uuid;
+declare template_id uuid := '00000000-0000-4000-8000-00000000b005';
 begin
-  select id into template_id from public.session_note_templates
-  where organization_id = '00000000-0000-4000-8000-00000000b001' and template_type = 'bt_aba_session_note';
   begin
     perform public.save_bt_aba_session_note_draft('00000000-0000-4000-8000-00000000b040', template_id, '{}'::jsonb, '{}'::jsonb);
     raise exception 'unrelated BT unexpectedly wrote a draft';
@@ -238,10 +233,8 @@ $unrelated$;
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b013', true);
 do $elevated_non_bt$
-declare template_id uuid;
+declare template_id uuid := '00000000-0000-4000-8000-00000000b005';
 begin
-  select id into template_id from public.session_note_templates
-  where organization_id = '00000000-0000-4000-8000-00000000b001' and template_type = 'bt_aba_session_note';
   begin
     perform public.save_bt_aba_session_note_draft('00000000-0000-4000-8000-00000000b040', template_id, '{}'::jsonb, '{}'::jsonb);
     raise exception 'capture-capable BCBA unexpectedly wrote a BT draft';
@@ -255,10 +248,8 @@ $elevated_non_bt$;
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b012', true);
 do $cross_org$
-declare template_id uuid;
+declare template_id uuid := '00000000-0000-4000-8000-00000000b005';
 begin
-  select id into template_id from public.session_note_templates
-  where organization_id = '00000000-0000-4000-8000-00000000b001' and template_type = 'bt_aba_session_note';
   begin
     perform public.save_bt_aba_session_note_draft('00000000-0000-4000-8000-00000000b042', template_id, '{}'::jsonb, '{}'::jsonb);
     raise exception 'cross-org BT unexpectedly wrote a draft';
@@ -286,7 +277,7 @@ declare
   }'::jsonb;
   payload jsonb := '{"authorization_id":"00000000-0000-4000-8000-00000000b099","requested_service_code":"CALLER-CONTROLLED","goals_addressed":[],"goal_ids":[],"narrative":"Synthetic closeout"}'::jsonb;
 begin
-  select id into failure_note_id from public.client_session_notes where session_id = '00000000-0000-4000-8000-00000000b041';
+  failure_note_id := (public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b041')->>'note_id')::uuid;
   begin
     perform public.finalize_bt_aba_session_note('00000000-0000-4000-8000-00000000b041', failure_note_id, payload, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb);
     raise exception 'missing required responses unexpectedly finalized';
@@ -295,7 +286,7 @@ begin
     raise exception 'failed finalization did not roll session back to in_progress';
   end if;
 
-  select id into v_note_id from public.client_session_notes where session_id = '00000000-0000-4000-8000-00000000b040';
+  v_note_id := (public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b040')->>'note_id')::uuid;
   result := public.finalize_bt_aba_session_note('00000000-0000-4000-8000-00000000b040', v_note_id, payload, valid_responses, '[]'::jsonb, '[]'::jsonb);
   if result->>'status' <> 'completed' then raise exception 'assigned BT finalize failed: %', result; end if;
   insert into win221_finalization_results values (result);
@@ -321,8 +312,7 @@ declare
   v_note_id uuid;
   replay_result jsonb;
 begin
-  select id into v_note_id from public.client_session_notes
-  where session_id = '00000000-0000-4000-8000-00000000b040';
+  v_note_id := ((select result from win221_finalization_results limit 1)->>'note_id')::uuid;
   replay_result := public.finalize_bt_aba_session_note(
     '00000000-0000-4000-8000-00000000b040', v_note_id,
     '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb

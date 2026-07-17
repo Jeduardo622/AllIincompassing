@@ -9,6 +9,7 @@ import {
   PRODUCTION_PROJECT_REF,
   assertBtFixtureGraph,
   assertBtFixtureMarker,
+  assertBranchOwnershipContract,
   assertNonProductionProjectRef,
   buildBtAuthMetadata,
   buildBtSmokeEmail,
@@ -103,6 +104,23 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       goalId: GOAL_ID,
       authorizationId: AUTHORIZATION_ID,
     })).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
+  });
+
+  it("fails invalid retained-branch ownership before the first provisioning mutation", () => {
+    expect(() => assertBranchOwnershipContract(
+      "platform-managed-pr-preview",
+      "delete-branch-after-run",
+    )).toThrow(/ownership.*acknowledgement/i);
+    expect(() => assertBranchOwnershipContract(
+      "platform-managed-pr-preview",
+      "retain-platform-managed-pr-preview",
+    )).not.toThrow();
+
+    const source = readFileSync(path.join(process.cwd(), "scripts/provision-ci-smoke-bt-aba.ts"), "utf8");
+    const provisionSource = source.slice(source.indexOf("const provision = async"));
+    expect(provisionSource.indexOf("assertBranchOwnershipContract(")).toBeLessThan(
+      provisionSource.indexOf("createClient("),
+    );
   });
 
   it("never emits generated passwords through stdout workflow commands", () => {

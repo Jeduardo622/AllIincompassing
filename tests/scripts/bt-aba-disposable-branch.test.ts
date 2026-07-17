@@ -10,6 +10,7 @@ import {
   assertDisposableBranch,
   classifyApiKeys,
   cleanupDisposableBranch,
+  useManagedPreviewBranch,
   createDisposableBranch,
   parseLifecycleMode,
   type SupabaseCommandRunner,
@@ -19,6 +20,9 @@ const PRODUCTION_REF = 'wnnjeqheqxxyrgsjmygy';
 const BRANCH_REF = 'btproofbranch1234567';
 const BRANCH_ID = 'branch-id-123';
 const BRANCH_NAME = 'bt-aba-proof-123';
+const MANAGED_BRANCH_NAME = 'codex/win-221-bt-aba-session-note';
+const MANAGED_BRANCH_ID = '03d01a74-2ac3-4047-a983-c77b73a4ff6a';
+const MANAGED_BRANCH_REF = 'zutoyqdrpddtgkgooijx';
 
 describe('BT ABA disposable branch lifecycle guard', () => {
   it('refuses the production project and incomplete or unhealthy branch details', () => {
@@ -335,9 +339,82 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     ]);
   });
 
+  it('uses only the exact healthy platform-managed PR preview and masks its keys', async () => {
+    const githubEnv = path.join(mkdtempSync(path.join(tmpdir(), 'bt-managed-')), 'env');
+    const mask = vi.fn();
+    const runner: SupabaseCommandRunner = vi.fn(async (args) => {
+      if (args[0] === 'branches' && args[1] === 'list') return JSON.stringify([{
+        id: MANAGED_BRANCH_ID,
+        name: MANAGED_BRANCH_NAME,
+        git_branch: MANAGED_BRANCH_NAME,
+        pr_number: 813,
+        project_ref: MANAGED_BRANCH_REF,
+        parent_project_ref: PRODUCTION_REF,
+        status: 'FUNCTIONS_DEPLOYED',
+        preview_project_status: 'ACTIVE_HEALTHY',
+      }]);
+      if (args[0] === 'projects' && args[1] === 'api-keys') return JSON.stringify([
+        { type: 'publishable', api_key: 'sb_publishable_managed' },
+        { type: 'secret', api_key: 'sb_secret_managed' },
+      ]);
+      throw new Error(`Unexpected command: ${args.join(' ')}`);
+    });
+
+    await expect(useManagedPreviewBranch({
+      parentRef: PRODUCTION_REF,
+      branchName: MANAGED_BRANCH_NAME,
+      branchId: MANAGED_BRANCH_ID,
+      branchRef: MANAGED_BRANCH_REF,
+      pullRequestNumber: 813,
+      runner,
+      githubEnvPath: githubEnv,
+      mask,
+    })).resolves.toMatchObject({ project_ref: MANAGED_BRANCH_REF });
+
+    expect(readFileSync(githubEnv, 'utf8')).toContain(`SUPABASE_BRANCH_PROJECT_REF=${MANAGED_BRANCH_REF}`);
+    expect(mask).toHaveBeenCalledWith('sb_secret_managed');
+  });
+
+  it('fails closed for an ambiguous or mismatched managed preview identity', async () => {
+    const exact = {
+      id: MANAGED_BRANCH_ID,
+      name: MANAGED_BRANCH_NAME,
+      git_branch: MANAGED_BRANCH_NAME,
+      pr_number: 813,
+      project_ref: MANAGED_BRANCH_REF,
+      parent_project_ref: PRODUCTION_REF,
+      status: 'FUNCTIONS_DEPLOYED',
+      preview_project_status: 'ACTIVE_HEALTHY',
+    };
+    const runner: SupabaseCommandRunner = vi.fn(async () => JSON.stringify([exact, { ...exact }]));
+    await expect(useManagedPreviewBranch({
+      parentRef: PRODUCTION_REF,
+      branchName: MANAGED_BRANCH_NAME,
+      branchId: MANAGED_BRANCH_ID,
+      branchRef: MANAGED_BRANCH_REF,
+      pullRequestNumber: 813,
+      runner,
+    })).rejects.toThrow(/exactly one/i);
+
+    const unhealthy: SupabaseCommandRunner = vi.fn(async () => JSON.stringify([{
+      ...exact,
+      preview_project_status: 'INACTIVE',
+    }]));
+    await expect(useManagedPreviewBranch({
+      parentRef: PRODUCTION_REF,
+      branchName: MANAGED_BRANCH_NAME,
+      branchId: MANAGED_BRANCH_ID,
+      branchRef: MANAGED_BRANCH_REF,
+      pullRequestNumber: 813,
+      runner: unhealthy,
+    })).rejects.toThrow(/not healthy/i);
+  });
+
   it('accepts only one explicit lifecycle mode', () => {
     expect(parseLifecycleMode(['--create'])).toBe('create');
     expect(parseLifecycleMode(['--cleanup'])).toBe('cleanup');
+    expect(parseLifecycleMode(['--managed-preview'])).toBe('managed-preview');
+    expect(parseLifecycleMode(['--verify-managed-preview'])).toBe('verify-managed-preview');
 
     expect(() => parseLifecycleMode([])).toThrow(/exactly one.*--create.*--cleanup/i);
     expect(() => parseLifecycleMode(['--cretae'])).toThrow(/exactly one.*--create.*--cleanup/i);

@@ -110,7 +110,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     const proof = workflow.jobs?.proof;
     const proofSource = JSON.stringify(proof);
     const checkoutStep = findStep(proof, 'Checkout validated commit');
-    const createStep = findStep(proof, 'Create and poll disposable branch and retrieve masked keys');
+    const createStep = findStep(proof, 'Validate managed PR preview branch and retrieve masked keys');
     const migrationStep = findStep(proof, 'Link validated branch and apply exact closeout migration');
     const fixtureStep = findStep(proof, 'Provision marker-owned synthetic fixture');
     const previewStep = findStep(proof, 'Launch protected preview and wait for health');
@@ -132,7 +132,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
       SUPABASE_ACCESS_TOKEN: '${{ secrets.SUPABASE_ACCESS_TOKEN }}',
     });
     expect(createStep?.run).toContain('install -m 600 /dev/null "$PRIVATE_BRANCH_ENV"');
-    expect(createStep?.run).toContain('GITHUB_ENV="$PRIVATE_BRANCH_ENV" npm run bt-aba:disposable-branch -- --create');
+    expect(createStep?.run).toContain('GITHUB_ENV="$PRIVATE_BRANCH_ENV" npm run bt-aba:disposable-branch -- --managed-preview');
     expect(createStep?.run).toContain("'SUPABASE_BRANCH_ID'");
     expect(createStep?.run).toContain("'SUPABASE_BRANCH_PROJECT_REF'");
     expect(createStep?.run).toContain("'SUPABASE_URL'");
@@ -148,7 +148,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(source).not.toContain('--with-data');
   });
 
-  it('uploads proof evidence before a separate bounded always-run cleanup job', () => {
+  it('uploads proof evidence before a separate bounded always-run managed-branch health verification', () => {
     const { source, workflow } = loadWorkflow();
     const proof = workflow.jobs?.proof;
     const cleanup = workflow.jobs?.cleanup;
@@ -159,7 +159,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     const proofUpload = proofSteps[proofUploadIndex];
     const cleanupCheckout = findStep(cleanup, 'Checkout validated commit');
     const cleanupHead = findStep(cleanup, 'Verify immutable cleanup checkout');
-    const cleanupRun = findStep(cleanup, 'Delete and verify disposable branch');
+    const cleanupRun = findStep(cleanup, 'Verify managed PR preview branch remains healthy');
     const cleanupUpload = findStep(cleanup, 'Upload deletion evidence');
 
     expect(findStep(proof, 'Delete and verify disposable branch')).toBeUndefined();
@@ -183,16 +183,21 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(findStep(cleanup, 'Setup Node')).toBeDefined();
     expect(findStep(cleanup, 'Setup Supabase CLI')).toBeDefined();
     expect(findStep(cleanup, 'Install dependencies')?.run).toBe('npm ci');
-    expect(cleanupSource).toContain('bt-aba-proof-${{ github.run_id }}-${{ github.run_attempt }}');
+    expect(cleanupSource).toContain('codex/win-221-bt-aba-session-note');
     expect(cleanup?.env).not.toHaveProperty('SUPABASE_ACCESS_TOKEN');
     expect(cleanupRun?.env).toEqual({
       SUPABASE_ACCESS_TOKEN: '${{ secrets.SUPABASE_ACCESS_TOKEN }}',
     });
-    expect(cleanupRun?.run).toContain('npm run bt-aba:disposable-branch -- --cleanup');
+    expect(cleanupRun?.run).toContain('npm run bt-aba:disposable-branch -- --verify-managed-preview');
+    expect(cleanupRun?.run).not.toContain('--cleanup');
     expect(cleanupUpload?.if).toBe('always()');
     expect(cleanupUpload?.uses).toContain('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02');
     expect(cleanupUpload?.with?.path).toContain('deletion-evidence.txt');
     expect(source.match(/secrets\.SUPABASE_ACCESS_TOKEN/g)).toHaveLength(3);
+    expect(source).toContain('SUPABASE_BRANCH_ID: 03d01a74-2ac3-4047-a983-c77b73a4ff6a');
+    expect(source).toContain('SUPABASE_BRANCH_PROJECT_REF: zutoyqdrpddtgkgooijx');
+    expect(source).toContain('SUPABASE_BRANCH_PR_NUMBER: "813"');
+    expect(source).toContain('PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: retain-platform-managed-pr-preview');
   });
 
   it('pins actions and preserves exact migration, preview, browser, and artifact boundaries', () => {

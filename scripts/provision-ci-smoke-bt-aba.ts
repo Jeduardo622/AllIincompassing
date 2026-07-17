@@ -12,6 +12,14 @@ export const PRODUCTION_PROJECT_REF = "wnnjeqheqxxyrgsjmygy";
 export const BT_SERVICE_CODE = "97153";
 export const DISPOSABLE_ACK = "I_ACKNOWLEDGE_DISPOSABLE_SUPABASE";
 export const BRANCH_TEARDOWN_ACK = "delete-branch-after-run";
+export const MANAGED_BRANCH_OWNERSHIP = "platform-managed-pr-preview";
+export const MANAGED_BRANCH_ACK = "retain-platform-managed-pr-preview";
+
+export const assertBranchOwnershipContract = (branchOwnership: string, teardownAcknowledgement: string): void => {
+  const validOwnershipContract = (branchOwnership === MANAGED_BRANCH_OWNERSHIP && teardownAcknowledgement === MANAGED_BRANCH_ACK)
+    || (branchOwnership === "disposable-created-by-proof" && teardownAcknowledgement === BRANCH_TEARDOWN_ACK);
+  if (!validOwnershipContract) throw new Error("BT proof branch ownership and teardown acknowledgement do not match.");
+};
 
 type FixtureRow = Record<string, unknown>;
 
@@ -41,6 +49,8 @@ type BtGithubEnvInput = {
   programId: string;
   goalId: string;
   authorizationId: string;
+  branchOwnership?: string;
+  teardownAcknowledgement?: string;
 };
 
 const requiredEnv = (name: string, fallback?: string): string => {
@@ -99,7 +109,8 @@ export const buildBtSmokeGithubEnv = (input: BtGithubEnvInput): Record<string, s
   PW_BT_FIXTURE_MARKER: input.marker,
   PW_BT_DISPOSABLE_PROJECT_REF: input.projectRef,
   PW_BT_DISPOSABLE_ACK: DISPOSABLE_ACK,
-  PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: BRANCH_TEARDOWN_ACK,
+  PW_BT_BRANCH_OWNERSHIP: input.branchOwnership ?? "disposable-created-by-proof",
+  PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: input.teardownAcknowledgement ?? BRANCH_TEARDOWN_ACK,
 });
 
 const requireMarker = (value: unknown, marker: string, label: string): void => {
@@ -208,6 +219,10 @@ const provision = async (): Promise<void> => {
   const githubEnv = requiredEnv("GITHUB_ENV");
   assertBtFixtureMarker(marker);
   assertNonProductionProjectRef(projectRef, projectRefFromUrl(supabaseUrl));
+  // Resolve retained/disposable ownership before the first service-role write.
+  const branchOwnership = requiredEnv("PW_BT_BRANCH_OWNERSHIP", "disposable-created-by-proof");
+  const teardownAcknowledgement = requiredEnv("PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK", BRANCH_TEARDOWN_ACK);
+  assertBranchOwnershipContract(branchOwnership, teardownAcknowledgement);
 
   const organizationId = randomUUID();
   const clientId = randomUUID();
@@ -304,6 +319,7 @@ const provision = async (): Promise<void> => {
 
   writeGithubEnv(githubEnv, buildBtSmokeGithubEnv({
     supabaseUrl, publishableKey, projectRef, marker, email, password, clientId, programId, goalId, authorizationId,
+    branchOwnership, teardownAcknowledgement,
   }));
   console.log(JSON.stringify({ ok: true, action: "provisioned", marker, projectRef, actorId, organizationId, clientId, programId, goalId, authorizationId }));
 };

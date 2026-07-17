@@ -9,6 +9,9 @@ export interface BranchDetails {
   project_ref?: string;
   parent_project_ref?: string;
   status?: string;
+  git_branch?: string;
+  pr_number?: number;
+  preview_project_status?: string;
 }
 
 export interface ApiKeyDetails {
@@ -22,7 +25,7 @@ export interface ClassifiedApiKeys {
 }
 
 export type SupabaseCommandRunner = (args: string[]) => Promise<string>;
-export type LifecycleMode = 'create' | 'cleanup';
+export type LifecycleMode = 'create' | 'cleanup' | 'managed-preview' | 'verify-managed-preview';
 
 type Sleep = (milliseconds: number) => Promise<void>;
 
@@ -42,6 +45,18 @@ export interface CreateDisposableBranchOptions extends LifecycleOptions {
 
 export interface CleanupDisposableBranchOptions extends LifecycleOptions {
   branchId?: string;
+}
+
+export interface ManagedPreviewBranchOptions {
+  parentRef: string;
+  branchName: string;
+  branchId: string;
+  branchRef: string;
+  pullRequestNumber: number;
+  runner?: SupabaseCommandRunner;
+  githubEnvPath?: string;
+  mask?: (value: string) => void;
+  retrieveKeys?: boolean;
 }
 
 const execFileAsync = promisify(execFile);
@@ -79,6 +94,14 @@ const assertBranchName = (value: string): string => {
   const normalized = assertSingleLineValue('branchName', value);
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(normalized)) {
     throw new Error('branchName must contain only lowercase letters, numbers, and interior hyphens.');
+  }
+  return normalized;
+};
+
+const assertGitBranchName = (value: string): string => {
+  const normalized = assertSingleLineValue('branchName', value);
+  if (!/^codex\/[a-z0-9](?:[a-z0-9-]{0,100}[a-z0-9])?$/.test(normalized)) {
+    throw new Error('Managed branchName must be a codex/ branch with a safe slug.');
   }
   return normalized;
 };
@@ -336,6 +359,59 @@ export const createDisposableBranch = async (
   return healthyBranch;
 };
 
+export const useManagedPreviewBranch = async (
+  options: ManagedPreviewBranchOptions,
+): Promise<BranchDetails> => {
+  const parentRef = assertProjectRef('parentRef', options.parentRef);
+  const branchName = assertGitBranchName(options.branchName);
+  const branchId = assertSingleLineValue('branchId', options.branchId);
+  const branchRef = assertProjectRef('branchRef', options.branchRef);
+  if (!Number.isInteger(options.pullRequestNumber) || options.pullRequestNumber < 1) {
+    throw new Error('pullRequestNumber must be a positive integer.');
+  }
+  const runner = options.runner ?? defaultRunner;
+  const branches = parseBranchList(await runner(commandArgs(['branches', 'list'], parentRef)));
+  const matches = branches.filter((branch) => branch.id === branchId
+    && branch.name === branchName
+    && branch.git_branch === branchName
+    && branch.pr_number === options.pullRequestNumber
+    && branch.project_ref === branchRef
+    && branch.parent_project_ref === parentRef);
+  if (matches.length !== 1) {
+    throw new Error('Supabase branches list must return exactly one requested managed PR preview branch.');
+  }
+  const branch = matches[0];
+  assertChildIdentity(parentRef, branch);
+  if (branch.status !== 'FUNCTIONS_DEPLOYED' || branch.preview_project_status !== 'ACTIVE_HEALTHY') {
+    throw new Error('Managed PR preview branch is not healthy.');
+  }
+
+  const githubEnvPath = options.githubEnvPath?.trim() || process.env.GITHUB_ENV?.trim();
+  const publicValues = {
+    SUPABASE_BRANCH_ID: branchId,
+    SUPABASE_BRANCH_NAME: branchName,
+    SUPABASE_BRANCH_PROJECT_REF: branchRef,
+    SUPABASE_URL: `https://${branchRef}.supabase.co`,
+  };
+  if (options.retrieveKeys === false) {
+    appendGitHubEnv(githubEnvPath, publicValues);
+    return branch;
+  }
+
+  const keys = classifyApiKeys(parseApiKeys(await runner([
+    'projects', 'api-keys', '--project-ref', branchRef, '--output', 'json',
+  ])));
+  const mask = options.mask ?? ((value: string) => process.stdout.write(`::add-mask::${value}\n`));
+  mask(keys.publishableKey);
+  mask(keys.secretKey);
+  appendGitHubEnv(githubEnvPath, {
+    ...publicValues,
+    SUPABASE_PUBLISHABLE_KEY: keys.publishableKey,
+    SUPABASE_SECRET_KEY: keys.secretKey,
+  });
+  return branch;
+};
+
 const findCleanupTarget = (
   branches: BranchDetails[],
   branchName: string,
@@ -398,10 +474,16 @@ const requireEnv = (name: string): string => {
 };
 
 export const parseLifecycleMode = (args: string[]): LifecycleMode => {
-  if (args.length !== 1 || (args[0] !== '--create' && args[0] !== '--cleanup')) {
-    throw new Error('Specify exactly one lifecycle mode: --create or --cleanup.');
+  const modes: Record<string, LifecycleMode> = {
+    '--create': 'create',
+    '--cleanup': 'cleanup',
+    '--managed-preview': 'managed-preview',
+    '--verify-managed-preview': 'verify-managed-preview',
+  };
+  if (args.length !== 1 || !modes[args[0]]) {
+    throw new Error('Specify exactly one lifecycle mode: --create, --cleanup, --managed-preview, or --verify-managed-preview.');
   }
-  return args[0] === '--create' ? 'create' : 'cleanup';
+  return modes[args[0]];
 };
 
 const main = async (): Promise<void> => {
@@ -411,6 +493,24 @@ const main = async (): Promise<void> => {
   requireEnv('SUPABASE_ACCESS_TOKEN');
   const parentRef = requireEnv('SUPABASE_PARENT_PROJECT_REF');
   const branchName = requireEnv('SUPABASE_BRANCH_NAME');
+
+  if (mode === 'managed-preview' || mode === 'verify-managed-preview') {
+    const branch = await useManagedPreviewBranch({
+      parentRef,
+      branchName,
+      branchId: requireEnv('SUPABASE_BRANCH_ID'),
+      branchRef: requireEnv('SUPABASE_BRANCH_PROJECT_REF'),
+      pullRequestNumber: Number(requireEnv('SUPABASE_BRANCH_PR_NUMBER')),
+      retrieveKeys: mode === 'managed-preview',
+    });
+    process.stdout.write(`${JSON.stringify({
+      ok: true,
+      action: mode === 'managed-preview' ? 'validated_managed_preview' : 'verified_managed_preview_healthy',
+      branchId: branch.id,
+      projectRef: branch.project_ref,
+    })}\n`);
+    return;
+  }
 
   if (mode === 'cleanup') {
     await cleanupDisposableBranch({

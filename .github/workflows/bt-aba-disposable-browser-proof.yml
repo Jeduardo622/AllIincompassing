@@ -76,6 +76,9 @@ jobs:
           if (pull.base?.ref !== 'main') throw new Error('Pull request base must be main.');
           if (pull.head?.repo?.full_name !== repository) throw new Error('Pull request must originate from this repository.');
           if (pull.head?.sha !== commitSha) throw new Error('Pull request head SHA does not match commit_sha.');
+          if (pull.number !== 813 || pull.head?.ref !== 'codex/win-221-bt-aba-session-note') {
+            throw new Error('Proof is restricted to the exact WIN-221 managed PR preview branch.');
+          }
 
           appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\n`, { encoding: 'utf8' });
           NODE
@@ -105,8 +108,13 @@ jobs:
       contents: read
     env:
       SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
-      SUPABASE_BRANCH_NAME: bt-aba-proof-${{ github.run_id }}-${{ github.run_attempt }}
+      SUPABASE_BRANCH_ID: 03d01a74-2ac3-4047-a983-c77b73a4ff6a
+      SUPABASE_BRANCH_NAME: codex/win-221-bt-aba-session-note
+      SUPABASE_BRANCH_PROJECT_REF: zutoyqdrpddtgkgooijx
+      SUPABASE_BRANCH_PR_NUMBER: "813"
       PW_BT_FIXTURE_MARKER: bt-aba-proof-${{ github.run_id }}-${{ github.run_attempt }}
+      PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: retain-platform-managed-pr-preview
+      PW_BT_BRANCH_OWNERSHIP: platform-managed-pr-preview
       PW_BASE_URL: http://127.0.0.1:4173
     steps:
       - name: Checkout validated commit
@@ -144,13 +152,13 @@ jobs:
             echo "branch_name=${SUPABASE_BRANCH_NAME}"
           } > "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
 
-      - name: Create and poll disposable branch and retrieve masked keys
+      - name: Validate managed PR preview branch and retrieve masked keys
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           PRIVATE_BRANCH_ENV="$RUNNER_TEMP/bt-aba-proof/branch-secrets.env"
           install -m 600 /dev/null "$PRIVATE_BRANCH_ENV"
-          GITHUB_ENV="$PRIVATE_BRANCH_ENV" npm run bt-aba:disposable-branch -- --create
+          GITHUB_ENV="$PRIVATE_BRANCH_ENV" npm run bt-aba:disposable-branch -- --managed-preview
           node --input-type=module - "$PRIVATE_BRANCH_ENV" "$GITHUB_ENV" <<'NODE'
           import { appendFileSync, readFileSync } from 'node:fs';
 
@@ -192,7 +200,7 @@ jobs:
           {
             echo "branch_id=${SUPABASE_BRANCH_ID}"
             echo "branch_project_ref=${SUPABASE_BRANCH_PROJECT_REF}"
-            echo "branch_lifecycle=ACTIVE_HEALTHY"
+            echo "branch_lifecycle=platform-managed-pr-preview-active-healthy"
           } >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
 
       - name: Link validated branch and apply exact closeout migration
@@ -259,7 +267,7 @@ jobs:
           retention-days: 7
 
   cleanup:
-    name: Delete and verify disposable proof branch
+    name: Verify managed PR preview remains healthy
     needs: [validate, proof]
     if: always() && needs.validate.result == 'success'
     runs-on: ubuntu-latest
@@ -268,7 +276,10 @@ jobs:
       contents: read
     env:
       SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
-      SUPABASE_BRANCH_NAME: bt-aba-proof-${{ github.run_id }}-${{ github.run_attempt }}
+      SUPABASE_BRANCH_ID: 03d01a74-2ac3-4047-a983-c77b73a4ff6a
+      SUPABASE_BRANCH_NAME: codex/win-221-bt-aba-session-note
+      SUPABASE_BRANCH_PROJECT_REF: zutoyqdrpddtgkgooijx
+      SUPABASE_BRANCH_PR_NUMBER: "813"
     steps:
       - name: Checkout validated commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -281,13 +292,14 @@ jobs:
           EXPECTED_SHA: ${{ needs.validate.outputs.validated_sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
-      - name: Initialize deletion evidence
+      - name: Initialize managed-branch evidence
         run: |
           mkdir -p "$RUNNER_TEMP/bt-aba-cleanup"
           {
             echo "workflow_run_id=${GITHUB_RUN_ID}"
             echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
             echo "branch_name=${SUPABASE_BRANCH_NAME}"
+            echo "branch_ownership=platform-managed-pr-preview"
           } > "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"
 
       - name: Setup Node
@@ -302,17 +314,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Delete and verify disposable branch
+      - name: Verify managed PR preview branch remains healthy
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           set +e
-          cleanup_output="$(npm run bt-aba:disposable-branch -- --cleanup 2>&1)"
+          cleanup_output="$(npm run bt-aba:disposable-branch -- --verify-managed-preview 2>&1)"
           cleanup_status=$?
           set -e
           printf '%s\n' "$cleanup_output"
           if [ "$cleanup_status" -eq 0 ]; then
-            echo "cleanup=deleted_and_verified_absent" >> "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"
+            echo "cleanup=not-applicable-platform-managed" >> "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"
+            echo "post_proof_branch_health=ACTIVE_HEALTHY" >> "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"
             exit 0
           fi
           echo "cleanup=failed" >> "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"

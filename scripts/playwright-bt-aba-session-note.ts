@@ -42,6 +42,7 @@ type SafetyConfig = {
   goalId: string;
   authorizationId: string;
   serviceCode: string;
+  branchOwnership: "disposable-created-by-proof" | "platform-managed-pr-preview";
 };
 
 type FixtureGraph = {
@@ -83,6 +84,7 @@ const loadSafetyConfig = (): SafetyConfig => {
     ["PW_BT_DISPOSABLE_PROJECT_REF", normalizedEnv("PW_BT_DISPOSABLE_PROJECT_REF")],
     ["PW_BT_DISPOSABLE_ACK", normalizedEnv("PW_BT_DISPOSABLE_ACK")],
     ["PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK", normalizedEnv("PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK")],
+    ["PW_BT_BRANCH_OWNERSHIP", normalizedEnv("PW_BT_BRANCH_OWNERSHIP")],
     ["VITE_SUPABASE_URL", normalizedEnv("VITE_SUPABASE_URL")],
     ["VITE_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY)", normalizedEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY)],
     ["SUPABASE_SERVICE_ROLE_KEY", normalizedEnv("SUPABASE_SERVICE_ROLE_KEY")],
@@ -114,9 +116,11 @@ const loadSafetyConfig = (): SafetyConfig => {
   if (normalizedEnv("PW_BT_DISPOSABLE_ACK") !== DISPOSABLE_ACK) {
     throw new Error(`PW_BT_DISPOSABLE_ACK must equal ${DISPOSABLE_ACK}.`);
   }
-  if (normalizedEnv("PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK") !== "delete-branch-after-run") {
-    throw new Error("PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK must equal delete-branch-after-run.");
-  }
+  const branchOwnership = normalizedEnv("PW_BT_BRANCH_OWNERSHIP");
+  const teardownAck = normalizedEnv("PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK");
+  const validOwnershipContract = (branchOwnership === "platform-managed-pr-preview" && teardownAck === "retain-platform-managed-pr-preview")
+    || (branchOwnership === "disposable-created-by-proof" && teardownAck === "delete-branch-after-run");
+  if (!validOwnershipContract) throw new Error("BT proof branch ownership and teardown acknowledgement do not match.");
   let runtimeRef = "";
   try {
     const hostname = new URL(supabaseUrl).hostname.toLowerCase();
@@ -146,6 +150,7 @@ const loadSafetyConfig = (): SafetyConfig => {
     goalId: normalizedEnv("PW_BT_GOAL_ID"),
     authorizationId: normalizedEnv("PW_BT_AUTHORIZATION_ID"),
     serviceCode: normalizedEnv("PW_BT_SERVICE_CODE"),
+    branchOwnership: branchOwnership as SafetyConfig["branchOwnership"],
   };
 };
 
@@ -331,14 +336,17 @@ const assertFinalizedArtifacts = async (admin: SupabaseClient, ids: LifecycleIds
 };
 
 const emitTeardownInstruction = (config: SafetyConfig, sessionId: string | null, failed: boolean): void => {
-  let payload = `disposable-branch-teardown-required projectRef=${config.projectRef} sessionId=${sessionId ?? "not-created"}`;
+  const managed = config.branchOwnership === "platform-managed-pr-preview";
+  let payload = `${managed ? "managed-pr-preview-retained" : "disposable-branch-teardown-required"} projectRef=${config.projectRef} sessionId=${sessionId ?? "not-created"}`;
   try {
     payload = JSON.stringify({
-      event: "disposable-branch-teardown-required",
+      event: managed ? "managed-pr-preview-retained" : "disposable-branch-teardown-required",
       outcome: failed ? "failed" : "completed",
       projectRef: config.projectRef,
       sessionId: sessionId ?? "not-created",
-      instruction: `Delete disposable Supabase branch ${config.projectRef} after preserving any required evidence. This script performs no cleanup mutation.`,
+      instruction: managed
+        ? `Retain platform-managed PR preview branch ${config.projectRef}; this script performs no branch lifecycle mutation.`
+        : `Delete disposable Supabase branch ${config.projectRef} after preserving any required evidence. This script performs no cleanup mutation.`,
     });
   } catch { /* retain the non-throwing plain-text fallback */ }
   try {

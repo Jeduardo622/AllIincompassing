@@ -22,6 +22,7 @@ export interface ClassifiedApiKeys {
 }
 
 export type SupabaseCommandRunner = (args: string[]) => Promise<string>;
+export type LifecycleMode = 'create' | 'cleanup';
 
 type Sleep = (milliseconds: number) => Promise<void>;
 
@@ -88,6 +89,12 @@ const assertChildIdentity = (parentRef: string, branch: BranchDetails): void => 
   }
   if (branch.parent_project_ref !== parentRef) {
     throw new Error('Disposable branch parent mismatch.');
+  }
+};
+
+const assertRequestedBranchName = (branchName: string, branch: BranchDetails): void => {
+  if (branch.name !== branchName) {
+    throw new Error('Disposable branch name mismatch.');
   }
 };
 
@@ -218,6 +225,7 @@ export const createDisposableBranch = async (
     SUPABASE_BRANCH_NAME: branchName,
     SUPABASE_BRANCH_PROJECT_REF: branchRef,
   });
+  assertRequestedBranchName(branchName, created);
 
   let healthyBranch: BranchDetails | undefined;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -228,6 +236,7 @@ export const createDisposableBranch = async (
     if (branch.id !== branchId || branch.project_ref !== branchRef) {
       throw new Error('Disposable branch identity changed while polling.');
     }
+    assertRequestedBranchName(branchName, branch);
     if (branch.status === 'ACTIVE_HEALTHY') {
       healthyBranch = branch;
       break;
@@ -271,9 +280,6 @@ const findCleanupTarget = (
     const byId = branches.find((branch) => branch.id === branchId);
     if (!byId && byName.length > 0) {
       throw new Error('Disposable branch ID mismatch during cleanup.');
-    }
-    if (byId && byId.name !== branchName) {
-      throw new Error('Disposable branch name mismatch during cleanup.');
     }
     return byId;
   }
@@ -325,14 +331,22 @@ const requireEnv = (name: string): string => {
   return value;
 };
 
+export const parseLifecycleMode = (args: string[]): LifecycleMode => {
+  if (args.length !== 1 || (args[0] !== '--create' && args[0] !== '--cleanup')) {
+    throw new Error('Specify exactly one lifecycle mode: --create or --cleanup.');
+  }
+  return args[0] === '--create' ? 'create' : 'cleanup';
+};
+
 const main = async (): Promise<void> => {
+  const mode = parseLifecycleMode(process.argv.slice(2));
   // The CLI reads this environment variable itself. Requiring it here prevents
   // accidental interactive or unauthenticated lifecycle attempts.
   requireEnv('SUPABASE_ACCESS_TOKEN');
   const parentRef = requireEnv('SUPABASE_PARENT_PROJECT_REF');
   const branchName = requireEnv('SUPABASE_BRANCH_NAME');
 
-  if (process.argv.includes('--cleanup')) {
+  if (mode === 'cleanup') {
     await cleanupDisposableBranch({
       parentRef,
       branchName,

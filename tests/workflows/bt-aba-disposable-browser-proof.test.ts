@@ -206,7 +206,8 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(source).toContain('actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5');
     expect(source).toContain('actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020');
     expect(source).toContain('supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51');
-    expect(source).toContain('supabase link --project-ref "$SUPABASE_BRANCH_PROJECT_REF" --yes');
+    expect(source).toContain('supabase link --project-ref "$SUPABASE_BRANCH_PROJECT_REF"');
+    expect(source).not.toContain('supabase link --project-ref "$SUPABASE_BRANCH_PROJECT_REF" --yes');
     expect(source).toContain('supabase db query --linked --file supabase/migrations/20260716212837_bt_aba_session_note_closeout.sql');
     expect(source).toContain('npx tsx scripts/provision-ci-smoke-bt-aba.ts');
     expect(source).toContain('PREVIEW_ENABLE_SESSION_NOTES_API="true"');

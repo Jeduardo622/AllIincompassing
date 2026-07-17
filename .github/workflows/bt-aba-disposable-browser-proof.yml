@@ -207,7 +207,7 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          supabase link --project-ref "$SUPABASE_BRANCH_PROJECT_REF" --yes
+          supabase link --project-ref "$SUPABASE_BRANCH_PROJECT_REF"
           supabase db query --linked --file supabase/migrations/20260716212837_bt_aba_session_note_closeout.sql
 
       - name: Provision marker-owned synthetic fixture

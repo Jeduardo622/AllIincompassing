@@ -23,75 +23,52 @@ describe('supervision session note data access', () => {
     rpcMock.mockReset();
   });
 
-  it('loads pending org-scoped supervision requests and the stored template', async () => {
-    rpcMock.mockResolvedValue({ data: 1, error: null });
-    const requestOrder = vi.fn().mockResolvedValue({
-      data: [
-        {
-          id: 'request-1',
-          organization_id: 'org-1',
-          session_id: 'session-1',
-          client_id: 'client-1',
-          bt_therapist_id: 'bt-1',
-          assigned_admin_user_id: null,
-          status: 'pending',
-          created_at: '2026-06-29T20:00:00.000Z',
-          sessions: { start_time: '2026-06-29T18:00:00.000Z', end_time: '2026-06-29T19:00:00.000Z' },
-          clients: { full_name: 'Client One' },
-          therapists: { full_name: 'BT One', title: 'BT' },
-        },
-      ],
+  it('loads pending supervision review packets from the RPC contract', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [{
+        request_id: 'request-1',
+        organization_id: 'org-1',
+        session_id: 'session-1',
+        client_id: 'client-1',
+        bt_therapist_id: 'bt-1',
+        assigned_reviewer_user_id: 'bcba-1',
+        request_status: 'pending',
+        request_created_at: '2026-07-17T12:00:00Z',
+        session_start_time: '2026-07-17T10:00:00Z',
+        session_end_time: '2026-07-17T11:00:00Z',
+        place_of_service: '12 - Home',
+        client_name: 'Test Client',
+        bt_therapist_name: 'Test BT',
+        bt_therapist_title: 'BT',
+        bt_note_id: 'note-1',
+        bt_responses: { client_status: 'Ready for treatment.' },
+        bt_template_snapshot: { sections: [] },
+        bt_signature_method: 'typed',
+        bt_signed_at: '2026-07-17T11:05:00Z',
+        supervision_template_id: 'template-1',
+        supervision_template_name: 'Supervision Session Note',
+        supervision_template_structure: { sections: [{ key: 'summary', fields: [] }] },
+        can_complete: true,
+      }],
       error: null,
-    });
-    const templateMaybeSingle = vi.fn().mockResolvedValue({
-      data: {
-        id: 'template-1',
-        template_name: 'Supervision Session Note',
-        template_structure: { sections: [{ key: 'summary', label: 'Summary', fields: [] }] },
-      },
-      error: null,
-    });
-
-    fromMock.mockImplementation((table: string) => {
-      if (table === 'supervision_session_note_requests') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                order: requestOrder,
-              }),
-            }),
-          }),
-        };
-      }
-      if (table === 'session_note_templates') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                maybeSingle: templateMaybeSingle,
-              }),
-            }),
-          }),
-        };
-      }
-      throw new Error(`Unexpected table ${table}`);
     });
 
     const result = await fetchPendingSupervisionSessionNoteRequests('org-1');
 
-    expect(rpcMock).not.toHaveBeenCalled();
-    expect(fromMock).toHaveBeenCalledWith('supervision_session_note_requests');
-    expect(fromMock).toHaveBeenCalledWith('session_note_templates');
+    expect(rpcMock).toHaveBeenCalledWith('get_pending_supervision_review_packets', {});
+    expect(fromMock).not.toHaveBeenCalled();
     expect(result.template?.id).toBe('template-1');
-    expect(result.requests).toEqual([
-      expect.objectContaining({
-        id: 'request-1',
-        clientName: 'Client One',
-        btTherapistName: 'BT One',
-        btTherapistTitle: 'BT',
-      }),
-    ]);
+    expect(result.requests[0]).toMatchObject({
+      id: 'request-1',
+      assignedAdminUserId: 'bcba-1',
+      canComplete: true,
+      btReview: {
+        noteId: 'note-1',
+        responses: { client_status: 'Ready for treatment.' },
+        signatureMethod: 'typed',
+        signedAt: '2026-07-17T11:05:00Z',
+      },
+    });
   });
 
   it('reconciles pending supervision requests through a separate tenant-checked RPC', async () => {
@@ -110,14 +87,20 @@ describe('supervision session note data access', () => {
       organizationId: 'org-1',
       requestId: 'request-1',
       templateId: 'template-1',
-      responses: { summary: 'Observed modeling and feedback.' },
+      responses: {
+        summary: 'Observed modeling and feedback.',
+        bcba_supervisor_signature: { method: 'typed', value: 'Test BCBA' },
+      },
     });
 
     expect(result.noteId).toBe('note-1');
     expect(rpcMock).toHaveBeenCalledWith('complete_supervision_session_note_request', {
       p_request_id: 'request-1',
       p_template_id: 'template-1',
-      p_responses: { summary: 'Observed modeling and feedback.' },
+      p_responses: {
+        summary: 'Observed modeling and feedback.',
+        bcba_supervisor_signature: { method: 'typed', value: 'Test BCBA' },
+      },
     });
   });
 

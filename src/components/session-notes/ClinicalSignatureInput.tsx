@@ -13,6 +13,7 @@ export type ClinicalSignatureInputProps = {
   onChange: (value: ClinicalSignatureValue) => void;
   disabled?: boolean;
   error?: string;
+  errorMessageId?: string;
 };
 
 const MAX_POINTS = 256;
@@ -46,9 +47,10 @@ export function ClinicalSignatureInput({
   onChange,
   disabled = false,
   error,
+  errorMessageId,
 }: ClinicalSignatureInputProps) {
   const headingId = `${fieldKey}-heading`;
-  const errorId = `${fieldKey}-error`;
+  const errorId = errorMessageId ?? `${fieldKey}-error`;
   const typedInputId = `${fieldKey}-typed-signature`;
   const radioName = `${fieldKey}-signature-method`;
   const drawing = useRef(false);

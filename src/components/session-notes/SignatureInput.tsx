@@ -21,6 +21,7 @@ export function SignatureInput({ value, onChange, disabled = false, error }: Sig
       onChange={onChange}
       disabled={disabled}
       error={error}
+      errorMessageId="bt-signature-error"
     />
   );
 }

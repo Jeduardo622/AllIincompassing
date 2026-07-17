@@ -33,7 +33,7 @@ as $$
 $$;
 
 revoke all on function app.user_has_any_active_role_for_org(uuid, uuid, text[]) from public, anon, authenticated;
-grant execute on function app.user_has_any_active_role_for_org(uuid, uuid, text[]) to authenticated, service_role;
+grant execute on function app.user_has_any_active_role_for_org(uuid, uuid, text[]) to service_role;
 
 create or replace function app.user_has_exact_active_role_for_org(
   p_user_id uuid,
@@ -76,7 +76,33 @@ as $$
 $$;
 
 revoke all on function app.user_has_exact_active_role_for_org(uuid, uuid, text[]) from public, anon, authenticated;
-grant execute on function app.user_has_exact_active_role_for_org(uuid, uuid, text[]) to authenticated, service_role;
+grant execute on function app.user_has_exact_active_role_for_org(uuid, uuid, text[]) to service_role;
+
+create or replace function app.current_user_has_any_active_role_for_org(
+  p_organization_id uuid,
+  p_allowed_roles text[]
+) returns boolean
+language sql stable security definer
+set search_path = public, app, auth
+as $$
+  select app.user_has_any_active_role_for_org(auth.uid(), p_organization_id, p_allowed_roles);
+$$;
+
+revoke all on function app.current_user_has_any_active_role_for_org(uuid, text[]) from public, anon, authenticated;
+grant execute on function app.current_user_has_any_active_role_for_org(uuid, text[]) to authenticated, service_role;
+
+create or replace function app.current_user_has_exact_active_role_for_org(
+  p_organization_id uuid,
+  p_allowed_roles text[]
+) returns boolean
+language sql stable security definer
+set search_path = public, app, auth
+as $$
+  select app.user_has_exact_active_role_for_org(auth.uid(), p_organization_id, p_allowed_roles);
+$$;
+
+revoke all on function app.current_user_has_exact_active_role_for_org(uuid, text[]) from public, anon, authenticated;
+grant execute on function app.current_user_has_exact_active_role_for_org(uuid, text[]) to authenticated, service_role;
 
 alter table public.session_note_attestations
   add column if not exists supervision_note_id uuid references public.supervision_session_notes(id) on delete cascade;
@@ -204,15 +230,13 @@ create policy supervision_session_note_requests_admin_or_assigned_bcba_select
   for select
   to authenticated
   using (
-    app.user_has_any_active_role_for_org(
-      auth.uid(),
+    app.current_user_has_any_active_role_for_org(
       organization_id,
       array['admin', 'super_admin', 'org_admin', 'org_super_admin']
     )
     or (
       assigned_admin_user_id = auth.uid()
-      and app.user_has_exact_active_role_for_org(
-        auth.uid(),
+      and app.current_user_has_exact_active_role_for_org(
         organization_id,
         array['bcba']::text[]
       )
@@ -226,8 +250,7 @@ create policy supervision_session_notes_admin_or_assigned_bcba_select
   for select
   to authenticated
   using (
-    app.user_has_any_active_role_for_org(
-      auth.uid(),
+    app.current_user_has_any_active_role_for_org(
       organization_id,
       array['admin', 'super_admin', 'org_admin', 'org_super_admin']
     )
@@ -237,8 +260,7 @@ create policy supervision_session_notes_admin_or_assigned_bcba_select
       where request.id = supervision_session_notes.request_id
         and request.organization_id = supervision_session_notes.organization_id
         and request.assigned_admin_user_id = auth.uid()
-        and app.user_has_exact_active_role_for_org(
-          auth.uid(),
+        and app.current_user_has_exact_active_role_for_org(
           request.organization_id,
           array['bcba']::text[]
         )

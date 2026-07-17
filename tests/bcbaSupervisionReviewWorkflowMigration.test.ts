@@ -43,8 +43,10 @@ describe('BCBA supervision review workflow migration', () => {
     expect(sql).toMatch(/app\.user_has_exact_active_role_for_org\([\s\S]*array\['bcba'\]::text\[\]/i);
     expect(sql).toMatch(/app\.user_has_any_active_role_for_org\([\s\S]*array\['admin', 'super_admin', 'org_admin', 'org_super_admin'\]/i);
     expect(sql).not.toMatch(/app\.user_has_role_for_org\([\s\S]*array\['bcba'\]/i);
-    expect(sql).toMatch(/grant execute on function app\.user_has_any_active_role_for_org\(uuid, uuid, text\[\]\) to authenticated, service_role/i);
-    expect(sql).toMatch(/grant execute on function app\.user_has_exact_active_role_for_org\(uuid, uuid, text\[\]\) to authenticated, service_role/i);
+    expect(sql).toMatch(/grant execute on function app\.user_has_any_active_role_for_org\(uuid, uuid, text\[\]\) to service_role/i);
+    expect(sql).toMatch(/grant execute on function app\.user_has_exact_active_role_for_org\(uuid, uuid, text\[\]\) to service_role/i);
+    expect(sql).toMatch(/create or replace function app\.current_user_has_any_active_role_for_org[\s\S]*auth\.uid\(\)[\s\S]*grant execute[\s\S]*to authenticated, service_role/i);
+    expect(sql).toMatch(/create or replace function app\.current_user_has_exact_active_role_for_org[\s\S]*auth\.uid\(\)[\s\S]*grant execute[\s\S]*to authenticated, service_role/i);
   });
 
   it('returns a tenant-checked immutable BT review packet and fails closed on missing BT notes', () => {

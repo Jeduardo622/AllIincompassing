@@ -15,7 +15,7 @@ import {
   type LifecycleIds,
 } from "./lib/playwright-inprogress-session-setup";
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
-import { openScheduleSessionModalFromCalendar } from "./lib/playwright-schedule-session-modal";
+import { openScheduleSessionModalFromDeepLink } from "./lib/playwright-schedule-session-modal";
 import { assertRouteAccessible, captureFailureScreenshot, loginAndAssertSession } from "./lib/playwright-smoke";
 
 const FLOW = "BT ABA session-note Playwright regression";
@@ -454,7 +454,7 @@ async function run(): Promise<void> {
 
     const scheduleUrl = `${config.baseUrl}/schedule`;
     await withStep("capture exact goal and open closeout", async () => {
-      await openScheduleSessionModalFromCalendar(page!, scheduleUrl, booked, { allowLockedTherapist: true });
+      await openScheduleSessionModalFromDeepLink(page!, scheduleUrl, booked);
       const dialog = page!.locator('[role="dialog"]').first();
       await dialog.getByTestId("session-modal-capture-section").waitFor({ state: "visible" });
       await dialog.locator(`#goal-note-${booked.goalId}`).fill(`Synthetic goal note ${config.fixtureMarker}`);

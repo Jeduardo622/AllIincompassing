@@ -139,7 +139,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(fixtureStep?.run).toContain('SUPABASE_SERVICE_ROLE_KEY="$(node');
     expect(previewStep?.run).toContain('SUPABASE_SERVICE_ROLE_KEY="$(node');
     expect(browserStep?.run).toContain('SUPABASE_SERVICE_ROLE_KEY="$(node');
-    expect(source.match(/SUPABASE_SECRET_KEY/g)).toHaveLength(3);
+    expect(source.match(/SUPABASE_SECRET_KEY/g)).toHaveLength(4);
     expect(source).not.toMatch(/VITE_[A-Z0-9_]*SECRET/);
     expect(source).not.toContain('--with-data');
   });
@@ -206,6 +206,10 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(source).not.toContain('supabase db query');
     expect(source).toContain('npx tsx scripts/provision-ci-smoke-bt-aba.ts');
     expect(source).toContain('PREVIEW_ENABLE_SESSION_NOTES_API="true"');
+    expect(source).toContain('PREVIEW_ENABLE_SESSION_START_API="true"');
+    expect(source).toContain('PW_BT_CLEANUP_STATE_PATH: ${{ runner.temp }}/bt-aba-proof/cleanup-state.json');
+    expect(source).toContain('npx tsx scripts/cleanup-ci-smoke-bt-aba.ts');
+    expect(source).toContain('fixture_cleanup=passed');
     expect(source).toContain('npm run playwright:bt-aba-session-note');
     expect(source).toContain('PW_BT_PROOF_ARTIFACT_DIR: ${{ runner.temp }}/bt-aba-public-evidence');
     expect(source).not.toContain('artifacts/latest/**');

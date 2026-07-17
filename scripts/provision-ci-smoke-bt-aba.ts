@@ -49,6 +49,9 @@ type BtGithubEnvInput = {
   programId: string;
   goalId: string;
   authorizationId: string;
+  authorizationServiceId: string;
+  actorId: string;
+  organizationId: string;
   branchOwnership?: string;
   teardownAcknowledgement?: string;
 };
@@ -110,12 +113,16 @@ export const buildBtSmokeGithubEnv = (input: BtGithubEnvInput): Record<string, s
   PW_BT_PROGRAM_ID: input.programId,
   PW_BT_GOAL_ID: input.goalId,
   PW_BT_AUTHORIZATION_ID: input.authorizationId,
+  PW_BT_AUTHORIZATION_SERVICE_ID: input.authorizationServiceId,
+  PW_BT_ACTOR_ID: input.actorId,
+  PW_BT_ORGANIZATION_ID: input.organizationId,
   PW_BT_SERVICE_CODE: BT_SERVICE_CODE,
   PW_BT_FIXTURE_MARKER: input.marker,
   PW_BT_DISPOSABLE_PROJECT_REF: input.projectRef,
   PW_BT_DISPOSABLE_ACK: DISPOSABLE_ACK,
   PW_BT_BRANCH_OWNERSHIP: input.branchOwnership ?? "disposable-created-by-proof",
   PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: input.teardownAcknowledgement ?? BRANCH_TEARDOWN_ACK,
+  PW_BT_FIXTURE_PROVISIONED: "true",
 });
 
 const requireMarker = (value: unknown, marker: string, label: string): void => {
@@ -380,6 +387,7 @@ const provision = async (): Promise<void> => {
 
   writeGithubEnv(githubEnv, buildBtSmokeGithubEnv({
     supabaseUrl, publishableKey, projectRef, marker, email, password, clientId, programId, goalId, authorizationId,
+    authorizationServiceId, actorId, organizationId,
     branchOwnership, teardownAcknowledgement,
   }));
   console.log(JSON.stringify({ ok: true, action: "provisioned", marker, projectRef, actorId, organizationId, clientId, programId, goalId, authorizationId }));

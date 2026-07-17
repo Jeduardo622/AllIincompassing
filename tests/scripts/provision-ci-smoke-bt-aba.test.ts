@@ -165,6 +165,9 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       programId: PROGRAM_ID,
       goalId: GOAL_ID,
       authorizationId: AUTHORIZATION_ID,
+      authorizationServiceId: "77777777-7777-4777-8777-777777777777",
+      actorId: ACTOR_ID,
+      organizationId: ORGANIZATION_ID,
     })).toEqual(expect.objectContaining({
       VITE_SUPABASE_URL: "https://branch-project-ref.supabase.co",
       VITE_SUPABASE_ANON_KEY: "publishable-test-key",
@@ -174,6 +177,9 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       PW_BT_PROGRAM_ID: PROGRAM_ID,
       PW_BT_GOAL_ID: GOAL_ID,
       PW_BT_AUTHORIZATION_ID: AUTHORIZATION_ID,
+      PW_BT_AUTHORIZATION_SERVICE_ID: "77777777-7777-4777-8777-777777777777",
+      PW_BT_ACTOR_ID: ACTOR_ID,
+      PW_BT_ORGANIZATION_ID: ORGANIZATION_ID,
       PW_BT_SERVICE_CODE: "97153",
       PW_BT_DISPOSABLE_PROJECT_REF: "branch-project-ref",
       PW_BT_DISPOSABLE_ACK: "I_ACKNOWLEDGE_DISPOSABLE_SUPABASE",
@@ -190,6 +196,9 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       programId: PROGRAM_ID,
       goalId: GOAL_ID,
       authorizationId: AUTHORIZATION_ID,
+      authorizationServiceId: "77777777-7777-4777-8777-777777777777",
+      actorId: ACTOR_ID,
+      organizationId: ORGANIZATION_ID,
     })).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
   });
 

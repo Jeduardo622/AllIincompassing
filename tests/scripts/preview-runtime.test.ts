@@ -11,6 +11,8 @@ import type { PreviewConfig } from '../../src/preview/config';
 
 import {
   forwardRequest,
+  isPreviewSessionStartApiEnabled,
+  isPreviewSessionStartApiRequest,
   isPreviewSessionNotesApiEnabled,
   isPreviewSessionNotesApiRequest,
   startPreviewServer,
@@ -95,6 +97,43 @@ const withPreviewServer = async (
 };
 
 describe.sequential('preview session-notes API routing', () => {
+  it('routes only the exact session-start pathname behind its literal opt-in', () => {
+    const enabledEnv = { PREVIEW_ENABLE_SESSION_START_API: 'true' };
+
+    expect(isPreviewSessionStartApiEnabled(enabledEnv)).toBe(true);
+    expect(isPreviewSessionStartApiEnabled({ PREVIEW_ENABLE_SESSION_START_API: 'TRUE' })).toBe(false);
+    expect(isPreviewSessionStartApiRequest('/api/sessions-start?proof=integration', enabledEnv)).toBe(true);
+    expect(isPreviewSessionStartApiRequest('/api/sessions-start-extra', enabledEnv)).toBe(false);
+    expect(isPreviewSessionStartApiRequest('/api/sessions-start', {})).toBe(false);
+  });
+
+  it('wires the opted-in session-start route to the configured real-handler boundary', async () => {
+    const previous = process.env.PREVIEW_ENABLE_SESSION_START_API;
+    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'preview-session-start-'));
+    const port = await reserveEphemeralPort();
+    await fs.writeFile(path.join(outDir, 'index.html'), '<html>fallback</html>');
+    process.env.PREVIEW_ENABLE_SESSION_START_API = 'true';
+    const handler = vi.fn(async () => new Response('{"source":"sessions-start-handler"}', {
+      status: 209,
+      headers: { 'content-type': 'application/json' },
+    }));
+    const preview = await startPreviewServer({
+      host: '127.0.0.1', port, protocol: 'http', outDir, url: `http://127.0.0.1:${port}`,
+    }, { sessionsStartHandler: handler });
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/sessions-start?proof=integration`, {
+        method: 'POST', headers: { authorization: 'Bearer synthetic-token' }, body: '{}',
+      });
+      expect(response.status).toBe(209);
+      expect(await response.json()).toEqual({ source: 'sessions-start-handler' });
+      expect(handler.mock.calls[0]?.[0].headers.get('authorization')).toBe('Bearer synthetic-token');
+    } finally {
+      await preview.close();
+      await fs.rm(outDir, { recursive: true, force: true });
+      if (previous === undefined) delete process.env.PREVIEW_ENABLE_SESSION_START_API;
+      else process.env.PREVIEW_ENABLE_SESSION_START_API = previous;
+    }
+  });
   it('enables the real handler only for the literal true opt-in', () => {
     expect(isPreviewSessionNotesApiEnabled({ PREVIEW_ENABLE_SESSION_NOTES_API: 'true' })).toBe(true);
     expect(isPreviewSessionNotesApiEnabled({ PREVIEW_ENABLE_SESSION_NOTES_API: 'TRUE' })).toBe(false);

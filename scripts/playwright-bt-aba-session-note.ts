@@ -3,7 +3,7 @@
  * All fixture identities are explicit and marker-validated before the first write.
  */
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -12,7 +12,6 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 
 import {
   fetchAccessTokenForCredentials,
-  startSession,
   type LifecycleIds,
 } from "./lib/playwright-inprogress-session-setup";
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
@@ -321,6 +320,35 @@ const waitForSessionStatus = async (admin: SupabaseClient, sessionId: string, ex
   throw new Error(`Timed out waiting for session ${sessionId} status=${expected}.`);
 };
 
+const startSessionThroughProtectedPreview = async (
+  config: SafetyConfig,
+  token: string,
+  ids: LifecycleIds,
+): Promise<void> => {
+  const response = await fetch(`${config.baseUrl}/api/sessions-start`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: ids.sessionId,
+      program_id: ids.programId,
+      goal_id: ids.goalId,
+      goal_ids: [ids.goalId],
+    }),
+  });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`protected sessions-start failed (${response.status}): ${body.slice(0, 400)}`);
+};
+
+const persistCleanupState = async (config: SafetyConfig, sessionId: string): Promise<void> => {
+  const statePath = normalizedEnv("PW_BT_CLEANUP_STATE_PATH");
+  if (!statePath) throw new Error("PW_BT_CLEANUP_STATE_PATH is required before creating a retained-preview session.");
+  await mkdir(path.dirname(statePath), { recursive: true });
+  await writeFile(statePath, `${JSON.stringify({ marker: config.fixtureMarker, projectRef: config.projectRef, sessionId })}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+};
+
 const assertFinalizedArtifacts = async (admin: SupabaseClient, ids: LifecycleIds, actorId: string, marker: string): Promise<void> => {
   const { data: note, error } = await admin.from("client_session_notes")
     .select("id, is_locked, signed_at, bt_aba_responses").eq("session_id", ids.sessionId).maybeSingle();
@@ -419,8 +447,9 @@ async function run(): Promise<void> {
     console.log("[bt-aba-closeout] start create exact marked session");
     const booked = await createExactSession(admin, graph, config.fixtureMarker);
     createdSessionId = booked.sessionId;
+    await persistCleanupState(config, booked.sessionId);
     console.log("[bt-aba-closeout] ok create exact marked session");
-    await withStep("start exact assigned session", () => startSession(page!, token, booked, true));
+    await withStep("start exact assigned session", () => startSessionThroughProtectedPreview(config, token, booked));
     await waitForSessionStatus(admin, booked.sessionId, "in_progress");
 
     const scheduleUrl = `${config.baseUrl}/schedule`;

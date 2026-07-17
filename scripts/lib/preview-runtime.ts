@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import type { PreviewConfig } from '../../src/preview/config';
 import { sessionNotesUpsertHandler } from '../../src/server/api/session-notes-upsert';
+import { sessionsStartHandler } from '../../src/server/api/sessions-start';
 import { RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID } from '../../src/server/runtimeConfig';
 import { runtimeConfigHandler } from '../../src/server/api/runtime-config';
 
@@ -15,6 +16,7 @@ export type PreviewServerHandle = {
 /** Test-only seam; production callers omit this and use the real imported handler. */
 export type PreviewServerTestOverrides = {
   readonly sessionNotesUpsertHandler?: typeof sessionNotesUpsertHandler;
+  readonly sessionsStartHandler?: typeof sessionsStartHandler;
 };
 
 const PREVIEW_STUB_ANON_KEY = 'sb_publishable_preview_stub_key_1234567890';
@@ -31,6 +33,18 @@ export const isPreviewSessionNotesApiRequest = (rawUrl: string, env: NodeJS.Proc
   }
   try {
     return new URL(rawUrl, 'http://localhost').pathname === '/api/session-notes/upsert';
+  } catch {
+    return false;
+  }
+};
+
+export const isPreviewSessionStartApiEnabled = (env: NodeJS.ProcessEnv): boolean =>
+  env.PREVIEW_ENABLE_SESSION_START_API === 'true';
+
+export const isPreviewSessionStartApiRequest = (rawUrl: string, env: NodeJS.ProcessEnv): boolean => {
+  if (!isPreviewSessionStartApiEnabled(env)) return false;
+  try {
+    return new URL(rawUrl, 'http://localhost').pathname === '/api/sessions-start';
   } catch {
     return false;
   }
@@ -223,6 +237,7 @@ export const startPreviewServer = async (
   const fallbackPath = path.join(absoluteDir, 'index.html');
   const previewSessionNotesUpsertHandler =
     testOverrides.sessionNotesUpsertHandler ?? sessionNotesUpsertHandler;
+  const previewSessionsStartHandler = testOverrides.sessionsStartHandler ?? sessionsStartHandler;
   const server = http.createServer(async (req, res) => {
     const rawUrl = req.url ?? '/';
     if (rawUrl.startsWith('/__supabase/auth/v1/health')) {
@@ -246,6 +261,17 @@ export const startPreviewServer = async (
         res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ error: 'Session notes handler failed' }));
+      }
+      return;
+    }
+
+    if (isPreviewSessionStartApiRequest(rawUrl, process.env)) {
+      try {
+        await forwardRequest(req, res, previewSessionsStartHandler);
+      } catch {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Session start handler failed' }));
       }
       return;
     }

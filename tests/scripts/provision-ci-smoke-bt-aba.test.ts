@@ -12,9 +12,12 @@ import {
   assertBranchOwnershipContract,
   assertNonProductionProjectRef,
   buildBtAuthMetadata,
+  buildBtOrganizationMetadata,
   buildBtSmokeEmail,
   buildBtSmokeGithubEnv,
+  cleanupPartialBtFixture,
 } from "../../scripts/provision-ci-smoke-bt-aba";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const MARKER = "bt-aba-proof-1234";
 const ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";
@@ -64,6 +67,46 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       organization_id: ORGANIZATION_ID,
       organizationId: ORGANIZATION_ID,
     });
+  });
+
+  it("stores the fixture marker only in allowed organization metadata fields", () => {
+    expect(buildBtOrganizationMetadata(MARKER)).toEqual({
+      tags: [MARKER],
+      notes: `Synthetic fixture ${MARKER}`,
+    });
+    expect(buildBtOrganizationMetadata(MARKER)).not.toHaveProperty("fixture_marker");
+  });
+
+  it("removes every exact partial-fixture identity before deleting its auth user", async () => {
+    const calls: string[] = [];
+    const client = {
+      from: (table: string) => ({
+        delete: () => ({
+          eq: async (column: string, value: string) => {
+            calls.push(`${table}.${column}=${value}`);
+            return { error: null };
+          },
+        }),
+      }),
+      auth: { admin: { deleteUser: async (id: string) => {
+        calls.push(`auth.users.id=${id}`);
+        return { error: null };
+      } } },
+    } as unknown as SupabaseClient;
+
+    await cleanupPartialBtFixture(client, {
+      actorId: ACTOR_ID,
+      organizationId: ORGANIZATION_ID,
+      clientId: CLIENT_ID,
+      programId: PROGRAM_ID,
+      goalId: GOAL_ID,
+      authorizationId: AUTHORIZATION_ID,
+      authorizationServiceId: "77777777-7777-4777-8777-777777777777",
+    });
+
+    expect(calls.at(-1)).toBe(`auth.users.id=${ACTOR_ID}`);
+    expect(calls).toContain(`organizations.id=${ORGANIZATION_ID}`);
+    expect(calls).toContain(`authorization_services.id=77777777-7777-4777-8777-777777777777`);
   });
 
   it("exports harness aliases, exact fixture IDs, and disposable acknowledgements", () => {

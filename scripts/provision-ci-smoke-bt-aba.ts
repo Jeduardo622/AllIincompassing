@@ -96,6 +96,11 @@ export const buildBtAuthMetadata = (marker: string, organizationId?: string): Re
   ...(organizationId ? { organization_id: organizationId, organizationId } : {}),
 });
 
+export const buildBtOrganizationMetadata = (marker: string): { tags: string[]; notes: string } => {
+  assertBtFixtureMarker(marker);
+  return { tags: [marker], notes: `Synthetic fixture ${marker}` };
+};
+
 export const buildBtSmokeGithubEnv = (input: BtGithubEnvInput): Record<string, string> => ({
   VITE_SUPABASE_URL: input.supabaseUrl,
   VITE_SUPABASE_ANON_KEY: input.publishableKey,
@@ -210,6 +215,38 @@ const writeGithubEnv = (path: string, values: Record<string, string>): void => {
   appendFileSync(path, `${Object.entries(values).map(([key, value]) => `${key}=${value}`).join("\n")}\n`);
 };
 
+export type PartialFixtureIds = {
+  actorId: string;
+  organizationId: string;
+  clientId: string;
+  programId: string;
+  goalId: string;
+  authorizationId: string;
+  authorizationServiceId: string;
+};
+
+export const cleanupPartialBtFixture = async (client: SupabaseClient, ids: PartialFixtureIds): Promise<void> => {
+  const targets: Array<[string, string, string]> = [
+    ["authorization_services", "id", ids.authorizationServiceId],
+    ["authorizations", "id", ids.authorizationId],
+    ["goals", "id", ids.goalId],
+    ["programs", "id", ids.programId],
+    ["clients", "id", ids.clientId],
+    ["user_roles", "user_id", ids.actorId],
+    ["therapists", "id", ids.actorId],
+    ["profiles", "id", ids.actorId],
+    ["organizations", "id", ids.organizationId],
+  ];
+  const failures: string[] = [];
+  for (const [table, column, value] of targets) {
+    const { error } = await client.from(table).delete().eq(column, value);
+    if (error) failures.push(table);
+  }
+  const { error: authError } = await client.auth.admin.deleteUser(ids.actorId);
+  if (authError) failures.push("auth.users");
+  if (failures.length) throw new Error(`Cleanup failed for: ${failures.join(", ")}.`);
+};
+
 const provision = async (): Promise<void> => {
   const supabaseUrl = requiredEnv("SUPABASE_URL").replace(/\/$/, "");
   const publishableKey = requiredEnv("SUPABASE_PUBLISHABLE_KEY", process.env.SUPABASE_ANON_KEY);
@@ -233,6 +270,8 @@ const provision = async (): Promise<void> => {
   const email = buildBtSmokeEmail(marker);
   const password = `C1-${randomBytes(24).toString("base64url")}!Aa`;
   const client = createClient(supabaseUrl, secretKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  let actorId: string | undefined;
+  try {
   const { data: authData, error: authError } = await client.auth.admin.createUser({
     email,
     password,
@@ -241,10 +280,10 @@ const provision = async (): Promise<void> => {
     app_metadata: { fixture_marker: marker, disposable_project_ref: projectRef },
   });
   if (authError || !authData.user) throw new Error(`Unable to create marker-owned BT auth user: ${authError?.message ?? "missing user"}.`);
-  const actorId = authData.user.id;
+  actorId = authData.user.id;
 
   const organization = await insertOne(client, "organizations", {
-    id: organizationId, name: `BT proof ${marker}`, slug: `bt-proof-${marker}`, metadata: { fixture_marker: marker }, created_by: actorId,
+    id: organizationId, name: `BT proof ${marker}`, slug: `bt-proof-${marker}`, metadata: buildBtOrganizationMetadata(marker), created_by: actorId,
   }, "id,name,slug");
 
   const { error: metadataError } = await client.auth.admin.updateUserById(actorId, {
@@ -322,6 +361,20 @@ const provision = async (): Promise<void> => {
     branchOwnership, teardownAcknowledgement,
   }));
   console.log(JSON.stringify({ ok: true, action: "provisioned", marker, projectRef, actorId, organizationId, clientId, programId, goalId, authorizationId }));
+  } catch (error) {
+    if (actorId) {
+      try {
+        await cleanupPartialBtFixture(client, {
+          actorId, organizationId, clientId, programId, goalId, authorizationId, authorizationServiceId,
+        });
+      } catch (cleanupError) {
+        const original = error instanceof Error ? error.message : String(error);
+        const cleanup = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+        throw new Error(`${original} Partial fixture cleanup also failed: ${cleanup}`);
+      }
+    }
+    throw error;
+  }
 };
 
 const isDirectRun = Boolean(process.argv[1])

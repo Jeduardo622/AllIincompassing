@@ -6,6 +6,10 @@ const sql = readFileSync(
   join(process.cwd(), 'supabase/migrations/20260717163000_route_bt_notes_to_assigned_bcba.sql'),
   'utf8',
 );
+const btCloseoutSql = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260716212837_bt_aba_session_note_closeout.sql'),
+  'utf8',
+);
 
 describe('BCBA supervision review workflow migration', () => {
   it('resolves a unique linked BCBA before the sole organization BCBA fallback', () => {
@@ -77,7 +81,9 @@ describe('BCBA supervision review workflow migration', () => {
   it('enforces exactly one attestation target and distinct uniqueness per note type', () => {
     expect(sql).toMatch(/add column if not exists supervision_note_id uuid references public\.supervision_session_notes\(id\)/i);
     expect(sql).toMatch(/alter column note_id drop not null/i);
-    expect(sql).toMatch(/session_note_attestations_client_note_unique_idx/i);
+    expect(btCloseoutSql).toMatch(/unique \(note_id, attestation_role, signer_user_id\)/i);
+    expect(btCloseoutSql).toMatch(/on conflict \(note_id, attestation_role, signer_user_id\) do nothing/i);
+    expect(sql).not.toMatch(/drop constraint if exists session_note_attestations_note_id_attestation_role_signer_user_id_key/i);
     expect(sql).toMatch(/session_note_attestations_supervision_note_unique_idx/i);
     expect(sql).toMatch(/session_note_attestations_exactly_one_target_chk/i);
     expect(sql).toMatch(/note_id is not null[\s\S]*supervision_note_id is null[\s\S]*note_id is null[\s\S]*supervision_note_id is not null/i);

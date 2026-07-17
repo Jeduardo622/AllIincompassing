@@ -1,7 +1,7 @@
 /*
   @migration-intent: Route BT supervision reviews to a deterministically assigned BCBA, expose pending BT review packets, and require an assigned exact-BCBA completion attestation.
   @migration-dependencies: 20260629233000_create_supervision_session_note_workflow.sql,20260716212837_bt_aba_session_note_closeout.sql,20260717144005_require_supervision_session_note_fields.sql
-  @migration-rollback: Restore the prior supervision request select policies and request/completion RPC definitions from 20260629233000_create_supervision_session_note_workflow.sql, revert the canonical supervision template field requirements, remove the supervision-note attestation target/check/indexes and restore note_id not-null plus the prior client-note uniqueness constraint, then drop public.get_pending_supervision_review_packets() and app.resolve_supervision_bcba_assignee(uuid, uuid) if this routing contract is intentionally reverted.
+  @migration-rollback: Restore the prior supervision request select policies and request/completion RPC definitions from 20260629233000_create_supervision_session_note_workflow.sql, revert the canonical supervision template field requirements, remove the supervision-note attestation target/check/index and restore note_id not-null, then drop public.get_pending_supervision_review_packets() and app.resolve_supervision_bcba_assignee(uuid, uuid) if this routing contract is intentionally reverted.
 */
 
 begin;
@@ -109,13 +109,6 @@ alter table public.session_note_attestations
 
 alter table public.session_note_attestations
   alter column note_id drop not null;
-
-alter table public.session_note_attestations
-  drop constraint if exists session_note_attestations_note_id_attestation_role_signer_user_id_key;
-
-create unique index if not exists session_note_attestations_client_note_unique_idx
-  on public.session_note_attestations (note_id, attestation_role, signer_user_id)
-  where note_id is not null;
 
 create unique index if not exists session_note_attestations_supervision_note_unique_idx
   on public.session_note_attestations (supervision_note_id, attestation_role, signer_user_id)

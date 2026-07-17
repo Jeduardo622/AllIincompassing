@@ -5,8 +5,18 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+import {
+  BT_ABA_BEHAVIOR_STRATEGY_OPTIONS,
+  BT_ABA_FIELD_LABELS,
+  BT_ABA_PURPOSE_OPTIONS,
+  BT_ABA_SESSION_NOTE_TEMPLATE_TYPE,
+  BT_ABA_SKILL_STRATEGY_OPTIONS,
+  BT_ABA_SUPERVISOR_SUPPORT_OPTIONS,
+} from "../src/lib/bt-aba-session-note";
 
 export const PRODUCTION_PROJECT_REF = "wnnjeqheqxxyrgsjmygy";
 export const BT_SERVICE_CODE = "97153";
@@ -50,6 +60,7 @@ type BtGithubEnvInput = {
   goalId: string;
   authorizationId: string;
   authorizationServiceId: string;
+  sessionNoteTemplateId: string;
   actorId: string;
   organizationId: string;
   branchOwnership?: string;
@@ -104,6 +115,69 @@ export const buildBtOrganizationMetadata = (marker: string): { tags: string[]; n
   return { tags: [marker], notes: `Synthetic fixture ${marker}` };
 };
 
+export const buildBtAbaTemplateStructure = (): Record<string, unknown> => ({
+  version: 1,
+  sections: [
+    {
+      key: "purpose", label: "Purpose of Session", fields: [
+        { key: "purpose_of_session", label: BT_ABA_FIELD_LABELS.purpose_of_session, type: "multi_select", required: true, options: BT_ABA_PURPOSE_OPTIONS, other_field_key: "purpose_other" },
+        { key: "purpose_other", label: BT_ABA_FIELD_LABELS.purpose_other, type: "text", required_when: "purpose_of_session includes Other" },
+      ],
+    },
+    {
+      key: "interventions", label: "Interventions and Strategies Used", fields: [
+        { key: "client_status", label: BT_ABA_FIELD_LABELS.client_status, type: "textarea", required: true },
+        { key: "skill_strategies", label: BT_ABA_FIELD_LABELS.skill_strategies, type: "multi_select", required: true, exclusive_options: ["N/A"], options: BT_ABA_SKILL_STRATEGY_OPTIONS, other_field_key: "skill_strategies_other" },
+        { key: "skill_strategies_other", label: BT_ABA_FIELD_LABELS.skill_strategies_other, type: "text", required_when: "skill_strategies includes Other" },
+        { key: "behavior_strategies", label: BT_ABA_FIELD_LABELS.behavior_strategies, type: "multi_select", required: true, exclusive_options: ["N/A"], options: BT_ABA_BEHAVIOR_STRATEGY_OPTIONS, other_field_key: "behavior_strategies_other" },
+        { key: "behavior_strategies_other", label: BT_ABA_FIELD_LABELS.behavior_strategies_other, type: "text", required_when: "behavior_strategies includes Other" },
+      ],
+    },
+    {
+      key: "summary", label: "Supervision and Clinical Summary", fields: [
+        { key: "supervisor_support", label: BT_ABA_FIELD_LABELS.supervisor_support, type: "multi_select", required: true, options: BT_ABA_SUPERVISOR_SUPPORT_OPTIONS, other_field_key: "supervisor_support_other" },
+        { key: "supervisor_support_other", label: BT_ABA_FIELD_LABELS.supervisor_support_other, type: "text", required_when: "supervisor_support includes Other" },
+        { key: "progress_toward_goals", label: BT_ABA_FIELD_LABELS.progress_toward_goals, type: "textarea", required: true },
+        { key: "client_response_to_treatment", label: BT_ABA_FIELD_LABELS.client_response_to_treatment, type: "textarea", required: true },
+      ],
+    },
+    {
+      key: "daily_summary", label: "Daily Summary Sheet", fields: [
+        { key: "data_point_scope", label: BT_ABA_FIELD_LABELS.data_point_scope, type: "radio", required: true, options: ["linked", "all"] },
+        { key: "link_unlinked_data", label: BT_ABA_FIELD_LABELS.link_unlinked_data, type: "boolean", required: true },
+        { key: "bt_signature", label: BT_ABA_FIELD_LABELS.bt_signature, type: "signature", required: true },
+      ],
+    },
+  ],
+});
+
+export const buildBtAbaComplianceRequirements = (): Record<string, unknown> => ({
+  attestations: { bt: true },
+  tenant_scoped: true,
+});
+
+export const assertMarkerOwnedBtAbaTemplate = (
+  template: FixtureRow,
+  marker: string,
+  templateId: string,
+  organizationId: string,
+  actorId: string,
+): void => {
+  requireEqual(template.id, templateId, "BT ABA template identity");
+  requireEqual(template.organization_id, organizationId, "BT ABA template organization");
+  requireEqual(template.created_by, actorId, "BT ABA template creator");
+  requireEqual(template.template_name, "BT ABA Session Note", "BT ABA template name");
+  requireEqual(template.template_type, BT_ABA_SESSION_NOTE_TEMPLATE_TYPE, "BT ABA template type");
+  requireEqual(template.is_california_compliant, true, "BT ABA California compliance state");
+  requireMarker(template.description, marker, "BT ABA template description");
+  if (!isDeepStrictEqual(template.template_structure, buildBtAbaTemplateStructure())) {
+    throw new Error("BT ABA template structure is not canonical.");
+  }
+  if (!isDeepStrictEqual(template.compliance_requirements, buildBtAbaComplianceRequirements())) {
+    throw new Error("BT ABA template compliance requirements are not canonical.");
+  }
+};
+
 export const buildBtSmokeGithubEnv = (input: BtGithubEnvInput): Record<string, string> => ({
   VITE_SUPABASE_URL: input.supabaseUrl,
   VITE_SUPABASE_ANON_KEY: input.publishableKey,
@@ -114,6 +188,7 @@ export const buildBtSmokeGithubEnv = (input: BtGithubEnvInput): Record<string, s
   PW_BT_GOAL_ID: input.goalId,
   PW_BT_AUTHORIZATION_ID: input.authorizationId,
   PW_BT_AUTHORIZATION_SERVICE_ID: input.authorizationServiceId,
+  PW_BT_SESSION_NOTE_TEMPLATE_ID: input.sessionNoteTemplateId,
   PW_BT_ACTOR_ID: input.actorId,
   PW_BT_ORGANIZATION_ID: input.organizationId,
   PW_BT_SERVICE_CODE: BT_SERVICE_CODE,
@@ -232,6 +307,7 @@ export type PartialFixtureIds = {
   goalId: string;
   authorizationId: string;
   authorizationServiceId: string;
+  sessionNoteTemplateId: string;
 };
 
 export const cleanupPartialBtFixture = async (client: SupabaseClient, ids: PartialFixtureIds): Promise<void> => {
@@ -241,6 +317,7 @@ export const cleanupPartialBtFixture = async (client: SupabaseClient, ids: Parti
     ["goals", "id", ids.goalId],
     ["programs", "id", ids.programId],
     ["clients", "id", ids.clientId],
+    ["session_note_templates", "id", ids.sessionNoteTemplateId],
     ["organizations", "id", ids.organizationId],
   ];
   if (ids.actorId) {
@@ -281,6 +358,7 @@ const provision = async (): Promise<void> => {
   const goalId = randomUUID();
   const authorizationId = randomUUID();
   const authorizationServiceId = randomUUID();
+  const sessionNoteTemplateId = randomUUID();
   const email = buildBtSmokeEmail(marker);
   const password = `C1-${randomBytes(24).toString("base64url")}!Aa`;
   const fixtureExpiry = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
@@ -316,6 +394,19 @@ const provision = async (): Promise<void> => {
     id: actorId, organization_id: organizationId, email, full_name: `BT ${marker}`, first_name: `BT-${marker}`,
     last_name: `Actor-${marker}`, title: "BT", status: "active", specialties: [marker], service_type: ["aba"],
   }, "id,organization_id,email,full_name,title,status,deleted_at");
+
+  const sessionNoteTemplate = await insertOne(client, "session_note_templates", {
+    id: sessionNoteTemplateId,
+    template_name: "BT ABA Session Note",
+    template_type: BT_ABA_SESSION_NOTE_TEMPLATE_TYPE,
+    template_structure: buildBtAbaTemplateStructure(),
+    description: `Synthetic BT ABA template ${marker}`,
+    compliance_requirements: buildBtAbaComplianceRequirements(),
+    is_california_compliant: true,
+    organization_id: organizationId,
+    created_by: actorId,
+  }, "id,template_name,template_type,template_structure,description,compliance_requirements,is_california_compliant,organization_id,created_by");
+  assertMarkerOwnedBtAbaTemplate(sessionNoteTemplate, marker, sessionNoteTemplateId, organizationId, actorId);
 
   const { data: rolesForProvisioning, error: roleError } = await client.from("roles")
     .select("id,name").in("name", ["therapist", "bt"]);
@@ -387,14 +478,14 @@ const provision = async (): Promise<void> => {
 
   writeGithubEnv(githubEnv, buildBtSmokeGithubEnv({
     supabaseUrl, publishableKey, projectRef, marker, email, password, clientId, programId, goalId, authorizationId,
-    authorizationServiceId, actorId, organizationId,
+    authorizationServiceId, sessionNoteTemplateId, actorId, organizationId,
     branchOwnership, teardownAcknowledgement,
   }));
   console.log(JSON.stringify({ ok: true, action: "provisioned", marker, projectRef, actorId, organizationId, clientId, programId, goalId, authorizationId }));
   } catch (error) {
     try {
       await cleanupPartialBtFixture(client, {
-        actorId, organizationId, clientId, programId, goalId, authorizationId, authorizationServiceId,
+        actorId, organizationId, clientId, programId, goalId, authorizationId, authorizationServiceId, sessionNoteTemplateId,
       });
     } catch (cleanupError) {
       const original = error instanceof Error ? error.message : String(error);

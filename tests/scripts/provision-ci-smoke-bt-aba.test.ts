@@ -13,6 +13,7 @@ import {
   assertNonProductionProjectRef,
   buildBtAuthMetadata,
   buildBtOrganizationMetadata,
+  buildBtAbaTemplateStructure,
   buildBtSmokeEmail,
   buildBtSmokeGithubEnv,
   cleanupPartialBtFixture,
@@ -26,6 +27,7 @@ const CLIENT_ID = "33333333-3333-4333-8333-333333333333";
 const PROGRAM_ID = "44444444-4444-4444-8444-444444444444";
 const GOAL_ID = "55555555-5555-4555-8555-555555555555";
 const AUTHORIZATION_ID = "66666666-6666-4666-8666-666666666666";
+const TEMPLATE_ID = "88888888-8888-4888-8888-888888888888";
 
 const validGraph = () => ({
   marker: MARKER,
@@ -77,6 +79,13 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
     expect(buildBtOrganizationMetadata(MARKER)).not.toHaveProperty("fixture_marker");
   });
 
+  it("builds the canonical org-scoped BT ABA template required by the read RPC", () => {
+    const structure = buildBtAbaTemplateStructure();
+    expect(structure).toMatchObject({ version: 1 });
+    expect(JSON.stringify(structure)).toContain('"purpose_of_session"');
+    expect(JSON.stringify(structure)).toContain('"bt_signature"');
+  });
+
   it("removes every exact partial-fixture identity before deleting its auth user", async () => {
     const calls: string[] = [];
     const client = {
@@ -102,11 +111,13 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       goalId: GOAL_ID,
       authorizationId: AUTHORIZATION_ID,
       authorizationServiceId: "77777777-7777-4777-8777-777777777777",
+      sessionNoteTemplateId: TEMPLATE_ID,
     });
 
     expect(calls.at(-1)).toBe(`auth.users.id=${ACTOR_ID}`);
     expect(calls).toContain(`organizations.id=${ORGANIZATION_ID}`);
     expect(calls).toContain(`authorization_services.id=77777777-7777-4777-8777-777777777777`);
+    expect(calls).toContain(`session_note_templates.id=${TEMPLATE_ID}`);
   });
 
   it("removes the pre-auth organization when auth creation never returns a user", async () => {
@@ -129,6 +140,7 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       goalId: GOAL_ID,
       authorizationId: AUTHORIZATION_ID,
       authorizationServiceId: "77777777-7777-4777-8777-777777777777",
+      sessionNoteTemplateId: TEMPLATE_ID,
     });
     expect(calls).toContain("organizations");
     expect(calls).not.toContain("auth.users");
@@ -166,6 +178,7 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       goalId: GOAL_ID,
       authorizationId: AUTHORIZATION_ID,
       authorizationServiceId: "77777777-7777-4777-8777-777777777777",
+      sessionNoteTemplateId: TEMPLATE_ID,
       actorId: ACTOR_ID,
       organizationId: ORGANIZATION_ID,
     })).toEqual(expect.objectContaining({
@@ -178,6 +191,7 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       PW_BT_GOAL_ID: GOAL_ID,
       PW_BT_AUTHORIZATION_ID: AUTHORIZATION_ID,
       PW_BT_AUTHORIZATION_SERVICE_ID: "77777777-7777-4777-8777-777777777777",
+      PW_BT_SESSION_NOTE_TEMPLATE_ID: TEMPLATE_ID,
       PW_BT_ACTOR_ID: ACTOR_ID,
       PW_BT_ORGANIZATION_ID: ORGANIZATION_ID,
       PW_BT_SERVICE_CODE: "97153",
@@ -197,6 +211,7 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       goalId: GOAL_ID,
       authorizationId: AUTHORIZATION_ID,
       authorizationServiceId: "77777777-7777-4777-8777-777777777777",
+      sessionNoteTemplateId: TEMPLATE_ID,
       actorId: ACTOR_ID,
       organizationId: ORGANIZATION_ID,
     })).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");

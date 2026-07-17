@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { cleanupMarkerOwnedBtFixture } from "../../scripts/cleanup-ci-smoke-bt-aba";
+import { buildBtAbaComplianceRequirements, buildBtAbaTemplateStructure } from "../../scripts/provision-ci-smoke-bt-aba";
 
 const marker = "bt-aba-proof-1234";
 const ids = {
@@ -13,6 +14,7 @@ const ids = {
   goalId: "55555555-5555-4555-8555-555555555555",
   authorizationId: "66666666-6666-4666-8666-666666666666",
   authorizationServiceId: "77777777-7777-4777-8777-777777777777",
+  sessionNoteTemplateId: "99999999-9999-4999-8999-999999999999",
 };
 const sessionId = "88888888-8888-4888-8888-888888888888";
 
@@ -23,6 +25,7 @@ const clientMock = (authMarker = marker, programOrganizationId = ids.organizatio
     organizations: { id: ids.organizationId, name: `BT proof ${marker}`, slug: `bt-proof-${marker}`, metadata: {} },
     profiles: { id: ids.actorId, organization_id: ids.organizationId, role: "bt", is_active: true },
     therapists: { id: ids.actorId, organization_id: ids.organizationId, email: `playwright.${marker}@example.com`, full_name: `BT ${marker}`, title: "BT", status: "active", deleted_at: null },
+    session_note_templates: { id: ids.sessionNoteTemplateId, template_name: "BT ABA Session Note", template_type: "bt_aba_session_note", template_structure: buildBtAbaTemplateStructure(), description: `Synthetic BT ABA template ${marker}`, compliance_requirements: buildBtAbaComplianceRequirements(), is_california_compliant: true, organization_id: ids.organizationId, created_by: ids.actorId },
     clients: { id: ids.clientId, organization_id: ids.organizationId, email: `client.${marker}@example.com`, full_name: `Client ${marker}`, notes: `Synthetic ${marker}`, status: "active", deleted_at: null },
     programs: { id: ids.programId, organization_id: programOrganizationId, client_id: ids.clientId, name: `Program ${marker}`, description: marker, status: "active", created_by: ids.actorId },
     goals: { id: ids.goalId, organization_id: ids.organizationId, client_id: ids.clientId, program_id: ids.programId, title: `Goal ${marker}`, description: marker, original_text: marker, status: "active", created_by: ids.actorId },
@@ -66,6 +69,7 @@ describe("marker-owned BT fixture cleanup", () => {
       `sessions.id=${sessionId}`,
     ]);
     expect(deletes.at(-1)).toBe(`auth.users.id=${ids.actorId}`);
+    expect(deletes).toContain(`session_note_templates.id=${ids.sessionNoteTemplateId}`);
   });
 
   it("fails closed before any delete when auth marker ownership is not exact", async () => {
@@ -83,6 +87,46 @@ describe("marker-owned BT fixture cleanup", () => {
   it("fails closed before any delete when an exported child ID crosses tenant scope", async () => {
     const { client, deletes } = clientMock(marker, "99999999-9999-4999-8999-999999999999");
     await expect(cleanupMarkerOwnedBtFixture(client, ids, marker, null)).rejects.toThrow(/program organization/i);
+    expect(deletes).toEqual([]);
+  });
+
+  it("fails closed before any delete when the marker-owned template crosses tenant scope", async () => {
+    const { client, deletes } = clientMock();
+    const originalFrom = client.from.bind(client);
+    client.from = ((table: string) => {
+      const query = originalFrom(table);
+      if (table !== "session_note_templates") return query;
+      return {
+        ...query,
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({
+            data: { id: ids.sessionNoteTemplateId, template_name: "BT ABA Session Note", template_type: "bt_aba_session_note", template_structure: buildBtAbaTemplateStructure(), description: `Synthetic BT ABA template ${marker}`, compliance_requirements: buildBtAbaComplianceRequirements(), is_california_compliant: true, organization_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", created_by: ids.actorId },
+            error: null,
+          }) }),
+        }),
+      };
+    }) as typeof client.from;
+    await expect(cleanupMarkerOwnedBtFixture(client, ids, marker, null)).rejects.toThrow(/template organization/i);
+    expect(deletes).toEqual([]);
+  });
+
+  it("fails closed before any delete when the template schema is not canonical", async () => {
+    const { client, deletes } = clientMock();
+    const originalFrom = client.from.bind(client);
+    client.from = ((table: string) => {
+      const query = originalFrom(table);
+      if (table !== "session_note_templates") return query;
+      return {
+        ...query,
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({
+            data: { id: ids.sessionNoteTemplateId, template_name: "BT ABA Session Note", template_type: "bt_aba_session_note", template_structure: { version: 1, sections: [] }, description: `Synthetic BT ABA template ${marker}`, compliance_requirements: buildBtAbaComplianceRequirements(), is_california_compliant: true, organization_id: ids.organizationId, created_by: ids.actorId },
+            error: null,
+          }) }),
+        }),
+      };
+    }) as typeof client.from;
+    await expect(cleanupMarkerOwnedBtFixture(client, ids, marker, null)).rejects.toThrow(/structure is not canonical/i);
     expect(deletes).toEqual([]);
   });
 });

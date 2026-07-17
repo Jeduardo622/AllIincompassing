@@ -7,6 +7,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   assertBtFixtureMarker,
   assertBtFixtureGraph,
+  assertMarkerOwnedBtAbaTemplate,
   assertBranchOwnershipContract,
   assertNonProductionProjectRef,
   cleanupPartialBtFixture,
@@ -60,11 +61,12 @@ export const cleanupMarkerOwnedBtFixture = async (
   sessionId: string | null,
 ): Promise<void> => {
   if (!ids.actorId) throw new Error("Exact actor identity is required for retained-preview cleanup.");
-  const [{ data: authData, error: authError }, organization, profile, therapist, fixtureClient, program, goal, authorization, service, roles] = await Promise.all([
+  const [{ data: authData, error: authError }, organization, profile, therapist, template, fixtureClient, program, goal, authorization, service, roles] = await Promise.all([
     client.auth.admin.getUserById(ids.actorId),
     client.from("organizations").select("id,name,slug,metadata").eq("id", ids.organizationId).maybeSingle(),
     client.from("profiles").select("id,organization_id,role,is_active").eq("id", ids.actorId).maybeSingle(),
     client.from("therapists").select("id,organization_id,email,full_name,title,status,deleted_at").eq("id", ids.actorId).maybeSingle(),
+    client.from("session_note_templates").select("id,template_name,template_type,template_structure,description,compliance_requirements,is_california_compliant,organization_id,created_by").eq("id", ids.sessionNoteTemplateId).maybeSingle(),
     client.from("clients").select("id,organization_id,email,full_name,notes,status,deleted_at").eq("id", ids.clientId).maybeSingle(),
     client.from("programs").select("id,organization_id,client_id,name,description,status,created_by").eq("id", ids.programId).maybeSingle(),
     client.from("goals").select("id,organization_id,client_id,program_id,title,description,original_text,status,created_by").eq("id", ids.goalId).maybeSingle(),
@@ -77,10 +79,11 @@ export const cleanupMarkerOwnedBtFixture = async (
     throw new Error("Auth user is not owned by the exact fixture marker.");
   }
   if (organization.error || !organization.data) throw new Error(`Exact marker-owned organization is unavailable: ${organization.error?.message ?? "missing"}.`);
-  for (const [label, result] of [["profile", profile], ["therapist", therapist], ["client", fixtureClient], ["program", program], ["goal", goal], ["authorization", authorization], ["authorization service", service]] as const) {
+  for (const [label, result] of [["profile", profile], ["therapist", therapist], ["BT ABA template", template], ["client", fixtureClient], ["program", program], ["goal", goal], ["authorization", authorization], ["authorization service", service]] as const) {
     if (result.error || !result.data) throw new Error(`Exact marker-owned ${label} is unavailable: ${result.error?.message ?? "missing"}.`);
   }
   if (roles.error) throw new Error(`Exact marker-owned roles are unavailable: ${roles.error.message}.`);
+  assertMarkerOwnedBtAbaTemplate(template.data!, marker, ids.sessionNoteTemplateId, ids.organizationId, ids.actorId);
   const roleMappings = (roles.data ?? []).flatMap((row) => {
     const nested = row.roles as unknown as { name?: unknown } | Array<{ name?: unknown }> | null;
     return (Array.isArray(nested) ? nested : nested ? [nested] : []).map(({ name }) => ({
@@ -134,6 +137,7 @@ export const cleanupMarkerOwnedBtFixture = async (
     ["goals", "id", ids.goalId],
     ["authorizations", "id", ids.authorizationId],
     ["authorization_services", "id", ids.authorizationServiceId],
+    ["session_note_templates", "id", ids.sessionNoteTemplateId],
     ["profiles", "id", ids.actorId],
   ] as const) {
     const result = await client.from(table).select("id", { count: "exact", head: true }).eq(column, value);
@@ -159,6 +163,7 @@ const run = async (): Promise<void> => {
     goalId: requiredUuid("PW_BT_GOAL_ID"),
     authorizationId: requiredUuid("PW_BT_AUTHORIZATION_ID"),
     authorizationServiceId: requiredUuid("PW_BT_AUTHORIZATION_SERVICE_ID"),
+    sessionNoteTemplateId: requiredUuid("PW_BT_SESSION_NOTE_TEMPLATE_ID"),
   };
   const state = readCleanupState(requiredEnv("PW_BT_CLEANUP_STATE_PATH"), marker, projectRef);
   const client = createClient(supabaseUrl, requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), { auth: { autoRefreshToken: false, persistSession: false } });

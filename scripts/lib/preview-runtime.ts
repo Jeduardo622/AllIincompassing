@@ -12,6 +12,11 @@ export type PreviewServerHandle = {
   readonly close: () => Promise<void>;
 };
 
+/** Test-only seam; production callers omit this and use the real imported handler. */
+export type PreviewServerTestOverrides = {
+  readonly sessionNotesUpsertHandler?: typeof sessionNotesUpsertHandler;
+};
+
 const PREVIEW_STUB_ANON_KEY = 'sb_publishable_preview_stub_key_1234567890';
 const PREVIEW_REQUEST_BODY_LIMIT_BYTES = 1024 * 1024;
 
@@ -210,9 +215,14 @@ const sendFile = async (
   stream.pipe(res);
 };
 
-export const startPreviewServer = async (config: PreviewConfig): Promise<PreviewServerHandle> => {
+export const startPreviewServer = async (
+  config: PreviewConfig,
+  testOverrides: PreviewServerTestOverrides = {},
+): Promise<PreviewServerHandle> => {
   const absoluteDir = path.resolve(config.outDir);
   const fallbackPath = path.join(absoluteDir, 'index.html');
+  const previewSessionNotesUpsertHandler =
+    testOverrides.sessionNotesUpsertHandler ?? sessionNotesUpsertHandler;
   const server = http.createServer(async (req, res) => {
     const rawUrl = req.url ?? '/';
     if (rawUrl.startsWith('/__supabase/auth/v1/health')) {
@@ -231,7 +241,7 @@ export const startPreviewServer = async (config: PreviewConfig): Promise<Preview
 
     if (isPreviewSessionNotesApiRequest(rawUrl, process.env)) {
       try {
-        await forwardRequest(req, res, sessionNotesUpsertHandler);
+        await forwardRequest(req, res, previewSessionNotesUpsertHandler);
       } catch {
         res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json');

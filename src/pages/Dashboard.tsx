@@ -5,11 +5,13 @@ import { Users, Calendar, Clock, AlertCircle } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DashboardCard } from '../components/DashboardCard';
 import { ReportsSummary } from '../components/Dashboard/ReportsSummary';
+import { ClinicalSignatureInput } from '../components/session-notes/ClinicalSignatureInput';
 import { useDashboardData } from '../lib/optimizedQueries';
 import { useAuth } from '../lib/authContext';
 import { canAccessStaffDashboard } from '../lib/dashboardAccess';
 import { showError, showSuccess } from '../lib/toast';
 import {
+  type ClinicalSignatureValue,
   completeSupervisionSessionNote,
   fetchPendingSupervisionSessionNoteRequests,
   reconcilePendingSupervisionSessionNoteRequests,
@@ -101,7 +103,17 @@ export interface DashboardViewProps {
   ) => Promise<void> | void;
 }
 
-const renderSupervisionField = (field: SupervisionTemplateField, error?: string) => {
+type RenderSupervisionFieldOptions = {
+  error?: string;
+  bcbaSignature: ClinicalSignatureValue;
+  setBcbaSignature: React.Dispatch<React.SetStateAction<ClinicalSignatureValue>>;
+  disabled?: boolean;
+};
+
+const renderSupervisionField = (
+  field: SupervisionTemplateField,
+  { error, bcbaSignature, setBcbaSignature, disabled = false }: RenderSupervisionFieldOptions,
+) => {
   const label = field.label ?? field.key;
   const fieldId = `supervision-${field.key}`;
   const baseClass = 'mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-dark dark:text-white';
@@ -110,16 +122,37 @@ const renderSupervisionField = (field: SupervisionTemplateField, error?: string)
     <p id={errorId} className="mt-2 text-sm text-red-600 dark:text-red-300">{error}</p>
   ) : null;
 
-  if (field.type === 'textarea' || field.type === 'signature') {
+  if (field.type === 'signature') {
+    if (field.key === 'bcba_supervisor_signature') {
+      return (
+        <ClinicalSignatureInput
+          key={field.key}
+          heading={label}
+          typedLabel="Type BCBA signature"
+          drawLabel="Draw BCBA signature"
+          fieldKey={field.key}
+          value={bcbaSignature}
+          onChange={setBcbaSignature}
+          disabled={disabled}
+          error={error}
+        />
+      );
+    }
+
+    return null;
+  }
+
+  if (field.type === 'textarea') {
     return (
       <label key={field.key} className="block text-sm font-medium text-gray-700 dark:text-gray-200">
         {label}
         <textarea
           id={fieldId}
           name={field.key}
-          rows={field.type === 'signature' ? 2 : 3}
+          rows={3}
           required={field.required}
           placeholder={field.placeholder}
+          disabled={disabled}
           className={baseClass}
         />
         {errorMessage}
@@ -138,6 +171,7 @@ const renderSupervisionField = (field: SupervisionTemplateField, error?: string)
                 type="checkbox"
                 name={field.key}
                 value={option}
+                disabled={disabled}
                 aria-describedby={error ? errorId : undefined}
                 className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
@@ -159,6 +193,7 @@ const renderSupervisionField = (field: SupervisionTemplateField, error?: string)
             type="checkbox"
             name={field.key}
             value="true"
+            disabled={disabled}
             aria-describedby={error ? errorId : undefined}
             className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
@@ -181,6 +216,7 @@ const renderSupervisionField = (field: SupervisionTemplateField, error?: string)
                 name={field.key}
                 value={option}
                 required={field.required}
+                disabled={disabled}
                 aria-describedby={error ? errorId : undefined}
                 className="mt-1 border-gray-300 text-blue-600 focus:ring-blue-500"
               />
@@ -197,7 +233,7 @@ const renderSupervisionField = (field: SupervisionTemplateField, error?: string)
     return (
       <label key={field.key} className="block text-sm font-medium text-gray-700 dark:text-gray-200">
         {label}
-        <select id={fieldId} name={field.key} required={field.required} className={baseClass}>
+        <select id={fieldId} name={field.key} required={field.required} disabled={disabled} className={baseClass}>
           <option value="">Select</option>
           {field.options?.map((option) => (
             <option key={option} value={option}>{option}</option>
@@ -217,6 +253,7 @@ const renderSupervisionField = (field: SupervisionTemplateField, error?: string)
         type={field.type === 'date' ? 'date' : 'text'}
         required={field.required}
         placeholder={field.placeholder}
+        disabled={disabled}
         className={baseClass}
       />
       {errorMessage}
@@ -224,8 +261,35 @@ const renderSupervisionField = (field: SupervisionTemplateField, error?: string)
   );
 };
 
-const collectSupervisionResponses = (form: HTMLFormElement, template: SupervisionSessionNoteTemplate | null) => {
+const formatBtReviewValue = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).join(', ');
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value && typeof value === 'object') {
+    return JSON.stringify(value, null, 2);
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  return '';
+};
+
+const collectSupervisionResponses = (
+  form: HTMLFormElement,
+  template: SupervisionSessionNoteTemplate | null,
+  signature: ClinicalSignatureValue,
+) => {
   const formData = new FormData(form);
+  const typedSignatureInput = form.querySelector<HTMLInputElement>('input[data-field="bcba_supervisor_signature"]');
+  const normalizedSignature = typedSignatureInput && typedSignatureInput.value.trim().length > 0
+    ? { method: 'typed', value: typedSignatureInput.value.trim().slice(0, 200) } satisfies ClinicalSignatureValue
+    : signature;
   const responses: Record<string, unknown> = {};
   const errors: Record<string, string> = {};
   const fields = template?.sections.flatMap((section) => section.fields ?? []) ?? [];
@@ -240,7 +304,15 @@ const collectSupervisionResponses = (form: HTMLFormElement, template: Supervisio
     } else {
       responses[field.key] = values[0] ?? '';
     }
+    if (field.key === 'bcba_supervisor_signature') {
+      responses.bcba_supervisor_signature = normalizedSignature;
+    }
     const requiresResponse = fieldRequiresResponse(field, responses);
+    const hasSignature = normalizedSignature.value.trim().length > 0;
+    if (field.key === 'bcba_supervisor_signature' && requiresResponse && !hasSignature) {
+      errors[field.key] = 'BCBA Supervisor Signature is required.';
+      continue;
+    }
     const hasValue = field.type === 'checkbox' && !fieldHasOptions(field)
       ? responses[field.key] === true
       : values.length > 0;
@@ -272,6 +344,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [activeSupervisionRequest, setActiveSupervisionRequest] = useState<PendingSupervisionSessionNoteRequest | null>(null);
   const [supervisionValidationErrors, setSupervisionValidationErrors] = useState<Record<string, string>>({});
+  const [bcbaSignature, setBcbaSignature] = useState<ClinicalSignatureValue>({ method: 'drawn', value: '' });
 
   useEffect(() => {
     if (dashboardData) {
@@ -341,13 +414,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const billingAlertsTrend = isBillingAlertsRedacted ? 'Restricted' : 'Needs attention';
   const supervisionRequestsCount = supervisionRequests.length;
   const hasSupervisionRequestsError = Boolean(supervisionRequestsError);
+  const activeBtReview = activeSupervisionRequest?.btReview;
+  const activeRequestCanComplete = activeSupervisionRequest?.canComplete !== false;
 
   const handleSupervisionSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!activeSupervisionRequest || !onCompleteSupervisionNote) {
       return;
     }
-    const { responses, errors } = collectSupervisionResponses(event.currentTarget, supervisionTemplate);
+    const { responses, errors } = collectSupervisionResponses(event.currentTarget, supervisionTemplate, bcbaSignature);
     setSupervisionValidationErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
@@ -355,6 +430,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     await onCompleteSupervisionNote(activeSupervisionRequest, responses);
     setActiveSupervisionRequest(null);
     setSupervisionValidationErrors({});
+    setBcbaSignature({ method: 'drawn', value: '' });
   };
 
   if (isLoading && !displayData.todaySessions.length) {
@@ -494,6 +570,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     type="button"
                     onClick={() => {
                       setSupervisionValidationErrors({});
+                      setBcbaSignature({ method: 'drawn', value: '' });
                       setActiveSupervisionRequest(request);
                     }}
                     className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -704,14 +781,75 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </div>
               <div className="space-y-6 p-6">
+                <section className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-dark">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">Completed BT ABA Session Note</h3>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      BT signed {activeBtReview?.signatureMethod ?? 'unknown'} signature
+                      {activeBtReview?.signedAt
+                        ? ` on ${formatDashboardDate(activeBtReview.signedAt, 'MMM d, yyyy h:mm a', 'Date unavailable')}`
+                        : ''}
+                    </p>
+                  </div>
+                  <div className="space-y-4">
+                    {activeBtReview?.templateSnapshot.sections?.map((section) => (
+                      <section key={section.key} className="space-y-3">
+                        {(section.label ?? section.key) !== 'Completed BT ABA Session Note' && (
+                          <h4 className="text-sm font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                            {section.label ?? section.key}
+                          </h4>
+                        )}
+                        <dl className="space-y-3">
+                          {(section.fields ?? []).map((field) => {
+                            if (field.type === 'signature') {
+                              return null;
+                            }
+                            const formattedValue = formatBtReviewValue(activeBtReview?.responses?.[field.key]);
+                            if (!formattedValue) {
+                              return null;
+                            }
+                            const usePre = formattedValue.startsWith('{');
+                            return (
+                              <div key={field.key}>
+                                <dt className="text-sm font-medium text-gray-700 dark:text-gray-200">{field.label ?? field.key}</dt>
+                                {usePre ? (
+                                  <dd className="mt-1 whitespace-pre-wrap rounded-md bg-white p-3 text-sm text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+                                    {formattedValue}
+                                  </dd>
+                                ) : (
+                                  <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{formattedValue}</dd>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </dl>
+                      </section>
+                    ))}
+                    {!activeBtReview && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        BT review details are unavailable for this request.
+                      </p>
+                    )}
+                  </div>
+                </section>
                 {supervisionTemplate?.sections.map((section) => (
                   <section key={section.key} className="space-y-4">
                     <h3 className="text-base font-semibold text-gray-900 dark:text-white">{section.label ?? section.key}</h3>
                     <div className="grid gap-4">
-                      {(section.fields ?? []).map((field) => renderSupervisionField(field, supervisionValidationErrors[field.key]))}
+                      {(section.fields ?? []).map((field) => renderSupervisionField(field, {
+                        error: supervisionValidationErrors[field.key],
+                        bcbaSignature,
+                        setBcbaSignature,
+                        disabled: isCompletingSupervisionNote || !activeRequestCanComplete,
+                      }))}
                     </div>
                   </section>
                 ))}
+                {!activeRequestCanComplete && (
+                  <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
+                    Only the assigned BCBA can complete and sign this supervision note.
+                  </p>
+                )}
                 {!supervisionTemplate && (
                   <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
                     Supervision template is not available.
@@ -720,21 +858,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <div className="flex justify-end gap-3 border-t border-gray-200 p-6 dark:border-gray-700">
                 <button
-                  type="button"
-                  onClick={() => {
-                    setSupervisionValidationErrors({});
-                    setActiveSupervisionRequest(null);
-                  }}
+                    type="button"
+                    onClick={() => {
+                      setSupervisionValidationErrors({});
+                      setBcbaSignature({ method: 'drawn', value: '' });
+                      setActiveSupervisionRequest(null);
+                    }}
                   className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={!supervisionTemplate || isCompletingSupervisionNote}
+                  disabled={!supervisionTemplate || isCompletingSupervisionNote || !activeRequestCanComplete}
                   className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isCompletingSupervisionNote ? 'Saving...' : 'Save Supervision Note'}
+                  {isCompletingSupervisionNote ? 'Saving...' : 'Sign and Complete Supervision Note'}
                 </button>
               </div>
             </form>

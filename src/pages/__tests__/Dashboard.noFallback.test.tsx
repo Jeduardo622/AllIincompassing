@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { DashboardView } from '../Dashboard';
 
 vi.mock('../../components/Dashboard/ReportsSummary', () => ({
@@ -61,9 +62,9 @@ describe('Dashboard without client fallbacks', () => {
     expect(screen.getByText('Date unavailable')).toBeInTheDocument();
   });
 
-  it('renders pending supervision note requests and submits grouped template fields', async () => {
+  it('renders pending supervision note requests, BT review content, and grouped signature fields', async () => {
     const View = DashboardView as React.ComponentType<any>;
-    const onCompleteSupervisionNote = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
 
     render(
       <View
@@ -80,9 +81,39 @@ describe('Dashboard without client fallbacks', () => {
             createdAt: '2026-06-29T20:00:00.000Z',
             sessionStartTime: '2026-06-29T18:00:00.000Z',
             sessionEndTime: '2026-06-29T19:00:00.000Z',
+            placeOfService: 'Home',
             clientName: 'Client One',
             btTherapistName: 'BT One',
             btTherapistTitle: 'BT',
+            canComplete: true,
+            btReview: {
+              noteId: 'bt-note-1',
+              responses: {
+                session_summary: 'Ready for treatment.',
+                behavior_targets: ['Manding', 'Pairing'],
+                parent_present: true,
+                bt_signature: {
+                  method: 'typed',
+                  value: 'BT One',
+                },
+              },
+              templateSnapshot: {
+                sections: [
+                  {
+                    key: 'bt_review',
+                    label: 'Completed BT ABA Session Note',
+                    fields: [
+                      { key: 'session_summary', label: 'Session Summary', type: 'textarea' },
+                      { key: 'behavior_targets', label: 'Behavior Targets', type: 'checkbox_group' },
+                      { key: 'parent_present', label: 'Parent Present', type: 'checkbox' },
+                      { key: 'bt_signature', label: 'BT Signature', type: 'signature' },
+                    ],
+                  },
+                ],
+              },
+              signatureMethod: 'typed',
+              signedAt: '2026-06-29T19:05:00.000Z',
+            },
           },
         ]}
         supervisionTemplate={{
@@ -99,11 +130,11 @@ describe('Dashboard without client fallbacks', () => {
                 { key: 'collected_by', label: 'Collected by', type: 'select' },
                 { key: 'rbt_prepared', label: 'RBT prepared', type: 'radio_group', options: ['Yes', 'No'] },
                 { key: 'session_note_description', label: 'Session note description', type: 'textarea' },
+                { key: 'bcba_supervisor_signature', label: 'BCBA Supervisor Signature', type: 'signature', required: true },
               ],
             },
           ],
         }}
-        onCompleteSupervisionNote={onCompleteSupervisionNote}
       />,
     );
 
@@ -111,38 +142,101 @@ describe('Dashboard without client fallbacks', () => {
     expect(screen.getByText('Client One')).toBeInTheDocument();
     expect(screen.getByText(/BT One/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /complete supervision note for client one/i }));
+    await user.click(screen.getByRole('button', { name: /complete supervision note for client one/i }));
 
     expect(screen.getByRole('dialog', { name: /supervision session note/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Completed BT ABA Session Note' })).toBeInTheDocument();
+    expect(screen.getByText('Ready for treatment.')).toBeInTheDocument();
+    expect(screen.getByText(/BT signed/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Purpose of session')).toBeInTheDocument();
     expect(screen.getByLabelText('Session type')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Link unlinked data' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Collected by' })).toBeInTheDocument();
     expect(screen.getByLabelText('RBT prepared')).toBeInTheDocument();
     expect(screen.getByLabelText('Session note description')).toBeInTheDocument();
+    expect(screen.getByRole('application', { name: 'Draw BCBA signature' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Treatment plan review' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Direct Supervision' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Link unlinked data' }));
-    fireEvent.click(screen.getByRole('radio', { name: 'Yes' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Treatment plan review' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Direct Supervision' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Link unlinked data' }));
+    await user.click(screen.getByRole('radio', { name: 'Yes' }));
     fireEvent.change(screen.getByLabelText('Session note description'), {
       target: { value: 'Observed prompting and feedback.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /save supervision note/i }));
-
+    await user.click(screen.getByRole('radio', { name: 'Type signature' }));
+    await user.type(screen.getByLabelText('Type BCBA signature'), 'Supervisor Name');
     await waitFor(() => {
-      expect(onCompleteSupervisionNote).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'request-1' }),
-        expect.objectContaining({
-          purpose_of_session: ['Treatment plan review'],
-          session_type: ['Direct Supervision'],
-          link_unlinked_data: true,
-          collected_by: '',
-          rbt_prepared: 'Yes',
-          session_note_description: 'Observed prompting and feedback.',
-        }),
-      );
+      expect(screen.getByLabelText('Type BCBA signature')).toHaveValue('Supervisor Name');
     });
+    expect(screen.getByRole('button', { name: /sign and complete supervision note/i })).toBeEnabled();
+    expect(screen.queryByText('BCBA Supervisor Signature is required.')).not.toBeInTheDocument();
+  });
+
+  it('shows review content but disables submission when only another BCBA can sign', () => {
+    const View = DashboardView as React.ComponentType<any>;
+
+    render(
+      <View
+        {...baseProps}
+        supervisionRequests={[
+          {
+            id: 'request-2',
+            organizationId: 'org-1',
+            sessionId: 'session-2',
+            clientId: 'client-2',
+            btTherapistId: 'bt-2',
+            assignedAdminUserId: 'bcba-2',
+            status: 'pending',
+            createdAt: '2026-06-29T20:00:00.000Z',
+            sessionStartTime: '2026-06-29T18:00:00.000Z',
+            sessionEndTime: '2026-06-29T19:00:00.000Z',
+            placeOfService: 'Clinic',
+            clientName: 'Client Two',
+            btTherapistName: 'BT Two',
+            btTherapistTitle: 'RBT',
+            canComplete: false,
+            btReview: {
+              noteId: 'bt-note-2',
+              responses: {
+                session_summary: 'BT note review copy.',
+              },
+              templateSnapshot: {
+                sections: [
+                  {
+                    key: 'bt_review',
+                    label: 'Completed BT ABA Session Note',
+                    fields: [{ key: 'session_summary', label: 'Session Summary', type: 'textarea' }],
+                  },
+                ],
+              },
+              signatureMethod: 'drawn',
+              signedAt: '2026-06-29T19:05:00.000Z',
+            },
+          },
+        ]}
+        supervisionTemplate={{
+          id: 'template-1',
+          templateName: 'Supervision Session Note',
+          sections: [
+            {
+              key: 'session_overview',
+              label: 'Session overview',
+              fields: [
+                { key: 'bcba_supervisor_signature', label: 'BCBA Supervisor Signature', type: 'signature', required: true },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /complete supervision note for client two/i }));
+
+    expect(screen.getByRole('heading', { name: 'Completed BT ABA Session Note' })).toBeInTheDocument();
+    expect(screen.getByText('BT note review copy.')).toBeInTheDocument();
+    expect(screen.getByText('Only the assigned BCBA can complete and sign this supervision note.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign and complete supervision note/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
   });
 
   it('blocks submit when a required checkbox group has no selection', async () => {
@@ -193,7 +287,7 @@ describe('Dashboard without client fallbacks', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /complete supervision note for client one/i }));
-    fireEvent.click(screen.getByRole('button', { name: /save supervision note/i }));
+    fireEvent.click(screen.getByRole('button', { name: /sign and complete supervision note/i }));
 
     expect(await screen.findByText('Select at least one RBT support received.')).toBeInTheDocument();
     expect(onCompleteSupervisionNote).not.toHaveBeenCalled();
@@ -254,7 +348,7 @@ describe('Dashboard without client fallbacks', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /complete supervision note for client one/i }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Other' }));
-    fireEvent.click(screen.getByRole('button', { name: /save supervision note/i }));
+    fireEvent.click(screen.getByRole('button', { name: /sign and complete supervision note/i }));
 
     expect(await screen.findByText('Other is required.')).toBeInTheDocument();
     expect(onCompleteSupervisionNote).not.toHaveBeenCalled();

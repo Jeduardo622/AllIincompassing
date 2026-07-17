@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@testing-library/react";
+import { QueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
 import { renderWithProviders, screen, waitFor } from "../../test/utils";
 
 const bookSessionViaApiMock = vi.fn();
@@ -374,6 +376,11 @@ const waitForScheduleGridReady = () =>
   }, { timeout: 10_000 });
 
 describe("Schedule orchestration integration hardening", () => {
+  const SearchProbe = () => {
+    const location = useLocation();
+    return <output data-testid="schedule-search">{location.search}</output>;
+  };
+
   const resetScheduleFixture = () => {
     Object.assign(scheduleFixtures.sessions[0], originalSessionFixture);
   };
@@ -804,6 +811,49 @@ describe("Schedule orchestration integration hardening", () => {
     expect(showSuccessMock.mock.calls.filter(([message]) => message === "Session marked as completed")).toHaveLength(1);
     expect(bookSessionViaApiMock).not.toHaveBeenCalled();
     expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("atomic BT completion closes a deep-linked modal and clears only its URL state", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    const expiresAtMs = Date.now() + 60_000;
+    let releaseRefresh!: () => void;
+    const pendingRefresh = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const invalidateQueriesSpy = vi
+      .spyOn(QueryClient.prototype, "invalidateQueries")
+      .mockReturnValue(pendingRefresh);
+
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+      {
+        auth: { role: "bt", organizationId: "org-1" },
+        router: {
+          initialEntries: [
+            `/?keep=1&scheduleModal=edit&scheduleSessionId=session-1&scheduleExp=${expiresAtMs}`,
+          ],
+        },
+      },
+    );
+
+    await screen.findByTestId("session-modal");
+    fireEvent.click(screen.getByLabelText("report-bt-atomic-completion"));
+
+    await waitFor(() => {
+      const params = new URLSearchParams(screen.getByTestId("schedule-search").textContent ?? "");
+      expect(params.get("keep")).toBe("1");
+      expect(params.has("scheduleModal")).toBe(false);
+      expect(params.has("scheduleSessionId")).toBe(false);
+      expect(params.has("scheduleExp")).toBe(false);
+    });
+    expect(screen.getByTestId("session-modal")).toBeInTheDocument();
+
+    releaseRefresh();
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
+    invalidateQueriesSpy.mockRestore();
   });
 
   it("rejects the legacy BT completed submission path", async () => {

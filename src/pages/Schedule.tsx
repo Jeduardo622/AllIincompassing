@@ -1459,6 +1459,8 @@ export const Schedule = React.memo(() => {
   const handleBtAbaSessionFinalized = useCallback(async ({ sessionId }: { sessionId: string }) => {
     if (btAbaCompletedSessionsRef.current.has(sessionId)) return;
     btAbaCompletedSessionsRef.current.add(sessionId);
+    const params = clearScheduleModalSearchParams(searchParams);
+    setSearchParams(params, { replace: true });
     showSuccess('Session marked as completed');
     try {
       if (selectedSession?.client_id) {
@@ -1480,7 +1482,7 @@ export const Schedule = React.memo(() => {
     } finally {
       applyScheduleResetBranch({ kind: 'submit-cancel' }, scheduleResetSetters);
     }
-  }, [activeOrganizationId, queryClient, scheduleResetSetters, selectedSession?.client_id]);
+  }, [activeOrganizationId, queryClient, scheduleResetSetters, searchParams, selectedSession?.client_id, setSearchParams]);
 
   const toRescheduledWindow = useCallback(
     (session: Session, target: { date: Date; time: string }) => {

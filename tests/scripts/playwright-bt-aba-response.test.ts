@@ -1,5 +1,7 @@
 /** @vitest-environment node */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import {
   formatRedactedCaptureFailure,
@@ -9,6 +11,12 @@ import {
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
 describe("BT ABA proof capture-response diagnostics", () => {
+  it("uses the exact Schedule deep link before capture and after draft reload", () => {
+    const source = readFileSync(path.join(process.cwd(), "scripts/playwright-bt-aba-session-note.ts"), "utf8");
+    expect(source.match(/openScheduleSessionModalFromDeepLink\(/g)).toHaveLength(2);
+    expect(source).not.toContain("openScheduleSessionModalFromCalendar(");
+  });
+
   it("matches only the exact legacy capture POST for the created session", () => {
     const payload = JSON.stringify({ sessionId: SESSION_ID, clientId: "22222222-2222-4222-8222-222222222222" });
     expect(isExactLegacyCaptureUpsertRequest("http://127.0.0.1:4173/api/session-notes/upsert", "POST", payload, SESSION_ID)).toBe(true);

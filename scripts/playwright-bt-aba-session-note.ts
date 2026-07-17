@@ -530,7 +530,7 @@ async function run(): Promise<void> {
     assert.equal((await draftResponse).ok(), true);
 
     await page.reload({ waitUntil: "networkidle" });
-    await openScheduleSessionModalFromCalendar(page, scheduleUrl, booked, { allowLockedTherapist: true });
+    await openScheduleSessionModalFromDeepLink(page, scheduleUrl, booked);
     const restored = page.locator('[role="dialog"]').first();
     await restored.getByRole("heading", { name: "ABA Session Note", exact: true }).waitFor({ state: "visible" });
     assert.equal(await restored.getByLabel("Client Status", { exact: true }).inputValue(), config.fixtureMarker);

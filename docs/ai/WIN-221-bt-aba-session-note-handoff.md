@@ -30,14 +30,16 @@ The dedicated script is destructive only on an explicitly acknowledged disposabl
 
 1. authenticates `PW_BT_EMAIL` / `PW_BT_PASSWORD`;
 2. resolves the direct `/auth/v1/user` response, derives authoritative organization scope from the authenticated `current_user_organization_id` RPC, and requires the persisted profile to agree;
-3. uses service-role reads to validate the explicit therapist, client, program, and goal IDs are active, same-organization, correctly linked, marker-bearing disposable fixtures with a current approved therapist-client authorization;
+3. uses service-role reads to validate the explicit therapist, client, program, goal, authorization ID, and authorization service code are active/current/approved as applicable, same-organization, correctly linked, and associated with the marker-bearing disposable graph;
 4. creates only one exact marked session on that validated graph, starts it, captures the explicit goal, and opens closeout;
 5. proves incomplete validation, saves a draft, reloads, and proves restoration;
 6. exercises drawn signature plus clear/retry, then uses the typed fallback;
-7. finalizes through `/api/session-notes/upsert`, proves the modal closes, exactly one completion signal appears, the refreshed Schedule card reports `data-session-status="completed"`, the note is locked, and one actor-owned BT attestation exists; and
-8. deletes the exact marker-matched session by ID and verifies its notes, attestations, trials, audit, supervision request, session-goal, CPT, and progression graph has no residual rows. It never changes a completed session to `cancelled`; an incomplete cleanup fails with an instruction to tear down the disposable branch.
+7. asserts the closeout UI and persisted capture use the explicit service code and authorization ID, with no first-option fallback; and
+8. finalizes through `/api/session-notes/upsert`, proves the modal closes, exactly one completion signal appears, the refreshed Schedule card reports `data-session-status="completed"`, the note is locked, and one actor-owned BT attestation exists.
 
-Required runtime inputs are `PW_BASE_URL`, `PW_BT_EMAIL`, `PW_BT_PASSWORD`, explicit `PW_BT_CLIENT_ID`, `PW_BT_PROGRAM_ID`, and `PW_BT_GOAL_ID`, a strong `PW_BT_FIXTURE_MARKER` present in every validated fixture identity field, `PW_BT_DISPOSABLE_PROJECT_REF`, `PW_BT_DISPOSABLE_ACK=I_ACKNOWLEDGE_DISPOSABLE_SUPABASE`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (or `SUPABASE_ANON_KEY`), and `SUPABASE_SERVICE_ROLE_KEY`. No credential or customer identifier is embedded in the repository, and no arbitrary client/program/goal selection is permitted.
+The script performs **no cleanup mutation** after success or failure. It leaves the completed synthetic graph intact for evidence and prints the exact project ref/session ID plus a mandatory whole-branch deletion instruction. The orchestrator must delete the disposable Supabase branch after evidence capture; the script never cancels or deletes session rows.
+
+Required runtime inputs are `PW_BASE_URL`, `PW_BT_EMAIL`, `PW_BT_PASSWORD`, explicit `PW_BT_CLIENT_ID`, `PW_BT_PROGRAM_ID`, `PW_BT_GOAL_ID`, `PW_BT_AUTHORIZATION_ID`, and `PW_BT_SERVICE_CODE`, a strong `PW_BT_FIXTURE_MARKER` present in every validated fixture identity field, `PW_BT_DISPOSABLE_PROJECT_REF`, `PW_BT_DISPOSABLE_ACK=I_ACKNOWLEDGE_DISPOSABLE_SUPABASE`, `PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK=delete-branch-after-run`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (or `SUPABASE_ANON_KEY`), and `SUPABASE_SERVICE_ROLE_KEY`. No credential or customer identifier is embedded in the repository, and no arbitrary client/program/goal/authorization/service selection is permitted.
 
 Authorized-reviewer browser visibility is **blocked**, not passed: the repository has no established safe synthetic reviewer credential/fixture path for this new note. Add that proof only after a dedicated reviewer persona and fixture contract are provisioned. Service-role artifact inspection in the script proves persistence, not reviewer UI authorization.
 
@@ -48,7 +50,7 @@ Authorized-reviewer browser visibility is **blocked**, not passed: the repositor
 - Database/API cross-layer review removed caller-controlled billing identity and routes assignment preflight through the protected RPC contract.
 - UI review added exact shared labels/options, conditional Other rules, exclusive N/A behavior, accessible first-error focus, bounded multi-stroke drawing, typed fallback, and same-session unsaved-state preservation.
 - Lifecycle review added durable draft auto-open, visible load/finalize failures, synchronous duplicate-finalize prevention, completion/refresh separation, canonical context derivation, and one completion callback/toast/reset.
-- Test/documentation review corrected the browser boundary to require an explicit marker-validated fixture graph and disposable-project acknowledgement before any write, assert visible Schedule completion processing, delete rather than cancel completed fixtures, and honestly defer reviewer visibility.
+- Test/documentation review corrected the browser boundary to require an explicit marker-validated fixture/billing graph and disposable-project teardown acknowledgement before any write, assert visible Schedule completion processing, preserve the completed graph for evidence with whole-branch teardown, and honestly defer reviewer visibility.
 
 ## Supabase compatibility and live-state boundary
 
@@ -71,7 +73,7 @@ The parent agent must replace each `PENDING`/`BLOCKED` entry with exact final ou
 | `npm run test:routes:tier0` | Not run in Task 6 implementation | `PENDING` |
 | `npm run build` | Fresh Task 6 pass | Parent should repeat after final review changes |
 | `npm run ci:playwright` | Not run with protected credentials in Task 6 implementation | `BLOCKED` until credentialed environment/CI |
-| `npm run playwright:bt-aba-session-note` | Missing-env preflight names every absent explicit input; separate no-network preflights refuse the production ref and a runtime/acknowledged project-ref mismatch before Chromium or writes | `BLOCKED` until the marker-validated disposable exact-BT graph and migrated DB are available |
+| `npm run playwright:bt-aba-session-note` | Missing-env preflight names every absent fixture, exact billing, and teardown-ack input; separate no-network preflights refuse the production ref and a runtime/acknowledged project-ref mismatch before Chromium or writes | `BLOCKED` until a wrapper provisions the marker-validated migrated branch, runs proof, preserves evidence, and deletes the whole branch |
 | `npm run verify:local` | Not run after integrated change | `PENDING`; preserve any DB/credential skips |
 | `npx supabase db reset` + SQL smoke | Local Supabase startup timed out | `BLOCKED` executable DB runtime required |
 | Hosted/preview migration replay and advisors | No hosted mutation performed | `BLOCKED` supervised disposable preview or approved hosted path required |
@@ -98,7 +100,7 @@ The parent agent must replace each `PENDING`/`BLOCKED` entry with exact final ou
 ## Merge blockers and follow-up
 
 1. Compile and replay the migration against a reset local or disposable Supabase database and run `tests/sql/bt_aba_session_note_closeout_smoke.sql` with `ON_ERROR_STOP=1`.
-2. Run the exact-BT browser lifecycle against a migrated synthetic environment.
+2. Add an orchestrator wrapper that provisions a migrated disposable branch, runs the exact-BT lifecycle, captures the emitted project ref/session ID evidence, and deletes the entire branch on both success and failure. The credentialed run remains blocked until that wrapper exists.
 3. Obtain human Supabase/security review of migration, grants/RLS, fixed-search-path privileged functions, replay semantics, and transaction rollback.
 4. Complete the mandatory command matrix and final `verify-change` / `pr-hygiene` verdicts.
 5. Provision a dedicated safe synthetic reviewer persona/path, then add reviewer-visibility browser proof without broadening BT authority.

@@ -37,6 +37,8 @@ type SafetyConfig = {
   clientId: string;
   programId: string;
   goalId: string;
+  authorizationId: string;
+  serviceCode: string;
 };
 
 type FixtureGraph = {
@@ -46,6 +48,8 @@ type FixtureGraph = {
   clientId: string;
   programId: string;
   goalId: string;
+  authorizationId: string;
+  serviceCode: string;
 };
 
 const normalizedEnv = (key: string, fallback?: string): string => (process.env[key] ?? fallback ?? "").trim();
@@ -58,9 +62,12 @@ const loadSafetyConfig = (): SafetyConfig => {
     ["PW_BT_CLIENT_ID", normalizedEnv("PW_BT_CLIENT_ID")],
     ["PW_BT_PROGRAM_ID", normalizedEnv("PW_BT_PROGRAM_ID")],
     ["PW_BT_GOAL_ID", normalizedEnv("PW_BT_GOAL_ID")],
+    ["PW_BT_AUTHORIZATION_ID", normalizedEnv("PW_BT_AUTHORIZATION_ID")],
+    ["PW_BT_SERVICE_CODE", normalizedEnv("PW_BT_SERVICE_CODE")],
     ["PW_BT_FIXTURE_MARKER", normalizedEnv("PW_BT_FIXTURE_MARKER")],
     ["PW_BT_DISPOSABLE_PROJECT_REF", normalizedEnv("PW_BT_DISPOSABLE_PROJECT_REF")],
     ["PW_BT_DISPOSABLE_ACK", normalizedEnv("PW_BT_DISPOSABLE_ACK")],
+    ["PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK", normalizedEnv("PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK")],
     ["VITE_SUPABASE_URL", normalizedEnv("VITE_SUPABASE_URL")],
     ["VITE_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY)", normalizedEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY)],
     ["SUPABASE_SERVICE_ROLE_KEY", normalizedEnv("SUPABASE_SERVICE_ROLE_KEY")],
@@ -85,11 +92,15 @@ const loadSafetyConfig = (): SafetyConfig => {
     ["PW_BT_CLIENT_ID", normalizedEnv("PW_BT_CLIENT_ID")],
     ["PW_BT_PROGRAM_ID", normalizedEnv("PW_BT_PROGRAM_ID")],
     ["PW_BT_GOAL_ID", normalizedEnv("PW_BT_GOAL_ID")],
+    ["PW_BT_AUTHORIZATION_ID", normalizedEnv("PW_BT_AUTHORIZATION_ID")],
   ]) {
     if (!UUID_PATTERN.test(value)) throw new Error(`${key} must be an explicit UUID.`);
   }
   if (normalizedEnv("PW_BT_DISPOSABLE_ACK") !== DISPOSABLE_ACK) {
     throw new Error(`PW_BT_DISPOSABLE_ACK must equal ${DISPOSABLE_ACK}.`);
+  }
+  if (normalizedEnv("PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK") !== "delete-branch-after-run") {
+    throw new Error("PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK must equal delete-branch-after-run.");
   }
   let runtimeRef = "";
   try {
@@ -118,6 +129,8 @@ const loadSafetyConfig = (): SafetyConfig => {
     clientId: normalizedEnv("PW_BT_CLIENT_ID"),
     programId: normalizedEnv("PW_BT_PROGRAM_ID"),
     goalId: normalizedEnv("PW_BT_GOAL_ID"),
+    authorizationId: normalizedEnv("PW_BT_AUTHORIZATION_ID"),
+    serviceCode: normalizedEnv("PW_BT_SERVICE_CODE"),
   };
 };
 
@@ -225,19 +238,31 @@ const validateFixtureGraphReadOnly = async (
   assert.equal(roleNames.some((role) => ["admin", "admin_schedule", "midtier", "bcba", "therapist"].includes(role)), false);
 
   const today = new Date().toISOString().slice(0, 10);
-  const { data: authorizations, error: authorizationError } = await admin
+  const { data: authorization, error: authorizationError } = await admin
     .from("authorizations")
-    .select("id")
+    .select("id, organization_id, client_id, provider_id, status, start_date, end_date")
+    .eq("id", config.authorizationId)
     .eq("organization_id", organizationId)
     .eq("client_id", client.id)
     .eq("provider_id", therapist.id)
-    .eq("status", "approved")
-    .lte("start_date", today)
-    .gte("end_date", today)
-    .limit(1);
+    .maybeSingle();
   if (authorizationError) throw new Error(`Unable to validate fixture authorization: ${authorizationError.message}`);
-  assert.equal(authorizations?.length, 1, "Explicit fixture graph needs a current approved therapist-client authorization.");
-  return { actorId: actor.id, organizationId, therapistId: therapist.id, clientId: client.id, programId: program.id, goalId: goal.id };
+  assert.ok(authorization, "Explicit authorization ID must belong to the marker-validated therapist/client graph.");
+  assert.equal(authorization.status, "approved");
+  assert.ok(authorization.start_date <= today && authorization.end_date >= today, "Explicit authorization must be current.");
+  const { data: service, error: serviceError } = await admin.from("authorization_services")
+    .select("authorization_id, service_code, decision_status, from_date, to_date")
+    .eq("authorization_id", config.authorizationId)
+    .eq("service_code", config.serviceCode)
+    .maybeSingle();
+  if (serviceError) throw new Error(`Unable to validate exact authorization service: ${serviceError.message}`);
+  assert.ok(service, "Explicit service code must belong to the explicit authorization.");
+  assert.equal(service.decision_status, "approved");
+  assert.ok(service.from_date <= today && service.to_date >= today, "Explicit authorization service must be current.");
+  return {
+    actorId: actor.id, organizationId, therapistId: therapist.id, clientId: client.id,
+    programId: program.id, goalId: goal.id, authorizationId: authorization.id, serviceCode: service.service_code,
+  };
 };
 
 const createExactSession = async (admin: SupabaseClient, graph: FixtureGraph, marker: string): Promise<LifecycleIds> => {
@@ -266,17 +291,6 @@ const createExactSession = async (admin: SupabaseClient, graph: FixtureGraph, ma
   throw new Error("Exact disposable session insert could not find a non-overlapping slot.");
 };
 
-const selectFirstOptionIfEmpty = async (locator: ReturnType<Page["locator"]>, label: string): Promise<void> => {
-  const select = locator.first();
-  if ((await select.count()) === 0 || (await select.inputValue()).trim()) return;
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    const values = await select.locator("option").evaluateAll((options) => options.map((node) => (node as HTMLOptionElement).value).filter(Boolean));
-    if (values[0]) { await select.selectOption(values[0]); return; }
-    await select.page().waitForTimeout(250);
-  }
-  throw new Error(`No selectable ${label} exists for the explicit disposable fixture.`);
-};
-
 const waitForSessionStatus = async (admin: SupabaseClient, sessionId: string, expected: string): Promise<void> => {
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
@@ -299,37 +313,6 @@ const assertFinalizedArtifacts = async (admin: SupabaseClient, ids: LifecycleIds
   if (attestationError) throw new Error(`Unable to read disposable attestation: ${attestationError.message}`);
   assert.equal(attestations?.length, 1);
   assert.equal(attestations?.[0]?.signer_user_id, actorId);
-};
-
-const cleanupExactSessionGraph = async (admin: SupabaseClient, sessionId: string, marker: string, projectRef: string): Promise<void> => {
-  const { data: session, error: sessionReadError } = await admin.from("sessions").select("id, notes").eq("id", sessionId).maybeSingle();
-  if (sessionReadError) throw new Error(`Disposable cleanup could not read exact session: ${sessionReadError.message}`);
-  if (!session) return;
-  assert.equal(session.notes, marker, "Refusing cleanup because the exact session marker does not match.");
-  const { data: notes, error: notesError } = await admin.from("client_session_notes").select("id").eq("session_id", sessionId);
-  if (notesError) throw new Error(`Disposable cleanup could not inventory notes: ${notesError.message}`);
-  const noteIds = (notes ?? []).map((note) => note.id);
-  const { error: deleteError } = await admin.from("sessions").delete().eq("id", sessionId).eq("notes", marker);
-  if (deleteError) {
-    throw new Error(`Exact fixture graph deletion failed: ${deleteError.message}. Tear down disposable Supabase branch ${projectRef}; never reuse it.`);
-  }
-  const sessionTables = [
-    "sessions", "client_session_notes", "trial_events", "session_audit_logs", "supervision_session_note_requests",
-    "session_goals", "session_cpt_entries", "goal_target_phase_evaluations", "goal_target_transitions",
-  ];
-  const residuals: string[] = [];
-  for (const table of sessionTables) {
-    const column = table === "sessions" ? "id" : "session_id";
-    const { count, error } = await admin.from(table).select("*", { count: "exact", head: true }).eq(column, sessionId);
-    if (error) throw new Error(`Cleanup verification failed for ${table}: ${error.message}. Tear down disposable branch ${projectRef}.`);
-    if ((count ?? 0) > 0) residuals.push(`${table}:${count}`);
-  }
-  if (noteIds.length) {
-    const { count, error } = await admin.from("session_note_attestations").select("*", { count: "exact", head: true }).in("note_id", noteIds);
-    if (error) throw new Error(`Cleanup verification failed for attestations: ${error.message}. Tear down disposable branch ${projectRef}.`);
-    if ((count ?? 0) > 0) residuals.push(`session_note_attestations:${count}`);
-  }
-  if (residuals.length) throw new Error(`Disposable cleanup left ${residuals.join(", ")}. Tear down disposable Supabase branch ${projectRef}; never reuse it.`);
 };
 
 async function run(): Promise<void> {
@@ -361,14 +344,20 @@ async function run(): Promise<void> {
       await openScheduleSessionModalFromCalendar(page!, scheduleUrl, booked, { allowLockedTherapist: true });
       const dialog = page!.locator('[role="dialog"]').first();
       await dialog.getByTestId("session-modal-capture-section").waitFor({ state: "visible" });
-      await selectFirstOptionIfEmpty(dialog.locator('#session-note-auth-select, select[name="session_note_authorization_id"]'), "authorization");
-      await selectFirstOptionIfEmpty(dialog.locator('#session-note-service-code-select, select[name="session_note_service_code"]'), "service code");
       await dialog.locator(`#goal-note-${booked.goalId}`).fill(`Synthetic goal note ${config.fixtureMarker}`);
       await dialog.getByRole("button", { name: "Close Session", exact: true }).click();
       await dialog.getByRole("heading", { name: "ABA Session Note", exact: true }).waitFor({ state: "visible" });
     });
 
     const closeout = page.locator('[role="dialog"]').first();
+    const billingCode = closeout.locator("dt", { hasText: /^Billing Code$/ }).locator("xpath=following-sibling::dd[1]");
+    await billingCode.waitFor({ state: "visible" });
+    assert.equal((await billingCode.textContent())?.trim(), graph.serviceCode, "Closeout UI must display the explicit service code.");
+    const { data: captureNote, error: captureNoteError } = await admin.from("client_session_notes")
+      .select("authorization_id, service_code").eq("session_id", booked.sessionId).maybeSingle();
+    if (captureNoteError || !captureNote) throw new Error(`Unable to verify exact capture billing: ${captureNoteError?.message ?? "missing note"}`);
+    assert.equal(captureNote.authorization_id, graph.authorizationId);
+    assert.equal(captureNote.service_code, graph.serviceCode);
     await closeout.getByRole("button", { name: "Finalize Session", exact: true }).click();
     await closeout.getByText("Purpose of Session is required", { exact: true }).waitFor({ state: "visible" });
     await closeout.getByText("Behavior Technician signature is required", { exact: true }).waitFor({ state: "visible" });
@@ -414,23 +403,31 @@ async function run(): Promise<void> {
     await waitForSessionStatus(admin, booked.sessionId, "completed");
     await assertFinalizedArtifacts(admin, booked, actor.id, config.fixtureMarker);
 
-    console.log(JSON.stringify({ ok: true, sessionId: booked.sessionId, projectRef: config.projectRef, reviewerVisibility: "blocked:no-safe-synthetic-reviewer-path" }));
+    console.log(JSON.stringify({
+      ok: true,
+      sessionId: booked.sessionId,
+      projectRef: config.projectRef,
+      teardownRequired: `Delete disposable Supabase branch ${config.projectRef} after preserving evidence for session ${booked.sessionId}.`,
+      reviewerVisibility: "blocked:no-safe-synthetic-reviewer-path",
+    }));
   } catch (error) {
     const screenshot = page ? await captureFailureScreenshot(page, "playwright-bt-aba-session-note") : "N/A";
-    console.error(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error), screenshot, sessionId: createdSessionId }));
+    console.error(JSON.stringify({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      screenshot,
+      sessionId: createdSessionId,
+      projectRef: config.projectRef,
+      teardownRequired: `Delete disposable Supabase branch ${config.projectRef}; this script intentionally performs no cleanup mutation.`,
+    }));
     runError = error;
   }
 
-  let cleanupError: unknown;
   try {
-    if (createdSessionId) await cleanupExactSessionGraph(admin, createdSessionId, config.fixtureMarker, config.projectRef);
-  } catch (error) {
-    cleanupError = error;
-  } finally {
     await context?.close();
+  } finally {
     await browser.close();
   }
-  if (cleanupError) throw cleanupError;
   if (runError) throw runError;
 }
 

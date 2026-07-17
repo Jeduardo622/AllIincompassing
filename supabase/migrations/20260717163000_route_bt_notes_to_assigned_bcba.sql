@@ -446,7 +446,7 @@ begin
     session.end_time as session_end_time,
     session.location_type as place_of_service,
     client.full_name as client_name,
-    therapist.name as bt_therapist_name,
+    therapist.full_name as bt_therapist_name,
     therapist.title as bt_therapist_title,
     bt_note.id as bt_note_id,
     bt_note.bt_aba_responses as bt_responses,

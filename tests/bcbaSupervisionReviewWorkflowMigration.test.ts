@@ -48,6 +48,8 @@ describe('BCBA supervision review workflow migration', () => {
     expect(sql).toMatch(/bt_aba_responses/i);
     expect(sql).toMatch(/bt_aba_template_snapshot/i);
     expect(sql).toMatch(/attestation_role = 'bt'/i);
+    expect(sql).toMatch(/therapist\.full_name as bt_therapist_name/i);
+    expect(sql).not.toMatch(/therapist\.name as bt_therapist_name/i);
     expect(sql).toMatch(/revoke all on function public\.get_pending_supervision_review_packets\(\) from public, anon/i);
   });
 

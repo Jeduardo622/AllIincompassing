@@ -22,8 +22,8 @@ describe("BT ABA proof capture-response diagnostics", () => {
   it("books the synthetic session inside the rendered Schedule grid timezone", () => {
     const source = readFileSync(path.join(process.cwd(), "scripts/playwright-bt-aba-session-note.ts"), "utf8");
     expect(source).toContain("resolveBrowserScheduleTimeZone(page!)");
-    expect(source).toContain("buildInProgressSessionBookingBaseStart(new Date(), undefined, timeZone)");
-    expect(source).toContain("buildVisibleScheduleBookingAttemptStart(base, attempt, timeZone)");
+    expect(source).toContain("buildCurrentDayVisibleScheduleBookingBaseStart(new Date(), undefined, timeZone)");
+    expect(source).toContain("attempt === 0 ? base : buildVisibleScheduleBookingAttemptStart(base, attempt, timeZone)");
   });
 
   it("matches only the exact legacy capture POST for the created session", () => {

@@ -11,7 +11,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
 import {
-  buildInProgressSessionBookingBaseStart,
+  buildCurrentDayVisibleScheduleBookingBaseStart,
   buildVisibleScheduleBookingAttemptStart,
   fetchAccessTokenForCredentials,
   resolveBrowserScheduleTimeZone,
@@ -334,9 +334,9 @@ const createExactSession = async (
   marker: string,
   timeZone: string,
 ): Promise<LifecycleIds> => {
-  const base = buildInProgressSessionBookingBaseStart(new Date(), undefined, timeZone);
+  const base = buildCurrentDayVisibleScheduleBookingBaseStart(new Date(), undefined, timeZone);
   for (let attempt = 0; attempt < 48; attempt += 1) {
-    const start = buildVisibleScheduleBookingAttemptStart(base, attempt, timeZone);
+    const start = attempt === 0 ? base : buildVisibleScheduleBookingAttemptStart(base, attempt, timeZone);
     const end = new Date(start.getTime() + 60 * 60_000);
     const { data, error } = await admin.from("sessions").insert({
       organization_id: graph.organizationId,

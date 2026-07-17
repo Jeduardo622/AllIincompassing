@@ -3,6 +3,7 @@ import { formatInTimeZone } from "date-fns-tz";
 
 import {
   BOOKING_ATTEMPTS_PER_TARGET_PAIR,
+  buildCurrentDayVisibleScheduleBookingBaseStart,
   buildInProgressSessionBookingBaseStart,
   buildVisibleScheduleBookingAttemptStart,
   buildVisibleScheduleBookingBaseStart,
@@ -10,6 +11,18 @@ import {
 } from "../../../scripts/lib/playwright-inprogress-session-setup";
 
 describe("playwright in-progress session setup", () => {
+  it("chooses a visible hour in the browser's current Schedule week", () => {
+    const now = new Date("2026-06-22T01:30:00.000Z");
+    const timeZone = "America/Los_Angeles";
+
+    for (let seed = 0; seed < 10; seed += 1) {
+      const start = buildCurrentDayVisibleScheduleBookingBaseStart(now, seed, timeZone);
+      expect(formatInTimeZone(start, timeZone, "yyyy-MM-dd i")).toBe("2026-06-20 6");
+      expect([8, 10, 12, 14, 16]).toContain(Number(formatInTimeZone(start, timeZone, "H")));
+      expect(formatInTimeZone(start, timeZone, "mm:ss")).toBe("00:00");
+    }
+  });
+
   it("chooses a future base start inside the rendered schedule grid timezone", () => {
     const now = new Date("2026-06-18T23:30:00.000Z");
     const timeZone = "America/Los_Angeles";

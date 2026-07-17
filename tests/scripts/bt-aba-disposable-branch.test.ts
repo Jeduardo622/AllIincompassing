@@ -62,7 +62,7 @@ describe('BT ABA disposable branch lifecycle guard', () => {
 
   it('creates without production data, polls healthy, masks keys, and exports branch values', async () => {
     const calls: string[][] = [];
-    let getCalls = 0;
+    let listCalls = 0;
     const runner: SupabaseCommandRunner = vi.fn(async (args) => {
       calls.push(args);
       if (args[0] === 'branches' && args[1] === 'create') {
@@ -74,15 +74,15 @@ describe('BT ABA disposable branch lifecycle guard', () => {
           status: 'COMING_UP',
         } } })}\nDisposable branch created.`;
       }
-      if (args[0] === 'branches' && args[1] === 'get') {
-        getCalls += 1;
-        return JSON.stringify({ result: {
+      if (args[0] === 'branches' && args[1] === 'list') {
+        listCalls += 1;
+        return JSON.stringify({ result: [{
           id: BRANCH_ID,
           name: BRANCH_NAME,
           project_ref: BRANCH_REF,
           parent_project_ref: PRODUCTION_REF,
-          status: getCalls === 1 ? 'COMING_UP' : 'ACTIVE_HEALTHY',
-        } });
+          status: listCalls === 1 ? 'COMING_UP' : 'ACTIVE_HEALTHY',
+        }] });
       }
       if (args[0] === 'projects' && args[1] === 'api-keys') {
         return JSON.stringify([
@@ -201,7 +201,7 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     }
   });
 
-  it('rejects a wrapped get response with no exact identity match before key export', async () => {
+  it('rejects a wrapped poll-list response with no exact identity match before key export', async () => {
     const calls: string[][] = [];
     const runner: SupabaseCommandRunner = vi.fn(async (args) => {
       calls.push(args);
@@ -214,14 +214,14 @@ describe('BT ABA disposable branch lifecycle guard', () => {
           status: 'COMING_UP',
         } });
       }
-      if (args[0] === 'branches' && args[1] === 'get') {
-        return JSON.stringify({ data: {
+      if (args[0] === 'branches' && args[1] === 'list') {
+        return JSON.stringify({ data: [{
           id: 'changed-branch-id',
           name: BRANCH_NAME,
           project_ref: BRANCH_REF,
           parent_project_ref: PRODUCTION_REF,
           status: 'ACTIVE_HEALTHY',
-        } });
+        }] });
       }
       throw new Error(`Unexpected command: ${args.join(' ')}`);
     });
@@ -235,6 +235,7 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     })).rejects.toThrow(/exactly one requested child branch/i);
 
     expect(calls.some((args) => args[0] === 'projects' && args[1] === 'api-keys')).toBe(false);
+    expect(calls.some((args) => args[0] === 'branches' && args[1] === 'get')).toBe(false);
   });
 
   it('deletes only the matching child branch and verifies it is absent', async () => {

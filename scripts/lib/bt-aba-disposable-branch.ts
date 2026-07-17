@@ -296,8 +296,8 @@ export const createDisposableBranch = async (
   let healthyBranch: BranchDetails | undefined;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const branch = parseBranch(await runner(commandArgs([
-      'branches', 'get', branchId,
-    ], parentRef)), 'branches get', { branchName, parentRef, branchId, branchRef });
+      'branches', 'list',
+    ], parentRef)), 'branches list polling', { branchName, parentRef, branchId, branchRef });
     assertChildIdentity(parentRef, branch);
     if (branch.id !== branchId || branch.project_ref !== branchRef) {
       throw new Error('Disposable branch identity changed while polling.');

@@ -772,6 +772,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     type="button"
                     onClick={() => {
                       setSupervisionValidationErrors({});
+                      setBcbaSignature({ method: 'drawn', value: '' });
                       setActiveSupervisionRequest(null);
                     }}
                     className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"

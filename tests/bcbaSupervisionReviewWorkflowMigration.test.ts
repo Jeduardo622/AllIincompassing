@@ -43,6 +43,8 @@ describe('BCBA supervision review workflow migration', () => {
     expect(sql).toMatch(/app\.user_has_exact_active_role_for_org\([\s\S]*array\['bcba'\]::text\[\]/i);
     expect(sql).toMatch(/app\.user_has_any_active_role_for_org\([\s\S]*array\['admin', 'super_admin', 'org_admin', 'org_super_admin'\]/i);
     expect(sql).not.toMatch(/app\.user_has_role_for_org\([\s\S]*array\['bcba'\]/i);
+    expect(sql).toMatch(/grant execute on function app\.user_has_any_active_role_for_org\(uuid, uuid, text\[\]\) to authenticated, service_role/i);
+    expect(sql).toMatch(/grant execute on function app\.user_has_exact_active_role_for_org\(uuid, uuid, text\[\]\) to authenticated, service_role/i);
   });
 
   it('returns a tenant-checked immutable BT review packet and fails closed on missing BT notes', () => {
@@ -50,6 +52,7 @@ describe('BCBA supervision review workflow migration', () => {
     expect(sql).toMatch(/bt_aba_responses/i);
     expect(sql).toMatch(/bt_aba_template_snapshot/i);
     expect(sql).toMatch(/attestation_role = 'bt'/i);
+    expect(sql).toMatch(/left join lateral \([\s\S]*session_note_attestations attestation[\s\S]*order by attestation\.signed_at desc, attestation\.id desc[\s\S]*limit 1[\s\S]*\) bt_attestation on true/i);
     expect(sql).toMatch(/therapist\.full_name as bt_therapist_name/i);
     expect(sql).not.toMatch(/therapist\.name as bt_therapist_name/i);
     expect(sql).toMatch(/Pending supervision request is missing BT session note/i);

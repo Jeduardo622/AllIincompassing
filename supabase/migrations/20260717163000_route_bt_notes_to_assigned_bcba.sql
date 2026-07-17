@@ -1,7 +1,7 @@
 /*
   @migration-intent: Route BT supervision reviews to a deterministically assigned BCBA, expose pending BT review packets, and require an assigned exact-BCBA completion attestation.
   @migration-dependencies: 20260629233000_create_supervision_session_note_workflow.sql,20260716212837_bt_aba_session_note_closeout.sql,20260717144005_require_supervision_session_note_fields.sql
-  @migration-rollback: Restore the prior supervision request select policies and request/completion RPC definitions from 20260629233000_create_supervision_session_note_workflow.sql, revert the canonical supervision template field requirements introduced here, then drop public.get_pending_supervision_review_packets() and app.resolve_supervision_bcba_assignee(uuid, uuid) if this routing contract is intentionally reverted.
+  @migration-rollback: Restore the prior supervision request select policies and request/completion RPC definitions from 20260629233000_create_supervision_session_note_workflow.sql, revert the canonical supervision template field requirements, remove the supervision-note attestation target/check/indexes and restore note_id not-null plus the prior client-note uniqueness constraint, then drop public.get_pending_supervision_review_packets() and app.resolve_supervision_bcba_assignee(uuid, uuid) if this routing contract is intentionally reverted.
 */
 
 begin;
@@ -33,7 +33,7 @@ as $$
 $$;
 
 revoke all on function app.user_has_any_active_role_for_org(uuid, uuid, text[]) from public, anon, authenticated;
-grant execute on function app.user_has_any_active_role_for_org(uuid, uuid, text[]) to service_role;
+grant execute on function app.user_has_any_active_role_for_org(uuid, uuid, text[]) to authenticated, service_role;
 
 create or replace function app.user_has_exact_active_role_for_org(
   p_user_id uuid,
@@ -76,7 +76,7 @@ as $$
 $$;
 
 revoke all on function app.user_has_exact_active_role_for_org(uuid, uuid, text[]) from public, anon, authenticated;
-grant execute on function app.user_has_exact_active_role_for_org(uuid, uuid, text[]) to service_role;
+grant execute on function app.user_has_exact_active_role_for_org(uuid, uuid, text[]) to authenticated, service_role;
 
 alter table public.session_note_attestations
   add column if not exists supervision_note_id uuid references public.supervision_session_notes(id) on delete cascade;
@@ -639,10 +639,15 @@ begin
     order by note.updated_at desc, note.id
     limit 1
   ) bt_note on true
-  left join public.session_note_attestations bt_attestation
-    on bt_attestation.note_id = bt_note.id
-   and bt_attestation.organization_id = request.organization_id
-   and bt_attestation.attestation_role = 'bt'
+  left join lateral (
+    select attestation.signature_method, attestation.signed_at
+    from public.session_note_attestations attestation
+    where attestation.note_id = bt_note.id
+      and attestation.organization_id = request.organization_id
+      and attestation.attestation_role = 'bt'
+    order by attestation.signed_at desc, attestation.id desc
+    limit 1
+  ) bt_attestation on true
   left join lateral (
     select seeded_template.id, seeded_template.template_name, seeded_template.template_structure
     from public.session_note_templates seeded_template

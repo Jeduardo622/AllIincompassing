@@ -125,11 +125,56 @@ export const classifyApiKeys = (keys: ApiKeyDetails[]): ClassifiedApiKeys => {
 };
 
 const parseJson = (raw: string, command: string): unknown => {
+  const normalized = raw.replace(/^\uFEFF/, '').trim();
   try {
-    return JSON.parse(raw) as unknown;
+    return JSON.parse(normalized) as unknown;
   } catch {
-    throw new Error(`Supabase ${command} did not return valid JSON.`);
+    // Some Supabase CLI releases decorate otherwise-valid JSON with status
+    // notices. Extract one balanced JSON object/array without ever echoing the
+    // raw response, which can include branch credentials.
   }
+
+  const payloads: unknown[] = [];
+  for (let start = 0; start < normalized.length; start += 1) {
+    const opener = normalized[start];
+    if (opener !== '{' && opener !== '[') continue;
+
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+    for (let end = start; end < normalized.length; end += 1) {
+      const character = normalized[end];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') {
+        inString = true;
+        continue;
+      }
+      if (character === '{' || character === '[') stack.push(character);
+      else if (character === '}' || character === ']') {
+        const expected = character === '}' ? '{' : '[';
+        if (stack.pop() !== expected) break;
+        if (stack.length === 0) {
+          try {
+            payloads.push(JSON.parse(normalized.slice(start, end + 1)) as unknown);
+            start = end;
+          } catch {
+            // A balanced notice such as "[warning]" is not JSON; keep looking.
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (payloads.length !== 1) {
+    throw new Error(`Supabase ${command} must return exactly one JSON payload.`);
+  }
+  return payloads[0];
 };
 
 const parseBranch = (raw: string, command: string): BranchDetails => {

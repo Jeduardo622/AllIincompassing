@@ -66,13 +66,13 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     const runner: SupabaseCommandRunner = vi.fn(async (args) => {
       calls.push(args);
       if (args[0] === 'branches' && args[1] === 'create') {
-        return JSON.stringify({
+        return `Creating disposable branch...\n${JSON.stringify({
           id: BRANCH_ID,
           name: BRANCH_NAME,
           project_ref: BRANCH_REF,
           parent_project_ref: PRODUCTION_REF,
           status: 'COMING_UP',
-        });
+        })}\nDisposable branch created.`;
       }
       if (args[0] === 'branches' && args[1] === 'get') {
         getCalls += 1;
@@ -128,6 +128,26 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+
+  it('fails closed when decorated CLI output contains more than one JSON payload', async () => {
+    const runner: SupabaseCommandRunner = vi.fn(async () => [
+      JSON.stringify({
+        id: BRANCH_ID,
+        name: BRANCH_NAME,
+        project_ref: BRANCH_REF,
+        parent_project_ref: PRODUCTION_REF,
+        status: 'COMING_UP',
+      }),
+      JSON.stringify({ warning: 'ambiguous second payload' }),
+    ].join('\n'));
+
+    await expect(createDisposableBranch({
+      parentRef: PRODUCTION_REF,
+      branchName: BRANCH_NAME,
+      runner,
+      sleep: async () => undefined,
+    })).rejects.toThrow(/exactly one JSON payload/i);
   });
 
   it.each([undefined, 'wrong-branch'])('rejects an unsafe created branch name %s before polling or key export', async (name) => {

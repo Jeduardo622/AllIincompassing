@@ -3,6 +3,7 @@
  * All fixture identities are explicit and marker-validated before the first write.
  */
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -55,6 +56,18 @@ type FixtureGraph = {
 };
 
 const normalizedEnv = (key: string, fallback?: string): string => (process.env[key] ?? fallback ?? "").trim();
+
+const captureBtFailureScreenshot = async (page: Page): Promise<string> => {
+  const dedicatedDirectory = normalizedEnv("PW_BT_PROOF_ARTIFACT_DIR");
+  if (!dedicatedDirectory) {
+    return captureFailureScreenshot(page, "playwright-bt-aba-session-note");
+  }
+  const resolvedDirectory = path.resolve(dedicatedDirectory);
+  await mkdir(resolvedDirectory, { recursive: true });
+  const screenshotPath = path.join(resolvedDirectory, `playwright-bt-aba-session-note-${Date.now()}.png`);
+  await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => undefined);
+  return screenshotPath;
+};
 
 const loadSafetyConfig = (): SafetyConfig => {
   const required: Array<[string, string]> = [
@@ -478,7 +491,7 @@ async function run(): Promise<void> {
       const screenshotResult = await boundedBestEffort("failure-screenshot", async () => {
         if (dryRunMode === "screenshot-failure") throw new Error("Simulated screenshot capture failure.");
         if (dryRunMode === "hanging-cleanup") return await new Promise<string>(() => undefined);
-        return await captureFailureScreenshot(page!, "playwright-bt-aba-session-note");
+        return await captureBtFailureScreenshot(page!);
       });
       screenshot = screenshotResult.ok
         ? screenshotResult.value

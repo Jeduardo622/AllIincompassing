@@ -136,13 +136,13 @@ jobs:
         env:
           VALIDATED_SHA: ${{ needs.validate.outputs.validated_sha }}
         run: |
-          mkdir -p "$RUNNER_TEMP/bt-aba-proof"
+          mkdir -p "$RUNNER_TEMP/bt-aba-proof" "$RUNNER_TEMP/bt-aba-public-evidence"
           {
             echo "workflow_run_id=${GITHUB_RUN_ID}"
             echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
             echo "validated_sha=${VALIDATED_SHA}"
             echo "branch_name=${SUPABASE_BRANCH_NAME}"
-          } > "$RUNNER_TEMP/bt-aba-proof/evidence.txt"
+          } > "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
 
       - name: Create and poll disposable branch and retrieve masked keys
         env:
@@ -193,7 +193,7 @@ jobs:
             echo "branch_id=${SUPABASE_BRANCH_ID}"
             echo "branch_project_ref=${SUPABASE_BRANCH_PROJECT_REF}"
             echo "branch_lifecycle=ACTIVE_HEALTHY"
-          } >> "$RUNNER_TEMP/bt-aba-proof/evidence.txt"
+          } >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
 
       - name: Link validated branch and apply exact closeout migration
         env:
@@ -221,7 +221,7 @@ jobs:
           echo "$!" > "$RUNNER_TEMP/bt-aba-proof/preview.pid"
           for attempt in $(seq 1 30); do
             if curl --fail --silent --show-error "$PW_BASE_URL/__supabase/auth/v1/health" > /dev/null; then
-              echo "preview_health=ready" >> "$RUNNER_TEMP/bt-aba-proof/evidence.txt"
+              echo "preview_health=ready" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
               exit 0
             fi
             if ! kill -0 "$(cat "$RUNNER_TEMP/bt-aba-proof/preview.pid")" 2>/dev/null; then
@@ -235,10 +235,12 @@ jobs:
           exit 1
 
       - name: Run BT ABA session-note browser proof
+        env:
+          PW_BT_PROOF_ARTIFACT_DIR: ${{ runner.temp }}/bt-aba-public-evidence
         run: |
           SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")" \
             npm run playwright:bt-aba-session-note
-          echo "browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-proof/evidence.txt"
+          echo "browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
 
       - name: Stop protected preview
         if: always()
@@ -252,9 +254,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: bt-aba-disposable-proof-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/bt-aba-proof/evidence.txt
-            artifacts/latest/**
+          path: ${{ runner.temp }}/bt-aba-public-evidence/**
           if-no-files-found: warn
           retention-days: 7
 

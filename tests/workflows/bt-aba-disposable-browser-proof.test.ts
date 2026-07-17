@@ -167,8 +167,10 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(proofUploadIndex).toBeGreaterThan(stopIndex);
     expect(proofSteps[stopIndex]?.if).toBe('always()');
     expect(proofUpload?.if).toBe('always()');
+    expect(proofUpload?.with?.path).toBe('${{ runner.temp }}/bt-aba-public-evidence/**');
     expect(proofUpload?.with?.path).not.toContain('branch-secrets.env');
     expect(proofUpload?.with?.path).not.toContain('preview.log');
+    expect(proofUpload?.with?.path).not.toContain('artifacts/latest');
     expect(cleanup?.needs).toEqual(['validate', 'proof']);
     expect(cleanup?.permissions).toEqual({ contents: 'read' });
     expect(cleanup?.if).toBe("always() && needs.validate.result == 'success'");
@@ -204,7 +206,8 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(source).toContain('npx tsx scripts/provision-ci-smoke-bt-aba.ts');
     expect(source).toContain('PREVIEW_ENABLE_SESSION_NOTES_API="true"');
     expect(source).toContain('npm run playwright:bt-aba-session-note');
-    expect(source).toContain('artifacts/latest/**');
+    expect(source).toContain('PW_BT_PROOF_ARTIFACT_DIR: ${{ runner.temp }}/bt-aba-public-evidence');
+    expect(source).not.toContain('artifacts/latest/**');
     expect(source).not.toMatch(/artifacts:[\s\S]*branch-secrets\.env/);
   });
 

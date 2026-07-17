@@ -169,7 +169,7 @@ Run:
 ```bash
 npx vitest run tests/btAbaSessionNoteMigration.test.ts src/tests/security/rls.spec.ts
 npx supabase db reset
-psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -v ON_ERROR_STOP=1 -f tests/sql/bt_aba_session_note_closeout_smoke.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f tests/sql/bt_aba_session_note_closeout_smoke.sql
 ```
 
 Expected: PASS, or the SQL smoke is explicitly deferred if the local database runtime is unavailable.

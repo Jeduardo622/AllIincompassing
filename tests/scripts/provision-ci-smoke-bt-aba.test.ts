@@ -2,6 +2,8 @@
  * @vitest-environment node
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import {
   PRODUCTION_PROJECT_REF,
@@ -20,6 +22,21 @@ const CLIENT_ID = "33333333-3333-4333-8333-333333333333";
 const PROGRAM_ID = "44444444-4444-4444-8444-444444444444";
 const GOAL_ID = "55555555-5555-4555-8555-555555555555";
 const AUTHORIZATION_ID = "66666666-6666-4666-8666-666666666666";
+
+const validGraph = () => ({
+  marker: MARKER,
+  actorId: ACTOR_ID,
+  organization: { id: ORGANIZATION_ID, name: `BT proof ${MARKER}`, slug: `bt-proof-${MARKER}` },
+  profile: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, role: "bt", is_active: true },
+  therapist: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, email: buildBtSmokeEmail(MARKER), full_name: `BT ${MARKER}`, title: "BT", status: "active", deleted_at: null },
+  roleMappings: [{ name: "bt", isActive: true }],
+  client: { id: CLIENT_ID, organization_id: ORGANIZATION_ID, email: `client.${MARKER}@example.com`, full_name: `Client ${MARKER}`, notes: MARKER, status: "active", deleted_at: null },
+  program: { id: PROGRAM_ID, organization_id: ORGANIZATION_ID, client_id: CLIENT_ID, name: `Program ${MARKER}`, description: MARKER, status: "active" },
+  goal: { id: GOAL_ID, organization_id: ORGANIZATION_ID, client_id: CLIENT_ID, program_id: PROGRAM_ID, title: `Goal ${MARKER}`, description: MARKER, original_text: MARKER, status: "active" },
+  authorization: { id: AUTHORIZATION_ID, organization_id: ORGANIZATION_ID, client_id: CLIENT_ID, provider_id: ACTOR_ID, status: "approved", start_date: "2026-07-15", end_date: "2026-07-17" },
+  service: { authorization_id: AUTHORIZATION_ID, organization_id: ORGANIZATION_ID, service_code: "97153", decision_status: "approved", from_date: "2026-07-15", to_date: "2026-07-17" },
+  today: "2026-07-16",
+});
 
 describe("provision-ci-smoke-bt-aba safeguards", () => {
   it("requires a long marker made only from letters, digits, or hyphens", () => {
@@ -52,7 +69,6 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
     expect(buildBtSmokeGithubEnv({
       supabaseUrl: "https://branch-project-ref.supabase.co",
       publishableKey: "publishable-test-key",
-      secretKey: "secret-test-key",
       projectRef: "branch-project-ref",
       marker: MARKER,
       email: buildBtSmokeEmail(MARKER),
@@ -64,7 +80,7 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
     })).toEqual(expect.objectContaining({
       VITE_SUPABASE_URL: "https://branch-project-ref.supabase.co",
       VITE_SUPABASE_ANON_KEY: "publishable-test-key",
-      SUPABASE_SERVICE_ROLE_KEY: "secret-test-key",
+      PW_BT_PASSWORD: "generated-test-password",
       PW_BT_FIXTURE_MARKER: MARKER,
       PW_BT_CLIENT_ID: CLIENT_ID,
       PW_BT_PROGRAM_ID: PROGRAM_ID,
@@ -75,22 +91,49 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
       PW_BT_DISPOSABLE_ACK: "I_ACKNOWLEDGE_DISPOSABLE_SUPABASE",
       PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: "delete-branch-after-run",
     }));
+    expect(buildBtSmokeGithubEnv({
+      supabaseUrl: "https://branch-project-ref.supabase.co",
+      publishableKey: "publishable-test-key",
+      projectRef: "branch-project-ref",
+      marker: MARKER,
+      email: buildBtSmokeEmail(MARKER),
+      password: "generated-test-password",
+      clientId: CLIENT_ID,
+      programId: PROGRAM_ID,
+      goalId: GOAL_ID,
+      authorizationId: AUTHORIZATION_ID,
+    })).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
+  });
+
+  it("never emits generated passwords through stdout workflow commands", () => {
+    const source = readFileSync(path.join(process.cwd(), "scripts/provision-ci-smoke-bt-aba.ts"), "utf8");
+    expect(source).not.toContain("::add-mask::");
   });
 
   it("accepts only the exact marker-owned single-tenant BT graph", () => {
-    expect(() => assertBtFixtureGraph({
-      marker: MARKER,
-      actorId: ACTOR_ID,
-      organization: { id: ORGANIZATION_ID, name: `BT proof ${MARKER}`, slug: `bt-proof-${MARKER}` },
-      profile: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, role: "bt", is_active: true },
-      therapist: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, email: buildBtSmokeEmail(MARKER), full_name: `BT ${MARKER}`, title: "BT", status: "active", deleted_at: null },
-      roleNames: ["bt"],
-      client: { id: CLIENT_ID, organization_id: ORGANIZATION_ID, email: `client.${MARKER}@example.com`, full_name: `Client ${MARKER}`, notes: MARKER, status: "active", deleted_at: null },
-      program: { id: PROGRAM_ID, organization_id: ORGANIZATION_ID, client_id: CLIENT_ID, name: `Program ${MARKER}`, description: MARKER, status: "active" },
-      goal: { id: GOAL_ID, organization_id: ORGANIZATION_ID, client_id: CLIENT_ID, program_id: PROGRAM_ID, title: `Goal ${MARKER}`, description: MARKER, original_text: MARKER, status: "active" },
-      authorization: { id: AUTHORIZATION_ID, organization_id: ORGANIZATION_ID, client_id: CLIENT_ID, provider_id: ACTOR_ID, status: "approved", start_date: "2026-07-15", end_date: "2026-07-17" },
-      service: { authorization_id: AUTHORIZATION_ID, organization_id: ORGANIZATION_ID, service_code: "97153", decision_status: "approved", from_date: "2026-07-15", to_date: "2026-07-17" },
-      today: "2026-07-16",
-    })).not.toThrow();
+    expect(() => assertBtFixtureGraph(validGraph())).not.toThrow();
+  });
+
+  it.each([
+    ["organization mismatch", (graph: ReturnType<typeof validGraph>) => { graph.goal.organization_id = "77777777-7777-4777-8777-777777777777"; }],
+    ["extra role", (graph: ReturnType<typeof validGraph>) => { graph.roleMappings.push({ name: "admin", isActive: true }); }],
+    ["inactive bt", (graph: ReturnType<typeof validGraph>) => { graph.roleMappings[0].isActive = false; }],
+    ["provider mismatch", (graph: ReturnType<typeof validGraph>) => { graph.authorization.provider_id = CLIENT_ID; }],
+    ["program client link", (graph: ReturnType<typeof validGraph>) => { graph.program.client_id = ACTOR_ID; }],
+    ["goal client link", (graph: ReturnType<typeof validGraph>) => { graph.goal.client_id = ACTOR_ID; }],
+    ["goal program link", (graph: ReturnType<typeof validGraph>) => { graph.goal.program_id = ACTOR_ID; }],
+    ["authorization client link", (graph: ReturnType<typeof validGraph>) => { graph.authorization.client_id = ACTOR_ID; }],
+    ["service authorization link", (graph: ReturnType<typeof validGraph>) => { graph.service.authorization_id = ACTOR_ID; }],
+    ["client status", (graph: ReturnType<typeof validGraph>) => { graph.client.status = "inactive"; }],
+    ["program status", (graph: ReturnType<typeof validGraph>) => { graph.program.status = "inactive"; }],
+    ["goal status", (graph: ReturnType<typeof validGraph>) => { graph.goal.status = "paused"; }],
+    ["authorization status", (graph: ReturnType<typeof validGraph>) => { graph.authorization.status = "pending"; }],
+    ["service status", (graph: ReturnType<typeof validGraph>) => { graph.service.decision_status = "pending"; }],
+    ["authorization date", (graph: ReturnType<typeof validGraph>) => { graph.authorization.end_date = "2026-07-15"; }],
+    ["service date", (graph: ReturnType<typeof validGraph>) => { graph.service.from_date = "2026-07-17"; }],
+  ])("rejects %s invariant violations", (_label, mutate) => {
+    const graph = validGraph();
+    mutate(graph);
+    expect(() => assertBtFixtureGraph(graph)).toThrow();
   });
 });

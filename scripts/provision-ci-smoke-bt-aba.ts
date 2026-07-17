@@ -21,7 +21,7 @@ export type BtFixtureGraph = {
   organization: FixtureRow;
   profile: FixtureRow;
   therapist: FixtureRow;
-  roleNames: string[];
+  roleMappings: Array<{ name: string; isActive: boolean }>;
   client: FixtureRow;
   program: FixtureRow;
   goal: FixtureRow;
@@ -33,7 +33,6 @@ export type BtFixtureGraph = {
 type BtGithubEnvInput = {
   supabaseUrl: string;
   publishableKey: string;
-  secretKey: string;
   projectRef: string;
   marker: string;
   email: string;
@@ -90,7 +89,6 @@ export const buildBtAuthMetadata = (marker: string, organizationId?: string): Re
 export const buildBtSmokeGithubEnv = (input: BtGithubEnvInput): Record<string, string> => ({
   VITE_SUPABASE_URL: input.supabaseUrl,
   VITE_SUPABASE_ANON_KEY: input.publishableKey,
-  SUPABASE_SERVICE_ROLE_KEY: input.secretKey,
   PW_BT_EMAIL: input.email,
   PW_BT_PASSWORD: input.password,
   PW_BT_CLIENT_ID: input.clientId,
@@ -137,8 +135,12 @@ export const assertBtFixtureGraph = (graph: BtFixtureGraph): void => {
   if (!/^(BT|RBT)$/i.test(String(graph.therapist.title ?? ""))) {
     throw new Error("Therapist title must be BT or RBT.");
   }
-  if (graph.roleNames.length !== 1 || graph.roleNames[0]?.toLowerCase() !== "bt") {
-    throw new Error("Authoritative user_roles mapping must contain only bt.");
+  if (
+    graph.roleMappings.length !== 1
+    || graph.roleMappings[0]?.name.toLowerCase() !== "bt"
+    || graph.roleMappings[0]?.isActive !== true
+  ) {
+    throw new Error("Authoritative user_roles mapping must contain exactly one active bt role.");
   }
   requireEqual(graph.client.status, "active", "Client state");
   requireEqual(graph.client.deleted_at, null, "Client deletion state");
@@ -190,11 +192,10 @@ const insertOne = async (
   columns: string,
 ): Promise<FixtureRow> => one(client.from(table).insert(value).select(columns).single(), table);
 
-const writeGithubEnv = (path: string, values: Record<string, string>, password: string): void => {
+const writeGithubEnv = (path: string, values: Record<string, string>): void => {
   for (const [key, value] of Object.entries(values)) {
     if (/\r|\n/.test(key) || /\r|\n/.test(value)) throw new Error(`Refusing unsafe multiline GITHUB_ENV value for ${key}.`);
   }
-  process.stdout.write(`::add-mask::${password}\n`);
   appendFileSync(path, `${Object.entries(values).map(([key, value]) => `${key}=${value}`).join("\n")}\n`);
 };
 
@@ -286,21 +287,24 @@ const provision = async (): Promise<void> => {
   const [profile, therapist, roles] = await Promise.all([
     one(client.from("profiles").select("id,organization_id,role,is_active").eq("id", actorId).maybeSingle(), "profile"),
     one(client.from("therapists").select("id,organization_id,email,full_name,title,status,deleted_at").eq("id", actorId).maybeSingle(), "therapist"),
-    client.from("user_roles").select("roles(name)").eq("user_id", actorId),
+    client.from("user_roles").select("is_active,roles(name)").eq("user_id", actorId),
   ]);
   if (roles.error) throw new Error(`Unable to read back authoritative roles: ${roles.error.message}.`);
-  const roleNames = (roles.data ?? []).flatMap((row) => {
+  const roleMappings = (roles.data ?? []).flatMap((row) => {
     const nested = row.roles as unknown as { name?: unknown } | Array<{ name?: unknown }> | null;
-    return (Array.isArray(nested) ? nested : nested ? [nested] : []).map(({ name }) => String(name ?? ""));
+    return (Array.isArray(nested) ? nested : nested ? [nested] : []).map(({ name }) => ({
+      name: String(name ?? ""),
+      isActive: row.is_active === true,
+    }));
   });
   assertBtFixtureGraph({
-    marker, actorId, organization, profile, therapist, roleNames, client: fixtureClient, program, goal, authorization, service,
+    marker, actorId, organization, profile, therapist, roleMappings, client: fixtureClient, program, goal, authorization, service,
     today: new Date().toISOString().slice(0, 10),
   });
 
   writeGithubEnv(githubEnv, buildBtSmokeGithubEnv({
-    supabaseUrl, publishableKey, secretKey, projectRef, marker, email, password, clientId, programId, goalId, authorizationId,
-  }), password);
+    supabaseUrl, publishableKey, projectRef, marker, email, password, clientId, programId, goalId, authorizationId,
+  }));
   console.log(JSON.stringify({ ok: true, action: "provisioned", marker, projectRef, actorId, organizationId, clientId, programId, goalId, authorizationId }));
 };
 

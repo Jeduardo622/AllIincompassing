@@ -203,13 +203,6 @@ jobs:
             echo "branch_lifecycle=platform-managed-pr-preview-active-healthy"
           } >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
 
-      - name: Link validated branch and apply exact closeout migration
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: |
-          supabase link --project-ref "$SUPABASE_BRANCH_PROJECT_REF"
-          supabase db query --linked --file supabase/migrations/20260716212837_bt_aba_session_note_closeout.sql
-
       - name: Provision marker-owned synthetic fixture
         run: |
           SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")" \

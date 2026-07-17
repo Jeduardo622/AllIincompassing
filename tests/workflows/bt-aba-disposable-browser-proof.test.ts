@@ -111,7 +111,6 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     const proofSource = JSON.stringify(proof);
     const checkoutStep = findStep(proof, 'Checkout validated commit');
     const createStep = findStep(proof, 'Validate managed PR preview branch and retrieve masked keys');
-    const migrationStep = findStep(proof, 'Link validated branch and apply exact closeout migration');
     const fixtureStep = findStep(proof, 'Provision marker-owned synthetic fixture');
     const previewStep = findStep(proof, 'Launch protected preview and wait for health');
     const browserStep = findStep(proof, 'Run BT ABA session-note browser proof');
@@ -126,9 +125,6 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(proof?.env).not.toHaveProperty('SUPABASE_ACCESS_TOKEN');
     expect(proof?.env).not.toHaveProperty('SUPABASE_SECRET_KEY');
     expect(createStep?.env).toEqual({
-      SUPABASE_ACCESS_TOKEN: '${{ secrets.SUPABASE_ACCESS_TOKEN }}',
-    });
-    expect(migrationStep?.env).toEqual({
       SUPABASE_ACCESS_TOKEN: '${{ secrets.SUPABASE_ACCESS_TOKEN }}',
     });
     expect(createStep?.run).toContain('install -m 600 /dev/null "$PRIVATE_BRANCH_ENV"');
@@ -193,7 +189,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(cleanupUpload?.if).toBe('always()');
     expect(cleanupUpload?.uses).toContain('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02');
     expect(cleanupUpload?.with?.path).toContain('deletion-evidence.txt');
-    expect(source.match(/secrets\.SUPABASE_ACCESS_TOKEN/g)).toHaveLength(3);
+    expect(source.match(/secrets\.SUPABASE_ACCESS_TOKEN/g)).toHaveLength(2);
     expect(source).toContain('SUPABASE_BRANCH_ID: 03d01a74-2ac3-4047-a983-c77b73a4ff6a');
     expect(source).toContain('SUPABASE_BRANCH_PROJECT_REF: zutoyqdrpddtgkgooijx');
     expect(source).toContain('SUPABASE_BRANCH_PR_NUMBER: "813"');
@@ -206,9 +202,8 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(source).toContain('actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5');
     expect(source).toContain('actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020');
     expect(source).toContain('supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51');
-    expect(source).toContain('supabase link --project-ref "$SUPABASE_BRANCH_PROJECT_REF"');
-    expect(source).not.toContain('supabase link --project-ref "$SUPABASE_BRANCH_PROJECT_REF" --yes');
-    expect(source).toContain('supabase db query --linked --file supabase/migrations/20260716212837_bt_aba_session_note_closeout.sql');
+    expect(source).not.toContain('supabase link');
+    expect(source).not.toContain('supabase db query');
     expect(source).toContain('npx tsx scripts/provision-ci-smoke-bt-aba.ts');
     expect(source).toContain('PREVIEW_ENABLE_SESSION_NOTES_API="true"');
     expect(source).toContain('npm run playwright:bt-aba-session-note');

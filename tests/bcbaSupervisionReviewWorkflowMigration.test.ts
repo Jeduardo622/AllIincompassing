@@ -10,6 +10,10 @@ const btCloseoutSql = readFileSync(
   join(process.cwd(), 'supabase/migrations/20260716212837_bt_aba_session_note_closeout.sql'),
   'utf8',
 );
+const structuredPacketSql = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260717191500_require_structured_bt_supervision_packet.sql'),
+  'utf8',
+);
 
 describe('BCBA supervision review workflow migration', () => {
   it('resolves a unique linked BCBA before the sole organization BCBA fallback', () => {
@@ -65,6 +69,22 @@ describe('BCBA supervision review workflow migration', () => {
     expect(sql).toMatch(/left join lateral \([\s\S]*from public\.client_session_notes note/i);
     expect(sql).toMatch(/template_name = 'Supervision Session Note'/i);
     expect(sql).toMatch(/revoke all on function public\.get_pending_supervision_review_packets\(\) from public, anon/i);
+  });
+
+  it('requires the latest BT note to include structured responses, a template snapshot, and a BT attestation', () => {
+    expect(structuredPacketSql).toMatch(/create or replace function app\.has_complete_bt_review_packet/i);
+    expect(structuredPacketSql).toMatch(/jsonb_typeof\(note\.bt_aba_responses\) = 'object'/i);
+    expect(structuredPacketSql).toMatch(/jsonb_typeof\(note\.bt_aba_template_snapshot\) = 'object'/i);
+    expect(structuredPacketSql).toMatch(/order by note\.created_at desc, note\.id desc[\s\S]*limit 1/i);
+    expect(structuredPacketSql).toMatch(/attestation\.attestation_role = 'bt'/i);
+    expect(structuredPacketSql).toMatch(/revoke all on function app\.has_complete_bt_review_packet\(uuid, uuid\) from public, anon, authenticated/i);
+    expect(structuredPacketSql).toMatch(/grant execute on function app\.has_complete_bt_review_packet\(uuid, uuid\) to service_role/i);
+    expect(structuredPacketSql).toMatch(/app\.has_complete_bt_review_packet\(request\.organization_id, request\.session_id\) is not true/i);
+    expect(structuredPacketSql).toMatch(/request\.status = 'pending'[\s\S]*app\.has_complete_bt_review_packet\(request\.organization_id, request\.session_id\) is true/i);
+    expect(structuredPacketSql).toMatch(/app\.has_complete_bt_review_packet\(v_actor_org, v_request\.session_id\) is not true/i);
+    expect(structuredPacketSql).toMatch(/from public\.sessions session[\s\S]*session\.id = v_request\.session_id[\s\S]*for update/i);
+    expect(structuredPacketSql).toMatch(/Complete structured BT session note and attestation required before supervision completion/i);
+    expect(structuredPacketSql).toMatch(/Pending supervision request lacks a complete structured BT review packet/i);
   });
 
   it('requires the assigned exact BCBA, preserves the BT attestation target, and writes the BCBA attestation on the supervision note', () => {

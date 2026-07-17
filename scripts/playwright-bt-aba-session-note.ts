@@ -24,6 +24,8 @@ const DISPOSABLE_ACK = "I_ACKNOWLEDGE_DISPOSABLE_SUPABASE";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SYNTHETIC_EMAIL = /(playwright|smoke|test|\bci\b)/i;
 const STEP_TIMEOUT_MS = Number(process.env.PW_BT_ABA_STEP_TIMEOUT_MS ?? "300000");
+const CLEANUP_TIMEOUT_MS = Number(process.env.PW_BT_ABA_CLEANUP_TIMEOUT_MS ?? "10000");
+const DRY_RUN_SESSION_ID = "55555555-5555-4555-8555-555555555555";
 
 type SafetyConfig = {
   baseUrl: string;
@@ -337,6 +339,27 @@ const logNonThrowing = (payload: Record<string, unknown>): void => {
   try { console.error(JSON.stringify(payload)); } catch { /* teardown reporting remains authoritative */ }
 };
 
+type BestEffortResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+const boundedBestEffort = async <T>(label: string, operation: () => Promise<T>): Promise<BestEffortResult<T>> => {
+  const timeoutMs = Number.isFinite(CLEANUP_TIMEOUT_MS) && CLEANUP_TIMEOUT_MS > 0 ? CLEANUP_TIMEOUT_MS : 10_000;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const value = await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+    return { ok: true, value };
+  } catch (error) {
+    logNonThrowing({ warning: `${label}-failed`, error: error instanceof Error ? error.message : String(error) });
+    return { ok: false, error };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
 async function run(): Promise<void> {
   loadPlaywrightEnv();
   const config = loadSafetyConfig();
@@ -349,11 +372,17 @@ async function run(): Promise<void> {
   const dryRunMode = normalizedEnv("PW_BT_ABA_DRY_RUN_FAILURE_MODE");
 
   try {
-    if (dryRunMode && !["pre-browser", "screenshot-failure"].includes(dryRunMode)) {
-      throw new Error("PW_BT_ABA_DRY_RUN_FAILURE_MODE must be pre-browser or screenshot-failure when set.");
+    if (dryRunMode && !["pre-browser", "post-insert-logging-failure", "screenshot-failure", "hanging-cleanup"].includes(dryRunMode)) {
+      throw new Error("PW_BT_ABA_DRY_RUN_FAILURE_MODE must be pre-browser, post-insert-logging-failure, screenshot-failure, or hanging-cleanup when set.");
     }
     if (dryRunMode === "pre-browser") throw new Error("Simulated pre-browser failure for teardown-report contract.");
+    if (dryRunMode === "post-insert-logging-failure") {
+      const inserted = { sessionId: DRY_RUN_SESSION_ID };
+      createdSessionId = inserted.sessionId;
+      throw new Error("Simulated logging failure after a successful session insert.");
+    }
     if (dryRunMode === "screenshot-failure") throw new Error("Simulated lifecycle failure before screenshot capture.");
+    if (dryRunMode === "hanging-cleanup") throw new Error("Simulated lifecycle failure before hanging cleanup operations.");
 
     const admin = createClient(config.supabaseUrl, config.serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
     const token = await fetchAccessTokenForCredentials(config.email, config.password);
@@ -366,8 +395,10 @@ async function run(): Promise<void> {
     page = await context.newPage();
     await withStep("login exact disposable BT", () => loginAndAssertSession(page!, config.baseUrl, config.email, config.password));
     await withStep("open Schedule", () => assertRouteAccessible(page!, config.baseUrl, "/schedule", { readySelector: 'button[aria-label="Day view"]' }));
-    const booked = await withStep("create exact marked session", () => createExactSession(admin, graph, config.fixtureMarker));
+    console.log("[bt-aba-closeout] start create exact marked session");
+    const booked = await createExactSession(admin, graph, config.fixtureMarker);
     createdSessionId = booked.sessionId;
+    console.log("[bt-aba-closeout] ok create exact marked session");
     await withStep("start exact assigned session", () => startSession(page!, token, booked, true));
     await waitForSessionStatus(admin, booked.sessionId, "in_progress");
 
@@ -443,11 +474,15 @@ async function run(): Promise<void> {
     }));
   } catch (error) {
     runError = error;
-    try {
-      if (dryRunMode === "screenshot-failure") throw new Error("Simulated screenshot capture failure.");
-      if (page) screenshot = await captureFailureScreenshot(page, "playwright-bt-aba-session-note");
-    } catch (screenshotError) {
-      screenshot = `unavailable:${screenshotError instanceof Error ? screenshotError.message : String(screenshotError)}`;
+    if (page || dryRunMode === "screenshot-failure" || dryRunMode === "hanging-cleanup") {
+      const screenshotResult = await boundedBestEffort("failure-screenshot", async () => {
+        if (dryRunMode === "screenshot-failure") throw new Error("Simulated screenshot capture failure.");
+        if (dryRunMode === "hanging-cleanup") return await new Promise<string>(() => undefined);
+        return await captureFailureScreenshot(page!, "playwright-bt-aba-session-note");
+      });
+      screenshot = screenshotResult.ok
+        ? screenshotResult.value
+        : `unavailable:${screenshotResult.error instanceof Error ? screenshotResult.error.message : String(screenshotResult.error)}`;
     }
     logNonThrowing({
       ok: false,
@@ -457,10 +492,20 @@ async function run(): Promise<void> {
       projectRef: config.projectRef,
     });
   } finally {
-    try { await context?.close(); }
-    catch (closeError) { if (!runError) runError = closeError; else logNonThrowing({ warning: "browser-context-close-failed", error: String(closeError) }); }
-    try { await browser?.close(); }
-    catch (closeError) { if (!runError) runError = closeError; else logNonThrowing({ warning: "browser-close-failed", error: String(closeError) }); }
+    if (context || dryRunMode === "hanging-cleanup") {
+      const contextClose = await boundedBestEffort("browser-context-close", async () => {
+        if (dryRunMode === "hanging-cleanup") return await new Promise<void>(() => undefined);
+        await context!.close();
+      });
+      if (!contextClose.ok && !runError) runError = contextClose.error;
+    }
+    if (browser || dryRunMode === "hanging-cleanup") {
+      const browserClose = await boundedBestEffort("browser-close", async () => {
+        if (dryRunMode === "hanging-cleanup") return await new Promise<void>(() => undefined);
+        await browser!.close();
+      });
+      if (!browserClose.ok && !runError) runError = browserClose.error;
+    }
     emitTeardownInstruction(config, createdSessionId, Boolean(runError));
   }
   if (runError) throw runError;

@@ -177,17 +177,6 @@ const parseJson = (raw: string, command: string): unknown => {
   return payloads[0];
 };
 
-const parseBranch = (raw: string, command: string): BranchDetails => {
-  const parsed = parseJson(raw, command);
-  const candidate = parsed && typeof parsed === 'object' && 'branch' in parsed
-    ? (parsed as { branch?: unknown }).branch
-    : parsed;
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
-    throw new Error(`Supabase ${command} did not return branch details.`);
-  }
-  return candidate as BranchDetails;
-};
-
 const parseBranchList = (raw: string): BranchDetails[] => {
   const parsed = parseJson(raw, 'branches list');
   const candidate = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'branches' in parsed
@@ -197,6 +186,38 @@ const parseBranchList = (raw: string): BranchDetails[] => {
     throw new Error('Supabase branches list did not return an array.');
   }
   return candidate.filter((branch): branch is BranchDetails => Boolean(branch) && typeof branch === 'object');
+};
+
+const parseBranch = (
+  raw: string,
+  command: string,
+  expected: { branchName: string; parentRef: string; branchId?: string; branchRef?: string },
+): BranchDetails => {
+  const parsed = parseJson(raw, command);
+  const candidates: BranchDetails[] = [];
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    const candidate = value as BranchDetails;
+    const matchesRequestedIdentity = candidate.name === expected.branchName
+      && candidate.parent_project_ref === expected.parentRef
+      && typeof candidate.project_ref === 'string'
+      && candidate.project_ref !== expected.parentRef
+      && (!expected.branchId || candidate.id === expected.branchId)
+      && (!expected.branchRef || candidate.project_ref === expected.branchRef);
+    if (matchesRequestedIdentity) {
+      candidates.push(candidate);
+    }
+    Object.values(value).forEach(visit);
+  };
+  visit(parsed);
+  if (candidates.length !== 1) {
+    throw new Error(`Supabase ${command} must return exactly one requested child branch.`);
+  }
+  return candidates[0];
 };
 
 const parseApiKeys = (raw: string): ApiKeyDetails[] => {
@@ -260,7 +281,7 @@ export const createDisposableBranch = async (
 
   const created = parseBranch(await runner(commandArgs([
     'branches', 'create', branchName,
-  ], parentRef)), 'branches create');
+  ], parentRef)), 'branches create', { branchName, parentRef });
   assertChildIdentity(parentRef, created);
 
   const branchId = assertSingleLineValue('branch id', created.id ?? '');
@@ -276,7 +297,7 @@ export const createDisposableBranch = async (
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const branch = parseBranch(await runner(commandArgs([
       'branches', 'get', branchId,
-    ], parentRef)), 'branches get');
+    ], parentRef)), 'branches get', { branchName, parentRef, branchId, branchRef });
     assertChildIdentity(parentRef, branch);
     if (branch.id !== branchId || branch.project_ref !== branchRef) {
       throw new Error('Disposable branch identity changed while polling.');

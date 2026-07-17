@@ -66,23 +66,23 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     const runner: SupabaseCommandRunner = vi.fn(async (args) => {
       calls.push(args);
       if (args[0] === 'branches' && args[1] === 'create') {
-        return `Creating disposable branch...\n${JSON.stringify({
+        return `Creating disposable branch...\n${JSON.stringify({ data: { branch: {
           id: BRANCH_ID,
           name: BRANCH_NAME,
           project_ref: BRANCH_REF,
           parent_project_ref: PRODUCTION_REF,
           status: 'COMING_UP',
-        })}\nDisposable branch created.`;
+        } } })}\nDisposable branch created.`;
       }
       if (args[0] === 'branches' && args[1] === 'get') {
         getCalls += 1;
-        return JSON.stringify({
+        return JSON.stringify({ result: {
           id: BRANCH_ID,
           name: BRANCH_NAME,
           project_ref: BRANCH_REF,
           parent_project_ref: PRODUCTION_REF,
           status: getCalls === 1 ? 'COMING_UP' : 'ACTIVE_HEALTHY',
-        });
+        } });
       }
       if (args[0] === 'projects' && args[1] === 'api-keys') {
         return JSON.stringify([
@@ -130,37 +130,56 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     }
   });
 
-  it('fails closed when decorated CLI output contains more than one JSON payload', async () => {
-    const runner: SupabaseCommandRunner = vi.fn(async () => [
-      JSON.stringify({
+  it('fails closed when a wrapped create response contains multiple matching children', async () => {
+    const branch = {
         id: BRANCH_ID,
         name: BRANCH_NAME,
         project_ref: BRANCH_REF,
         parent_project_ref: PRODUCTION_REF,
         status: 'COMING_UP',
-      }),
-      JSON.stringify({ warning: 'ambiguous second payload' }),
-    ].join('\n'));
+    };
+    const runner: SupabaseCommandRunner = vi.fn(async () => JSON.stringify({ first: branch, second: { ...branch } }));
 
     await expect(createDisposableBranch({
       parentRef: PRODUCTION_REF,
       branchName: BRANCH_NAME,
       runner,
       sleep: async () => undefined,
-    })).rejects.toThrow(/exactly one JSON payload/i);
+    })).rejects.toThrow(/exactly one requested child branch/i);
   });
 
-  it.each([undefined, 'wrong-branch'])('rejects an unsafe created branch name %s before polling or key export', async (name) => {
+  it('fails closed when a matching branch contains another matching branch', async () => {
+    const nested = {
+      id: BRANCH_ID,
+      name: BRANCH_NAME,
+      project_ref: BRANCH_REF,
+      parent_project_ref: PRODUCTION_REF,
+      status: 'COMING_UP',
+    };
+    const runner: SupabaseCommandRunner = vi.fn(async () => JSON.stringify({
+      ...nested,
+      branch: { ...nested, status: 'ACTIVE_HEALTHY' },
+    }));
+
+    await expect(createDisposableBranch({
+      parentRef: PRODUCTION_REF,
+      branchName: BRANCH_NAME,
+      runner,
+      sleep: async () => undefined,
+    })).rejects.toThrow(/exactly one requested child branch/i);
+  });
+
+  it.each([undefined, 'wrong-branch'])('rejects a wrapped create response with no matching branch name %s', async (name) => {
     const calls: string[][] = [];
     const runner: SupabaseCommandRunner = vi.fn(async (args) => {
       calls.push(args);
-      return JSON.stringify({
+      return JSON.stringify({ data: {
         id: BRANCH_ID,
         name,
         project_ref: BRANCH_REF,
         parent_project_ref: PRODUCTION_REF,
         status: 'COMING_UP',
-      });
+      } });
     });
     const tmp = mkdtempSync(path.join(tmpdir(), 'bt-branch-partial-env-'));
     const githubEnvPath = path.join(tmp, 'github-env');
@@ -172,37 +191,37 @@ describe('BT ABA disposable branch lifecycle guard', () => {
         githubEnvPath,
         runner,
         sleep: async () => undefined,
-      })).rejects.toThrow(/branch name mismatch/i);
+      })).rejects.toThrow(/exactly one requested child branch/i);
 
       expect(calls).toHaveLength(1);
       expect(calls.some((args) => args[0] === 'projects' && args[1] === 'api-keys')).toBe(false);
-      expect(readFileSync(githubEnvPath, 'utf8')).toContain(`SUPABASE_BRANCH_ID=${BRANCH_ID}\n`);
+      expect(readFileSync(githubEnvPath, 'utf8')).not.toContain('SUPABASE_BRANCH_ID=');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
 
-  it.each([undefined, 'wrong-branch'])('rejects an unsafe polled branch name %s before key export', async (name) => {
+  it('rejects a wrapped get response with no exact identity match before key export', async () => {
     const calls: string[][] = [];
     const runner: SupabaseCommandRunner = vi.fn(async (args) => {
       calls.push(args);
       if (args[0] === 'branches' && args[1] === 'create') {
-        return JSON.stringify({
+        return JSON.stringify({ branch: {
           id: BRANCH_ID,
           name: BRANCH_NAME,
           project_ref: BRANCH_REF,
           parent_project_ref: PRODUCTION_REF,
           status: 'COMING_UP',
-        });
+        } });
       }
       if (args[0] === 'branches' && args[1] === 'get') {
-        return JSON.stringify({
-          id: BRANCH_ID,
-          name,
+        return JSON.stringify({ data: {
+          id: 'changed-branch-id',
+          name: BRANCH_NAME,
           project_ref: BRANCH_REF,
           parent_project_ref: PRODUCTION_REF,
           status: 'ACTIVE_HEALTHY',
-        });
+        } });
       }
       throw new Error(`Unexpected command: ${args.join(' ')}`);
     });
@@ -213,7 +232,7 @@ describe('BT ABA disposable branch lifecycle guard', () => {
       runner,
       sleep: async () => undefined,
       maxPollAttempts: 1,
-    })).rejects.toThrow(/branch name mismatch/i);
+    })).rejects.toThrow(/exactly one requested child branch/i);
 
     expect(calls.some((args) => args[0] === 'projects' && args[1] === 'api-keys')).toBe(false);
   });

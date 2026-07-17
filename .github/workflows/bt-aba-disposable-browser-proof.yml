@@ -1,0 +1,142 @@
+name: BT ABA disposable browser proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref containing the reviewed proof implementation
+        required: true
+        type: string
+
+jobs:
+  proof:
+    name: Protected disposable branch proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
+      SUPABASE_BRANCH_NAME: bt-aba-proof-${{ github.run_id }}-${{ github.run_attempt }}
+      PW_BT_FIXTURE_MARKER: bt-aba-proof-${{ github.run_id }}-${{ github.run_attempt }}
+      PW_BASE_URL: http://127.0.0.1:4173
+
+    steps:
+      - name: Checkout reviewed ref
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize redacted evidence
+        env:
+          PROOF_SOURCE_REF: ${{ inputs.ref }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/bt-aba-proof"
+          {
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "source_ref=${PROOF_SOURCE_REF}"
+            echo "branch_name=${SUPABASE_BRANCH_NAME}"
+          } > "$RUNNER_TEMP/bt-aba-proof/evidence.txt"
+
+      - name: Create and poll disposable branch and retrieve masked keys
+        run: npm run bt-aba:disposable-branch -- --create
+
+      - name: Validate non-production branch boundary
+        run: |
+          if [ -z "${SUPABASE_BRANCH_PROJECT_REF:-}" ] || [ -z "${SUPABASE_BRANCH_ID:-}" ]; then
+            echo "::error::Disposable branch identity is incomplete."
+            exit 1
+          fi
+          if [ "$SUPABASE_BRANCH_PROJECT_REF" = "$SUPABASE_PARENT_PROJECT_REF" ]; then
+            echo "::error::Refusing production Supabase project."
+            exit 1
+          fi
+          if [ "$SUPABASE_URL" != "https://${SUPABASE_BRANCH_PROJECT_REF}.supabase.co" ]; then
+            echo "::error::Disposable branch URL does not match its validated project ref."
+            exit 1
+          fi
+          {
+            echo "branch_id=${SUPABASE_BRANCH_ID}"
+            echo "branch_project_ref=${SUPABASE_BRANCH_PROJECT_REF}"
+            echo "branch_lifecycle=ACTIVE_HEALTHY"
+          } >> "$RUNNER_TEMP/bt-aba-proof/evidence.txt"
+
+      - name: Link validated branch and apply exact closeout migration
+        run: |
+          supabase link --project-ref "$SUPABASE_BRANCH_PROJECT_REF" --yes
+          supabase db query --linked --file supabase/migrations/20260716212837_bt_aba_session_note_closeout.sql
+
+      - name: Provision marker-owned synthetic fixture
+        run: |
+          export SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SECRET_KEY"
+          npx tsx scripts/provision-ci-smoke-bt-aba.ts
+
+      - name: Build branch-bound preview
+        run: npm run preview:build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Launch protected preview and wait for health
+        env:
+          PREVIEW_ENABLE_SESSION_NOTES_API: "true"
+        run: |
+          export SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SECRET_KEY"
+          nohup npx tsx -e "import('./scripts/lib/preview-runtime.ts').then(async ({ startPreviewServer }) => { const { resolvePreviewConfig } = await import('./src/preview/config.ts'); await startPreviewServer(resolvePreviewConfig(process.env)); console.log('[preview] protected server ready'); }).catch((error) => { console.error(error); process.exit(1); });" > "$RUNNER_TEMP/bt-aba-proof/preview.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/bt-aba-proof/preview.pid"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error "$PW_BASE_URL/__supabase/auth/v1/health" > /dev/null; then
+              echo "preview_health=ready" >> "$RUNNER_TEMP/bt-aba-proof/evidence.txt"
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/bt-aba-proof/preview.pid")" 2>/dev/null; then
+              cat "$RUNNER_TEMP/bt-aba-proof/preview.log"
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::Protected preview did not become healthy."
+          cat "$RUNNER_TEMP/bt-aba-proof/preview.log"
+          exit 1
+
+      - name: Run BT ABA session-note browser proof
+        run: |
+          export SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SECRET_KEY"
+          npm run playwright:bt-aba-session-note
+          echo "browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-proof/evidence.txt"
+
+      - name: Stop protected preview
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/bt-aba-proof/preview.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/bt-aba-proof/preview.pid")" 2>/dev/null || true
+          fi
+
+      - name: Upload redacted browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bt-aba-disposable-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/bt-aba-proof/evidence.txt
+            artifacts/latest/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Delete and verify disposable branch
+        if: always()
+        run: npm run bt-aba:disposable-branch -- --cleanup

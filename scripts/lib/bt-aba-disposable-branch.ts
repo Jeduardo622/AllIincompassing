@@ -16,7 +16,9 @@ export interface BranchDetails {
 
 export interface ApiKeyDetails {
   type?: string;
+  name?: string;
   api_key?: string;
+  disabled?: boolean;
 }
 
 export interface ClassifiedApiKeys {
@@ -129,18 +131,26 @@ export const assertDisposableBranch = (parentRef: string, branch: BranchDetails)
 };
 
 export const classifyApiKeys = (keys: ApiKeyDetails[]): ClassifiedApiKeys => {
-  const publishableKeys = keys.filter((key) => key.type === 'publishable' && key.api_key?.trim());
-  const secretKeys = keys.filter((key) => key.type === 'secret' && key.api_key?.trim());
+  const enabledKeys = keys.filter((key) => key.disabled !== true && key.api_key?.trim());
+  const publishableKeys = enabledKeys.filter((key) => key.type === 'publishable');
+  const modernSecretKeys = enabledKeys.filter((key) => key.type === 'secret');
+  const legacyServiceRoleKeys = enabledKeys.filter((key) => key.type === 'legacy' && key.name === 'service_role');
 
   if (publishableKeys.length !== 1) {
     throw new Error('Expected exactly one publishable API key.');
   }
-  if (secretKeys.length !== 1) {
-    throw new Error('Expected exactly one secret API key.');
+  if (legacyServiceRoleKeys.length > 1) {
+    throw new Error('Expected at most one enabled legacy service role API key.');
+  }
+  if (legacyServiceRoleKeys.length === 0 && modernSecretKeys.length !== 1) {
+    throw new Error('Expected exactly one enabled secret API key when no legacy service role key exists.');
   }
 
   const publishableKey = assertSingleLineValue('publishable API key', publishableKeys[0].api_key ?? '');
-  const secretKey = assertSingleLineValue('secret API key', secretKeys[0].api_key ?? '');
+  const secretKey = assertSingleLineValue(
+    'secret API key',
+    (legacyServiceRoleKeys[0] ?? modernSecretKeys[0]).api_key ?? '',
+  );
   if (publishableKey === secretKey) {
     throw new Error('Publishable and secret API keys must differ.');
   }

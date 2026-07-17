@@ -64,6 +64,20 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     ])).toThrow(/exactly one publishable/i);
   });
 
+  it('prefers one enabled legacy service-role key for branch auth compatibility', () => {
+    expect(classifyApiKeys([
+      { type: 'publishable', api_key: 'sb_publishable_x' },
+      { type: 'secret', api_key: 'sb_secret_x' },
+      { type: 'legacy', name: 'service_role', api_key: 'legacy-service-role-jwt', disabled: false },
+    ])).toEqual({ publishableKey: 'sb_publishable_x', secretKey: 'legacy-service-role-jwt' });
+
+    expect(() => classifyApiKeys([
+      { type: 'publishable', api_key: 'sb_publishable_x' },
+      { type: 'legacy', name: 'service_role', api_key: 'legacy-a' },
+      { type: 'legacy', name: 'service_role', api_key: 'legacy-b' },
+    ])).toThrow(/service role/i);
+  });
+
   it('creates without production data, polls healthy, masks keys, and exports branch values', async () => {
     const calls: string[][] = [];
     let listCalls = 0;

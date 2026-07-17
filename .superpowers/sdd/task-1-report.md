@@ -1,207 +1,36 @@
-# Task 1 Report — WIN-216
-
-## Implementation summary
-
-- Added the `goal_target_phase` enum and progression state columns on `public.goal_targets`.
-- Added a current-state check and a partial unique index enforcing at most one current active target per organization/goal.
-- Added normalized, tenant-scoped criteria, evaluation, and transition tables with restrictive historical foreign keys and bounded values.
-- Added a fixed-search-path scope trigger that derives organization/client/goal from the referenced target and rejects mismatched identifiers.
-- Added explicit grants, RLS, tenant-scoped read policies, exact BCBA/midtier plus super-admin criteria mutation policies, and RPC-only immutable ledger writes.
-- Added four intentionally incomplete phase criteria per existing target and deterministic first-active-target activation. Mastered goals/targets remain non-current and the migration never rewrites trials or sessions.
-- Added a hardened manual phase override contract with actor derivation, exact-role authorization, reason/version checks, evaluation-window reset, and transition audit insertion. Evaluator algorithms and application UI remain out of Task 1.
-
-## RED evidence
-
-Command:
-
-`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
-
-Observed before production SQL implementation:
-
-- Exit code: `1`
-- New progression migration contract: `7 failed / 7`
-- Existing goal-target/trial-event migration contract: `11 passed / 11`
-- Expected failure reason: the generated migration contained only metadata and lacked the enum, columns, tables, scope helper, backfill, RLS/grants, and override function.
-
-## GREEN evidence
-
-Command:
-
-`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
-
-Observed after implementation:
-
-- Exit code: `0`
-- Test files: `2 passed / 2`
-- Tests: `18 passed / 18`
-
-Policy command:
-
-`npm run ci:check-focused`
-
-Observed:
-
-- Exit code: `0`
-- All policy checks passed.
-- RLS policy coverage and migration governance passed for the new migration.
-- Database-backed overlap, preview drift, and privileged-function grant checks were skipped because `SUPABASE_DB_URL`/`DATABASE_URL` is not configured.
-
-## Files changed
-
-- `supabase/migrations/20260710210551_goal_target_automatic_progression.sql`
-- `tests/goal-target-automatic-progression-migration.test.ts`
-- `.superpowers/sdd/task-1-report.md`
-
-`src/tests/security/rls.spec.ts` was intentionally not changed: no database integration credentials are available and the existing generated database types do not yet expose the new schema. Static migration policy tests are authoritative for Task 1; live RLS role/cross-tenant coverage remains a required later gate after migration replay/type generation.
-
-## Self-review
-
-- Scope stayed within Task 1; no evaluator, session finalization, Edge/server, generated types, or UI files changed.
-- Tenant scope is always derived from `goal_targets`; caller-supplied organization/client/goal values cannot rebind a row.
-- Criteria are the only directly mutable progression table and require exact active BCBA/midtier authority in the target organization or super-admin authority.
-- Evaluation and transition ledgers grant authenticated users SELECT only; INSERT/UPDATE/DELETE are revoked.
-- Trigger and override functions use `set search_path = ''`; unsafe default EXECUTE is revoked.
-- Historical target/session/note foreign keys use default restrictive behavior, not cascade deletion.
-- Backfill starts a new window at migration time and does not infer criteria from legacy free text.
-- Mastered targets and goals are excluded from current-target selection; ordering is stable by `sort_order, created_at, id`.
-- `git diff --check` passed.
-
-## Verification card
-
-- Classification: high-risk human-reviewed
-- Lane: critical
-- Change type: database/RLS/migration/tenant isolation
-- Required checks for this bounded task: focused migration tests; `npm run ci:check-focused`
-- Executed checks:
-  - focused migration tests — pass (`18/18`)
-  - `npm run ci:check-focused` — pass
-  - `git diff --check` — pass
-- Blocked checks:
-  - live RLS role/cross-tenant suite — missing configured database credentials and unapplied local migration
-  - database migration replay/privilege inspection — `SUPABASE_DB_URL`/`DATABASE_URL` unavailable
-  - full feature gates (`test:ci`, `validate:tenant`, build) — reserved for integrated completion per the implementation plan; Task 1 exact brief requires focused contract and policy checks
-- Result: pass with blocked live-database checks
-- Residual risk: SQL execution and live role behavior remain unproved until local/preview migration replay and credentialed RLS tests run; human Supabase/security review is mandatory before merge.
-
-## Concerns
-
-- The migration is not applied to hosted Supabase, per instruction.
-- Only `percent_correct` with `gte`/`lte` is enabled initially; later evaluator work must deliberately expand metric compatibility rather than accepting arbitrary values.
-- Task 1 establishes the manual phase override boundary but does not implement later-task target selection, reopen-goal, or automatic evaluator behavior.
-
-## Review-finding remediation
-
-### Additional RED evidence
-
-Added static contract assertions requiring a fixed-search-path progression-state guard, column-level INSERT/UPDATE privileges that omit progression-owned columns, removal of direct service-role ledger writes, and rollback metadata covering both helper functions.
-
-Command:
-
-`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
-
-Observed before remediation:
-
-- Exit code: `1`
-- New migration contract failures: `3`
-- Existing goal-target/trial-event contract: `11 passed / 11`
-- Expected missing contracts: progression-state guard/column privileges, service-role ledger write revocations, and complete rollback helper inventory.
-
-### Fix details
-
-- Added `app.guard_goal_target_progression_state()` as an invoker-context, fixed-search-path trigger function. Direct `anon`, `authenticated`, and `service_role` updates to progression-owned columns fail; owner-executed fixed-search-path `SECURITY DEFINER` progression RPCs remain able to perform audited/versioned updates.
-- Revoked table-level INSERT/UPDATE on `public.goal_targets` from Data API roles and re-granted column-specific INSERT/UPDATE only for non-progression fields. This also prevents callers from supplying progression state during INSERT.
-- Removed service-role all-access policies and INSERT/UPDATE/DELETE grants from evaluation and transition ledgers. Both ledgers are now SELECT-only for service role; writes occur only under owner-executed RPC context.
-- Expanded rollback metadata to name `app.set_goal_target_progression_scope()` and `app.guard_goal_target_progression_state()`.
-
-### Remediation GREEN evidence
-
-Command:
-
-`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
-
-Observed after remediation:
-
-- Exit code: `0`
-- Test files: `2 passed / 2`
-- Tests: `18 passed / 18`
-- `npm run ci:check-focused`: passed; live database-backed checks remain skipped because no database URL is configured.
-
-## Insert-time current-target remediation
-
-### RED evidence
-
-Added static assertions to the existing migration contract requiring a trusted fixed-search-path insert initializer, goal-level serialization, active goal/target eligibility, baseline initialization with a fresh window, non-current later targets, restricted helper execution, and rollback coverage.
-
-Command:
-
-`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
-
-Observed before implementation:
-
-- Exit code: `1`
-- Progression migration contract: `1 failed / 7`
-- Existing goal-target/trial-event migration contract: `11 passed / 11`
-- Expected failure: `app.initialize_goal_target_progression_state()` and its trigger contract did not exist.
-
-### Fix details
-
-- Added `app.initialize_goal_target_progression_state()` as an `AFTER INSERT`, fixed-empty-search-path `SECURITY DEFINER` trigger helper. `AFTER INSERT` guarantees the pre-existing target scope trigger has already derived and validated organization/client/goal scope.
-- The helper takes a goal-keyed transaction advisory lock before reading parent scope. The later lifecycle-trigger refactor intentionally avoids a second parent row lock: a goal-status update already owns that row lock before its `AFTER UPDATE` trigger, so combining it with the opposite advisory-then-row order from target inserts would create a lock inversion.
-- The helper revalidates target/goal scope and the existing program-goal management authority for authenticated callers.
-- Every newly inserted target receives four incomplete phase-criteria rows.
-- Only an `active` target under an `active` parent goal becomes current, and only when no current active target exists after serialization. It starts at `baseline` with a fresh UTC evaluation window; draft, mastered, archived, and later active targets remain non-current.
-- When eligible non-current targets already exist, selection is deterministic by `sort_order, created_at, id`; a refinement assertion was observed RED before adding this ordered selection.
-- Direct callers still cannot provide progression-owned columns because INSERT remains column-granted only for non-progression fields.
-- Revoked initializer execution from `PUBLIC`, `anon`, `authenticated`, and `service_role`; added the helper to rollback metadata.
-
-### GREEN evidence
-
-Command:
-
-`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
-
-Observed after implementation:
-
-- Exit code: `0`
-- Test files: `2 passed / 2`
-- Tests: `18 passed / 18`
-- `npm run ci:check-focused`: passed; database-backed checks remain skipped without a configured database URL.
-
-## Lifecycle activation invariant remediation
-
-### RED evidence
-
-Added static contracts requiring the same trusted initializer on both target `draft -> active` and parent-goal `draft -> active`, plus owner-context version increments.
-
-Command:
-
-`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
-
-Observed before implementation:
-
-- Exit code: `1`
-- Progression migration contract: `1 failed / 7`
-- Existing goal-target/trial-event migration contract: `11 passed / 11`
-- Expected failure: lifecycle activation triggers were absent.
-
-### Fix details
-
-- Refactored `app.initialize_goal_target_progression_state()` into one trigger helper shared by target inserts, target status transitions into `active`, and goal status transitions into `active`.
-- The helper derives a single goal ID by trigger table/operation, obtains the goal advisory lock, validates parent scope and active status, and no-ops unless the event can require initialization.
-- Existing valid current targets short-circuit selection. Otherwise the earliest active target is chosen deterministically by `sort_order, created_at, id`, initialized at baseline with a fresh UTC window, and has its progression version incremented.
-- Target inserts still receive four incomplete criteria rows regardless of lifecycle status.
-- The progression update does not include `status`, so the column-specific activation trigger cannot recurse. The goal activation trigger is likewise isolated to goal status updates.
-- The helper remains fixed-search-path, owner-executed, role/scope checked for authenticated callers, and non-executable by Data API roles.
-
-### GREEN evidence
-
-Command:
-
-`npx vitest run tests/goal-target-automatic-progression-migration.test.ts tests/goal-targets-trial-events-migration.test.ts`
-
-Observed after implementation:
-
-- Exit code: `0`
-- Test files: `2 passed / 2`
-- Tests: `18 passed / 18`
-- `npm run ci:check-focused`: passed; database-backed checks remain skipped without a configured database URL.
+Status: DONE_WITH_CONCERNS
+
+Files:
+- `supabase/migrations/20260717163000_route_bt_notes_to_assigned_bcba.sql`
+- `tests/bcbaSupervisionReviewWorkflowMigration.test.ts`
+
+Commits:
+- Pending local commit at report write time.
+
+Implementation summary:
+- Added the migration contract test first and proved RED when Vitest failed because the migration file did not exist.
+- Implemented a new BCBA assignee resolver, rebuilt the supervision request create/reconcile/complete RPCs with deterministic assignment behavior, tightened request/note select policies to admin-or-assigned-BCBA visibility, backfilled pending deterministic assignees, required the BCBA signature and credential fields on the canonical supervision template, and added the pending review packet RPC over BT note data plus BT attestation metadata.
+
+Exact test commands and results:
+- `$env:Path='C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;' + $env:Path; npx vitest run tests/bcbaSupervisionReviewWorkflowMigration.test.ts`
+  - FAIL as expected before implementation: `ENOENT` opening `supabase/migrations/20260717163000_route_bt_notes_to_assigned_bcba.sql`.
+- `$env:Path='C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;' + $env:Path; npx vitest run tests/bcbaSupervisionReviewWorkflowMigration.test.ts tests/supervisionSessionNoteWorkflowMigration.test.ts tests/btAbaSessionNoteMigration.test.ts`
+  - PASS: 3 files, 24 tests passed.
+- `npm run ci:check-focused`
+  - Did not execute correctly in the default PowerShell shim because `node.exe` was not on `PATH`.
+- `npm run validate:tenant`
+  - Did not execute correctly in the default PowerShell shim because `node.exe` was not on `PATH`.
+- `$env:Path='C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;' + $env:Path; npm run ci:check-focused`
+  - PASS. Static checks passed. Explicit skips reported for DB-dependent checks because `SUPABASE_DB_URL`/`DATABASE_URL` were not configured in this environment.
+- `$env:Path='C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;' + $env:Path; npm run validate:tenant`
+  - PASS: `tenant-safety: all checks passed`.
+
+Self-review:
+- Scope stayed inside the two assigned files only.
+- The migration preserves the existing supervision workflow structure instead of introducing new tables or broader schema churn.
+- Assignment is deterministic and fail-open for ambiguous BCBA routing, matching the brief by avoiding closeout-time exceptions.
+- Completion now writes the BCBA attestation in the same transaction without `on conflict do nothing`, so duplicate BCBA signatures roll back the note completion as required.
+
+Concerns:
+- `ci:check-focused` reported expected local skips for DB-connected checks because no `SUPABASE_DB_URL`/`DATABASE_URL` was configured.
+- The packet RPC uses `clients.full_name` and `therapists.name` based on current repo conventions; if either column shape has drifted in a later migration, a live DB verification run would be needed.

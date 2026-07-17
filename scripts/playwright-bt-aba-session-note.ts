@@ -7,7 +7,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
 import {
   fetchAccessTokenForCredentials,
@@ -315,21 +315,53 @@ const assertFinalizedArtifacts = async (admin: SupabaseClient, ids: LifecycleIds
   assert.equal(attestations?.[0]?.signer_user_id, actorId);
 };
 
+const emitTeardownInstruction = (config: SafetyConfig, sessionId: string | null, failed: boolean): void => {
+  let payload = `disposable-branch-teardown-required projectRef=${config.projectRef} sessionId=${sessionId ?? "not-created"}`;
+  try {
+    payload = JSON.stringify({
+      event: "disposable-branch-teardown-required",
+      outcome: failed ? "failed" : "completed",
+      projectRef: config.projectRef,
+      sessionId: sessionId ?? "not-created",
+      instruction: `Delete disposable Supabase branch ${config.projectRef} after preserving any required evidence. This script performs no cleanup mutation.`,
+    });
+  } catch { /* retain the non-throwing plain-text fallback */ }
+  try {
+    (failed ? console.error : console.log)(payload);
+  } catch {
+    try { process.stderr.write(`${payload}\n`); } catch { /* best-effort and deliberately non-throwing */ }
+  }
+};
+
+const logNonThrowing = (payload: Record<string, unknown>): void => {
+  try { console.error(JSON.stringify(payload)); } catch { /* teardown reporting remains authoritative */ }
+};
+
 async function run(): Promise<void> {
   loadPlaywrightEnv();
   const config = loadSafetyConfig();
-  const admin = createClient(config.supabaseUrl, config.serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
-  const token = await fetchAccessTokenForCredentials(config.email, config.password);
-  const actor = await resolveActor(config, token);
-  assert.equal(actor.email, config.email);
-  const graph = await validateFixtureGraphReadOnly(admin, config, actor);
-
-  const browser = await chromium.launch({ headless: process.env.HEADLESS !== "false" });
+  let browser: Browser | undefined;
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let createdSessionId: string | null = null;
   let runError: unknown;
+  let screenshot = "N/A";
+  const dryRunMode = normalizedEnv("PW_BT_ABA_DRY_RUN_FAILURE_MODE");
+
   try {
+    if (dryRunMode && !["pre-browser", "screenshot-failure"].includes(dryRunMode)) {
+      throw new Error("PW_BT_ABA_DRY_RUN_FAILURE_MODE must be pre-browser or screenshot-failure when set.");
+    }
+    if (dryRunMode === "pre-browser") throw new Error("Simulated pre-browser failure for teardown-report contract.");
+    if (dryRunMode === "screenshot-failure") throw new Error("Simulated lifecycle failure before screenshot capture.");
+
+    const admin = createClient(config.supabaseUrl, config.serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
+    const token = await fetchAccessTokenForCredentials(config.email, config.password);
+    const actor = await resolveActor(config, token);
+    assert.equal(actor.email, config.email);
+    const graph = await validateFixtureGraphReadOnly(admin, config, actor);
+
+    browser = await chromium.launch({ headless: process.env.HEADLESS !== "false" });
     context = await browser.newContext();
     page = await context.newPage();
     await withStep("login exact disposable BT", () => loginAndAssertSession(page!, config.baseUrl, config.email, config.password));
@@ -407,26 +439,29 @@ async function run(): Promise<void> {
       ok: true,
       sessionId: booked.sessionId,
       projectRef: config.projectRef,
-      teardownRequired: `Delete disposable Supabase branch ${config.projectRef} after preserving evidence for session ${booked.sessionId}.`,
       reviewerVisibility: "blocked:no-safe-synthetic-reviewer-path",
     }));
   } catch (error) {
-    const screenshot = page ? await captureFailureScreenshot(page, "playwright-bt-aba-session-note") : "N/A";
-    console.error(JSON.stringify({
+    runError = error;
+    try {
+      if (dryRunMode === "screenshot-failure") throw new Error("Simulated screenshot capture failure.");
+      if (page) screenshot = await captureFailureScreenshot(page, "playwright-bt-aba-session-note");
+    } catch (screenshotError) {
+      screenshot = `unavailable:${screenshotError instanceof Error ? screenshotError.message : String(screenshotError)}`;
+    }
+    logNonThrowing({
       ok: false,
       error: error instanceof Error ? error.message : String(error),
       screenshot,
       sessionId: createdSessionId,
       projectRef: config.projectRef,
-      teardownRequired: `Delete disposable Supabase branch ${config.projectRef}; this script intentionally performs no cleanup mutation.`,
-    }));
-    runError = error;
-  }
-
-  try {
-    await context?.close();
+    });
   } finally {
-    await browser.close();
+    try { await context?.close(); }
+    catch (closeError) { if (!runError) runError = closeError; else logNonThrowing({ warning: "browser-context-close-failed", error: String(closeError) }); }
+    try { await browser?.close(); }
+    catch (closeError) { if (!runError) runError = closeError; else logNonThrowing({ warning: "browser-close-failed", error: String(closeError) }); }
+    emitTeardownInstruction(config, createdSessionId, Boolean(runError));
   }
   if (runError) throw runError;
 }

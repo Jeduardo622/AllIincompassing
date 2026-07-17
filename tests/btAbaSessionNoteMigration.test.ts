@@ -60,12 +60,12 @@ describe('BT ABA session note closeout migration', () => {
     const finalize = functionBody('finalize_bt_aba_session_note');
     for (const body of [draft, finalize]) {
       expect(body).not.toMatch(/p_note_payload\s*->>\s*'authorization_id'|p_note_payload\s*->>\s*'requested_service_code'/i);
-      expect(body).toMatch(/from public\.authorizations authorization[\s\S]*authorization\.organization_id = v_session\.organization_id[\s\S]*authorization\.client_id = v_session\.client_id/i);
-      expect(body).toMatch(/authorization\.status = 'approved'[\s\S]*v_session\.start_time::date between authorization\.start_date and authorization\.end_date/i);
+      expect(body).toMatch(/from public\.authorizations authz[\s\S]*authz\.organization_id = v_session\.organization_id[\s\S]*authz\.client_id = v_session\.client_id/i);
+      expect(body).toMatch(/authz\.status = 'approved'[\s\S]*v_session\.start_time::date between authz\.start_date and authz\.end_date/i);
       expect(body).toMatch(/from public\.authorization_services service[\s\S]*service\.authorization_id = v_authorization\.id/i);
       expect(body).toMatch(/service\.decision_status = 'approved'[\s\S]*v_session\.start_time::date between service\.from_date and service\.to_date/i);
       expect(body).toMatch(/if not found and v_strict_billing then[\s\S]*v_service_code := 'UNSPECIFIED'/i);
-      expect(body.indexOf('from public.authorizations authorization')).toBeLessThan(body.indexOf('from public.authorization_services service'));
+      expect(body.indexOf('from public.authorizations authz')).toBeLessThan(body.indexOf('from public.authorization_services service'));
     }
     expect(draft).toMatch(/authorization_id\s*=\s*v_authorization\.id[\s\S]*service_code\s*=\s*v_service_code/i);
     expect(finalize).toMatch(/v_canonical_note_payload[\s\S]*jsonb_build_object\([\s\S]*'authorization_id', v_authorization\.id[\s\S]*'requested_service_code', v_service_code/i);

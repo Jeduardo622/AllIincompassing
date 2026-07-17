@@ -317,22 +317,22 @@ begin
   end if;
 
   v_strict_billing := app.session_capture_strict_billing_gate(v_session.organization_id);
-  select authorization.* into v_authorization
-  from public.authorizations authorization
-  where authorization.organization_id = v_session.organization_id
-    and authorization.client_id = v_session.client_id
+  select authz.* into v_authorization
+  from public.authorizations authz
+  where authz.organization_id = v_session.organization_id
+    and authz.client_id = v_session.client_id
     and (
       not v_strict_billing
       or (
-        authorization.status = 'approved'
-        and v_session.start_time::date between authorization.start_date and authorization.end_date
+        authz.status = 'approved'
+        and v_session.start_time::date between authz.start_date and authz.end_date
       )
     )
   order by
-    case when authorization.status = 'approved'
-           and v_session.start_time::date between authorization.start_date and authorization.end_date then 0 else 1 end,
-    authorization.updated_at desc,
-    authorization.id
+    case when authz.status = 'approved'
+           and v_session.start_time::date between authz.start_date and authz.end_date then 0 else 1 end,
+    authz.updated_at desc,
+    authz.id
   limit 1;
   if not found then
     raise exception using errcode = '23514', message = 'no valid authorization is available for this session';
@@ -623,22 +623,22 @@ begin
   end if;
 
   v_strict_billing := app.session_capture_strict_billing_gate(v_session.organization_id);
-  select authorization.* into v_authorization
-  from public.authorizations authorization
-  where authorization.organization_id = v_session.organization_id
-    and authorization.client_id = v_session.client_id
+  select authz.* into v_authorization
+  from public.authorizations authz
+  where authz.organization_id = v_session.organization_id
+    and authz.client_id = v_session.client_id
     and (
       not v_strict_billing
       or (
-        authorization.status = 'approved'
-        and v_session.start_time::date between authorization.start_date and authorization.end_date
+        authz.status = 'approved'
+        and v_session.start_time::date between authz.start_date and authz.end_date
       )
     )
   order by
-    case when authorization.status = 'approved'
-           and v_session.start_time::date between authorization.start_date and authorization.end_date then 0 else 1 end,
-    authorization.updated_at desc,
-    authorization.id
+    case when authz.status = 'approved'
+           and v_session.start_time::date between authz.start_date and authz.end_date then 0 else 1 end,
+    authz.updated_at desc,
+    authz.id
   limit 1;
   if not found then
     raise exception using errcode = '23514', message = 'no valid authorization is available for this session';

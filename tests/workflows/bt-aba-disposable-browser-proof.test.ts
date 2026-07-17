@@ -214,6 +214,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     const inputs = dispatcher.on?.workflow_dispatch?.inputs ?? {};
     const preview = dispatcher.jobs?.preview;
     const protectedProof = dispatcher.jobs?.bt_aba_disposable_proof;
+    const generateTypes = findStep(preview, 'Generate DB types (optional)');
 
     expect(Object.keys(dispatcher.on ?? {})).toEqual(['workflow_dispatch']);
     expect(inputs.mode).toMatchObject({
@@ -234,10 +235,16 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(preview?.env ?? {}).not.toHaveProperty('SUPABASE_ACCESS_TOKEN');
     expect(findStep(preview, 'Start local Supabase (ephemeral)')).toBeDefined();
     expect(findStep(preview, 'Run preview smoke suite')?.run).toBe('npm run preview:smoke');
+    expect(generateTypes?.env).toEqual({
+      SUPABASE_PROJECT_ID: '${{ vars.SUPABASE_PROJECT_ID }}',
+      SUPABASE_ACCESS_TOKEN: '${{ secrets.SUPABASE_ACCESS_TOKEN }}',
+    });
     expect(protectedProof).toMatchObject({
       if: "inputs.mode == 'bt-aba-disposable-proof'",
       uses: './.github/workflows/bt-aba-disposable-browser-proof.yml',
-      secrets: 'inherit',
+      secrets: {
+        SUPABASE_ACCESS_TOKEN: '${{ secrets.SUPABASE_ACCESS_TOKEN }}',
+      },
       with: {
         commit_sha: '${{ inputs.commit_sha }}',
         pull_request_number: '${{ inputs.pull_request_number }}',
@@ -248,6 +255,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
       contents: 'read',
       'pull-requests': 'read',
     });
-    expect(source.match(/secrets\.SUPABASE_ACCESS_TOKEN/g)).toBeNull();
+    expect(source).not.toContain('secrets: inherit');
+    expect(source.match(/secrets\.SUPABASE_ACCESS_TOKEN/g)).toHaveLength(2);
   });
 });

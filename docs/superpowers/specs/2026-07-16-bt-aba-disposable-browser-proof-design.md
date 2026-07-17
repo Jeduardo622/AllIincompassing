@@ -7,7 +7,8 @@ Extend the existing default-branch Supabase Preview manual dispatcher with an ex
 ## Boundaries
 
 - Manual entry remains on `.github/workflows/supabase-preview.yml`, which already exists on the default branch and defaults to its unchanged local-preview behavior.
-- `.github/workflows/bt-aba-disposable-browser-proof.yml` is `workflow_call`-only and requires immutable PR inputs plus the inherited `SUPABASE_ACCESS_TOKEN` secret.
+- `.github/workflows/bt-aba-disposable-browser-proof.yml` is `workflow_call`-only and requires immutable PR inputs plus one explicitly mapped `SUPABASE_ACCESS_TOKEN` secret; the caller does not inherit unrelated repository secrets.
+- The existing optional remote DB type-generation step retains its required Supabase PAT only at step scope; the local preview job has no job-wide PAT.
 - The BT mode is owner-approved and validates an open same-repository PR based on `main` whose head exactly matches the supplied 40-character lowercase commit SHA.
 - The source project is fixed to `wnnjeqheqxxyrgsjmygy`; every runtime project ref must differ from it.
 - Branch creation is data-less. No production rows are cloned.

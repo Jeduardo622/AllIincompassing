@@ -170,7 +170,7 @@ git commit -m "test: route BT note API in protected preview"
 - Test: `tests/workflows/bt-aba-disposable-browser-proof.test.ts`
 
 **Interfaces:**
-- Consumes: the existing Supabase Preview dispatcher with `mode=bt-aba-disposable-proof`, immutable PR inputs, and `SUPABASE_ACCESS_TOKEN` inherited by the reusable workflow.
+- Consumes: the existing Supabase Preview dispatcher with `mode=bt-aba-disposable-proof`, immutable PR inputs, and an explicit `SUPABASE_ACCESS_TOKEN` secret mapping to the reusable workflow.
 - Produces: redacted browser evidence artifact and a verified-deleted disposable branch.
 
 - [ ] **Step 1: Write a failing workflow contract test**
@@ -193,7 +193,7 @@ Expected: FAIL until the protected workflow is reusable-only and the existing di
 
 Pin checkout, setup-node, setup-cli, and upload-artifact actions by commit SHA. Sequence: checkout, install, create/poll branch, apply migrations to the branch, retrieve and mask keys, provision fixture, build branch-bound preview, install Chromium, launch preview with API opt-in, run `playwright:bt-aba-session-note`, upload redacted artifacts, and always delete/verify the branch.
 
-The existing `.github/workflows/supabase-preview.yml` remains `workflow_dispatch`-only and defaults to its unchanged local-preview mode. Its conditional BT job calls `./.github/workflows/bt-aba-disposable-browser-proof.yml` with immutable PR inputs and `secrets: inherit`. The protected file is `workflow_call`-only, validates owner approval and the open same-repository PR head, and runs cleanup in a separate bounded job.
+The existing `.github/workflows/supabase-preview.yml` remains `workflow_dispatch`-only and defaults to its unchanged local-preview mode. Its optional remote DB type-generation step receives the PAT only at step scope. Its conditional BT job calls `./.github/workflows/bt-aba-disposable-browser-proof.yml` with immutable PR inputs and an explicit `SUPABASE_ACCESS_TOKEN` secret mapping; it never inherits all repository secrets. The protected file is `workflow_call`-only, validates owner approval and the open same-repository PR head, and runs cleanup in a separate bounded job.
 
 - [ ] **Step 4: Validate workflow and focused tests**
 

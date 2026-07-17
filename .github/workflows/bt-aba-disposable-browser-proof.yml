@@ -116,7 +116,6 @@ jobs:
       PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: retain-platform-managed-pr-preview
       PW_BT_BRANCH_OWNERSHIP: platform-managed-pr-preview
       PW_BASE_URL: http://127.0.0.1:4173
-      PW_BT_CLEANUP_STATE_PATH: ${{ runner.temp }}/bt-aba-proof/cleanup-state.json
     steps:
       - name: Checkout validated commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -240,6 +239,7 @@ jobs:
       - name: Run BT ABA session-note browser proof
         env:
           PW_BT_PROOF_ARTIFACT_DIR: ${{ runner.temp }}/bt-aba-public-evidence
+          PW_BT_CLEANUP_STATE_PATH: ${{ runner.temp }}/bt-aba-proof/cleanup-state.json
         run: |
           SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")" \
             npm run playwright:bt-aba-session-note
@@ -247,6 +247,8 @@ jobs:
 
       - name: Clean exact marker-owned synthetic fixture
         if: always() && env.PW_BT_FIXTURE_PROVISIONED == 'true'
+        env:
+          PW_BT_CLEANUP_STATE_PATH: ${{ runner.temp }}/bt-aba-proof/cleanup-state.json
         run: |
           SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")" \
             npx tsx scripts/cleanup-ci-smoke-bt-aba.ts

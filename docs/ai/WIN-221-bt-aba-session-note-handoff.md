@@ -64,7 +64,7 @@ Final local verification was run from the clean isolated worktree after all impl
 
 | Check | Current evidence | Final requirement |
 |---|---|---|
-| Focused BT ABA contract/components/server/migration/orchestration tests | **PASS** — 9 files, `350/350` tests | Complete |
+| Focused BT ABA contract/components/server/migration/orchestration tests | **PASS** — 9 files, `352/352` tests after rebasing onto `origin/main` at `147479d7` | Complete |
 | `npm run ci:check-focused` | **PASS** — static API/auth/grant/RLS/migration/reliability policies passed | DB overlap, preview drift, privileged-function DB grants, auth parity, and branch protection remain environment/CI-skipped |
 | `npm run lint` | **PASS** — zero warnings | Complete |
 | `npm run typecheck` | **PASS** | Complete |
@@ -83,7 +83,7 @@ Final local verification was run from the clean isolated worktree after all impl
 
 - Lane: `critical`
 - Required checks: focused tests; policy; lint; typecheck; `test:ci`; tenant validation; Tier-0 routes; build; credentialed Playwright; `verify:local`; executable migration replay and SQL smoke.
-- Executed checks: focused `350/350`; policy; lint; typecheck; coverage; tenant validation; production build; Tier-0 routes `220/220`; broad `test:ci`; `verify:local`; protected Playwright preflight; BT lifecycle missing-env preflight.
+- Executed checks: focused `352/352` after final rebase; policy; lint; typecheck; coverage; tenant validation; production build; Tier-0 routes `220/220`; broad `test:ci`; `verify:local`; protected Playwright preflight; BT lifecycle missing-env preflight.
 - Blocked checks: local/preview PostgreSQL replay and SQL smoke; credentialed exact-BT disposable-branch browser lifecycle; authorized-reviewer browser visibility; protected Playwright credentials; DB-connected policy/advisor checks.
 - Result: `fail` — required broad `test:ci`/`verify:local` retain one unrelated Windows CRLF workflow-parser failure, and executable database/browser gates are blocked. The focused change and all runnable domain gates pass.
 - Residual risk: PL/pgSQL compilation/rollback and live RLS/grant behavior are not yet executable proof; reviewer UI visibility is not covered; protected environment browser behavior remains unproved.

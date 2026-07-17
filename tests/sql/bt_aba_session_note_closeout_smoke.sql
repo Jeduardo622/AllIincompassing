@@ -151,6 +151,26 @@ values
   ('00000000-0000-4000-8000-00000000b042', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b012', now() - interval '5 hours', now() - interval '4 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '5 hours'),
   ('00000000-0000-4000-8000-00000000b043', '00000000-0000-4000-8000-00000000b021', '00000000-0000-4000-8000-00000000b015', now() - interval '7 hours', now() - interval '6 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '7 hours');
 
+insert into public.supervision_session_note_requests (
+  id, organization_id, session_id, client_id, bt_therapist_id,
+  assigned_admin_user_id, requested_by, status,
+  cancelled_at, cancelled_by, cancellation_reason, cancellation_source
+)
+values (
+  '00000000-0000-4000-8000-00000000b050',
+  '00000000-0000-4000-8000-00000000b001',
+  '00000000-0000-4000-8000-00000000b040',
+  '00000000-0000-4000-8000-00000000b020',
+  '00000000-0000-4000-8000-00000000b015',
+  '00000000-0000-4000-8000-00000000b013',
+  '00000000-0000-4000-8000-00000000b010',
+  'cancelled',
+  now() - interval '10 minutes',
+  '00000000-0000-4000-8000-00000000b013',
+  'Synthetic legacy request cancellation',
+  'win223_smoke_fixture'
+);
+
 create temporary table win221_finalization_results (result jsonb not null);
 grant select, insert on table win221_finalization_results to authenticated;
 
@@ -322,10 +342,92 @@ begin
   result := public.finalize_bt_aba_session_note('00000000-0000-4000-8000-00000000b040', v_note_id, payload, valid_responses, '[]'::jsonb, '[]'::jsonb);
   if result->>'status' <> 'completed' then raise exception 'assigned BT finalize failed: %', result; end if;
   insert into win221_finalization_results values (result);
+
+  result := public.finalize_bt_aba_session_note('00000000-0000-4000-8000-00000000b041', failure_note_id, payload, valid_responses, '[]'::jsonb, '[]'::jsonb);
+  if result->>'status' <> 'completed' then raise exception 'lifecycle fixture finalize failed: %', result; end if;
 end
 $finalization$;
 
 reset role;
+select set_config(
+  'app.win223_request_id',
+  (select id::text from public.supervision_session_note_requests where session_id = '00000000-0000-4000-8000-00000000b041'),
+  true
+);
+update public.supervision_session_note_requests
+set status = 'cancelled',
+    cancelled_at = now(),
+    cancelled_by = '00000000-0000-4000-8000-00000000b013',
+    cancellation_reason = 'Synthetic reconcile no-reopen check',
+    cancellation_source = 'win223_smoke_fixture',
+    updated_at = now()
+where id = current_setting('app.win223_request_id')::uuid;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b013', true);
+do $reconcile_does_not_reopen$
+begin
+  perform public.reconcile_supervision_session_note_requests(now() - interval '1 day');
+  if (select status from public.supervision_session_note_requests where id = current_setting('app.win223_request_id')::uuid) <> 'cancelled' then
+    raise exception 'reconcile unexpectedly reopened a cancelled request';
+  end if;
+end
+$reconcile_does_not_reopen$;
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b010', true);
+do $creator_reopens_in_place$
+declare reopened_id uuid;
+begin
+  reopened_id := public.create_supervision_session_note_request_for_completed_session('00000000-0000-4000-8000-00000000b041');
+  if reopened_id is distinct from current_setting('app.win223_request_id')::uuid then
+    raise exception 'creator did not reopen the existing request in place: %', reopened_id;
+  end if;
+end
+$creator_reopens_in_place$;
+
+reset role;
+do $reopen_assertions$
+begin
+  if (select count(*) from public.supervision_session_note_requests where session_id = '00000000-0000-4000-8000-00000000b041') <> 1
+     or not exists (
+       select 1
+       from public.supervision_session_note_requests
+       where id = current_setting('app.win223_request_id')::uuid
+         and status = 'pending'
+         and cancellation_source = 'win223_smoke_fixture'
+         and reopened_by = '00000000-0000-4000-8000-00000000b010'
+         and reopen_source = 'structured_bt_closeout'
+     ) then
+    raise exception 'creator reopen lifecycle assertions failed';
+  end if;
+end
+$reopen_assertions$;
+
+update public.supervision_session_note_requests
+set status = 'completed', completed_at = now(), updated_at = now()
+where id = current_setting('app.win223_request_id')::uuid;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b010', true);
+do $completed_is_terminal$
+declare replay_id uuid;
+begin
+  replay_id := public.create_supervision_session_note_request_for_completed_session('00000000-0000-4000-8000-00000000b041');
+  if replay_id is distinct from current_setting('app.win223_request_id')::uuid then
+    raise exception 'completed creator replay returned a different request: %', replay_id;
+  end if;
+end
+$completed_is_terminal$;
+
+reset role;
+do $completed_status_assertion$
+begin
+  if (select status from public.supervision_session_note_requests where id = current_setting('app.win223_request_id')::uuid) <> 'completed' then
+    raise exception 'completed request was not terminal';
+  end if;
+end
+$completed_status_assertion$;
+
 update public.user_roles roles
 set is_active = false
 where roles.user_id = '00000000-0000-4000-8000-00000000b010'
@@ -378,8 +480,15 @@ begin
      or (select count(*) from public.session_audit_logs where session_id = '00000000-0000-4000-8000-00000000b040' and event_type = 'session_completed') <> 1
      or (select count(*) from public.supervision_session_note_requests
          where session_id = '00000000-0000-4000-8000-00000000b040'
+           and id = '00000000-0000-4000-8000-00000000b050'
            and requested_by = '00000000-0000-4000-8000-00000000b010'
-           and bt_therapist_id = '00000000-0000-4000-8000-00000000b015') <> 1 then
+           and bt_therapist_id = '00000000-0000-4000-8000-00000000b015'
+           and assigned_admin_user_id = '00000000-0000-4000-8000-00000000b013'
+           and status = 'pending'
+           and cancellation_source = 'win223_smoke_fixture'
+           and reopened_at is not null
+           and reopened_by = '00000000-0000-4000-8000-00000000b010'
+           and reopen_source = 'structured_bt_closeout') <> 1 then
     raise exception 'signer replay changed finalization side effects';
   end if;
 end

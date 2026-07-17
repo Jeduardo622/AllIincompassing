@@ -46,11 +46,6 @@ interface SessionRecord {
   end_time: string;
 }
 
-interface TherapistTitleRecord {
-  id: string;
-  title: string | null;
-}
-
 interface TraceMeta {
   requestId: string | null;
   correlationId: string | null;
@@ -252,21 +247,16 @@ export async function checkSessionNotesPresent(
   return checkSessionNotesPresentForRequest(buildFallbackRequest(), sessionId, orgId, logger, primaryGoalId);
 }
 
-const isBtOrRbtTitle = (title: string | null | undefined): boolean => {
-  const normalized = (title ?? "").trim().toUpperCase();
-  return normalized === "BT" || normalized === "RBT";
-};
-
 async function createSupervisionSessionNoteRequestIfNeeded({
+  db,
   orgId,
   session,
-  actorId,
   outcome,
   logger,
 }: {
+  db: SupabaseClient;
   orgId: string;
   session: SessionRecord;
-  actorId: string;
   outcome: SessionOutcome;
   logger: Logger;
 }): Promise<void> {
@@ -274,54 +264,20 @@ async function createSupervisionSessionNoteRequestIfNeeded({
     return;
   }
 
-  const { data: therapistRows, error: therapistError } = await supabaseAdmin
-    .from("therapists")
-    .select("id, title")
-    .eq("id", session.therapist_id)
-    .eq("organization_id", orgId);
-
-  if (therapistError) {
-    logger.warn("supervision-note.request.therapist-fetch-failed", {
-      sessionId: session.id,
-      error: therapistError.message ?? "unknown",
-    });
-    increment("supervision_note_request_failure_total", {
-      function: "sessions-complete",
-      orgId,
-      reason: "therapist-fetch",
-    });
-    return;
-  }
-
-  const therapist = ((therapistRows ?? []) as TherapistTitleRecord[])[0] ?? null;
-  if (!isBtOrRbtTitle(therapist?.title)) {
-    return;
-  }
-
-  const { error: requestError } = await supabaseAdmin
-    .from("supervision_session_note_requests")
-    .upsert(
-      {
-        organization_id: orgId,
-        session_id: session.id,
-        client_id: session.client_id,
-        bt_therapist_id: session.therapist_id,
-        requested_by: actorId,
-        status: "pending",
-      },
-      { onConflict: "session_id", ignoreDuplicates: true },
-    )
-    .select("id");
+  const { error: requestError } = await db.rpc(
+    "create_supervision_session_note_request_for_completed_session",
+    { p_session_id: session.id },
+  );
 
   if (requestError) {
-    logger.warn("supervision-note.request.create-failed", {
+    logger.warn("supervision-note.request.rpc-failed", {
       sessionId: session.id,
       error: requestError.message ?? "unknown",
     });
     increment("supervision_note_request_failure_total", {
       function: "sessions-complete",
       orgId,
-      reason: "request-upsert",
+      reason: "request-rpc",
     });
     return;
   }
@@ -528,9 +484,9 @@ async function handleSessionCompletionForRequest(
   });
 
   await createSupervisionSessionNoteRequestIfNeeded({
+    db,
     orgId,
     session,
-    actorId: userId,
     outcome,
     logger,
   });

@@ -108,6 +108,21 @@ const normalizeResponses = (value: unknown): Record<string, unknown> => (
     : {}
 );
 
+const deriveTemplate = (row: ReviewPacketRow | undefined): SupervisionSessionNoteTemplate | null => {
+  const templateId = row?.supervision_template_id?.trim();
+  const templateName = row?.supervision_template_name?.trim();
+
+  if (!templateId || !templateName) {
+    return null;
+  }
+
+  return {
+    id: templateId,
+    templateName,
+    sections: normalizeSections(row.supervision_template_structure),
+  };
+};
+
 const mapReviewPacketRow = (row: ReviewPacketRow): PendingSupervisionSessionNoteRequest => {
   if (!row.bt_note_id) {
     throw new Error('Completed BT note is unavailable for supervision review.');
@@ -156,13 +171,7 @@ export const fetchPendingSupervisionSessionNoteRequests = async (
 
   return {
     requests: packets.map(mapReviewPacketRow),
-    template: firstPacket
-      ? {
-        id: firstPacket.supervision_template_id,
-        templateName: firstPacket.supervision_template_name,
-        sections: normalizeSections(firstPacket.supervision_template_structure),
-      }
-      : null,
+    template: deriveTemplate(firstPacket),
   };
 };
 

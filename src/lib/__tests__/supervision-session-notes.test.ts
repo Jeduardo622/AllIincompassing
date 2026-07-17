@@ -71,6 +71,77 @@ describe('supervision session note data access', () => {
     });
   });
 
+  it('returns a null template when the first packet does not provide a usable template identity', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [{
+        request_id: 'request-1',
+        organization_id: 'org-1',
+        session_id: 'session-1',
+        client_id: 'client-1',
+        bt_therapist_id: 'bt-1',
+        assigned_reviewer_user_id: 'bcba-1',
+        request_status: 'pending',
+        request_created_at: '2026-07-17T12:00:00Z',
+        session_start_time: '2026-07-17T10:00:00Z',
+        session_end_time: '2026-07-17T11:00:00Z',
+        place_of_service: '12 - Home',
+        client_name: 'Test Client',
+        bt_therapist_name: 'Test BT',
+        bt_therapist_title: 'BT',
+        bt_note_id: 'note-1',
+        bt_responses: { client_status: 'Ready for treatment.' },
+        bt_template_snapshot: { sections: [] },
+        bt_signature_method: 'typed',
+        bt_signed_at: '2026-07-17T11:05:00Z',
+        supervision_template_id: '',
+        supervision_template_name: '   ',
+        supervision_template_structure: { sections: [{ key: 'summary', fields: [] }] },
+        can_complete: true,
+      }],
+      error: null,
+    });
+
+    const result = await fetchPendingSupervisionSessionNoteRequests('org-1');
+
+    expect(result.template).toBeNull();
+    expect(result.requests[0]?.id).toBe('request-1');
+  });
+
+  it('rejects packets when the completed BT note is unavailable', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [{
+        request_id: 'request-1',
+        organization_id: 'org-1',
+        session_id: 'session-1',
+        client_id: 'client-1',
+        bt_therapist_id: 'bt-1',
+        assigned_reviewer_user_id: 'bcba-1',
+        request_status: 'pending',
+        request_created_at: '2026-07-17T12:00:00Z',
+        session_start_time: '2026-07-17T10:00:00Z',
+        session_end_time: '2026-07-17T11:00:00Z',
+        place_of_service: '12 - Home',
+        client_name: 'Test Client',
+        bt_therapist_name: 'Test BT',
+        bt_therapist_title: 'BT',
+        bt_note_id: null,
+        bt_responses: { client_status: 'Ready for treatment.' },
+        bt_template_snapshot: { sections: [] },
+        bt_signature_method: 'typed',
+        bt_signed_at: '2026-07-17T11:05:00Z',
+        supervision_template_id: 'template-1',
+        supervision_template_name: 'Supervision Session Note',
+        supervision_template_structure: { sections: [{ key: 'summary', fields: [] }] },
+        can_complete: true,
+      }],
+      error: null,
+    });
+
+    await expect(fetchPendingSupervisionSessionNoteRequests('org-1')).rejects.toThrow(
+      'Completed BT note is unavailable for supervision review.',
+    );
+  });
+
   it('reconciles pending supervision requests through a separate tenant-checked RPC', async () => {
     rpcMock.mockResolvedValue({ data: 1, error: null });
 

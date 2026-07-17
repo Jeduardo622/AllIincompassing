@@ -1,10 +1,114 @@
 /*
   @migration-intent: Route BT supervision reviews to a deterministically assigned BCBA, expose pending BT review packets, and require an assigned exact-BCBA completion attestation.
   @migration-dependencies: 20260629233000_create_supervision_session_note_workflow.sql,20260716212837_bt_aba_session_note_closeout.sql,20260717144005_require_supervision_session_note_fields.sql
-  @migration-rollback: Restore the prior supervision request select policies and request/completion RPC definitions from 20260629233000_create_supervision_session_note_workflow.sql, then drop public.get_pending_supervision_review_packets() and app.resolve_supervision_bcba_assignee(uuid, uuid) if this routing contract is intentionally reverted.
+  @migration-rollback: Restore the prior supervision request select policies and request/completion RPC definitions from 20260629233000_create_supervision_session_note_workflow.sql, revert the canonical supervision template field requirements introduced here, then drop public.get_pending_supervision_review_packets() and app.resolve_supervision_bcba_assignee(uuid, uuid) if this routing contract is intentionally reverted.
 */
 
 begin;
+
+create or replace function app.user_has_any_active_role_for_org(
+  p_user_id uuid,
+  p_organization_id uuid,
+  p_allowed_roles text[]
+) returns boolean
+language sql stable security definer
+set search_path = public, app, auth
+as $$
+  select exists (
+    select 1
+    from public.profiles profile
+    join public.user_roles ur
+      on ur.user_id = profile.id
+    join public.roles role
+      on role.id = ur.role_id
+    where profile.id = p_user_id
+      and profile.organization_id = p_organization_id
+      and lower(btrim(role.name)) = any (
+        select lower(btrim(allowed_role))
+        from unnest(p_allowed_roles) as allowed_role
+      )
+      and coalesce(ur.is_active, true) = true
+      and (ur.expires_at is null or ur.expires_at > now())
+  );
+$$;
+
+revoke all on function app.user_has_any_active_role_for_org(uuid, uuid, text[]) from public, anon, authenticated;
+grant execute on function app.user_has_any_active_role_for_org(uuid, uuid, text[]) to service_role;
+
+create or replace function app.user_has_exact_active_role_for_org(
+  p_user_id uuid,
+  p_organization_id uuid,
+  p_allowed_roles text[]
+) returns boolean
+language sql stable security definer
+set search_path = public, app, auth
+as $$
+  with active_roles as (
+    select distinct lower(btrim(role.name)) as normalized_role
+    from public.profiles profile
+    join public.user_roles ur
+      on ur.user_id = profile.id
+    join public.roles role
+      on role.id = ur.role_id
+    where profile.id = p_user_id
+      and profile.organization_id = p_organization_id
+      and coalesce(ur.is_active, true) = true
+      and (ur.expires_at is null or ur.expires_at > now())
+  ),
+  allowed_roles as (
+    select distinct lower(btrim(allowed_role)) as normalized_role
+    from unnest(p_allowed_roles) as allowed_role
+  )
+  select exists (select 1 from active_roles)
+    and exists (
+      select 1
+      from active_roles active_role
+      join allowed_roles allowed_role
+        on allowed_role.normalized_role = active_role.normalized_role
+    )
+    and not exists (
+      select 1
+      from active_roles active_role
+      left join allowed_roles allowed_role
+        on allowed_role.normalized_role = active_role.normalized_role
+      where allowed_role.normalized_role is null
+    );
+$$;
+
+revoke all on function app.user_has_exact_active_role_for_org(uuid, uuid, text[]) from public, anon, authenticated;
+grant execute on function app.user_has_exact_active_role_for_org(uuid, uuid, text[]) to service_role;
+
+alter table public.session_note_attestations
+  add column if not exists supervision_note_id uuid references public.supervision_session_notes(id) on delete cascade;
+
+alter table public.session_note_attestations
+  alter column note_id drop not null;
+
+alter table public.session_note_attestations
+  drop constraint if exists session_note_attestations_note_id_attestation_role_signer_user_id_key;
+
+create unique index if not exists session_note_attestations_client_note_unique_idx
+  on public.session_note_attestations (note_id, attestation_role, signer_user_id)
+  where note_id is not null;
+
+create unique index if not exists session_note_attestations_supervision_note_unique_idx
+  on public.session_note_attestations (supervision_note_id, attestation_role, signer_user_id)
+  where supervision_note_id is not null;
+
+alter table public.session_note_attestations
+  drop constraint if exists session_note_attestations_exactly_one_target_chk;
+
+alter table public.session_note_attestations
+  add constraint session_note_attestations_exactly_one_target_chk
+  check (
+    (
+      note_id is not null
+      and supervision_note_id is null
+    ) or (
+      note_id is null
+      and supervision_note_id is not null
+    )
+  );
 
 create or replace function app.resolve_supervision_bcba_assignee(
   p_organization_id uuid,
@@ -43,12 +147,17 @@ begin
    and p.organization_id = p_organization_id
   where ctl.client_id = p_client_id
     and ctl.organization_id = p_organization_id
+    and app.user_has_exact_active_role_for_org(
+      utl.user_id,
+      p_organization_id,
+      array['bcba']::text[]
+    )
     and exists (
       select 1
       from public.user_roles ur
       join public.roles r on r.id = ur.role_id
       where ur.user_id = utl.user_id
-        and r.name = 'bcba'
+        and lower(btrim(r.name)) = 'bcba'
         and coalesce(ur.is_active, true)
         and (ur.expires_at is null or ur.expires_at > now())
     );
@@ -62,12 +171,17 @@ begin
     into v_org_count, v_org_user_id
   from public.profiles p
   where p.organization_id = p_organization_id
+    and app.user_has_exact_active_role_for_org(
+      p.id,
+      p_organization_id,
+      array['bcba']::text[]
+    )
     and exists (
       select 1
       from public.user_roles ur
       join public.roles r on r.id = ur.role_id
       where ur.user_id = p.id
-        and r.name = 'bcba'
+        and lower(btrim(r.name)) = 'bcba'
         and coalesce(ur.is_active, true)
         and (ur.expires_at is null or ur.expires_at > now())
     );
@@ -90,17 +204,17 @@ create policy supervision_session_note_requests_admin_or_assigned_bcba_select
   for select
   to authenticated
   using (
-    app.user_has_role_for_org(
+    app.user_has_any_active_role_for_org(
       auth.uid(),
       organization_id,
       array['admin', 'super_admin', 'org_admin', 'org_super_admin']
     )
     or (
       assigned_admin_user_id = auth.uid()
-      and app.user_has_role_for_org(
+      and app.user_has_exact_active_role_for_org(
         auth.uid(),
         organization_id,
-        array['bcba']
+        array['bcba']::text[]
       )
     )
   );
@@ -112,7 +226,7 @@ create policy supervision_session_notes_admin_or_assigned_bcba_select
   for select
   to authenticated
   using (
-    app.user_has_role_for_org(
+    app.user_has_any_active_role_for_org(
       auth.uid(),
       organization_id,
       array['admin', 'super_admin', 'org_admin', 'org_super_admin']
@@ -123,10 +237,10 @@ create policy supervision_session_notes_admin_or_assigned_bcba_select
       where request.id = supervision_session_notes.request_id
         and request.organization_id = supervision_session_notes.organization_id
         and request.assigned_admin_user_id = auth.uid()
-        and app.user_has_role_for_org(
+        and app.user_has_exact_active_role_for_org(
           auth.uid(),
           request.organization_id,
-          array['bcba']
+          array['bcba']::text[]
         )
     )
   );
@@ -186,7 +300,7 @@ begin
     return null;
   end if;
 
-  v_actor_is_admin := app.user_has_role_for_org(
+  v_actor_is_admin := app.user_has_any_active_role_for_org(
     v_actor,
     v_actor_org,
     array['admin', 'super_admin', 'org_admin', 'org_super_admin']
@@ -271,15 +385,16 @@ begin
     raise exception using errcode = '42501', message = 'Organization context required';
   end if;
 
-  v_actor_is_admin := app.user_has_role_for_org(
+  v_actor_is_admin := app.user_has_any_active_role_for_org(
     v_actor,
     v_actor_org,
     array['admin', 'super_admin', 'org_admin', 'org_super_admin']
   );
-  v_actor_is_bcba := coalesce(app.current_user_has_exact_role_for_org(
+  v_actor_is_bcba := app.user_has_exact_active_role_for_org(
+    v_actor,
     v_actor_org,
     array['bcba']::text[]
-  ), false);
+  );
 
   if coalesce(v_actor_is_admin, false) is not true
      and coalesce(v_actor_is_bcba, false) is not true then
@@ -432,6 +547,48 @@ begin
     raise exception using errcode = '42501', message = 'Organization context required';
   end if;
 
+  if exists (
+    select 1
+    from public.supervision_session_note_requests request
+    join public.sessions session
+      on session.id = request.session_id
+     and session.organization_id = request.organization_id
+    join public.clients client
+      on client.id = request.client_id
+     and client.organization_id = request.organization_id
+    join public.therapists therapist
+      on therapist.id = request.bt_therapist_id
+     and therapist.organization_id = request.organization_id
+    left join lateral (
+      select note.id
+      from public.client_session_notes note
+      where note.session_id = request.session_id
+        and note.organization_id = request.organization_id
+      order by note.updated_at desc, note.id
+      limit 1
+    ) bt_note on true
+    where request.organization_id = v_actor_org
+      and request.status = 'pending'
+      and bt_note.id is null
+      and (
+        app.user_has_any_active_role_for_org(
+          auth.uid(),
+          request.organization_id,
+          array['admin', 'super_admin', 'org_admin', 'org_super_admin']
+        )
+        or (
+          request.assigned_admin_user_id = auth.uid()
+          and app.user_has_exact_active_role_for_org(
+            auth.uid(),
+            request.organization_id,
+            array['bcba']::text[]
+          )
+        )
+      )
+  ) then
+    raise exception using errcode = '23514', message = 'Pending supervision request is missing BT session note';
+  end if;
+
   return query
   select
     request.id as request_id,
@@ -458,10 +615,11 @@ begin
     template.template_structure as supervision_template_structure,
     (
       v_actor = request.assigned_admin_user_id
-      and coalesce(app.current_user_has_exact_role_for_org(
+      and app.user_has_exact_active_role_for_org(
+        v_actor,
         request.organization_id,
         array['bcba']::text[]
-      ), false)
+      )
     ) as can_complete
   from public.supervision_session_note_requests request
   join public.sessions session
@@ -473,7 +631,7 @@ begin
   join public.therapists therapist
     on therapist.id = request.bt_therapist_id
    and therapist.organization_id = request.organization_id
-  join lateral (
+  left join lateral (
     select note.*
     from public.client_session_notes note
     where note.session_id = request.session_id
@@ -490,23 +648,24 @@ begin
     from public.session_note_templates seeded_template
     where seeded_template.organization_id = request.organization_id
       and seeded_template.template_type = 'supervision_session_note'
+      and seeded_template.template_name = 'Supervision Session Note'
     order by seeded_template.updated_at desc, seeded_template.id desc
     limit 1
   ) template on true
   where request.organization_id = v_actor_org
     and request.status = 'pending'
     and (
-      app.user_has_role_for_org(
+      app.user_has_any_active_role_for_org(
         auth.uid(),
         request.organization_id,
         array['admin', 'super_admin', 'org_admin', 'org_super_admin']
       )
       or (
         request.assigned_admin_user_id = auth.uid()
-        and app.user_has_role_for_org(
+        and app.user_has_exact_active_role_for_org(
           auth.uid(),
           request.organization_id,
-          array['bcba']
+          array['bcba']::text[]
         )
       )
     );
@@ -552,10 +711,11 @@ begin
     raise exception using errcode = '42501', message = 'Organization context required';
   end if;
 
-  if coalesce(app.current_user_has_exact_role_for_org(
+  if app.user_has_exact_active_role_for_org(
+    v_actor,
     v_actor_org,
     array['bcba']::text[]
-  ), false) is not true then
+  ) is not true then
     raise exception using errcode = '42501', message = 'Assigned BCBA supervision note access required';
   end if;
 
@@ -590,10 +750,11 @@ begin
   from public.session_note_templates t
   where t.id = p_template_id
     and t.organization_id = v_actor_org
-    and t.template_type = 'supervision_session_note';
+    and t.template_type = 'supervision_session_note'
+    and t.template_name = 'Supervision Session Note';
 
   if v_template.id is null then
-    raise exception using errcode = '42501', message = 'Supervision template not found in caller organization';
+    raise exception using errcode = '42501', message = 'Canonical supervision template not found in caller organization';
   end if;
 
   select template_field.field_key
@@ -635,11 +796,15 @@ begin
     raise exception using errcode = '23514', message = 'Required supervision note response missing';
   end if;
 
+  if nullif(btrim(coalesce(v_responses->>'bcba_licensure_credential', '')), '') is null then
+    raise exception using errcode = '23514', message = 'Required supervision note response missing';
+  end if;
+
   v_signature_method := btrim(coalesce(p_responses #>> '{bcba_supervisor_signature,method}', ''));
   v_signature_value := btrim(coalesce(p_responses #>> '{bcba_supervisor_signature,value}', ''));
   if v_signature_method not in ('typed', 'drawn')
      or v_signature_value = ''
-     or char_length(v_signature_value) > 4096 then
+     or char_length(v_signature_value) > 16384 then
     raise exception using errcode = '23514', message = 'invalid BCBA signature';
   end if;
 
@@ -719,10 +884,10 @@ begin
   end if;
 
   insert into public.session_note_attestations (
-    organization_id, note_id, signer_user_id, attestation_role,
+    organization_id, note_id, supervision_note_id, signer_user_id, attestation_role,
     signature_method, signature_value, signed_at
   ) values (
-    v_actor_org, v_bt_note_id, v_actor, 'bcba',
+    v_actor_org, null, v_note_id, v_actor, 'bcba',
     v_signature_method, v_signature_value, timezone('utc', now())
   );
 

@@ -216,7 +216,7 @@ const writeGithubEnv = (path: string, values: Record<string, string>): void => {
 };
 
 export type PartialFixtureIds = {
-  actorId: string;
+  actorId?: string;
   organizationId: string;
   clientId: string;
   programId: string;
@@ -232,18 +232,23 @@ export const cleanupPartialBtFixture = async (client: SupabaseClient, ids: Parti
     ["goals", "id", ids.goalId],
     ["programs", "id", ids.programId],
     ["clients", "id", ids.clientId],
-    ["user_roles", "user_id", ids.actorId],
-    ["therapists", "id", ids.actorId],
-    ["profiles", "id", ids.actorId],
     ["organizations", "id", ids.organizationId],
   ];
+  if (ids.actorId) {
+    targets.splice(targets.length - 1, 0,
+      ["user_roles", "user_id", ids.actorId],
+      ["therapists", "id", ids.actorId],
+      ["profiles", "id", ids.actorId]);
+  }
   const failures: string[] = [];
   for (const [table, column, value] of targets) {
     const { error } = await client.from(table).delete().eq(column, value);
     if (error) failures.push(table);
   }
-  const { error: authError } = await client.auth.admin.deleteUser(ids.actorId);
-  if (authError) failures.push("auth.users");
+  if (ids.actorId) {
+    const { error: authError } = await client.auth.admin.deleteUser(ids.actorId);
+    if (authError) failures.push("auth.users");
+  }
   if (failures.length) throw new Error(`Cleanup failed for: ${failures.join(", ")}.`);
 };
 
@@ -272,28 +277,23 @@ const provision = async (): Promise<void> => {
   const client = createClient(supabaseUrl, secretKey, { auth: { autoRefreshToken: false, persistSession: false } });
   let actorId: string | undefined;
   try {
+  const organization = await insertOne(client, "organizations", {
+    id: organizationId, name: `BT proof ${marker}`, slug: `bt-proof-${marker}`,
+    metadata: buildBtOrganizationMetadata(marker), created_by: null,
+  }, "id,name,slug");
   const { data: authData, error: authError } = await client.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
-    user_metadata: { ...buildBtAuthMetadata(marker), first_name: `BT-${marker}`, last_name: `Actor-${marker}` },
-    app_metadata: { fixture_marker: marker, disposable_project_ref: projectRef },
+    user_metadata: { ...buildBtAuthMetadata(marker, organizationId), first_name: `BT-${marker}`, last_name: `Actor-${marker}` },
+    app_metadata: { fixture_marker: marker, disposable_project_ref: projectRef, organization_id: organizationId, organizationId },
   });
   if (authError || !authData.user) throw new Error(`Unable to create marker-owned BT auth user: ${authError?.message ?? "missing user"}.`);
   actorId = authData.user.id;
 
-  const organization = await insertOne(client, "organizations", {
-    id: organizationId, name: `BT proof ${marker}`, slug: `bt-proof-${marker}`, metadata: buildBtOrganizationMetadata(marker), created_by: actorId,
-  }, "id,name,slug");
-
-  const { error: metadataError } = await client.auth.admin.updateUserById(actorId, {
-    user_metadata: {
-      ...buildBtAuthMetadata(marker, organizationId),
-      first_name: `BT-${marker}`,
-      last_name: `Actor-${marker}`,
-    },
-  });
-  if (metadataError) throw new Error(`Unable to attach marker-owned organization metadata: ${metadataError.message}.`);
+  const { error: organizationCreatorError } = await client.from("organizations")
+    .update({ created_by: actorId }).eq("id", organizationId);
+  if (organizationCreatorError) throw new Error(`Unable to attach marker-owned organization creator: ${organizationCreatorError.message}.`);
 
   const { error: profileError } = await client.from("profiles").upsert({
     id: actorId, email, role: "bt", first_name: `BT-${marker}`, last_name: `Actor-${marker}`, is_active: true, organization_id: organizationId,
@@ -362,16 +362,14 @@ const provision = async (): Promise<void> => {
   }));
   console.log(JSON.stringify({ ok: true, action: "provisioned", marker, projectRef, actorId, organizationId, clientId, programId, goalId, authorizationId }));
   } catch (error) {
-    if (actorId) {
-      try {
-        await cleanupPartialBtFixture(client, {
-          actorId, organizationId, clientId, programId, goalId, authorizationId, authorizationServiceId,
-        });
-      } catch (cleanupError) {
-        const original = error instanceof Error ? error.message : String(error);
-        const cleanup = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
-        throw new Error(`${original} Partial fixture cleanup also failed: ${cleanup}`);
-      }
+    try {
+      await cleanupPartialBtFixture(client, {
+        actorId, organizationId, clientId, programId, goalId, authorizationId, authorizationServiceId,
+      });
+    } catch (cleanupError) {
+      const original = error instanceof Error ? error.message : String(error);
+      const cleanup = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+      throw new Error(`${original} Partial fixture cleanup also failed: ${cleanup}`);
     }
     throw error;
   }

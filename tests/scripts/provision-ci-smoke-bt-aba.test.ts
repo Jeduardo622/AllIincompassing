@@ -109,6 +109,36 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
     expect(calls).toContain(`authorization_services.id=77777777-7777-4777-8777-777777777777`);
   });
 
+  it("removes the pre-auth organization when auth creation never returns a user", async () => {
+    const calls: string[] = [];
+    const client = {
+      from: (table: string) => ({ delete: () => ({ eq: async () => {
+        calls.push(table);
+        return { error: null };
+      } }) }),
+      auth: { admin: { deleteUser: async () => {
+        calls.push("auth.users");
+        return { error: null };
+      } } },
+    } as unknown as SupabaseClient;
+
+    await cleanupPartialBtFixture(client, {
+      organizationId: ORGANIZATION_ID,
+      clientId: CLIENT_ID,
+      programId: PROGRAM_ID,
+      goalId: GOAL_ID,
+      authorizationId: AUTHORIZATION_ID,
+      authorizationServiceId: "77777777-7777-4777-8777-777777777777",
+    });
+    expect(calls).toContain("organizations");
+    expect(calls).not.toContain("auth.users");
+
+    const source = readFileSync(path.join(process.cwd(), "scripts/provision-ci-smoke-bt-aba.ts"), "utf8");
+    const provisionSource = source.slice(source.indexOf("const provision = async"));
+    expect(provisionSource.indexOf('created_by: null')).toBeLessThan(provisionSource.indexOf('auth.admin.createUser'));
+    expect(provisionSource).toContain('buildBtAuthMetadata(marker, organizationId)');
+  });
+
   it("exports harness aliases, exact fixture IDs, and disposable acknowledgements", () => {
     expect(buildBtSmokeGithubEnv({
       supabaseUrl: "https://branch-project-ref.supabase.co",

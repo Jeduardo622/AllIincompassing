@@ -60,42 +60,51 @@ No hosted migration or production write was performed for WIN-221. Static migrat
 
 ## Mandatory command matrix
 
-The parent agent must replace each `PENDING`/`BLOCKED` entry with exact final output before marking the PR ready.
+Final local verification was run from the clean isolated worktree after all implementation and review-fix commits.
 
 | Check | Current evidence | Final requirement |
 |---|---|---|
-| Focused BT ABA contract/components/server/migration tests | Task-level focused suites passed; latest task totals include contract/components `30/30`, migration/RLS `142/142`, combined handler/migration/RLS `200/200`, and lifecycle/orchestration `131` tests | `PENDING` fresh cumulative run |
-| `npm run ci:check-focused` | Fresh Task 6 pass; DB overlap, preview drift, privileged-function DB grants, and auth parity were skipped without DB/CI configuration | Parent should repeat after final review changes |
-| `npm run lint` | Fresh Task 6 pass with zero warnings; the normally ignored script also passed a direct `eslint --no-ignore --max-warnings 0` run | Parent should repeat after final review changes |
-| `npm run typecheck` | Fresh Task 6 pass | Parent should repeat after final review changes |
-| `npm run test:ci` | Earlier bounded run timed out with unrelated baseline AI documentation localhost errors | `PENDING` fresh final run or exact failure evidence |
-| `npm run validate:tenant` | Passed in database task | `PENDING` fresh final run |
-| `npm run test:routes:tier0` | Not run in Task 6 implementation | `PENDING` |
-| `npm run build` | Fresh Task 6 pass | Parent should repeat after final review changes |
-| `npm run ci:playwright` | Not run with protected credentials in Task 6 implementation | `BLOCKED` until credentialed environment/CI |
+| Focused BT ABA contract/components/server/migration/orchestration tests | **PASS** — 9 files, `350/350` tests | Complete |
+| `npm run ci:check-focused` | **PASS** — static API/auth/grant/RLS/migration/reliability policies passed | DB overlap, preview drift, privileged-function DB grants, auth parity, and branch protection remain environment/CI-skipped |
+| `npm run lint` | **PASS** — zero warnings | Complete |
+| `npm run typecheck` | **PASS** | Complete |
+| `npm run test:ci` | **FAIL (baseline/environment)** — `2853` passed, `3` skipped, `1` failed in `tests/ci/check-e2e-reliability-gates.test.ts`; the Windows CRLF parser produced an empty synthetic-BCBA workflow step. WIN-221 focused suites passed inside the run. | Required CI rerun on Linux; failure is outside WIN-221 files but remains a hard-gate failure |
+| `npm run ci:verify-coverage` | **PASS** — line coverage `92.69%` meets the `86%` threshold; all module floors passed | Complete |
+| `npm run validate:tenant` | **PASS** — `tenant-safety: all checks passed` | Complete |
+| `npm run test:routes:tier0` | **PASS** on isolated `PREVIEW_PORT=4175` — 7 specs, `220/220` Cypress tests | Complete; initial attempt on `4173` was an environment port collision with the user's existing dev server |
+| `npm run build` | **PASS** | Complete |
+| `npm run ci:playwright` | **BLOCKED** at credential preflight before browser launch: missing `PW_SUPERADMIN_EMAIL/PASSWORD` or `PW_ADMIN_EMAIL/PASSWORD` | Credentialed environment/CI required |
 | `npm run playwright:bt-aba-session-note` | Missing-env preflight names every absent fixture, exact billing, and teardown-ack input; separate no-network preflights refuse the production ref and a runtime/acknowledged project-ref mismatch before Chromium or writes. Deterministic `PW_BT_ABA_DRY_RUN_FAILURE_MODE=pre-browser` and `screenshot-failure` probes both exit nonzero and emit the validated project ref with `sessionId="not-created"`. The `post-insert-logging-failure` probe emits exact ID `55555555-5555-4555-8555-555555555555`; the `hanging-cleanup` probe times out screenshot, context close, and browser close in order, then emits teardown. | `BLOCKED` until a wrapper provisions the marker-validated migrated branch, runs proof, preserves evidence, and deletes the whole branch |
-| `npm run verify:local` | Not run after integrated change | `PENDING`; preserve any DB/credential skips |
+| `npm run verify:local` | **FAIL at chained `test:ci`** after policy/lint/typecheck passed; reproduced the same single CRLF workflow-parser failure, so later chained coverage/build/tier-0 steps did not execute there | Standalone coverage/build/tier-0 passes are recorded above; Linux CI rerun required |
 | `npx supabase db reset` + SQL smoke | Local Supabase startup timed out | `BLOCKED` executable DB runtime required |
 | Hosted/preview migration replay and advisors | No hosted mutation performed | `BLOCKED` supervised disposable preview or approved hosted path required |
 
-## Draft verification card
+## Verification card
 
 - Lane: `critical`
 - Required checks: focused tests; policy; lint; typecheck; `test:ci`; tenant validation; Tier-0 routes; build; credentialed Playwright; `verify:local`; executable migration replay and SQL smoke.
-- Executed checks: see command matrix; Task 6 freshly passed policy, lint, typecheck, and build, while task-level static/unit/integration suites and tenant validation passed at the indicated checkpoints.
-- Blocked checks: local/preview PostgreSQL replay, credentialed exact-BT browser lifecycle, authorized-reviewer browser visibility, and DB-connected policy/advisor checks.
-- Result: `NOT READY FOR MERGE` until fresh hard gates and executable DB proof complete.
+- Executed checks: focused `350/350`; policy; lint; typecheck; coverage; tenant validation; production build; Tier-0 routes `220/220`; broad `test:ci`; `verify:local`; protected Playwright preflight; BT lifecycle missing-env preflight.
+- Blocked checks: local/preview PostgreSQL replay and SQL smoke; credentialed exact-BT disposable-branch browser lifecycle; authorized-reviewer browser visibility; protected Playwright credentials; DB-connected policy/advisor checks.
+- Result: `fail` — required broad `test:ci`/`verify:local` retain one unrelated Windows CRLF workflow-parser failure, and executable database/browser gates are blocked. The focused change and all runnable domain gates pass.
 - Residual risk: PL/pgSQL compilation/rollback and live RLS/grant behavior are not yet executable proof; reviewer UI visibility is not covered; protected environment browser behavior remains unproved.
 
-## Draft PR-hygiene card
+## PR-hygiene card
 
 - Dedicated branch/worktree: `codex/win-221-bt-aba-session-note` — yes.
 - Linear/design/plan/handoff: yes.
 - Scope: one coherent BT ABA closeout feature; no supervisor-note redesign or completed-session backfill.
 - Secrets/PHI: none added; browser data is marker-based synthetic content.
 - Protected paths: expected migration and server API changes; critical lane retained.
-- Required reviews: code, test, security, Supabase/database, and human product review.
-- PR-ready: `NO` pending fresh verification, executable database replay, and mandatory human Supabase/security approval.
+- Required reviews: specification, code, test, UI, lifecycle, security, and Supabase reviews were completed during implementation with all actionable findings resolved; human Supabase/security and product approval remain mandatory.
+- Branch-ready: yes; dedicated clean `codex/` branch.
+- Linear-ready: yes; WIN-221 is In Progress and contains implementation/verification checkpoints.
+- Single-purpose: yes; mandatory exact-BT ABA closeout only.
+- Unrelated changes: none; shared SDD report collisions were restored and excluded.
+- Generated artifact drift: none identified.
+- Protected-path drift: expected migration and server API files only; lane remains `critical`.
+- Verification summary: present above; result is fail with blocked protected gates.
+- PR handoff: ready for a **draft review PR**, not ready to merge.
+- PR-ready: `NO` until Linux CI clears the baseline workflow parser, the migration/SQL smoke executes on a disposable database, the disposable-branch browser wrapper runs, and mandatory human Supabase/security approval is recorded.
 
 ## Merge blockers and follow-up
 

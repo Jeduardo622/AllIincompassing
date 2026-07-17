@@ -51,7 +51,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     const checkoutStep = findStep(validation, 'Checkout validated commit');
     const headStep = findStep(validation, 'Verify immutable validation checkout');
 
-    expect(workflow.on).toHaveProperty('workflow_dispatch');
+    expect(Object.keys(workflow.on ?? {})).toEqual(['workflow_dispatch']);
     expect(inputs).not.toHaveProperty('ref');
     expect(inputs).toMatchObject({
       commit_sha: { required: true, type: 'string' },
@@ -61,6 +61,10 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(source).not.toContain('pull_request:');
     expect(source).not.toContain('push:');
     expect(validation?.if).toBe('github.actor == github.repository_owner');
+    expect(validation?.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+    });
     expect(approvalStep?.run).toContain('/^[0-9a-f]{40}$/');
     expect(approvalStep?.run).toContain('I_APPROVE_BT_ABA_DISPOSABLE_PROOF');
     expect(approvalStep?.run).toContain('GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER');
@@ -92,6 +96,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     const browserStep = findStep(proof, 'Run BT ABA session-note browser proof');
 
     expect(proof?.needs).toBe('validate');
+    expect(proof?.permissions).toEqual({ contents: 'read' });
     expect(proofSource).not.toContain('${{ inputs.');
     expect(checkoutStep?.with).toMatchObject({
       ref: '${{ needs.validate.outputs.validated_sha }}',
@@ -144,6 +149,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(proofUpload?.with?.path).not.toContain('branch-secrets.env');
     expect(proofUpload?.with?.path).not.toContain('preview.log');
     expect(cleanup?.needs).toEqual(['validate', 'proof']);
+    expect(cleanup?.permissions).toEqual({ contents: 'read' });
     expect(cleanup?.if).toBe("always() && needs.validate.result == 'success'");
     expect(cleanup?.['timeout-minutes']).toBe(15);
     expect(cleanupCheckout?.with).toMatchObject({

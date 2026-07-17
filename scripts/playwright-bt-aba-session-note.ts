@@ -11,11 +11,17 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
 import {
+  buildInProgressSessionBookingBaseStart,
+  buildVisibleScheduleBookingAttemptStart,
   fetchAccessTokenForCredentials,
+  resolveBrowserScheduleTimeZone,
   type LifecycleIds,
 } from "./lib/playwright-inprogress-session-setup";
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
-import { openScheduleSessionModalFromDeepLink } from "./lib/playwright-schedule-session-modal";
+import {
+  openScheduleSessionModalFromCalendar,
+  openScheduleSessionModalFromDeepLink,
+} from "./lib/playwright-schedule-session-modal";
 import { assertRouteAccessible, captureFailureScreenshot, loginAndAssertSession } from "./lib/playwright-smoke";
 
 const FLOW = "BT ABA session-note Playwright regression";
@@ -322,10 +328,15 @@ const validateFixtureGraphReadOnly = async (
   };
 };
 
-const createExactSession = async (admin: SupabaseClient, graph: FixtureGraph, marker: string): Promise<LifecycleIds> => {
-  const base = new Date(Date.now() - 30 * 60_000);
+const createExactSession = async (
+  admin: SupabaseClient,
+  graph: FixtureGraph,
+  marker: string,
+  timeZone: string,
+): Promise<LifecycleIds> => {
+  const base = buildInProgressSessionBookingBaseStart(new Date(), undefined, timeZone);
   for (let attempt = 0; attempt < 48; attempt += 1) {
-    const start = new Date(base.getTime() + attempt * 90 * 60_000);
+    const start = buildVisibleScheduleBookingAttemptStart(base, attempt, timeZone);
     const end = new Date(start.getTime() + 60 * 60_000);
     const { data, error } = await admin.from("sessions").insert({
       organization_id: graph.organizationId,
@@ -482,8 +493,9 @@ async function run(): Promise<void> {
     page = await context.newPage();
     await withStep("login exact disposable BT", () => loginAndAssertSession(page!, config.baseUrl, config.email, config.password));
     await withStep("open Schedule", () => assertRouteAccessible(page!, config.baseUrl, "/schedule", { readySelector: 'button[aria-label="Day view"]' }));
+    const timeZone = await resolveBrowserScheduleTimeZone(page!);
     console.log("[bt-aba-closeout] start create exact marked session");
-    const booked = await createExactSession(admin, graph, config.fixtureMarker);
+    const booked = await createExactSession(admin, graph, config.fixtureMarker, timeZone);
     createdSessionId = booked.sessionId;
     await persistCleanupState(config, booked.sessionId);
     console.log("[bt-aba-closeout] ok create exact marked session");
@@ -559,10 +571,11 @@ async function run(): Promise<void> {
     const completionSignal = page.getByText("Session marked as completed", { exact: true });
     await completionSignal.waitFor({ state: "visible" });
     assert.equal(await completionSignal.count(), 1, "Schedule must emit exactly one completion success signal.");
+    await waitForSessionStatus(admin, booked.sessionId, "completed");
+    await openScheduleSessionModalFromCalendar(page, scheduleUrl, booked, { allowLockedTherapist: true });
     const completedCard = page.locator(`[data-session-id="${booked.sessionId}"]`);
     await completedCard.waitFor({ state: "attached" });
     assert.equal(await completedCard.getAttribute("data-session-status"), "completed");
-    await waitForSessionStatus(admin, booked.sessionId, "completed");
     await assertFinalizedArtifacts(admin, booked, actor.id, config.fixtureMarker);
 
     console.log(JSON.stringify({

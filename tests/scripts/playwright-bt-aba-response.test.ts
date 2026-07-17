@@ -11,10 +11,19 @@ import {
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
 describe("BT ABA proof capture-response diagnostics", () => {
-  it("uses the exact Schedule deep link before capture and after draft reload", () => {
+  it("uses exact deep links for closeout and calendar navigation only for the completed-card proof", () => {
     const source = readFileSync(path.join(process.cwd(), "scripts/playwright-bt-aba-session-note.ts"), "utf8");
     expect(source.match(/openScheduleSessionModalFromDeepLink\(/g)).toHaveLength(2);
-    expect(source).not.toContain("openScheduleSessionModalFromCalendar(");
+    expect(source.match(/openScheduleSessionModalFromCalendar\(/g)).toHaveLength(1);
+    expect(source.indexOf("await restored.waitFor({ state: \"hidden\" })"))
+      .toBeLessThan(source.indexOf("openScheduleSessionModalFromCalendar("));
+  });
+
+  it("books the synthetic session inside the rendered Schedule grid timezone", () => {
+    const source = readFileSync(path.join(process.cwd(), "scripts/playwright-bt-aba-session-note.ts"), "utf8");
+    expect(source).toContain("resolveBrowserScheduleTimeZone(page!)");
+    expect(source).toContain("buildInProgressSessionBookingBaseStart(new Date(), undefined, timeZone)");
+    expect(source).toContain("buildVisibleScheduleBookingAttemptStart(base, attempt, timeZone)");
   });
 
   it("matches only the exact legacy capture POST for the created session", () => {

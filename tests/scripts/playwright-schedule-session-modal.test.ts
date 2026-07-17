@@ -3,6 +3,7 @@ import type { Page } from "playwright";
 
 import {
   classifyScheduleReadinessFailure,
+  openScheduleSessionModalFromDeepLink,
   openScheduleSessionModalFromCalendar,
   SCHEDULE_SESSION_SEARCH_PERIODS,
 } from "../../scripts/lib/playwright-schedule-session-modal";
@@ -19,6 +20,27 @@ describe("openScheduleSessionModalFromCalendar", () => {
     clientId: "23d0285a-2841-47ce-a7cc-99aa5b43dac9",
     startIso: "2026-08-13T16:00:00.000Z",
   };
+
+  it("opens the exact session through the supported Schedule edit deep link", async () => {
+    const dialog = { first: () => dialog, waitFor: vi.fn().mockResolvedValue(undefined) };
+    const page = {
+      goto: vi.fn().mockResolvedValue(undefined),
+      locator: vi.fn((selector: string) => selector === '[role="dialog"]'
+        ? { filter: () => dialog }
+        : { count: vi.fn().mockResolvedValue(0) }),
+      url: vi.fn().mockReturnValue("https://app.example.com/schedule"),
+    } as unknown as Page;
+
+    const expiresAtMs = Date.now() + 30 * 60_000;
+    await openScheduleSessionModalFromDeepLink(page, "https://app.example.com/schedule", target, expiresAtMs);
+
+    const navigated = new URL(String(vi.mocked(page.goto).mock.calls[0]?.[0]));
+    expect(navigated.pathname).toBe("/schedule");
+    expect(navigated.searchParams.get("scheduleModal")).toBe("edit");
+    expect(navigated.searchParams.get("scheduleSessionId")).toBe(target.sessionId);
+    expect(navigated.searchParams.get("scheduleExp")).toBe(String(expiresAtMs));
+    expect(dialog.waitFor).toHaveBeenCalledWith({ state: "visible", timeout: 30_000 });
+  });
 
   it("rejects invalid session identity before navigating", async () => {
     const goto = vi.fn();

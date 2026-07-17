@@ -155,6 +155,7 @@ const stripClinicalNoteFields = (data: ScheduleSubmitData): Partial<Session> => 
     session_note_persist_requested: _sessionNotePersistRequested,
     session_note_capture_merge_goal_ids: _sessionNoteCaptureMergeGoalIds,
     session_note_trial_events: _sessionNoteTrialEvents,
+    session_note_begin_closeout: _sessionNoteBeginCloseout,
     ...sessionPayload
   } = data;
   return sessionPayload;
@@ -396,6 +397,7 @@ export const Schedule = React.memo(() => {
   const attemptedUrlSessionLookupRef = useRef<Set<string>>(new Set());
   const wasModalOpenRef = useRef(false);
   const completedAwaitingFinalizationRef = useRef<Set<string>>(new Set());
+  const btAbaCompletedSessionsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1454,6 +1456,34 @@ export const Schedule = React.memo(() => {
     queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
   }, [queryClient]);
 
+  const handleBtAbaSessionFinalized = useCallback(async ({ sessionId }: { sessionId: string }) => {
+    if (btAbaCompletedSessionsRef.current.has(sessionId)) return;
+    btAbaCompletedSessionsRef.current.add(sessionId);
+    const params = clearScheduleModalSearchParams(searchParams);
+    setSearchParams(params, { replace: true });
+    showSuccess('Session marked as completed');
+    try {
+      if (selectedSession?.client_id) {
+        invalidateSessionNoteCachesAfterSessionWrite(queryClient, {
+          sessionId,
+          clientId: selectedSession.client_id,
+          organizationId: activeOrganizationId,
+        });
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+        queryClient.invalidateQueries({ queryKey: ['sessions-batch'] }),
+      ]);
+    } catch (error) {
+      logger.warn('BT ABA session completed but schedule cache refresh failed', {
+        metadata: { sessionId, reason: toError(error, 'Schedule refresh failed').message },
+      });
+      showError('Session completed, but the schedule refresh failed. Refresh the page to see the completed session.');
+    } finally {
+      applyScheduleResetBranch({ kind: 'submit-cancel' }, scheduleResetSetters);
+    }
+  }, [activeOrganizationId, queryClient, scheduleResetSetters, searchParams, selectedSession?.client_id, setSearchParams]);
+
   const toRescheduledWindow = useCallback(
     (session: Session, target: { date: Date; time: string }) => {
       const [hourPart, minutePart] = target.time.split(":");
@@ -1625,13 +1655,9 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-complete": {
-          if (isBtDataCollectionOnlySession && effectiveSelectedSession) {
-            await persistClinicalNoteDraftForSession(effectiveSelectedSession);
-            invalidateSessionNoteCachesAfterSessionWrite(queryClient, {
-              sessionId: effectiveSelectedSession.id,
-              clientId: effectiveSelectedSession.client_id,
-              organizationId: activeOrganizationId,
-            });
+          if (isBtDataCollectionOnlySession) {
+            showError('Complete the required ABA Session Note before closing this session.');
+            return;
           }
           let liveInProgress = effectiveSelectedSession?.status === "in_progress";
           if (!liveInProgress) {
@@ -1773,11 +1799,13 @@ export const Schedule = React.memo(() => {
                 clientId: effectiveSelectedSession.client_id,
                 organizationId: activeOrganizationId,
               });
-              showSuccess("Session data collection saved");
-              applyScheduleResetBranch(
-                { kind: "update-success" },
-                scheduleResetSetters,
-              );
+              if (data.session_note_begin_closeout !== true) {
+                showSuccess("Session data collection saved");
+                applyScheduleResetBranch(
+                  { kind: "update-success" },
+                  scheduleResetSetters,
+                );
+              }
               return sessionNoteResult;
             }
           }
@@ -1959,6 +1987,7 @@ export const Schedule = React.memo(() => {
         retryActionLabel={retryActionLabel}
         onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
         onSessionStarted={handleSessionStarted}
+        onBtAbaSessionFinalized={handleBtAbaSessionFinalized}
       />
     </Suspense>
   ) : null;

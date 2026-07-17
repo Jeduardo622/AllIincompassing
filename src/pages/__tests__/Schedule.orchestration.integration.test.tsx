@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@testing-library/react";
+import { QueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
 import { renderWithProviders, screen, waitFor } from "../../test/utils";
 
 const bookSessionViaApiMock = vi.fn();
@@ -119,6 +121,7 @@ vi.mock("../../components/SessionModal", () => ({
     dataCollectionOnly,
     allowStartSession,
     hideGoalCaptureFields,
+    onBtAbaSessionFinalized,
   }: {
     isOpen: boolean;
     onClose: () => void;
@@ -128,6 +131,7 @@ vi.mock("../../components/SessionModal", () => ({
     dataCollectionOnly?: boolean;
     allowStartSession?: boolean;
     hideGoalCaptureFields?: boolean;
+    onBtAbaSessionFinalized?: (result: { sessionId: string; noteId: string; status: 'completed'; progressionResults: [] }) => Promise<void>;
   }) =>
     isOpen ? (
       <div data-testid="session-modal">
@@ -260,6 +264,21 @@ vi.mock("../../components/SessionModal", () => ({
           submit-capture-persist
         </button>
         <button
+          aria-label="submit-bt-closeout-capture"
+          onClick={() => void onSubmit({
+            therapist_id: "therapist-1", client_id: "client-1", program_id: "program-1", goal_id: "goal-1",
+            start_time: originalSessionWindow.start_time, end_time: originalSessionWindow.end_time, status: "in_progress",
+            session_note_goal_ids: ["goal-1"], session_note_goals_addressed: ["Goal 1"],
+            session_note_goal_notes: { "goal-1": "Plan note" }, session_note_goal_measurements: {},
+            session_note_authorization_id: "auth-1", session_note_service_code: "97153",
+            session_note_persist_requested: true, session_note_begin_closeout: true,
+          })}
+        >submit BT closeout capture</button>
+        <button
+          aria-label="report-bt-atomic-completion"
+          onClick={() => void onBtAbaSessionFinalized?.({ sessionId: 'session-1', noteId: 'note-1', status: 'completed', progressionResults: [] })}
+        >report BT atomic completion</button>
+        <button
           aria-label="submit-terminal-capture"
           onClick={() => {
             const result = onSubmit({
@@ -357,6 +376,11 @@ const waitForScheduleGridReady = () =>
   }, { timeout: 10_000 });
 
 describe("Schedule orchestration integration hardening", () => {
+  const SearchProbe = () => {
+    const location = useLocation();
+    return <output data-testid="schedule-search">{location.search}</output>;
+  };
+
   const resetScheduleFixture = () => {
     Object.assign(scheduleFixtures.sessions[0], originalSessionFixture);
   };
@@ -762,7 +786,7 @@ describe("Schedule orchestration integration hardening", () => {
     expect(showErrorMock).not.toHaveBeenCalled();
   });
 
-  it("BT close persists session capture and then completes the session", async () => {
+  it("BT closeout capture stays in progress and only atomic completion resets the schedule", async () => {
     scheduleFixtures.sessions[0].status = "in_progress";
 
     renderWithProviders(<Schedule />, {
@@ -773,23 +797,76 @@ describe("Schedule orchestration integration hardening", () => {
     await openExistingSessionForEdit();
     await screen.findByTestId("session-modal");
     expect(screen.getByTestId("data-collection-only")).toHaveTextContent("true");
-    fireEvent.click(screen.getByLabelText("submit-terminal-capture"));
+    fireEvent.click(screen.getByLabelText("submit-bt-closeout-capture"));
 
     await waitFor(() => {
-      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(2);
-      expect(completeSessionFromModalMock).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        outcome: "completed",
-        notes: undefined,
-      });
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
     });
-    expect(upsertClientSessionNoteForSessionMock.mock.calls[0][0]).not.toHaveProperty("isLocked");
-    expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0]).toEqual(
-      expect.objectContaining({ sessionId: "session-1", isLocked: true }),
-    );
+    expect(completeSessionFromModalMock).not.toHaveBeenCalled();
+    expect(showSuccessMock).not.toHaveBeenCalledWith("Session data collection saved");
+
+    fireEvent.click(screen.getByLabelText("report-bt-atomic-completion"));
+    fireEvent.click(screen.getByLabelText("report-bt-atomic-completion"));
+    await waitFor(() => expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed"));
+    expect(showSuccessMock.mock.calls.filter(([message]) => message === "Session marked as completed")).toHaveLength(1);
     expect(bookSessionViaApiMock).not.toHaveBeenCalled();
-    expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed");
     expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("atomic BT completion closes a deep-linked modal and clears only its URL state", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    const expiresAtMs = Date.now() + 60_000;
+    let releaseRefresh!: () => void;
+    const pendingRefresh = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const invalidateQueriesSpy = vi
+      .spyOn(QueryClient.prototype, "invalidateQueries")
+      .mockReturnValue(pendingRefresh);
+
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+      {
+        auth: { role: "bt", organizationId: "org-1" },
+        router: {
+          initialEntries: [
+            `/?keep=1&scheduleModal=edit&scheduleSessionId=session-1&scheduleExp=${expiresAtMs}`,
+          ],
+        },
+      },
+    );
+
+    await screen.findByTestId("session-modal");
+    fireEvent.click(screen.getByLabelText("report-bt-atomic-completion"));
+
+    await waitFor(() => {
+      const params = new URLSearchParams(screen.getByTestId("schedule-search").textContent ?? "");
+      expect(params.get("keep")).toBe("1");
+      expect(params.has("scheduleModal")).toBe(false);
+      expect(params.has("scheduleSessionId")).toBe(false);
+      expect(params.has("scheduleExp")).toBe(false);
+    });
+    expect(screen.getByTestId("session-modal")).toBeInTheDocument();
+
+    releaseRefresh();
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
+    invalidateQueriesSpy.mockRestore();
+  });
+
+  it("rejects the legacy BT completed submission path", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    renderWithProviders(<Schedule />, { auth: { role: "bt", organizationId: "org-1" } });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await openExistingSessionForEdit();
+    fireEvent.click(screen.getByLabelText("submit-terminal-capture"));
+
+    await waitFor(() => expect(showErrorMock).toHaveBeenCalledWith(
+      "Complete the required ABA Session Note before closing this session.",
+    ));
+    expect(completeSessionFromModalMock).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -8,6 +8,7 @@ export interface ScheduleSessionModalTarget {
 }
 
 export const SCHEDULE_SESSION_SEARCH_PERIODS = 12;
+const SCHEDULE_EDIT_DEEP_LINK_TTL_MS = 30 * 60 * 1000;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -152,6 +153,25 @@ const normalizeWeekView = async (page: Page): Promise<void> => {
     }
     throw new Error("Schedule did not reach calendar readiness: week_view_not_selected");
   }
+};
+
+export const openScheduleSessionModalFromDeepLink = async (
+  page: Page,
+  scheduleUrl: string,
+  target: ScheduleSessionModalTarget,
+  expiresAtMs: number = Date.now() + SCHEDULE_EDIT_DEEP_LINK_TTL_MS,
+): Promise<void> => {
+  validateTarget(scheduleUrl, target);
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    throw new Error("Schedule edit deep link expiry must be in the future.");
+  }
+  const url = new URL(scheduleUrl);
+  url.searchParams.set("scheduleModal", "edit");
+  url.searchParams.set("scheduleSessionId", target.sessionId);
+  url.searchParams.set("scheduleExp", String(Math.trunc(expiresAtMs)));
+  await page.goto(url.toString(), { waitUntil: "networkidle", timeout: 60_000 });
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i }).first();
+  await dialog.waitFor({ state: "visible", timeout: 30_000 });
 };
 
 export const openScheduleSessionModalFromCalendar = async (

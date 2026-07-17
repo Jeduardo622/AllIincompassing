@@ -1,5 +1,16 @@
 import type { PostgrestError } from '@supabase/supabase-js';
-import type { SessionCaptureTrialEventInput, SessionGoalMeasurementEntry, SessionNote, SessionNoteUpsertResult } from '../types';
+import type {
+  BtAbaDraftResult,
+  BtAbaExpectedTargetVersion,
+  BtAbaFinalizeResult,
+  BtAbaSessionNotePayload,
+  BtAbaSessionNoteState,
+  SessionCaptureTrialEventInput,
+  SessionGoalMeasurementEntry,
+  SessionNote,
+  SessionNoteUpsertResult,
+} from '../types';
+import type { BtAbaSessionNoteResponses } from './bt-aba-session-note';
 import type { Database } from './generated/database.types';
 import { normalizeGoalMeasurementEntry } from './goal-measurements';
 import { callApi } from './api';
@@ -338,6 +349,56 @@ const invokeSessionNoteUpsertApi = async (
 
   return await response.json() as SessionNoteUpsertResult;
 };
+
+const invokeBtAbaSessionNoteApi = async <T>(path: string, init: RequestInit): Promise<T> => {
+  const response = await callApi(path, init);
+  if (!response.ok) {
+    const fallbackMessage = 'Unable to save the BT ABA session note.';
+    try {
+      const errorBody = await response.json() as { error?: unknown; message?: unknown };
+      const message = typeof errorBody.message === 'string'
+        ? errorBody.message
+        : typeof errorBody.error === 'string'
+          ? errorBody.error
+          : fallbackMessage;
+      const apiError = new Error(message) as Error & { status?: number };
+      apiError.status = response.status;
+      throw apiError;
+    } catch (error) {
+      if (error instanceof Error && error.message !== fallbackMessage) throw error;
+      throw new Error(fallbackMessage);
+    }
+  }
+  return await response.json() as T;
+};
+
+export const getBtAbaSessionNote = async (sessionId: string): Promise<BtAbaSessionNoteState> =>
+  invokeBtAbaSessionNoteApi<BtAbaSessionNoteState>(
+    `/api/session-notes/upsert?sessionId=${encodeURIComponent(sessionId)}`,
+    { method: 'GET' },
+  );
+
+export const saveBtAbaSessionNoteDraft = async (input: {
+  sessionId: string;
+  templateId: string;
+  notePayload: BtAbaSessionNotePayload;
+  responses: unknown;
+}): Promise<BtAbaDraftResult> => invokeBtAbaSessionNoteApi<BtAbaDraftResult>('/api/session-notes/upsert', {
+  method: 'POST',
+  body: JSON.stringify({ action: 'draft_bt_aba', ...input }),
+});
+
+export const finalizeBtAbaSessionNote = async (input: {
+  sessionId: string;
+  noteId: string;
+  notePayload: BtAbaSessionNotePayload;
+  responses: BtAbaSessionNoteResponses;
+  trialEvents: SessionCaptureTrialEventInput[];
+  expectedTargetVersions: BtAbaExpectedTargetVersion[];
+}): Promise<BtAbaFinalizeResult> => invokeBtAbaSessionNoteApi<BtAbaFinalizeResult>('/api/session-notes/upsert', {
+  method: 'POST',
+  body: JSON.stringify({ action: 'finalize_bt_aba', ...input }),
+});
 
 export const createClientSessionNote = async (
   payload: CreateClientSessionNoteInput

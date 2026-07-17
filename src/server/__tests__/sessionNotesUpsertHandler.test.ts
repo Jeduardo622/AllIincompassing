@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionGoalMeasurementEntry } from "../../types";
 import { sessionNotesUpsertHandler, validateFinalizationTargetVersions } from "../api/session-notes-upsert";
+import { finalizeBtAbaSessionNote, getBtAbaSessionNote, saveBtAbaSessionNoteDraft } from "../../lib/session-notes";
 
 vi.mock("../api/shared", async () => {
   const actual = await vi.importActual<typeof import("../api/shared")>("../api/shared");
@@ -10,6 +11,7 @@ vi.mock("../api/shared", async () => {
     resolveOrgAndRoleWithStatus: vi.fn(),
     fetchAuthenticatedUserIdWithStatus: vi.fn(),
     currentUserCanCaptureTrialEvent: vi.fn(),
+    currentUserCanTakeClientData: vi.fn(),
     currentUserIsBcbaForOrg: vi.fn(),
     getSupabaseConfig: vi.fn(),
     fetchJson: vi.fn(),
@@ -20,8 +22,11 @@ vi.mock("../sessionCaptureBillingGate", () => ({
   resolveSessionCaptureStrictBillingPolicy: vi.fn(),
 }));
 
+vi.mock("../../lib/api", () => ({ callApi: vi.fn() }));
+
 import {
   currentUserCanCaptureTrialEvent,
+  currentUserCanTakeClientData,
   currentUserIsBcbaForOrg,
   fetchAuthenticatedUserIdWithStatus,
   fetchJson,
@@ -30,6 +35,7 @@ import {
   resolveOrgAndRoleWithStatus,
 } from "../api/shared";
 import { resolveSessionCaptureStrictBillingPolicy } from "../sessionCaptureBillingGate";
+import { callApi } from "../../lib/api";
 
 const ACCESS_TOKEN = "token-123";
 const BASE_URL = "https://example.supabase.co";
@@ -139,6 +145,10 @@ describe("sessionNotesUpsertHandler", () => {
       allowed: true,
       upstreamError: false,
     });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({
+      allowed: false,
+      upstreamError: false,
+    });
     vi.mocked(currentUserIsBcbaForOrg).mockResolvedValue({
       allowed: false,
       upstreamError: false,
@@ -148,6 +158,412 @@ describe("sessionNotesUpsertHandler", () => {
       anonKey: "anon-key",
     });
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+  });
+
+  const validBtAbaResponses = {
+    purpose_of_session: ["RBT/BT worked on goals as stated in the treatment plan"],
+    client_status: "Client arrived ready to participate.",
+    skill_strategies: ["Natural environment teaching"],
+    behavior_strategies: ["Visual supports"],
+    supervisor_support: ["Supervisor did not attend this session"],
+    progress_toward_goals: "Client made progress on the selected goals.",
+    client_response_to_treatment: "Client responded positively to treatment.",
+    data_point_scope: "linked" as const,
+    link_unlinked_data: false,
+    bt_signature: { method: "typed" as const, value: "Behavior Technician" },
+  };
+
+  const validBtAbaNotePayload = {
+    goals_addressed: ["Goal A"],
+    goal_ids: basePayload.goalIds,
+    goal_measurements: basePayload.goalMeasurements,
+    goal_notes: basePayload.goalNotes,
+    narrative: basePayload.narrative,
+  };
+
+  const arrangeAssignedBtSession = (rpcResult: { ok: boolean; status: number; data: unknown }) => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: basePayload.therapistId,
+      upstreamError: false,
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/sessions?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.sessionId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            therapist_id: basePayload.therapistId,
+            status: "in_progress",
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/rpc/get_bt_aba_session_note")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            template_id: "66666666-6666-4666-8666-666666666666",
+            responses: validBtAbaResponses,
+            status: "draft",
+          },
+        };
+      }
+      if (requestUrl.includes("/rest/v1/rpc/")) {
+        return rpcResult;
+      }
+      return { ok: true, status: 200, data: [] };
+    });
+  };
+
+  it("rejects a malformed BT ABA action payload before calling a write RPC", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({ action: "draft_bt_aba", sessionId: "not-a-uuid" }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/rest/v1/rpc/"))).toBe(false);
+  });
+
+  it("rejects an unrelated BT without calling a write RPC", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/sessions?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.sessionId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            therapist_id: "99999999-9999-4999-8999-999999999999",
+            status: "in_progress",
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/rpc/get_bt_aba_session_note")) {
+        return { ok: false, status: 403, data: { code: "42501", message: "caller is not the assigned BT" } };
+      }
+      return { ok: true, status: 200, data: [] };
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({
+        action: "draft_bt_aba",
+        sessionId: basePayload.sessionId,
+        templateId: "66666666-6666-4666-8666-666666666666",
+        notePayload: validBtAbaNotePayload,
+        responses: validBtAbaResponses,
+      }),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/rpc/get_bt_aba_session_note"))).toBe(true);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/rpc/save_bt_aba_session_note_draft"))).toBe(false);
+  });
+
+  it("saves a BT ABA draft through the protected RPC", async () => {
+    arrangeAssignedBtSession({ ok: true, status: 200, data: { status: "draft", note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({
+        action: "draft_bt_aba",
+        sessionId: basePayload.sessionId,
+        templateId: "66666666-6666-4666-8666-666666666666",
+        notePayload: validBtAbaNotePayload,
+        responses: validBtAbaResponses,
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: "draft", noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+    expect(fetchJson).toHaveBeenCalledWith(`${BASE_URL}/rest/v1/rpc/save_bt_aba_session_note_draft`, expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: `Bearer ${ACCESS_TOKEN}` }),
+    }));
+  });
+
+  it("recognizes an assigned BT through the canonical user-therapist link", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/sessions?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.sessionId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            therapist_id: basePayload.therapistId,
+            status: "in_progress",
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/rpc/get_bt_aba_session_note")) {
+        return { ok: true, status: 200, data: {
+          note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          template_id: "66666666-6666-4666-8666-666666666666",
+          responses: validBtAbaResponses,
+          status: "draft",
+        } };
+      }
+      if (requestUrl.includes("/rest/v1/rpc/save_bt_aba_session_note_draft")) {
+        return { ok: true, status: 200, data: { status: "draft", note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } };
+      }
+      return { ok: true, status: 200, data: [] };
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({
+        action: "draft_bt_aba",
+        sessionId: basePayload.sessionId,
+        templateId: "66666666-6666-4666-8666-666666666666",
+        notePayload: validBtAbaNotePayload,
+        responses: validBtAbaResponses,
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("user_therapist_links"))).toBe(false);
+    expect(fetchJson).toHaveBeenCalledWith(`${BASE_URL}/rest/v1/rpc/get_bt_aba_session_note`, expect.any(Object));
+  });
+
+  it("returns completed only after the BT ABA finalization RPC succeeds", async () => {
+    arrangeAssignedBtSession({
+      ok: true,
+      status: 200,
+      data: {
+        status: "completed",
+        note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        note: buildSessionNoteRow("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        progression_results: [],
+      },
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({
+        action: "finalize_bt_aba",
+        sessionId: basePayload.sessionId,
+        noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        notePayload: validBtAbaNotePayload,
+        responses: validBtAbaResponses,
+        trialEvents: [{
+          target_id: targetId,
+          trial_number: 1,
+          response: "correct",
+          expected_progression_version: 7,
+        }],
+        expectedTargetVersions: [{ target_id: targetId, progression_version: 7 }],
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      progressionResults: [],
+    });
+    const finalizeCall = vi.mocked(fetchJson).mock.calls.find(([url]) => String(url).includes("/rpc/finalize_bt_aba_session_note"));
+    expect(JSON.parse(String(finalizeCall?.[1]?.body))).toMatchObject({
+      p_trial_events: [{ target_id: targetId, expected_progression_version: 7 }],
+    });
+  });
+
+  it("does not return an optimistic completed result when BT ABA finalization fails", async () => {
+    arrangeAssignedBtSession({ ok: false, status: 409, data: { code: "23514", message: "session cannot be finalized" } });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({
+        action: "finalize_bt_aba",
+        sessionId: basePayload.sessionId,
+        noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        notePayload: validBtAbaNotePayload,
+        responses: validBtAbaResponses,
+        trialEvents: [],
+        expectedTargetVersions: [],
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.not.toMatchObject({ status: "completed" });
+  });
+
+  it("loads, drafts, and finalizes BT ABA notes through the session-note API boundary", async () => {
+    vi.mocked(callApi)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ noteId: null, templateId: null, responses: null, status: null }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "draft", noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "completed", noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", progressionResults: [] }), { status: 200 }));
+
+    await expect(getBtAbaSessionNote(basePayload.sessionId)).resolves.toMatchObject({ noteId: null });
+    await expect(saveBtAbaSessionNoteDraft({
+      sessionId: basePayload.sessionId,
+      templateId: "66666666-6666-4666-8666-666666666666",
+      notePayload: validBtAbaNotePayload,
+      responses: validBtAbaResponses,
+    })).resolves.toEqual({ status: "draft", noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+    await expect(finalizeBtAbaSessionNote({
+      sessionId: basePayload.sessionId,
+      noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      notePayload: validBtAbaNotePayload,
+      responses: validBtAbaResponses,
+      trialEvents: [],
+      expectedTargetVersions: [],
+    })).resolves.toMatchObject({ status: "completed" });
+
+    expect(callApi).toHaveBeenNthCalledWith(1, `/api/session-notes/upsert?sessionId=${basePayload.sessionId}`, { method: "GET" });
+    expect(JSON.parse(String(vi.mocked(callApi).mock.calls[1]?.[1]?.body))).toMatchObject({ action: "draft_bt_aba" });
+    expect(JSON.parse(String(vi.mocked(callApi).mock.calls[2]?.[1]?.body))).toMatchObject({ action: "finalize_bt_aba" });
+  });
+
+  it("loads a durable BT ABA draft only for the assigned BT", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: basePayload.therapistId,
+      upstreamError: false,
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/sessions?")) {
+        return { ok: true, status: 200, data: [{
+          id: basePayload.sessionId,
+          organization_id: "org-1",
+          client_id: basePayload.clientId,
+          therapist_id: basePayload.therapistId,
+          status: "in_progress",
+        }] };
+      }
+      if (requestUrl.includes("/rest/v1/rpc/get_bt_aba_session_note")) {
+        return { ok: true, status: 200, data: {
+          note_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          template_id: "66666666-6666-4666-8666-666666666666",
+          responses: validBtAbaResponses,
+          status: "draft",
+        } };
+      }
+      return { ok: true, status: 200, data: [] };
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request(
+      `http://localhost/api/session-notes/upsert?sessionId=${basePayload.sessionId}`,
+      { method: "GET", headers: HEADERS },
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      noteId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      templateId: "66666666-6666-4666-8666-666666666666",
+      status: "draft",
+    });
+    expect(fetchJson).toHaveBeenCalledWith(`${BASE_URL}/rest/v1/rpc/get_bt_aba_session_note`, expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: `Bearer ${ACCESS_TOKEN}` }),
+      body: JSON.stringify({ p_session_id: basePayload.sessionId }),
+    }));
+    expect(vi.mocked(fetchJson).mock.calls.filter(([url]) => String(url).includes("/rpc/get_bt_aba_session_note"))).toHaveLength(1);
+  });
+
+  it("keeps the legacy upsert forbidden for a caller without a legacy session-note role", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify(basePayload),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(fetchAuthenticatedUserIdWithStatus).not.toHaveBeenCalled();
+  });
+
+  it("passes a valid assigned-BT legacy capture through the role gate before actor validation", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({ userId: null, upstreamError: false });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify(basePayload),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(currentUserCanTakeClientData).toHaveBeenCalledWith(ACCESS_TOKEN, "org-1", basePayload.clientId);
+    expect(currentUserIsBcbaForOrg).not.toHaveBeenCalled();
+    expect(fetchAuthenticatedUserIdWithStatus).toHaveBeenCalledWith(ACCESS_TOKEN);
+  });
+
+  it("fails closed when assigned-client capability resolution has an upstream error", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: false, upstreamError: true });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify(basePayload),
+    }));
+
+    expect(response.status).toBe(502);
+    expect(currentUserIsBcbaForOrg).not.toHaveBeenCalled();
+    expect(fetchAuthenticatedUserIdWithStatus).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke assigned-client capability for an unknown action payload", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1", isTherapist: false, isAdmin: false, isOrgMember: false, isSuperAdmin: false, upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: false, upstreamError: true });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({ ...basePayload, action: "unknown" }),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(currentUserCanTakeClientData).not.toHaveBeenCalled();
+    expect(currentUserIsBcbaForOrg).toHaveBeenCalledWith(ACCESS_TOKEN, "org-1");
+    expect(fetchAuthenticatedUserIdWithStatus).not.toHaveBeenCalled();
   });
 
   it("admits an organization-scoped BCBA through the session-note authorization gate", async () => {

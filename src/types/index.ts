@@ -375,6 +375,38 @@ export interface SessionNoteUpsertResult extends SessionNote {
   progression_warnings?: string[];
 }
 
+export interface BtAbaSessionNotePayload {
+  goals_addressed: string[];
+  goal_ids: string[] | null;
+  goal_measurements: Record<string, unknown> | null;
+  goal_notes: Record<string, string> | null;
+  narrative: string;
+}
+
+export interface BtAbaExpectedTargetVersion {
+  target_id: string;
+  progression_version: number;
+}
+
+export interface BtAbaSessionNoteState {
+  noteId: string | null;
+  templateId: string | null;
+  responses: Record<string, unknown> | null;
+  status: 'draft' | 'completed' | null;
+}
+
+export interface BtAbaDraftResult {
+  status: 'draft';
+  noteId: string;
+}
+
+export interface BtAbaFinalizeResult {
+  status: 'completed';
+  noteId: string;
+  note?: SessionNote;
+  progressionResults: GoalTargetProgressionResult[];
+}
+
 export interface ProgramNote {
   id: string;
   organization_id: string;

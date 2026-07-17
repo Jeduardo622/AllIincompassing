@@ -546,6 +546,20 @@ export const buildVisibleScheduleBookingBaseStart = (
   return start;
 };
 
+export const buildCurrentDayVisibleScheduleBookingBaseStart = (
+  now = new Date(),
+  seed = Number(process.env.GITHUB_RUN_ID ?? Date.now()),
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+): Date => {
+  const seedNumber = Number.isFinite(seed) ? Math.abs(Math.trunc(seed)) : 0;
+  const visibleHour = VISIBLE_SCHEDULE_START_HOURS[seedNumber % VISIBLE_SCHEDULE_START_HOURS.length];
+  const browserLocalDate = formatInTimeZone(now, timeZone, "yyyy-MM-dd");
+  const localDate = isRenderedScheduleLocalDate(browserLocalDate, timeZone)
+    ? browserLocalDate
+    : addCalendarDays(browserLocalDate, -1);
+  return toZonedGridStart(localDate, visibleHour, timeZone);
+};
+
 export const buildInProgressSessionBookingBaseStart = (
   now = new Date(),
   seed = Number(process.env.GITHUB_RUN_ID ?? Date.now()),

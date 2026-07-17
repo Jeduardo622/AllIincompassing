@@ -39,6 +39,8 @@
     "playwright:schedule-blocked-close": "tsx scripts/playwright-schedule-blocked-close.ts",
     "playwright:session-note-measurement-roundtrip": "tsx scripts/playwright-session-note-measurement-roundtrip.ts",
     "playwright:session-capture-adhoc-upsert": "tsx scripts/playwright-session-capture-adhoc-upsert.ts",
+    "playwright:bt-aba-session-note": "tsx scripts/playwright-bt-aba-session-note.ts",
+    "bt-aba:disposable-branch": "tsx scripts/lib/bt-aba-disposable-branch.ts",
     "ci:playwright": "tsx scripts/playwright-ci-runner.ts playwright:preflight playwright:auth playwright:schedule-conflict playwright:therapist-onboarding playwright:therapist-authorization playwright:session-no-show playwright:session-complete playwright:schedule-blocked-close playwright:session-note-measurement-roundtrip playwright:session-capture-adhoc-upsert",
     "ci:playwright:session-smoke": "tsx scripts/playwright-ci-runner.ts playwright:preflight playwright:session-no-show playwright:session-complete playwright:schedule-blocked-close playwright:session-note-measurement-roundtrip",
     "ci:playwright:optional-smoke": "tsx scripts/playwright-ci-runner.ts playwright:authorizations-read-scope playwright:assessment-upload-promote-smoke playwright:assessment-pdf-smoke playwright:clinical-data-parity-agent",

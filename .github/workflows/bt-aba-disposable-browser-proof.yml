@@ -1,0 +1,345 @@
+name: BT ABA disposable browser proof
+
+on:
+  workflow_call:
+    inputs:
+      commit_sha:
+        required: true
+        type: string
+      pull_request_number:
+        required: true
+        type: string
+      approval_acknowledgement:
+        required: true
+        type: string
+    secrets:
+      SUPABASE_ACCESS_TOKEN:
+        required: true
+
+jobs:
+  validate:
+    name: Validate immutable owner-approved PR head
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      validated_sha: ${{ steps.approval.outputs.validated_sha }}
+    steps:
+      - name: Validate owner approval and open PR head
+        id: approval
+        env:
+          APPROVAL_ACKNOWLEDGEMENT: ${{ inputs.approval_acknowledgement }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ inputs.pull_request_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+
+          const commitSha = process.env.COMMIT_SHA ?? '';
+          const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
+          const repository = process.env.REPOSITORY ?? '';
+          if (!/^[0-9a-f]{40}$/.test(commitSha)) {
+            throw new Error('commit_sha must be exactly 40 lowercase hexadecimal characters.');
+          }
+          if (!/^[1-9][0-9]*$/.test(pullRequestNumber)) {
+            throw new Error('pull_request_number must be a positive integer.');
+          }
+          if (process.env.APPROVAL_ACKNOWLEDGEMENT !== 'I_APPROVE_BT_ABA_DISPOSABLE_PROOF') {
+            throw new Error('Exact protected execution approval acknowledgement is required.');
+          }
+          if (process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) {
+            throw new Error('Only the repository owner may approve this protected proof.');
+          }
+          if (!/^[^/]+\/[^/]+$/.test(repository)) {
+            throw new Error('Repository identity is invalid.');
+          }
+
+          const response = await fetch(`https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}`, {
+            headers: {
+              Accept: 'application/vnd.github+json',
+              Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`Unable to validate pull request: HTTP ${response.status}.`);
+          }
+          const pull = await response.json();
+          if (pull.state !== 'open') throw new Error('Pull request must be open.');
+          if (pull.base?.ref !== 'main') throw new Error('Pull request base must be main.');
+          if (pull.head?.repo?.full_name !== repository) throw new Error('Pull request must originate from this repository.');
+          if (pull.head?.sha !== commitSha) throw new Error('Pull request head SHA does not match commit_sha.');
+          if (pull.number !== 813 || pull.head?.ref !== 'codex/win-221-bt-aba-session-note') {
+            throw new Error('Proof is restricted to the exact WIN-221 managed PR preview branch.');
+          }
+
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\n`, { encoding: 'utf8' });
+          NODE
+
+      - name: Checkout validated commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ steps.approval.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Verify immutable validation checkout
+        env:
+          EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
+        run: |
+          actual_sha="$(git rev-parse HEAD)"
+          test "$actual_sha" = "$EXPECTED_SHA" || {
+            echo "::error::Validation checkout SHA mismatch."
+            exit 1
+          }
+
+  proof:
+    name: Protected disposable branch proof
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
+      SUPABASE_BRANCH_ID: 03d01a74-2ac3-4047-a983-c77b73a4ff6a
+      SUPABASE_BRANCH_NAME: codex/win-221-bt-aba-session-note
+      SUPABASE_BRANCH_PROJECT_REF: zutoyqdrpddtgkgooijx
+      SUPABASE_BRANCH_PR_NUMBER: "813"
+      PW_BT_FIXTURE_MARKER: bt-aba-proof-${{ github.run_id }}-${{ github.run_attempt }}
+      PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: retain-platform-managed-pr-preview
+      PW_BT_BRANCH_OWNERSHIP: platform-managed-pr-preview
+      PW_BASE_URL: http://127.0.0.1:4173
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.validate.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Verify immutable proof checkout
+        env:
+          EXPECTED_SHA: ${{ needs.validate.outputs.validated_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize redacted evidence
+        env:
+          VALIDATED_SHA: ${{ needs.validate.outputs.validated_sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/bt-aba-proof" "$RUNNER_TEMP/bt-aba-public-evidence"
+          {
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "validated_sha=${VALIDATED_SHA}"
+            echo "branch_name=${SUPABASE_BRANCH_NAME}"
+          } > "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
+
+      - name: Validate managed PR preview branch and retrieve masked keys
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          PRIVATE_BRANCH_ENV="$RUNNER_TEMP/bt-aba-proof/branch-secrets.env"
+          install -m 600 /dev/null "$PRIVATE_BRANCH_ENV"
+          GITHUB_ENV="$PRIVATE_BRANCH_ENV" npm run bt-aba:disposable-branch -- --managed-preview
+          node --input-type=module - "$PRIVATE_BRANCH_ENV" "$GITHUB_ENV" <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs';
+
+          const [privatePath, publicPath] = process.argv.slice(2);
+          const lines = readFileSync(privatePath, 'utf8').split(/\r?\n/).filter(Boolean);
+          const readExactValue = (name) => {
+            const prefix = `${name}=`;
+            const values = lines.filter((line) => line.startsWith(prefix)).map((line) => line.slice(prefix.length));
+            if (values.length === 0 || new Set(values).size !== 1 || !values[0] || /[\r\n]/.test(values[0])) {
+              throw new Error(`Private branch channel has invalid ${name}.`);
+            }
+            return values[0];
+          };
+          const publicNames = [
+            'SUPABASE_BRANCH_ID',
+            'SUPABASE_BRANCH_NAME',
+            'SUPABASE_BRANCH_PROJECT_REF',
+            'SUPABASE_URL',
+            'SUPABASE_PUBLISHABLE_KEY',
+          ];
+          const publicLines = publicNames.map((name) => `${name}=${readExactValue(name)}`).join('\n');
+          appendFileSync(publicPath, `${publicLines}\n`, { encoding: 'utf8' });
+          NODE
+
+      - name: Validate non-production branch boundary
+        run: |
+          if [ -z "${SUPABASE_BRANCH_PROJECT_REF:-}" ] || [ -z "${SUPABASE_BRANCH_ID:-}" ]; then
+            echo "::error::Disposable branch identity is incomplete."
+            exit 1
+          fi
+          if [ "$SUPABASE_BRANCH_PROJECT_REF" = "$SUPABASE_PARENT_PROJECT_REF" ]; then
+            echo "::error::Refusing production Supabase project."
+            exit 1
+          fi
+          if [ "$SUPABASE_URL" != "https://${SUPABASE_BRANCH_PROJECT_REF}.supabase.co" ]; then
+            echo "::error::Disposable branch URL does not match its validated project ref."
+            exit 1
+          fi
+          {
+            echo "branch_id=${SUPABASE_BRANCH_ID}"
+            echo "branch_project_ref=${SUPABASE_BRANCH_PROJECT_REF}"
+            echo "branch_lifecycle=platform-managed-pr-preview-active-healthy"
+          } >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
+
+      - name: Provision marker-owned synthetic fixture
+        run: |
+          SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")" \
+            npx tsx scripts/provision-ci-smoke-bt-aba.ts
+
+      - name: Build branch-bound preview
+        run: npm run preview:build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Launch protected preview and wait for health
+        run: |
+          PREVIEW_ENABLE_SESSION_NOTES_API="true" \
+          PREVIEW_ENABLE_SESSION_START_API="true" \
+          SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")" \
+          nohup npx tsx -e "import('./scripts/lib/preview-runtime.ts').then(async ({ startPreviewServer }) => { const { resolvePreviewConfig } = await import('./src/preview/config.ts'); await startPreviewServer(resolvePreviewConfig(process.env)); console.log('[preview] protected server ready'); }).catch((error) => { console.error(error); process.exit(1); });" > "$RUNNER_TEMP/bt-aba-proof/preview.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/bt-aba-proof/preview.pid"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error "$PW_BASE_URL/__supabase/auth/v1/health" > /dev/null; then
+              echo "preview_health=ready" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/bt-aba-proof/preview.pid")" 2>/dev/null; then
+              cat "$RUNNER_TEMP/bt-aba-proof/preview.log"
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::Protected preview did not become healthy."
+          cat "$RUNNER_TEMP/bt-aba-proof/preview.log"
+          exit 1
+
+      - name: Run BT ABA session-note browser proof
+        env:
+          PW_BT_PROOF_ARTIFACT_DIR: ${{ runner.temp }}/bt-aba-public-evidence
+          PW_BT_CLEANUP_STATE_PATH: ${{ runner.temp }}/bt-aba-proof/cleanup-state.json
+        run: |
+          SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")" \
+            npm run playwright:bt-aba-session-note
+          echo "browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
+
+      - name: Clean exact marker-owned synthetic fixture
+        if: always() && env.PW_BT_FIXTURE_PROVISIONED == 'true'
+        env:
+          PW_BT_CLEANUP_STATE_PATH: ${{ runner.temp }}/bt-aba-proof/cleanup-state.json
+        run: |
+          SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")" \
+            npx tsx scripts/cleanup-ci-smoke-bt-aba.ts
+          echo "fixture_cleanup=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
+
+      - name: Stop protected preview
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/bt-aba-proof/preview.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/bt-aba-proof/preview.pid")" 2>/dev/null || true
+          fi
+
+      - name: Upload redacted browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bt-aba-disposable-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bt-aba-public-evidence/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  cleanup:
+    name: Verify managed PR preview remains healthy
+    needs: [validate, proof]
+    if: always() && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
+      SUPABASE_BRANCH_ID: 03d01a74-2ac3-4047-a983-c77b73a4ff6a
+      SUPABASE_BRANCH_NAME: codex/win-221-bt-aba-session-note
+      SUPABASE_BRANCH_PROJECT_REF: zutoyqdrpddtgkgooijx
+      SUPABASE_BRANCH_PR_NUMBER: "813"
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.validate.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Verify immutable cleanup checkout
+        env:
+          EXPECTED_SHA: ${{ needs.validate.outputs.validated_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Initialize managed-branch evidence
+        run: |
+          mkdir -p "$RUNNER_TEMP/bt-aba-cleanup"
+          {
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "branch_name=${SUPABASE_BRANCH_NAME}"
+            echo "branch_ownership=platform-managed-pr-preview"
+          } > "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify managed PR preview branch remains healthy
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set +e
+          cleanup_output="$(npm run bt-aba:disposable-branch -- --verify-managed-preview 2>&1)"
+          cleanup_status=$?
+          set -e
+          printf '%s\n' "$cleanup_output"
+          if [ "$cleanup_status" -eq 0 ]; then
+            echo "cleanup=not-applicable-platform-managed" >> "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"
+            echo "post_proof_branch_health=ACTIVE_HEALTHY" >> "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"
+            exit 0
+          fi
+          echo "cleanup=failed" >> "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"
+          exit "$cleanup_status"
+
+      - name: Upload deletion evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bt-aba-disposable-cleanup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bt-aba-cleanup/deletion-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7

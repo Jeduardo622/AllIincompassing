@@ -4,6 +4,8 @@ import http from 'node:http';
 import path from 'node:path';
 
 import type { PreviewConfig } from '../../src/preview/config';
+import { sessionNotesUpsertHandler } from '../../src/server/api/session-notes-upsert';
+import { sessionsStartHandler } from '../../src/server/api/sessions-start';
 import { RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID } from '../../src/server/runtimeConfig';
 import { runtimeConfigHandler } from '../../src/server/api/runtime-config';
 
@@ -11,7 +13,102 @@ export type PreviewServerHandle = {
   readonly close: () => Promise<void>;
 };
 
+/** Test-only seam; production callers omit this and use the real imported handler. */
+export type PreviewServerTestOverrides = {
+  readonly sessionNotesUpsertHandler?: typeof sessionNotesUpsertHandler;
+  readonly sessionsStartHandler?: typeof sessionsStartHandler;
+};
+
 const PREVIEW_STUB_ANON_KEY = 'sb_publishable_preview_stub_key_1234567890';
+const PREVIEW_REQUEST_BODY_LIMIT_BYTES = 1024 * 1024;
+
+class RequestBodyTooLargeError extends Error {}
+
+export const isPreviewSessionNotesApiEnabled = (env: NodeJS.ProcessEnv): boolean =>
+  env.PREVIEW_ENABLE_SESSION_NOTES_API === 'true';
+
+export const isPreviewSessionNotesApiRequest = (rawUrl: string, env: NodeJS.ProcessEnv): boolean => {
+  if (!isPreviewSessionNotesApiEnabled(env)) {
+    return false;
+  }
+  try {
+    return new URL(rawUrl, 'http://localhost').pathname === '/api/session-notes/upsert';
+  } catch {
+    return false;
+  }
+};
+
+export const isPreviewSessionStartApiEnabled = (env: NodeJS.ProcessEnv): boolean =>
+  env.PREVIEW_ENABLE_SESSION_START_API === 'true';
+
+export const isPreviewSessionStartApiRequest = (rawUrl: string, env: NodeJS.ProcessEnv): boolean => {
+  if (!isPreviewSessionStartApiEnabled(env)) return false;
+  try {
+    return new URL(rawUrl, 'http://localhost').pathname === '/api/sessions-start';
+  } catch {
+    return false;
+  }
+};
+
+const requestHeaders = (headers: http.IncomingHttpHeaders): Headers =>
+  new Headers(
+    Object.entries(headers).reduce<Record<string, string>>((acc, [key, value]) => {
+      if (typeof value === 'string') {
+        acc[key] = value;
+      } else if (Array.isArray(value)) {
+        acc[key] = value.join(', ');
+      }
+      return acc;
+    }, {}),
+  );
+
+const readRequestBody = async (req: http.IncomingMessage): Promise<Buffer> => {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.byteLength;
+    if (size > PREVIEW_REQUEST_BODY_LIMIT_BYTES) {
+      throw new RequestBodyTooLargeError();
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks);
+};
+
+export const forwardRequest = async (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  handler: (request: Request) => Promise<Response>,
+): Promise<void> => {
+  const url = req.url ?? '/';
+  const method = req.method ?? 'GET';
+  let body: Buffer | undefined;
+  try {
+    body = method === 'GET' || method === 'HEAD' ? undefined : await readRequestBody(req);
+  } catch (error) {
+    if (!(error instanceof RequestBodyTooLargeError)) {
+      throw error;
+    }
+    res.statusCode = 413;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'Request body exceeds 1 MiB limit' }));
+    return;
+  }
+  const request = new Request(new URL(url, 'http://localhost'), {
+    method,
+    headers: requestHeaders(req.headers),
+    body,
+  });
+
+  const response = await handler(request);
+  res.statusCode = response.status;
+  response.headers.forEach((value, key) => {
+    res.setHeader(key, value);
+  });
+  const responseBody = await response.arrayBuffer();
+  res.end(Buffer.from(responseBody));
+};
 
 export const ensureBuildArtifactsExist = (config: PreviewConfig): void => {
   const absoluteDir = path.resolve(config.outDir);
@@ -48,16 +145,7 @@ const forwardRuntimeConfig = async (req: http.IncomingMessage, res: http.ServerR
   const method = req.method ?? 'GET';
   const request = new Request(new URL(url, 'http://localhost'), {
     method,
-    headers: new Headers(
-      Object.entries(req.headers).reduce<Record<string, string>>((acc, [key, value]) => {
-        if (typeof value === 'string') {
-          acc[key] = value;
-        } else if (Array.isArray(value)) {
-          acc[key] = value.join(', ');
-        }
-        return acc;
-      }, {}),
-    ),
+    headers: requestHeaders(req.headers),
   });
 
   const response = await runtimeConfigHandler(request);
@@ -141,9 +229,15 @@ const sendFile = async (
   stream.pipe(res);
 };
 
-export const startPreviewServer = async (config: PreviewConfig): Promise<PreviewServerHandle> => {
+export const startPreviewServer = async (
+  config: PreviewConfig,
+  testOverrides: PreviewServerTestOverrides = {},
+): Promise<PreviewServerHandle> => {
   const absoluteDir = path.resolve(config.outDir);
   const fallbackPath = path.join(absoluteDir, 'index.html');
+  const previewSessionNotesUpsertHandler =
+    testOverrides.sessionNotesUpsertHandler ?? sessionNotesUpsertHandler;
+  const previewSessionsStartHandler = testOverrides.sessionsStartHandler ?? sessionsStartHandler;
   const server = http.createServer(async (req, res) => {
     const rawUrl = req.url ?? '/';
     if (rawUrl.startsWith('/__supabase/auth/v1/health')) {
@@ -157,6 +251,28 @@ export const startPreviewServer = async (config: PreviewConfig): Promise<Preview
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ currentSession: null, currentUser: null }));
+      return;
+    }
+
+    if (isPreviewSessionNotesApiRequest(rawUrl, process.env)) {
+      try {
+        await forwardRequest(req, res, previewSessionNotesUpsertHandler);
+      } catch {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Session notes handler failed' }));
+      }
+      return;
+    }
+
+    if (isPreviewSessionStartApiRequest(rawUrl, process.env)) {
+      try {
+        await forwardRequest(req, res, previewSessionsStartHandler);
+      } catch {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Session start handler failed' }));
+      }
       return;
     }
 

@@ -30,6 +30,19 @@ export type SupervisionSessionNoteTemplate = {
   sections: SupervisionTemplateSection[];
 };
 
+export type ClinicalSignatureValue = {
+  method: 'typed' | 'drawn';
+  value: string;
+};
+
+export type SupervisionBtReviewPacket = {
+  noteId: string;
+  responses: Record<string, unknown>;
+  templateSnapshot: { sections?: SupervisionTemplateSection[] };
+  signatureMethod: 'typed' | 'drawn' | null;
+  signedAt: string | null;
+};
+
 export type PendingSupervisionSessionNoteRequest = {
   id: string;
   organizationId: string;
@@ -41,9 +54,12 @@ export type PendingSupervisionSessionNoteRequest = {
   createdAt: string;
   sessionStartTime: string | null;
   sessionEndTime: string | null;
+  placeOfService: string | null;
   clientName: string;
   btTherapistName: string;
   btTherapistTitle: string | null;
+  canComplete: boolean;
+  btReview: SupervisionBtReviewPacket;
 };
 
 export type PendingSupervisionSessionNoteResult = {
@@ -53,55 +69,90 @@ export type PendingSupervisionSessionNoteResult = {
 
 export const SUPERVISION_SESSION_NOTES_QUERY_KEY = 'supervision-session-note-requests' as const;
 
-type RequestRow = {
-  id: string;
+type ReviewPacketRow = {
+  request_id: string;
   organization_id: string;
   session_id: string;
   client_id: string;
   bt_therapist_id: string;
-  assigned_admin_user_id: string | null;
-  status: string;
-  created_at: string;
-  sessions?: { start_time?: string | null; end_time?: string | null } | null;
-  clients?: { full_name?: string | null } | null;
-  therapists?: { full_name?: string | null; title?: string | null } | null;
+  assigned_reviewer_user_id: string | null;
+  request_status: string;
+  request_created_at: string;
+  session_start_time: string | null;
+  session_end_time: string | null;
+  place_of_service: string | null;
+  client_name: string | null;
+  bt_therapist_name: string | null;
+  bt_therapist_title: string | null;
+  bt_note_id: string | null;
+  bt_responses: unknown;
+  bt_template_snapshot: unknown;
+  bt_signature_method: 'typed' | 'drawn' | null;
+  bt_signed_at: string | null;
+  supervision_template_id: string;
+  supervision_template_name: string;
+  supervision_template_structure: unknown;
+  can_complete: boolean;
 };
 
-type TemplateRow = {
-  id: string;
-  template_name: string;
-  template_structure: unknown;
+const normalizeSections = (value: unknown): SupervisionTemplateSection[] => {
+  const structure = value && typeof value === 'object'
+    ? value as { sections?: SupervisionTemplateSection[] }
+    : {};
+  return Array.isArray(structure.sections) ? structure.sections : [];
 };
 
-const normalizeTemplate = (row: TemplateRow | null): SupervisionSessionNoteTemplate | null => {
-  if (!row) {
+const normalizeResponses = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+);
+
+const deriveTemplate = (row: ReviewPacketRow | undefined): SupervisionSessionNoteTemplate | null => {
+  const templateId = row?.supervision_template_id?.trim();
+  const templateName = row?.supervision_template_name?.trim();
+
+  if (!templateId || !templateName) {
     return null;
   }
-  const structure = row.template_structure && typeof row.template_structure === 'object'
-    ? row.template_structure as { sections?: SupervisionTemplateSection[] }
-    : {};
+
   return {
-    id: row.id,
-    templateName: row.template_name,
-    sections: Array.isArray(structure.sections) ? structure.sections : [],
+    id: templateId,
+    templateName,
+    sections: normalizeSections(row.supervision_template_structure),
   };
 };
 
-const mapRequestRow = (row: RequestRow): PendingSupervisionSessionNoteRequest => ({
-  id: row.id,
-  organizationId: row.organization_id,
-  sessionId: row.session_id,
-  clientId: row.client_id,
-  btTherapistId: row.bt_therapist_id,
-  assignedAdminUserId: row.assigned_admin_user_id,
-  status: row.status,
-  createdAt: row.created_at,
-  sessionStartTime: row.sessions?.start_time ?? null,
-  sessionEndTime: row.sessions?.end_time ?? null,
-  clientName: row.clients?.full_name?.trim() || 'Client',
-  btTherapistName: row.therapists?.full_name?.trim() || 'BT/RBT',
-  btTherapistTitle: row.therapists?.title ?? null,
-});
+const mapReviewPacketRow = (row: ReviewPacketRow): PendingSupervisionSessionNoteRequest => {
+  if (!row.bt_note_id) {
+    throw new Error('Completed BT note is unavailable for supervision review.');
+  }
+
+  return {
+    id: row.request_id,
+    organizationId: row.organization_id,
+    sessionId: row.session_id,
+    clientId: row.client_id,
+    btTherapistId: row.bt_therapist_id,
+    assignedAdminUserId: row.assigned_reviewer_user_id,
+    status: row.request_status,
+    createdAt: row.request_created_at,
+    sessionStartTime: row.session_start_time,
+    sessionEndTime: row.session_end_time,
+    placeOfService: row.place_of_service,
+    clientName: row.client_name?.trim() || 'Client',
+    btTherapistName: row.bt_therapist_name?.trim() || 'BT/RBT',
+    btTherapistTitle: row.bt_therapist_title ?? null,
+    canComplete: Boolean(row.can_complete),
+    btReview: {
+      noteId: row.bt_note_id,
+      responses: normalizeResponses(row.bt_responses),
+      templateSnapshot: { sections: normalizeSections(row.bt_template_snapshot) },
+      signatureMethod: row.bt_signature_method,
+      signedAt: row.bt_signed_at,
+    },
+  };
+};
 
 export const fetchPendingSupervisionSessionNoteRequests = async (
   organizationId: string,
@@ -110,41 +161,17 @@ export const fetchPendingSupervisionSessionNoteRequests = async (
     throw new Error('Organization context is required to load supervision note requests.');
   }
 
-  const [requestsResult, templateResult] = await Promise.all([
-    fromTable('supervision_session_note_requests')
-      .select(`
-        id,
-        organization_id,
-        session_id,
-        client_id,
-        bt_therapist_id,
-        assigned_admin_user_id,
-        status,
-        created_at,
-        sessions:session_id(start_time,end_time),
-        clients:client_id(full_name),
-        therapists:bt_therapist_id(full_name,title)
-      `)
-      .eq('organization_id', organizationId)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false }),
-    fromTable('session_note_templates')
-      .select('id, template_name, template_structure')
-      .eq('organization_id', organizationId)
-      .eq('template_type', 'supervision_session_note')
-      .maybeSingle(),
-  ]);
+  const { data, error } = await callRpc('get_pending_supervision_review_packets', {});
+  if (error) {
+    throw error;
+  }
 
-  if (requestsResult.error) {
-    throw requestsResult.error;
-  }
-  if (templateResult.error) {
-    throw templateResult.error;
-  }
+  const packets = (data ?? []) as ReviewPacketRow[];
+  const firstPacket = packets[0];
 
   return {
-    requests: ((requestsResult.data ?? []) as RequestRow[]).map(mapRequestRow),
-    template: normalizeTemplate((templateResult.data ?? null) as TemplateRow | null),
+    requests: packets.map(mapReviewPacketRow),
+    template: deriveTemplate(firstPacket),
   };
 };
 

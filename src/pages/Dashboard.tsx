@@ -297,6 +297,7 @@ const collectSupervisionResponses = (
   for (const field of fields) {
     const label = field.label ?? field.key;
     const values = formData.getAll(field.key).map((value) => String(value).trim()).filter(Boolean);
+    const hasSignature = normalizedSignature.value.trim().length > 0;
     if (field.type === 'checkbox' && !fieldHasOptions(field)) {
       responses[field.key] = formData.has(field.key);
     } else if (field.type === 'checkbox' || field.type === 'checkbox_group') {
@@ -308,14 +309,15 @@ const collectSupervisionResponses = (
       responses.bcba_supervisor_signature = normalizedSignature;
     }
     const requiresResponse = fieldRequiresResponse(field, responses);
-    const hasSignature = normalizedSignature.value.trim().length > 0;
     if (field.key === 'bcba_supervisor_signature' && requiresResponse && !hasSignature) {
       errors[field.key] = 'BCBA Supervisor Signature is required.';
       continue;
     }
-    const hasValue = field.type === 'checkbox' && !fieldHasOptions(field)
-      ? responses[field.key] === true
-      : values.length > 0;
+    const hasValue = field.key === 'bcba_supervisor_signature'
+      ? hasSignature
+      : field.type === 'checkbox' && !fieldHasOptions(field)
+        ? responses[field.key] === true
+        : values.length > 0;
     if (requiresResponse && !hasValue) {
       errors[field.key] = field.type === 'checkbox' || field.type === 'checkbox_group'
         ? `Select at least one ${label}.`

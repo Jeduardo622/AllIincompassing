@@ -62,6 +62,111 @@ describe('Dashboard without client fallbacks', () => {
     expect(screen.getByText('Date unavailable')).toBeInTheDocument();
   });
 
+  it('submits structured BCBA signature payload from the dashboard modal', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+    const onCompleteSupervisionNote = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <View
+        {...baseProps}
+        supervisionRequests={[
+          {
+            id: 'request-1',
+            organizationId: 'org-1',
+            sessionId: 'session-1',
+            clientId: 'client-1',
+            btTherapistId: 'bt-1',
+            assignedAdminUserId: null,
+            status: 'pending',
+            createdAt: '2026-06-29T20:00:00.000Z',
+            sessionStartTime: '2026-06-29T18:00:00.000Z',
+            sessionEndTime: '2026-06-29T19:00:00.000Z',
+            placeOfService: 'Home',
+            clientName: 'Client One',
+            btTherapistName: 'BT One',
+            btTherapistTitle: 'BT',
+            canComplete: true,
+            btReview: {
+              noteId: 'bt-note-1',
+              responses: {
+                session_summary: 'Ready for treatment.',
+                behavior_targets: ['Manding', 'Pairing'],
+                parent_present: true,
+                bt_signature: {
+                  method: 'typed',
+                  value: 'BT One',
+                },
+              },
+              templateSnapshot: {
+                sections: [
+                  {
+                    key: 'bt_review',
+                    label: 'Completed BT ABA Session Note',
+                    fields: [
+                      { key: 'session_summary', label: 'Session Summary', type: 'textarea' },
+                      { key: 'behavior_targets', label: 'Behavior Targets', type: 'checkbox_group' },
+                      { key: 'parent_present', label: 'Parent Present', type: 'checkbox' },
+                      { key: 'bt_signature', label: 'BT Signature', type: 'signature' },
+                    ],
+                  },
+                ],
+              },
+              signatureMethod: 'typed',
+              signedAt: '2026-06-29T19:05:00.000Z',
+            },
+          },
+        ]}
+        supervisionTemplate={{
+          id: 'template-1',
+          templateName: 'Supervision Session Note',
+          sections: [
+            {
+              key: 'session_overview',
+              label: 'Session overview',
+              fields: [
+                { key: 'purpose_of_session', label: 'Purpose of session', type: 'checkbox', options: ['Treatment plan review'] },
+                { key: 'session_type', label: 'Session type', type: 'checkbox_group', options: ['Direct Supervision', 'Indirect Supervision'] },
+                { key: 'link_unlinked_data', label: 'Link unlinked data', type: 'checkbox' },
+                { key: 'collected_by', label: 'Collected by', type: 'select' },
+                { key: 'rbt_prepared', label: 'RBT prepared', type: 'radio_group', options: ['Yes', 'No'] },
+                { key: 'session_note_description', label: 'Session note description', type: 'textarea' },
+                { key: 'bcba_supervisor_signature', label: 'BCBA Supervisor Signature', type: 'signature', required: true },
+              ],
+            },
+          ],
+        }}
+        onCompleteSupervisionNote={onCompleteSupervisionNote}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /complete supervision note for client one/i }));
+    await user.click(screen.getByRole('checkbox', { name: 'Treatment plan review' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Direct Supervision' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Link unlinked data' }));
+    await user.click(screen.getByRole('radio', { name: 'Yes' }));
+    fireEvent.change(screen.getByLabelText('Session note description'), {
+      target: { value: 'Observed prompting and feedback.' },
+    });
+    await user.click(screen.getByRole('radio', { name: 'Type signature' }));
+    await user.type(screen.getByLabelText('Type BCBA signature'), 'Supervisor Name');
+
+    expect(screen.getByLabelText('Type BCBA signature')).toHaveValue('Supervisor Name');
+    expect(screen.getByRole('button', { name: /sign and complete supervision note/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /sign and complete supervision note/i }).closest('form')).not.toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /sign and complete supervision note/i }));
+
+    await waitFor(() => {
+      expect(onCompleteSupervisionNote).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'request-1' }),
+        expect.objectContaining({
+          bcba_supervisor_signature: { method: 'typed', value: 'Supervisor Name' },
+        }),
+      );
+    });
+  });
+
   it('resets the BCBA signature state after header close', async () => {
     const View = DashboardView as React.ComponentType<any>;
     const user = userEvent.setup();

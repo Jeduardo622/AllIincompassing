@@ -691,3 +691,11 @@ Comment with PR, verification card, migration ledger proof, deployed smoke resul
 - Placeholder scan: no deferred implementation markers or unspecified test steps remain.
 - Type consistency: SQL packet columns map one-to-one to Task 2 row fields; `ClinicalSignatureValue` is shared by Tasks 2 and 3; the completion RPC signature remains unchanged while the structured signature travels inside `p_responses`.
 - Scope check: one coherent vertical slice; staffing/reassignment UI and general role refactors remain excluded.
+
+## Implementation Status (2026-07-17)
+
+- Implemented through commit `848f7bdd` on `codex/win-222-bcba-supervision-review`.
+- Focused workflow verification: 4 files, 27 tests passed; lint, typecheck, tenant validation, policy checks, and production build passed.
+- Independent security, Supabase, architecture, and whole-branch code reviews approved the final head after protected-path fixes.
+- Full `test:ci` remains non-green because two unchanged failures reproduce on `main`: the synthetic BCBA workflow-env contract and Node's Blob test compatibility. Browser/auth gates remain blocked locally by test credentials; hosted CI is the next authoritative gate.
+- Hosted migration apply and aggregate role/queue smoke remain pending until PR review and merge sequencing are complete.

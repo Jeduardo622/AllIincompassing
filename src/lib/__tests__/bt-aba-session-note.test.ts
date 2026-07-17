@@ -14,11 +14,11 @@ import {
 const validResponses = (
   overrides: Partial<BtAbaSessionNoteResponses> = {},
 ): BtAbaSessionNoteResponses => ({
-  purpose_of_session: ['Direct treatment'],
+  purpose_of_session: ['RBT/BT worked on goals as stated in the treatment plan'],
   client_status: 'Client was ready to participate.',
   skill_strategies: ['Discrete trial training'],
-  behavior_strategies: ['Differential reinforcement'],
-  supervisor_support: ['N/A'],
+  behavior_strategies: ['Differential Reinforcement'],
+  supervisor_support: ['Supervisor did not attend this session'],
   progress_toward_goals: 'Client made progress toward treatment goals.',
   client_response_to_treatment: 'Client responded positively to treatment.',
   data_point_scope: 'linked',
@@ -120,6 +120,33 @@ describe('BT ABA session note contract', () => {
     expect(validateBtAbaSessionNoteResponses(missingScope).success).toBe(false);
     expect(validateBtAbaSessionNoteResponses(missingLinkChoice).success).toBe(false);
     expect(validateBtAbaSessionNoteResponses(validResponses({ data_point_scope: 'all', link_unlinked_data: true })).success).toBe(true);
+  });
+
+  it.each([
+    ['purpose_of_session', 'Arbitrary purpose'],
+    ['skill_strategies', 'Arbitrary skill strategy'],
+    ['behavior_strategies', 'Arbitrary behavior strategy'],
+    ['supervisor_support', 'Arbitrary supervisor support'],
+  ] as const)('rejects a non-canonical option for %s', (group, option) => {
+    expect(validateBtAbaSessionNoteResponses(validResponses({ [group]: [option] })).success).toBe(false);
+  });
+
+  it('rejects a drawn signature that is not the bounded point serialization', () => {
+    expect(validateBtAbaSessionNoteResponses(validResponses({
+      bt_signature: { method: 'drawn', value: 'not-a-drawn-signature' },
+    })).success).toBe(false);
+    expect(validateBtAbaSessionNoteResponses(validResponses({
+      bt_signature: { method: 'drawn', value: 'points:[[0.25,0.5],null]' },
+    })).success).toBe(true);
+  });
+
+  it('bounds typed signatures to the UI contract', () => {
+    expect(validateBtAbaSessionNoteResponses(validResponses({
+      bt_signature: { method: 'typed', value: 'x'.repeat(200) },
+    })).success).toBe(true);
+    expect(validateBtAbaSessionNoteResponses(validResponses({
+      bt_signature: { method: 'typed', value: 'x'.repeat(201) },
+    })).success).toBe(false);
   });
 
   it.each([

@@ -273,7 +273,7 @@ declare
     "client_response_to_treatment":"Client responded as expected",
     "data_point_scope":"linked",
     "link_unlinked_data":false,
-    "bt_signature":{"method":"typed","value":"Synthetic BT"}
+    "bt_signature":{"method":"drawn","value":"points:[[0.25,0.5],null]"}
   }'::jsonb;
   payload jsonb := '{"authorization_id":"00000000-0000-4000-8000-00000000b099","requested_service_code":"CALLER-CONTROLLED","goals_addressed":[],"goal_ids":[],"narrative":"Synthetic closeout"}'::jsonb;
 begin
@@ -281,6 +281,38 @@ begin
   begin
     perform public.finalize_bt_aba_session_note('00000000-0000-4000-8000-00000000b041', failure_note_id, payload, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb);
     raise exception 'missing required responses unexpectedly finalized';
+  exception when sqlstate '23514' then null; end;
+  begin
+    perform public.finalize_bt_aba_session_note(
+      '00000000-0000-4000-8000-00000000b041', failure_note_id, payload,
+      jsonb_set(valid_responses, '{purpose_of_session}', '["arbitrary clinical option"]'::jsonb),
+      '[]'::jsonb, '[]'::jsonb
+    );
+    raise exception 'non-canonical response option unexpectedly finalized';
+  exception when sqlstate '23514' then null; end;
+  begin
+    perform public.finalize_bt_aba_session_note(
+      '00000000-0000-4000-8000-00000000b041', failure_note_id, payload,
+      jsonb_set(valid_responses, '{link_unlinked_data}', '"false"'::jsonb),
+      '[]'::jsonb, '[]'::jsonb
+    );
+    raise exception 'wrong response type unexpectedly finalized';
+  exception when sqlstate '23514' then null; end;
+  begin
+    perform public.finalize_bt_aba_session_note(
+      '00000000-0000-4000-8000-00000000b041', failure_note_id, payload,
+      jsonb_set(valid_responses, '{bt_signature}', '{"method":"drawn","value":"not-a-drawn-signature"}'::jsonb),
+      '[]'::jsonb, '[]'::jsonb
+    );
+    raise exception 'invalid drawn signature unexpectedly finalized';
+  exception when sqlstate '23514' then null; end;
+  begin
+    perform public.finalize_bt_aba_session_note(
+      '00000000-0000-4000-8000-00000000b041', failure_note_id, payload,
+      jsonb_set(valid_responses, '{bt_signature}', jsonb_build_object('method', 'typed', 'value', repeat('x', 201))),
+      '[]'::jsonb, '[]'::jsonb
+    );
+    raise exception 'oversized typed signature unexpectedly finalized';
   exception when sqlstate '23514' then null; end;
   if (select status from public.sessions where id = '00000000-0000-4000-8000-00000000b041') <> 'in_progress' then
     raise exception 'failed finalization did not roll session back to in_progress';

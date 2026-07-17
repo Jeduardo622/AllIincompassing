@@ -75,26 +75,53 @@ export const BT_ABA_FIELD_LABELS = {
   bt_signature: 'Behavior Technician Signature',
 } as const;
 
-const requiredSelections = z.array(z.string().trim().min(1)).min(1);
+const requiredOptions = <T extends readonly [string, ...string[]]>(options: T) =>
+  z.array(z.enum(options)).min(1);
+
+const isValidDrawnSignature = (value: string): boolean => {
+  if (!value.startsWith('points:') || value.length > 20_000) return false;
+  try {
+    const points: unknown = JSON.parse(value.slice('points:'.length));
+    return Array.isArray(points)
+      && points.length > 0
+      && points.length <= 256
+      && points.some((point) => point !== null)
+      && points.every((point) => point === null || (
+        Array.isArray(point)
+        && point.length === 2
+        && point.every((coordinate) => (
+          typeof coordinate === 'number'
+          && Number.isFinite(coordinate)
+          && coordinate >= 0
+          && coordinate <= 1
+        ))
+      ));
+  } catch {
+    return false;
+  }
+};
 
 const btAbaSessionNoteResponsesSchema: z.ZodType<BtAbaSessionNoteResponses> = z.object({
-  purpose_of_session: requiredSelections,
+  purpose_of_session: requiredOptions(BT_ABA_PURPOSE_OPTIONS),
   purpose_other: z.string().trim().optional(),
   client_status: z.string().trim().min(1),
-  skill_strategies: requiredSelections,
+  skill_strategies: requiredOptions(BT_ABA_SKILL_STRATEGY_OPTIONS),
   skill_strategies_other: z.string().trim().optional(),
-  behavior_strategies: requiredSelections,
+  behavior_strategies: requiredOptions(BT_ABA_BEHAVIOR_STRATEGY_OPTIONS),
   behavior_strategies_other: z.string().trim().optional(),
-  supervisor_support: requiredSelections,
+  supervisor_support: requiredOptions(BT_ABA_SUPERVISOR_SUPPORT_OPTIONS),
   supervisor_support_other: z.string().trim().optional(),
   progress_toward_goals: z.string().trim().min(1),
   client_response_to_treatment: z.string().trim().min(1),
   data_point_scope: z.enum(['linked', 'all']),
   link_unlinked_data: z.boolean(),
-  bt_signature: z.object({
-    method: z.enum(['drawn', 'typed']),
-    value: z.string().trim().min(1),
-  }),
+  bt_signature: z.discriminatedUnion('method', [
+    z.object({ method: z.literal('typed'), value: z.string().trim().min(1).max(200) }),
+    z.object({
+      method: z.literal('drawn'),
+      value: z.string().trim().refine(isValidDrawnSignature, 'Drawn signature is invalid'),
+    }),
+  ]),
 }).superRefine((responses, context) => {
   const selectionGroups = [
     ['purpose_of_session', 'purpose_other'],

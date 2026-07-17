@@ -518,8 +518,11 @@ declare
   v_note public.client_session_notes;
   v_template public.session_note_templates;
   v_missing_key text;
+  v_field record;
+  v_response jsonb;
   v_signature_method text;
   v_signature_value text;
+  v_signature_points jsonb;
   v_note_json jsonb;
   v_progression_results jsonb := '[]'::jsonb;
   v_is_assigned_bt boolean := false;
@@ -684,6 +687,71 @@ begin
     raise exception using errcode = '42501', message = 'BT ABA template is out of scope';
   end if;
 
+  if exists (
+    select 1
+    from jsonb_object_keys(p_responses) response_key
+    where not exists (
+      select 1
+      from jsonb_array_elements(v_template.template_structure->'sections') section(value)
+      cross join lateral jsonb_array_elements(coalesce(section.value->'fields', '[]'::jsonb)) item(value)
+      where item.value->>'key' = response_key
+    )
+  ) then
+    raise exception using errcode = '23514', message = 'invalid BT ABA session note response type or option';
+  end if;
+
+  for v_field in
+    select
+      item.value->>'key' as field_key,
+      item.value->>'type' as field_type,
+      coalesce(item.value->'options', '[]'::jsonb) as options
+    from jsonb_array_elements(v_template.template_structure->'sections') section(value)
+    cross join lateral jsonb_array_elements(coalesce(section.value->'fields', '[]'::jsonb)) item(value)
+  loop
+    v_response := p_responses->v_field.field_key;
+    if v_response is null then
+      continue;
+    end if;
+
+    if v_field.field_type = 'multi_select' then
+      if jsonb_typeof(v_response) <> 'array'
+         or jsonb_array_length(v_response) = 0
+         or exists (
+           select 1
+           from jsonb_array_elements(v_response) option(value)
+           where jsonb_typeof(option.value) <> 'string'
+             or not (v_field.options ? (option.value #>> '{}'))
+         ) then
+        raise exception using errcode = '23514', message = 'invalid BT ABA session note response type or option';
+      end if;
+    elsif v_field.field_type = 'radio' then
+      if jsonb_typeof(v_response) <> 'string'
+         or not (v_field.options ? (v_response #>> '{}')) then
+        raise exception using errcode = '23514', message = 'invalid BT ABA session note response type or option';
+      end if;
+    elsif v_field.field_type in ('text', 'textarea') then
+      if jsonb_typeof(v_response) <> 'string' then
+        raise exception using errcode = '23514', message = 'invalid BT ABA session note response type or option';
+      end if;
+    elsif v_field.field_type = 'boolean' then
+      if jsonb_typeof(v_response) <> 'boolean' then
+        raise exception using errcode = '23514', message = 'invalid BT ABA session note response type or option';
+      end if;
+    elsif v_field.field_type = 'signature' then
+      if jsonb_typeof(v_response) <> 'object'
+         or jsonb_typeof(v_response->'method') <> 'string'
+         or jsonb_typeof(v_response->'value') <> 'string'
+         or exists (
+           select 1 from jsonb_object_keys(v_response) signature_key
+           where signature_key not in ('method', 'value')
+         ) then
+        raise exception using errcode = '23514', message = 'invalid BT ABA session note response type or option';
+      end if;
+    else
+      raise exception using errcode = '23514', message = 'invalid BT ABA session note response type or option';
+    end if;
+  end loop;
+
   select field.field_key into v_missing_key
   from (
     select item.value->>'key' as field_key,
@@ -722,6 +790,43 @@ begin
   v_signature_value := nullif(btrim(p_responses->'bt_signature'->>'value'), '');
   if v_signature_method not in ('drawn', 'typed') or v_signature_value is null then
     raise exception using errcode = '23514', message = 'valid BT signature is required';
+  end if;
+  if v_signature_method = 'typed' and char_length(v_signature_value) > 200 then
+    raise exception using errcode = '23514', message = 'valid BT signature is required';
+  end if;
+  if v_signature_method = 'drawn' then
+    if char_length(v_signature_value) > 20000 or left(v_signature_value, 7) <> 'points:' then
+      raise exception using errcode = '23514', message = 'invalid drawn BT signature serialization';
+    end if;
+    begin
+      v_signature_points := substring(v_signature_value from 8)::jsonb;
+    exception when others then
+      raise exception using errcode = '23514', message = 'invalid drawn BT signature serialization';
+    end;
+    if jsonb_typeof(v_signature_points) <> 'array'
+       or jsonb_array_length(v_signature_points) = 0
+       or jsonb_array_length(v_signature_points) > 256
+       or not exists (
+         select 1 from jsonb_array_elements(v_signature_points) point(value)
+         where point.value <> 'null'::jsonb
+       )
+       or exists (
+         select 1
+         from jsonb_array_elements(v_signature_points) point(value)
+         where case
+           when point.value = 'null'::jsonb then false
+           when jsonb_typeof(point.value) <> 'array' then true
+           when jsonb_array_length(point.value) <> 2 then true
+           when jsonb_typeof(point.value->0) <> 'number'
+             or jsonb_typeof(point.value->1) <> 'number' then true
+           else (point.value->>0)::numeric < 0
+             or (point.value->>0)::numeric > 1
+             or (point.value->>1)::numeric < 0
+             or (point.value->>1)::numeric > 1
+         end
+       ) then
+      raise exception using errcode = '23514', message = 'invalid drawn BT signature serialization';
+    end if;
   end if;
 
   if v_session.status = 'in_progress' then

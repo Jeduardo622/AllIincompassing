@@ -96,6 +96,11 @@ describe('BT ABA session note closeout migration', () => {
     expect(finalize).toMatch(/from public\.user_therapist_links utl[\s\S]*utl\.user_id = v_actor[\s\S]*utl\.therapist_id = v_session\.therapist_id/i);
     expect(finalize).toMatch(/app\.current_user_has_exact_role_for_org\([\s\S]*array\['bt'\]::text\[\][\s\S]*array\['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'\]::text\[\]/i);
     expect(finalize).toMatch(/required BT ABA session note response missing/i);
+    expect(finalize).toMatch(/invalid BT ABA session note response type or option/i);
+    expect(finalize).toMatch(/invalid drawn BT signature serialization/i);
+    expect(finalize).toMatch(/v_signature_method = 'typed'[\s\S]*char_length\(v_signature_value\) > 200/i);
+    expect(finalize).toMatch(/jsonb_array_elements\(v_response\)/i);
+    expect(finalize).toMatch(/v_field\.options \? \(option\.value #>> '\{\}'\)/i);
     expect(finalize).toMatch(/bt_signature[\s\S]*signature_method[\s\S]*signature_value/i);
 
     const statusUpdate = finalize.indexOf("status = 'completed'");

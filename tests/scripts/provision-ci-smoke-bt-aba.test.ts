@@ -31,7 +31,7 @@ const validGraph = () => ({
   marker: MARKER,
   actorId: ACTOR_ID,
   organization: { id: ORGANIZATION_ID, name: `BT proof ${MARKER}`, slug: `bt-proof-${MARKER}` },
-  profile: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, role: "therapist", is_active: true },
+  profile: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, role: "bt", is_active: true },
   therapist: { id: ACTOR_ID, organization_id: ORGANIZATION_ID, email: buildBtSmokeEmail(MARKER), full_name: `BT ${MARKER}`, title: "BT", status: "active", deleted_at: null },
   roleMappings: [{ name: "bt", isActive: true, expiresAt: "2099-01-01T00:00:00.000Z" }],
   client: { id: CLIENT_ID, organization_id: ORGANIZATION_ID, email: `client.${MARKER}@example.com`, full_name: `Client ${MARKER}`, notes: MARKER, status: "active", deleted_at: null },

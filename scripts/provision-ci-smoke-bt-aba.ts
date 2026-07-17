@@ -144,9 +144,7 @@ export const assertBtFixtureGraph = (graph: BtFixtureGraph): void => {
   ] as const) {
     requireEqual(row.organization_id, organizationId, `${label} organization`);
   }
-  // profiles.role remains the legacy therapist family while user_roles is the
-  // authoritative employee-role source for this BT actor.
-  requireEqual(graph.profile.role, "therapist", "Profile legacy role");
+  requireEqual(graph.profile.role, "bt", "Profile synchronized role");
   requireEqual(graph.profile.is_active, true, "Profile active state");
   requireEqual(graph.therapist.status, "active", "Therapist state");
   requireEqual(graph.therapist.deleted_at, null, "Therapist deletion state");

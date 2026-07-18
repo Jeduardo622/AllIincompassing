@@ -75,6 +75,8 @@ describe("supervision correction hosted proof safeguards", () => {
     expect(source).toContain("user_therapist_links");
     expect(source).toContain("loginAndAssertSession");
     expect(source).toContain("Sign and Complete Supervision Note");
+    expect(source).toContain("complete_supervision_session_note_request");
+    expect(source).toContain("Supervision validation failed");
     expect(source).toContain("zero retained marker rows");
     expect(source).toContain("getUserById(bcba.id)");
     expect(source).not.toContain("auth.admin.listUsers");

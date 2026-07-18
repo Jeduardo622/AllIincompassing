@@ -625,7 +625,7 @@ const waitForText = async (page: Page, text: string): Promise<void> => {
 
 const observeWorkflowRpcResponses = (page: Page): void => {
   page.on("response", async (response) => {
-    const match = response.url().match(/\/rest\/v1\/rpc\/(get_pending_supervision_review_packets|get_supervision_session_note_action_count)$/);
+    const match = response.url().match(/\/rest\/v1\/rpc\/(get_pending_supervision_review_packets|get_supervision_session_note_action_count|complete_supervision_session_note_request)$/);
     if (!match) return;
     const body = await response.json().catch(() => null) as unknown;
     console.log(JSON.stringify({
@@ -676,7 +676,16 @@ const completeReviewThroughBrowser = async (
   await page.getByRole("radio", { name: "Type signature", exact: true }).click();
   await page.getByLabel("Type BCBA signature", { exact: true }).fill("BCBA Synthetic Signature");
   await page.getByRole("button", { name: "Sign and Complete Supervision Note", exact: true }).click();
-  await page.getByRole("heading", { name: /supervision session note/i }).waitFor({ state: "hidden", timeout: 20_000 });
+  const modalHeading = page.getByRole("heading", { name: /supervision session note/i });
+  const validationErrors = page.locator('[id^="supervision-"][id$="-error"]:visible');
+  const outcome = await Promise.race([
+    modalHeading.waitFor({ state: "hidden", timeout: 20_000 }).then(() => "completed" as const),
+    validationErrors.first().waitFor({ state: "visible", timeout: 20_000 }).then(() => "validation" as const),
+  ]);
+  if (outcome === "validation") {
+    const messages = (await validationErrors.allTextContents()).map((message) => message.trim()).filter(Boolean);
+    throw new Error(`Supervision validation failed: ${messages.join(" | ") || "unknown required field"}`);
+  }
 };
 
 const postRpc = async <T>(
@@ -1011,10 +1020,10 @@ async function run(): Promise<void> {
     }));
   } catch (error) {
     runError = error;
-    if (btPage) {
-      screenshotPath = await captureCorrectionFailureScreenshot(btPage);
-    } else if (bcbaPage) {
+    if (bcbaPage) {
       screenshotPath = await captureCorrectionFailureScreenshot(bcbaPage);
+    } else if (btPage) {
+      screenshotPath = await captureCorrectionFailureScreenshot(btPage);
     }
     console.error(JSON.stringify({
       ok: false,

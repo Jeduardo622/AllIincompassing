@@ -700,6 +700,65 @@ const loadReviewPackets = async (
   return Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
 };
 
+const assertInitialReviewPacketVisible = async (
+  admin: SupabaseClient,
+  config: SafetyConfig,
+  token: string,
+  fixture: PendingRequestFixture,
+): Promise<void> => {
+  const packets = await loadReviewPackets(config, token);
+  if (packets.some((packet) => packet.request_id === fixture.requestId)) return;
+
+  const [actionCount, request, session, client, therapist, note, attestation] = await Promise.all([
+    postRpc<unknown>(config, token, "get_supervision_session_note_action_count", {}),
+    admin.from("supervision_session_note_requests")
+      .select("id, status, assigned_admin_user_id")
+      .eq("id", fixture.requestId)
+      .eq("organization_id", fixture.organizationId)
+      .maybeSingle(),
+    admin.from("sessions").select("id")
+      .eq("id", fixture.sessionId)
+      .eq("organization_id", fixture.organizationId)
+      .maybeSingle(),
+    admin.from("clients").select("id")
+      .eq("id", fixture.clientId)
+      .eq("organization_id", fixture.organizationId)
+      .maybeSingle(),
+    admin.from("therapists").select("id")
+      .eq("id", fixture.btTherapistId)
+      .eq("organization_id", fixture.organizationId)
+      .maybeSingle(),
+    admin.from("client_session_notes").select("id")
+      .eq("id", fixture.btNoteId)
+      .eq("session_id", fixture.sessionId)
+      .eq("organization_id", fixture.organizationId)
+      .maybeSingle(),
+    admin.from("session_note_attestations").select("id")
+      .eq("note_id", fixture.btNoteId)
+      .eq("organization_id", fixture.organizationId)
+      .eq("attestation_role", "bt")
+      .is("supervision_note_id", null)
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const queryErrors = [request.error, session.error, client.error, therapist.error, note.error, attestation.error]
+    .filter((error): error is NonNullable<typeof error> => Boolean(error));
+  if (queryErrors.length) throw new Error(`Initial review packet boundary diagnostics failed: ${queryErrors[0].message}`);
+
+  throw new Error(`Assigned BCBA packet was absent before browser navigation: ${JSON.stringify({
+    packetCount: packets.length,
+    actionCount,
+    requestPresent: Boolean(request.data?.id),
+    requestPending: request.data?.status === "pending",
+    assignmentPresent: Boolean(request.data?.assigned_admin_user_id),
+    sessionPresent: Boolean(session.data?.id),
+    clientPresent: Boolean(client.data?.id),
+    therapistPresent: Boolean(therapist.data?.id),
+    notePresent: Boolean(note.data?.id),
+    attestationPresent: Boolean(attestation.data?.id),
+  })}`);
+};
+
 const readCorrectionLifecycleState = async (
   admin: SupabaseClient,
   fixture: PendingRequestFixture,
@@ -845,6 +904,7 @@ async function run(): Promise<void> {
     const bcbaToken = await fetchAccessTokenForCredentials(config, bcbaFixture.email, bcbaFixture.password);
     const bcbaActor = await resolveActor(config, bcbaToken);
     assert.equal(bcbaActor.organizationId, btActor.organizationId);
+    await assertInitialReviewPacketVisible(admin, config, bcbaToken, pendingFixture);
 
     bcbaContext = await browser.newContext();
     bcbaPage = await bcbaContext.newPage();

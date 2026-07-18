@@ -323,6 +323,50 @@ describe("Dashboard staff dashboard query gate", () => {
     }));
   });
 
+  it("enables the BCBA review queue from authenticated actor scope without a context token snapshot", () => {
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "bcba-user-7" },
+        profile: { id: "profile-8", organization_id: "org-9", role: "bcba" },
+        effectiveRole: "bcba",
+        session: null,
+        loading: false,
+      }),
+    );
+
+    renderDashboard();
+
+    const listQuery = capturedQueryConfigs.find((config) =>
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "org-9", "bcba-user-7", "profile-8", "staff"]),
+    );
+    const reconcileQuery = capturedQueryConfigs.find((config) =>
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "reconcile", "org-9", "bcba-user-7", "profile-8", "staff"]),
+    );
+
+    expect(listQuery).toEqual(expect.objectContaining({ enabled: true }));
+    expect(reconcileQuery).toEqual(expect.objectContaining({ enabled: true }));
+  });
+
+  it("enables exact-BT correction tasks from authenticated actor scope without a context token snapshot", () => {
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "bt-user-7" },
+        profile: { id: "profile-7", organization_id: "org-9", role: "bt" },
+        effectiveRole: "bt",
+        session: null,
+        loading: false,
+      }),
+    );
+
+    renderDashboard();
+
+    const correctionTasksQuery = capturedQueryConfigs.find((config) =>
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "bt-user-7", "profile-7", "bt"]),
+    );
+
+    expect(correctionTasksQuery).toEqual(expect.objectContaining({ enabled: true }));
+  });
+
   it("renders a correction-only empty state for BT users without staff dashboard content", async () => {
     mockUseAuth.mockReturnValue(
       authStub({

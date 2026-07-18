@@ -627,10 +627,15 @@ const toDatetimeLocal = (date: Date): string => {
 export const isCreateSessionButtonReady = ({
   disabled,
   ariaDisabled,
+  textContent,
 }: {
   disabled: string | null;
   ariaDisabled: string | null;
-}): boolean => disabled === null && ariaDisabled !== "true";
+  textContent: string | null;
+}): boolean =>
+  disabled === null &&
+  ariaDisabled !== "true" &&
+  /Create Session/i.test(textContent ?? "");
 
 export const shouldTryNextLifecyclePairAfterAttempts = ({
   attemptedStartCount,
@@ -660,16 +665,20 @@ const expectCreateSessionButtonReady = async (
     startIso: string;
   },
 ): Promise<ReturnType<Page["getByRole"]>> => {
-  const createSessionButton = page.getByRole("button", { name: /Create Session/i });
+  const createSessionButton = page
+    .locator('[role="dialog"] button[type="submit"][form="session-form"]')
+    .first();
   await createSessionButton.waitFor({ state: "visible", timeout: 10_000 });
 
   const deadline = Date.now() + 20_000;
   let disabled: string | null = null;
   let ariaDisabled: string | null = null;
+  let textContent: string | null = null;
   while (Date.now() < deadline) {
     disabled = await createSessionButton.getAttribute("disabled");
     ariaDisabled = await createSessionButton.getAttribute("aria-disabled");
-    if (isCreateSessionButtonReady({ disabled, ariaDisabled })) {
+    textContent = await createSessionButton.textContent();
+    if (isCreateSessionButtonReady({ disabled, ariaDisabled, textContent })) {
       return createSessionButton;
     }
     await page.waitForTimeout(250);
@@ -685,7 +694,7 @@ const expectCreateSessionButtonReady = async (
     )
     .catch(() => []);
   throw new Error(
-    `Create Session stayed disabled for lifecycle booking. pair=${context.pairKey} attempt=${context.attempt} startIso=${context.startIso} disabled=${disabled ?? "null"} ariaDisabled=${ariaDisabled ?? "null"} visibleErrors=${JSON.stringify(visibleErrors)}`,
+    `Create Session stayed unavailable for lifecycle booking. pair=${context.pairKey} attempt=${context.attempt} startIso=${context.startIso} disabled=${disabled ?? "null"} ariaDisabled=${ariaDisabled ?? "null"} label=${JSON.stringify(textContent)} visibleErrors=${JSON.stringify(visibleErrors)}`,
   );
 };
 

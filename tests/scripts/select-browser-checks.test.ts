@@ -92,11 +92,11 @@ describe('select-browser-checks', () => {
     ]);
   });
 
-  it('keeps session cancellation changes out of hosted auth smoke', () => {
+  it('runs hosted auth smoke for session cancellation changes', () => {
     const selection = runSelector('--changed-file', 'supabase/functions/sessions-cancel/index.ts');
 
     expect(selection.tier0Required).toBe(true);
-    expect(selection.authSmokeRequired).toBe(false);
+    expect(selection.authSmokeRequired).toBe(true);
     expect(selection.tier0Specs).toEqual([
       'cypress/e2e/routes_schedule.cy.ts',
       'cypress/e2e/routes_auth.cy.ts',

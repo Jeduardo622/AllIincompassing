@@ -120,7 +120,7 @@ const classifyFile = (file) => {
   if (matchAny(file, [
     /^supabase\/functions\/sessions-cancel\//,
   ])) {
-    return { specs: ["schedule", "auth"], authSmoke: false, reason: "session cancellation edge flow" };
+    return { specs: ["schedule", "auth"], authSmoke: true, reason: "session cancellation edge flow" };
   }
 
   if (/^supabase\/functions\/assign-therapist-user\//.test(file)) {

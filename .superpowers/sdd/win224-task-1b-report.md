@@ -87,17 +87,13 @@
 - Attempted command:
   - `npx supabase status`
 - Result:
-  - FAIL, the local `supabase_db_AllIincompassing` container was not running.
+  - FAIL on the first pass because the local `supabase_db_AllIincompassing` container was not running.
 
-- Attempted command:
+- Command:
   - `npx supabase db reset`
 - Result:
-  - FAIL during migration application on July 18, 2026.
-  - First live blocker observed:
-    - `ERROR: there is no unique constraint matching given keys for referenced table "supervision_session_note_requests" (SQLSTATE 42830)`
-- Follow-up applied after the failed reset:
-  - moved the `(id, organization_id)` unique indexes for `supervision_session_note_requests` and `client_session_notes` before the new correction/amendment tables so the composite foreign keys can resolve during migration creation.
-- Not rerun live after that fix because the parent handoff requested conclusion after the current focused hook.
+  - PASS on July 18, 2026 after the migration fixes landed.
+  - The local reset now applies `20260718155154_return_bt_supervision_correction.sql` cleanly through seed and container restart.
 
 ## July 18, 2026 Follow-up
 
@@ -127,6 +123,26 @@
 - Follow-up result:
   - PASS, `13` tests passed on July 18, 2026.
 
+- Upgraded the synthetic BT ABA smoke template fixture to the canonical finalize contract shape:
+  - added field `type` metadata for multi-select, textarea, radio, boolean, text, and signature inputs
+  - added canonical option sets and conditional companion fields required by finalize/resubmit validation
+- Added DB-backed correction-path negatives inside the transactional smoke:
+  - blank correction reason rejected
+  - oversized correction reason rejected
+  - malformed amendment response option rejected
+  - malformed amendment response type rejected
+  - invalid correction signature rejected
+- Adjusted the transactional fixture to coexist with the legacy WIN-221/WIN-223 replay tail without weakening those assertions:
+  - reused the auto-created correction request for session `00000000-0000-4000-8000-00000000b044` instead of inserting a duplicate request row
+  - seeded a rollback-scoped synthetic supervision template for org `00000000-0000-4000-8000-00000000b001` so correction completion exercises the real supervision RPC contract
+  - added a late synthetic active BCBA therapist/link (`00000000-0000-4000-8000-00000000b018`) so peer-BCBA denial/count checks stay intact earlier in the smoke while the legacy schedule-authority replay path still resolves one linked BCBA near the tail
+- Live verification commands after patch:
+  - `npx supabase db reset`
+  - `Get-Content tests/sql/bt_aba_session_note_closeout_smoke.sql -Raw | docker exec -i supabase_db_AllIincompassing psql -U postgres -d postgres -v ON_ERROR_STOP=1`
+- Live verification results:
+  - PASS, local reset completed on July 18, 2026.
+  - PASS, the transactional SQL smoke executed through `ROLLBACK` on July 18, 2026.
+
 ## Self-Review
 
 - Checked that every new authenticated RPC:
@@ -145,8 +161,8 @@
 
 ## Suggested Next Commands
 
-1. `npx supabase db reset`
-2. Run the transactional SQL smoke against the reset local database.
+1. Reuse the same local reset + smoke sequence if later WIN-224 tasks change request lifecycle or correction review behavior.
+2. Keep the correction-path DB negatives in sync if the BT ABA or supervision template contracts change again.
 3. `npm run ci:check-focused`
 4. `npm run test:ci`
 5. `npm run validate:tenant`

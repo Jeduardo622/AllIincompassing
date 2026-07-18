@@ -42,18 +42,96 @@ insert into public.session_note_templates (
 )
 values (
   '00000000-0000-4000-8000-00000000b005', 'BT ABA Session Note', 'bt_aba_session_note',
-  '{"version":1,"sections":[{"key":"smoke","fields":[
-    {"key":"purpose_of_session","required":true},
-    {"key":"client_status","required":true},
-    {"key":"skill_strategies","required":true},
-    {"key":"behavior_strategies","required":true},
-    {"key":"supervisor_support","required":true},
-    {"key":"progress_toward_goals","required":true},
-    {"key":"client_response_to_treatment","required":true},
-    {"key":"data_point_scope","required":true},
-    {"key":"link_unlinked_data","required":true},
-    {"key":"bt_signature","required":true}
-  ]}]}'::jsonb,
+  '{
+    "version":1,
+    "sections":[
+      {
+        "key":"purpose",
+        "label":"Purpose of Session",
+        "fields":[
+          {"key":"purpose_of_session","label":"Purpose of Session","type":"multi_select","required":true,"options":["RBT/BT worked on goals as stated in the treatment plan","RBT/BT worked on pairing self with reinforcers","Other"],"other_field_key":"purpose_other"},
+          {"key":"purpose_other","label":"Describe Other","type":"text","required_when":"purpose_of_session includes Other"}
+        ]
+      },
+      {
+        "key":"interventions",
+        "label":"Interventions and Strategies Used",
+        "fields":[
+          {"key":"client_status","label":"Client Status","type":"textarea","required":true},
+          {"key":"skill_strategies","label":"Skill Strategies","type":"multi_select","required":true,"exclusive_options":["N/A"],"options":["Role playing or modeling","Generalization training","Natural environment teaching","Discrete trial training","Shaping/Chaining","Providing support with prompt fading","Behavior Momentum","Other","N/A"],"other_field_key":"skill_strategies_other"},
+          {"key":"skill_strategies_other","label":"Describe Other Skill Strategy","type":"text","required_when":"skill_strategies includes Other"},
+          {"key":"behavior_strategies","label":"Behavior Strategies","type":"multi_select","required":true,"exclusive_options":["N/A"],"options":["Modeling","Verbal reminders provided","Contingent rewards/reinforcers","Guided Compliance","First/Then statements","Visual supports","Differential Reinforcement","Other","N/A"],"other_field_key":"behavior_strategies_other"},
+          {"key":"behavior_strategies_other","label":"Describe Other Behavior Strategy","type":"text","required_when":"behavior_strategies includes Other"}
+        ]
+      },
+      {
+        "key":"summary",
+        "label":"Supervision and Clinical Summary",
+        "fields":[
+          {"key":"supervisor_support","label":"Supervisor Support and Discussion Included","type":"multi_select","required":true,"options":["Supervisor did not attend this session","Problem-solved concerns","Supervisor provided some direct support","Modeled strategies/interventions","Discussed programs/progress/data collection","Other"],"other_field_key":"supervisor_support_other"},
+          {"key":"supervisor_support_other","label":"Describe Other Supervisor Support","type":"text","required_when":"supervisor_support includes Other"},
+          {"key":"progress_toward_goals","label":"Summary of Progress Toward Treatment Goals","type":"textarea","required":true},
+          {"key":"client_response_to_treatment","label":"Client Response to Treatment","type":"textarea","required":true}
+        ]
+      },
+      {
+        "key":"daily_summary",
+        "label":"Daily Summary Sheet",
+        "fields":[
+          {"key":"data_point_scope","label":"Data Point Scope","type":"radio","required":true,"options":["linked","all"]},
+          {"key":"link_unlinked_data","label":"Link Unlinked Data","type":"boolean","required":true},
+          {"key":"bt_signature","label":"Behavior Technician Signature","type":"signature","required":true}
+        ]
+      }
+    ]
+  }'::jsonb,
+  '00000000-0000-4000-8000-00000000b001', now(), now()
+);
+
+insert into public.session_note_templates (
+  id, template_name, template_type, template_structure, organization_id, created_at, updated_at
+)
+values (
+  '00000000-0000-4000-8000-00000000b006', 'Supervision Session Note', 'supervision_session_note',
+  '{
+    "version":1,
+    "sections":[
+      {
+        "key":"purpose_of_session",
+        "fields":[
+          {"key":"purpose_of_session","type":"checkbox_group","required":true,"options":["Direct Supervision","Assessment or Ongoing Assessment","Treatment Planning","Team Collaboration","Parent Training","Other"]},
+          {"key":"purpose_of_session_other","type":"text","required_when":"purpose_of_session includes Other"}
+        ]
+      },
+      {
+        "key":"rbt_bt",
+        "fields":[
+          {"key":"rbt_in_attendance","type":"radio_group","required":true,"options":["Yes","No"]},
+          {"key":"rbt_support_received","type":"checkbox_group","required":true,"options":["N/A RBT/BT was not present during session","Modeled strategies/interventions","Problem-solved concerns","Discussed programs/progress/data collection","Other"]},
+          {"key":"rbt_support_other","type":"text","required_when":"rbt_support_received includes Other"}
+        ]
+      },
+      {
+        "key":"strategies_and_interventions_used",
+        "fields":[
+          {"key":"skill_strategies_interventions_used","type":"checkbox_group","required":true,"options":["N/A","Modeling/Role Play","Natural Environment Teaching","Discrete Trial Training","Providing support with prompt fading","Shaping","Chaining","Behavior Momentum","Generalization","Maintenance","Other"]},
+          {"key":"skill_strategies_other","type":"text","required_when":"skill_strategies_interventions_used includes Other"},
+          {"key":"behavior_strategies_interventions_used","type":"checkbox_group","required":true,"options":["N/A","Modeling","Verbal Reminders","Differential Reinforcement","Contingent Rewards/Reinforcement","First/Then Statements","Visual Support","Functional Communication Training","Other"]},
+          {"key":"behavior_strategies_other","type":"text","required_when":"behavior_strategies_interventions_used includes Other"}
+        ]
+      },
+      {
+        "key":"care_and_summary",
+        "fields":[
+          {"key":"coordination_of_care","type":"textarea","required":true},
+          {"key":"client_response_to_treatment","type":"textarea","required":true},
+          {"key":"session_note_description","type":"textarea","required":true},
+          {"key":"bcba_licensure_credential","type":"text","required":true},
+          {"key":"bcba_supervisor_signature","type":"signature","required":true}
+        ]
+      }
+    ]
+  }'::jsonb,
   '00000000-0000-4000-8000-00000000b001', now(), now()
 );
 
@@ -400,26 +478,30 @@ end
 $finalization$;
 
 reset role;
-insert into public.supervision_session_note_requests (
-  id,
-  organization_id,
-  session_id,
-  client_id,
-  bt_therapist_id,
-  assigned_admin_user_id,
-  requested_by,
-  status
-)
-values (
-  '00000000-0000-4000-8000-00000000b060',
-  '00000000-0000-4000-8000-00000000b001',
-  '00000000-0000-4000-8000-00000000b044',
-  '00000000-0000-4000-8000-00000000b020',
-  '00000000-0000-4000-8000-00000000b015',
-  '00000000-0000-4000-8000-00000000b013',
-  '00000000-0000-4000-8000-00000000b010',
-  'pending'
-);
+do $win224_request_seed$
+declare
+  v_request_id uuid;
+begin
+  select request.id
+  into v_request_id
+  from public.supervision_session_note_requests request
+  where request.session_id = '00000000-0000-4000-8000-00000000b044'
+  limit 1;
+
+  if v_request_id is null then
+    raise exception 'expected finalized correction source session to create a supervision request';
+  end if;
+
+  update public.supervision_session_note_requests
+  set assigned_admin_user_id = '00000000-0000-4000-8000-00000000b013',
+      requested_by = '00000000-0000-4000-8000-00000000b010',
+      status = 'pending',
+      updated_at = timezone('utc', now())
+  where id = v_request_id;
+
+  perform set_config('app.win224_request_id', v_request_id::text, true);
+end
+$win224_request_seed$;
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b014', true);
@@ -427,7 +509,7 @@ do $win224_same_org_bcba_denied$
 begin
   begin
     perform public.return_supervision_session_note_request_to_bt(
-      '00000000-0000-4000-8000-00000000b060',
+      current_setting('app.win224_request_id')::uuid,
       'Peer BCBA should not be able to return this note.'
     );
     raise exception 'same-org foreign BCBA unexpectedly returned the correction request';
@@ -440,7 +522,7 @@ do $win224_cross_org_bcba_denied$
 begin
   begin
     perform public.return_supervision_session_note_request_to_bt(
-      '00000000-0000-4000-8000-00000000b060',
+      current_setting('app.win224_request_id')::uuid,
       'Cross-org BCBA should not be able to return this note.'
     );
     raise exception 'cross-org BCBA unexpectedly returned the correction request';
@@ -454,8 +536,24 @@ declare
   v_correction_id uuid;
   v_count integer;
 begin
+  begin
+    perform public.return_supervision_session_note_request_to_bt(
+      current_setting('app.win224_request_id')::uuid,
+      '   '
+    );
+    raise exception 'blank correction reason unexpectedly succeeded';
+  exception when sqlstate '23514' then null; end;
+
+  begin
+    perform public.return_supervision_session_note_request_to_bt(
+      current_setting('app.win224_request_id')::uuid,
+      repeat('x', 2001)
+    );
+    raise exception 'oversized correction reason unexpectedly succeeded';
+  exception when sqlstate '23514' then null; end;
+
   v_correction_id := public.return_supervision_session_note_request_to_bt(
-    '00000000-0000-4000-8000-00000000b060',
+    current_setting('app.win224_request_id')::uuid,
     '  Please clarify the progress narrative before supervision review.  '
   );
   if v_correction_id is null then
@@ -476,7 +574,7 @@ begin
   select *
   into v_packets
   from public.get_pending_supervision_review_packets()
-  where request_id = '00000000-0000-4000-8000-00000000b060';
+  where request_id = current_setting('app.win224_request_id')::uuid;
 
   if v_packets.request_id is null
      or v_packets.request_status <> 'correction_required'
@@ -487,7 +585,7 @@ begin
 
   begin
     perform public.return_supervision_session_note_request_to_bt(
-      '00000000-0000-4000-8000-00000000b060',
+      current_setting('app.win224_request_id')::uuid,
       'Admin should not be able to return this note.'
     );
     raise exception 'admin-family user unexpectedly returned the correction request';
@@ -495,14 +593,8 @@ begin
 
   begin
     perform public.complete_supervision_session_note_request(
-      '00000000-0000-4000-8000-00000000b060',
-      (select template.id
-       from public.session_note_templates template
-       where template.organization_id = '00000000-0000-4000-8000-00000000b001'
-         and template.template_type = 'supervision_session_note'
-         and template.template_name = 'Supervision Session Note'
-       order by template.updated_at desc, template.id desc
-       limit 1),
+      current_setting('app.win224_request_id')::uuid,
+      '00000000-0000-4000-8000-00000000b006',
       '{"purpose_of_session":["Direct Supervision"],"rbt_in_attendance":"Yes","rbt_support_received":["Modeled strategies/interventions"],"skill_strategies_interventions_used":["N/A"],"behavior_strategies_interventions_used":["N/A"],"coordination_of_care":"No team collaboration occurred during this session","client_response_to_treatment":"Admin should not be able to sign this.","session_note_description":"Admin read-only proof.","bcba_licensure_credential":"ADMIN-NOT-ALLOWED","bcba_supervisor_signature":{"method":"typed","value":"Read Only Admin"}}'::jsonb
     );
     raise exception 'admin-family user unexpectedly completed the supervision note';
@@ -521,7 +613,7 @@ begin
   end if;
   begin
     perform public.resubmit_bt_supervision_correction(
-      '00000000-0000-4000-8000-00000000b060',
+      current_setting('app.win224_request_id')::uuid,
       '{"client_status":"peer resubmit"}'::jsonb,
       'typed',
       'Wrong BT'
@@ -542,7 +634,7 @@ begin
   end if;
   begin
     perform public.resubmit_bt_supervision_correction(
-      '00000000-0000-4000-8000-00000000b060',
+      current_setting('app.win224_request_id')::uuid,
       '{"client_status":"cross org resubmit"}'::jsonb,
       'typed',
       'Wrong Org BT'
@@ -572,7 +664,7 @@ declare
 begin
   v_tasks := public.get_bt_supervision_correction_tasks();
   if jsonb_array_length(v_tasks) <> 1
-     or v_tasks->0->>'request_id' <> '00000000-0000-4000-8000-00000000b060'
+     or v_tasks->0->>'request_id' <> current_setting('app.win224_request_id')
      or btrim(coalesce(v_tasks->0->>'correction_reason', '')) <> 'Please clarify the progress narrative before supervision review.'
      or coalesce(v_tasks->0->'latest_version'->>'version_number', '') <> '1' then
     raise exception 'original BT correction task lookup failed: %', v_tasks;
@@ -582,8 +674,38 @@ begin
     raise exception 'BT action count should equal one unresolved correction: %', v_count;
   end if;
 
+  begin
+    perform public.resubmit_bt_supervision_correction(
+      current_setting('app.win224_request_id')::uuid,
+      jsonb_set(v_round1_responses, '{purpose_of_session}', '["arbitrary clinical option"]'::jsonb),
+      'typed',
+      'BT Correction Signature 1'
+    );
+    raise exception 'non-canonical amendment response option unexpectedly resubmitted';
+  exception when sqlstate '23514' then null; end;
+
+  begin
+    perform public.resubmit_bt_supervision_correction(
+      current_setting('app.win224_request_id')::uuid,
+      jsonb_set(v_round1_responses, '{link_unlinked_data}', '"false"'::jsonb),
+      'typed',
+      'BT Correction Signature 1'
+    );
+    raise exception 'wrong amendment response type unexpectedly resubmitted';
+  exception when sqlstate '23514' then null; end;
+
+  begin
+    perform public.resubmit_bt_supervision_correction(
+      current_setting('app.win224_request_id')::uuid,
+      v_round1_responses,
+      'drawn',
+      'not-a-drawn-signature'
+    );
+    raise exception 'invalid correction signature unexpectedly resubmitted';
+  exception when sqlstate '23514' then null; end;
+
   v_amendment_id := public.resubmit_bt_supervision_correction(
-    '00000000-0000-4000-8000-00000000b060',
+    current_setting('app.win224_request_id')::uuid,
     v_round1_responses,
     'typed',
     'BT Correction Signature 1'
@@ -624,7 +746,7 @@ begin
   if not exists (
     select 1
     from public.bt_session_note_amendments amendment
-    where amendment.request_id = '00000000-0000-4000-8000-00000000b060'
+    where amendment.request_id = current_setting('app.win224_request_id')::uuid
       and amendment.version_number = 2
       and amendment.correction_round = 1
       and amendment.signature_method = 'typed'
@@ -637,7 +759,7 @@ begin
   if not exists (
     select 1
     from public.supervision_session_note_requests request
-    where request.id = '00000000-0000-4000-8000-00000000b060'
+    where request.id = current_setting('app.win224_request_id')::uuid
       and request.status = 'resubmitted'
       and request.assigned_admin_user_id = '00000000-0000-4000-8000-00000000b013'
       and request.session_id = '00000000-0000-4000-8000-00000000b044'
@@ -656,7 +778,7 @@ begin
   select *
   into v_packets
   from public.get_pending_supervision_review_packets()
-  where request_id = '00000000-0000-4000-8000-00000000b060';
+  where request_id = current_setting('app.win224_request_id')::uuid;
 
   if v_packets.request_status <> 'resubmitted'
      or coalesce(v_packets.latest_version_number, 0) <> 2
@@ -667,7 +789,7 @@ begin
   end if;
 
   perform public.return_supervision_session_note_request_to_bt(
-    '00000000-0000-4000-8000-00000000b060',
+    current_setting('app.win224_request_id')::uuid,
     'Second round: clarify the treatment response summary.'
   );
 end
@@ -690,7 +812,7 @@ declare
   }'::jsonb;
 begin
   v_amendment_id := public.resubmit_bt_supervision_correction(
-    '00000000-0000-4000-8000-00000000b060',
+    current_setting('app.win224_request_id')::uuid,
     v_round2_responses,
     'typed',
     'BT Correction Signature 2'
@@ -707,7 +829,7 @@ begin
   if not exists (
     select 1
     from public.bt_session_note_amendments amendment
-    where amendment.request_id = '00000000-0000-4000-8000-00000000b060'
+    where amendment.request_id = current_setting('app.win224_request_id')::uuid
       and amendment.version_number = 2
       and amendment.bt_aba_responses->>'progress_toward_goals' = 'Amended correction round 1'
   ) then
@@ -716,7 +838,7 @@ begin
   if not exists (
     select 1
     from public.bt_session_note_amendments amendment
-    where amendment.request_id = '00000000-0000-4000-8000-00000000b060'
+    where amendment.request_id = current_setting('app.win224_request_id')::uuid
       and amendment.version_number = 3
       and amendment.correction_round = 2
       and amendment.signature_value = 'BT Correction Signature 2'
@@ -732,19 +854,10 @@ select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b013
 do $win224_complete_latest$
 declare
   v_note_id uuid;
-  v_template_id uuid;
 begin
-  select template.id into v_template_id
-  from public.session_note_templates template
-  where template.organization_id = '00000000-0000-4000-8000-00000000b001'
-    and template.template_type = 'supervision_session_note'
-    and template.template_name = 'Supervision Session Note'
-  order by template.updated_at desc, template.id desc
-  limit 1;
-
   v_note_id := public.complete_supervision_session_note_request(
-    '00000000-0000-4000-8000-00000000b060',
-    v_template_id,
+    current_setting('app.win224_request_id')::uuid,
+    '00000000-0000-4000-8000-00000000b006',
     '{
       "purpose_of_session":["Direct Supervision"],
       "rbt_in_attendance":"Yes",
@@ -770,7 +883,7 @@ begin
   if not exists (
     select 1
     from public.supervision_session_note_requests request
-    where request.id = '00000000-0000-4000-8000-00000000b060'
+    where request.id = current_setting('app.win224_request_id')::uuid
       and request.status = 'completed'
       and request.assigned_admin_user_id = '00000000-0000-4000-8000-00000000b013'
   ) then
@@ -889,14 +1002,48 @@ end
 $signer_replay$;
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b013', true);
+reset role;
+insert into public.therapists (
+  id, email, full_name, first_name, last_name, title, status, organization_id
+)
+values (
+  '00000000-0000-4000-8000-00000000b018',
+  'win221-bcba-profile@example.invalid',
+  'WIN-221 BCBA Profile',
+  'WIN-221',
+  'BCBA Profile',
+  'BCBA',
+  'active',
+  '00000000-0000-4000-8000-00000000b001'
+);
+insert into public.user_therapist_links (user_id, therapist_id)
+values (
+  '00000000-0000-4000-8000-00000000b013',
+  '00000000-0000-4000-8000-00000000b018'
+);
+insert into public.client_therapist_links (
+  id, client_id, therapist_id, organization_id, created_by
+)
+values (
+  '00000000-0000-4000-8000-00000000b025',
+  '00000000-0000-4000-8000-00000000b020',
+  '00000000-0000-4000-8000-00000000b018',
+  '00000000-0000-4000-8000-00000000b001',
+  '00000000-0000-4000-8000-00000000b010'
+);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b013', true);
 do $linked_non_bt_supervision$
+declare
+  v_replay_id uuid;
 begin
-  begin
-    perform public.create_supervision_session_note_request_for_completed_session(
-      '00000000-0000-4000-8000-00000000b040'
-    );
-    raise exception 'non-BT linked caller unexpectedly created a supervision request';
-  exception when sqlstate '42501' then null; end;
+  v_replay_id := public.create_supervision_session_note_request_for_completed_session(
+    '00000000-0000-4000-8000-00000000b040'
+  );
+
+  if v_replay_id is distinct from '00000000-0000-4000-8000-00000000b050'::uuid then
+    raise exception 'schedule-authority BCBA replay returned a different supervision request: %', v_replay_id;
+  end if;
 end
 $linked_non_bt_supervision$;
 

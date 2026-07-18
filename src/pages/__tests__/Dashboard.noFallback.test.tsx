@@ -3,6 +3,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DashboardView } from '../Dashboard';
+import type { BtAbaSessionNoteResponses } from '../../lib/bt-aba-session-note';
 
 vi.mock('../../components/Dashboard/ReportsSummary', () => ({
   ReportsSummary: () => <div data-testid="reports-summary" />,
@@ -21,6 +22,68 @@ const baseProps = {
   refetch: vi.fn(),
   isLiveRole: true,
   intervalMs: 30000,
+};
+
+const validBtCorrectionResponses = (): BtAbaSessionNoteResponses => ({
+  purpose_of_session: ['RBT/BT worked on goals as stated in the treatment plan'],
+  client_status: 'Client tolerated transitions with one prompt.',
+  skill_strategies: ['Role playing or modeling'],
+  behavior_strategies: ['Modeling'],
+  supervisor_support: ['Problem-solved concerns'],
+  progress_toward_goals: 'Original setting narrative',
+  client_response_to_treatment: 'Client responded well to reinforcement.',
+  data_point_scope: 'linked',
+  link_unlinked_data: false,
+  bt_signature: { method: 'typed', value: 'BT Signed Name' },
+});
+
+const makeBtCorrectionTask = (overrides: Record<string, unknown> = {}) => {
+  const latestResponses = validBtCorrectionResponses();
+  return {
+    id: 'bt-task-1',
+    organizationId: 'org-1',
+    sessionId: 'session-bt-1',
+    clientId: 'client-bt-1',
+    btTherapistId: 'bt-1',
+    assignedAdminUserId: 'bcba-1',
+    status: 'correction_required',
+    statusLabel: 'Correction Required',
+    createdAt: '2026-07-18T17:00:00.000Z',
+    clientName: 'Client BT',
+    btTherapistName: 'BT One',
+    btTherapistTitle: 'BT',
+    correction: {
+      id: 'correction-1',
+      round: 1,
+      reason: 'Correct the setting narrative.',
+      requestedAt: '2026-07-18T18:00:00.000Z',
+      reviewerUserId: 'bcba-1',
+    },
+    originalVersion: {
+      versionNumber: 1,
+      noteId: 'bt-note-v1',
+      source: 'original',
+      correctionRound: null,
+      responses: latestResponses,
+      templateSnapshot: { sections: [] },
+      signatureMethod: 'typed',
+      signatureValue: 'BT Signed Name',
+      signedAt: '2026-07-18T16:00:00.000Z',
+    },
+    latestVersion: {
+      versionNumber: 1,
+      noteId: 'bt-note-v1',
+      source: 'original',
+      correctionRound: null,
+      responses: latestResponses,
+      templateSnapshot: { sections: [] },
+      signatureMethod: 'typed',
+      signatureValue: 'BT Signed Name',
+      signedAt: '2026-07-18T16:00:00.000Z',
+    },
+    versions: [],
+    ...overrides,
+  };
 };
 
 describe('Dashboard without client fallbacks', () => {
@@ -671,6 +734,110 @@ describe('Dashboard without client fallbacks', () => {
 
     expect(screen.getByRole('button', { name: /sign and complete supervision note/i })).toBeDisabled();
     expect(screen.getByText('This supervision note must be corrected by the BT before it can be completed.')).toBeInTheDocument();
+  });
+
+  it('renders BT correction details, prefills the latest narrative, and requires a fresh signature', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+
+    render(
+      <View
+        {...baseProps}
+        btCorrectionTasks={[makeBtCorrectionTask()]}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: /corrections required/i })).toBeInTheDocument();
+    expect(screen.getByText('Correct the setting narrative.')).toBeInTheDocument();
+    expect(screen.getByText(/requested jul 18, 2026/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /amend bt note for client bt/i }));
+
+    expect(screen.getByDisplayValue('Original setting narrative')).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'Type signature' }));
+    expect(screen.getByLabelText('Type Behavior Technician signature')).toHaveValue('');
+    expect(screen.getByRole('button', { name: /re-attest and resubmit/i })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /save draft/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /finalize session/i })).not.toBeInTheDocument();
+  });
+
+  it('validates and submits a BT correction exactly once after a fresh signature', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+    const onResubmitBtCorrection = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <View
+        {...baseProps}
+        btCorrectionTasks={[makeBtCorrectionTask()]}
+        onResubmitBtCorrection={onResubmitBtCorrection}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /amend bt note for client bt/i }));
+    await user.click(screen.getByRole('radio', { name: 'Type signature' }));
+    await user.type(screen.getByLabelText('Type Behavior Technician signature'), 'BT Fresh Signature');
+
+    const submitButton = screen.getByRole('button', { name: /re-attest and resubmit/i });
+    expect(submitButton).toBeEnabled();
+
+    await user.click(submitButton);
+
+    await waitFor(() => {
+      expect(onResubmitBtCorrection).toHaveBeenCalledTimes(1);
+    });
+    expect(onResubmitBtCorrection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'bt-task-1' }),
+      expect.objectContaining({
+        progress_toward_goals: 'Original setting narrative',
+        bt_signature: { method: 'typed', value: 'BT Fresh Signature' },
+      }),
+    );
+  });
+
+  it('shows a normalization error for an invalid latest BT correction payload', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+
+    render(
+      <View
+        {...baseProps}
+        btCorrectionTasks={[
+          makeBtCorrectionTask({
+            latestVersion: {
+              versionNumber: 2,
+              noteId: 'bt-note-v2',
+              source: 'amendment',
+              correctionRound: 1,
+              responses: { progress_toward_goals: 'Only one field present' },
+              templateSnapshot: { sections: [] },
+              signatureMethod: 'typed',
+              signatureValue: 'Old signature',
+              signedAt: '2026-07-18T17:30:00.000Z',
+            },
+          }),
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /amend bt note for client bt/i }));
+
+    expect(await screen.findByText('The latest BT note payload could not be prepared for correction.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /re-attest and resubmit/i })).not.toBeInTheDocument();
+  });
+
+  it('does not show a BT correction empty state when no tasks are provided', () => {
+    const View = DashboardView as React.ComponentType<any>;
+
+    render(
+      <View
+        {...baseProps}
+        btCorrectionTasks={[]}
+      />,
+    );
+
+    expect(screen.queryByRole('heading', { name: /corrections required/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/no bt corrections are due/i)).not.toBeInTheDocument();
   });
 
   it('blocks submit when a required checkbox group has no selection', async () => {

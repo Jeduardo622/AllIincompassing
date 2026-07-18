@@ -84,7 +84,7 @@ describe('supervision correction workflow migration', () => {
     expect(sql).toMatch(/create or replace function public\.get_bt_supervision_correction_tasks/i);
     expect(sql).toMatch(/create or replace function public\.resubmit_bt_supervision_correction/i);
     expect(sql).toMatch(/create or replace function public\.get_pending_supervision_review_packets\(\)/i);
-    expect(sql).toMatch(/create or replace function public\.complete_supervision_session_note_request\(uuid, uuid, jsonb\)/i);
+    expect(sql).toMatch(/create or replace function public\.complete_supervision_session_note_request\(\s*p_request_id uuid,\s*p_template_id uuid,\s*p_responses jsonb\s*\)/i);
     expect(sql).toMatch(/create or replace function public\.get_supervision_session_note_action_count\(\)/i);
     expect(sql).toMatch(/revoke all on function public\.return_supervision_session_note_request_to_bt\(uuid, text\) from public, anon/i);
     expect(sql).toMatch(/revoke all on function public\.get_bt_supervision_correction_tasks\(\) from public, anon/i);
@@ -204,6 +204,7 @@ describe('supervision correction workflow migration', () => {
   it('completes only pending or resubmitted requests against the latest reviewable packet without rerunning BT closeout side effects', () => {
     const body = functionBody('complete_supervision_session_note_request');
 
+    expect(body).not.toMatch(/alias for \$1|alias for \$2|alias for \$3/i);
     expect(body).toMatch(/v_request\.status not in \('pending', 'resubmitted'\)/i);
     expect(body).toMatch(/bt_session_note_amendments/i);
     expect(body).toMatch(/order by amendment\.version_number desc/i);

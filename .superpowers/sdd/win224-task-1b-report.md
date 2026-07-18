@@ -118,6 +118,15 @@
 - Follow-up result:
   - PASS, `13` tests passed on July 18, 2026.
 
+- Added a targeted regression fix for the completion RPC replacement:
+  - preserved the original named parameters on `public.complete_supervision_session_note_request`
+  - removed the incompatible `$1/$2/$3` alias declarations that break live reset with `42P13 cannot change name of input parameter p_request_id`
+  - tightened the migration contract test to require the named signature and reject alias-based parameter shims
+- Follow-up command:
+  - `npx vitest run tests/supervisionCorrectionWorkflowMigration.test.ts`
+- Follow-up result:
+  - PASS, `13` tests passed on July 18, 2026.
+
 ## Self-Review
 
 - Checked that every new authenticated RPC:

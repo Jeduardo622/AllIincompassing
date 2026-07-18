@@ -1213,16 +1213,17 @@ $$;
 revoke all on function public.get_supervision_session_note_action_count() from public, anon;
 grant execute on function public.get_supervision_session_note_action_count() to authenticated, service_role;
 
-create or replace function public.complete_supervision_session_note_request(uuid, uuid, jsonb)
+create or replace function public.complete_supervision_session_note_request(
+  p_request_id uuid,
+  p_template_id uuid,
+  p_responses jsonb
+)
 returns uuid
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  p_request_id alias for $1;
-  p_template_id alias for $2;
-  p_responses alias for $3;
   v_actor uuid := auth.uid();
   v_actor_org uuid;
   v_request public.supervision_session_note_requests%rowtype;

@@ -126,7 +126,7 @@ describe('BT ABA session note closeout migration', () => {
     expect(creator).toMatch(/v_actor_is_admin[\s\S]*v_session\.therapist_id <> v_actor[\s\S]*current_user_has_exact_role_for_org\([\s\S]*array\['bt'\]::text\[\][\s\S]*array\['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'\]::text\[\][\s\S]*user_therapist_links/i);
     expect(creator).toMatch(/on conflict \(session_id\) do update/i);
     expect(finalize.match(/create_supervision_session_note_request_for_completed_session/g)).toHaveLength(1);
-    expect(smoke).toMatch(/non-BT linked caller unexpectedly created a supervision request/i);
+    expect(smoke).toMatch(/schedule-authority BCBA replay returned a different supervision request/i);
   });
 
   it('returns the persisted completed result before validating retry payloads or repeating side effects', () => {

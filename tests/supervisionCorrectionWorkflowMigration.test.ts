@@ -35,14 +35,24 @@ describe('supervision correction workflow migration', () => {
     expect(sql).toMatch(/check \(version_number > 1\)/i);
     expect(sql).toMatch(/unique\s*\(\s*request_id\s*,\s*correction_round\s*\)/i);
     expect(sql).toMatch(/unique\s*\(\s*request_id\s*,\s*version_number\s*\)/i);
+    expect(sql).toMatch(/unique\s*\(\s*id\s*,\s*request_id\s*,\s*organization_id\s*,\s*correction_round\s*\)/i);
+    expect(sql).toMatch(/foreign key \(correction_id, request_id, organization_id, correction_round\)[\s\S]*references public\.supervision_session_note_corrections\(id, request_id, organization_id, correction_round\)/i);
+    expect(sql).not.toMatch(/foreign key \(request_id, correction_round\)[\s\S]*references public\.supervision_session_note_corrections\(request_id, correction_round\)/i);
+    expect(sql).toMatch(/unique\s*\(\s*id\s*,\s*correction_id\s*\)/i);
     expect(sql).toMatch(/num_nonnulls\(resolved_at, resolving_bt_user_id, resulting_amendment_id\) in \(0, 3\)/i);
     expect(sql).toMatch(/foreign key \(request_id, organization_id\)[\s\S]*references public\.supervision_session_note_requests\(id, organization_id\)/i);
     expect(sql).toMatch(/foreign key \(original_bt_note_id, organization_id\)[\s\S]*references public\.client_session_notes\(id, organization_id\)/i);
-    expect(sql).toMatch(/foreign key \(correction_id, request_id, organization_id\)[\s\S]*references public\.supervision_session_note_corrections\(id, request_id, organization_id\)/i);
-    expect(sql).toMatch(/foreign key \(resulting_amendment_id, request_id, organization_id\)[\s\S]*references public\.bt_session_note_amendments\(id, request_id, organization_id\)/i);
+    expect(sql).toMatch(/foreign key \(resulting_amendment_id, id\)[\s\S]*references public\.bt_session_note_amendments\(id, correction_id\)/i);
     expect(sql).toMatch(/create unique index if not exists supervision_session_note_corrections_one_unresolved_idx[\s\S]*where resolved_at is null/i);
     expect(sql).toMatch(/create index if not exists supervision_session_note_corrections_request_lookup_idx/i);
     expect(sql).toMatch(/create index if not exists bt_session_note_amendments_request_version_idx/i);
+  });
+
+  it('binds amendments and resulting amendment references to the exact correction row', () => {
+    expect(sql).toMatch(/foreign key \(correction_id, request_id, organization_id, correction_round\)[\s\S]*references public\.supervision_session_note_corrections\(id, request_id, organization_id, correction_round\)/i);
+    expect(sql).toMatch(/foreign key \(resulting_amendment_id, id\)[\s\S]*references public\.bt_session_note_amendments\(id, correction_id\)/i);
+    expect(sql).toMatch(/wrong-round cross-links are rejected by the composite correction lineage foreign keys|correction_round mismatches are rejected by the composite correction lineage foreign keys/i);
+    expect(sql).toMatch(/wrong-correction resulting amendment links are rejected by the exact resulting amendment foreign key|resulting_amendment_id cannot target a different correction id/i);
   });
 
   it('enables RLS and keeps the new append-only tables rpc-only for browser callers', () => {

@@ -82,3 +82,18 @@
 4. `npm run validate:tenant`
 5. `npm run build`
 6. `npm run verify:local`
+
+## Follow-up Fix
+
+- Review-requested lineage fix completed on July 18, 2026.
+- `bt_session_note_amendments` now enforces one composite correction-lineage foreign key across `correction_id`, `request_id`, `organization_id`, and `correction_round`, removing the weaker separable request/round-only path.
+- `supervision_session_note_corrections.resulting_amendment_id` now binds to the exact correction row via composite `(resulting_amendment_id, id) -> bt_session_note_amendments(id, correction_id)` identity, so it cannot reference an amendment from another correction.
+- The contract test now asserts both wrong-round and wrong-correction cross-link rejection statically.
+
+## Follow-up Commands And Output
+
+- `npx vitest run tests/supervisionCorrectionWorkflowMigration.test.ts`
+  - PASS: `1` file, `7` tests passed on July 18, 2026.
+- `npm run ci:check-focused`
+  - PASS: policy checks, API boundary checks, auth invariants, RLS policy coverage, migration governance, and repo hygiene all passed on July 18, 2026.
+  - Expected skips: branch protection outside CI, privileged function DB grant check without `SUPABASE_DB_URL`, sensitive-table RLS overlap without DB connection string, Supabase preview drift without `SUPABASE_DB_URL`, Supabase function auth parity disabled locally.

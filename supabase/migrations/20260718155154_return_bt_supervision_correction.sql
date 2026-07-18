@@ -29,7 +29,8 @@ create table public.supervision_session_note_corrections (
   foreign key (request_id, organization_id)
     references public.supervision_session_note_requests(id, organization_id)
     on delete cascade,
-  unique (request_id, correction_round)
+  unique (request_id, correction_round),
+  unique (id, request_id, organization_id, correction_round)
 );
 
 create table public.bt_session_note_amendments (
@@ -58,14 +59,13 @@ create table public.bt_session_note_amendments (
   foreign key (original_bt_note_id, organization_id)
     references public.client_session_notes(id, organization_id)
     on delete restrict,
-  foreign key (correction_id, request_id, organization_id)
-    references public.supervision_session_note_corrections(id, request_id, organization_id)
+  foreign key (correction_id, request_id, organization_id, correction_round)
+    references public.supervision_session_note_corrections(id, request_id, organization_id, correction_round)
     on delete restrict,
+  -- correction_round mismatches are rejected by the composite correction lineage foreign keys.
   unique (request_id, version_number),
   unique (correction_id),
-  foreign key (request_id, correction_round)
-    references public.supervision_session_note_corrections(request_id, correction_round)
-    on delete restrict
+  unique (id, correction_id)
 );
 
 create unique index if not exists supervision_session_note_requests_id_org_idx
@@ -74,17 +74,18 @@ create unique index if not exists supervision_session_note_requests_id_org_idx
 create unique index if not exists client_session_notes_id_org_idx
   on public.client_session_notes (id, organization_id);
 
-create unique index if not exists supervision_session_note_corrections_id_request_org_idx
-  on public.supervision_session_note_corrections (id, request_id, organization_id);
+create unique index if not exists supervision_session_note_corrections_id_request_org_round_idx
+  on public.supervision_session_note_corrections (id, request_id, organization_id, correction_round);
 
-create unique index if not exists bt_session_note_amendments_id_request_org_idx
-  on public.bt_session_note_amendments (id, request_id, organization_id);
+create unique index if not exists bt_session_note_amendments_id_correction_idx
+  on public.bt_session_note_amendments (id, correction_id);
 
 alter table public.supervision_session_note_corrections
   add constraint supervision_session_note_corrections_resulting_amendment_id_fkey
-  foreign key (resulting_amendment_id, request_id, organization_id)
-  references public.bt_session_note_amendments(id, request_id, organization_id)
+  foreign key (resulting_amendment_id, id)
+  references public.bt_session_note_amendments(id, correction_id)
   on delete set null;
+-- resulting_amendment_id cannot target a different correction id.
 
 create unique index if not exists supervision_session_note_corrections_one_unresolved_idx
   on public.supervision_session_note_corrections (request_id)

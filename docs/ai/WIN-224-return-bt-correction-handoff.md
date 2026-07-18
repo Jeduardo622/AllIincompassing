@@ -7,6 +7,9 @@
 - why: the bounded workflow changes a clinical record lifecycle, database schema, RLS/grants/RPC authorization, exact-role routing, and a secret-bearing hosted proof workflow.
 - triggering paths:
   - `supabase/migrations/20260718155154_return_bt_supervision_correction.sql`
+  - `supabase/migrations/20260718204735_allow_exact_bt_proof_history_cleanup.sql`
+  - `supabase/migrations/20260718210522_grant_service_role_app_schema_usage.sql`
+  - `supabase/migrations/20260718210937_preserve_service_role_cleanup_context.sql`
   - `src/lib/authStubSession.ts`
   - `.github/workflows/bt-aba-disposable-browser-proof.yml`
   - tenant-sensitive supervision adapters and dashboard surfaces
@@ -56,7 +59,7 @@
 - executed checks:
   - `npx vitest run tests/supervisionCorrectionWorkflowMigration.test.ts`: pass, 13/13
   - related supervision/BT migration suite: pass, 49/49
-  - focused correction feature suite: pass, 123/123
+  - focused correction feature suite: pass, 161/161 across 13 files
   - correction workflow/selector/proof contract suite: pass, 21/21
   - exact-role auth/navigation suite: pass, 65/65
   - `npm test -- tests/btAbaSessionNoteMigration.test.ts`: pass, 11/11
@@ -69,17 +72,16 @@
   - `npm run validate:tenant`: pass
   - `npm run build`: pass
   - `npm run test:routes:tier0`: pass, 220/220
-  - `npm run test:ci`: fail locally after correction tests passed; remaining failures are the Windows workflow-step parser and Blob `.text()` environment behavior
+  - `npm run test:ci`: 3022/3029 passed; fail locally on the known Windows workflow-step parser and Blob `.text()` behavior, plus an inherited invalid `WIN224_POSTGRES_URL`; the same Postgres cleanup test passed 3/3 with the explicit local URL
   - `npm run verify:local`: fail at the same local `test:ci` stage; later steps were separately executed and passed
   - `npm run ci:playwright`: fail at hosted auth login because the configured super-admin credential was rejected
-  - hosted managed-preview proof provisioning and exact cleanup: pass; marker-owned BT and BCBA fixtures were removed after every attempt and the managed preview remained healthy
-  - hosted direct BCBA packet preflight: pass; the assigned packet was returned to the synthetic BCBA before browser navigation
-  - hosted browser RPC trace: pass for `get_supervision_session_note_action_count` (`200`, count `1`); the dashboard packet RPC was not issued
+  - hosted managed-preview proof run `29661369019`: pass on exact commit `7f95b7c5fb05d4c5ec928df0b7d4c66919e3cecd`
+  - hosted BT -> BCBA -> BT -> BCBA browser lifecycle: pass, including return reason, correction task, immutable version history, re-attestation, resubmission, and final completion
+  - hosted exact cleanup and post-proof preview health: pass; marker-owned BT/BCBA fixtures were removed and the managed preview remained healthy
 - blocked checks:
-  - hosted correction proof: blocked in the dashboard query lifecycle before `get_pending_supervision_review_packets`; exact-head run `29659442930` timed out waiting for `Pending Review` even though the same canonical Supabase client returned action count `1` and direct packet preflight found the assigned request
   - generic hosted Playwright completion: configured hosted super-admin credential is currently invalid
-- result: `blocked` for merge; the draft PR is not review-ready until the hosted dashboard query-lifecycle blocker is resolved and the full BT -> BCBA -> BT -> BCBA proof passes
-- residual risk: the clinical workflow is locally verified, but the hosted dashboard has not yet rendered the assigned packet or exercised the correction/resubmission/completion UI path; critical-lane human review remains mandatory before merge.
+- result: `pass-with-blocked-checks`; the bounded workflow and hosted proof pass, while unrelated generic local gates retain the documented environment failures
+- residual risk: schema/RPC authorization and clinical versioning remain critical-path changes; human review is mandatory before merge.
 
 ## PR Hygiene
 
@@ -89,12 +91,10 @@
 - unrelated changes: none
 - generated artifact drift: none
 - verification summary: present
-- pr-ready: no; keep draft while the hosted dashboard query-lifecycle blocker remains
+- pr-ready: yes for human review; keep draft and unmerged until the mandatory critical-lane approval is complete
 - required follow-up:
-  - diagnose why the Dashboard packet query is not issued while the Sidebar count query succeeds on the same authenticated canonical client; do not add another hydration-gate patch without addressing the broader query lifecycle
-  - rerun and retain the hosted BT -> BCBA -> BT -> BCBA proof after that root cause is fixed
   - inspect live required checks and obtain human approval before merge
 
 ## Handoff Summary
 
-WIN-224 adds an append-only correction lifecycle to supervision review: the assigned BCBA can return a signed BT packet with a reason, the original exact BT creates a newly attested amendment, and the same BCBA reviews the full version chain and completes the request. Tenant, actor, assignment, role, and immutable-version boundaries are enforced in server-side RPCs and mirrored fail-closed in the dashboard. Local schema, SQL smoke, focused tests, policy, coverage, tenant, build, and Tier-0 route gates pass. The managed preview, exact synthetic provisioning, direct BCBA packet preflight, cleanup, and post-proof health checks also pass, but the browser dashboard does not issue the packet RPC and therefore cannot yet prove the full lifecycle. Keep PR #819 draft and unmerged until that query-lifecycle blocker is fixed, the hosted proof is green, live checks are clean, and human review is complete.
+WIN-224 adds an append-only correction lifecycle to supervision review: the assigned BCBA can return a signed BT packet with a reason, the original exact BT creates a newly attested amendment, and the same BCBA reviews the full version chain and completes the request. Tenant, actor, assignment, role, and immutable-version boundaries are enforced in server-side RPCs and mirrored fail-closed in the dashboard. Local schema, SQL smoke, focused tests, policy, coverage, tenant, build, and Tier-0 route gates pass, and hosted run `29661369019` proves the full browser lifecycle, exact cleanup, and managed-preview health on the PR head. Keep PR #819 unmerged until required live checks and critical-lane human review are complete.

@@ -81,4 +81,22 @@ describe("supervision correction hosted proof safeguards", () => {
     expect(source).not.toContain("completeReviewThroughRpc");
     expect(source).toContain("finally");
   });
+
+  it("leaves protected BCBA profile fields to the privileged provisioning RPC", () => {
+    const source = readFileSync(path.join(process.cwd(), "scripts/playwright-supervision-correction.ts"), "utf8");
+    const provisioningBlock = source.slice(
+      source.indexOf("const provisionMarkerOwnedBcba"),
+      source.indexOf("const resolvePendingRequestFixture"),
+    );
+    const profileWrite = provisioningBlock.slice(
+      provisioningBlock.indexOf('admin.from("profiles")'),
+      provisioningBlock.indexOf('admin.from("user_roles")'),
+    );
+
+    expect(profileWrite).toContain('admin.from("profiles").update({');
+    expect(profileWrite).not.toContain('admin.from("profiles").upsert({');
+    expect(profileWrite).not.toContain('role: "bcba"');
+    expect(profileWrite).not.toContain("organization_id: organizationId");
+    expect(provisioningBlock).toContain('admin.rpc("provision_ci_smoke_bcba_profile"');
+  });
 });

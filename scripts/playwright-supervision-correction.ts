@@ -453,16 +453,19 @@ const provisionMarkerOwnedBcba = async (
       throw new Error(`Unable to resolve bcba role: ${roleResult.error?.message ?? "missing role id"}`);
     }
 
-    const [profileResult, roleInsert, linkInsert] = await Promise.all([
-      admin.from("profiles").upsert({
-        id: userId,
+    const profileResult = await admin.from("profiles").update({
         email,
-        role: "bcba",
-        is_active: true,
         first_name: "Playwright",
         last_name: "BCBA",
-        organization_id: organizationId,
-      }, { onConflict: "id" }),
+      })
+      .eq("id", userId)
+      .select("id")
+      .single();
+    if (profileResult.error || !profileResult.data?.id) {
+      throw new Error(`Unable to update synthetic BCBA profile identity: ${profileResult.error?.message ?? "missing profile"}`);
+    }
+
+    const [roleInsert, linkInsert] = await Promise.all([
       admin.from("user_roles").insert({
         user_id: userId,
         role_id: roleResult.data.id,
@@ -474,7 +477,6 @@ const provisionMarkerOwnedBcba = async (
         therapist_id: therapistId,
       }),
     ]);
-    if (profileResult.error) throw new Error(`Unable to create synthetic BCBA profile: ${profileResult.error.message}`);
     if (roleInsert.error) throw new Error(`Unable to assign synthetic BCBA role: ${roleInsert.error.message}`);
     if (linkInsert.error) throw new Error(`Unable to create synthetic BCBA therapist link: ${linkInsert.error.message}`);
 

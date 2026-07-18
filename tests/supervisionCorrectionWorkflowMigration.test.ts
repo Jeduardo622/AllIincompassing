@@ -7,10 +7,44 @@ const sql = readFileSync(
   'utf8',
 );
 
+const reviewPacketGrantFixSql = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260718225017_restrict_supervision_review_packet_rpc.sql'),
+  'utf8',
+);
+
+const triggerHardeningSql = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260718225105_harden_supervision_correction_trigger_functions.sql'),
+  'utf8',
+);
+
 const functionBody = (name: string) =>
   sql.match(new RegExp(`create or replace function public\\.${name}\\([\\s\\S]*?\\n\\$\\$;`, 'i'))?.[0] ?? '';
 
 describe('supervision correction workflow migration', () => {
+  it('reapplies the review packet RPC grants after its replacement', () => {
+    expect(reviewPacketGrantFixSql).toMatch(
+      /revoke all on function public\.get_pending_supervision_review_packets\(\) from public, anon/i,
+    );
+    expect(reviewPacketGrantFixSql).toMatch(
+      /grant execute on function public\.get_pending_supervision_review_packets\(\) to authenticated, service_role/i,
+    );
+  });
+
+  it('pins correction trigger search paths and removes direct browser execution', () => {
+    for (const functionName of [
+      'guard_supervision_session_note_corrections_update',
+      'prevent_supervision_session_note_corrections_delete',
+      'prevent_bt_session_note_amendment_mutations',
+    ]) {
+      expect(triggerHardeningSql).toMatch(
+        new RegExp(`alter function public\\.${functionName}\\(\\) set search_path = ''`, 'i'),
+      );
+      expect(triggerHardeningSql).toMatch(
+        new RegExp(`revoke all on function public\\.${functionName}\\(\\) from public, anon, authenticated`, 'i'),
+      );
+    }
+  });
+
   it('documents a reviewed forward-only rollback path', () => {
     expect(sql).toMatch(/^-- @migration-intent: Add an append-only, tenant-safe Return to BT correction and resubmission workflow/i);
     expect(sql).toMatch(/@migration-dependencies:\s*20260717235500_align_supervision_request_linked_therapist_authority\.sql/i);

@@ -326,7 +326,7 @@ describe("Dashboard staff dashboard query gate", () => {
   it("enables the BCBA review queue from authenticated actor scope without a context token snapshot", () => {
     mockUseAuth.mockReturnValue(
       authStub({
-        user: { id: "bcba-user-7" },
+        user: null,
         profile: { id: "profile-8", organization_id: "org-9", role: "bcba" },
         effectiveRole: "bcba",
         session: null,
@@ -337,10 +337,10 @@ describe("Dashboard staff dashboard query gate", () => {
     renderDashboard();
 
     const listQuery = capturedQueryConfigs.find((config) =>
-      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "org-9", "bcba-user-7", "profile-8", "staff"]),
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "org-9", "NO_USER", "profile-8", "staff"]),
     );
     const reconcileQuery = capturedQueryConfigs.find((config) =>
-      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "reconcile", "org-9", "bcba-user-7", "profile-8", "staff"]),
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "reconcile", "org-9", "NO_USER", "profile-8", "staff"]),
     );
 
     expect(listQuery).toEqual(expect.objectContaining({ enabled: true }));
@@ -350,7 +350,7 @@ describe("Dashboard staff dashboard query gate", () => {
   it("enables exact-BT correction tasks from authenticated actor scope without a context token snapshot", () => {
     mockUseAuth.mockReturnValue(
       authStub({
-        user: { id: "bt-user-7" },
+        user: null,
         profile: { id: "profile-7", organization_id: "org-9", role: "bt" },
         effectiveRole: "bt",
         session: null,
@@ -361,7 +361,7 @@ describe("Dashboard staff dashboard query gate", () => {
     renderDashboard();
 
     const correctionTasksQuery = capturedQueryConfigs.find((config) =>
-      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "bt-user-7", "profile-7", "bt"]),
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "NO_USER", "profile-7", "bt"]),
     );
 
     expect(correctionTasksQuery).toEqual(expect.objectContaining({ enabled: true }));

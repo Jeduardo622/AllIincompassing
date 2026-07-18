@@ -214,11 +214,11 @@ describe("Dashboard staff dashboard query gate", () => {
     expect(capturedDashboardEnabled).toBe(false);
   });
 
-  it("enables only the BT correction task query for exact therapist dashboard access", () => {
+  it("does not enable the BT correction task query for legacy therapist access", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "user-7" },
-        profile: { organization_id: "org-9" },
+        profile: { id: "profile-7", organization_id: "org-9" },
         effectiveRole: "therapist",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -229,13 +229,53 @@ describe("Dashboard staff dashboard query gate", () => {
     renderDashboard();
 
     const correctionTasksQuery = capturedQueryConfigs.find((config) =>
-      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9"]),
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "user-7", "profile-7", "other"]),
+    );
+
+    expect(capturedDashboardOptions?.enabled).toBe(false);
+    expect(correctionTasksQuery).toEqual(expect.objectContaining({ enabled: false }));
+  });
+
+  it("renders the admin-only fallback for therapist users", async () => {
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "user-7" },
+        profile: { id: "profile-7", organization_id: "org-9" },
+        effectiveRole: "therapist",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+      }),
+    );
+
+    renderDashboard();
+
+    expect(await screen.findByText("This dashboard is reserved for admin roles.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /go to schedule/i })).toBeInTheDocument();
+    expect(screen.queryByText("Corrections Required")).not.toBeInTheDocument();
+  });
+
+  it("enables only the BT correction task query for exact BT dashboard access", () => {
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "user-7" },
+        profile: { id: "profile-7", organization_id: "org-9" },
+        effectiveRole: "bt",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+        hasCapability: vi.fn((capability: string) => capability === "viewSchedule"),
+      }),
+    );
+
+    renderDashboard();
+
+    const correctionTasksQuery = capturedQueryConfigs.find((config) =>
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "user-7", "profile-7", "bt"]),
     );
     const listQuery = capturedQueryConfigs.find((config) =>
-      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "org-9"]),
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "org-9", "user-7", "profile-7", "bt"]),
     );
     const reconcileQuery = capturedQueryConfigs.find((config) =>
-      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "reconcile", "org-9"]),
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "reconcile", "org-9", "user-7", "profile-7", "bt"]),
     );
 
     expect(capturedDashboardOptions?.enabled).toBe(false);
@@ -244,12 +284,51 @@ describe("Dashboard staff dashboard query gate", () => {
     expect(reconcileQuery).toEqual(expect.objectContaining({ enabled: false }));
   });
 
-  it("renders a correction-only empty state for therapist users without staff dashboard content", async () => {
+  it("uses actor-scoped cache keys for BT correction tasks and staff supervision queues", () => {
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "bt-user-7" },
+        profile: { id: "profile-7", organization_id: "org-9" },
+        effectiveRole: "bt",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+      }),
+    );
+
+    renderDashboard();
+
+    expect(capturedQueryConfigs).toContainEqual(expect.objectContaining({
+      queryKey: ["supervision-session-note-requests", "bt-correction-tasks", "org-9", "bt-user-7", "profile-7", "bt"],
+    }));
+
+    capturedQueryConfigs = [];
+
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "bcba-user-7" },
+        profile: { id: "profile-8", organization_id: "org-9" },
+        effectiveRole: "bcba",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+      }),
+    );
+
+    renderDashboard();
+
+    expect(capturedQueryConfigs).toContainEqual(expect.objectContaining({
+      queryKey: ["supervision-session-note-requests", "org-9", "bcba-user-7", "profile-8", "staff"],
+    }));
+    expect(capturedQueryConfigs).toContainEqual(expect.objectContaining({
+      queryKey: ["supervision-session-note-requests", "reconcile", "org-9", "bcba-user-7", "profile-8", "staff"],
+    }));
+  });
+
+  it("renders a correction-only empty state for BT users without staff dashboard content", async () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "user-7" },
-        profile: { organization_id: "org-9" },
-        effectiveRole: "therapist",
+        profile: { id: "profile-7", organization_id: "org-9" },
+        effectiveRole: "bt",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
       }),
@@ -262,6 +341,129 @@ describe("Dashboard staff dashboard query gate", () => {
     expect(screen.getByRole("link", { name: /go to schedule/i })).toBeInTheDocument();
     expect(screen.queryByText("Active Clients")).not.toBeInTheDocument();
     expect(screen.queryByText("Supervision Notes Due")).not.toBeInTheDocument();
+  });
+
+  it("does not reuse BT correction task cache across same-org actor switch with the same query client", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    mockUseQuery.mockImplementation((config: Record<string, unknown>) => {
+      const serializedKey = JSON.stringify(config.queryKey);
+      if (serializedKey === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "bt-user-1", "profile-bt", "bt"])) {
+        return {
+          data: [{
+            id: "request-1",
+            organizationId: "org-9",
+            sessionId: "session-1",
+            clientId: "client-1",
+            btTherapistId: "bt-1",
+            assignedAdminUserId: "bcba-1",
+            status: "correction_required",
+            statusLabel: "Correction Required",
+            createdAt: "2026-07-18T10:00:00Z",
+            clientName: "Taylor Client",
+            btTherapistName: "Jordan BT",
+            btTherapistTitle: "BT",
+            correction: {
+              id: "correction-1",
+              round: 1,
+              reason: "Clarify the client response and re-sign.",
+              requestedAt: "2026-07-18T11:00:00Z",
+              reviewerUserId: "bcba-1",
+            },
+            originalVersion: {
+              versionNumber: 1,
+              noteId: "note-1",
+              source: "original",
+              correctionRound: null,
+              responses: validBtResponses,
+              templateSnapshot: { sections: [] },
+              signatureMethod: "typed",
+              signatureValue: "Jordan BT",
+              signedAt: "2026-07-18T09:15:00Z",
+            },
+            latestVersion: {
+              versionNumber: 1,
+              noteId: "note-1",
+              source: "original",
+              correctionRound: null,
+              responses: validBtResponses,
+              templateSnapshot: { sections: [] },
+              signatureMethod: "typed",
+              signatureValue: "Jordan BT",
+              signedAt: "2026-07-18T09:15:00Z",
+            },
+            versions: [],
+          }],
+          isLoading: false,
+          error: null,
+          isSuccess: true,
+          refetch: vi.fn(),
+        };
+      }
+
+      if (serializedKey === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "bt-user-2", "profile-bt-2", "bt"])) {
+        return {
+          data: [],
+          isLoading: false,
+          error: null,
+          isSuccess: true,
+          refetch: vi.fn(),
+        };
+      }
+
+      return {
+        data: null,
+        isLoading: false,
+        error: null,
+        isSuccess: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "bt-user-1" },
+        profile: { id: "profile-bt", organization_id: "org-9" },
+        effectiveRole: "bt",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+      }),
+    );
+
+    const view = render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <Dashboard />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Taylor Client")).toBeInTheDocument();
+
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "bt-user-2" },
+        profile: { id: "profile-bt-2", organization_id: "org-9" },
+        effectiveRole: "bt",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+      }),
+    );
+
+    view.rerender(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <Dashboard />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("No correction tasks are waiting right now.")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Taylor Client")).not.toBeInTheDocument();
   });
 
   it("disables useDashboardData for admin without access token", () => {
@@ -283,7 +485,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "user-7" },
-        profile: { organization_id: "org-9" },
+        profile: { id: "profile-7", organization_id: "org-9" },
         effectiveRole: "admin",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -305,7 +507,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "user-7" },
-        profile: { organization_id: "org-9" },
+        profile: { id: "profile-7", organization_id: "org-9" },
         effectiveRole: "admin",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -318,10 +520,10 @@ describe("Dashboard staff dashboard query gate", () => {
 
     const queryConfigs = mockUseQuery.mock.calls.map(([config]) => config);
     const listQuery = queryConfigs.find((config) =>
-      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "org-9"]),
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "org-9", "user-7", "profile-7", "staff"]),
     );
     const reconcileQuery = queryConfigs.find((config) =>
-      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "reconcile", "org-9"]),
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "reconcile", "org-9", "user-7", "profile-7", "staff"]),
     );
 
     expect(listQuery).toEqual(expect.objectContaining({
@@ -369,7 +571,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseQuery.mockImplementation((config: Record<string, unknown>) => {
       capturedQueryConfigs.push(config);
       const serializedKey = JSON.stringify(config.queryKey);
-      if (serializedKey === JSON.stringify(["supervision-session-note-requests", "org-9"])) {
+      if (serializedKey === JSON.stringify(["supervision-session-note-requests", "org-9", "bcba-1", "profile-bcba", "staff"])) {
         return {
           data: { requests: [request], template: null },
           isLoading: false,
@@ -387,7 +589,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "bcba-1" },
-        profile: { organization_id: "org-9" },
+        profile: { id: "profile-bcba", organization_id: "org-9" },
         effectiveRole: "bcba",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -412,7 +614,7 @@ describe("Dashboard staff dashboard query gate", () => {
     expect(mockShowSuccess).toHaveBeenCalled();
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["supervision-session-note-requests"] });
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ["supervision-session-note-requests", "pending-count", "org-9"],
+      queryKey: ["supervision-session-note-requests", "pending-count", "org-9", "bcba-1", "profile-bcba", "staff"],
     });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ["dashboard"] });
   });
@@ -466,7 +668,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseQuery.mockImplementation((config: Record<string, unknown>) => {
       capturedQueryConfigs.push(config);
       const serializedKey = JSON.stringify(config.queryKey);
-      if (serializedKey === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9"])) {
+      if (serializedKey === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "bt-1", "profile-bt", "bt"])) {
         return {
           data: [task],
           isLoading: false,
@@ -485,7 +687,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "bt-1" },
-        profile: { organization_id: "org-9" },
+        profile: { id: "profile-bt", organization_id: "org-9" },
         effectiveRole: "bt",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,

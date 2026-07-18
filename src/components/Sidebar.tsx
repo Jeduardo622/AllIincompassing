@@ -36,7 +36,7 @@ const ChatAssistantFallback = () => (
 );
 
 const isBtCorrectionDashboardRole = (role: AppRole | null | undefined) =>
-  role === 'bt' || role === 'therapist';
+  role === 'bt';
 
 export function Sidebar() {
   const { signOut, hasRole, user, profile, isGuardian, effectiveRole, hasCapability } = useAuth();
@@ -118,7 +118,7 @@ export function Sidebar() {
       icon: LayoutDashboard,
       label: 'Dashboard',
       path: '/',
-      roles: ['bt', 'therapist', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
+      roles: ['bt', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     { 
@@ -229,6 +229,7 @@ export function Sidebar() {
   const canAccessMessages = hasCapability('viewMessages');
   const canViewSupervisionNotifications =
     hasCapability('staffDashboard') || isBtCorrectionDashboardRole(effectiveRole);
+  const supervisionRoleBucket = hasCapability('staffDashboard') ? 'staff' : isBtCorrectionDashboardRole(effectiveRole) ? 'bt' : 'other';
 
   const { data: unreadMessagesData } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],
@@ -238,7 +239,7 @@ export function Sidebar() {
   });
 
   const { data: pendingSupervisionNoteCount = 0 } = useQuery({
-    queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'pending-count', organizationId],
+    queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'pending-count', organizationId, user?.id ?? 'NO_USER', profile?.id ?? 'NO_PROFILE', supervisionRoleBucket],
     queryFn: () => fetchPendingSupervisionSessionNoteCount(organizationId!),
     enabled: canViewSupervisionNotifications && Boolean(organizationId),
     refetchInterval: 30_000,

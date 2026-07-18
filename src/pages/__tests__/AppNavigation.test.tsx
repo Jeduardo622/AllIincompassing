@@ -175,8 +175,9 @@ describe('App navigation landing', () => {
     window.history.pushState({}, '', '/');
     renderApp();
 
-    expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
-    expect(window.location.pathname).toBe('/');
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/schedule');
+    });
   });
 
   it('redirects midtier users to schedule from dashboard landing', async () => {

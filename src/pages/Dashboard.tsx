@@ -101,7 +101,7 @@ const fieldRequiresResponse = (field: SupervisionTemplateField, responses: Recor
 };
 
 const isBtCorrectionDashboardRole = (role: string | null | undefined) =>
-  role === 'bt' || role === 'therapist';
+  role === 'bt';
 
 export interface DashboardViewProps {
   dashboardData?: DashboardDataShape | null;
@@ -2096,6 +2096,9 @@ const Dashboard = () => {
   const canViewCorrectionOnlyDashboard = isBtCorrectionDashboardRole(effectiveRole);
   const hasAccessToken = Boolean(session?.access_token && session.access_token.trim().length > 0);
   const organizationId = profile?.organization_id ?? null;
+  const profileId = profile?.id ?? null;
+  const actorUserId = user?.id ?? null;
+  const supervisionRoleBucket = canViewStaffDashboard ? 'staff' : canViewCorrectionOnlyDashboard ? 'bt' : 'other';
   const {
     data: dashboardData,
     isLoading: isLoadingDashboard,
@@ -2118,20 +2121,20 @@ const Dashboard = () => {
   };
 
   const supervisionRequestsQueryKey = useMemo(
-    () => [SUPERVISION_SESSION_NOTES_QUERY_KEY, organizationId ?? 'MISSING_ORG'] as const,
-    [organizationId],
+    () => [SUPERVISION_SESSION_NOTES_QUERY_KEY, organizationId ?? 'MISSING_ORG', actorUserId ?? 'NO_USER', profileId ?? 'NO_PROFILE', supervisionRoleBucket] as const,
+    [actorUserId, organizationId, profileId, supervisionRoleBucket],
   );
   const btCorrectionTasksQueryKey = useMemo(
-    () => [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'bt-correction-tasks', organizationId ?? 'MISSING_ORG'] as const,
-    [organizationId],
+    () => [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'bt-correction-tasks', organizationId ?? 'MISSING_ORG', actorUserId ?? 'NO_USER', profileId ?? 'NO_PROFILE', supervisionRoleBucket] as const,
+    [actorUserId, organizationId, profileId, supervisionRoleBucket],
   );
   const supervisionCountQueryKey = useMemo(
-    () => [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'pending-count', organizationId ?? 'MISSING_ORG'] as const,
-    [organizationId],
+    () => [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'pending-count', organizationId ?? 'MISSING_ORG', actorUserId ?? 'NO_USER', profileId ?? 'NO_PROFILE', supervisionRoleBucket] as const,
+    [actorUserId, organizationId, profileId, supervisionRoleBucket],
   );
 
   const supervisionReconcileQuery = useQuery({
-    queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'reconcile', organizationId ?? 'MISSING_ORG'],
+    queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'reconcile', organizationId ?? 'MISSING_ORG', actorUserId ?? 'NO_USER', profileId ?? 'NO_PROFILE', supervisionRoleBucket],
     queryFn: () => reconcilePendingSupervisionSessionNoteRequests(organizationId!),
     enabled: canViewStaffDashboard && Boolean(organizationId) && hasAccessToken && !authLoading,
     staleTime: 5 * 60_000,

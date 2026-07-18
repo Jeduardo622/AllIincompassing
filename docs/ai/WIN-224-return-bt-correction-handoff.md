@@ -72,11 +72,14 @@
   - `npm run test:ci`: fail locally after correction tests passed; remaining failures are the Windows workflow-step parser and Blob `.text()` environment behavior
   - `npm run verify:local`: fail at the same local `test:ci` stage; later steps were separately executed and passed
   - `npm run ci:playwright`: fail at hosted auth login because the configured super-admin credential was rejected
+  - hosted managed-preview proof provisioning and exact cleanup: pass; marker-owned BT and BCBA fixtures were removed after every attempt and the managed preview remained healthy
+  - hosted direct BCBA packet preflight: pass; the assigned packet was returned to the synthetic BCBA before browser navigation
+  - hosted browser RPC trace: pass for `get_supervision_session_note_action_count` (`200`, count `1`); the dashboard packet RPC was not issued
 - blocked checks:
-  - hosted correction proof: requires the open PR's managed Supabase preview identifiers before dispatch
+  - hosted correction proof: blocked in the dashboard query lifecycle before `get_pending_supervision_review_packets`; exact-head run `29659442930` timed out waiting for `Pending Review` even though the same canonical Supabase client returned action count `1` and direct packet preflight found the assigned request
   - generic hosted Playwright completion: configured hosted super-admin credential is currently invalid
-- result: `pass-with-blocked-checks` for PR submission; not merge-ready until hosted proof and live required checks pass
-- residual risk: the migration and browser proof still require hosted preview execution, and critical-lane human review remains mandatory before merge.
+- result: `blocked` for merge; the draft PR is not review-ready until the hosted dashboard query-lifecycle blocker is resolved and the full BT -> BCBA -> BT -> BCBA proof passes
+- residual risk: the clinical workflow is locally verified, but the hosted dashboard has not yet rendered the assigned packet or exercised the correction/resubmission/completion UI path; critical-lane human review remains mandatory before merge.
 
 ## PR Hygiene
 
@@ -86,13 +89,12 @@
 - unrelated changes: none
 - generated artifact drift: none
 - verification summary: present
-- pr-ready: yes for human review; no for merge until hosted proof and live checks pass
+- pr-ready: no; keep draft while the hosted dashboard query-lifecycle blocker remains
 - required follow-up:
-  - push the branch and open the PR
-  - bind the exact managed Supabase preview identifiers to the protected workflow variables
-  - dispatch and retain the hosted BT -> BCBA -> BT -> BCBA proof
+  - diagnose why the Dashboard packet query is not issued while the Sidebar count query succeeds on the same authenticated canonical client; do not add another hydration-gate patch without addressing the broader query lifecycle
+  - rerun and retain the hosted BT -> BCBA -> BT -> BCBA proof after that root cause is fixed
   - inspect live required checks and obtain human approval before merge
 
 ## Handoff Summary
 
-WIN-224 adds an append-only correction lifecycle to supervision review: the assigned BCBA can return a signed BT packet with a reason, the original exact BT creates a newly attested amendment, and the same BCBA reviews the full version chain and completes the request. Tenant, actor, assignment, role, and immutable-version boundaries are enforced in server-side RPCs and mirrored fail-closed in the dashboard. Local schema, SQL smoke, focused tests, policy, coverage, tenant, build, and Tier-0 route gates pass; the remaining closure work is the managed-preview browser proof, live CI, and mandatory human review.
+WIN-224 adds an append-only correction lifecycle to supervision review: the assigned BCBA can return a signed BT packet with a reason, the original exact BT creates a newly attested amendment, and the same BCBA reviews the full version chain and completes the request. Tenant, actor, assignment, role, and immutable-version boundaries are enforced in server-side RPCs and mirrored fail-closed in the dashboard. Local schema, SQL smoke, focused tests, policy, coverage, tenant, build, and Tier-0 route gates pass. The managed preview, exact synthetic provisioning, direct BCBA packet preflight, cleanup, and post-proof health checks also pass, but the browser dashboard does not issue the packet RPC and therefore cannot yet prove the full lifecycle. Keep PR #819 draft and unmerged until that query-lifecycle blocker is fixed, the hosted proof is green, live checks are clean, and human review is complete.

@@ -116,6 +116,21 @@ describe('readStubAuthState', () => {
     expect(result?.profile.role).toBe('client');
   });
 
+  it('preserves an exact persisted therapist role in the structured user payload', () => {
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+
+    seedStubStorage({
+      user: {
+        id: 'therapist-user',
+        email: 'therapist@example.com',
+        role: 'therapist',
+      },
+    }, now);
+
+    expect(readStubAuthState()?.profile.role).toBe('therapist');
+  });
+
   it('supports legacy snake_case payloads used by route audit tooling', () => {
     const now = 1_700_000_000_000;
     vi.spyOn(Date, 'now').mockReturnValue(now);

@@ -107,7 +107,7 @@ const DashboardLanding: React.FC = () => {
     return <Dashboard />;
   }
 
-  if (isBtCorrectionDashboardRole(effectiveRole)) {
+  if (isBtCorrectionDashboardRole(profile?.role)) {
     return <Dashboard />;
   }
 

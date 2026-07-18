@@ -191,6 +191,14 @@ describe("Sidebar navigation active styling", () => {
   });
 
   it("hides the dashboard link for legacy therapist users", () => {
+    const legacyTherapist = mockUseAuth();
+    mockUseAuth.mockReturnValue({
+      ...legacyTherapist,
+      effectiveRole: "bt",
+      hasCapability: vi.fn(capabilityForRole("bt")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("bt"))),
+    });
+
     renderSidebar(["/"]);
 
     expect(screen.queryByRole("link", { name: /dashboard/i })).not.toBeInTheDocument();

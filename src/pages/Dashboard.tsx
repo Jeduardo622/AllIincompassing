@@ -2093,7 +2093,7 @@ const Dashboard = () => {
   const queryClient = useQueryClient();
   const { effectiveRole, session, loading: authLoading, user, profile } = useAuth();
   const canViewStaffDashboard = canAccessStaffDashboard(effectiveRole);
-  const canViewCorrectionOnlyDashboard = isBtCorrectionDashboardRole(effectiveRole);
+  const canViewCorrectionOnlyDashboard = isBtCorrectionDashboardRole(profile?.role);
   const hasAccessToken = Boolean(session?.access_token && session.access_token.trim().length > 0);
   const organizationId = profile?.organization_id ?? null;
   const profileId = profile?.id ?? null;

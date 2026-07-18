@@ -228,8 +228,8 @@ export function Sidebar() {
   const canAccessChatAssistant = hasCapability('viewSchedule') || hasCapability('dataTaking');
   const canAccessMessages = hasCapability('viewMessages');
   const canViewSupervisionNotifications =
-    hasCapability('staffDashboard') || isBtCorrectionDashboardRole(effectiveRole);
-  const supervisionRoleBucket = hasCapability('staffDashboard') ? 'staff' : isBtCorrectionDashboardRole(effectiveRole) ? 'bt' : 'other';
+    hasCapability('staffDashboard') || isBtCorrectionDashboardRole(profile?.role);
+  const supervisionRoleBucket = hasCapability('staffDashboard') ? 'staff' : isBtCorrectionDashboardRole(profile?.role) ? 'bt' : 'other';
 
   const { data: unreadMessagesData } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],
@@ -334,6 +334,9 @@ export function Sidebar() {
             }
             // Skip if roles are specified and user doesn't have any of them
             if (roles.length > 0 && !roles.includes(effectiveRole)) {
+              return null;
+            }
+            if (path === '/' && effectiveRole === 'bt' && profile?.role !== 'bt') {
               return null;
             }
 

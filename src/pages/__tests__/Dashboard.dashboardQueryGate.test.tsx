@@ -218,7 +218,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "user-7" },
-        profile: { id: "profile-7", organization_id: "org-9" },
+        profile: { id: "profile-7", organization_id: "org-9", role: "therapist" },
         effectiveRole: "therapist",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -240,7 +240,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "user-7" },
-        profile: { id: "profile-7", organization_id: "org-9" },
+        profile: { id: "profile-7", organization_id: "org-9", role: "therapist" },
         effectiveRole: "therapist",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -258,7 +258,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "user-7" },
-        profile: { id: "profile-7", organization_id: "org-9" },
+        profile: { id: "profile-7", organization_id: "org-9", role: "bt" },
         effectiveRole: "bt",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -288,7 +288,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "bt-user-7" },
-        profile: { id: "profile-7", organization_id: "org-9" },
+        profile: { id: "profile-7", organization_id: "org-9", role: "bt" },
         effectiveRole: "bt",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -327,7 +327,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "user-7" },
-        profile: { id: "profile-7", organization_id: "org-9" },
+        profile: { id: "profile-7", organization_id: "org-9", role: "bt" },
         effectiveRole: "bt",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -425,7 +425,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "bt-user-1" },
-        profile: { id: "profile-bt", organization_id: "org-9" },
+        profile: { id: "profile-bt", organization_id: "org-9", role: "bt" },
         effectiveRole: "bt",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -445,7 +445,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "bt-user-2" },
-        profile: { id: "profile-bt-2", organization_id: "org-9" },
+        profile: { id: "profile-bt-2", organization_id: "org-9", role: "bt" },
         effectiveRole: "bt",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,
@@ -687,7 +687,7 @@ describe("Dashboard staff dashboard query gate", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: { id: "bt-1" },
-        profile: { id: "profile-bt", organization_id: "org-9" },
+        profile: { id: "profile-bt", organization_id: "org-9", role: "bt" },
         effectiveRole: "bt",
         session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
         loading: false,

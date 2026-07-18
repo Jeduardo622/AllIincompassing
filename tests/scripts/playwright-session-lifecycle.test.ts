@@ -47,9 +47,10 @@ describe("playwright session lifecycle booking starts", () => {
   });
 
   it("treats the Create Session button as ready only when enabled", () => {
-    expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: null })).toBe(true);
-    expect(isCreateSessionButtonReady({ disabled: "", ariaDisabled: null })).toBe(false);
-    expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: "true" })).toBe(false);
+    expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: null, textContent: "Create Session" })).toBe(true);
+    expect(isCreateSessionButtonReady({ disabled: "", ariaDisabled: null, textContent: "Create Session" })).toBe(false);
+    expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: "true", textContent: "Create Session" })).toBe(false);
+    expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: null, textContent: "Saving..." })).toBe(false);
   });
 
   it("accepts only the explicit hosted ALREADY_STARTED recovery contract", () => {

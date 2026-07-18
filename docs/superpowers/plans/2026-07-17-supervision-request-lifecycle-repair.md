@@ -83,6 +83,8 @@
 - PR #817 merged the BCBA-only cancellation fix and main CI deployed it, but the browser selector classified `sessions-cancel` with `authSmoke: false`; therefore the hosted BCBA proof was skipped rather than executed.
 - Final CI correction: require hosted auth/session smoke for `supabase/functions/sessions-cancel/**` while preserving its existing schedule/auth tier-0 selection. This is selector-only and does not change runtime or workflow YAML.
 - Final closure proof: after the selector correction merges, the main push must execute (not skip) `BCBA session acceptance proof` and complete its `sessions-cancel` cleanup without `403`.
+- PR #818's first hosted session-smoke run exposed a pre-existing retry synchronization defect: after `/api/book` returned `409`, the modal submit control remained transiently labeled `Saving...` while the smoke searched only for an element named `Create Session`. The captured screenshot confirmed the modal stayed open and the same submit control was still saving.
+- Bounded harness correction: locate the stable session-form submit control, then wait until it is enabled and labeled `Create Session` before retrying. Focused TDD failed on the unhandled `Saving...` state and passed 26/26 after the fix; no application UI or runtime behavior changed.
 
 ## Stop conditions
 

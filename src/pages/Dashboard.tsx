@@ -9,6 +9,7 @@ import { ClinicalSignatureInput } from '../components/session-notes/ClinicalSign
 import { SignatureInput } from '../components/session-notes/SignatureInput';
 import { useDashboardData } from '../lib/optimizedQueries';
 import { useAuth } from '../lib/authContext';
+import { useActiveOrganizationId } from '../lib/organization';
 import {
   BT_ABA_BEHAVIOR_STRATEGY_OPTIONS,
   BT_ABA_FIELD_LABELS,
@@ -2095,7 +2096,7 @@ const Dashboard = () => {
   const canViewStaffDashboard = canAccessStaffDashboard(effectiveRole);
   const canViewCorrectionOnlyDashboard = isBtCorrectionDashboardRole(profile?.role);
   const hasAccessToken = Boolean(session?.access_token && session.access_token.trim().length > 0);
-  const organizationId = profile?.organization_id ?? null;
+  const organizationId = useActiveOrganizationId();
   const profileId = profile?.id ?? null;
   const actorUserId = user?.id ?? null;
   const supervisionRoleBucket = canViewStaffDashboard ? 'staff' : canViewCorrectionOnlyDashboard ? 'bt' : 'other';
@@ -2136,7 +2137,7 @@ const Dashboard = () => {
   const supervisionReconcileQuery = useQuery({
     queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'reconcile', organizationId ?? 'MISSING_ORG', actorUserId ?? 'NO_USER', profileId ?? 'NO_PROFILE', supervisionRoleBucket],
     queryFn: () => reconcilePendingSupervisionSessionNoteRequests(organizationId!),
-    enabled: canViewStaffDashboard && Boolean(organizationId && profileId),
+    enabled: canViewStaffDashboard && Boolean(organizationId),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
@@ -2144,7 +2145,7 @@ const Dashboard = () => {
   const supervisionQuery = useQuery({
     queryKey: supervisionRequestsQueryKey,
     queryFn: () => fetchPendingSupervisionSessionNoteRequests(organizationId!),
-    enabled: canViewStaffDashboard && Boolean(organizationId && profileId),
+    enabled: canViewStaffDashboard && Boolean(organizationId),
     staleTime: 30_000,
     refetchInterval: 30_000,
   });

@@ -347,6 +347,30 @@ describe("Dashboard staff dashboard query gate", () => {
     expect(reconcileQuery).toEqual(expect.objectContaining({ enabled: true }));
   });
 
+  it("enables the BCBA review queue from active organization metadata before profile hydration", () => {
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "bcba-user-7", user_metadata: { organization_id: "org-9" } },
+        profile: null,
+        effectiveRole: "bcba",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: true,
+      }),
+    );
+
+    renderDashboard();
+
+    const listQuery = capturedQueryConfigs.find((config) =>
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "org-9", "bcba-user-7", "NO_PROFILE", "staff"]),
+    );
+    const reconcileQuery = capturedQueryConfigs.find((config) =>
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "reconcile", "org-9", "bcba-user-7", "NO_PROFILE", "staff"]),
+    );
+
+    expect(listQuery).toEqual(expect.objectContaining({ enabled: true }));
+    expect(reconcileQuery).toEqual(expect.objectContaining({ enabled: true }));
+  });
+
   it("enables exact-BT correction tasks from stable profile scope while auth snapshots lag", () => {
     mockUseAuth.mockReturnValue(
       authStub({

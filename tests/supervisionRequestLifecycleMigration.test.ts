@@ -9,6 +9,13 @@ const migrationSql = readFileSync(
   ),
   'utf8',
 );
+const authorityCorrectionSql = readFileSync(
+  join(
+    process.cwd(),
+    'supabase/migrations/20260717235500_align_supervision_request_linked_therapist_authority.sql',
+  ),
+  'utf8',
+);
 
 function functionBody(name: string): string {
   const pattern = new RegExp(
@@ -53,6 +60,12 @@ describe('supervision request lifecycle repair migration', () => {
 
     expect(creator).toMatch(/v_actor_has_schedule_authority\s*:=\s*app\.user_has_any_active_role_for_org\([\s\S]*?array\['admin_schedule', 'midtier', 'bcba'\]/i);
     expect(creator).toMatch(/coalesce\(v_actor_has_schedule_authority, false\) is not true/i);
+  });
+
+  it('keeps the issued migration immutable and corrects linked-therapist authority forward', () => {
+    expect(authorityCorrectionSql).toMatch(/where s\.id = p_session_id\s+and s\.organization_id = v_actor_org/i);
+    expect(authorityCorrectionSql).toMatch(/v_session\.therapist_id <> v_actor\s+and not exists \(\s*select 1\s+from public\.user_therapist_links utl\s+where utl\.user_id = v_actor\s+and utl\.therapist_id = v_session\.therapist_id\s*\) then\s+raise exception using errcode = '42501'/i);
+    expect(authorityCorrectionSql).not.toMatch(/array\['bt'\]::text\[][\s\S]*?from public\.user_therapist_links/i);
   });
 
   it('records reopen provenance, clears completion state, and recomputes the reviewer', () => {

@@ -25,7 +25,7 @@
 
 ## Hosted rollout and cleanup
 
-1. Merge the reviewed branch and apply `20260717222331_repair_supervision_request_lifecycle.sql`.
+1. Merge the reviewed branch and confirm both `20260717222331_repair_supervision_request_lifecycle.sql` and the forward-only `20260717235500_align_supervision_request_linked_therapist_authority.sql` are applied. The second migration preserves the issued first migration while aligning request creation with the edge handler's exact linked-therapist closeout authority.
 2. Confirm the migration appears in hosted migration history and the lifecycle columns, constraints, and RPC definitions are present.
 3. Preflight the separately held allowlist of 28 legacy request IDs. Every row must still be in the expected organization, remain `pending`, refer to a future session, and fail the complete structured BT packet check. Abort on any mismatch.
 4. In one protected transaction, update only that exact allowlist to `cancelled`, set cancellation timestamp, reason, and source, and assert exactly 28 rows changed. Do not delete or rewrite clinical records.
@@ -42,7 +42,7 @@
 
 ### Executed locally
 
-- `npx vitest run tests/supervisionRequestLifecycleMigration.test.ts tests/edge/sessions-complete.test.ts`: passed, 43/43.
+- `npx vitest run tests/supervisionRequestLifecycleMigration.test.ts tests/edge/sessions-complete.test.ts`: passed, 44/44 after the linked-therapist authorization regression was added.
 - `npm run ci:check-focused`: passed.
 - `npm run lint`: passed.
 - `npm run typecheck`: passed.
@@ -57,6 +57,11 @@
 - `npm run ci:playwright`: preflight stopped because neither the super-admin nor admin Playwright credential pair is available to this process.
 - Database-backed policy checks: `SUPABASE_DB_URL` / `DATABASE_URL` is not configured locally.
 
+### Hosted preview proof
+
+- Applied `align_supervision_request_linked_therapist_authority` to the Supabase preview project.
+- Ran a rollback-only authenticated SQL smoke using synthetic rows: an exact `user_therapist_links` actor created the request; after removing that exact link inside the transaction, the same actor received SQLSTATE `42501`; rollback confirmation showed the synthetic session did not persist.
+
 ### Review verdicts
 
 - Code review: approved after creator/reconcile conflict safety was added.
@@ -64,6 +69,9 @@
 - Supabase: approved after lock order was normalized to session then request and the conflict loser path re-locks the winning request.
 - Test review: no code-level coverage blocker; SQL execution evidence remains required from a compatible preview/CI database.
 - Performance: approved with moderate residual reconcile batch-cost risk; current lookups are index-backed.
+- Follow-up code review: approved after the issued migration was restored and the authorization correction was isolated in a forward migration.
+- Follow-up security review: approved; the link is checked against the exact same-org session therapist and matches the edge handler's delegated-therapist authority model.
+- Follow-up Supabase review: approved; the forward migration retains fail-closed search path and existing grants without RLS or tenant-boundary expansion.
 
 ## Stop conditions
 

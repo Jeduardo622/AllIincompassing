@@ -43,7 +43,7 @@ const ids = {
   exactAmendment: '50000000-0000-4000-8000-000000000001',
 };
 
-describe.runIf(runIfPostgres)('WIN-224 proof cleanup trigger behavior', () => {
+runIfPostgres('WIN-224 proof cleanup trigger behavior', () => {
   const client = new Client({ connectionString: POSTGRES_URL });
 
   beforeAll(async () => {

@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Users, Calendar, Clock, AlertCircle } from 'lucide-react';
@@ -511,6 +511,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [btCorrectionResponses, setBtCorrectionResponses] = useState<BtAbaSessionNoteResponses>(getEmptyBtCorrectionResponses);
   const [btCorrectionErrors, setBtCorrectionErrors] = useState<BtCorrectionErrors>({});
   const [btCorrectionLoadError, setBtCorrectionLoadError] = useState<string | null>(null);
+  const btCorrectionFormRef = useRef<HTMLFormElement | null>(null);
+  const btCorrectionSubmitInFlightRef = useRef(false);
+  const [isBtCorrectionSubmittingLocally, setIsBtCorrectionSubmittingLocally] = useState(false);
 
   useEffect(() => {
     if (dashboardData) {
@@ -602,6 +605,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setBtCorrectionResponses(getEmptyBtCorrectionResponses());
     setBtCorrectionErrors({});
     setBtCorrectionLoadError(null);
+    btCorrectionSubmitInFlightRef.current = false;
+    setIsBtCorrectionSubmittingLocally(false);
   };
 
   const openBtCorrectionTask = (task: BtCorrectionTask) => {
@@ -684,7 +689,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   const handleBtCorrectionSubmit = async () => {
-    if (!activeBtCorrectionTask || !onResubmitBtCorrection || btCorrectionLoadError) {
+    if (
+      !activeBtCorrectionTask
+      || !onResubmitBtCorrection
+      || btCorrectionLoadError
+      || btCorrectionSubmitInFlightRef.current
+    ) {
       return;
     }
 
@@ -698,12 +708,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }
       }
       setBtCorrectionErrors(nextErrors);
+      const firstInvalidField = validationResult.error.issues[0]?.path[0] as BtCorrectionResponseKey | undefined;
+      if (firstInvalidField) {
+        btCorrectionFormRef.current
+          ?.querySelector<HTMLElement>(`[data-field="${String(firstInvalidField)}"]`)
+          ?.focus();
+      }
       return;
     }
 
     setBtCorrectionErrors({});
-    await onResubmitBtCorrection(activeBtCorrectionTask, validationResult.data);
-    resetBtCorrectionModalState();
+    btCorrectionSubmitInFlightRef.current = true;
+    setIsBtCorrectionSubmittingLocally(true);
+    try {
+      await onResubmitBtCorrection(activeBtCorrectionTask, validationResult.data);
+      resetBtCorrectionModalState();
+    } finally {
+      btCorrectionSubmitInFlightRef.current = false;
+      setIsBtCorrectionSubmittingLocally(false);
+    }
   };
 
   if (isLoading && !displayData.todaySessions.length) {
@@ -1340,54 +1363,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             aria-labelledby="bt-correction-title"
             className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white shadow-xl dark:bg-dark-lighter"
           >
-            <div className="border-b border-gray-200 p-6 dark:border-gray-700">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 id="bt-correction-title" className="text-xl font-semibold text-gray-900 dark:text-white">
-                    Amend BT Note
-                  </h2>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {activeBtCorrectionTask.clientName} • {activeBtCorrectionTask.btTherapistName}
-                  </p>
+            <form ref={btCorrectionFormRef} onSubmit={(event) => event.preventDefault()} noValidate>
+              <div className="border-b border-gray-200 p-6 dark:border-gray-700">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 id="bt-correction-title" className="text-xl font-semibold text-gray-900 dark:text-white">
+                      Amend BT Note
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {activeBtCorrectionTask.clientName} • {activeBtCorrectionTask.btTherapistName}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetBtCorrectionModalState}
+                    className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                  >
+                    Close
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={resetBtCorrectionModalState}
-                  className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                >
-                  Close
-                </button>
               </div>
-            </div>
-            <div className="space-y-6 p-6">
-              <section className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/20">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold text-amber-900 dark:text-amber-100">Correction Required</h3>
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${supervisionStatusBadgeClassName(activeBtCorrectionTask.status)}`}>
-                    {activeBtCorrectionTask.statusLabel}
-                  </span>
-                </div>
-                <p className="text-sm text-amber-900 dark:text-amber-100">{activeBtCorrectionTask.correction.reason}</p>
-                <p className="text-xs text-amber-800 dark:text-amber-200">
-                  Requested {formatDashboardDate(activeBtCorrectionTask.correction.requestedAt, 'MMM d, yyyy h:mm a', 'Date unavailable')}
-                </p>
-              </section>
-              {btCorrectionLoadError ? (
-                <div
-                  role="alert"
-                  className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
-                >
-                  {btCorrectionLoadError}
-                </div>
-              ) : (
-                <>
-                  <section className={btCorrectionSectionClassName}>
+              <div className="space-y-6 p-6">
+                <section className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/20">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-semibold text-amber-900 dark:text-amber-100">Correction Required</h3>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${supervisionStatusBadgeClassName(activeBtCorrectionTask.status)}`}>
+                      {activeBtCorrectionTask.statusLabel}
+                    </span>
+                  </div>
+                  <p className="text-sm text-amber-900 dark:text-amber-100">{activeBtCorrectionTask.correction.reason}</p>
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
+                    Requested {formatDashboardDate(activeBtCorrectionTask.correction.requestedAt, 'MMM d, yyyy h:mm a', 'Date unavailable')}
+                  </p>
+                </section>
+                {btCorrectionLoadError ? (
+                  <div
+                    role="alert"
+                    className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+                  >
+                    {btCorrectionLoadError}
+                  </div>
+                ) : (
+                  <>
+                    <section className={btCorrectionSectionClassName}>
                     <fieldset className="space-y-2" aria-invalid={btCorrectionErrors.purpose_of_session ? 'true' : undefined} aria-describedby={btCorrectionErrors.purpose_of_session ? 'bt-purpose-of-session-error' : undefined}>
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.purpose_of_session}</legend>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        {BT_ABA_PURPOSE_OPTIONS.map((option) => (
+                        {BT_ABA_PURPOSE_OPTIONS.map((option, index) => (
                           <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
                             <input
+                              data-field={index === 0 ? 'purpose_of_session' : undefined}
                               type="checkbox"
                               checked={btCorrectionResponses.purpose_of_session.includes(option)}
                               disabled={isResubmittingBtCorrection}
@@ -1405,6 +1430,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <label htmlFor="bt-purpose-other" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.purpose_other}</label>
                         <input
                           id="bt-purpose-other"
+                          data-field="purpose_other"
                           value={btCorrectionResponses.purpose_other ?? ''}
                           disabled={isResubmittingBtCorrection}
                           aria-invalid={btCorrectionErrors.purpose_other ? 'true' : undefined}
@@ -1422,6 +1448,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <label htmlFor="bt-client-status" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.client_status}</label>
                       <textarea
                         id="bt-client-status"
+                        data-field="client_status"
                         rows={3}
                         value={btCorrectionResponses.client_status}
                         disabled={isResubmittingBtCorrection}
@@ -1435,9 +1462,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <fieldset className="space-y-2" aria-invalid={btCorrectionErrors.skill_strategies ? 'true' : undefined} aria-describedby={btCorrectionErrors.skill_strategies ? 'bt-skill-strategies-error' : undefined}>
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.skill_strategies}</legend>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        {BT_ABA_SKILL_STRATEGY_OPTIONS.map((option) => (
+                        {BT_ABA_SKILL_STRATEGY_OPTIONS.map((option, index) => (
                           <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
                             <input
+                              data-field={index === 0 ? 'skill_strategies' : undefined}
                               type="checkbox"
                               checked={btCorrectionResponses.skill_strategies.includes(option)}
                               disabled={isResubmittingBtCorrection}
@@ -1455,6 +1483,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <label htmlFor="bt-skill-strategies-other" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.skill_strategies_other}</label>
                         <input
                           id="bt-skill-strategies-other"
+                          data-field="skill_strategies_other"
                           value={btCorrectionResponses.skill_strategies_other ?? ''}
                           disabled={isResubmittingBtCorrection}
                           aria-invalid={btCorrectionErrors.skill_strategies_other ? 'true' : undefined}
@@ -1468,9 +1497,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <fieldset className="space-y-2" aria-invalid={btCorrectionErrors.behavior_strategies ? 'true' : undefined} aria-describedby={btCorrectionErrors.behavior_strategies ? 'bt-behavior-strategies-error' : undefined}>
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.behavior_strategies}</legend>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        {BT_ABA_BEHAVIOR_STRATEGY_OPTIONS.map((option) => (
+                        {BT_ABA_BEHAVIOR_STRATEGY_OPTIONS.map((option, index) => (
                           <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
                             <input
+                              data-field={index === 0 ? 'behavior_strategies' : undefined}
                               type="checkbox"
                               checked={btCorrectionResponses.behavior_strategies.includes(option)}
                               disabled={isResubmittingBtCorrection}
@@ -1488,6 +1518,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <label htmlFor="bt-behavior-strategies-other" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.behavior_strategies_other}</label>
                         <input
                           id="bt-behavior-strategies-other"
+                          data-field="behavior_strategies_other"
                           value={btCorrectionResponses.behavior_strategies_other ?? ''}
                           disabled={isResubmittingBtCorrection}
                           aria-invalid={btCorrectionErrors.behavior_strategies_other ? 'true' : undefined}
@@ -1504,9 +1535,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <fieldset className="space-y-2" aria-invalid={btCorrectionErrors.supervisor_support ? 'true' : undefined} aria-describedby={btCorrectionErrors.supervisor_support ? 'bt-supervisor-support-error' : undefined}>
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.supervisor_support}</legend>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        {BT_ABA_SUPERVISOR_SUPPORT_OPTIONS.map((option) => (
+                        {BT_ABA_SUPERVISOR_SUPPORT_OPTIONS.map((option, index) => (
                           <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
                             <input
+                              data-field={index === 0 ? 'supervisor_support' : undefined}
                               type="checkbox"
                               checked={btCorrectionResponses.supervisor_support.includes(option)}
                               disabled={isResubmittingBtCorrection}
@@ -1524,6 +1556,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <label htmlFor="bt-supervisor-support-other" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.supervisor_support_other}</label>
                         <input
                           id="bt-supervisor-support-other"
+                          data-field="supervisor_support_other"
                           value={btCorrectionResponses.supervisor_support_other ?? ''}
                           disabled={isResubmittingBtCorrection}
                           aria-invalid={btCorrectionErrors.supervisor_support_other ? 'true' : undefined}
@@ -1538,6 +1571,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <label htmlFor="bt-progress-toward-goals" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.progress_toward_goals}</label>
                       <textarea
                         id="bt-progress-toward-goals"
+                        data-field="progress_toward_goals"
                         rows={4}
                         value={btCorrectionResponses.progress_toward_goals}
                         disabled={isResubmittingBtCorrection}
@@ -1552,6 +1586,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <label htmlFor="bt-client-response-to-treatment" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.client_response_to_treatment}</label>
                       <textarea
                         id="bt-client-response-to-treatment"
+                        data-field="client_response_to_treatment"
                         rows={4}
                         value={btCorrectionResponses.client_response_to_treatment}
                         disabled={isResubmittingBtCorrection}
@@ -1569,6 +1604,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.data_point_scope}</legend>
                       <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                         <input
+                          data-field="data_point_scope"
                           type="radio"
                           name="bt-correction-data-point-scope"
                           checked={btCorrectionResponses.data_point_scope === 'linked'}
@@ -1604,28 +1640,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       onChange={(signature) => setBtCorrectionField('bt_signature', signature)}
                     />
                   </section>
-                </>
-              )}
-            </div>
-            <div className="flex justify-end gap-3 border-t border-gray-200 p-6 dark:border-gray-700">
-              <button
-                type="button"
-                onClick={resetBtCorrectionModalState}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                Cancel
-              </button>
-              {!btCorrectionLoadError && (
+                  </>
+                )}
+              </div>
+              <div className="flex justify-end gap-3 border-t border-gray-200 p-6 dark:border-gray-700">
                 <button
                   type="button"
-                  onClick={() => void handleBtCorrectionSubmit()}
-                  disabled={!btCorrectionHasFreshSignature || isResubmittingBtCorrection}
-                  className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={resetBtCorrectionModalState}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                 >
-                  {isResubmittingBtCorrection ? 'Resubmitting...' : 'Re-attest and Resubmit'}
+                  Cancel
                 </button>
-              )}
-            </div>
+                {!btCorrectionLoadError && (
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void handleBtCorrectionSubmit()}
+                    disabled={!btCorrectionHasFreshSignature || isResubmittingBtCorrection || isBtCorrectionSubmittingLocally}
+                    className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isResubmittingBtCorrection || isBtCorrectionSubmittingLocally ? 'Resubmitting...' : 'Re-attest and Resubmit'}
+                  </button>
+                )}
+              </div>
+            </form>
           </div>
         </div>
       )}

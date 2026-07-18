@@ -744,6 +744,7 @@ describe('Dashboard without client fallbacks', () => {
       <View
         {...baseProps}
         btCorrectionTasks={[makeBtCorrectionTask()]}
+        onResubmitBtCorrection={vi.fn()}
       />,
     );
 
@@ -793,6 +794,69 @@ describe('Dashboard without client fallbacks', () => {
         bt_signature: { method: 'typed', value: 'BT Fresh Signature' },
       }),
     );
+  });
+
+  it('blocks rapid double-click resubmits before parent rerender', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+    let resolveSubmit: (() => void) | null = null;
+    const onResubmitBtCorrection = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
+      resolveSubmit = resolve;
+    }));
+
+    render(
+      <View
+        {...baseProps}
+        btCorrectionTasks={[makeBtCorrectionTask()]}
+        onResubmitBtCorrection={onResubmitBtCorrection}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /amend bt note for client bt/i }));
+    await user.click(screen.getByRole('radio', { name: 'Type signature' }));
+    await user.type(screen.getByLabelText('Type Behavior Technician signature'), 'BT Fresh Signature');
+
+    const submitButton = screen.getByRole('button', { name: /re-attest and resubmit/i });
+    expect(submitButton).toBeEnabled();
+
+    fireEvent.click(submitButton);
+    fireEvent.click(submitButton);
+
+    expect(onResubmitBtCorrection).toHaveBeenCalledTimes(1);
+    expect(submitButton).toBeDisabled();
+
+    resolveSubmit?.();
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Amend BT Note' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('focuses the first invalid BT correction field after validation fails', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+    const onResubmitBtCorrection = vi.fn();
+
+    render(
+      <View
+        {...baseProps}
+        btCorrectionTasks={[makeBtCorrectionTask()]}
+        onResubmitBtCorrection={onResubmitBtCorrection}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /amend bt note for client bt/i }));
+    const purposeCheckbox = screen.getByRole('checkbox', { name: /rbt\/bt worked on goals as stated in the treatment plan/i });
+    expect(purposeCheckbox).toBeChecked();
+    await user.click(purposeCheckbox);
+    expect(purposeCheckbox).not.toBeChecked();
+    await user.click(screen.getByRole('radio', { name: 'Type signature' }));
+    await user.type(screen.getByLabelText('Type Behavior Technician signature'), 'BT Fresh Signature');
+    await user.click(screen.getByRole('button', { name: /re-attest and resubmit/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Purpose of Session').closest('fieldset')?.querySelector('[data-field="purpose_of_session"]')).toHaveFocus();
+    });
   });
 
   it('shows a normalization error for an invalid latest BT correction payload', async () => {

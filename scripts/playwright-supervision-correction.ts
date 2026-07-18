@@ -128,6 +128,33 @@ export const formatSupervisionCorrectionFailure = (status: number, responseBody:
   return `Supervision correction failed: status=${status} code=${code} message=${message}`;
 };
 
+type AuthAdminErrorShape = {
+  status?: unknown;
+  code?: unknown;
+};
+
+const authAdminErrorShape = (error: unknown): AuthAdminErrorShape => (
+  error && typeof error === "object" ? error as AuthAdminErrorShape : {}
+);
+
+export const isAuthEmailCollision = (error: unknown): boolean => {
+  const { status, code } = authAdminErrorShape(error);
+  return status === 422 && ["email_exists", "email_conflict", "user_already_exists"].includes(String(code ?? ""));
+};
+
+export const assertSyntheticAuthUserDeleted = (lookup: {
+  data: { user: unknown | null };
+  error: unknown | null;
+}): void => {
+  if (lookup.data.user || !lookup.error) {
+    throw new Error("Synthetic BCBA cleanup failed; auth user remains after cleanup.");
+  }
+  const { status, code } = authAdminErrorShape(lookup.error);
+  if (status !== 404 || code !== "user_not_found") {
+    throw new Error(`Synthetic BCBA cleanup verification failed with unexpected Auth result: status=${String(status ?? "unknown")} code=${String(code ?? "unknown")}`);
+  }
+};
+
 const captureCorrectionFailureScreenshot = async (page: Page): Promise<string> => {
   const dedicatedDirectory = normalizedEnv("PW_BT_PROOF_ARTIFACT_DIR");
   if (!dedicatedDirectory) {
@@ -326,20 +353,6 @@ const ensureSupervisionTemplate = async (
   return { id: inserted.data.id, createdByProof: true };
 };
 
-const listUsers = async (admin: SupabaseClient) => {
-  const users = [];
-  for (let page = 1; page <= 100; page += 1) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) throw error;
-    users.push(...data.users);
-    if (data.users.length < 200) return users;
-  }
-  throw new Error("Refusing incomplete Auth user scan after 100 pages.");
-};
-
-const findUserByEmail = async (admin: SupabaseClient, email: string) =>
-  (await listUsers(admin)).find((user) => user.email?.toLowerCase() === email.toLowerCase()) ?? null;
-
 const cleanupBcbaFixture = async (
   admin: SupabaseClient,
   marker: string,
@@ -371,26 +384,22 @@ const cleanupBcbaFixture = async (
   if (Object.values(retainedCounts).some((count) => count !== 0)) {
     throw new Error(`Synthetic BCBA cleanup failed; zero retained marker rows requirement was not met: ${JSON.stringify(retainedCounts)}`);
   }
-  const authUser = await findUserByEmail(admin, bcba.email);
-  if (authUser) {
-    throw new Error("Synthetic BCBA cleanup failed; auth user remains after cleanup.");
-  }
+  const remainingAuth = await admin.auth.admin.getUserById(bcba.id);
+  assertSyntheticAuthUserDeleted(remainingAuth);
   console.log(JSON.stringify({ ok: true, marker, cleanup: "zero retained marker rows", retainedCounts }));
 };
 
 const cleanupPartialProvisionedBcba = async (
   admin: SupabaseClient,
-  email: string,
   userId: string | null,
 ): Promise<void> => {
-  const resolvedUserId = userId ?? (await findUserByEmail(admin, email))?.id ?? null;
-  if (!resolvedUserId) return;
+  if (!userId) return;
   const failures: string[] = [];
   for (const [table, column] of [["user_therapist_links", "user_id"], ["user_roles", "user_id"], ["profiles", "id"]] as const) {
-    const { error } = await admin.from(table).delete().eq(column, resolvedUserId);
+    const { error } = await admin.from(table).delete().eq(column, userId);
     if (error) failures.push(`${table}: ${error.message}`);
   }
-  const authDelete = await admin.auth.admin.deleteUser(resolvedUserId);
+  const authDelete = await admin.auth.admin.deleteUser(userId);
   if (authDelete.error) failures.push(`auth.users: ${authDelete.error.message}`);
   if (failures.length) throw new Error(`Partial synthetic BCBA cleanup failed: ${failures.join("; ")}`);
 };
@@ -406,10 +415,6 @@ const provisionMarkerOwnedBcba = async (
     throw new Error("Provisioned BCBA email must be marker-owned and synthetic.");
   }
   const password = `C1-${randomBytes(18).toString("base64url")}!Aa`;
-  const existing = await findUserByEmail(admin, email);
-  if (existing) {
-    await cleanupPartialProvisionedBcba(admin, email, existing.id);
-  }
 
   let userId: string | null = null;
   try {
@@ -432,7 +437,13 @@ const provisionMarkerOwnedBcba = async (
         organizationId,
       },
     });
-    if (created.error || !created.data.user?.id) {
+    if (created.error) {
+      if (isAuthEmailCollision(created.error)) {
+        throw new Error("Synthetic BCBA marker collision; use a fresh PW_BT_FIXTURE_MARKER. No broad Auth cleanup was attempted.");
+      }
+      throw new Error(`Unable to create synthetic BCBA auth user: ${created.error.message}`);
+    }
+    if (!created.data.user?.id) {
       throw new Error(`Unable to create synthetic BCBA auth user: ${created.error?.message ?? "missing user id"}`);
     }
     userId = created.data.user.id;
@@ -472,7 +483,7 @@ const provisionMarkerOwnedBcba = async (
       throw new Error(`Unable to finalize synthetic BCBA profile scope: ${provisioned.error?.message ?? "organization mismatch"}`);
     }
   } catch (error) {
-    await cleanupPartialProvisionedBcba(admin, email, userId);
+    await cleanupPartialProvisionedBcba(admin, userId);
     throw error;
   }
 

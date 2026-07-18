@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import {
+  assertSyntheticAuthUserDeleted,
   formatSupervisionCorrectionFailure,
+  isAuthEmailCollision,
   isMarkerOwnedSyntheticIdentity,
 } from "../../scripts/playwright-supervision-correction";
 
@@ -31,6 +33,27 @@ describe("supervision correction hosted proof safeguards", () => {
     expect(message).not.toContain("do not print clinical payload");
   });
 
+  it("accepts only an explicit Auth user-not-found result as deletion proof", () => {
+    expect(() => assertSyntheticAuthUserDeleted({
+      data: { user: null },
+      error: { status: 404, code: "user_not_found" },
+    })).not.toThrow();
+    expect(() => assertSyntheticAuthUserDeleted({
+      data: { user: null },
+      error: { status: 500, code: "unexpected_failure" },
+    })).toThrow(/unexpected Auth result/i);
+    expect(() => assertSyntheticAuthUserDeleted({
+      data: { user: { id: "still-present" } },
+      error: null,
+    })).toThrow(/auth user remains/i);
+  });
+
+  it("classifies only explicit duplicate-email errors as marker collisions", () => {
+    expect(isAuthEmailCollision({ status: 422, code: "email_exists" })).toBe(true);
+    expect(isAuthEmailCollision({ status: 500, code: "unexpected_failure" })).toBe(false);
+    expect(isAuthEmailCollision({ status: 422, code: "weak_password" })).toBe(false);
+  });
+
   it("uses browser-authenticated BT -> BCBA -> BT -> BCBA steps plus service-role cleanup verification", () => {
     const source = readFileSync(path.join(process.cwd(), "scripts/playwright-supervision-correction.ts"), "utf8");
 
@@ -53,6 +76,8 @@ describe("supervision correction hosted proof safeguards", () => {
     expect(source).toContain("loginAndAssertSession");
     expect(source).toContain("Sign and Complete Supervision Note");
     expect(source).toContain("zero retained marker rows");
+    expect(source).toContain("getUserById(bcba.id)");
+    expect(source).not.toContain("auth.admin.listUsers");
     expect(source).not.toContain("completeReviewThroughRpc");
     expect(source).toContain("finally");
   });

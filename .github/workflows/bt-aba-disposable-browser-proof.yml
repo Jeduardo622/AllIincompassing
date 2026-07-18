@@ -27,6 +27,7 @@ jobs:
       pull-requests: read
     outputs:
       validated_sha: ${{ steps.approval.outputs.validated_sha }}
+      validated_pr_number: ${{ steps.approval.outputs.validated_pr_number }}
     steps:
       - name: Validate owner approval and open PR head
         id: approval
@@ -76,11 +77,12 @@ jobs:
           if (pull.base?.ref !== 'main') throw new Error('Pull request base must be main.');
           if (pull.head?.repo?.full_name !== repository) throw new Error('Pull request must originate from this repository.');
           if (pull.head?.sha !== commitSha) throw new Error('Pull request head SHA does not match commit_sha.');
-          if (pull.number !== 813 || pull.head?.ref !== 'codex/win-221-bt-aba-session-note') {
-            throw new Error('Proof is restricted to the exact WIN-221 managed PR preview branch.');
+          if (pull.head?.ref !== 'codex/return-bt-correction') {
+            throw new Error('Proof is restricted to the exact WIN-224 managed PR preview branch.');
           }
 
           appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\n`, { encoding: 'utf8' });
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_pr_number=${pullRequestNumber}\n`, { encoding: 'utf8' });
           NODE
 
       - name: Checkout validated commit
@@ -108,10 +110,10 @@ jobs:
       contents: read
     env:
       SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
-      SUPABASE_BRANCH_ID: 03d01a74-2ac3-4047-a983-c77b73a4ff6a
-      SUPABASE_BRANCH_NAME: codex/win-221-bt-aba-session-note
-      SUPABASE_BRANCH_PROJECT_REF: zutoyqdrpddtgkgooijx
-      SUPABASE_BRANCH_PR_NUMBER: "813"
+      SUPABASE_BRANCH_ID: ${{ vars.BT_ABA_SUPERVISION_CORRECTION_BRANCH_ID }}
+      SUPABASE_BRANCH_NAME: codex/return-bt-correction
+      SUPABASE_BRANCH_PROJECT_REF: ${{ vars.BT_ABA_SUPERVISION_CORRECTION_PROJECT_REF }}
+      SUPABASE_BRANCH_PR_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}
       PW_BT_FIXTURE_MARKER: bt-aba-proof-${{ github.run_id }}-${{ github.run_attempt }}
       PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: retain-platform-managed-pr-preview
       PW_BT_BRANCH_OWNERSHIP: platform-managed-pr-preview
@@ -236,14 +238,16 @@ jobs:
           cat "$RUNNER_TEMP/bt-aba-proof/preview.log"
           exit 1
 
-      - name: Run BT ABA session-note browser proof
+      - name: Run supervision correction browser proof
         env:
           PW_BT_PROOF_ARTIFACT_DIR: ${{ runner.temp }}/bt-aba-public-evidence
           PW_BT_CLEANUP_STATE_PATH: ${{ runner.temp }}/bt-aba-proof/cleanup-state.json
         run: |
-          SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")" \
-            npm run playwright:bt-aba-session-note
-          echo "browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
+          SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")"
+          export SUPABASE_SERVICE_ROLE_KEY
+          npm run playwright:bt-aba-session-note
+          npm run playwright:supervision-correction
+          echo "supervision_correction_browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
 
       - name: Clean exact marker-owned synthetic fixture
         if: always() && env.PW_BT_FIXTURE_PROVISIONED == 'true'
@@ -280,10 +284,10 @@ jobs:
       contents: read
     env:
       SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
-      SUPABASE_BRANCH_ID: 03d01a74-2ac3-4047-a983-c77b73a4ff6a
-      SUPABASE_BRANCH_NAME: codex/win-221-bt-aba-session-note
-      SUPABASE_BRANCH_PROJECT_REF: zutoyqdrpddtgkgooijx
-      SUPABASE_BRANCH_PR_NUMBER: "813"
+      SUPABASE_BRANCH_ID: ${{ vars.BT_ABA_SUPERVISION_CORRECTION_BRANCH_ID }}
+      SUPABASE_BRANCH_NAME: codex/return-bt-correction
+      SUPABASE_BRANCH_PROJECT_REF: ${{ vars.BT_ABA_SUPERVISION_CORRECTION_PROJECT_REF }}
+      SUPABASE_BRANCH_PR_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}
     steps:
       - name: Checkout validated commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1

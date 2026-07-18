@@ -44,7 +44,7 @@ Add two tenant-scoped append-only tables:
    - authenticated BT signer, signature method/value, and signed timestamp
    - the correction round that required the amendment
 
-Authenticated users receive no direct mutation grants. Security-definer transition RPCs perform all writes atomically with fixed search paths, explicit caller checks, and revoked `PUBLIC`/`anon` execution.
+Authenticated users receive no direct table grants. Security-definer transition RPCs perform all reads and writes atomically with `set search_path = ''`, fully qualified references, explicit caller checks, and revoked `PUBLIC`/`anon` execution.
 
 ## Authorization Boundaries
 
@@ -56,7 +56,7 @@ Authenticated users receive no direct mutation grants. Security-definer transiti
 
 ### BT
 
-- The caller must be authenticated, same-organization, and resolve through the existing exact assigned/linked BT authority for the request session and therapist.
+- The caller must be authenticated, same-organization, equal the original version-1 BT attestation signer, and still resolve through the existing exact assigned/linked BT authority for the request session and therapist.
 - Only the original BT can read the correction task and submit its amendment.
 - The BT cannot change request assignment, correction provenance, the original note, the completed session, or BCBA records.
 
@@ -96,7 +96,8 @@ The review-packet RPC returns `pending`, `resubmitted`, and authorized completed
 
 ### Original BT
 
-- Dashboard contains a focused **Corrections Required** section only when the authenticated BT has tasks.
+- The `/` Dashboard route admits an exact BT only into a correction-only render branch. It does not grant the existing staff-dashboard capability and does not run or render staff metrics, billing, client, session, or admin queries.
+- The correction-only Dashboard contains a focused **Corrections Required** section only when the authenticated BT has tasks. With no tasks, it shows a bounded empty state and a link back to Schedule.
 - A task shows **Correction Required**, the correction reason, and reviewer timestamp.
 - Opening it reuses the existing BT ABA fields and signature component, prefilled from the latest reviewable version.
 - Submission requires a fresh BT signature. Success changes the card to **Resubmitted** and removes it from the BT active correction list.
@@ -131,8 +132,10 @@ Critical-lane commands are focused Vitest/SQL smoke first, then `npm run ci:chec
 
 In scope: one forward migration, protected RPC/RLS/grant changes, supervision and BT adapters, focused Dashboard/form wiring, test/proof scripts, Linear/handoff artifacts, and a human-reviewed PR.
 
+The focused Dashboard wiring includes the minimum route/query guard needed for an exact BT to enter only the correction-only Dashboard branch. It does not add `staffDashboard` capability or broaden any existing staff query.
+
 Out of scope: notifications, analytics, PDF exports, general dashboard redesign, staffing/reassignment UI, broad role changes, session reopening, goal/billing changes, and production migration deployment.
 
 ## Rollout And Recovery
 
-Apply only to a disposable or managed PR-preview Supabase branch during verification. Production application is not part of this implementation task. Rollback is a reviewed forward migration that restores prior functions/policies/status constraints while preserving clinical correction and amendment history; it does not delete signed records.
+Apply only to a disposable or managed PR-preview Supabase branch during verification. Production application is not part of this implementation task. Rollback is a reviewed forward migration that first normalizes any `correction_required` and `resubmitted` requests to a supported prior state, then restores prior functions/policies/status constraints while preserving clinical correction and amendment history; it does not delete signed records.

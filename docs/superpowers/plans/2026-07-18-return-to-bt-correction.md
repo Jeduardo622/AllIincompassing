@@ -14,9 +14,10 @@
 - Classification: `high-risk human-reviewed`; lane: `critical`.
 - Human Supabase/security review is mandatory before merge.
 - Original `client_session_notes` rows and original BT attestations are immutable version 1.
-- Only the assigned exact BCBA may return or complete; only the original assigned/linked BT may amend.
+- Only the assigned exact BCBA may return or complete; only the original version-1 BT attestation signer who remains an active assigned/linked exact BT may amend.
 - Assignment never changes during correction or resubmission.
 - No notifications, analytics, PDF exports, staffing/reassignment, general Dashboard redesign, session reopening, goal progression, billing changes, or production migration deployment.
+- Exact BT users may enter only a correction-only Dashboard render/query branch; do not grant `staffDashboard` or expose existing staff metrics/queries.
 - New reason length: trimmed 1-2000 characters.
 - New typed signature length: 1-200 characters; drawn signatures use the existing validated point contract.
 
@@ -89,7 +90,7 @@ alter table public.supervision_session_note_requests
 
 Create append-only correction/amendment tables with organization/request/note foreign keys, positive round/version checks, unique `(request_id, correction_round)` and `(request_id, version_number)` constraints, one-active-correction partial unique index, RLS, indexed auth/join columns, explicit `authenticated` read only where a policy is necessary, and service-role grants. Prefer RPC-only browser reads when clinical payloads would otherwise require broad table policies.
 
-Implement all three new RPCs with `security definer`, `set search_path = public, app, auth`, explicit `auth.uid()`/organization resolution, row locks, exact actor validation, current-state validation, payload/signature validation copied from the canonical BT finalization contract, atomic writes, and explicit revoke/grant statements.
+Implement all three new RPCs with `security definer`, `set search_path = ''`, fully qualified references, explicit `auth.uid()`/organization resolution, row locks, original-v1-signer plus active assigned/linked exact-BT validation where applicable, current-state validation, payload/signature validation copied from the canonical BT finalization contract, atomic writes, and explicit revoke/grant statements.
 
 Update the BCBA packet RPC so `pending` and `resubmitted` are actionable, `correction_required` is visible but not completable, and ordered immutable version data is returned. Update completion to accept only `pending|resubmitted` and validate the latest packet. Never rerun session completion or recalculate `assigned_admin_user_id`.
 
@@ -292,6 +293,9 @@ git commit -m "feat: add BT correction task and re-attestation"
 **Files:**
 - Modify: `src/pages/Dashboard.tsx`
 - Modify: `src/pages/__tests__/Dashboard.dashboardQueryGate.test.tsx`
+- Modify: `src/App.tsx`
+- Modify: focused route/access tests under `src/**/__tests__/**`
+- Inspect only unless a minimal predicate is required: `src/lib/roles.ts`, `src/lib/dashboardAccess.ts`
 - Modify: `src/components/Sidebar.tsx`
 - Modify or create focused Sidebar tests beside existing Sidebar tests
 
@@ -301,7 +305,7 @@ git commit -m "feat: add BT correction task and re-attestation"
 
 - [ ] **Step 1: Write failing query and badge tests**
 
-Assert correction tasks are fetched only with authenticated organization context, return/resubmit mutations invalidate the workflow and count keys, failures call `showError`, pending/resubmitted count for the assigned BCBA, and correction-required tasks count only for their BT.
+Assert correction tasks are fetched only with authenticated organization context, return/resubmit mutations invalidate the workflow and count keys, failures call `showError`, pending/resubmitted count for the assigned BCBA, and correction-required tasks count only for their BT. Add route/query tests proving an exact BT can enter `/` only into the correction-only Dashboard branch, staff-dashboard capability remains false, and staff metrics/billing/client/session queries do not execute for BTs.
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
@@ -315,7 +319,7 @@ Expected: FAIL on missing query/mutation wiring.
 
 - [ ] **Step 3: Implement orchestration**
 
-Use TanStack Query with organization-scoped keys. Pass the resulting data and callbacks into `DashboardView`. Invalidate only supervision workflow/count keys after successful transitions. Do not add notification delivery or analytics.
+Use TanStack Query with organization-scoped keys. Pass the resulting data and callbacks into `DashboardView`. Invalidate only supervision workflow/count keys after successful transitions. Add the narrow exact-BT route/render predicate without adding `staffDashboard`; short-circuit all staff Dashboard queries and render only the correction task/empty state for BTs. Do not add notification delivery or analytics.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 
@@ -324,7 +328,7 @@ Run the same command. Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add src/pages/Dashboard.tsx src/pages/__tests__/Dashboard.dashboardQueryGate.test.tsx src/components/Sidebar.tsx src/components
+git add src/pages/Dashboard.tsx src/pages/__tests__/Dashboard.dashboardQueryGate.test.tsx src/App.tsx src/lib/roles.ts src/lib/dashboardAccess.ts src/components/Sidebar.tsx src/components
 git commit -m "feat: wire supervision correction queries"
 ```
 

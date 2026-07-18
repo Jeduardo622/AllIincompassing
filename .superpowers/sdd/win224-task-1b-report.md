@@ -155,7 +155,7 @@
 
 ## Concerns
 
-- The static migration and SQL-contract suite is green, but the live local reset/smoke path is not re-run after the composite-index ordering fix.
+- The local reset and rollback-scoped SQL smoke are green after the composite-index, named-parameter, and fixture-contract fixes.
 - The migration diff is large because Task 1B owns the full protected RPC/body/smoke slice inside one file.
 - The correction-aware packet RPC now returns additional columns; the app-layer consumer changes still belong to later WIN-224 tasks.
 

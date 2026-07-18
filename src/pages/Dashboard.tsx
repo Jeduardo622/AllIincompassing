@@ -2136,7 +2136,7 @@ const Dashboard = () => {
   const supervisionReconcileQuery = useQuery({
     queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'reconcile', organizationId ?? 'MISSING_ORG', actorUserId ?? 'NO_USER', profileId ?? 'NO_PROFILE', supervisionRoleBucket],
     queryFn: () => reconcilePendingSupervisionSessionNoteRequests(organizationId!),
-    enabled: canViewStaffDashboard && Boolean(organizationId && profileId) && !authLoading,
+    enabled: canViewStaffDashboard && Boolean(organizationId && profileId),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
@@ -2144,14 +2144,14 @@ const Dashboard = () => {
   const supervisionQuery = useQuery({
     queryKey: supervisionRequestsQueryKey,
     queryFn: () => fetchPendingSupervisionSessionNoteRequests(organizationId!),
-    enabled: canViewStaffDashboard && Boolean(organizationId && profileId) && !authLoading,
+    enabled: canViewStaffDashboard && Boolean(organizationId && profileId),
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
   const btCorrectionTasksQuery = useQuery({
     queryKey: btCorrectionTasksQueryKey,
     queryFn: () => fetchBtSupervisionCorrectionTasks(organizationId!),
-    enabled: canViewCorrectionOnlyDashboard && Boolean(organizationId && profileId) && !authLoading,
+    enabled: canViewCorrectionOnlyDashboard && Boolean(organizationId && profileId),
     staleTime: 30_000,
     refetchInterval: 30_000,
   });

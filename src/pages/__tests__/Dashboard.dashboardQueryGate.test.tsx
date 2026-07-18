@@ -323,14 +323,14 @@ describe("Dashboard staff dashboard query gate", () => {
     }));
   });
 
-  it("enables the BCBA review queue from authenticated actor scope without a context token snapshot", () => {
+  it("enables the BCBA review queue from stable profile scope while auth snapshots lag", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: null,
         profile: { id: "profile-8", organization_id: "org-9", role: "bcba" },
         effectiveRole: "bcba",
         session: null,
-        loading: false,
+        loading: true,
       }),
     );
 
@@ -347,14 +347,14 @@ describe("Dashboard staff dashboard query gate", () => {
     expect(reconcileQuery).toEqual(expect.objectContaining({ enabled: true }));
   });
 
-  it("enables exact-BT correction tasks from authenticated actor scope without a context token snapshot", () => {
+  it("enables exact-BT correction tasks from stable profile scope while auth snapshots lag", () => {
     mockUseAuth.mockReturnValue(
       authStub({
         user: null,
         profile: { id: "profile-7", organization_id: "org-9", role: "bt" },
         effectiveRole: "bt",
         session: null,
-        loading: false,
+        loading: true,
       }),
     );
 

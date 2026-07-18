@@ -611,7 +611,7 @@ describe('Dashboard without client fallbacks', () => {
     await user.click(screen.getByRole('button', { name: /complete supervision note for client four b/i }));
     const reasonInput = screen.getByLabelText('Correction reason');
 
-    await user.type(reasonInput, validReason);
+    fireEvent.change(reasonInput, { target: { value: validReason } });
     await user.click(screen.getByRole('button', { name: /return to bt/i }));
 
     await waitFor(() => {
@@ -662,7 +662,7 @@ describe('Dashboard without client fallbacks', () => {
 
     await user.click(screen.getByRole('button', { name: /complete supervision note for client four c/i }));
     const invalidReasonInput = screen.getByLabelText('Correction reason');
-    await user.type(invalidReasonInput, invalidReason);
+    fireEvent.change(invalidReasonInput, { target: { value: invalidReason } });
     await user.click(screen.getByRole('button', { name: /return to bt/i }));
 
     expect(await screen.findByText('Correction reason must be 2000 characters or fewer.')).toBeInTheDocument();
@@ -777,7 +777,9 @@ describe('Dashboard without client fallbacks', () => {
 
     await user.click(screen.getByRole('button', { name: /amend bt note for client bt/i }));
     await user.click(screen.getByRole('radio', { name: 'Type signature' }));
-    await user.type(screen.getByLabelText('Type Behavior Technician signature'), 'BT Fresh Signature');
+    fireEvent.change(screen.getByLabelText('Type Behavior Technician signature'), {
+      target: { value: 'BT Fresh Signature' },
+    });
 
     const submitButton = screen.getByRole('button', { name: /re-attest and resubmit/i });
     expect(submitButton).toBeEnabled();

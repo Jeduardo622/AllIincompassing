@@ -427,10 +427,10 @@ describe('Dashboard without client fallbacks', () => {
     expect(screen.getAllByText('Correction round 1')).toHaveLength(2);
     expect(screen.getByText('Please add the replacement behavior details.')).toBeInTheDocument();
     expect(screen.getByText(/requested jul 1, 2026/i)).toBeInTheDocument();
-    expect(screen.getByText('Version 1')).toBeInTheDocument();
-    expect(screen.getByText('Initial submission.')).toBeInTheDocument();
-    expect(screen.getByText('Version 2')).toBeInTheDocument();
+    const versionHeadings = screen.getAllByRole('heading', { name: /version \d/i }).map((heading) => heading.textContent);
+    expect(versionHeadings).toEqual(['Version 2', 'Version 1']);
     expect(screen.getAllByText('Corrected submission.').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Initial submission.')).toBeInTheDocument();
   });
 
   it('shows a Return to BT action only when the request can be returned and trims the reason', async () => {
@@ -479,11 +479,16 @@ describe('Dashboard without client fallbacks', () => {
 
     await user.click(screen.getByRole('button', { name: /complete supervision note for client four/i }));
     expect(screen.getByRole('button', { name: /return to bt/i })).toBeInTheDocument();
+    expect(screen.getByLabelText('Correction reason')).toBeRequired();
 
     await user.click(screen.getByRole('button', { name: /return to bt/i }));
-    expect(await screen.findByText('Correction reason is required.')).toBeInTheDocument();
+    const reasonInput = screen.getByLabelText('Correction reason');
+    const reasonError = await screen.findByText('Correction reason is required.');
+    expect(reasonInput).toHaveAttribute('aria-invalid', 'true');
+    expect(reasonError).toHaveAttribute('id', 'supervision-return-reason-error');
+    expect(reasonInput).toHaveAttribute('aria-describedby', 'supervision-return-reason-error');
 
-    await user.type(screen.getByLabelText('Correction reason'), '  Need graph details updated.  ');
+    await user.type(reasonInput, '  Need graph details updated.  ');
     await user.click(screen.getByRole('button', { name: /return to bt/i }));
 
     await waitFor(() => {
@@ -492,6 +497,112 @@ describe('Dashboard without client fallbacks', () => {
         'Need graph details updated.',
       );
     });
+  });
+
+  it('allows a 2000 character correction reason and rejects 2001 characters', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+    const onReturnSupervisionNote = vi.fn().mockResolvedValue(undefined);
+    const validReason = 'a'.repeat(2000);
+    const invalidReason = 'b'.repeat(2001);
+
+    render(
+      <View
+        {...baseProps}
+        supervisionRequests={[
+          {
+            id: 'request-4b',
+            organizationId: 'org-1',
+            sessionId: 'session-4b',
+            clientId: 'client-4b',
+            btTherapistId: 'bt-4b',
+            assignedAdminUserId: 'bcba-4b',
+            status: 'pending',
+            statusLabel: 'Pending Review',
+            createdAt: '2026-07-02T20:00:00.000Z',
+            sessionStartTime: '2026-07-02T18:00:00.000Z',
+            sessionEndTime: '2026-07-02T19:00:00.000Z',
+            placeOfService: 'Home',
+            clientName: 'Client Four B',
+            btTherapistName: 'BT Four B',
+            btTherapistTitle: 'BT',
+            canComplete: true,
+            canReturn: true,
+            latestVersionNumber: 1,
+            correction: null,
+            versions: [],
+            btReview: {
+              noteId: 'bt-note-4b',
+              responses: {},
+              templateSnapshot: { sections: [] },
+              signatureMethod: 'typed',
+              signedAt: '2026-07-02T19:00:00.000Z',
+            },
+          },
+        ]}
+        supervisionTemplate={null}
+        onReturnSupervisionNote={onReturnSupervisionNote}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /complete supervision note for client four b/i }));
+    const reasonInput = screen.getByLabelText('Correction reason');
+
+    await user.type(reasonInput, validReason);
+    await user.click(screen.getByRole('button', { name: /return to bt/i }));
+
+    await waitFor(() => {
+      expect(onReturnSupervisionNote).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'request-4b' }),
+        validReason,
+      );
+    });
+
+    render(
+      <View
+        {...baseProps}
+        supervisionRequests={[
+          {
+            id: 'request-4c',
+            organizationId: 'org-1',
+            sessionId: 'session-4c',
+            clientId: 'client-4c',
+            btTherapistId: 'bt-4c',
+            assignedAdminUserId: 'bcba-4c',
+            status: 'pending',
+            statusLabel: 'Pending Review',
+            createdAt: '2026-07-02T20:00:00.000Z',
+            sessionStartTime: '2026-07-02T18:00:00.000Z',
+            sessionEndTime: '2026-07-02T19:00:00.000Z',
+            placeOfService: 'Home',
+            clientName: 'Client Four C',
+            btTherapistName: 'BT Four C',
+            btTherapistTitle: 'BT',
+            canComplete: true,
+            canReturn: true,
+            latestVersionNumber: 1,
+            correction: null,
+            versions: [],
+            btReview: {
+              noteId: 'bt-note-4c',
+              responses: {},
+              templateSnapshot: { sections: [] },
+              signatureMethod: 'typed',
+              signedAt: '2026-07-02T19:00:00.000Z',
+            },
+          },
+        ]}
+        supervisionTemplate={null}
+        onReturnSupervisionNote={onReturnSupervisionNote}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /complete supervision note for client four c/i }));
+    const invalidReasonInput = screen.getByLabelText('Correction reason');
+    await user.type(invalidReasonInput, invalidReason);
+    await user.click(screen.getByRole('button', { name: /return to bt/i }));
+
+    expect(await screen.findByText('Correction reason must be 2000 characters or fewer.')).toBeInTheDocument();
   });
 
   it('does not allow correction-required requests to be completed', async () => {

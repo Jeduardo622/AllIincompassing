@@ -305,7 +305,7 @@ const getSupervisionStatusLabel = (request: PendingSupervisionSessionNoteRequest
 );
 
 const sortBtVersions = (versions: PendingSupervisionSessionNoteRequest['versions']) => (
-  [...versions].sort((left, right) => left.versionNumber - right.versionNumber)
+  [...versions].sort((left, right) => right.versionNumber - left.versionNumber)
 );
 
 const collectSupervisionResponses = (
@@ -1012,12 +1012,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         }
                       }}
                       rows={4}
-                      maxLength={2000}
+                      required
+                      aria-invalid={returnReasonError ? 'true' : 'false'}
+                      aria-describedby={returnReasonError ? 'supervision-return-reason-error' : undefined}
                       disabled={isReturningSupervisionNote || isCompletingSupervisionNote}
                       className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-dark dark:text-white"
                     />
                     {returnReasonError && (
-                      <p className="text-sm text-red-600 dark:text-red-300">{returnReasonError}</p>
+                      <p id="supervision-return-reason-error" className="text-sm text-red-600 dark:text-red-300">{returnReasonError}</p>
                     )}
                     <div className="flex justify-end">
                       <button

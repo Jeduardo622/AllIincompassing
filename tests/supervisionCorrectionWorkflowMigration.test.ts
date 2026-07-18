@@ -67,12 +67,15 @@ describe('supervision correction workflow migration', () => {
     }
   });
 
-  it('defines fixed-search-path security-definer staged RPC shells for return, BT correction inbox, and BT resubmission', () => {
+  it('defines fixed-search-path security-definer RPCs for return, BT correction inbox, BT resubmission, packet review, completion, and action counts', () => {
     const returnToBt = functionBody('return_supervision_session_note_request_to_bt');
     const btTasks = functionBody('get_bt_supervision_correction_tasks');
     const resubmit = functionBody('resubmit_bt_supervision_correction');
+    const packetReview = functionBody('get_pending_supervision_review_packets');
+    const completion = functionBody('complete_supervision_session_note_request');
+    const actionCount = functionBody('get_supervision_session_note_action_count');
 
-    for (const body of [returnToBt, btTasks, resubmit]) {
+    for (const body of [returnToBt, btTasks, resubmit, packetReview, completion, actionCount]) {
       expect(body).toMatch(/security definer/i);
       expect(body).toMatch(/set search_path = ''/i);
     }
@@ -80,12 +83,18 @@ describe('supervision correction workflow migration', () => {
     expect(sql).toMatch(/create or replace function public\.return_supervision_session_note_request_to_bt/i);
     expect(sql).toMatch(/create or replace function public\.get_bt_supervision_correction_tasks/i);
     expect(sql).toMatch(/create or replace function public\.resubmit_bt_supervision_correction/i);
+    expect(sql).toMatch(/create or replace function public\.get_pending_supervision_review_packets\(\)/i);
+    expect(sql).toMatch(/create or replace function public\.complete_supervision_session_note_request\(uuid, uuid, jsonb\)/i);
+    expect(sql).toMatch(/create or replace function public\.get_supervision_session_note_action_count\(\)/i);
     expect(sql).toMatch(/revoke all on function public\.return_supervision_session_note_request_to_bt\(uuid, text\) from public, anon/i);
     expect(sql).toMatch(/revoke all on function public\.get_bt_supervision_correction_tasks\(\) from public, anon/i);
     expect(sql).toMatch(/revoke all on function public\.resubmit_bt_supervision_correction\(/i);
-    expect(sql).not.toMatch(/grant execute on function public\.return_supervision_session_note_request_to_bt\(uuid, text\) to authenticated/i);
-    expect(sql).not.toMatch(/grant execute on function public\.get_bt_supervision_correction_tasks\(\) to authenticated/i);
-    expect(sql).not.toMatch(/grant execute on function public\.resubmit_bt_supervision_correction\([^)]+\) to authenticated/i);
+    expect(sql).toMatch(/grant execute on function public\.return_supervision_session_note_request_to_bt\(uuid, text\) to authenticated, service_role/i);
+    expect(sql).toMatch(/grant execute on function public\.get_bt_supervision_correction_tasks\(\) to authenticated, service_role/i);
+    expect(sql).toMatch(/grant execute on function public\.resubmit_bt_supervision_correction\([^)]+\) to authenticated, service_role/i);
+    expect(sql).toMatch(/grant execute on function public\.get_pending_supervision_review_packets\(\) to authenticated, service_role/i);
+    expect(sql).toMatch(/grant execute on function public\.complete_supervision_session_note_request\(uuid, uuid, jsonb\) to authenticated, service_role/i);
+    expect(sql).toMatch(/grant execute on function public\.get_supervision_session_note_action_count\(\) to authenticated, service_role/i);
   });
 
   it('enforces append-only mutation guards on the new correction history tables', () => {
@@ -102,5 +111,121 @@ describe('supervision correction workflow migration', () => {
     expect(sql).toMatch(/before update on public\.bt_session_note_amendments/i);
     expect(sql).toMatch(/create trigger bt_session_note_amendments_prevent_delete/i);
     expect(sql).toMatch(/before delete on public\.bt_session_note_amendments/i);
+  });
+
+  it('requires assigned exact BCBA return authorization with a trimmed nonblank reason on pending or resubmitted requests', () => {
+    const body = functionBody('return_supervision_session_note_request_to_bt');
+
+    expect(body).toMatch(/auth\.uid\(\)/i);
+    expect(body).toMatch(/app\.resolve_user_organization_id\(v_actor\)/i);
+    expect(body).toMatch(/app\.user_has_exact_active_role_for_org\([\s\S]*array\['bcba'\]::text\[\]/i);
+    expect(body).toMatch(/assigned_admin_user_id is distinct from v_actor/i);
+    expect(body).toMatch(/v_reason := btrim\(coalesce\(p_reason, ''\)\)/i);
+    expect(body).toMatch(/char_length\(v_reason\) = 0/i);
+    expect(body).toMatch(/char_length\(v_reason\) > 2000/i);
+    expect(body).toMatch(/v_request\.status not in \('pending', 'resubmitted'\)/i);
+    expect(body).toMatch(/for update/i);
+    expect(body).toMatch(/insert into public\.supervision_session_note_corrections/i);
+    expect(body).toMatch(/correction_round/i);
+    expect(body).toMatch(/set status = 'correction_required'/i);
+  });
+
+  it('limits BT correction tasks to the original v1 signer who remains the active exact BT on the same therapist link', () => {
+    const body = functionBody('get_bt_supervision_correction_tasks');
+
+    expect(body).toMatch(/auth\.uid\(\)/i);
+    expect(body).toMatch(/app\.resolve_user_organization_id\(v_actor\)/i);
+    expect(body).toMatch(/app\.user_has_exact_active_role_for_org\([\s\S]*array\['bt'\]::text\[\]/i);
+    expect(body).toMatch(/session_note_attestations attestation/i);
+    expect(body).toMatch(/attestation\.attestation_role = 'bt'/i);
+    expect(body).toMatch(/attestation\.supervision_note_id is null/i);
+    expect(body).toMatch(/attestation\.signer_user_id = v_actor/i);
+    expect(body).toMatch(/request\.status = 'correction_required'/i);
+    expect(body).toMatch(/request\.assigned_admin_user_id/i);
+    expect(body).toMatch(/request\.bt_therapist_id/i);
+    expect(body).toMatch(/public\.user_therapist_links/i);
+    expect(body).toMatch(/therapist\.status = 'active'/i);
+    expect(body).toMatch(/upper\(btrim\(coalesce\(therapist\.title, ''\)\)\) in \('BT', 'RBT'\)/i);
+    expect(body).toMatch(/bt_aba_template_snapshot/i);
+    expect(body).toMatch(/bt_aba_responses/i);
+    expect(body).toMatch(/jsonb_agg/i);
+  });
+
+  it('resubmits only immutable-template amendments with a fresh valid BT signature, monotonic versions, and atomic correction resolution', () => {
+    const body = functionBody('resubmit_bt_supervision_correction');
+
+    expect(body).toMatch(/auth\.uid\(\)/i);
+    expect(body).toMatch(/app\.resolve_user_organization_id\(v_actor\)/i);
+    expect(body).toMatch(/app\.user_has_exact_active_role_for_org\([\s\S]*array\['bt'\]::text\[\]/i);
+    expect(body).toMatch(/session_note_attestations attestation/i);
+    expect(body).toMatch(/attestation\.signer_user_id = v_actor/i);
+    expect(body).toMatch(/v_request\.status <> 'correction_required'/i);
+    expect(body).toMatch(/for update/i);
+    expect(body).toMatch(/v_signature_method not in \('drawn', 'typed'\)/i);
+    expect(body).toMatch(/char_length\(v_signature_value\) > 200/i);
+    expect(body).toMatch(/left\(v_signature_value, 7\) <> 'points:'/i);
+    expect(body).toMatch(/invalid drawn BT signature serialization|valid BT signature is required/i);
+    expect(body).toMatch(/invalid BT ABA session note response type or option/i);
+    expect(body).toMatch(/required BT ABA session note response missing/i);
+    expect(body).toMatch(/insert into public\.bt_session_note_amendments/i);
+    expect(body).toMatch(/version_number[\s\S]*coalesce\(max\(amendment\.version_number\), 1\) \+ 1/i);
+    expect(body).toMatch(/update public\.supervision_session_note_corrections/i);
+    expect(body).toMatch(/resolved_at = timezone\('utc', now\(\)\)/i);
+    expect(body).toMatch(/resulting_amendment_id = v_amendment_id/i);
+    expect(body).toMatch(/update public\.supervision_session_note_requests/i);
+    expect(body).toMatch(/set status = 'resubmitted'/i);
+    expect(body).not.toMatch(/assigned_admin_user_id =/i);
+    expect(body).not.toMatch(/bt_therapist_id =/i);
+    expect(body).not.toMatch(/update public\.client_session_notes/i);
+  });
+
+  it('returns correction-aware BCBA packets with original and amendment versions plus server-derived action flags', () => {
+    const body = functionBody('get_pending_supervision_review_packets');
+
+    expect(body).toMatch(/request\.status in \('pending', 'correction_required', 'resubmitted', 'completed'\)/i);
+    expect(body).toMatch(/app\.user_has_any_active_role_for_org\([\s\S]*array\['admin', 'super_admin', 'org_admin', 'org_super_admin'\]/i);
+    expect(body).toMatch(/request\.assigned_admin_user_id = auth\.uid\(\)|request\.assigned_admin_user_id = v_actor/i);
+    expect(body).toMatch(/app\.user_has_exact_active_role_for_org\([\s\S]*array\['bcba'\]::text\[\]/i);
+    expect(body).toMatch(/bt_session_note_amendments/i);
+    expect(body).toMatch(/jsonb_build_object\([\s\S]*'version_number', 1/i);
+    expect(body).toMatch(/jsonb_agg\(/i);
+    expect(body).toMatch(/order by amendment\.version_number asc/i);
+    expect(body).toMatch(/correction_reason/i);
+    expect(body).toMatch(/requested_at/i);
+    expect(body).toMatch(/can_complete/i);
+    expect(body).toMatch(/can_return/i);
+    expect(body).toMatch(/request\.status in \('pending', 'resubmitted'\)/i);
+    expect(body).toMatch(/request\.status <> 'correction_required'/i);
+  });
+
+  it('completes only pending or resubmitted requests against the latest reviewable packet without rerunning BT closeout side effects', () => {
+    const body = functionBody('complete_supervision_session_note_request');
+
+    expect(body).toMatch(/v_request\.status not in \('pending', 'resubmitted'\)/i);
+    expect(body).toMatch(/bt_session_note_amendments/i);
+    expect(body).toMatch(/order by amendment\.version_number desc/i);
+    expect(body).toMatch(/limit 1/i);
+    expect(body).toMatch(/session_note_attestations/i);
+    expect(body).toMatch(/attestation_role = 'bt'/i);
+    expect(body).toMatch(/assigned_admin_user_id is distinct from v_actor/i);
+    expect(body).toMatch(/insert into public\.supervision_session_notes/i);
+    expect(body).toMatch(/set status = 'completed'/i);
+    expect(body).not.toMatch(/finalize_session_note_with_progression/i);
+    expect(body).not.toMatch(/record_session_audit/i);
+    expect(body).not.toMatch(/update public\.sessions/i);
+  });
+
+  it('replaces raw notification counting with a role-safe supervision action count rpc', () => {
+    const body = functionBody('get_supervision_session_note_action_count');
+
+    expect(body).toMatch(/auth\.uid\(\)/i);
+    expect(body).toMatch(/app\.resolve_user_organization_id\(v_actor\)/i);
+    expect(body).toMatch(/app\.user_has_exact_active_role_for_org\([\s\S]*array\['bcba'\]::text\[\]/i);
+    expect(body).toMatch(/app\.user_has_exact_active_role_for_org\([\s\S]*array\['bt'\]::text\[\]/i);
+    expect(body).toMatch(/request\.status in \('pending', 'resubmitted'\)/i);
+    expect(body).toMatch(/request\.status = 'correction_required'/i);
+    expect(body).toMatch(/attestation\.signer_user_id = v_actor/i);
+    expect(body).toMatch(/return coalesce\(v_count, 0\)/i);
+    expect(body).not.toMatch(/from public\.supervision_session_note_requests[\s\S]*request\.organization_id = v_actor_org[\s\S]*request\.status = 'pending'[\s\S]*return count/i);
   });
 });

@@ -10,6 +10,7 @@ type TestCapability = 'staffDashboard' | 'viewClients' | 'viewSchedule';
 
 let authRole: TestRole = 'client';
 let persistedProfileRole: TestRole | null = null;
+let profileAvailable = true;
 let authIsGuardian = false;
 const { mockLoggerInfo } = vi.hoisted(() => ({
   mockLoggerInfo: vi.fn(),
@@ -33,7 +34,7 @@ vi.mock('../../lib/authContext', () => {
   };
   return {
     useAuth: () => ({
-      profile: { role: persistedProfileRole ?? authRole, is_active: true },
+      profile: profileAvailable ? { role: persistedProfileRole ?? authRole, is_active: true } : null,
       user: { id: 'user-1', email: 'user@example.com' },
       loading: false,
       profileLoading: false,
@@ -138,6 +139,7 @@ describe('App navigation landing', () => {
   beforeEach(() => {
     authRole = 'client';
     persistedProfileRole = null;
+    profileAvailable = true;
     authIsGuardian = false;
     mockLoggerInfo.mockReset();
   });
@@ -205,6 +207,16 @@ describe('App navigation landing', () => {
 
   it('keeps exact BT users on the correction-capable dashboard landing', async () => {
     authRole = 'bt';
+    window.history.pushState({}, '', '/');
+    renderApp();
+
+    expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it('keeps an authoritative BT assignment on the correction dashboard while the profile is unavailable', async () => {
+    authRole = 'bt';
+    profileAvailable = false;
     window.history.pushState({}, '', '/');
     renderApp();
 

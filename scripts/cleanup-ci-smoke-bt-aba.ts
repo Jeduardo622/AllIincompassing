@@ -124,7 +124,9 @@ export const cleanupMarkerOwnedBtFixture = async (
       const audit = await client.from(table).select("id", { count: "exact", head: true }).eq("session_id", exactSessionId);
       if (audit.error || audit.count !== 0) throw new Error(`Cleanup refuses a session with ${table} audit rows.`);
     }
-    for (const table of ["client_session_notes", "session_goals", "sessions"]) {
+    // Delete the review request while the marker-owned organization graph is
+    // still intact so immutable-history triggers can validate proof ownership.
+    for (const table of ["supervision_session_note_requests", "client_session_notes", "session_goals", "sessions"]) {
       await deleteExact(client, table, table === "sessions" ? "id" : "session_id", exactSessionId);
     }
   }

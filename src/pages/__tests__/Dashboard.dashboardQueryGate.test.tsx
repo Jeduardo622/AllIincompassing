@@ -391,6 +391,26 @@ describe("Dashboard staff dashboard query gate", () => {
     expect(correctionTasksQuery).toEqual(expect.objectContaining({ enabled: true }));
   });
 
+  it("enables exact-BT correction tasks from authoritative role and active organization metadata before profile hydration", () => {
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "bt-user-7", user_metadata: { organization_id: "org-9" } },
+        profile: null,
+        effectiveRole: "bt",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+      }),
+    );
+
+    renderDashboard();
+
+    const correctionTasksQuery = capturedQueryConfigs.find((config) =>
+      JSON.stringify(config.queryKey) === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "bt-user-7", "NO_PROFILE", "bt"]),
+    );
+
+    expect(correctionTasksQuery).toEqual(expect.objectContaining({ enabled: true }));
+  });
+
   it("renders a correction-only empty state for BT users without staff dashboard content", async () => {
     mockUseAuth.mockReturnValue(
       authStub({

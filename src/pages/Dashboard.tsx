@@ -101,8 +101,10 @@ const fieldRequiresResponse = (field: SupervisionTemplateField, responses: Recor
   return String(dependencyValue ?? '').trim() === expected;
 };
 
-const isBtCorrectionDashboardRole = (role: string | null | undefined) =>
-  role === 'bt';
+const isBtCorrectionDashboardRole = (
+  effectiveRole: string | null | undefined,
+  profileRole: string | null | undefined,
+) => effectiveRole === 'bt' && (profileRole == null || profileRole === 'bt');
 
 export interface DashboardViewProps {
   dashboardData?: DashboardDataShape | null;
@@ -2094,7 +2096,7 @@ const Dashboard = () => {
   const queryClient = useQueryClient();
   const { effectiveRole, session, loading: authLoading, user, profile } = useAuth();
   const canViewStaffDashboard = canAccessStaffDashboard(effectiveRole);
-  const canViewCorrectionOnlyDashboard = isBtCorrectionDashboardRole(profile?.role);
+  const canViewCorrectionOnlyDashboard = isBtCorrectionDashboardRole(effectiveRole, profile?.role);
   const hasAccessToken = Boolean(session?.access_token && session.access_token.trim().length > 0);
   const organizationId = useActiveOrganizationId();
   const profileId = profile?.id ?? null;
@@ -2152,7 +2154,7 @@ const Dashboard = () => {
   const btCorrectionTasksQuery = useQuery({
     queryKey: btCorrectionTasksQueryKey,
     queryFn: () => fetchBtSupervisionCorrectionTasks(organizationId!),
-    enabled: canViewCorrectionOnlyDashboard && Boolean(organizationId && profileId),
+    enabled: canViewCorrectionOnlyDashboard && Boolean(organizationId),
     staleTime: 30_000,
     refetchInterval: 30_000,
   });

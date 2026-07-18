@@ -51,16 +51,6 @@ const makeUpdateBuilder = (updatedRow: Record<string, unknown> | null) => {
   return builder;
 };
 
-const makeInsertBuilder = () => {
-  const builder: any = {};
-  const chain = () => builder;
-  builder.upsert = vi.fn(() => chain());
-  builder.select = vi.fn(() => chain());
-  builder.then = (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
-    resolve({ data: [{ id: "supervision-request-1" }], error: null });
-  return builder;
-};
-
 const createStubLogger = () => {
   const stub: any = {
     info: vi.fn(),
@@ -290,7 +280,7 @@ describe("sessions-complete handler", () => {
     expect(database.supabaseAdmin.from).toHaveBeenCalledWith("user_therapist_links");
   });
 
-  it("creates a pending supervision note request after a BT session is completed", async () => {
+  it("routes supervision request creation through the canonical packet-aware RPC", async () => {
     const session = makeSession({
       id: "session-supervision-1",
       client_id: "client-supervision-1",
@@ -298,20 +288,18 @@ describe("sessions-complete handler", () => {
       therapist_id: "bt-therapist-1",
     });
     const updatedRow = { id: "session-supervision-1", status: "completed", updated_at: "2026-03-31T10:05:00Z" };
-    const supervisionRequestInsert = makeInsertBuilder();
+    const db = makeDb();
 
     vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
       makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
     );
     (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
       if (table === "sessions") return makeUpdateBuilder(updatedRow);
-      if (table === "therapists") return makeSelectBuilder([{ id: "bt-therapist-1", title: "BT" }]);
-      if (table === "supervision_session_note_requests") return supervisionRequestInsert;
       return makeSelectBuilder([]);
     });
 
     const response = await handleSessionCompletion(
-      makeDb(),
+      db,
       "org-1",
       { session_id: "session-supervision-1", outcome: "completed", notes: null },
       "bt-therapist-1",
@@ -320,17 +308,11 @@ describe("sessions-complete handler", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(database.supabaseAdmin.from).toHaveBeenCalledWith("supervision_session_note_requests");
-    expect(supervisionRequestInsert.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organization_id: "org-1",
-        session_id: "session-supervision-1",
-        client_id: "client-supervision-1",
-        bt_therapist_id: "bt-therapist-1",
-        status: "pending",
-      }),
-      { onConflict: "session_id", ignoreDuplicates: true },
+    expect(db.rpc).toHaveBeenCalledWith(
+      "create_supervision_session_note_request_for_completed_session",
+      { p_session_id: "session-supervision-1" },
     );
+    expect(database.supabaseAdmin.from).not.toHaveBeenCalledWith("supervision_session_note_requests");
   });
 
   it("denies a therapist completing another therapist's session (403 FORBIDDEN)", async () => {

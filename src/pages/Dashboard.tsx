@@ -1709,7 +1709,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         }
                       }}
                       rows={4}
-                      required
+                      aria-required="true"
                       aria-invalid={returnReasonError ? 'true' : 'false'}
                       aria-describedby={returnReasonError ? 'supervision-return-reason-error' : undefined}
                       disabled={isReturningSupervisionNote || isCompletingSupervisionNote}

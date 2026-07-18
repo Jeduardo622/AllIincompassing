@@ -150,6 +150,7 @@ describe('Dashboard without client fallbacks', () => {
             btTherapistName: 'BT One',
             btTherapistTitle: 'BT',
             canComplete: true,
+            canReturn: true,
             btReview: {
               noteId: 'bt-note-1',
               responses: {
@@ -215,6 +216,7 @@ describe('Dashboard without client fallbacks', () => {
     await user.type(screen.getByLabelText('Type BCBA signature'), 'Supervisor Name');
 
     expect(screen.getByLabelText('Type BCBA signature')).toHaveValue('Supervisor Name');
+    expect(screen.getByLabelText('Correction reason')).not.toHaveAttribute('required');
     expect(screen.getByRole('button', { name: /sign and complete supervision note/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /sign and complete supervision note/i }).closest('form')).not.toBeNull();
 
@@ -542,7 +544,8 @@ describe('Dashboard without client fallbacks', () => {
 
     await user.click(screen.getByRole('button', { name: /complete supervision note for client four/i }));
     expect(screen.getByRole('button', { name: /return to bt/i })).toBeInTheDocument();
-    expect(screen.getByLabelText('Correction reason')).toBeRequired();
+    expect(screen.getByLabelText('Correction reason')).not.toHaveAttribute('required');
+    expect(screen.getByLabelText('Correction reason')).toHaveAttribute('aria-required', 'true');
 
     await user.click(screen.getByRole('button', { name: /return to bt/i }));
     const reasonInput = screen.getByLabelText('Correction reason');

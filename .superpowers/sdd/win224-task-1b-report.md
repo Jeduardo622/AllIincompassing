@@ -99,6 +99,25 @@
   - moved the `(id, organization_id)` unique indexes for `supervision_session_note_requests` and `client_session_notes` before the new correction/amendment tables so the composite foreign keys can resolve during migration creation.
 - Not rerun live after that fix because the parent handoff requested conclusion after the current focused hook.
 
+## July 18, 2026 Follow-up
+
+- Added a targeted contract guard for the packet RPC replacement sequence:
+  - revoke old execute grants
+  - `drop function if exists public.get_pending_supervision_review_packets()`
+  - recreate with the corrected `returns table` shape
+  - regrant authenticated execute
+- Kept the approved admin-family packet read fallback intact.
+  - Admin-family users still retain operational read visibility through `get_pending_supervision_review_packets()`.
+  - `can_return` and `can_complete` remain false unless the caller is the assigned exact BCBA.
+- Extended the synthetic SQL smoke with a same-org pure admin user to prove:
+  - packet read visibility is allowed
+  - admin return is denied
+  - admin completion is denied
+- Follow-up command:
+  - `npx vitest run tests/supervisionCorrectionWorkflowMigration.test.ts`
+- Follow-up result:
+  - PASS, `13` tests passed on July 18, 2026.
+
 ## Self-Review
 
 - Checked that every new authenticated RPC:

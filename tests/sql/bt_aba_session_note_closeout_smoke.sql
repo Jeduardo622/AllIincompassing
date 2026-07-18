@@ -67,11 +67,14 @@ values
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b012', 'authenticated', 'authenticated', 'win221-cross@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b002"}'::jsonb),
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b013', 'authenticated', 'authenticated', 'win221-bcba@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb),
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b014', 'authenticated', 'authenticated', 'win221-bcba-peer@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb),
-  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b016', 'authenticated', 'authenticated', 'win221-cross-bcba@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b002"}'::jsonb);
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b016', 'authenticated', 'authenticated', 'win221-cross-bcba@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b002"}'::jsonb),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b017', 'authenticated', 'authenticated', 'win221-admin@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb);
 
 select set_config('app.bypass_profile_role_guard', 'on', true);
 update public.profiles
-set role = case when id in (
+set role = case when id = '00000000-0000-4000-8000-00000000b017'
+      then 'admin'::public.role_type
+    when id in (
       '00000000-0000-4000-8000-00000000b013',
       '00000000-0000-4000-8000-00000000b014',
       '00000000-0000-4000-8000-00000000b016'
@@ -89,7 +92,8 @@ where id in (
   '00000000-0000-4000-8000-00000000b012',
   '00000000-0000-4000-8000-00000000b013',
   '00000000-0000-4000-8000-00000000b014',
-  '00000000-0000-4000-8000-00000000b016'
+  '00000000-0000-4000-8000-00000000b016',
+  '00000000-0000-4000-8000-00000000b017'
 );
 select set_config('app.bypass_profile_role_guard', 'off', true);
 
@@ -116,6 +120,11 @@ from (values
 ) users(id)
 cross join public.roles roles
 where roles.name = 'bcba';
+
+insert into public.user_roles (user_id, role_id, is_active)
+select '00000000-0000-4000-8000-00000000b017', roles.id, true
+from public.roles roles
+where roles.name = 'admin';
 
 insert into public.therapists (id, email, full_name, first_name, last_name, title, status, organization_id)
 values
@@ -458,6 +467,48 @@ begin
   end if;
 end
 $win224_round1_return$;
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b017', true);
+do $win224_admin_read_only$
+declare
+  v_packets record;
+begin
+  select *
+  into v_packets
+  from public.get_pending_supervision_review_packets()
+  where request_id = '00000000-0000-4000-8000-00000000b060';
+
+  if v_packets.request_id is null
+     or v_packets.request_status <> 'correction_required'
+     or v_packets.can_complete is not false
+     or v_packets.can_return is not false then
+    raise exception 'admin-family packet visibility did not stay read-only: %', row_to_json(v_packets);
+  end if;
+
+  begin
+    perform public.return_supervision_session_note_request_to_bt(
+      '00000000-0000-4000-8000-00000000b060',
+      'Admin should not be able to return this note.'
+    );
+    raise exception 'admin-family user unexpectedly returned the correction request';
+  exception when sqlstate '42501' then null; end;
+
+  begin
+    perform public.complete_supervision_session_note_request(
+      '00000000-0000-4000-8000-00000000b060',
+      (select template.id
+       from public.session_note_templates template
+       where template.organization_id = '00000000-0000-4000-8000-00000000b001'
+         and template.template_type = 'supervision_session_note'
+         and template.template_name = 'Supervision Session Note'
+       order by template.updated_at desc, template.id desc
+       limit 1),
+      '{"purpose_of_session":["Direct Supervision"],"rbt_in_attendance":"Yes","rbt_support_received":["Modeled strategies/interventions"],"skill_strategies_interventions_used":["N/A"],"behavior_strategies_interventions_used":["N/A"],"coordination_of_care":"No team collaboration occurred during this session","client_response_to_treatment":"Admin should not be able to sign this.","session_note_description":"Admin read-only proof.","bcba_licensure_credential":"ADMIN-NOT-ALLOWED","bcba_supervisor_signature":{"method":"typed","value":"Read Only Admin"}}'::jsonb
+    );
+    raise exception 'admin-family user unexpectedly completed the supervision note';
+  exception when sqlstate '42501' then null; end;
+end
+$win224_admin_read_only$;
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b011', true);
 do $win224_same_org_bt_visibility$

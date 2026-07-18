@@ -92,6 +92,7 @@ describe('supervision correction workflow migration', () => {
     expect(sql).toMatch(/grant execute on function public\.return_supervision_session_note_request_to_bt\(uuid, text\) to authenticated, service_role/i);
     expect(sql).toMatch(/grant execute on function public\.get_bt_supervision_correction_tasks\(\) to authenticated, service_role/i);
     expect(sql).toMatch(/grant execute on function public\.resubmit_bt_supervision_correction\([^)]+\) to authenticated, service_role/i);
+    expect(sql).toMatch(/revoke all on function public\.get_pending_supervision_review_packets\(\) from public, anon[\s\S]*drop function if exists public\.get_pending_supervision_review_packets\(\)[\s\S]*create or replace function public\.get_pending_supervision_review_packets\(\)[\s\S]*grant execute on function public\.get_pending_supervision_review_packets\(\) to authenticated, service_role/i);
     expect(sql).toMatch(/grant execute on function public\.get_pending_supervision_review_packets\(\) to authenticated, service_role/i);
     expect(sql).toMatch(/grant execute on function public\.complete_supervision_session_note_request\(uuid, uuid, jsonb\) to authenticated, service_role/i);
     expect(sql).toMatch(/grant execute on function public\.get_supervision_session_note_action_count\(\) to authenticated, service_role/i);
@@ -194,6 +195,8 @@ describe('supervision correction workflow migration', () => {
     expect(body).toMatch(/requested_at/i);
     expect(body).toMatch(/can_complete/i);
     expect(body).toMatch(/can_return/i);
+    expect(body).toMatch(/\(\s*request\.assigned_admin_user_id = v_actor[\s\S]*array\['bcba'\]::text\[\][\s\S]*\) as can_complete/i);
+    expect(body).toMatch(/\(\s*request\.assigned_admin_user_id = v_actor[\s\S]*array\['bcba'\]::text\[\][\s\S]*request\.status in \('pending', 'resubmitted'\)[\s\S]*\) as can_return/i);
     expect(body).toMatch(/request\.status in \('pending', 'resubmitted'\)/i);
     expect(body).toMatch(/request\.status <> 'correction_required'/i);
   });

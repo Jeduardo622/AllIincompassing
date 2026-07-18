@@ -882,6 +882,10 @@ revoke all on function public.resubmit_bt_supervision_correction(uuid, jsonb, te
 revoke all on function public.resubmit_bt_supervision_correction(uuid, jsonb, text, text) from authenticated;
 grant execute on function public.resubmit_bt_supervision_correction(uuid, jsonb, text, text) to authenticated, service_role;
 
+revoke all on function public.get_pending_supervision_review_packets() from public, anon;
+revoke all on function public.get_pending_supervision_review_packets() from authenticated;
+drop function if exists public.get_pending_supervision_review_packets();
+
 create or replace function public.get_pending_supervision_review_packets()
 returns table (
   request_id uuid,
@@ -1103,7 +1107,6 @@ begin
 end;
 $$;
 
-revoke all on function public.get_pending_supervision_review_packets() from public, anon;
 grant execute on function public.get_pending_supervision_review_packets() to authenticated, service_role;
 
 create or replace function public.get_supervision_session_note_action_count()

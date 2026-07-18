@@ -154,6 +154,13 @@ jobs:
             echo "branch_name=${SUPABASE_BRANCH_NAME}"
           } > "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
 
+      - name: Validate managed preview identifiers
+        run: |
+          if [ -z "${SUPABASE_BRANCH_ID:-}" ] || [ -z "${SUPABASE_BRANCH_PROJECT_REF:-}" ]; then
+            echo "::error::WIN-224 managed preview identifiers are not configured."
+            exit 1
+          fi
+
       - name: Validate managed PR preview branch and retrieve masked keys
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

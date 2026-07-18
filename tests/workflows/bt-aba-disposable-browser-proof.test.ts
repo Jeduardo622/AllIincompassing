@@ -112,6 +112,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     const proof = workflow.jobs?.proof;
     const proofSource = JSON.stringify(proof);
     const checkoutStep = findStep(proof, 'Checkout validated commit');
+    const identifierStep = findStep(proof, 'Validate managed preview identifiers');
     const createStep = findStep(proof, 'Validate managed PR preview branch and retrieve masked keys');
     const fixtureStep = findStep(proof, 'Provision marker-owned synthetic fixture');
     const previewStep = findStep(proof, 'Launch protected preview and wait for health');
@@ -126,6 +127,9 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     });
     expect(proof?.env).not.toHaveProperty('SUPABASE_ACCESS_TOKEN');
     expect(proof?.env).not.toHaveProperty('SUPABASE_SECRET_KEY');
+    expect(identifierStep?.run).toContain('WIN-224 managed preview identifiers are not configured');
+    expect(identifierStep?.run).toContain('SUPABASE_BRANCH_ID');
+    expect(identifierStep?.run).toContain('SUPABASE_BRANCH_PROJECT_REF');
     expect(createStep?.env).toEqual({
       SUPABASE_ACCESS_TOKEN: '${{ secrets.SUPABASE_ACCESS_TOKEN }}',
     });

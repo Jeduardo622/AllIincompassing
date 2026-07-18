@@ -16,6 +16,7 @@ import {
   fetchPendingSupervisionSessionNoteRequests,
   reconcilePendingSupervisionSessionNoteRequests,
   type PendingSupervisionSessionNoteRequest,
+  SUPERVISION_STATUS_LABELS,
   type SupervisionSessionNoteTemplate,
   type SupervisionTemplateField,
 } from '../lib/supervision-session-notes';
@@ -97,9 +98,14 @@ export interface DashboardViewProps {
   isLoadingSupervisionRequests?: boolean;
   supervisionRequestsError?: unknown;
   isCompletingSupervisionNote?: boolean;
+  isReturningSupervisionNote?: boolean;
   onCompleteSupervisionNote?: (
     request: PendingSupervisionSessionNoteRequest,
     responses: Record<string, unknown>,
+  ) => Promise<void> | void;
+  onReturnSupervisionNote?: (
+    request: PendingSupervisionSessionNoteRequest,
+    reason: string,
   ) => Promise<void> | void;
 }
 
@@ -280,6 +286,28 @@ const formatBtReviewValue = (value: unknown) => {
   return '';
 };
 
+const supervisionStatusBadgeClassName = (status: PendingSupervisionSessionNoteRequest['status']) => {
+  switch (status) {
+    case 'completed':
+      return 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-100';
+    case 'resubmitted':
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-100';
+    case 'correction_required':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-100';
+    case 'pending':
+    default:
+      return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100';
+  }
+};
+
+const getSupervisionStatusLabel = (request: PendingSupervisionSessionNoteRequest) => (
+  request.statusLabel || SUPERVISION_STATUS_LABELS[request.status] || request.status
+);
+
+const sortBtVersions = (versions: PendingSupervisionSessionNoteRequest['versions']) => (
+  [...versions].sort((left, right) => left.versionNumber - right.versionNumber)
+);
+
 const collectSupervisionResponses = (
   form: HTMLFormElement,
   template: SupervisionSessionNoteTemplate | null,
@@ -341,12 +369,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   isLoadingSupervisionRequests = false,
   supervisionRequestsError = null,
   isCompletingSupervisionNote = false,
+  isReturningSupervisionNote = false,
   onCompleteSupervisionNote,
+  onReturnSupervisionNote,
 }) => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [activeSupervisionRequest, setActiveSupervisionRequest] = useState<PendingSupervisionSessionNoteRequest | null>(null);
   const [supervisionValidationErrors, setSupervisionValidationErrors] = useState<Record<string, string>>({});
   const [bcbaSignature, setBcbaSignature] = useState<ClinicalSignatureValue>({ method: 'drawn', value: '' });
+  const [returnReason, setReturnReason] = useState('');
+  const [returnReasonError, setReturnReasonError] = useState<string | null>(null);
 
   useEffect(() => {
     if (dashboardData) {
@@ -417,7 +449,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const supervisionRequestsCount = supervisionRequests.length;
   const hasSupervisionRequestsError = Boolean(supervisionRequestsError);
   const activeBtReview = activeSupervisionRequest?.btReview;
-  const activeRequestCanComplete = activeSupervisionRequest?.canComplete !== false;
+  const activeRequestCanComplete =
+    activeSupervisionRequest?.canComplete !== false &&
+    activeSupervisionRequest?.status !== 'correction_required';
+  const activeRequestCanReturn = activeSupervisionRequest?.canReturn === true;
+  const activeRequestVersions = activeSupervisionRequest ? sortBtVersions(activeSupervisionRequest.versions ?? []) : [];
+
+  const resetSupervisionModalState = () => {
+    setActiveSupervisionRequest(null);
+    setSupervisionValidationErrors({});
+    setBcbaSignature({ method: 'drawn', value: '' });
+    setReturnReason('');
+    setReturnReasonError(null);
+  };
 
   const handleSupervisionSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -430,9 +474,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       return;
     }
     await onCompleteSupervisionNote(activeSupervisionRequest, responses);
-    setActiveSupervisionRequest(null);
-    setSupervisionValidationErrors({});
-    setBcbaSignature({ method: 'drawn', value: '' });
+    resetSupervisionModalState();
+  };
+
+  const handleReturnToBt = async () => {
+    if (!activeSupervisionRequest || !onReturnSupervisionNote || !activeRequestCanReturn) {
+      return;
+    }
+
+    const normalizedReason = returnReason.trim();
+    if (!normalizedReason) {
+      setReturnReasonError('Correction reason is required.');
+      return;
+    }
+    if (normalizedReason.length > 2000) {
+      setReturnReasonError('Correction reason must be 2000 characters or fewer.');
+      return;
+    }
+
+    setReturnReasonError(null);
+    await onReturnSupervisionNote(activeSupervisionRequest, normalizedReason);
+    resetSupervisionModalState();
   };
 
   if (isLoading && !displayData.todaySessions.length) {
@@ -563,9 +625,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {supervisionRequests.map((request) => (
                 <div key={request.id} className="flex flex-col gap-3 rounded-lg bg-gray-50 p-4 dark:bg-dark sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="font-medium text-gray-900 dark:text-white">{request.clientName}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium text-gray-900 dark:text-white">{request.clientName}</div>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${supervisionStatusBadgeClassName(request.status)}`}
+                      >
+                        {getSupervisionStatusLabel(request)}
+                      </span>
+                    </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
                       {request.btTherapistName}{request.btTherapistTitle ? ` (${request.btTherapistTitle})` : ''} • {formatDashboardDate(request.sessionStartTime, 'MMM d, h:mm a', 'Session time unavailable')}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Latest BT version {request.latestVersionNumber ?? Math.max(request.versions?.length ?? 0, 1)}
                     </div>
                   </div>
                   <button
@@ -573,6 +645,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     onClick={() => {
                       setSupervisionValidationErrors({});
                       setBcbaSignature({ method: 'drawn', value: '' });
+                      setReturnReason('');
+                      setReturnReasonError(null);
                       setActiveSupervisionRequest(request);
                     }}
                     className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -769,14 +843,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                       {activeSupervisionRequest.clientName} • {activeSupervisionRequest.btTherapistName}
                     </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${supervisionStatusBadgeClassName(activeSupervisionRequest.status)}`}
+                      >
+                        {getSupervisionStatusLabel(activeSupervisionRequest)}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        Latest BT version {activeSupervisionRequest.latestVersionNumber ?? Math.max(activeRequestVersions.length, 1)}
+                      </span>
+                    </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setSupervisionValidationErrors({});
-                      setBcbaSignature({ method: 'drawn', value: '' });
-                      setActiveSupervisionRequest(null);
-                    }}
+                    onClick={resetSupervisionModalState}
                     className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                   >
                     Close
@@ -784,6 +864,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </div>
               <div className="space-y-6 p-6">
+                {activeSupervisionRequest.correction && (
+                  <section className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/20">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-amber-900 dark:text-amber-100">Correction Required Details</h3>
+                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/50 dark:text-amber-100">
+                        Correction round {activeSupervisionRequest.correction.round ?? '—'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-amber-900 dark:text-amber-100">{activeSupervisionRequest.correction.reason}</p>
+                    <p className="text-xs text-amber-800 dark:text-amber-200">
+                      Requested {formatDashboardDate(activeSupervisionRequest.correction.requestedAt, 'MMM d, yyyy h:mm a', 'Date unavailable')}
+                    </p>
+                  </section>
+                )}
                 <section className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-dark">
                   <div>
                     <h3 className="text-base font-semibold text-gray-900 dark:text-white">Completed BT ABA Session Note</h3>
@@ -795,6 +889,68 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </p>
                   </div>
                   <div className="space-y-4">
+                    {activeRequestVersions.length > 0 && (
+                      <section className="space-y-3">
+                        <h4 className="text-sm font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                          Immutable BT versions
+                        </h4>
+                        <div className="space-y-3">
+                          {activeRequestVersions.map((version) => (
+                            <article key={version.noteId} className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <h5 className="text-sm font-semibold text-gray-900 dark:text-white">Version {version.versionNumber}</h5>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  {version.source === 'amendment' && version.correctionRound
+                                    ? `Correction round ${version.correctionRound}`
+                                    : 'Original submission'}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                BT signed {version.signatureMethod ?? 'unknown'} signature
+                                {version.signedAt
+                                  ? ` on ${formatDashboardDate(version.signedAt, 'MMM d, yyyy h:mm a', 'Date unavailable')}`
+                                  : ''}
+                              </p>
+                              <div className="mt-3 space-y-3">
+                                {version.templateSnapshot.sections?.map((section) => (
+                                  <section key={`${version.noteId}-${section.key}`} className="space-y-3">
+                                    {(section.label ?? section.key) !== 'Completed BT ABA Session Note' && (
+                                      <h6 className="text-sm font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                                        {section.label ?? section.key}
+                                      </h6>
+                                    )}
+                                    <dl className="space-y-3">
+                                      {(section.fields ?? []).map((field) => {
+                                        if (field.type === 'signature') {
+                                          return null;
+                                        }
+                                        const formattedValue = formatBtReviewValue(version.responses?.[field.key]);
+                                        if (!formattedValue) {
+                                          return null;
+                                        }
+                                        const usePre = formattedValue.startsWith('{');
+                                        return (
+                                          <div key={`${version.noteId}-${field.key}`}>
+                                            <dt className="text-sm font-medium text-gray-700 dark:text-gray-200">{field.label ?? field.key}</dt>
+                                            {usePre ? (
+                                              <dd className="mt-1 whitespace-pre-wrap rounded-md bg-gray-50 p-3 text-sm text-gray-900 dark:bg-dark dark:text-gray-100">
+                                                {formattedValue}
+                                              </dd>
+                                            ) : (
+                                              <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{formattedValue}</dd>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </dl>
+                                  </section>
+                                ))}
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    )}
                     {activeBtReview?.templateSnapshot.sections?.map((section) => (
                       <section key={section.key} className="space-y-3">
                         {(section.label ?? section.key) !== 'Completed BT ABA Session Note' && (
@@ -835,6 +991,46 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     )}
                   </div>
                 </section>
+                {activeRequestCanReturn && (
+                  <section className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                    <div>
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-white">Return Note To BT</h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Provide the correction reason that the BT must address before resubmitting.
+                      </p>
+                    </div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="supervision-return-reason">
+                      Correction reason
+                    </label>
+                    <textarea
+                      id="supervision-return-reason"
+                      value={returnReason}
+                      onChange={(event) => {
+                        setReturnReason(event.target.value);
+                        if (returnReasonError) {
+                          setReturnReasonError(null);
+                        }
+                      }}
+                      rows={4}
+                      maxLength={2000}
+                      disabled={isReturningSupervisionNote || isCompletingSupervisionNote}
+                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-dark dark:text-white"
+                    />
+                    {returnReasonError && (
+                      <p className="text-sm text-red-600 dark:text-red-300">{returnReasonError}</p>
+                    )}
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleReturnToBt()}
+                        disabled={isReturningSupervisionNote || isCompletingSupervisionNote}
+                        className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-100 dark:hover:bg-amber-900/30"
+                      >
+                        {isReturningSupervisionNote ? 'Returning...' : 'Return to BT'}
+                      </button>
+                    </div>
+                  </section>
+                )}
                 {supervisionTemplate?.sections.map((section) => (
                   <section key={section.key} className="space-y-4">
                     <h3 className="text-base font-semibold text-gray-900 dark:text-white">{section.label ?? section.key}</h3>
@@ -850,7 +1046,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 ))}
                 {!activeRequestCanComplete && (
                   <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
-                    Only the assigned BCBA can complete and sign this supervision note.
+                    {activeSupervisionRequest.status === 'correction_required'
+                      ? 'This supervision note must be corrected by the BT before it can be completed.'
+                      : 'Only the assigned BCBA can complete and sign this supervision note.'}
                   </p>
                 )}
                 {!supervisionTemplate && (
@@ -861,12 +1059,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <div className="flex justify-end gap-3 border-t border-gray-200 p-6 dark:border-gray-700">
                 <button
-                    type="button"
-                    onClick={() => {
-                      setSupervisionValidationErrors({});
-                      setBcbaSignature({ method: 'drawn', value: '' });
-                      setActiveSupervisionRequest(null);
-                    }}
+                  type="button"
+                  onClick={resetSupervisionModalState}
                   className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                 >
                   Cancel

@@ -307,6 +307,261 @@ describe('Dashboard without client fallbacks', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
   });
 
+  it('renders BCBA status labels, immutable BT versions, and correction metadata in the modal', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+
+    render(
+      <View
+        {...baseProps}
+        supervisionRequests={[
+          {
+            id: 'request-3',
+            organizationId: 'org-1',
+            sessionId: 'session-3',
+            clientId: 'client-3',
+            btTherapistId: 'bt-3',
+            assignedAdminUserId: 'bcba-3',
+            status: 'resubmitted',
+            statusLabel: 'Resubmitted',
+            createdAt: '2026-07-01T20:00:00.000Z',
+            sessionStartTime: '2026-07-01T18:00:00.000Z',
+            sessionEndTime: '2026-07-01T19:00:00.000Z',
+            placeOfService: 'Clinic',
+            clientName: 'Client Three',
+            btTherapistName: 'BT Three',
+            btTherapistTitle: 'RBT',
+            canComplete: true,
+            canReturn: true,
+            latestVersionNumber: 2,
+            correction: {
+              id: 'correction-1',
+              round: 1,
+              reason: 'Please add the replacement behavior details.',
+              requestedAt: '2026-07-01T19:15:00.000Z',
+              reviewerUserId: 'bcba-3',
+            },
+            versions: [
+              {
+                versionNumber: 1,
+                noteId: 'bt-note-3-v1',
+                source: 'original',
+                correctionRound: null,
+                responses: {
+                  session_summary: 'Initial submission.',
+                },
+                templateSnapshot: {
+                  sections: [
+                    {
+                      key: 'bt_review',
+                      label: 'Completed BT ABA Session Note',
+                      fields: [{ key: 'session_summary', label: 'Session Summary', type: 'textarea' }],
+                    },
+                  ],
+                },
+                signatureMethod: 'typed',
+                signatureValue: 'BT Three',
+                signedAt: '2026-07-01T19:00:00.000Z',
+              },
+              {
+                versionNumber: 2,
+                noteId: 'bt-note-3-v2',
+                source: 'amendment',
+                correctionRound: 1,
+                responses: {
+                  session_summary: 'Corrected submission.',
+                },
+                templateSnapshot: {
+                  sections: [
+                    {
+                      key: 'bt_review',
+                      label: 'Completed BT ABA Session Note',
+                      fields: [{ key: 'session_summary', label: 'Session Summary', type: 'textarea' }],
+                    },
+                  ],
+                },
+                signatureMethod: 'drawn',
+                signatureValue: 'points:[[0,0],[1,1]]',
+                signedAt: '2026-07-01T19:30:00.000Z',
+              },
+            ],
+            btReview: {
+              noteId: 'bt-note-3-v2',
+              responses: {
+                session_summary: 'Corrected submission.',
+              },
+              templateSnapshot: {
+                sections: [
+                  {
+                    key: 'bt_review',
+                    label: 'Completed BT ABA Session Note',
+                    fields: [{ key: 'session_summary', label: 'Session Summary', type: 'textarea' }],
+                  },
+                ],
+              },
+              signatureMethod: 'drawn',
+              signedAt: '2026-07-01T19:30:00.000Z',
+            },
+          },
+        ]}
+        supervisionTemplate={{
+          id: 'template-1',
+          templateName: 'Supervision Session Note',
+          sections: [
+            {
+              key: 'session_overview',
+              label: 'Session overview',
+              fields: [
+                { key: 'bcba_supervisor_signature', label: 'BCBA Supervisor Signature', type: 'signature', required: true },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Resubmitted')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /complete supervision note for client three/i }));
+
+    expect(screen.getAllByText('Correction round 1')).toHaveLength(2);
+    expect(screen.getByText('Please add the replacement behavior details.')).toBeInTheDocument();
+    expect(screen.getByText(/requested jul 1, 2026/i)).toBeInTheDocument();
+    expect(screen.getByText('Version 1')).toBeInTheDocument();
+    expect(screen.getByText('Initial submission.')).toBeInTheDocument();
+    expect(screen.getByText('Version 2')).toBeInTheDocument();
+    expect(screen.getAllByText('Corrected submission.').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows a Return to BT action only when the request can be returned and trims the reason', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+    const onReturnSupervisionNote = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <View
+        {...baseProps}
+        supervisionRequests={[
+          {
+            id: 'request-4',
+            organizationId: 'org-1',
+            sessionId: 'session-4',
+            clientId: 'client-4',
+            btTherapistId: 'bt-4',
+            assignedAdminUserId: 'bcba-4',
+            status: 'pending',
+            statusLabel: 'Pending Review',
+            createdAt: '2026-07-02T20:00:00.000Z',
+            sessionStartTime: '2026-07-02T18:00:00.000Z',
+            sessionEndTime: '2026-07-02T19:00:00.000Z',
+            placeOfService: 'Home',
+            clientName: 'Client Four',
+            btTherapistName: 'BT Four',
+            btTherapistTitle: 'BT',
+            canComplete: true,
+            canReturn: true,
+            latestVersionNumber: 1,
+            correction: null,
+            versions: [],
+            btReview: {
+              noteId: 'bt-note-4',
+              responses: {},
+              templateSnapshot: { sections: [] },
+              signatureMethod: 'typed',
+              signedAt: '2026-07-02T19:00:00.000Z',
+            },
+          },
+        ]}
+        supervisionTemplate={null}
+        onReturnSupervisionNote={onReturnSupervisionNote}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /complete supervision note for client four/i }));
+    expect(screen.getByRole('button', { name: /return to bt/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /return to bt/i }));
+    expect(await screen.findByText('Correction reason is required.')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Correction reason'), '  Need graph details updated.  ');
+    await user.click(screen.getByRole('button', { name: /return to bt/i }));
+
+    await waitFor(() => {
+      expect(onReturnSupervisionNote).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'request-4' }),
+        'Need graph details updated.',
+      );
+    });
+  });
+
+  it('does not allow correction-required requests to be completed', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+
+    render(
+      <View
+        {...baseProps}
+        supervisionRequests={[
+          {
+            id: 'request-5',
+            organizationId: 'org-1',
+            sessionId: 'session-5',
+            clientId: 'client-5',
+            btTherapistId: 'bt-5',
+            assignedAdminUserId: 'bcba-5',
+            status: 'correction_required',
+            statusLabel: 'Correction Required',
+            createdAt: '2026-07-03T20:00:00.000Z',
+            sessionStartTime: '2026-07-03T18:00:00.000Z',
+            sessionEndTime: '2026-07-03T19:00:00.000Z',
+            placeOfService: 'School',
+            clientName: 'Client Five',
+            btTherapistName: 'BT Five',
+            btTherapistTitle: 'RBT',
+            canComplete: true,
+            canReturn: false,
+            latestVersionNumber: 1,
+            correction: {
+              id: 'correction-2',
+              round: 2,
+              reason: 'Missing intervention notes.',
+              requestedAt: '2026-07-03T19:05:00.000Z',
+              reviewerUserId: 'bcba-5',
+            },
+            versions: [],
+            btReview: {
+              noteId: 'bt-note-5',
+              responses: {},
+              templateSnapshot: { sections: [] },
+              signatureMethod: 'typed',
+              signedAt: '2026-07-03T19:00:00.000Z',
+            },
+          },
+        ]}
+        supervisionTemplate={{
+          id: 'template-1',
+          templateName: 'Supervision Session Note',
+          sections: [
+            {
+              key: 'session_overview',
+              label: 'Session overview',
+              fields: [
+                { key: 'bcba_supervisor_signature', label: 'BCBA Supervisor Signature', type: 'signature', required: true },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Correction Required')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /complete supervision note for client five/i }));
+
+    expect(screen.getByRole('button', { name: /sign and complete supervision note/i })).toBeDisabled();
+    expect(screen.getByText('This supervision note must be corrected by the BT before it can be completed.')).toBeInTheDocument();
+  });
+
   it('blocks submit when a required checkbox group has no selection', async () => {
     const View = DashboardView as React.ComponentType<any>;
     const onCompleteSupervisionNote = vi.fn().mockResolvedValue(undefined);

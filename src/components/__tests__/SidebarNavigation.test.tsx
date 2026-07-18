@@ -183,10 +183,17 @@ describe("Sidebar navigation active styling", () => {
 
     renderSidebar(["/schedule"]);
 
+    expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /schedule/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /clients/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /messages/i })).toBeInTheDocument();
     expect(screen.getByText("Behavioral Therapist Account")).toBeInTheDocument();
+  });
+
+  it("shows the dashboard link for legacy therapist users", () => {
+    renderSidebar(["/"]);
+
+    expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
   });
 
   it("shows admin navigation items for super admin users", () => {
@@ -379,7 +386,7 @@ describe("Sidebar navigation active styling", () => {
     expect(mockFetchPendingSupervisionSessionNoteCount).toHaveBeenCalledWith("org-1");
   });
 
-  it("does not query supervision note notifications for therapists", () => {
+  it("queries dashboard action notifications for therapists without staff capability expansion", async () => {
     const hasRole = vi.fn(
       (role: "client" | "therapist" | "admin" | "super_admin") => role === "therapist"
     );
@@ -404,10 +411,12 @@ describe("Sidebar navigation active styling", () => {
       hasCapability: vi.fn(capabilityForRole("therapist")),
       hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("therapist"))),
     });
+    mockFetchPendingSupervisionSessionNoteCount.mockResolvedValueOnce(2);
 
     renderSidebar(["/schedule"]);
 
-    expect(mockFetchPendingSupervisionSessionNoteCount).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("sidebar-supervision-notes-badge")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("sidebar-supervision-notes-badge")).toHaveTextContent("2");
+    expect(mockFetchPendingSupervisionSessionNoteCount).toHaveBeenCalledWith("org-1");
+    expect(mockUseAuth.mock.results.at(-1)?.value.hasCapability("staffDashboard")).toBe(false);
   });
 });

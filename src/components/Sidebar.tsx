@@ -35,6 +35,9 @@ const ChatAssistantFallback = () => (
   </div>
 );
 
+const isBtCorrectionDashboardRole = (role: AppRole | null | undefined) =>
+  role === 'bt' || role === 'therapist';
+
 export function Sidebar() {
   const { signOut, hasRole, user, profile, isGuardian, effectiveRole, hasCapability } = useAuth();
   const organizationId = useActiveOrganizationId();
@@ -115,7 +118,7 @@ export function Sidebar() {
       icon: LayoutDashboard,
       label: 'Dashboard',
       path: '/',
-      roles: ['admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
+      roles: ['bt', 'therapist', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     { 
@@ -224,7 +227,8 @@ export function Sidebar() {
 
   const canAccessChatAssistant = hasCapability('viewSchedule') || hasCapability('dataTaking');
   const canAccessMessages = hasCapability('viewMessages');
-  const canViewSupervisionNotifications = hasCapability('staffDashboard');
+  const canViewSupervisionNotifications =
+    hasCapability('staffDashboard') || isBtCorrectionDashboardRole(effectiveRole);
 
   const { data: unreadMessagesData } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],
@@ -367,7 +371,7 @@ export function Sidebar() {
                         <span
                           className="inline-flex min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[11px] font-semibold text-white dark:bg-amber-400 dark:text-gray-950"
                           data-testid="sidebar-supervision-notes-badge"
-                          title={`${pendingSupervisionNoteCount} supervision session note${pendingSupervisionNoteCount === 1 ? '' : 's'} due`}
+                          title={`${pendingSupervisionNoteCount} dashboard action${pendingSupervisionNoteCount === 1 ? '' : 's'} waiting`}
                         >
                           {pendingSupervisionNoteCount}
                         </span>

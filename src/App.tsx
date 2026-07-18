@@ -83,6 +83,9 @@ const LoadingSpinner = () => (
   </div>
 );
 
+const isBtCorrectionDashboardRole = (role: string | null | undefined) =>
+  role === 'bt' || role === 'therapist';
+
 const DashboardLanding: React.FC = () => {
   const { user, profile, loading, profileLoading, isGuardian, effectiveRole, hasCapability } = useAuth();
 
@@ -101,6 +104,10 @@ const DashboardLanding: React.FC = () => {
   }
 
   if (canAccessStaffDashboard(effectiveRole)) {
+    return <Dashboard />;
+  }
+
+  if (isBtCorrectionDashboardRole(effectiveRole)) {
     return <Dashboard />;
   }
 

@@ -24,9 +24,13 @@ import {
   type BtCorrectionTask,
   type ClinicalSignatureValue,
   completeSupervisionSessionNote,
+  fetchBtSupervisionCorrectionTasks,
   fetchPendingSupervisionSessionNoteRequests,
   reconcilePendingSupervisionSessionNoteRequests,
   type PendingSupervisionSessionNoteRequest,
+  resubmitBtSupervisionCorrection,
+  returnSupervisionRequestToBt,
+  SUPERVISION_SESSION_NOTES_QUERY_KEY,
   SUPERVISION_STATUS_LABELS,
   type SupervisionSessionNoteTemplate,
   type SupervisionTemplateField,
@@ -96,6 +100,9 @@ const fieldRequiresResponse = (field: SupervisionTemplateField, responses: Recor
   return String(dependencyValue ?? '').trim() === expected;
 };
 
+const isBtCorrectionDashboardRole = (role: string | null | undefined) =>
+  role === 'bt' || role === 'therapist';
+
 export interface DashboardViewProps {
   dashboardData?: DashboardDataShape | null;
   isLoading: boolean;
@@ -124,6 +131,7 @@ export interface DashboardViewProps {
     task: BtCorrectionTask,
     responses: BtAbaSessionNoteResponses,
   ) => Promise<void> | void;
+  correctionOnly?: boolean;
 }
 
 type RenderSupervisionFieldOptions = {
@@ -500,6 +508,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   btCorrectionTasks = [],
   isResubmittingBtCorrection = false,
   onResubmitBtCorrection,
+  correctionOnly = false,
 }) => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [activeSupervisionRequest, setActiveSupervisionRequest] = useState<PendingSupervisionSessionNoteRequest | null>(null);
@@ -627,8 +636,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     if (Object.keys(errors).length > 0) {
       return;
     }
-    await onCompleteSupervisionNote(activeSupervisionRequest, responses);
-    resetSupervisionModalState();
+    try {
+      await onCompleteSupervisionNote(activeSupervisionRequest, responses);
+      resetSupervisionModalState();
+    } catch {
+      // Mutation handlers surface the scoped error toast.
+    }
   };
 
   const handleReturnToBt = async () => {
@@ -647,8 +660,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     setReturnReasonError(null);
-    await onReturnSupervisionNote(activeSupervisionRequest, normalizedReason);
-    resetSupervisionModalState();
+    try {
+      await onReturnSupervisionNote(activeSupervisionRequest, normalizedReason);
+      resetSupervisionModalState();
+    } catch {
+      // Mutation handlers surface the scoped error toast.
+    }
   };
 
   const setBtCorrectionField = <Key extends BtCorrectionResponseKey>(
@@ -723,6 +740,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     try {
       await onResubmitBtCorrection(activeBtCorrectionTask, validationResult.data);
       resetBtCorrectionModalState();
+    } catch {
+      // Mutation handlers surface the scoped error toast.
     } finally {
       btCorrectionSubmitInFlightRef.current = false;
       setIsBtCorrectionSubmittingLocally(false);
@@ -738,6 +757,405 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }
 
   const hasError = Boolean(error);
+
+  if (correctionOnly) {
+    return (
+      <div>
+        {hasError && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-red-800 dark:text-red-200 mb-1">Some dashboard data failed to load</h2>
+              <p className="text-sm text-red-700 dark:text-red-300">Showing available correction tasks only. You can retry loading the latest data.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="ml-4 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+            <span className="inline-flex items-center rounded-full px-3 py-1 font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-200">
+              <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-slate-400" />
+              Correction queue
+            </span>
+          </div>
+        </div>
+        <div className="mb-8 rounded-lg bg-white shadow dark:bg-dark-lighter">
+          <div className="p-6">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Corrections Required</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Review the BCBA correction request, update the BT note, and re-attest before resubmitting.
+                </p>
+              </div>
+              <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-amber-600 px-2 py-1 text-xs font-semibold text-white">
+                {btCorrectionTaskCount}
+              </span>
+            </div>
+            {btCorrectionTaskCount === 0 ? (
+              <div className="rounded-md border border-dashed border-gray-200 px-4 py-6 text-center dark:border-gray-700">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-200">No correction tasks are waiting right now.</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Return to Schedule and continue your assigned sessions.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {btCorrectionTasks.map((task) => (
+                  <div key={task.id} className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/20 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-medium text-amber-900 dark:text-amber-100">{task.clientName}</div>
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${supervisionStatusBadgeClassName(task.status)}`}>
+                          {task.statusLabel}
+                        </span>
+                      </div>
+                      <div className="text-sm text-amber-900 dark:text-amber-100">{task.correction.reason}</div>
+                      <div className="text-xs text-amber-800 dark:text-amber-200">
+                        Requested {formatDashboardDate(task.correction.requestedAt, 'MMM d, yyyy h:mm a', 'Date unavailable')}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openBtCorrectionTask(task)}
+                      className="inline-flex items-center justify-center rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                      aria-label={`Amend BT Note for ${task.clientName}`}
+                    >
+                      Amend BT Note
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-4">
+              <Link
+                to="/schedule"
+                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Go to Schedule
+              </Link>
+            </div>
+          </div>
+        </div>
+        {activeBtCorrectionTask && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="bt-correction-title"
+              className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white shadow-xl dark:bg-dark-lighter"
+            >
+              <form ref={btCorrectionFormRef} onSubmit={(event) => event.preventDefault()} noValidate>
+                <div className="border-b border-gray-200 p-6 dark:border-gray-700">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 id="bt-correction-title" className="text-xl font-semibold text-gray-900 dark:text-white">
+                        Amend BT Note
+                      </h2>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {activeBtCorrectionTask.clientName} • {activeBtCorrectionTask.btTherapistName}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetBtCorrectionModalState}
+                      className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-6 p-6">
+                  <section className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/20">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-amber-900 dark:text-amber-100">Correction Required</h3>
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${supervisionStatusBadgeClassName(activeBtCorrectionTask.status)}`}>
+                        {activeBtCorrectionTask.statusLabel}
+                      </span>
+                    </div>
+                    <p className="text-sm text-amber-900 dark:text-amber-100">{activeBtCorrectionTask.correction.reason}</p>
+                    <p className="text-xs text-amber-800 dark:text-amber-200">
+                      Requested {formatDashboardDate(activeBtCorrectionTask.correction.requestedAt, 'MMM d, yyyy h:mm a', 'Date unavailable')}
+                    </p>
+                  </section>
+                  {btCorrectionLoadError ? (
+                    <div
+                      role="alert"
+                      className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+                    >
+                      {btCorrectionLoadError}
+                    </div>
+                  ) : (
+                    <>
+                      <section className={btCorrectionSectionClassName}>
+                      <fieldset className="space-y-2" aria-invalid={btCorrectionErrors.purpose_of_session ? 'true' : undefined} aria-describedby={btCorrectionErrors.purpose_of_session ? 'bt-purpose-of-session-error' : undefined}>
+                        <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.purpose_of_session}</legend>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {BT_ABA_PURPOSE_OPTIONS.map((option, index) => (
+                            <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                              <input
+                                data-field={index === 0 ? 'purpose_of_session' : undefined}
+                                type="checkbox"
+                                checked={btCorrectionResponses.purpose_of_session.includes(option)}
+                                disabled={isResubmittingBtCorrection}
+                                onChange={(event) => toggleBtCorrectionSelection('purpose_of_session', option, event.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span>{option}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {btCorrectionErrors.purpose_of_session && <p id="bt-purpose-of-session-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.purpose_of_session}</p>}
+                      </fieldset>
+                      {btCorrectionResponses.purpose_of_session.includes('Other') && (
+                        <div>
+                          <label htmlFor="bt-purpose-other" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.purpose_other}</label>
+                          <input
+                            id="bt-purpose-other"
+                            data-field="purpose_other"
+                            value={btCorrectionResponses.purpose_other ?? ''}
+                            disabled={isResubmittingBtCorrection}
+                            aria-invalid={btCorrectionErrors.purpose_other ? 'true' : undefined}
+                            aria-describedby={btCorrectionErrors.purpose_other ? 'bt-purpose-other-error' : undefined}
+                            onChange={(event) => setBtCorrectionField('purpose_other', event.target.value)}
+                            className={btCorrectionInputClassName}
+                          />
+                          {btCorrectionErrors.purpose_other && <p id="bt-purpose-other-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.purpose_other}</p>}
+                        </div>
+                      )}
+                    </section>
+                    <section aria-labelledby="bt-interventions-heading" className={btCorrectionSectionClassName}>
+                      <h3 id="bt-interventions-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">Interventions and Strategies Used</h3>
+                      <div>
+                        <label htmlFor="bt-client-status" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.client_status}</label>
+                        <textarea
+                          id="bt-client-status"
+                          data-field="client_status"
+                          rows={3}
+                          value={btCorrectionResponses.client_status}
+                          disabled={isResubmittingBtCorrection}
+                          aria-invalid={btCorrectionErrors.client_status ? 'true' : undefined}
+                          aria-describedby={btCorrectionErrors.client_status ? 'bt-client-status-error' : undefined}
+                          onChange={(event) => setBtCorrectionField('client_status', event.target.value)}
+                          className={btCorrectionInputClassName}
+                        />
+                        {btCorrectionErrors.client_status && <p id="bt-client-status-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.client_status}</p>}
+                      </div>
+                      <fieldset className="space-y-2" aria-invalid={btCorrectionErrors.skill_strategies ? 'true' : undefined} aria-describedby={btCorrectionErrors.skill_strategies ? 'bt-skill-strategies-error' : undefined}>
+                        <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.skill_strategies}</legend>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {BT_ABA_SKILL_STRATEGY_OPTIONS.map((option, index) => (
+                            <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                              <input
+                                data-field={index === 0 ? 'skill_strategies' : undefined}
+                                type="checkbox"
+                                checked={btCorrectionResponses.skill_strategies.includes(option)}
+                                disabled={isResubmittingBtCorrection}
+                                onChange={(event) => toggleBtCorrectionSelection('skill_strategies', option, event.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span>{option}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {btCorrectionErrors.skill_strategies && <p id="bt-skill-strategies-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.skill_strategies}</p>}
+                      </fieldset>
+                      {btCorrectionResponses.skill_strategies.includes('Other') && (
+                        <div>
+                          <label htmlFor="bt-skill-strategies-other" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.skill_strategies_other}</label>
+                          <input
+                            id="bt-skill-strategies-other"
+                            data-field="skill_strategies_other"
+                            value={btCorrectionResponses.skill_strategies_other ?? ''}
+                            disabled={isResubmittingBtCorrection}
+                            aria-invalid={btCorrectionErrors.skill_strategies_other ? 'true' : undefined}
+                            aria-describedby={btCorrectionErrors.skill_strategies_other ? 'bt-skill-strategies-other-error' : undefined}
+                            onChange={(event) => setBtCorrectionField('skill_strategies_other', event.target.value)}
+                            className={btCorrectionInputClassName}
+                          />
+                          {btCorrectionErrors.skill_strategies_other && <p id="bt-skill-strategies-other-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.skill_strategies_other}</p>}
+                        </div>
+                      )}
+                      <fieldset className="space-y-2" aria-invalid={btCorrectionErrors.behavior_strategies ? 'true' : undefined} aria-describedby={btCorrectionErrors.behavior_strategies ? 'bt-behavior-strategies-error' : undefined}>
+                        <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.behavior_strategies}</legend>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {BT_ABA_BEHAVIOR_STRATEGY_OPTIONS.map((option, index) => (
+                            <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                              <input
+                                data-field={index === 0 ? 'behavior_strategies' : undefined}
+                                type="checkbox"
+                                checked={btCorrectionResponses.behavior_strategies.includes(option)}
+                                disabled={isResubmittingBtCorrection}
+                                onChange={(event) => toggleBtCorrectionSelection('behavior_strategies', option, event.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span>{option}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {btCorrectionErrors.behavior_strategies && <p id="bt-behavior-strategies-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.behavior_strategies}</p>}
+                      </fieldset>
+                      {btCorrectionResponses.behavior_strategies.includes('Other') && (
+                        <div>
+                          <label htmlFor="bt-behavior-strategies-other" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.behavior_strategies_other}</label>
+                          <input
+                            id="bt-behavior-strategies-other"
+                            data-field="behavior_strategies_other"
+                            value={btCorrectionResponses.behavior_strategies_other ?? ''}
+                            disabled={isResubmittingBtCorrection}
+                            aria-invalid={btCorrectionErrors.behavior_strategies_other ? 'true' : undefined}
+                            aria-describedby={btCorrectionErrors.behavior_strategies_other ? 'bt-behavior-strategies-other-error' : undefined}
+                            onChange={(event) => setBtCorrectionField('behavior_strategies_other', event.target.value)}
+                            className={btCorrectionInputClassName}
+                          />
+                          {btCorrectionErrors.behavior_strategies_other && <p id="bt-behavior-strategies-other-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.behavior_strategies_other}</p>}
+                        </div>
+                      )}
+                    </section>
+                    <section aria-labelledby="bt-clinical-summary-heading" className={btCorrectionSectionClassName}>
+                      <h3 id="bt-clinical-summary-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">Supervision and Clinical Summary</h3>
+                      <fieldset className="space-y-2" aria-invalid={btCorrectionErrors.supervisor_support ? 'true' : undefined} aria-describedby={btCorrectionErrors.supervisor_support ? 'bt-supervisor-support-error' : undefined}>
+                        <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.supervisor_support}</legend>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {BT_ABA_SUPERVISOR_SUPPORT_OPTIONS.map((option, index) => (
+                            <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                              <input
+                                data-field={index === 0 ? 'supervisor_support' : undefined}
+                                type="checkbox"
+                                checked={btCorrectionResponses.supervisor_support.includes(option)}
+                                disabled={isResubmittingBtCorrection}
+                                onChange={(event) => toggleBtCorrectionSelection('supervisor_support', option, event.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span>{option}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {btCorrectionErrors.supervisor_support && <p id="bt-supervisor-support-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.supervisor_support}</p>}
+                      </fieldset>
+                      {btCorrectionResponses.supervisor_support.includes('Other') && (
+                        <div>
+                          <label htmlFor="bt-supervisor-support-other" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.supervisor_support_other}</label>
+                          <input
+                            id="bt-supervisor-support-other"
+                            data-field="supervisor_support_other"
+                            value={btCorrectionResponses.supervisor_support_other ?? ''}
+                            disabled={isResubmittingBtCorrection}
+                            aria-invalid={btCorrectionErrors.supervisor_support_other ? 'true' : undefined}
+                            aria-describedby={btCorrectionErrors.supervisor_support_other ? 'bt-supervisor-support-other-error' : undefined}
+                            onChange={(event) => setBtCorrectionField('supervisor_support_other', event.target.value)}
+                            className={btCorrectionInputClassName}
+                          />
+                          {btCorrectionErrors.supervisor_support_other && <p id="bt-supervisor-support-other-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.supervisor_support_other}</p>}
+                        </div>
+                      )}
+                      <div>
+                        <label htmlFor="bt-progress-toward-goals" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.progress_toward_goals}</label>
+                        <textarea
+                          id="bt-progress-toward-goals"
+                          data-field="progress_toward_goals"
+                          rows={4}
+                          value={btCorrectionResponses.progress_toward_goals}
+                          disabled={isResubmittingBtCorrection}
+                          aria-invalid={btCorrectionErrors.progress_toward_goals ? 'true' : undefined}
+                          aria-describedby={btCorrectionErrors.progress_toward_goals ? 'bt-progress-toward-goals-error' : undefined}
+                          onChange={(event) => setBtCorrectionField('progress_toward_goals', event.target.value)}
+                          className={btCorrectionInputClassName}
+                        />
+                        {btCorrectionErrors.progress_toward_goals && <p id="bt-progress-toward-goals-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.progress_toward_goals}</p>}
+                      </div>
+                      <div>
+                        <label htmlFor="bt-client-response-to-treatment" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.client_response_to_treatment}</label>
+                        <textarea
+                          id="bt-client-response-to-treatment"
+                          data-field="client_response_to_treatment"
+                          rows={4}
+                          value={btCorrectionResponses.client_response_to_treatment}
+                          disabled={isResubmittingBtCorrection}
+                          aria-invalid={btCorrectionErrors.client_response_to_treatment ? 'true' : undefined}
+                          aria-describedby={btCorrectionErrors.client_response_to_treatment ? 'bt-client-response-to-treatment-error' : undefined}
+                          onChange={(event) => setBtCorrectionField('client_response_to_treatment', event.target.value)}
+                          className={btCorrectionInputClassName}
+                        />
+                        {btCorrectionErrors.client_response_to_treatment && <p id="bt-client-response-to-treatment-error" role="alert" className="text-sm text-red-600">{btCorrectionErrors.client_response_to_treatment}</p>}
+                      </div>
+                    </section>
+                    <section aria-labelledby="bt-daily-summary-heading" className={btCorrectionSectionClassName}>
+                      <h3 id="bt-daily-summary-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">Daily Summary Sheet</h3>
+                      <fieldset className="space-y-2">
+                        <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.data_point_scope}</legend>
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                          <input
+                            data-field="data_point_scope"
+                            type="radio"
+                            name="bt-correction-data-point-scope"
+                            checked={btCorrectionResponses.data_point_scope === 'linked'}
+                            disabled={isResubmittingBtCorrection}
+                            onChange={() => setBtCorrectionField('data_point_scope', 'linked')}
+                          />
+                          Include only linked data points
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                          <input
+                            type="radio"
+                            name="bt-correction-data-point-scope"
+                            checked={btCorrectionResponses.data_point_scope === 'all'}
+                            disabled={isResubmittingBtCorrection}
+                            onChange={() => setBtCorrectionField('data_point_scope', 'all')}
+                          />
+                          Include all data points
+                        </label>
+                      </fieldset>
+                      <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                        <input type="checkbox" checked={false} disabled className="mt-0.5" />
+                        Link unlinked data for this service date
+                      </label>
+                      <p className="text-sm text-gray-600 dark:text-gray-300">
+                        Linking data is not available during correction resubmission; update the BT narrative and provide a fresh signature only.
+                      </p>
+                    </section>
+                    <section className={btCorrectionSectionClassName}>
+                      <SignatureInput
+                        value={btCorrectionResponses.bt_signature}
+                        disabled={isResubmittingBtCorrection}
+                        error={btCorrectionErrors.bt_signature}
+                        onChange={(signature) => setBtCorrectionField('bt_signature', signature)}
+                      />
+                    </section>
+                    </>
+                  )}
+                </div>
+                <div className="flex justify-end gap-3 border-t border-gray-200 p-6 dark:border-gray-700">
+                  <button
+                    type="button"
+                    onClick={resetBtCorrectionModalState}
+                    className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  {!btCorrectionLoadError && (
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => void handleBtCorrectionSubmit()}
+                      disabled={!btCorrectionHasFreshSignature || isResubmittingBtCorrection || isBtCorrectionSubmittingLocally}
+                      className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isResubmittingBtCorrection || isBtCorrectionSubmittingLocally ? 'Resubmitting...' : 'Re-attest and Resubmit'}
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -1675,6 +2093,7 @@ const Dashboard = () => {
   const queryClient = useQueryClient();
   const { effectiveRole, session, loading: authLoading, user, profile } = useAuth();
   const canViewStaffDashboard = canAccessStaffDashboard(effectiveRole);
+  const canViewCorrectionOnlyDashboard = isBtCorrectionDashboardRole(effectiveRole);
   const hasAccessToken = Boolean(session?.access_token && session.access_token.trim().length > 0);
   const organizationId = profile?.organization_id ?? null;
   const {
@@ -1699,12 +2118,20 @@ const Dashboard = () => {
   };
 
   const supervisionRequestsQueryKey = useMemo(
-    () => ['supervision-session-note-requests', organizationId ?? 'MISSING_ORG'] as const,
+    () => [SUPERVISION_SESSION_NOTES_QUERY_KEY, organizationId ?? 'MISSING_ORG'] as const,
+    [organizationId],
+  );
+  const btCorrectionTasksQueryKey = useMemo(
+    () => [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'bt-correction-tasks', organizationId ?? 'MISSING_ORG'] as const,
+    [organizationId],
+  );
+  const supervisionCountQueryKey = useMemo(
+    () => [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'pending-count', organizationId ?? 'MISSING_ORG'] as const,
     [organizationId],
   );
 
   const supervisionReconcileQuery = useQuery({
-    queryKey: ['supervision-session-note-requests', 'reconcile', organizationId ?? 'MISSING_ORG'],
+    queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'reconcile', organizationId ?? 'MISSING_ORG'],
     queryFn: () => reconcilePendingSupervisionSessionNoteRequests(organizationId!),
     enabled: canViewStaffDashboard && Boolean(organizationId) && hasAccessToken && !authLoading,
     staleTime: 5 * 60_000,
@@ -1715,6 +2142,13 @@ const Dashboard = () => {
     queryKey: supervisionRequestsQueryKey,
     queryFn: () => fetchPendingSupervisionSessionNoteRequests(organizationId!),
     enabled: canViewStaffDashboard && Boolean(organizationId) && hasAccessToken && !authLoading,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+  const btCorrectionTasksQuery = useQuery({
+    queryKey: btCorrectionTasksQueryKey,
+    queryFn: () => fetchBtSupervisionCorrectionTasks(organizationId!),
+    enabled: canViewCorrectionOnlyDashboard && Boolean(organizationId) && hasAccessToken && !authLoading,
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
@@ -1744,7 +2178,7 @@ const Dashboard = () => {
     onSuccess: async () => {
       showSuccess('Supervision session note saved.');
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['supervision-session-note-requests'] }),
+        queryClient.invalidateQueries({ queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
       ]);
     },
@@ -1752,8 +2186,53 @@ const Dashboard = () => {
       showError(error instanceof Error ? error.message : 'Failed to save supervision session note.');
     },
   });
+  const returnSupervisionMutation = useMutation({
+    mutationFn: async (input: { request: PendingSupervisionSessionNoteRequest; reason: string }) => {
+      if (!organizationId) {
+        throw new Error('Supervision note cannot be returned without organization context.');
+      }
+      await returnSupervisionRequestToBt({
+        organizationId,
+        requestId: input.request.id,
+        reason: input.reason,
+      });
+    },
+    onSuccess: async () => {
+      showSuccess('Supervision note returned to BT.');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY] }),
+        queryClient.invalidateQueries({ queryKey: supervisionCountQueryKey }),
+      ]);
+    },
+    onError: (error) => {
+      showError(error instanceof Error ? error.message : 'Failed to return supervision note to BT.');
+    },
+  });
+  const resubmitBtCorrectionMutation = useMutation({
+    mutationFn: async (input: { task: BtCorrectionTask; responses: BtAbaSessionNoteResponses }) => {
+      if (!organizationId) {
+        throw new Error('BT correction cannot be resubmitted without organization context.');
+      }
+      await resubmitBtSupervisionCorrection({
+        organizationId,
+        requestId: input.task.id,
+        responses: input.responses,
+        signature: input.responses.bt_signature,
+      });
+    },
+    onSuccess: async () => {
+      showSuccess('BT correction resubmitted.');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY] }),
+        queryClient.invalidateQueries({ queryKey: supervisionCountQueryKey }),
+      ]);
+    },
+    onError: (error) => {
+      showError(error instanceof Error ? error.message : 'Failed to resubmit BT correction.');
+    },
+  });
 
-  if (!canViewStaffDashboard) {
+  if (!canViewStaffDashboard && !canViewCorrectionOnlyDashboard) {
     const fallbackRoute = effectiveRole === 'therapist' ? '/schedule' : '/documentation';
     const fallbackLabel = effectiveRole === 'therapist' ? 'Go to Schedule' : 'Go to Documentation';
     return (
@@ -1772,10 +2251,12 @@ const Dashboard = () => {
 
   return (
     <DashboardView
-      dashboardData={dashboardData}
-      isLoading={isLoadingDashboard}
-      error={dashboardError}
-      refetch={refetch}
+      dashboardData={canViewStaffDashboard ? dashboardData : null}
+      isLoading={canViewStaffDashboard ? isLoadingDashboard : btCorrectionTasksQuery.isLoading}
+      error={canViewStaffDashboard ? dashboardError : btCorrectionTasksQuery.error}
+      refetch={canViewStaffDashboard ? refetch : () => {
+        void btCorrectionTasksQuery.refetch();
+      }}
       isLiveRole={refreshConfig.isLiveRole}
       intervalMs={refreshConfig.intervalMs}
       showReportsSummary={canViewStaffDashboard}
@@ -1784,9 +2265,19 @@ const Dashboard = () => {
       supervisionTemplate={supervisionQuery.data?.template ?? null}
       isLoadingSupervisionRequests={supervisionQuery.isLoading}
       isCompletingSupervisionNote={completeSupervisionMutation.isPending}
+      isReturningSupervisionNote={returnSupervisionMutation.isPending}
       onCompleteSupervisionNote={(request, responses) =>
         completeSupervisionMutation.mutateAsync({ request, responses })
       }
+      onReturnSupervisionNote={(request, reason) =>
+        returnSupervisionMutation.mutateAsync({ request, reason })
+      }
+      btCorrectionTasks={btCorrectionTasksQuery.data ?? []}
+      isResubmittingBtCorrection={resubmitBtCorrectionMutation.isPending}
+      onResubmitBtCorrection={(task, responses) =>
+        resubmitBtCorrectionMutation.mutateAsync({ task, responses })
+      }
+      correctionOnly={canViewCorrectionOnlyDashboard && !canViewStaffDashboard}
     />
   );
 };

@@ -175,9 +175,8 @@ describe('App navigation landing', () => {
     window.history.pushState({}, '', '/');
     renderApp();
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/schedule');
-    });
+    expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 
   it('redirects midtier users to schedule from dashboard landing', async () => {
@@ -195,9 +194,8 @@ describe('App navigation landing', () => {
     window.history.pushState({}, '', '/');
     renderApp();
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/schedule');
-    });
+    expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 
   it.each(['admin_schedule', 'admin', 'bcba', 'super_admin'] as const)('keeps %s on the dashboard', async (role) => {

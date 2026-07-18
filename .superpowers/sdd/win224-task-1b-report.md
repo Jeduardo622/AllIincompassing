@@ -72,6 +72,16 @@
 - Result:
   - PASS, `5` files and `49` tests passed on July 18, 2026.
 
+- Command:
+  - `npm run ci:check-focused`
+- Result:
+  - PASS on July 18, 2026 from the normal pre-commit hook path.
+  - Expected skips remained limited to missing local DB-backed or CI-only inputs:
+    - privileged function DB grant check without `SUPABASE_DB_URL`
+    - Supabase function auth parity when disabled locally
+    - sensitive-table RLS overlap without a database connection string
+    - Supabase preview drift without `SUPABASE_DB_URL`
+
 ## Live SQL Smoke Limitation
 
 - Attempted command:

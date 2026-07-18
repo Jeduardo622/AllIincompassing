@@ -623,6 +623,19 @@ const waitForText = async (page: Page, text: string): Promise<void> => {
   await page.getByText(text, { exact: true }).first().waitFor({ state: "visible", timeout: 30_000 });
 };
 
+const observeWorkflowRpcResponses = (page: Page): void => {
+  page.on("response", async (response) => {
+    const match = response.url().match(/\/rest\/v1\/rpc\/(get_pending_supervision_review_packets|get_supervision_session_note_action_count)$/);
+    if (!match) return;
+    const body = await response.json().catch(() => null) as unknown;
+    console.log(JSON.stringify({
+      browserRpc: match[1],
+      status: response.status(),
+      resultCount: Array.isArray(body) ? body.length : typeof body === "number" ? body : null,
+    }));
+  });
+};
+
 const openBcbaReviewModal = async (page: Page, clientName: string): Promise<void> => {
   await page.getByRole("button", { name: new RegExp(`complete supervision note for ${clientName}`, "i") }).click();
   await page.getByRole("heading", { name: /supervision session note/i }).waitFor({ state: "visible", timeout: 15_000 });
@@ -910,6 +923,7 @@ async function run(): Promise<void> {
 
     bcbaContext = await browser.newContext();
     bcbaPage = await bcbaContext.newPage();
+    observeWorkflowRpcResponses(bcbaPage);
     await loginAndAssertSession(bcbaPage, config.baseUrl, bcbaFixture.email, bcbaFixture.password);
     await openDashboard(bcbaPage, config.baseUrl);
     await waitForText(bcbaPage, PENDING_REVIEW_LABEL);

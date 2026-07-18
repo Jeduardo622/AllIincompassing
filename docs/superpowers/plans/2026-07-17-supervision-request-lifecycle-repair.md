@@ -80,6 +80,9 @@
 - Bounded correction: recognize exact `bcba` authority as admin-scoped for cancellation inside the already-resolved organization. Do not grant cancellation to `admin_schedule` or `midtier`, and do not change schema, RLS, grants, RPCs, or workflow configuration.
 - TDD proof: the focused role-resolution regression failed with `expected null to be 'admin'`, then passed 13/13 after the one-role correction.
 - Required closure proof: targeted edge tests, policy checks, lint, typecheck, test CI, tenant validation, route tier-0, build, and the hosted BCBA session-acceptance browser step.
+- PR #817 merged the BCBA-only cancellation fix and main CI deployed it, but the browser selector classified `sessions-cancel` with `authSmoke: false`; therefore the hosted BCBA proof was skipped rather than executed.
+- Final CI correction: require hosted auth/session smoke for `supabase/functions/sessions-cancel/**` while preserving its existing schedule/auth tier-0 selection. This is selector-only and does not change runtime or workflow YAML.
+- Final closure proof: after the selector correction merges, the main push must execute (not skip) `BCBA session acceptance proof` and complete its `sessions-cancel` cleanup without `403`.
 
 ## Stop conditions
 

@@ -218,6 +218,9 @@ async function resolveCancellationRole(
   if (await assertUserHasOrgRole(db, orgId, "admin")) {
     return "admin";
   }
+  if (await assertUserHasOrgRole(db, orgId, "bcba")) {
+    return "admin";
+  }
   if (await assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId })) {
     return "therapist";
   }

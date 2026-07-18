@@ -73,6 +73,14 @@
 - Follow-up security review: approved; the link is checked against the exact same-org session therapist and matches the edge handler's delegated-therapist authority model.
 - Follow-up Supabase review: approved; the forward migration retains fail-closed search path and existing grants without RLS or tenant-boundary expansion.
 
+### Post-merge CI follow-through
+
+- Main CI run `29623168770` passed the booking, start, note-save, measurement, deployment, migration, and hosted database proofs, but its BCBA acceptance cleanup received `403 Forbidden` from `sessions-cancel`.
+- Root cause: `sessions-cancel` recognized super-admin, admin, and exact therapist roles but omitted the exact in-org `bcba` role already used by the acceptance actor.
+- Bounded correction: recognize exact `bcba` authority as admin-scoped for cancellation inside the already-resolved organization. Do not grant cancellation to `admin_schedule` or `midtier`, and do not change schema, RLS, grants, RPCs, or workflow configuration.
+- TDD proof: the focused role-resolution regression failed with `expected null to be 'admin'`, then passed 13/13 after the one-role correction.
+- Required closure proof: targeted edge tests, policy checks, lint, typecheck, test CI, tenant validation, route tier-0, build, and the hosted BCBA session-acceptance browser step.
+
 ## Stop conditions
 
 - Any preflight allowlist row differs from its expected tenant, status, session timing, or packet completeness.

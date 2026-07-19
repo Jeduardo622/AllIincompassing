@@ -35,6 +35,9 @@ const ChatAssistantFallback = () => (
   </div>
 );
 
+const isBtCorrectionDashboardRole = (role: AppRole | null | undefined) =>
+  role === 'bt';
+
 export function Sidebar() {
   const { signOut, hasRole, user, profile, isGuardian, effectiveRole, hasCapability } = useAuth();
   const organizationId = useActiveOrganizationId();
@@ -115,7 +118,7 @@ export function Sidebar() {
       icon: LayoutDashboard,
       label: 'Dashboard',
       path: '/',
-      roles: ['admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
+      roles: ['bt', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     { 
@@ -224,7 +227,9 @@ export function Sidebar() {
 
   const canAccessChatAssistant = hasCapability('viewSchedule') || hasCapability('dataTaking');
   const canAccessMessages = hasCapability('viewMessages');
-  const canViewSupervisionNotifications = hasCapability('staffDashboard');
+  const canViewSupervisionNotifications =
+    hasCapability('staffDashboard') || isBtCorrectionDashboardRole(profile?.role);
+  const supervisionRoleBucket = hasCapability('staffDashboard') ? 'staff' : isBtCorrectionDashboardRole(profile?.role) ? 'bt' : 'other';
 
   const { data: unreadMessagesData } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],
@@ -234,7 +239,7 @@ export function Sidebar() {
   });
 
   const { data: pendingSupervisionNoteCount = 0 } = useQuery({
-    queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'pending-count', organizationId],
+    queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY, 'pending-count', organizationId, user?.id ?? 'NO_USER', profile?.id ?? 'NO_PROFILE', supervisionRoleBucket],
     queryFn: () => fetchPendingSupervisionSessionNoteCount(organizationId!),
     enabled: canViewSupervisionNotifications && Boolean(organizationId),
     refetchInterval: 30_000,
@@ -331,6 +336,9 @@ export function Sidebar() {
             if (roles.length > 0 && !roles.includes(effectiveRole)) {
               return null;
             }
+            if (path === '/' && effectiveRole === 'bt' && profile?.role !== 'bt') {
+              return null;
+            }
 
             return (
               <NavLink
@@ -367,7 +375,7 @@ export function Sidebar() {
                         <span
                           className="inline-flex min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[11px] font-semibold text-white dark:bg-amber-400 dark:text-gray-950"
                           data-testid="sidebar-supervision-notes-badge"
-                          title={`${pendingSupervisionNoteCount} supervision session note${pendingSupervisionNoteCount === 1 ? '' : 's'} due`}
+                          title={`${pendingSupervisionNoteCount} dashboard action${pendingSupervisionNoteCount === 1 ? '' : 's'} waiting`}
                         >
                           {pendingSupervisionNoteCount}
                         </span>

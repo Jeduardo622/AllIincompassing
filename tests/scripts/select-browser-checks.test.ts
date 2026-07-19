@@ -13,6 +13,7 @@ const runSelector = (...args: string[]) => JSON.parse(execFileSync(process.execP
 })) as {
   tier0Required: boolean;
   authSmokeRequired: boolean;
+  supervisionCorrectionRequired: boolean;
   tier0Specs: string[];
   reasons: string[];
 };
@@ -75,9 +76,36 @@ describe('select-browser-checks', () => {
 
     expect(selection.tier0Required).toBe(true);
     expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.supervisionCorrectionRequired).toBe(true);
     expect(selection.tier0Specs).toContain('cypress/e2e/preauth_workflow.cy.ts');
     expect(selection.reasons).toEqual([
       'scripts/ci/select-browser-checks.mjs: browser CI support script',
+    ]);
+  });
+
+  it('flags the hosted supervision-correction proof when its workflow changes', () => {
+    const selection = runSelector('--changed-file', '.github/workflows/bt-aba-disposable-browser-proof.yml');
+
+    expect(selection.tier0Required).toBe(true);
+    expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.supervisionCorrectionRequired).toBe(true);
+    expect(selection.reasons).toEqual([
+      '.github/workflows/bt-aba-disposable-browser-proof.yml: shared route/auth surface',
+    ]);
+  });
+
+  it('flags the hosted supervision-correction proof when its script changes', () => {
+    const selection = runSelector('--changed-file', 'scripts/playwright-supervision-correction.ts');
+
+    expect(selection.tier0Required).toBe(true);
+    expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.supervisionCorrectionRequired).toBe(true);
+    expect(selection.tier0Specs).toEqual([
+      'cypress/e2e/routes_auth.cy.ts',
+      'cypress/e2e/routes_schedule.cy.ts',
+    ]);
+    expect(selection.reasons).toEqual([
+      'scripts/playwright-supervision-correction.ts: auth/session browser flow',
     ]);
   });
 

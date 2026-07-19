@@ -42,7 +42,7 @@ export const routeGroups = {
       roles: ["client", "bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"],
       expectedPathByRole: {
         client: "/documentation",
-        bt: "/schedule",
+        bt: "/",
         therapist: "/schedule",
         midtier: "/schedule",
         admin_schedule: "/",
@@ -158,6 +158,12 @@ export const installRouteDataStubs = (): void => {
 
   const emptyJson = { statusCode: 200, body: [], headers: { "content-type": "application/json" } };
 
+  cy.intercept("POST", "**/__supabase/rest/v1/rpc/get_bt_supervision_correction_tasks**", emptyJson);
+  cy.intercept("POST", "**/__supabase/rest/v1/rpc/get_supervision_session_note_action_count**", {
+    statusCode: 200,
+    body: 0,
+    headers: { "content-type": "application/json" },
+  });
   cy.intercept("GET", "**/__supabase/rest/v1/message_threads**", emptyJson);
   cy.intercept("GET", "**/__supabase/rest/v1/message_thread_participants**", emptyJson);
   cy.intercept("GET", "**/__supabase/rest/v1/messages**", emptyJson);

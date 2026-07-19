@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -183,10 +183,25 @@ describe("Sidebar navigation active styling", () => {
 
     renderSidebar(["/schedule"]);
 
+    expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /schedule/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /clients/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /messages/i })).toBeInTheDocument();
     expect(screen.getByText("Behavioral Therapist Account")).toBeInTheDocument();
+  });
+
+  it("hides the dashboard link for legacy therapist users", () => {
+    const legacyTherapist = mockUseAuth();
+    mockUseAuth.mockReturnValue({
+      ...legacyTherapist,
+      effectiveRole: "bt",
+      hasCapability: vi.fn(capabilityForRole("bt")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("bt"))),
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.queryByRole("link", { name: /dashboard/i })).not.toBeInTheDocument();
   });
 
   it("shows admin navigation items for super admin users", () => {
@@ -379,7 +394,7 @@ describe("Sidebar navigation active styling", () => {
     expect(mockFetchPendingSupervisionSessionNoteCount).toHaveBeenCalledWith("org-1");
   });
 
-  it("does not query supervision note notifications for therapists", () => {
+  it("does not query dashboard action notifications for therapists without staff capability expansion", () => {
     const hasRole = vi.fn(
       (role: "client" | "therapist" | "admin" | "super_admin") => role === "therapist"
     );
@@ -404,10 +419,82 @@ describe("Sidebar navigation active styling", () => {
       hasCapability: vi.fn(capabilityForRole("therapist")),
       hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("therapist"))),
     });
-
     renderSidebar(["/schedule"]);
 
     expect(mockFetchPendingSupervisionSessionNoteCount).not.toHaveBeenCalled();
     expect(screen.queryByTestId("sidebar-supervision-notes-badge")).not.toBeInTheDocument();
+    expect(mockUseAuth.mock.results.at(-1)?.value.hasCapability("staffDashboard")).toBe(false);
+  });
+
+  it("does not reuse dashboard action badge state across same-org actor switch with the same query client", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    mockFetchPendingSupervisionSessionNoteCount
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(0);
+
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole: vi.fn((role: string) => role === "bt"),
+      user: {
+        id: "bt-user-1",
+        email: "bt1@example.com",
+        user_metadata: {
+          therapist_id: "therapist-123",
+        },
+      },
+      profile: {
+        id: "profile-bt-1",
+        role: "bt",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn(() => true),
+      effectiveRole: "bt",
+      hasCapability: vi.fn(capabilityForRole("bt")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("bt"))),
+    });
+
+    const view = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <Sidebar />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByTestId("sidebar-supervision-notes-badge")).toHaveTextContent("3");
+
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole: vi.fn((role: string) => role === "bt"),
+      user: {
+        id: "bt-user-2",
+        email: "bt2@example.com",
+        user_metadata: {
+          therapist_id: "therapist-456",
+        },
+      },
+      profile: {
+        id: "profile-bt-2",
+        role: "bt",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn(() => true),
+      effectiveRole: "bt",
+      hasCapability: vi.fn(capabilityForRole("bt")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("bt"))),
+    });
+
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <Sidebar />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await screen.findByText("bt2@example.com");
+    await waitFor(() => {
+      expect(screen.queryByTestId("sidebar-supervision-notes-badge")).not.toBeInTheDocument();
+    });
   });
 });

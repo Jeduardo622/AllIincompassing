@@ -83,7 +83,15 @@ const matchAny = (file, patterns) => patterns.some((pattern) => pattern.test(fil
 
 const classifyFile = (file) => {
   if (/^scripts\/ci\/select-browser-checks\.mjs$/.test(file)) {
-    return { specs: allSpecKeys, authSmoke: true, reason: "browser CI support script" };
+    return { specs: allSpecKeys, authSmoke: true, supervisionCorrection: true, reason: "browser CI support script" };
+  }
+
+  if (/^\.github\/workflows\/bt-aba-disposable-browser-proof\.yml$/.test(file)) {
+    return { specs: allSpecKeys, authSmoke: true, supervisionCorrection: true, reason: "shared route/auth surface" };
+  }
+
+  if (/^scripts\/playwright-supervision-correction\.ts$/.test(file)) {
+    return { specs: ["auth", "schedule"], authSmoke: true, supervisionCorrection: true, reason: "auth/session browser flow" };
   }
 
   if (/^scripts\/ci\/deploy-session-edge-bundle\.mjs$/.test(file)) {
@@ -195,11 +203,13 @@ const selectBrowserChecks = (files, fallbackFull) => {
   const selectedSpecs = new Set();
   const reasons = [];
   let authSmokeRequired = false;
+  let supervisionCorrectionRequired = false;
 
   if (fallbackFull) {
     return {
       tier0Required: true,
       authSmokeRequired: true,
+      supervisionCorrectionRequired: true,
       tier0Specs: allSpecKeys.map((key) => TIER0_SPECS[key]),
       reasons: ["diff unavailable; running full browser gates"],
       changedFiles: files,
@@ -212,6 +222,7 @@ const selectBrowserChecks = (files, fallbackFull) => {
       selectedSpecs.add(spec);
     }
     authSmokeRequired = authSmokeRequired || classification.authSmoke;
+    supervisionCorrectionRequired = supervisionCorrectionRequired || classification.supervisionCorrection === true;
     if (classification.specs.length > 0 || classification.authSmoke) {
       reasons.push(`${file}: ${classification.reason}`);
     }
@@ -220,6 +231,7 @@ const selectBrowserChecks = (files, fallbackFull) => {
   return {
     tier0Required: selectedSpecs.size > 0,
     authSmokeRequired,
+    supervisionCorrectionRequired,
     tier0Specs: [...selectedSpecs].map((key) => TIER0_SPECS[key]),
     reasons,
     changedFiles: files,
@@ -230,6 +242,7 @@ const writeGithubOutput = (selection) => {
   const lines = [
     `tier0_required=${selection.tier0Required ? "true" : "false"}`,
     `auth_smoke_required=${selection.authSmokeRequired ? "true" : "false"}`,
+    `supervision_correction_required=${selection.supervisionCorrectionRequired ? "true" : "false"}`,
     `tier0_specs=${selection.tier0Specs.join(",")}`,
   ];
 

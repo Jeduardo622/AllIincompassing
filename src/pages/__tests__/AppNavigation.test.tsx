@@ -9,6 +9,8 @@ type TestRole = 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | '
 type TestCapability = 'staffDashboard' | 'viewClients' | 'viewSchedule';
 
 let authRole: TestRole = 'client';
+let persistedProfileRole: TestRole | null = null;
+let profileAvailable = true;
 let authIsGuardian = false;
 const { mockLoggerInfo } = vi.hoisted(() => ({
   mockLoggerInfo: vi.fn(),
@@ -32,7 +34,7 @@ vi.mock('../../lib/authContext', () => {
   };
   return {
     useAuth: () => ({
-      profile: { role: authRole, is_active: true },
+      profile: profileAvailable ? { role: persistedProfileRole ?? authRole, is_active: true } : null,
       user: { id: 'user-1', email: 'user@example.com' },
       loading: false,
       profileLoading: false,
@@ -136,6 +138,8 @@ const renderApp = () => {
 describe('App navigation landing', () => {
   beforeEach(() => {
     authRole = 'client';
+    persistedProfileRole = null;
+    profileAvailable = true;
     authIsGuardian = false;
     mockLoggerInfo.mockReset();
   });
@@ -180,6 +184,17 @@ describe('App navigation landing', () => {
     });
   });
 
+  it('redirects a legacy therapist normalized to BT capabilities away from the correction dashboard', async () => {
+    authRole = 'bt';
+    persistedProfileRole = 'therapist';
+    window.history.pushState({}, '', '/');
+    renderApp();
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/schedule');
+    });
+  });
+
   it('redirects midtier users to schedule from dashboard landing', async () => {
     authRole = 'midtier';
     window.history.pushState({}, '', '/');
@@ -190,14 +205,23 @@ describe('App navigation landing', () => {
     });
   });
 
-  it('redirects BT users to schedule from dashboard landing', async () => {
+  it('keeps exact BT users on the correction-capable dashboard landing', async () => {
     authRole = 'bt';
     window.history.pushState({}, '', '/');
     renderApp();
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/schedule');
-    });
+    expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it('keeps an authoritative BT assignment on the correction dashboard while the profile is unavailable', async () => {
+    authRole = 'bt';
+    profileAvailable = false;
+    window.history.pushState({}, '', '/');
+    renderApp();
+
+    expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 
   it.each(['admin_schedule', 'admin', 'bcba', 'super_admin'] as const)('keeps %s on the dashboard', async (role) => {

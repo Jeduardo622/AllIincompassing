@@ -63,7 +63,8 @@ describe("marker-owned BT fixture cleanup", () => {
     const { client, deletes } = clientMock();
     await cleanupMarkerOwnedBtFixture(client, ids, marker, sessionId);
 
-    expect(deletes.slice(0, 3)).toEqual([
+    expect(deletes.slice(0, 4)).toEqual([
+      `supervision_session_note_requests.session_id=${sessionId}`,
       `client_session_notes.session_id=${sessionId}`,
       `session_goals.session_id=${sessionId}`,
       `sessions.id=${sessionId}`,

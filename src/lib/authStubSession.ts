@@ -146,7 +146,11 @@ export interface StubAuthState {
 }
 
 const normaliseRole = (payload: StubPayload): Role | null => {
-  const role = toOptionalString(payload.user?.role) ?? toOptionalString(payload.role);
+  const exactUserRole = toOptionalString(payload.user?.role)?.trim().toLowerCase().replace(/[\s-]+/g, '_') ?? null;
+  if (exactUserRole && VALID_ROLES.has(exactUserRole as Role)) {
+    return exactUserRole as Role;
+  }
+  const role = exactUserRole ?? toOptionalString(payload.role);
   const normalizedRole = normalizeRole(role);
   if (!normalizedRole || !VALID_ROLES.has(normalizedRole)) {
     return null;

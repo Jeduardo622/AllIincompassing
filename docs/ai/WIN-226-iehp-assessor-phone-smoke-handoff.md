@@ -50,8 +50,9 @@
   - local IEHP hosted smoke -> not run because its credentials and sample path are absent from this process
   - Netlify deploy preview -> pass for head `264e9023` at `https://deploy-preview-821--velvety-cendol-dae4d6.netlify.app`
   - prior hosted CI IEHP smoke -> failed in run `29693503346`, job `88210644586`: the secret-backed long-lived target returned one empty assessor-phone row; cleanup still passed
-  - current deploy-preview field proof -> pending the pushed follow-up commit and live PR rerun
-- Result: local implementation checks pass; final hosted result remains pending, and critical-lane human review is required before merge.
+  - current deploy-preview field proof -> pass on commit `1e9fe92b`, run `29696674281`, job `88218578256`: `extracted`, zero draft programs/goals, exactly one non-empty valid matching phone, `provenanceVerified: true`, `client_snapshot.primary_therapist_phone`, and matching redacted values
+  - cleanup proof -> pass in the same job: the smoke completed document/storage cleanup, unconditional synthetic-admin cleanup deleted the run-scoped account, and evidence/artifact upload passed
+- Result: bounded local and hosted field-level proof pass; critical-lane human review is still required before merge.
 - Residual risk: mocked PostgREST tests do not execute hosted RLS. The decisive proof remains a credentialed smoke against the deploy preview showing `extracted`, zero drafts, one non-empty valid assessor-phone row, snapshot precedence, and successful document/storage cleanup.
 
 ## Reviewer Findings
@@ -66,11 +67,11 @@
 
 ## PR Hygiene
 
-- `pr-ready`: pending credentialed deploy-preview proof and human approval
+- `pr-ready`: yes for human review; merge remains blocked on required human approval and any still-running required checks
 - `branch-ready`: yes (`codex/win-226-iehp-assessor-phone-smoke`)
 - `linear-ready`: yes (`WIN-226`)
 - `single-purpose`: yes
 - `unrelated changes`: untracked `pnpm-lock.yaml` and `pnpm-workspace.yaml` remain excluded
 - `generated artifact drift`: none
 - `protected-path drift`: declared and routed as `critical` (`src/server/**` and the bounded IEHP block in `.github/workflows/ci.yml`)
-- `required follow-up`: push the provenance/preview-targeting commit, inspect the live IEHP job and cleanup evidence, then obtain required human review before merge.
+- `required follow-up`: obtain required human review, wait for the remaining live PR checks, and merge only if branch protection allows it.

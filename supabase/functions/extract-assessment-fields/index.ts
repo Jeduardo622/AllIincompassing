@@ -1877,6 +1877,29 @@ const looksLikeNoValueMarker = (value: string): boolean =>
 const CALOPTIMA_PHONE_PATTERN =
   /((?:\(\d{3}\)\s*\d{3}[-\s]?\d{4})|(?:\d{3}[-\s]?\d{3}[-\s]?\d{4})|(?:X{3,}\s*\d{3,})|(?:\d{7,}))/i;
 
+const IEHP_ASSESSOR_PHONE_PATTERN =
+  /((?:\+?1[-\s]?)?(?:\(\d{3}\)\s*|\d{3}[-\s]?)\d{3}[-\s]?\d{4})/i;
+
+const extractIehpAssessorPhone = (text: string): string | null => {
+  const assessorBlock = extractSectionText(
+    text,
+    [/Assessor\/Certification\s*:?\s*/i, /Assessor(?:'s)?\s+phone\s+number\s*:?\s*/i],
+    [/Name\s+of\s+Referring\s+Provider\b/i, /Reason\s+for\s+Referral\b/i, /\bII\.\s+/i, /\bBEHAVIORS\b/i],
+  );
+  if (!assessorBlock) {
+    return null;
+  }
+
+  const compact = compactDocumentText(assessorBlock);
+  const match = compact.match(
+    new RegExp(
+      `(?:Assessor(?:'s)?\\s+phone\\s+number|Phone\\s+Number|Phone)\\s*:?\\s*${IEHP_ASSESSOR_PHONE_PATTERN.source}(?!\\d)`,
+      "i",
+    ),
+  );
+  return match?.[1] ? normalizeExtractedValue(match[1]) : null;
+};
+
 const extractCaloptimaInlineGuardianAndPhone = (text: string): { guardianName: string | null; contactPhone: string | null } => {
   const compact = compactDocumentText(text);
   const match = compact.match(
@@ -2079,6 +2102,12 @@ const extractSpecialScalarByKey = (
   text: string,
 ): ExtractedFieldResult | null => {
   const key = row.placeholder_key;
+  if (key === "IEHP_FBA_ASSESSOR_PHONE") {
+    const iehpAssessorPhone = extractIehpAssessorPhone(text);
+    if (iehpAssessorPhone) {
+      return makeAutoField(row, iehpAssessorPhone, { method: "iehp_assessor_phone_anchor", key }, text);
+    }
+  }
   const calOptimaInline = extractCaloptimaInlineScalarByKey(key, text);
   if (calOptimaInline) {
     return makeAutoField(row, calOptimaInline, { method: "caloptima_inline_pair", key }, text);

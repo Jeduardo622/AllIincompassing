@@ -84,8 +84,8 @@
         "label": "Assessor's phone number",
         "placeholder_key": "IEHP_FBA_ASSESSOR_PHONE",
         "mode": "ASSISTED",
-        "source": "therapists.phone || company_settings.phone",
-        "notes": "Fallback to clinic number."
+        "source": "client_snapshot.primary_therapist_phone || assessor-local uploaded document phone label",
+        "notes": "Prefer snapshot therapist phone; otherwise require an assessor-anchored document phone label."
       },
       {
         "label": "Name of Referring Provider, Credentials",

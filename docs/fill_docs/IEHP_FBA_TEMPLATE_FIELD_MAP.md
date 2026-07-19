@@ -39,3 +39,4 @@ Runtime extraction paths:
 - All `MANUAL` and `ASSISTED` rows default to required unless explicitly documented optional.
 - Payer/template type must be persisted on each upload as `template_type = iehp_fba`.
 - DB-prefill claims must match the client snapshot actually sent to extraction; fields not present in that snapshot or in the uploaded document must stay assisted/manual.
+- `IEHP_FBA_ASSESSOR_PHONE` stages from `client_snapshot.primary_therapist_phone` when present; otherwise it may be extracted from a nearby generic `Phone Number` or `Phone` label only when it is anchored inside the assessor identification block. Do not treat unrelated document phone numbers or malformed digit runs as assessor contact values.

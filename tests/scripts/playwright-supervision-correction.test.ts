@@ -82,6 +82,7 @@ describe("supervision correction hosted proof safeguards", () => {
     expect(source).not.toContain("auth.admin.listUsers");
     expect(source).not.toContain("completeReviewThroughRpc");
     expect(source).toContain("finally");
+    expect(source.indexOf("if (btPage) {")).toBeLessThan(source.indexOf("else if (bcbaPage) {"));
   });
 
   it("leaves protected BCBA profile fields to the privileged provisioning RPC", () => {

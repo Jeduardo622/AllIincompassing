@@ -1020,10 +1020,10 @@ async function run(): Promise<void> {
     }));
   } catch (error) {
     runError = error;
-    if (bcbaPage) {
-      screenshotPath = await captureCorrectionFailureScreenshot(bcbaPage);
-    } else if (btPage) {
+    if (btPage) {
       screenshotPath = await captureCorrectionFailureScreenshot(btPage);
+    } else if (bcbaPage) {
+      screenshotPath = await captureCorrectionFailureScreenshot(bcbaPage);
     }
     console.error(JSON.stringify({
       ok: false,

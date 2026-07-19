@@ -42,7 +42,9 @@
   - `npm run test:routes:tier0` -> no pass claim: default port `4173` was occupied; alternate port `4174` timed out before Cypress completed
   - `npm run ci:playwright` -> not run because its credentials are absent from this process
   - local IEHP hosted smoke -> not run because its credentials and sample path are absent from this process
-  - hosted preview proof -> pending after push; the current workflow IEHP job uses `secrets.PW_BASE_URL`, not the PR deploy-preview URL, so it cannot be attributed to the new server commit unless that URL is independently shown to serve the commit
+  - Netlify deploy preview -> pass for head `264e9023` at `https://deploy-preview-821--velvety-cendol-dae4d6.netlify.app`
+  - hosted CI IEHP smoke -> fail in run `29693272669`, job `88209700576`: the new merge SHA was checked out, but the masked `secrets.PW_BASE_URL` target again returned exactly one empty assessor-phone row; the synthetic smoke admin cleanup step and artifact upload passed
+  - deploy-preview field proof -> blocked: the process has no hosted credentials/sample, and the workflow does not target the preview, so the CI failure does not exercise the new server deployment
 - Result: `blocked` pending hosted deploy-preview field proof and human review.
 - Residual risk: mocked PostgREST tests do not execute hosted RLS. The decisive proof remains a credentialed smoke against the deploy preview showing `extracted`, zero drafts, one non-empty valid assessor-phone row, snapshot precedence, and successful document/storage cleanup.
 
@@ -56,11 +58,11 @@
 
 ## PR Hygiene
 
-- `pr-ready`: no, pending hosted proof and human approval
+- `pr-ready`: no, pending credentialed deploy-preview proof and human approval
 - `branch-ready`: yes (`codex/win-226-iehp-assessor-phone-smoke`)
 - `linear-ready`: yes (`WIN-226`)
 - `single-purpose`: yes
 - `unrelated changes`: untracked `pnpm-lock.yaml` and `pnpm-workspace.yaml` remain excluded
 - `generated artifact drift`: none
 - `protected-path drift`: declared and routed as `critical` (`src/server/**`)
-- `required follow-up`: push the bounded fix, wait for the preview deployment of the new SHA, run the credentialed IEHP smoke against that preview without changing `.github/workflows/**`, and obtain required human review before merge.
+- `required follow-up`: run the credentialed IEHP smoke against the deployed preview for `264e9023` without changing `.github/workflows/**`, then obtain required human review before merge.

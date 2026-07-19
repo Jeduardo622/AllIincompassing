@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -17,8 +17,19 @@ const triggerHardeningSql = readFileSync(
   'utf8',
 );
 
+const signatureLimitFixPath = join(
+  process.cwd(),
+  'supabase/migrations/20260719000630_align_bt_correction_signature_limits.sql',
+);
+const signatureLimitFixSql = existsSync(signatureLimitFixPath)
+  ? readFileSync(signatureLimitFixPath, 'utf8')
+  : '';
+
 const functionBody = (name: string) =>
   sql.match(new RegExp(`create or replace function public\\.${name}\\([\\s\\S]*?\\n\\$\\$;`, 'i'))?.[0] ?? '';
+
+const functionBodyFrom = (migrationSql: string, name: string) =>
+  migrationSql.match(new RegExp(`create or replace function public\\.${name}\\([\\s\\S]*?\\n\\$\\$;`, 'i'))?.[0] ?? '';
 
 describe('supervision correction workflow migration', () => {
   it('reapplies the review packet RPC grants after its replacement', () => {
@@ -43,6 +54,20 @@ describe('supervision correction workflow migration', () => {
         new RegExp(`revoke all on function public\\.${functionName}\\(\\) from public, anon, authenticated`, 'i'),
       );
     }
+  });
+
+  it('keeps typed correction signatures at 200 characters and drawn signatures at 20000', () => {
+    const body = functionBodyFrom(signatureLimitFixSql, 'resubmit_bt_supervision_correction');
+
+    expect(signatureLimitFixSql).toMatch(/signature_method = 'typed'[\s\S]*char_length\(signature_value\) <= 200/i);
+    expect(signatureLimitFixSql).toMatch(/signature_method = 'drawn'[\s\S]*char_length\(signature_value\) <= 20000/i);
+    expect(body).toMatch(/v_signature_method = 'typed'[\s\S]*char_length\(v_signature_value\) > 200/i);
+    expect(body).toMatch(/v_signature_method = 'drawn'[\s\S]*char_length\(v_signature_value\) > 20000/i);
+
+    expect(signatureLimitFixSql).toMatch(/from pg_catalog\.pg_constraint[\s\S]*pg_catalog\.pg_get_constraintdef/i);
+    expect(signatureLimitFixSql).toMatch(/alter table public\.bt_session_note_amendments drop constraint %I/i);
+    expect(signatureLimitFixSql).toMatch(/create or replace function public\.resubmit_bt_supervision_correction/i);
+    expect(signatureLimitFixSql).toMatch(/v_signature_method = 'drawn'[\s\S]*char_length\(v_signature_value\) > 20000/i);
   });
 
   it('documents a reviewed forward-only rollback path', () => {

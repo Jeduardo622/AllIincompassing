@@ -7,6 +7,7 @@
 - why: the bounded workflow changes a clinical record lifecycle, database schema, RLS/grants/RPC authorization, exact-role routing, and a secret-bearing hosted proof workflow.
 - triggering paths:
   - `supabase/migrations/20260718155154_return_bt_supervision_correction.sql`
+  - `supabase/migrations/20260719000630_align_bt_correction_signature_limits.sql`
   - `supabase/migrations/20260718204735_allow_exact_bt_proof_history_cleanup.sql`
   - `supabase/migrations/20260718210522_grant_service_role_app_schema_usage.sql`
   - `supabase/migrations/20260718210937_preserve_service_role_cleanup_context.sql`
@@ -23,6 +24,7 @@
   - `src/lib/authStubSession.ts`
   - `src/App.tsx`
   - `src/pages/Dashboard.tsx`
+  - `src/components/session-notes/BtCorrectionSnapshotFields.tsx`
   - `src/components/Sidebar.tsx`
   - focused unit, migration, SQL smoke, route, workflow, and browser-proof tests
   - `.github/workflows/bt-aba-disposable-browser-proof.yml`
@@ -37,7 +39,7 @@
 
 - required sequence: specification-engineer, software-architect, implementation-engineer, code-review-engineer, test-engineer, security-engineer
 - agents used: specification, architecture, implementation, test planning, code review, Supabase review, security review, and CI/workflow review
-- reviewer: completed; final exact-role review approved with no required fixes
+- reviewer: completed; second-pass code, security, and Supabase reviews approved the Codex review fixes with no required fixes
 
 ## Verification Card
 
@@ -57,6 +59,12 @@
   - transactional SQL smoke through `ROLLBACK`
   - hosted BT -> BCBA -> BT -> BCBA correction proof on the managed PR preview
 - executed checks:
+  - Codex review regression suite (`Dashboard.noFallback` plus migration contract): pass, 40/40
+  - malformed immutable snapshot fail-closed and undeclared-key stripping coverage: pass
+  - alternate hosted constraint-name transactional proof: pass; catalog discovery removed the renamed legacy cap inside `ROLLBACK`
+  - local forward migration execution: pass and idempotent
+  - Supabase plugin migration `align_bt_correction_signature_limits`: applied successfully to the linked production project
+  - hosted SQL verification: pass for method-aware constraint, typed/drawn RPC bounds, empty `search_path`, and execute grants
   - `npx vitest run tests/supervisionCorrectionWorkflowMigration.test.ts`: pass, 13/13
   - related supervision/BT migration suite: pass, 49/49
   - focused correction feature suite: pass, 161/161 across 13 files
@@ -72,7 +80,7 @@
   - `npm run validate:tenant`: pass
   - `npm run build`: pass
   - `npm run test:routes:tier0`: pass, 220/220
-  - `npm run test:ci`: 3022/3029 passed; fail locally on the known Windows workflow-step parser and Blob `.text()` behavior, plus an inherited invalid `WIN224_POSTGRES_URL`; the same Postgres cleanup test passed 3/3 with the explicit local URL
+  - `npm run test:ci`: 3028/3035 passed; fail locally on the known Windows CRLF-sensitive workflow-step parser and bundled jsdom Blob `.text()` behavior; the unrelated Programs/Goals order-sensitive failure passed 98/98 in isolation
   - `npm run verify:local`: fail at the same local `test:ci` stage; later steps were separately executed and passed
   - `npm run ci:playwright`: fail at hosted auth login because the configured super-admin credential was rejected
   - hosted managed-preview proof run `29661369019`: pass on exact commit `7f95b7c5fb05d4c5ec928df0b7d4c66919e3cecd`
@@ -93,8 +101,8 @@
 - verification summary: present
 - pr-ready: yes for human review; keep draft and unmerged until the mandatory critical-lane approval is complete
 - required follow-up:
-  - inspect live required checks and obtain human approval before merge
+  - push the Codex review fixes, rerun exact-head hosted proof and required checks, resolve both review threads, and obtain human approval before merge
 
 ## Handoff Summary
 
-WIN-224 adds an append-only correction lifecycle to supervision review: the assigned BCBA can return a signed BT packet with a reason, the original exact BT creates a newly attested amendment, and the same BCBA reviews the full version chain and completes the request. Tenant, actor, assignment, role, and immutable-version boundaries are enforced in server-side RPCs and mirrored fail-closed in the dashboard. Local schema, SQL smoke, focused tests, policy, coverage, tenant, build, and Tier-0 route gates pass, and hosted run `29661369019` proves the full browser lifecycle, exact cleanup, and managed-preview health on the PR head. Keep PR #819 unmerged until required live checks and critical-lane human review are complete.
+WIN-224 adds an append-only correction lifecycle to supervision review: the assigned BCBA can return a signed BT packet with a reason, the original exact BT creates a newly attested amendment, and the same BCBA reviews the full version chain and completes the request. The Codex review follow-up preserves immutable template snapshots, fails closed on malformed history, strips undeclared keys before resubmission, and aligns drawn-signature storage with the existing 20,000-character closeout contract through a forward-only migration. The hosted migration and SQL boundary checks pass; rerun the browser proof and required CI checks on the new PR head before human merge review.

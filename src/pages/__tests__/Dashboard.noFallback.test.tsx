@@ -3,6 +3,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DashboardView } from '../Dashboard';
+import { validateBtCorrectionSnapshotResponses } from '../../components/session-notes/BtCorrectionSnapshotFields';
 import type { BtAbaSessionNoteResponses } from '../../lib/bt-aba-session-note';
 
 vi.mock('../../components/Dashboard/ReportsSummary', () => ({
@@ -799,6 +800,168 @@ describe('Dashboard without client fallbacks', () => {
         bt_signature: { method: 'typed', value: 'BT Fresh Signature' },
       }),
     );
+  });
+
+  it('renders and preserves the immutable BT template snapshot during correction', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+    const onResubmitBtCorrection = vi.fn().mockResolvedValue(undefined);
+    const snapshot = {
+      sections: [
+        {
+          key: 'legacy_session_details',
+          label: 'Legacy Session Details',
+          fields: [
+            {
+              key: 'purpose_of_session',
+              label: 'Organization-specific purpose',
+              type: 'multi_select',
+              required: true,
+              options: ['Legacy organization purpose'],
+            },
+            {
+              key: 'legacy_required_detail',
+              label: 'Legacy required detail',
+              type: 'textarea',
+              required: true,
+            },
+            {
+              key: 'link_unlinked_data',
+              label: 'Link unlinked data',
+              type: 'boolean',
+              required: true,
+            },
+            {
+              key: 'bt_signature',
+              label: 'Legacy BT Signature',
+              type: 'signature',
+              required: true,
+            },
+          ],
+        },
+      ],
+    };
+    const responses = {
+      purpose_of_session: ['Legacy organization purpose'],
+      legacy_required_detail: 'Preserve this immutable snapshot response.',
+      link_unlinked_data: false,
+      bt_signature: { method: 'typed', value: 'Original BT Signature' },
+    };
+    const version = {
+      versionNumber: 1,
+      noteId: 'bt-note-legacy',
+      source: 'original',
+      correctionRound: null,
+      responses,
+      templateSnapshot: snapshot,
+      signatureMethod: 'typed',
+      signatureValue: 'Original BT Signature',
+      signedAt: '2026-07-18T16:00:00.000Z',
+    };
+
+    render(
+      <View
+        {...baseProps}
+        btCorrectionTasks={[makeBtCorrectionTask({ originalVersion: version, latestVersion: version })]}
+        onResubmitBtCorrection={onResubmitBtCorrection}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /amend bt note for client bt/i }));
+
+    expect(screen.getByRole('heading', { name: 'Legacy Session Details' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Legacy organization purpose' })).toBeChecked();
+    expect(screen.getByLabelText('Legacy required detail')).toHaveValue(
+      'Preserve this immutable snapshot response.',
+    );
+    expect(screen.queryByText('The latest BT note payload could not be prepared for correction.')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Type signature' }));
+    await user.type(screen.getByLabelText('Type Behavior Technician signature'), 'Fresh BT Signature');
+    await user.click(screen.getByRole('button', { name: /re-attest and resubmit/i }));
+
+    await waitFor(() => expect(onResubmitBtCorrection).toHaveBeenCalledTimes(1));
+    expect(onResubmitBtCorrection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'bt-task-1' }),
+      expect.objectContaining({
+        purpose_of_session: ['Legacy organization purpose'],
+        legacy_required_detail: 'Preserve this immutable snapshot response.',
+        link_unlinked_data: false,
+        bt_signature: { method: 'typed', value: 'Fresh BT Signature' },
+      }),
+    );
+  });
+
+  it('fails closed when the immutable BT template snapshot is missing a required stored response', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+    const snapshot = {
+      sections: [
+        {
+          key: 'legacy_session_details',
+          label: 'Legacy Session Details',
+          fields: [
+            {
+              key: 'legacy_required_detail',
+              label: 'Legacy required detail',
+              type: 'textarea',
+              required: true,
+            },
+            {
+              key: 'bt_signature',
+              label: 'Legacy BT Signature',
+              type: 'signature',
+              required: true,
+            },
+          ],
+        },
+      ],
+    };
+    const version = {
+      versionNumber: 1,
+      noteId: 'bt-note-malformed',
+      source: 'original',
+      correctionRound: null,
+      responses: {
+        bt_signature: { method: 'typed', value: 'Original BT Signature' },
+      },
+      templateSnapshot: snapshot,
+      signatureMethod: 'typed',
+      signatureValue: 'Original BT Signature',
+      signedAt: '2026-07-18T16:00:00.000Z',
+    };
+
+    render(
+      <View
+        {...baseProps}
+        btCorrectionTasks={[makeBtCorrectionTask({ originalVersion: version, latestVersion: version })]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /amend bt note for client bt/i }));
+
+    expect(await screen.findByText('The latest BT note payload could not be prepared for correction.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Legacy Session Details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /re-attest and resubmit/i })).not.toBeInTheDocument();
+  });
+
+  it('strips keys that are not declared by the immutable snapshot before resubmission', () => {
+    const result = validateBtCorrectionSnapshotResponses(
+      [{
+        key: 'signature',
+        label: 'Signature',
+        fields: [{ key: 'bt_signature', label: 'BT Signature', type: 'signature', required: true }],
+      }],
+      {
+        bt_signature: { method: 'typed', value: 'Fresh BT Signature' },
+        unexpected_server_field: 'must not be submitted',
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.responses).toEqual({
+      bt_signature: { method: 'typed', value: 'Fresh BT Signature' },
+    });
   });
 
   it('blocks rapid double-click resubmits before parent rerender', async () => {

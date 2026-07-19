@@ -28,6 +28,8 @@ export type SupervisionTemplateField = {
   required?: boolean;
   required_when?: string;
   options?: string[];
+  exclusive_options?: string[];
+  other_field_key?: string;
   placeholder?: string;
 };
 

@@ -7,6 +7,13 @@ import { DashboardCard } from '../components/DashboardCard';
 import { ReportsSummary } from '../components/Dashboard/ReportsSummary';
 import { ClinicalSignatureInput } from '../components/session-notes/ClinicalSignatureInput';
 import { SignatureInput } from '../components/session-notes/SignatureInput';
+import {
+  BtCorrectionSnapshotFields,
+  getBtCorrectionSnapshotSignature,
+  prepareBtCorrectionSnapshotResponses,
+  type BtCorrectionSnapshotResponses,
+  validateBtCorrectionSnapshotResponses,
+} from '../components/session-notes/BtCorrectionSnapshotFields';
 import { useDashboardData } from '../lib/optimizedQueries';
 import { useAuth } from '../lib/authContext';
 import { useActiveOrganizationId } from '../lib/organization';
@@ -132,7 +139,7 @@ export interface DashboardViewProps {
   isResubmittingBtCorrection?: boolean;
   onResubmitBtCorrection?: (
     task: BtCorrectionTask,
-    responses: BtAbaSessionNoteResponses,
+    responses: Record<string, unknown>,
   ) => Promise<void> | void;
   correctionOnly?: boolean;
 }
@@ -522,6 +529,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [activeBtCorrectionTask, setActiveBtCorrectionTask] = useState<BtCorrectionTask | null>(null);
   const [btCorrectionResponses, setBtCorrectionResponses] = useState<BtAbaSessionNoteResponses>(getEmptyBtCorrectionResponses);
   const [btCorrectionErrors, setBtCorrectionErrors] = useState<BtCorrectionErrors>({});
+  const [btCorrectionSnapshotResponses, setBtCorrectionSnapshotResponses] = useState<BtCorrectionSnapshotResponses | null>(null);
+  const [btCorrectionSnapshotErrors, setBtCorrectionSnapshotErrors] = useState<Record<string, string | undefined>>({});
   const [btCorrectionLoadError, setBtCorrectionLoadError] = useState<string | null>(null);
   const btCorrectionFormRef = useRef<HTMLFormElement | null>(null);
   const btCorrectionSubmitInFlightRef = useRef(false);
@@ -602,7 +611,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     activeSupervisionRequest?.status !== 'correction_required';
   const activeRequestCanReturn = activeSupervisionRequest?.canReturn === true;
   const activeRequestVersions = activeSupervisionRequest ? sortBtVersions(activeSupervisionRequest.versions ?? []) : [];
-  const btCorrectionHasFreshSignature = btCorrectionResponses.bt_signature.value.trim().length > 0;
+  const btCorrectionHasFreshSignature = (
+    btCorrectionSnapshotResponses
+      ? getBtCorrectionSnapshotSignature(btCorrectionSnapshotResponses)
+      : btCorrectionResponses.bt_signature
+  ).value.trim().length > 0;
 
   const resetSupervisionModalState = () => {
     setActiveSupervisionRequest(null);
@@ -616,14 +629,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setActiveBtCorrectionTask(null);
     setBtCorrectionResponses(getEmptyBtCorrectionResponses());
     setBtCorrectionErrors({});
+    setBtCorrectionSnapshotResponses(null);
+    setBtCorrectionSnapshotErrors({});
     setBtCorrectionLoadError(null);
     btCorrectionSubmitInFlightRef.current = false;
     setIsBtCorrectionSubmittingLocally(false);
   };
 
   const openBtCorrectionTask = (task: BtCorrectionTask) => {
+    const snapshotSections = task.latestVersion.templateSnapshot.sections;
+    const hasSnapshotFields = snapshotSections.some((section) => (section.fields?.length ?? 0) > 0);
+    if (hasSnapshotFields) {
+      const preparedSnapshot = prepareBtCorrectionSnapshotResponses(
+        snapshotSections,
+        task.latestVersion.responses,
+      );
+      setActiveBtCorrectionTask(task);
+      setBtCorrectionSnapshotResponses(preparedSnapshot);
+      setBtCorrectionSnapshotErrors({});
+      setBtCorrectionResponses(getEmptyBtCorrectionResponses());
+      setBtCorrectionErrors({});
+      setBtCorrectionLoadError(preparedSnapshot
+        ? null
+        : 'The latest BT note payload could not be prepared for correction.');
+      return;
+    }
+
     const prepared = normalizeBtCorrectionInitialResponses(task);
     setActiveBtCorrectionTask(task);
+    setBtCorrectionSnapshotResponses(null);
+    setBtCorrectionSnapshotErrors({});
     setBtCorrectionResponses(prepared.responses ?? getEmptyBtCorrectionResponses());
     setBtCorrectionErrors({});
     setBtCorrectionLoadError(prepared.error);
@@ -715,6 +750,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       || btCorrectionLoadError
       || btCorrectionSubmitInFlightRef.current
     ) {
+      return;
+    }
+
+    if (btCorrectionSnapshotResponses) {
+      const snapshotValidation = validateBtCorrectionSnapshotResponses(
+        activeBtCorrectionTask.latestVersion.templateSnapshot.sections,
+        btCorrectionSnapshotResponses,
+      );
+      if (!snapshotValidation.success) {
+        setBtCorrectionSnapshotErrors(snapshotValidation.errors);
+        const firstInvalidField = Object.keys(snapshotValidation.errors)[0];
+        if (firstInvalidField) {
+          btCorrectionFormRef.current
+            ?.querySelector<HTMLElement>(`[data-field="${firstInvalidField}"]`)
+            ?.focus();
+        }
+        return;
+      }
+
+      setBtCorrectionSnapshotErrors({});
+      btCorrectionSubmitInFlightRef.current = true;
+      setIsBtCorrectionSubmittingLocally(true);
+      try {
+        await onResubmitBtCorrection(activeBtCorrectionTask, snapshotValidation.responses);
+        resetBtCorrectionModalState();
+      } catch {
+        // Mutation handlers surface the scoped error toast.
+      } finally {
+        btCorrectionSubmitInFlightRef.current = false;
+        setIsBtCorrectionSubmittingLocally(false);
+      }
       return;
     }
 
@@ -892,6 +958,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     >
                       {btCorrectionLoadError}
                     </div>
+                  ) : btCorrectionSnapshotResponses ? (
+                    <BtCorrectionSnapshotFields
+                      sections={activeBtCorrectionTask.latestVersion.templateSnapshot.sections}
+                      responses={btCorrectionSnapshotResponses}
+                      errors={btCorrectionSnapshotErrors}
+                      disabled={isResubmittingBtCorrection}
+                      onChange={(responses) => {
+                        setBtCorrectionSnapshotResponses(responses);
+                        setBtCorrectionSnapshotErrors({});
+                      }}
+                    />
                   ) : (
                     <>
                       <section className={btCorrectionSectionClassName}>
@@ -1824,6 +1901,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   >
                     {btCorrectionLoadError}
                   </div>
+                ) : btCorrectionSnapshotResponses ? (
+                  <BtCorrectionSnapshotFields
+                    sections={activeBtCorrectionTask.latestVersion.templateSnapshot.sections}
+                    responses={btCorrectionSnapshotResponses}
+                    errors={btCorrectionSnapshotErrors}
+                    disabled={isResubmittingBtCorrection}
+                    onChange={(responses) => {
+                      setBtCorrectionSnapshotResponses(responses);
+                      setBtCorrectionSnapshotErrors({});
+                    }}
+                  />
                 ) : (
                   <>
                     <section className={btCorrectionSectionClassName}>
@@ -2215,7 +2303,7 @@ const Dashboard = () => {
     },
   });
   const resubmitBtCorrectionMutation = useMutation({
-    mutationFn: async (input: { task: BtCorrectionTask; responses: BtAbaSessionNoteResponses }) => {
+    mutationFn: async (input: { task: BtCorrectionTask; responses: Record<string, unknown> }) => {
       if (!organizationId) {
         throw new Error('BT correction cannot be resubmitted without organization context.');
       }
@@ -2223,7 +2311,7 @@ const Dashboard = () => {
         organizationId,
         requestId: input.task.id,
         responses: input.responses,
-        signature: input.responses.bt_signature,
+        signature: getBtCorrectionSnapshotSignature(input.responses),
       });
     },
     onSuccess: async () => {

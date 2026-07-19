@@ -2102,12 +2102,6 @@ const extractSpecialScalarByKey = (
   text: string,
 ): ExtractedFieldResult | null => {
   const key = row.placeholder_key;
-  if (key === "IEHP_FBA_ASSESSOR_PHONE") {
-    const iehpAssessorPhone = extractIehpAssessorPhone(text);
-    if (iehpAssessorPhone) {
-      return makeAutoField(row, iehpAssessorPhone, { method: "iehp_assessor_phone_anchor", key }, text);
-    }
-  }
   const calOptimaInline = extractCaloptimaInlineScalarByKey(key, text);
   if (calOptimaInline) {
     return makeAutoField(row, calOptimaInline, { method: "caloptima_inline_pair", key }, text);
@@ -2201,6 +2195,34 @@ const deterministicValueForRow = (
   allRows?: Array<z.infer<typeof checklistRowSchema>>,
 ): ExtractedFieldResult => {
   const key = row.placeholder_key;
+  if (key === "IEHP_FBA_ASSESSOR_PHONE") {
+    if (clientSnapshot?.primary_therapist_phone) {
+      return {
+        placeholder_key: key,
+        value_text: clientSnapshot.primary_therapist_phone,
+        value_json: null,
+        confidence: 0.74,
+        mode: row.mode ?? "ASSISTED",
+        status: "drafted",
+        source_span: { method: "client_snapshot", field: "primary_therapist_phone" },
+        review_notes: "Assisted fill from client primary therapist phone; clinician review required.",
+      };
+    }
+    const iehpAssessorPhone = extractIehpAssessorPhone(text);
+    if (iehpAssessorPhone) {
+      return makeAutoField(row, iehpAssessorPhone, { method: "iehp_assessor_phone_anchor", key }, text);
+    }
+    return {
+      placeholder_key: key,
+      value_text: null,
+      value_json: null,
+      confidence: null,
+      mode: row.mode ?? "ASSISTED",
+      status: "not_started",
+      source_span: null,
+      review_notes: "Assessor phone requires a reliable provider or organization source.",
+    };
+  }
   const special = extractSpecialScalarByKey(row, text);
   if (special) {
     return special;
@@ -2342,30 +2364,6 @@ const deterministicValueForRow = (
         review_notes: "Auto-filled from guardian snapshot.",
       };
     }
-  }
-  if (/ASSESSOR_PHONE/u.test(key)) {
-    if (client.primary_therapist_phone) {
-      return {
-        placeholder_key: key,
-        value_text: client.primary_therapist_phone,
-        value_json: null,
-        confidence: 0.74,
-        mode: row.mode ?? "ASSISTED",
-        status: "drafted",
-        source_span: { method: "client_snapshot", field: "primary_therapist_phone" },
-        review_notes: "Assisted fill from client primary therapist phone; clinician review required.",
-      };
-    }
-    return {
-      placeholder_key: key,
-      value_text: null,
-      value_json: null,
-      confidence: null,
-      mode: row.mode ?? "ASSISTED",
-      status: "not_started",
-      source_span: null,
-      review_notes: "Assessor phone requires a reliable provider or organization source.",
-    };
   }
   if (/CONTACT_PHONE|PHONE/u.test(key) && (client.parent1_phone || client.phone)) {
     return {

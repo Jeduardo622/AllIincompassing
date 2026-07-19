@@ -1602,6 +1602,52 @@ Deno.test("deterministicValueForRow extracts IEHP assessor phone only from asses
   expect(unrelatedNearbyPhone.status).toBe("not_started");
 });
 
+Deno.test("deterministicValueForRow prefers the IEHP therapist snapshot over an uploaded assessor phone", () => {
+  const assessorPhone = __TESTING__.deterministicValueForRow(
+    {
+      section: "identification_admin",
+      label: "Assessor's phone number",
+      placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+      required: true,
+      mode: "ASSISTED",
+    },
+    `I. IDENTIFICATION
+    Assessor/Certification: Jane Doe, BCBA
+    Phone Number: (951) 555-9999
+    Name of Referring Provider, Credentials`,
+    { primary_therapist_phone: "(951) 555-0101" },
+  );
+
+  expect(assessorPhone.value_text).toBe("(951) 555-0101");
+  expect(assessorPhone.source_span).toMatchObject({
+    method: "client_snapshot",
+    field: "primary_therapist_phone",
+  });
+});
+
+Deno.test("deterministicValueForRow rejects malformed values under the exact IEHP assessor phone label", () => {
+  const row = {
+    section: "identification_admin",
+    label: "Assessor's phone number",
+    placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+    required: true,
+    mode: "ASSISTED" as const,
+  };
+
+  for (const rejectedValue of ["1234567", "call office extension fourteen"]) {
+    const assessorPhone = __TESTING__.deterministicValueForRow(
+      row,
+      `I. IDENTIFICATION
+      Assessor/Certification: Jane Doe, BCBA
+      Assessor's phone number: ${rejectedValue}
+      Name of Referring Provider, Credentials`,
+    );
+
+    expect(assessorPhone.value_text).toBeNull();
+    expect(assessorPhone.status).toBe("not_started");
+  }
+});
+
 Deno.test("deterministicValueForRow maps IEHP presenting concerns narrative into reason for referral", () => {
   const manual = __TESTING__.deterministicValueForRow(
     {

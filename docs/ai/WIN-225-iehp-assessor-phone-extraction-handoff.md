@@ -25,7 +25,7 @@
 - `software-architect`: recommended a key-scoped IEHP helper rather than broad generic phone matching.
 - `test-engineer`: confirmed the critical-lane verification set.
 - `security-engineer`: confirmed tenant and service-role boundaries should remain unchanged.
-- `code-review-engineer`: initially requested changes for regex false positives and doc drift; re-review requested after follow-up fixes.
+- `code-review-engineer`: initially requested changes for regex false positives and doc drift; later confirmed the two GitHub review fixes are functionally correct and identified only generated lockfile drift plus stale verification evidence, both corrected before handoff.
 
 ## Change Summary
 
@@ -33,6 +33,8 @@
 - Tightened the IEHP matcher to reject malformed bare/overlong digit runs.
 - Added focused parser tests for valid anchored labels, missing values, malformed values, numeric false positives, and unrelated nearby numbers.
 - Aligned markdown and generated IEHP mapping artifacts to the actual staged-source behavior: snapshot prefill first, then assessor-anchored document extraction.
+- Addressed PR review feedback by evaluating `client_snapshot.primary_therapist_phone` before the document fallback and routing rejected assessor-phone values directly to `not_started` instead of generic label extraction.
+- Added regression coverage for snapshot-versus-document precedence and malformed values under the exact `Assessor's phone number` label.
 
 ## Verification Card
 
@@ -51,19 +53,20 @@
   - `npm run build`
   - `npm run verify:local`
 - Executed checks:
-  - `deno test --node-modules-dir=auto --allow-read --allow-env=WS_NO_BUFFER_UTIL --allow-net=0.0.0.0:8000 supabase/functions/extract-assessment-fields/index.test.ts` -> pass on July 19, 2026 (`40 passed, 0 failed`)
+  - `deno test --node-modules-dir=auto --allow-read --allow-env=WS_NO_BUFFER_UTIL --allow-net=0.0.0.0:8000 supabase/functions/extract-assessment-fields/index.test.ts` -> pass after review fixes on July 19, 2026 (`42 passed, 0 failed`)
   - `.\node_modules\.bin\vitest.cmd run src\server\__tests__\assessmentDocumentsHandler.test.ts -t "passes client primary therapist phone into IEHP extraction snapshot for assessor phone prefill"` -> pass on July 19, 2026
-  - `node scripts/ci/run-policy-checks.mjs` -> pass on July 19, 2026
-  - `node node_modules/eslint/bin/eslint.js . --ext ts,tsx --report-unused-disable-directives --max-warnings 0` -> pass on July 19, 2026
-  - `.\node_modules\.bin\tsc.cmd -p tsconfig.json --noEmit` -> pass on July 19, 2026
-  - `.\node_modules\.bin\tsx.cmd scripts\check-tenant-safety.ts` -> pass on July 19, 2026
-  - `.\node_modules\.bin\vite.cmd build` -> pass on July 19, 2026
-  - `.\node_modules\.bin\vitest.cmd run --coverage --run --reporter=verbose --coverage.reporter=json-summary` -> fail on July 19, 2026 with 2 unrelated baseline failures
+  - `npm.cmd run ci:check-focused` -> pass after review fixes on July 19, 2026; DB-backed and CI-only checks skipped because `SUPABASE_DB_URL` and branch-protection context are unavailable locally
+  - `npm.cmd run lint` -> pass after review fixes on July 19, 2026
+  - `npm.cmd run typecheck` -> pass after review fixes on July 19, 2026
+  - `npm.cmd run validate:tenant` -> pass after review fixes on July 19, 2026
+  - `npm.cmd run build` -> pass after review fixes on July 19, 2026
+  - `npm.cmd run test:ci` -> fail after review fixes on July 19, 2026; the 2 known unrelated baseline failures recurred and 4 `ProgramsGoalsTab` cases failed during a Vitest worker timeout
+  - `.\node_modules\.bin\vitest.cmd run src\components\__tests__\ProgramsGoalsTab.test.tsx` -> pass after the full-run timeout on July 19, 2026 (`98 passed, 0 failed`), confirming the 4 additional failures were full-suite contention
   - `npm.cmd run verify:local` -> fail on July 19, 2026 because it inherits the same 2 baseline failures from `npm run test:ci`
 - Blocked checks:
   - `none`
 - Result: `fail`
-- Residual risk: the bounded IEHP slice verifies cleanly in targeted coverage and non-test gates, but the branch is not merge-ready until the pre-existing repo baseline failures in `src/lib/__tests__/supabase.edge.test.ts` and `tests/ci/check-e2e-reliability-gates.test.ts` are resolved or waived.
+- Residual risk: the bounded IEHP slice and the transiently failing UI suite verify cleanly in isolation, but repository-wide local verification remains red on the two pre-existing baseline failures in `src/lib/__tests__/supabase.edge.test.ts` and `tests/ci/check-e2e-reliability-gates.test.ts`.
 
 ## PR Hygiene
 
@@ -80,9 +83,9 @@
 - `pr handoff`: ready
 - `reviewer`: completed
 - `required follow-up`:
-  - push branch
-  - open PR linked to WIN-225
-  - report the two existing baseline failures as live merge blockers
+  - push the two review fixes
+  - reply to and resolve both addressed PR review threads
+  - report the two existing baseline failures separately from the passing targeted slice
 
 ## Known Baseline Failures
 

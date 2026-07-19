@@ -49,12 +49,21 @@ type ChecklistResponsePayload =
   | ChecklistResponse
   | ChecklistResponse['items'];
 
+type AssessmentExtractionProvenanceRow = {
+  field_key?: string | null;
+  source_span?: unknown;
+};
+
 type IehpAssessorPhoneAssertion = {
   fieldKey: 'IEHP_FBA_ASSESSOR_PHONE';
   rowCount: number;
   nonEmpty: true;
   validFormat: true;
   precedenceMatchedExpectedPhone: true;
+  provenanceRowCount: number;
+  provenanceVerified: true;
+  sourceMethod: 'client_snapshot';
+  sourceField: 'primary_therapist_phone';
   expectedPhoneRedacted: string;
   actualPhoneRedacted: string;
 };
@@ -192,6 +201,36 @@ const fetchAssessmentChecklist = async (
   return normalizeAssessmentChecklistResponse((await response.json()) as ChecklistResponsePayload);
 };
 
+export const fetchIehpAssessorPhoneProvenance = async (args: {
+  accessToken: string;
+  assessmentDocumentId: string;
+  organizationId: string;
+  supabaseAnonKey: string;
+  supabaseUrl: string;
+}): Promise<AssessmentExtractionProvenanceRow[]> => {
+  const response = await fetchWithRetry(
+    `${args.supabaseUrl}/rest/v1/assessment_extractions?select=field_key,source_span&assessment_document_id=eq.${encodeURIComponent(
+      args.assessmentDocumentId,
+    )}&field_key=eq.${encodeURIComponent(IEHP_ASSESSOR_PHONE_FIELD_KEY)}&organization_id=eq.${encodeURIComponent(
+      args.organizationId,
+    )}&limit=2`,
+    {
+      headers: {
+        apikey: args.supabaseAnonKey,
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    },
+    'IEHP assessor phone extraction provenance query',
+  );
+
+  if (!response.ok) {
+    throw new Error(`IEHP assessor phone extraction provenance query failed with status ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as unknown;
+  return Array.isArray(payload) ? payload as AssessmentExtractionProvenanceRow[] : [];
+};
+
 export const normalizeAssessmentChecklistResponse = (
   payload: ChecklistResponsePayload,
 ): ChecklistResponse => {
@@ -222,6 +261,7 @@ const redactPhone = (phone: string): string => {
 export const assertIehpAssessorPhoneChecklist = (args: {
   checklist: ChecklistResponse;
   expectedPhone: string;
+  provenanceRows?: AssessmentExtractionProvenanceRow[];
 }): IehpAssessorPhoneAssertion => {
   const matchingRows = args.checklist.items.filter((item) => item.placeholder_key === IEHP_ASSESSOR_PHONE_FIELD_KEY);
   if (matchingRows.length === 0) {
@@ -244,12 +284,38 @@ export const assertIehpAssessorPhoneChecklist = (args: {
     );
   }
 
+  const provenanceRows = args.provenanceRows ?? [];
+  if (provenanceRows.length === 0) {
+    throw new Error('IEHP smoke could not find IEHP_FBA_ASSESSOR_PHONE extraction provenance.');
+  }
+  if (provenanceRows.length !== 1) {
+    throw new Error(
+      `IEHP smoke expected exactly one IEHP_FBA_ASSESSOR_PHONE extraction provenance row but found ${provenanceRows.length}.`,
+    );
+  }
+  const sourceSpan = provenanceRows[0]?.source_span;
+  const sourceMethod = sourceSpan && typeof sourceSpan === 'object' && 'method' in sourceSpan
+    ? (sourceSpan as { method?: unknown }).method
+    : undefined;
+  const sourceField = sourceSpan && typeof sourceSpan === 'object' && 'field' in sourceSpan
+    ? (sourceSpan as { field?: unknown }).field
+    : undefined;
+  if (sourceMethod !== 'client_snapshot' || sourceField !== 'primary_therapist_phone') {
+    throw new Error(
+      'IEHP smoke expected IEHP_FBA_ASSESSOR_PHONE provenance to be client_snapshot.primary_therapist_phone.',
+    );
+  }
+
   return {
     fieldKey: IEHP_ASSESSOR_PHONE_FIELD_KEY,
     rowCount: matchingRows.length,
     nonEmpty: true,
     validFormat: true,
     precedenceMatchedExpectedPhone: true,
+    provenanceRowCount: provenanceRows.length,
+    provenanceVerified: true,
+    sourceMethod,
+    sourceField,
     expectedPhoneRedacted: redactPhone(args.expectedPhone),
     actualPhoneRedacted: redactPhone(actualPhone),
   };
@@ -290,6 +356,7 @@ export const selectConfiguredSmokeClient = async (
   accessToken: string;
   clientId: string;
   therapistId: string;
+  organizationId: string;
   expectedAssessorPhone: string;
   credentials: { email: string; password: string; label: string };
 }> => {
@@ -314,7 +381,7 @@ export const selectConfiguredSmokeClient = async (
       const authResult = await signInSmokeUser(supabase, email, password);
       const { data: client, error } = await supabase
         .from('clients')
-        .select('id, therapist_id')
+        .select('id, therapist_id, organization_id')
         .eq('id', configuredClientId)
         .maybeSingle();
 
@@ -325,6 +392,13 @@ export const selectConfiguredSmokeClient = async (
       if (!client) {
         throw new Error(
           `Configured PW_ASSESSMENT_CLIENT_ID is not accessible for authenticated credential: ${candidate.label}.`,
+        );
+      }
+
+      const organizationId = typeof client.organization_id === 'string' ? client.organization_id.trim() : '';
+      if (!organizationId) {
+        throw new Error(
+          'Configured PW_ASSESSMENT_CLIENT_ID must expose a non-empty organization for IEHP assessment import smoke.',
         );
       }
 
@@ -361,6 +435,7 @@ export const selectConfiguredSmokeClient = async (
         accessToken: authResult.accessToken,
         clientId: client.id,
         therapistId,
+        organizationId,
         expectedAssessorPhone,
         credentials: {
           email,
@@ -396,7 +471,7 @@ async function run() {
     },
   ];
   preflightCredentials(credentialCandidates);
-  const { accessToken, clientId, expectedAssessorPhone, credentials } = await selectConfiguredSmokeClient(
+  const { accessToken, clientId, organizationId, expectedAssessorPhone, credentials } = await selectConfiguredSmokeClient(
     supabaseUrl,
     supabaseAnonKey,
     credentialCandidates,
@@ -463,9 +538,17 @@ async function run() {
       throw new Error(`IEHP import smoke expected zero drafts but found ${programCount} program(s) and ${goalCount} goal(s).`);
     }
     const checklist = await fetchAssessmentChecklist(baseUrl, accessToken, createdAssessment.id);
+    const provenanceRows = await fetchIehpAssessorPhoneProvenance({
+      accessToken,
+      assessmentDocumentId: createdAssessment.id,
+      organizationId,
+      supabaseAnonKey,
+      supabaseUrl,
+    });
     const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist({
       checklist,
       expectedPhone: expectedAssessorPhone,
+      provenanceRows,
     });
 
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });

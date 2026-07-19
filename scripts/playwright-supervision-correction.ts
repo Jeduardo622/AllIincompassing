@@ -660,7 +660,7 @@ const resubmitCorrectionThroughBrowser = async (
   updatedProgress: string,
   signatureValue: string,
 ): Promise<void> => {
-  const progressField = page.getByLabel("Summary of Progress Toward Treatment Goals", { exact: true });
+  const progressField = page.locator('[data-field="progress_toward_goals"]');
   await progressField.fill(updatedProgress);
   await page.getByRole("radio", { name: "Type signature", exact: true }).click();
   await page.getByLabel("Type Behavior Technician signature", { exact: true }).fill(signatureValue);

@@ -88,7 +88,8 @@
   - hosted BT -> BCBA -> BT -> BCBA browser lifecycle: pass, including return reason, correction task, immutable version history, re-attestation, resubmission, and final completion
   - hosted exact cleanup and post-proof preview health: pass; marker-owned BT/BCBA fixtures were removed and the managed preview remained healthy
   - exact-head hosted proof run `29667036513`: browser lifecycle failed before resubmission because the editor rejected a legitimately omitted inactive conditional snapshot field; cleanup and preview health passed
-  - local regression fix for that proof failure: focused suite 41/41, lint, typecheck, and build pass; replacement exact-head hosted proof pending
+  - exact-head hosted proof runs `29667271826` and `29667416184`: the corrected BT form rendered successfully, but the proof retained a canonical display-label locator that is incompatible with immutable organization-specific snapshot labels; cleanup and preview health passed
+  - local regression fixes for those proof failures: correction suite 41/41 and combined review/proof suite 47/47, lint, typecheck, and build pass; proof now targets the stable snapshot field key and replacement exact-head hosted proof is pending
 - blocked checks:
   - generic hosted Playwright completion: configured hosted super-admin credential is currently invalid
 - result: `pending-hosted-reproof`; the review fixes and hosted migration boundary checks pass, but the exact-head lifecycle must be rerun after the inactive-conditional-field regression fix

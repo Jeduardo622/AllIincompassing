@@ -1524,6 +1524,130 @@ Deno.test("deterministicValueForRow keeps manual and assisted IEHP rows honest w
   expect(assessorPhone.review_notes).toContain("reliable provider or organization source");
 });
 
+Deno.test("deterministicValueForRow extracts IEHP assessor phone only from assessor-anchored generic phone labels", () => {
+  const row = {
+    section: "identification_admin",
+    label: "Assessor's phone number",
+    placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+    required: true,
+    mode: "ASSISTED" as const,
+  };
+
+  const valid = __TESTING__.deterministicValueForRow(
+    row,
+    `I. IDENTIFICATION
+    Assessor/Certification: Jane Doe, BCBA
+    Phone Number: (951) 555-0101
+    Name of Referring Provider, Credentials`,
+  );
+  const whitespaceVariant = __TESTING__.deterministicValueForRow(
+    row,
+    `I. IDENTIFICATION
+    Assessor/Certification
+    Jane Doe, BCBA
+    Phone : 951-555-0102
+    Reason for Referral`,
+  );
+  const missing = __TESTING__.deterministicValueForRow(
+    row,
+    `I. IDENTIFICATION
+    Assessor/Certification: Jane Doe, BCBA
+    Phone Number:
+    Name of Referring Provider, Credentials`,
+  );
+  const malformed = __TESTING__.deterministicValueForRow(
+    row,
+    `I. IDENTIFICATION
+    Assessor/Certification: Jane Doe, BCBA
+    Phone Number: call office extension fourteen
+    Name of Referring Provider, Credentials`,
+  );
+  const bareDigits = __TESTING__.deterministicValueForRow(
+    row,
+    `I. IDENTIFICATION
+    Assessor/Certification: Jane Doe, BCBA
+    Phone Number: 1234567
+    Name of Referring Provider, Credentials`,
+  );
+  const overlongDigits = __TESTING__.deterministicValueForRow(
+    row,
+    `I. IDENTIFICATION
+    Assessor/Certification: Jane Doe, BCBA
+    Phone Number: 1234567890123
+    Name of Referring Provider, Credentials`,
+  );
+  const unrelatedNearbyPhone = __TESTING__.deterministicValueForRow(
+    row,
+    `I. IDENTIFICATION
+    Parent/Guardian Phone: (951) 555-9999
+    Assessor/Certification: Jane Doe, BCBA
+    Phone Number:
+    Name of Referring Provider, Credentials`,
+  );
+
+  expect(valid.value_text).toBe("(951) 555-0101");
+  expect(valid.status).toBe("drafted");
+  expect(valid.source_span).toMatchObject({ method: "iehp_assessor_phone_anchor" });
+  expect(whitespaceVariant.value_text).toBe("951-555-0102");
+  expect(whitespaceVariant.status).toBe("drafted");
+  expect(missing.value_text).toBeNull();
+  expect(missing.status).toBe("not_started");
+  expect(malformed.value_text).toBeNull();
+  expect(malformed.status).toBe("not_started");
+  expect(bareDigits.value_text).toBeNull();
+  expect(bareDigits.status).toBe("not_started");
+  expect(overlongDigits.value_text).toBeNull();
+  expect(overlongDigits.status).toBe("not_started");
+  expect(unrelatedNearbyPhone.value_text).toBeNull();
+  expect(unrelatedNearbyPhone.status).toBe("not_started");
+});
+
+Deno.test("deterministicValueForRow prefers the IEHP therapist snapshot over an uploaded assessor phone", () => {
+  const assessorPhone = __TESTING__.deterministicValueForRow(
+    {
+      section: "identification_admin",
+      label: "Assessor's phone number",
+      placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+      required: true,
+      mode: "ASSISTED",
+    },
+    `I. IDENTIFICATION
+    Assessor/Certification: Jane Doe, BCBA
+    Phone Number: (951) 555-9999
+    Name of Referring Provider, Credentials`,
+    { primary_therapist_phone: "(951) 555-0101" },
+  );
+
+  expect(assessorPhone.value_text).toBe("(951) 555-0101");
+  expect(assessorPhone.source_span).toMatchObject({
+    method: "client_snapshot",
+    field: "primary_therapist_phone",
+  });
+});
+
+Deno.test("deterministicValueForRow rejects malformed values under the exact IEHP assessor phone label", () => {
+  const row = {
+    section: "identification_admin",
+    label: "Assessor's phone number",
+    placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+    required: true,
+    mode: "ASSISTED" as const,
+  };
+
+  for (const rejectedValue of ["1234567", "call office extension fourteen"]) {
+    const assessorPhone = __TESTING__.deterministicValueForRow(
+      row,
+      `I. IDENTIFICATION
+      Assessor/Certification: Jane Doe, BCBA
+      Assessor's phone number: ${rejectedValue}
+      Name of Referring Provider, Credentials`,
+    );
+
+    expect(assessorPhone.value_text).toBeNull();
+    expect(assessorPhone.status).toBe("not_started");
+  }
+});
+
 Deno.test("deterministicValueForRow maps IEHP presenting concerns narrative into reason for referral", () => {
   const manual = __TESTING__.deterministicValueForRow(
     {

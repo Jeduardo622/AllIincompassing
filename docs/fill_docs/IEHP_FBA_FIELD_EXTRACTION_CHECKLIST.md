@@ -16,7 +16,8 @@ Implementation note: IEHP DOCX uploads use local Word XML decoding, not Adobe. I
   - `MANUAL`: required clinician entry unless explicitly optional
 - Parity rule: every `placeholder_key` in the IEHP mapping appears exactly once in the checklist JSON.
 - Confidence rule: structured document content can prefill `ASSISTED` or `MANUAL` rows for review, but those rows remain assisted/manual and are not promoted to confident `AUTO` summaries.
-- DB-prefill rule: only fields present in the client snapshot sent by `src/server/api/assessment-documents.ts` are DB-prefilled. Current supported snapshot fields include member name parts, birth date, member ID fallback, contact phone, primary guardian, preferred language, and address parts; assessor, clinic, referring-provider, school, household, insurance, and availability fields remain assisted/manual unless the document text supplies a label match.
+- DB-prefill rule: only fields present in the client snapshot sent by `src/server/api/assessment-documents.ts` are DB-prefilled. Current supported snapshot fields include member name parts, birth date, member ID fallback, contact phone, primary guardian, preferred language, address parts, and assessor phone via `primary_therapist_phone`; other assessor, clinic, referring-provider, school, household, insurance, and availability fields remain assisted/manual unless the document text supplies a label match.
+- Assessor phone rule: `IEHP_FBA_ASSESSOR_PHONE` may stage from `client_snapshot.primary_therapist_phone` when present, or from an assessor-local `Phone Number` or `Phone` label when it appears in the same identification block as `Assessor/Certification`; unrelated guardian/member/provider phone numbers and malformed digit runs must remain uncaptured.
 
 ## How to use
 

@@ -1877,6 +1877,29 @@ const looksLikeNoValueMarker = (value: string): boolean =>
 const CALOPTIMA_PHONE_PATTERN =
   /((?:\(\d{3}\)\s*\d{3}[-\s]?\d{4})|(?:\d{3}[-\s]?\d{3}[-\s]?\d{4})|(?:X{3,}\s*\d{3,})|(?:\d{7,}))/i;
 
+const IEHP_ASSESSOR_PHONE_PATTERN =
+  /((?:\+?1[-\s]?)?(?:\(\d{3}\)\s*|\d{3}[-\s]?)\d{3}[-\s]?\d{4})/i;
+
+const extractIehpAssessorPhone = (text: string): string | null => {
+  const assessorBlock = extractSectionText(
+    text,
+    [/Assessor\/Certification\s*:?\s*/i, /Assessor(?:'s)?\s+phone\s+number\s*:?\s*/i],
+    [/Name\s+of\s+Referring\s+Provider\b/i, /Reason\s+for\s+Referral\b/i, /\bII\.\s+/i, /\bBEHAVIORS\b/i],
+  );
+  if (!assessorBlock) {
+    return null;
+  }
+
+  const compact = compactDocumentText(assessorBlock);
+  const match = compact.match(
+    new RegExp(
+      `(?:Assessor(?:'s)?\\s+phone\\s+number|Phone\\s+Number|Phone)\\s*:?\\s*${IEHP_ASSESSOR_PHONE_PATTERN.source}(?!\\d)`,
+      "i",
+    ),
+  );
+  return match?.[1] ? normalizeExtractedValue(match[1]) : null;
+};
+
 const extractCaloptimaInlineGuardianAndPhone = (text: string): { guardianName: string | null; contactPhone: string | null } => {
   const compact = compactDocumentText(text);
   const match = compact.match(
@@ -2172,6 +2195,34 @@ const deterministicValueForRow = (
   allRows?: Array<z.infer<typeof checklistRowSchema>>,
 ): ExtractedFieldResult => {
   const key = row.placeholder_key;
+  if (key === "IEHP_FBA_ASSESSOR_PHONE") {
+    if (clientSnapshot?.primary_therapist_phone) {
+      return {
+        placeholder_key: key,
+        value_text: clientSnapshot.primary_therapist_phone,
+        value_json: null,
+        confidence: 0.74,
+        mode: row.mode ?? "ASSISTED",
+        status: "drafted",
+        source_span: { method: "client_snapshot", field: "primary_therapist_phone" },
+        review_notes: "Assisted fill from client primary therapist phone; clinician review required.",
+      };
+    }
+    const iehpAssessorPhone = extractIehpAssessorPhone(text);
+    if (iehpAssessorPhone) {
+      return makeAutoField(row, iehpAssessorPhone, { method: "iehp_assessor_phone_anchor", key }, text);
+    }
+    return {
+      placeholder_key: key,
+      value_text: null,
+      value_json: null,
+      confidence: null,
+      mode: row.mode ?? "ASSISTED",
+      status: "not_started",
+      source_span: null,
+      review_notes: "Assessor phone requires a reliable provider or organization source.",
+    };
+  }
   const special = extractSpecialScalarByKey(row, text);
   if (special) {
     return special;
@@ -2313,30 +2364,6 @@ const deterministicValueForRow = (
         review_notes: "Auto-filled from guardian snapshot.",
       };
     }
-  }
-  if (/ASSESSOR_PHONE/u.test(key)) {
-    if (client.primary_therapist_phone) {
-      return {
-        placeholder_key: key,
-        value_text: client.primary_therapist_phone,
-        value_json: null,
-        confidence: 0.74,
-        mode: row.mode ?? "ASSISTED",
-        status: "drafted",
-        source_span: { method: "client_snapshot", field: "primary_therapist_phone" },
-        review_notes: "Assisted fill from client primary therapist phone; clinician review required.",
-      };
-    }
-    return {
-      placeholder_key: key,
-      value_text: null,
-      value_json: null,
-      confidence: null,
-      mode: row.mode ?? "ASSISTED",
-      status: "not_started",
-      source_span: null,
-      review_notes: "Assessor phone requires a reliable provider or organization source.",
-    };
   }
   if (/CONTACT_PHONE|PHONE/u.test(key) && (client.parent1_phone || client.phone)) {
     return {

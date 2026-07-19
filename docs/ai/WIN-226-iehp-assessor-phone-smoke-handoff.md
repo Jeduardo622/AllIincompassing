@@ -3,66 +3,64 @@
 ## Scope And Route
 
 - Linear: `WIN-226`
-- Classification: `low-risk autonomous`
-- Lane: `standard`
-- Triggering paths: `scripts/playwright-iehp-assessment-import-smoke.ts`, `tests/scripts/playwright-iehp-assessment-import-smoke.test.ts`, `docs/ai/WIN-226-iehp-assessor-phone-smoke-handoff.md`
-- Extended the existing smoke from status-only proof to authenticated checklist proof for `IEHP_FBA_ASSESSOR_PHONE` without changing parser, server, function, workflow, migration, secret, or production-data surfaces.
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Triggering path: `src/server/api/assessment-documents.ts` (`src/server/**` protected server/API boundary with a tenant-scoped therapist phone read)
+- Bounded change: keep the field-level smoke assertion from the original slice and make the existing primary-therapist snapshot lookup use the request's authenticated anon-key/JWT headers, constrained by exact therapist ID and resolved organization ID.
+- Non-goals retained: no parser, extraction-field, persistence, workflow, migration, Edge Function, secret, or production-data changes.
+- Stop condition retained: do not edit `.github/workflows/**`; the hosted-preview proof gap is reported below.
 
 ## Behavior
 
-- Preflight derives the deterministic expected phone from the configured smoke client's primary therapist through the existing authenticated Supabase read path and fails before upload when the relationship or phone is absent.
-- After `extracted`, the smoke calls `/api/assessment-checklist?assessment_document_id=...`, requires exactly one assessor-phone row, rejects missing/duplicate/empty/malformed values, and requires the value to match the snapshot phone after normalization.
-- The preflight rejects malformed snapshot phones before upload, and the checklist fetch normalizes both supported app response shapes (raw row array or `{ items, structured_sections }`).
-- JSON evidence reports row count, format result, precedence result, and redacted values only.
+- After `extracted`, the smoke calls `/api/assessment-checklist?assessment_document_id=...`, requires exactly one `IEHP_FBA_ASSESSOR_PHONE` row, and rejects missing, duplicate, empty, malformed, or precedence-mismatched values.
+- Preflight derives the deterministic synthetic expected phone through the existing authenticated Supabase path. JSON evidence reports row count, format result, precedence result, and redacted values only.
+- The server snapshot lookup now reuses the authenticated request headers for one exact `therapists` query filtered by both primary therapist ID and client organization ID. A denied, empty, or malformed response omits the snapshot phone; it never retries with service-role credentials.
 - Existing `extracted`, zero-draft, and fail-closed `finally` cleanup behavior remains intact.
 
 ## Test-First Evidence
 
-- RED: focused Vitest run -> `4 failed, 4 passed`; failures proved the deterministic phone preflight and exported checklist assertion did not exist.
-- GREEN: focused smoke test -> `13 passed`.
-- Review-fix RED/GREEN: malformed snapshot phone -> `1 failed` then `14 passed`; dual checklist response normalization -> `2 failed` then `16 passed`.
-- Final focused smoke, fixture, and cleanup suites -> `28 passed`.
+- Smoke RED: focused Vitest run -> `4 failed, 4 passed`; deterministic phone preflight and exported checklist assertion did not exist.
+- Smoke GREEN and review fixes: `13 passed`, then malformed-phone RED/GREEN (`1 failed` -> `14 passed`) and response-shape RED/GREEN (`2 failed` -> `16 passed`).
+- Server RED 1: the focused positive snapshot test failed because the lookup used the privileged runtime credential instead of anon key plus caller bearer token.
+- Server RED 2: the new authenticated-403 test failed because the lookup retried with the synthetic service-role marker.
+- Server GREEN: both focused regressions passed; final combined server/smoke/fixture/cleanup run passed `4 files, 86 tests`, including all `5` cleanup-helper tests.
 
 ## Verification Card
 
-- Classification: `low-risk autonomous`
-- Lane: `standard`
-- Change type: non-sensitive test harness and docs
-- Required checks:
-  - focused script tests
-  - `npm run playwright:iehp-assessment-import-smoke`
-  - `npm run ci:check-focused`
-  - `npm run lint`
-  - `npm run typecheck`
-  - `npm run test:ci`
-  - `npm run build`
-  - `npm run verify:local`
-- Executed checks:
-  - focused script/cleanup suites -> pass after review fixes (`28 passed`)
-  - `npm run ci:check-focused` -> pass; DB-backed and CI-only checks reported their local skips
+- Lane: `critical`
+- Required checks: focused tests, `ci:check-focused`, lint, typecheck, `test:ci`, tenant validation, build, tier-0 browser, auth Playwright, `verify:local`, and hosted IEHP import smoke against the new commit.
+- Executed passes:
+  - focused server/smoke/fixture/cleanup suites -> `4 files, 86 tests passed`
+  - `npm run ci:check-focused` -> pass; DB-backed checks skipped because no DB URL is configured locally
   - `npm run lint` -> pass
   - `npm run typecheck` -> pass
+  - `npm run validate:tenant` -> pass
   - `npm run build` -> pass
-  - final `npm run test:ci` rerun -> fail with the two known `origin/main` baseline failures: `src/lib/__tests__/supabase.edge.test.ts` blob `.text()` and `tests/ci/check-e2e-reliability-gates.test.ts` missing publishable-key workflow snippet; it also ended with an unrelated `coverage/.tmp/coverage-116.json` `ENOENT` rejection; the WIN-226 tests passed in the same run
-  - `npm run verify:local` -> fail at `test:ci`; repeated the two baseline failures and also surfaced unrelated `ProgramsGoalsTab`, `SessionNotesTab`, and deploy-bundle test instability
-- Blocked checks:
-  - `npm run playwright:iehp-assessment-import-smoke` -> blocked because the required hosted smoke and Supabase credentials are not present in this process; no safe default synthetic IEHP DOCX exists in the repo root
-- Result: `fail`; the bounded slice checks pass, but mandatory repository-wide verification remains red and hosted proof is blocked
-- Residual risk: hosted RLS or smoke-fixture/client provisioning drift is not proven locally; CI must supply the existing safe synthetic fixture and configured smoke client before the new field assertion can execute end to end.
+- Executed failures / blocked checks:
+  - `npm run test:ci` -> `3042 passed, 5 skipped, 2 failed`; failures are outside WIN-226: session-notes PDF Blob `.text()` compatibility and a stale workflow-snippet assertion
+  - `npm run verify:local` -> policy, lint, and typecheck passed, then it stopped at `test:ci`; it repeated the two baseline failures and surfaced unrelated schedule-test instability
+  - `npm run test:routes:tier0` -> no pass claim: default port `4173` was occupied; alternate port `4174` timed out before Cypress completed
+  - `npm run ci:playwright` -> not run because its credentials are absent from this process
+  - local IEHP hosted smoke -> not run because its credentials and sample path are absent from this process
+  - hosted preview proof -> pending after push; the current workflow IEHP job uses `secrets.PW_BASE_URL`, not the PR deploy-preview URL, so it cannot be attributed to the new server commit unless that URL is independently shown to serve the commit
+- Result: `blocked` pending hosted deploy-preview field proof and human review.
+- Residual risk: mocked PostgREST tests do not execute hosted RLS. The decisive proof remains a credentialed smoke against the deploy preview showing `extracted`, zero drafts, one non-empty valid assessor-phone row, snapshot precedence, and successful document/storage cleanup.
 
 ## Reviewer Findings
 
-- `code-review-engineer` requested malformed expected-phone preflight validation and normalization of the checklist API's two supported response shapes.
-- Both findings were fixed test-first and the final focused suites, policy, lint, typecheck, and build checks passed.
+- Software architecture: authenticated request-scoped lookup only; exact therapist and organization filters; no service-role fallback.
+- Security: approve; same-organization PII read is minimized and fails closed without privilege escalation.
+- Supabase/tenant safety: pass; effective RLS permits the synthetic same-org actor and denies cross-org reads. Hosted RLS remains the integration proof.
+- Test engineering: server cases are adequate after aligning the positive actor to the provisioned `super_admin`; require all five cleanup-helper tests and deploy-preview smoke evidence.
+- Code review: no server correctness finding; required this critical reclassification and fresh handoff evidence before push.
 
 ## PR Hygiene
 
-- `pr-ready`: no; open as draft because mandatory repository-wide verification is red and hosted proof is blocked
+- `pr-ready`: no, pending hosted proof and human approval
 - `branch-ready`: yes (`codex/win-226-iehp-assessor-phone-smoke`)
 - `linear-ready`: yes (`WIN-226`)
 - `single-purpose`: yes
-- `unrelated changes`: generated untracked `pnpm-lock.yaml` and `pnpm-workspace.yaml` are excluded from the commit and PR
-- `generated artifact drift`: none in the intended diff
-- `protected-path drift`: none
-- `reviewer`: completed; final verdict `approve`
-- `required follow-up`: run the hosted IEHP smoke in credentialed CI and resolve or separately waive the known repository baseline failures before marking ready to merge
+- `unrelated changes`: untracked `pnpm-lock.yaml` and `pnpm-workspace.yaml` remain excluded
+- `generated artifact drift`: none
+- `protected-path drift`: declared and routed as `critical` (`src/server/**`)
+- `required follow-up`: push the bounded fix, wait for the preview deployment of the new SHA, run the credentialed IEHP smoke against that preview without changing `.github/workflows/**`, and obtain required human review before merge.

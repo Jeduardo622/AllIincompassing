@@ -2861,13 +2861,13 @@ describe("assessmentDocumentsHandler", () => {
   });
 
   it("passes client primary therapist phone into IEHP extraction snapshot for assessor phone prefill", async () => {
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
-      isTherapist: true,
+      isTherapist: false,
       isAdmin: false,
-      isSuperAdmin: false,
+      isSuperAdmin: true,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -2927,8 +2927,8 @@ describe("assessmentDocumentsHandler", () => {
         expect(url).toContain("id=eq.primary-therapist-1");
         expect(url).toContain("organization_id=eq.org-1");
         expect(init?.headers).toMatchObject({
-          apikey: "service-role",
-          Authorization: "Bearer service-role",
+          apikey: "anon",
+          Authorization: "Bearer token",
         });
         return { ok: true, status: 200, data: [{ phone: "(951) 555-0101" }] };
       }
@@ -2979,7 +2979,20 @@ describe("assessmentDocumentsHandler", () => {
     );
 
     expect(response.status).toBe(201);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => {
+      expect(fetchJson).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/rest/v1/therapists?select=phone&id=eq.primary-therapist-1&organization_id=eq.org-1&limit=1",
+        ),
+        expect.objectContaining({
+          method: "GET",
+          headers: expect.objectContaining({
+            apikey: "anon",
+            Authorization: "Bearer token",
+          }),
+        }),
+      );
+    });
 
     const extractionCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
       typeof url === "string" &&
@@ -2995,6 +3008,152 @@ describe("assessmentDocumentsHandler", () => {
       last_name: "Le",
       primary_therapist_phone: "(951) 555-0101",
     });
+  });
+
+  it("does not retry IEHP therapist phone lookup with service role after an authenticated same-org 403", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "synthetic-service-role";
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([{
+      section: "identification_admin",
+      label: "Assessor's phone number",
+      placeholder_key: "IEHP_FBA_ASSESSOR_PHONE",
+      required: true,
+      mode: "ASSISTED",
+      source: "therapists.phone || company_settings.phone",
+      extraction_method: "assisted_draft_plus_review",
+      validation_rule: "phone_us_or_e164_or_na",
+      extraction_owner: "ClinicalAuthor",
+      review_owner: "BCBAReviewer",
+    }]);
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "11111111-1111-1111-1111-111111111111" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name,first_name,last_name")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ first_name: "Kim", last_name: "Le", therapist_id: "primary-therapist-1" }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_versions?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "template-version-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_template_fields?select=")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            section_key: "identification_admin",
+            field_key: "IEHP_FBA_ASSESSOR_PHONE",
+            label: "Assessor's phone number",
+            field_type: "text",
+            mode: "ASSISTED",
+            required: true,
+            source: "therapists.phone || company_settings.phone",
+          }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/therapists?select=phone")) {
+        return { ok: false, status: 403, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [{
+            id: "doc-iehp-assessor-phone-forbidden",
+            organization_id: "org-1",
+            client_id: "11111111-1111-1111-1111-111111111111",
+          }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [],
+            structured_sections: [],
+            unresolved_keys: [],
+            extracted_count: 0,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "iehp-fba.docx",
+          mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          file_size: 1234,
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/iehp-fba.docx",
+          template_type: "iehp_fba",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await vi.waitFor(() => {
+      expect(vi.mocked(fetchJson).mock.calls.some(([url, init]) =>
+        typeof url === "string" &&
+        url.includes("/functions/v1/extract-assessment-fields") &&
+        (init?.method ?? "").toUpperCase() === "POST"
+      )).toBe(true);
+    });
+
+    const therapistCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/rest/v1/therapists?select=phone") &&
+      (init?.method ?? "GET").toUpperCase() === "GET"
+    );
+    expect(therapistCalls).toHaveLength(1);
+    expect(therapistCalls[0]?.[0]).toContain("organization_id=eq.org-1");
+    expect(therapistCalls[0]?.[1]?.headers).toMatchObject({
+      apikey: "anon",
+      Authorization: "Bearer token",
+    });
+
+    const extractionCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/functions/v1/extract-assessment-fields") &&
+      (init?.method ?? "").toUpperCase() === "POST"
+    );
+    const payload = JSON.parse(String((extractionCall?.[1] as RequestInit).body)) as {
+      client_snapshot?: Record<string, unknown>;
+    };
+    expect(payload.client_snapshot).not.toHaveProperty("primary_therapist_phone");
   });
 
   it("persists reason-for-referral narrative and behavior-only structured payload from IEHP extraction response", async () => {

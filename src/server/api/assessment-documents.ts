@@ -8,7 +8,6 @@ import {
   jsonForRequest,
   resolveOrgAndRole,
 } from "./shared";
-import { getOptionalServerEnv } from "../env";
 import {
   loadChecklistTemplateRows,
   type AssessmentChecklistSeedRow,
@@ -126,16 +125,13 @@ const shouldRetryEdgeExtraction = (status: number | null | undefined): boolean =
 
 const loadPrimaryTherapistPhone = async (args: {
   supabaseUrl: string;
+  headers: Record<string, string>;
   organizationId: string;
   therapistId: string | null | undefined;
   signal?: AbortSignal;
 }): Promise<string | null> => {
   const therapistId = typeof args.therapistId === "string" ? args.therapistId.trim() : "";
   if (!therapistId) {
-    return null;
-  }
-  const serviceRoleKey = getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY")?.trim();
-  if (!serviceRoleKey) {
     return null;
   }
 
@@ -145,11 +141,7 @@ const loadPrimaryTherapistPhone = async (args: {
     )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&limit=1`,
     {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
+      headers: args.headers,
       signal: args.signal,
     },
   );
@@ -684,6 +676,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
     const primaryTherapistPhone = clientSnapshotRow && templateType === "iehp_fba"
       ? await loadPrimaryTherapistPhone({
         supabaseUrl,
+        headers,
         organizationId,
         therapistId: clientSnapshotRow.therapist_id,
         signal,

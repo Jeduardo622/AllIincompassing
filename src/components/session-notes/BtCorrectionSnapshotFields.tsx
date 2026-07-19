@@ -102,10 +102,15 @@ export const prepareBtCorrectionSnapshotResponses = (
   const prepared: BtCorrectionSnapshotResponses = {};
   const fields = sections.flatMap((section) => section.fields ?? []);
   for (const field of fields) {
-    if (!Object.prototype.hasOwnProperty.call(source, field.key)
-      || !isValidStoredFieldValue(field, source[field.key], source)) {
+    if (!SUPPORTED_FIELD_TYPES.has(field.type)) {
       return null;
     }
+    const hasStoredValue = Object.prototype.hasOwnProperty.call(source, field.key);
+    if (!hasStoredValue) {
+      if (field.required || (field.required_when && conditionMatches(field, source))) return null;
+      continue;
+    }
+    if (!isValidStoredFieldValue(field, source[field.key], source)) return null;
     prepared[field.key] = field.key === 'bt_signature'
       ? { method: 'typed', value: '' } satisfies ClinicalSignatureValue
       : source[field.key];

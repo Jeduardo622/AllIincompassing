@@ -826,6 +826,12 @@ describe('Dashboard without client fallbacks', () => {
               required: true,
             },
             {
+              key: 'legacy_other_detail',
+              label: 'Legacy other detail',
+              type: 'text',
+              required_when: 'purpose_of_session includes Other',
+            },
+            {
               key: 'link_unlinked_data',
               label: 'Link unlinked data',
               type: 'boolean',
@@ -942,6 +948,64 @@ describe('Dashboard without client fallbacks', () => {
 
     expect(await screen.findByText('The latest BT note payload could not be prepared for correction.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Legacy Session Details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /re-attest and resubmit/i })).not.toBeInTheDocument();
+  });
+
+  it('fails closed when an active conditional snapshot response is missing', async () => {
+    const View = DashboardView as React.ComponentType<any>;
+    const user = userEvent.setup();
+    const snapshot = {
+      sections: [{
+        key: 'legacy_session_details',
+        label: 'Legacy Session Details',
+        fields: [
+          {
+            key: 'purpose_of_session',
+            label: 'Organization-specific purpose',
+            type: 'multi_select',
+            required: true,
+            options: ['Other'],
+          },
+          {
+            key: 'legacy_other_detail',
+            label: 'Legacy other detail',
+            type: 'text',
+            required_when: 'purpose_of_session includes Other',
+          },
+          {
+            key: 'bt_signature',
+            label: 'Legacy BT Signature',
+            type: 'signature',
+            required: true,
+          },
+        ],
+      }],
+    };
+    const version = {
+      versionNumber: 1,
+      noteId: 'bt-note-active-condition-malformed',
+      source: 'original',
+      correctionRound: null,
+      responses: {
+        purpose_of_session: ['Other'],
+        bt_signature: { method: 'typed', value: 'Original BT Signature' },
+      },
+      templateSnapshot: snapshot,
+      signatureMethod: 'typed',
+      signatureValue: 'Original BT Signature',
+      signedAt: '2026-07-18T16:00:00.000Z',
+    };
+
+    render(
+      <View
+        {...baseProps}
+        btCorrectionTasks={[makeBtCorrectionTask({ originalVersion: version, latestVersion: version })]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /amend bt note for client bt/i }));
+
+    expect(await screen.findByText('The latest BT note payload could not be prepared for correction.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /re-attest and resubmit/i })).not.toBeInTheDocument();
   });
 

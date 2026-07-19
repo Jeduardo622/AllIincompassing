@@ -59,8 +59,9 @@
   - transactional SQL smoke through `ROLLBACK`
   - hosted BT -> BCBA -> BT -> BCBA correction proof on the managed PR preview
 - executed checks:
-  - Codex review regression suite (`Dashboard.noFallback` plus migration contract): pass, 40/40
+  - Codex review regression suite (`Dashboard.noFallback` plus migration contract): pass, 41/41
   - malformed immutable snapshot fail-closed and undeclared-key stripping coverage: pass
+  - inactive conditional snapshot omission coverage: pass; optional fields omitted by the signed packet remain absent, while missing active conditional fields still fail closed
   - alternate hosted constraint-name transactional proof: pass; catalog discovery removed the renamed legacy cap inside `ROLLBACK`
   - local forward migration execution: pass and idempotent
   - Supabase plugin migration `align_bt_correction_signature_limits`: applied successfully to the linked production project
@@ -86,9 +87,11 @@
   - hosted managed-preview proof run `29661369019`: pass on exact commit `7f95b7c5fb05d4c5ec928df0b7d4c66919e3cecd`
   - hosted BT -> BCBA -> BT -> BCBA browser lifecycle: pass, including return reason, correction task, immutable version history, re-attestation, resubmission, and final completion
   - hosted exact cleanup and post-proof preview health: pass; marker-owned BT/BCBA fixtures were removed and the managed preview remained healthy
+  - exact-head hosted proof run `29667036513`: browser lifecycle failed before resubmission because the editor rejected a legitimately omitted inactive conditional snapshot field; cleanup and preview health passed
+  - local regression fix for that proof failure: focused suite 41/41, lint, typecheck, and build pass; replacement exact-head hosted proof pending
 - blocked checks:
   - generic hosted Playwright completion: configured hosted super-admin credential is currently invalid
-- result: `pass-with-blocked-checks`; the bounded workflow and hosted proof pass, while unrelated generic local gates retain the documented environment failures
+- result: `pending-hosted-reproof`; the review fixes and hosted migration boundary checks pass, but the exact-head lifecycle must be rerun after the inactive-conditional-field regression fix
 - residual risk: schema/RPC authorization and clinical versioning remain critical-path changes; human review is mandatory before merge.
 
 ## PR Hygiene
@@ -99,7 +102,7 @@
 - unrelated changes: none
 - generated artifact drift: none
 - verification summary: present
-- pr-ready: yes for human review; keep draft and unmerged until the mandatory critical-lane approval is complete
+- pr-ready: pending replacement exact-head hosted proof and CI; keep draft and unmerged until those checks and the mandatory critical-lane approval are complete
 - required follow-up:
   - push the Codex review fixes, rerun exact-head hosted proof and required checks, resolve both review threads, and obtain human approval before merge
 

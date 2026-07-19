@@ -89,10 +89,12 @@
   - hosted exact cleanup and post-proof preview health: pass; marker-owned BT/BCBA fixtures were removed and the managed preview remained healthy
   - exact-head hosted proof run `29667036513`: browser lifecycle failed before resubmission because the editor rejected a legitimately omitted inactive conditional snapshot field; cleanup and preview health passed
   - exact-head hosted proof runs `29667271826` and `29667416184`: the corrected BT form rendered successfully, but the proof retained a canonical display-label locator that is incompatible with immutable organization-specific snapshot labels; cleanup and preview health passed
-  - local regression fixes for those proof failures: correction suite 41/41 and combined review/proof suite 47/47, lint, typecheck, and build pass; proof now targets the stable snapshot field key and replacement exact-head hosted proof is pending
+  - local regression fixes for those proof failures: correction suite 41/41 and combined review/proof suite 47/47, lint, typecheck, and build pass; proof now targets the stable snapshot field key
+  - exact-head hosted proof run `29667561727`: pass for the full BT -> BCBA -> BT -> BCBA lifecycle, exact synthetic cleanup, and managed-preview post-proof health
+  - PR CI on `e00ce417`: pass for tenant isolation, lint, typecheck, tests, migration validation, Lighthouse, Supabase preview, and Netlify preview checks
 - blocked checks:
   - generic hosted Playwright completion: configured hosted super-admin credential is currently invalid
-- result: `pending-hosted-reproof`; the review fixes and hosted migration boundary checks pass, but the exact-head lifecycle must be rerun after the inactive-conditional-field regression fix
+- result: `pass-with-blocked-local-checks`; the Codex review fixes, hosted migration boundary checks, exact-head lifecycle, cleanup, and PR CI pass; only the previously documented local Windows/generic credential limitations remain
 - residual risk: schema/RPC authorization and clinical versioning remain critical-path changes; human review is mandatory before merge.
 
 ## PR Hygiene
@@ -103,7 +105,7 @@
 - unrelated changes: none
 - generated artifact drift: none
 - verification summary: present
-- pr-ready: pending replacement exact-head hosted proof and CI; keep draft and unmerged until those checks and the mandatory critical-lane approval are complete
+- pr-ready: yes for human review; both Codex review threads are resolved, required CI is green, and the critical-lane human approval remains mandatory before merge
 - required follow-up:
   - push the Codex review fixes, rerun exact-head hosted proof and required checks, resolve both review threads, and obtain human approval before merge
 

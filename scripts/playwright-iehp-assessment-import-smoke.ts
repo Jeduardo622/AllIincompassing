@@ -663,7 +663,6 @@ async function run() {
         }
 
         if (!createdAssessment) {
-          cleanupFailure = new Error('IEHP smoke could not rediscover the uploaded assessment for cleanup.');
           throw new Error('Uploaded IEHP assessment document was not found in the queue.');
         }
         if (createdAssessment.status === 'drafted') {

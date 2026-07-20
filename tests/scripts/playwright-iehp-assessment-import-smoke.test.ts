@@ -800,6 +800,18 @@ describe('normalizeAssessmentChecklistResponse', () => {
 });
 
 describe('playwright-iehp-assessment-import-smoke structure', () => {
+  it('does not mutate helper-local cleanup failure state from the missing-assessment branch', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+
+    expect(script).not.toContain(
+      "cleanupFailure = new Error('IEHP smoke could not rediscover the uploaded assessment for cleanup.');",
+    );
+    expect(script).toContain("throw new Error('Uploaded IEHP assessment document was not found in the queue.');");
+  });
+
   it('keeps cleanup fail-closed when the skills behaviors assertion throws inside the case runner finally boundary', async () => {
     const cleanupCase = vi.fn().mockRejectedValue(new Error('cleanup failed'));
 
@@ -820,7 +832,7 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
           };
         },
         cleanupCase,
-        cleanupTargetKnown: true,
+        cleanupTargetKnown: () => true,
       }),
     ).rejects.toThrow('IEHP assessment import smoke failed and cleanup did not complete.');
 

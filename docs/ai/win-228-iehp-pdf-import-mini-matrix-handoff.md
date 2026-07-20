@@ -35,7 +35,7 @@
 ## Hosted Proof
 
 - All three cases were clean.
-- The final hosted rerun used three distinct accepted synthetic document-phone formats, all different from the snapshot phone.
+- The post-Codex-review hosted rerun used three distinct accepted synthetic document-phone formats, all canonically different from the snapshot phone.
 - The multi-page case placed both asserted fields after the page break.
 - All statuses were extracted.
 - Programs: 0.
@@ -70,6 +70,7 @@
 
 - Initial attempts were blocked by a stale local credential and missing Chromium.
 - The existing provisioner plus installed Chromium enabled the successful run.
+- One timeout-interrupted proof attempt was reconciled before rerun: one dedicated smoke actor was removed, no uploaded PDF documents were found, and the final ephemeral actor cleanup verified `true`.
 - This slice remains digital-PDF only and does not cover scanned/OCR/rotation paths.
 
 ## Residual Risk

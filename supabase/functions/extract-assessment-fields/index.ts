@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { z } from "npm:zod@3.23.8";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
 import { AdobePdfExtractError, extractPdfWithAdobe, type NormalizedAdobePdfExtract } from "./adobe-pdf-extract.ts";
+import { buildIehpSkillsBehaviorsResult } from "./iehp-skills-behaviors.ts";
 import {
   extractStructuredGoalSections,
   summarizeStructuredGoalSections,
@@ -1741,6 +1742,15 @@ const extractIeHpGoalSections = (
   sections.push(...extractIeHpDocxStructureSections(docxStructure));
   appendMissingIeHpTemplatePlaceholders(sections, sectionIndexByFieldKey);
   sections.push(...extractIeHpUnmappedSections(text, sections));
+
+  const skillsBehaviors = buildIehpSkillsBehaviorsResult(sections);
+  const summarySection = sections.find((section) => section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS");
+  if (summarySection && skillsBehaviors) {
+    summarySection.payload = {
+      ...summarySection.payload,
+      skills_behaviors: skillsBehaviors,
+    };
+  }
 
   return sections;
 };

@@ -957,7 +957,7 @@ describe("IehpFbaLayoutReview", () => {
     });
   });
 
-  it("renders behavior target preview and copies extracted checkbox targets", async () => {
+  it("renders reconciled skills and behaviors", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string) => {
       if (path.startsWith("/api/assessment-template-layout?")) {
         return new Response(JSON.stringify({
@@ -1001,7 +1001,113 @@ describe("IehpFbaLayoutReview", () => {
                 field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
                 section_index: 0,
                 payload: {
-                  raw_text: "The behaviors and functional skills to be addressed are: Physical Aggression, Self-Injury",
+                  raw_text: "The behaviors and functional skills to be addressed are: Physical Aggression, Requesting Help, Transition Delay",
+                  skills_behaviors: {
+                    items: [
+                      {
+                        name: "Physical Aggression",
+                        clinical_goal_type: "behavior",
+                        reconciliation_status: "matched",
+                        matched_summary_refs: ["behavior-summary-1"],
+                        matched_detailed_refs: ["detailed-goal-1"],
+                      },
+                      {
+                        name: "Requesting Help",
+                        clinical_goal_type: "skill",
+                        reconciliation_status: "matched",
+                      },
+                      {
+                        name: "Transition Delay",
+                        clinical_goal_type: null,
+                        reconciliation_status: "ambiguous",
+                      },
+                    ],
+                  },
+                  targets: ["Legacy target should stay hidden when reconciliation is valid"],
+                },
+                source_span: { page_number: 3, method: "iehp_section_anchor" },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          },
+          unresolved_required_count: 1,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 3/i }));
+    expect(await screen.findByText("Behavior Reduction")).toBeInTheDocument();
+    expect(screen.getByText("Skill Acquisition")).toBeInTheDocument();
+    expect(screen.getByText("Needs Review")).toBeInTheDocument();
+    expect(screen.getByText("Physical Aggression")).toBeInTheDocument();
+    expect(screen.getByText("Requesting Help")).toBeInTheDocument();
+    expect(screen.getByText("Transition Delay")).toBeInTheDocument();
+    expect(screen.queryByText("behavior-summary-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("detailed-goal-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("Legacy target should stay hidden when reconciliation is valid")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand Behaviors and Functional Skills to be Addressed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "Behaviors and Functional Skills to be Addressed\nBehavior Reduction\n- Physical Aggression\nSkill Acquisition\n- Requesting Help\nNeeds Review\n- Transition Delay",
+      );
+    });
+  });
+
+  it("falls back to legacy behavior targets when skills_behaviors is absent", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 3, title: "Behaviors", layout_json: {} }],
+          fields: [
+            {
+              page_number: 3,
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+              label: "Behaviors and Functional Skills to be Addressed",
+              field_type: "checkbox_grid",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-behavior-legacy",
+                placeholder_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+                section_key: "behavior_background_services",
+                label: "Behaviors and Functional Skills to be Addressed",
+                mode: "ASSISTED",
+                required: true,
+                status: "drafted",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "behavior-structured-legacy",
+                field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+                section_index: 0,
+                payload: {
+                  raw_text: "Legacy target list remains available.",
                   targets: ["Physical Aggression", "Self-Injury"],
                 },
                 source_span: { page_number: 3, method: "iehp_section_anchor" },
@@ -1026,14 +1132,94 @@ describe("IehpFbaLayoutReview", () => {
     expect(await screen.findByText("Selected Behavior Targets")).toBeInTheDocument();
     expect(screen.getByText("Physical Aggression")).toBeInTheDocument();
     expect(screen.getByText("Self-Injury")).toBeInTheDocument();
+    expect(screen.queryByText("Behavior Reduction")).not.toBeInTheDocument();
+  });
+
+  it("shows an explicit warning when skills_behaviors is present but malformed", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 3, title: "Behaviors", layout_json: {} }],
+          fields: [
+            {
+              page_number: 3,
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+              label: "Behaviors and Functional Skills to be Addressed",
+              field_type: "checkbox_grid",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-behavior-invalid",
+                placeholder_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+                section_key: "behavior_background_services",
+                label: "Behaviors and Functional Skills to be Addressed",
+                mode: "ASSISTED",
+                required: true,
+                status: "drafted",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "behavior-structured-invalid",
+                field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+                section_index: 0,
+                payload: {
+                  raw_text: "Malformed reconciliation payload should block silent fallback.",
+                  skills_behaviors: {
+                    items: [
+                      {
+                        name: "Physical Aggression",
+                        clinical_goal_type: "behavior",
+                        reconciliation_status: "not-a-real-status",
+                      },
+                    ],
+                  },
+                  targets: ["Physical Aggression", "Self-Injury"],
+                },
+                source_span: { page_number: 3, method: "iehp_section_anchor" },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          },
+          unresolved_required_count: 1,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 3/i }));
+    expect(await screen.findByText(/Invalid reconciliation data/i)).toBeInTheDocument();
+    expect(screen.getByText("Needs Review")).toBeInTheDocument();
+    expect(screen.queryByText("Selected Behavior Targets")).not.toBeInTheDocument();
+    expect(screen.queryByText("Physical Aggression")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand Behaviors and Functional Skills to be Addressed" }));
-    fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
-    await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        "Behaviors and Functional Skills to be Addressed\n- Physical Aggression\n- Self-Injury",
-      );
-    });
+    expect(screen.queryByTestId("raw-json-behavior-structured-invalid")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show technical details" }));
+    expect(await screen.findByTestId("raw-json-behavior-structured-invalid")).toBeInTheDocument();
+    expect(screen.getByLabelText("Behaviors and Functional Skills to be Addressed structured section 1 payload")).toBeInTheDocument();
   });
 
   it("renders checkbox-grid structured payloads with accessible checked and unchecked tokens", async () => {

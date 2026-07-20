@@ -99,6 +99,18 @@ interface CheckboxPreviewRow {
   state: "checked" | "unchecked" | "unknown";
 }
 
+interface SkillsBehaviorsPreviewItem {
+  name: string;
+  clinicalGoalType: "behavior" | "skill" | null;
+  reconciliationStatus: "matched" | "summary_only" | "detailed_only" | "ambiguous";
+}
+
+interface SkillsBehaviorsPreviewGroups {
+  behavior: string[];
+  skill: string[];
+  review: string[];
+}
+
 const EMPTY_LAYOUT: TemplateLayoutResponse = {
   template_version: {
     version_key: "",
@@ -134,6 +146,10 @@ const formatPayloadPreview = (value: unknown): string => {
   }
 };
 
+const VALID_SKILLS_BEHAVIORS_RECONCILIATION_STATUSES = new Set(["matched", "summary_only", "detailed_only", "ambiguous"]);
+const INVALID_SKILLS_BEHAVIORS_RECONCILIATION_MESSAGE =
+  "Invalid reconciliation data. Needs Review before this section can be approved.";
+
 const behaviorTargetsFromPayload = (payload: Record<string, unknown> | undefined): string[] => {
   const targets = payload?.targets;
   if (!Array.isArray(targets)) return [];
@@ -141,6 +157,52 @@ const behaviorTargetsFromPayload = (payload: Record<string, unknown> | undefined
     .map((target) => (typeof target === "string" ? target.trim() : ""))
     .filter((target) => target.length > 0);
 };
+
+const skillsBehaviorsPreviewItemsFromPayload = (
+  payload: Record<string, unknown> | undefined,
+): SkillsBehaviorsPreviewItem[] | null | "invalid" => {
+  if (!payload || typeof payload !== "object" || !Object.prototype.hasOwnProperty.call(payload, "skills_behaviors")) return null;
+
+  const value = payload.skills_behaviors;
+  if (!value || typeof value !== "object" || !Array.isArray((value as { items?: unknown }).items)) return "invalid";
+
+  const items = (value as { items: unknown[] }).items.flatMap((candidate): SkillsBehaviorsPreviewItem[] => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const record = candidate as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    const clinicalGoalType =
+      record.clinical_goal_type === "behavior" || record.clinical_goal_type === "skill" ? record.clinical_goal_type : null;
+    const reconciliationStatus =
+      typeof record.reconciliation_status === "string" && VALID_SKILLS_BEHAVIORS_RECONCILIATION_STATUSES.has(record.reconciliation_status)
+        ? (record.reconciliation_status as SkillsBehaviorsPreviewItem["reconciliationStatus"])
+        : null;
+
+    return name && reconciliationStatus ? [{ name, clinicalGoalType, reconciliationStatus }] : [];
+  });
+
+  return items.length > 0 ? items : "invalid";
+};
+
+const groupSkillsBehaviorsPreviewItems = (items: SkillsBehaviorsPreviewItem[]): SkillsBehaviorsPreviewGroups =>
+  items.reduce<SkillsBehaviorsPreviewGroups>(
+    (groups, item) => {
+      if (item.reconciliationStatus === "matched" && item.clinicalGoalType === "behavior") groups.behavior.push(item.name);
+      else if (item.reconciliationStatus === "matched" && item.clinicalGoalType === "skill") groups.skill.push(item.name);
+      else groups.review.push(item.name);
+      return groups;
+    },
+    { behavior: [], skill: [], review: [] },
+  );
+
+const formatSkillsBehaviorsPreviewText = (groups: SkillsBehaviorsPreviewGroups): string =>
+  [
+    "Behavior Reduction",
+    ...groups.behavior.map((item) => `- ${item}`),
+    "Skill Acquisition",
+    ...groups.skill.map((item) => `- ${item}`),
+    "Needs Review",
+    ...groups.review.map((item) => `- ${item}`),
+  ].join("\n");
 
 const formatStatusLabel = (status: ReviewStatus | StructuredReviewStatus): string => {
   if (status === "not_started") return "Not started";
@@ -277,8 +339,12 @@ const formatGenericStructuredReadableText = (payload: Record<string, unknown> | 
 
 const formatStructuredReadableText = (section: StructuredValue): string => {
   if (section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
-    const targets = behaviorTargetsFromPayload(section.payload);
     const heading = "Behaviors and Functional Skills to be Addressed";
+    const skillsBehaviorsItems = skillsBehaviorsPreviewItemsFromPayload(section.payload);
+    if (skillsBehaviorsItems === "invalid") return `${heading}\nNeeds Review\n- ${INVALID_SKILLS_BEHAVIORS_RECONCILIATION_MESSAGE}`;
+    if (skillsBehaviorsItems) return `${heading}\n${formatSkillsBehaviorsPreviewText(groupSkillsBehaviorsPreviewItems(skillsBehaviorsItems))}`;
+
+    const targets = behaviorTargetsFromPayload(section.payload);
     if (targets.length === 0) return `${heading}\n- none selected`;
     return `${heading}\n${targets.map((target) => `- ${target}`).join("\n")}`;
   }
@@ -315,6 +381,60 @@ const shouldShowNarrativeRenderer = (fieldKey: string): boolean =>
 
 const renderStructuredReadablePreview = (section: StructuredValue): JSX.Element => {
   if (section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS") {
+    const skillsBehaviorsItems = skillsBehaviorsPreviewItemsFromPayload(section.payload);
+    if (skillsBehaviorsItems === "invalid") {
+      return (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-200">Needs Review</p>
+          <p className="text-xs leading-relaxed text-amber-100">{INVALID_SKILLS_BEHAVIORS_RECONCILIATION_MESSAGE}</p>
+        </div>
+      );
+    }
+
+    if (skillsBehaviorsItems) {
+      const groups = groupSkillsBehaviorsPreviewItems(skillsBehaviorsItems);
+      return (
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200">Behavior Reduction</p>
+            {groups.behavior.length === 0 ? (
+              <p className="text-xs text-slate-300">None reconciled.</p>
+            ) : (
+              <ul className="list-disc space-y-1 pl-4 text-xs text-slate-100">
+                {groups.behavior.map((target) => (
+                  <li key={target}>{target}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200">Skill Acquisition</p>
+            {groups.skill.length === 0 ? (
+              <p className="text-xs text-slate-300">None reconciled.</p>
+            ) : (
+              <ul className="list-disc space-y-1 pl-4 text-xs text-slate-100">
+                {groups.skill.map((target) => (
+                  <li key={target}>{target}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-200">Needs Review</p>
+            {groups.review.length === 0 ? (
+              <p className="text-xs text-slate-300">No review items.</p>
+            ) : (
+              <ul className="list-disc space-y-1 pl-4 text-xs text-slate-100">
+                {groups.review.map((target) => (
+                  <li key={target}>{target}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     const targets = behaviorTargetsFromPayload(section.payload);
     return (
       <div className="space-y-1">

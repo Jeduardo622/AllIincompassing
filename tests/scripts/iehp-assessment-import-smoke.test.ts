@@ -275,9 +275,9 @@ describe('assertIehpSkillsBehaviorsChecklistSection', () => {
             reconciliation_status: 'detailed_only',
             summary_target_index: null,
             matched_goal_refs: [
-              { field_key: 'IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS', section_index: 1 },
+              { field_key: 'IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS', section_index: 1 },
             ],
-            classification_source: 'explicit_goal_type',
+            classification_source: 'detailed_goal_field_key',
           },
         ],
       },

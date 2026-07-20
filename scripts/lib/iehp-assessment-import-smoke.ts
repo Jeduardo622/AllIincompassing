@@ -499,7 +499,7 @@ export const assertIehpSkillsBehaviorsChecklistSection = (args: {
     detailedOnlyItem.reconciliation_status !== proofCase.expectedStatuses.detailedOnly ||
     !Array.isArray(detailedOnlyItem.matched_goal_refs) ||
     !detailedOnlyItem.matched_goal_refs.some((ref) =>
-      sameGoalRef(ref, 'IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS', 1)
+      sameGoalRef(ref, 'IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS', 1)
     )
   ) {
     throw new Error(

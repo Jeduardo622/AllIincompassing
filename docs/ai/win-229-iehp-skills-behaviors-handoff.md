@@ -35,6 +35,7 @@
 - Extractor RED: the summary payload lacked `skills_behaviors`; GREEN: the integrated helper/index suite passed and preserved `payload.targets`, exact counts, and parent exclusion.
 - UI RED: grouped output and malformed-payload behavior were absent; review RED later exposed typed `detailed_only` mis-grouping, mixed malformed acceptance, and invalid handling of a valid empty result. GREEN: the full component suite passes `18/18`.
 - Smoke RED: proof fixture/helper/flag/command were absent; review RED later exposed malformed-item filtering and cleanup-helper contract drift. GREEN: the focused smoke suite passes `64/64`, with assertion failure still entering fail-closed cleanup.
+- Hosted provenance RED: CI run `29786127201` proved the synthetic `Waiting` goal was emitted from replacement behaviors, while the smoke incorrectly required a target-behavior ref. The corrected focused fixture failed `1/25` before implementation; GREEN: the assertion now requires `IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS` index `1` and both smoke suites pass `64/64`.
 - Preview registration RED: the focused CI smoke contract failed because `supabase/config.toml` lacked `[functions.extract-assessment-fields]`; GREEN: the exact config/JWT assertion passed and the complete focused smoke suite remained `64/64`.
 - Review P1 RED: checklist GET returned a deliberately stale stored aggregate; GREEN: current rows replace it in the authenticated response and client PATCH cannot persist a forged aggregate. Template-layout RED then proved the clinician UI read still needed the same adapter; GREEN: both authenticated reads return current reconciliation (`40/40` focused server/UI tests).
 - Review P2 RED: an otherwise valid version `2` payload was accepted; GREEN: unsupported versions return the explicit invalid-reconciliation state and the UI suite passes `19/19`.
@@ -63,6 +64,7 @@
 - Hosted evidence:
   - CI run `29783353571`: generated synthetic admin authenticated; default DOCX phone/provenance proof passed; first skills/behaviors attempt failed because the fixture summary heading did not match the deterministic parser anchor; both per-upload cleanup and unconditional admin cleanup succeeded.
   - CI run `29784074398`, job `88491826711`: corrected fixture reached `IEHP_FBA_BEHAVIOR_SKILL_TARGETS`; proof then failed because `payload.skills_behaviors` was absent from the main-project function response. Default DOCX phone/provenance proof again passed, evidence uploaded, and unconditional admin cleanup succeeded.
+  - CI run `29786127201`, job `88501613796`: authenticated derive-on-read exposed the current reconciliation payload. Default phone/provenance proof passed with one row, accepted format, snapshot precedence, and `client_snapshot` / `primary_therapist_phone` provenance. Skills/behaviors then failed only because the smoke expected `Waiting` to reference the target-behavior field instead of the replacement-behavior skill field. Document/storage cleanup, synthetic-admin cleanup, evidence recording, and artifact upload all succeeded.
   - Supabase preview project `ywqpvpvlcqvykombolus` initially lacked `extract-assessment-fields`; after commit `7e1f0752`, live inventory confirmed `extract-assessment-fields` version `1` active with `verify_jwt=true`. The Netlify preview and CI credentials still target the main Supabase project, so the browser gate does not yet invoke that branch function.
 - Cleanup evidence:
   - local seam proves assertion failure still runs document/storage cleanup and cleanup failure fails closed
@@ -95,14 +97,15 @@
   - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, `npm run build` -> pass
   - `npm run test:routes:tier0` -> pass (`220`)
   - latest `npm run test:ci` -> fail at the three unrelated cases listed above; CI `unit-tests` on head `f206721e` -> pass
-  - hosted default phone/provenance smoke -> pass twice; hosted skills/behaviors smoke -> reaches the target section but main-project response lacks the branch-only reconciliation payload
+  - hosted default phone/provenance smoke -> pass three times; latest hosted skills/behaviors smoke -> authenticated derive-on-read returned the reconciliation payload and exposed the corrected proof-only provenance mismatch
   - review-thread focused server/UI tests -> pass (`40/40`); strict UI version test -> RED then pass; `npm run ci:check-focused`, lint, typecheck, and build -> pass after review fixes
+  - hosted-provenance fix -> RED (`1/25` focused helper failure), then GREEN (`64/64` smoke tests); `npm run ci:check-focused`, lint, typecheck, and build -> pass
 - blocked checks:
   - local `npm run test:ci` and `npm run verify:local` remain blocked by unrelated baseline/runtime failures; the live PR `unit-tests` check passes
-  - branch-hosted IEHP proof remains blocked until Supabase redeploys the newly registered function and branch-compatible synthetic auth/client data are available
+  - the corrected current-head hosted IEHP rerun is pending after the provenance-expectation fix
   - live DB policy checks remain blocked by missing database environment variables
 - result: `pass-with-blocked-checks`
-- residual risk: the reconciler and stale-edit behavior are locally proven, but field-level browser proof cannot pass while the Netlify/CI app invokes the main Supabase project; human review and a branch-compatible app/auth/data path or post-merge proof remain required
+- residual risk: the reconciler and stale-edit behavior are locally proven; the latest hosted run reached and validated the derived payload but the corrected exact provenance expectation still requires a green rerun. Human review remains required.
 
 ## Review Findings
 
@@ -117,5 +120,5 @@
 ## Handoff Summary
 
 - The branch contains the reconciliation implementation, strict synthetic proof, CI gate, and the smallest preview-function registration needed to deploy the reviewed extractor.
-- The hosted gate now proves credentials, upload, phone precedence/provenance, structured-section discovery, evidence capture, and cleanup; it fails specifically because the currently targeted main function lacks the PR payload.
-- Next practical step: let Supabase Preview redeploy this head, confirm `extract-assessment-fields` exists there, then provide branch-compatible synthetic auth/client data or run the same fail-closed proof post-merge against the deployed reviewed function. Do not merge while the required smoke is red.
+- The hosted gate now proves credentials, upload, phone precedence/provenance, authenticated derive-on-read, structured-section discovery, evidence capture, and cleanup. Run `29786127201` exposed one exact smoke-only provenance mismatch, now corrected test-first.
+- Next practical step: require the current-head CI rerun, including green skills/behaviors evidence and cleanup, then obtain the mandatory human approval. Do not merge while the required smoke is red or pending.

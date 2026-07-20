@@ -7,7 +7,7 @@
 - Classification: `high-risk human-reviewed`
 - Lane: `critical`
 - Required agents: `specification-engineer` -> `software-architect` -> `implementation-engineer` -> `code-review-engineer` -> `test-engineer` -> `security-engineer` -> `documentation-engineer`
-- Files changed: `supabase/functions/extract-assessment-fields/iehp-skills-behaviors.ts`, `supabase/functions/extract-assessment-fields/iehp-skills-behaviors.test.ts`, `supabase/functions/extract-assessment-fields/index.ts`, `supabase/functions/extract-assessment-fields/index.test.ts`, `supabase/config.toml`, `src/components/ClientDetails/IehpFbaLayoutReview.tsx`, `src/components/__tests__/IehpFbaLayoutReview.test.tsx`, `scripts/lib/iehp-assessment-import-smoke.ts`, `scripts/playwright-iehp-assessment-import-smoke.ts`, `tests/scripts/iehp-assessment-import-smoke.test.ts`, `tests/scripts/playwright-iehp-assessment-import-smoke.test.ts`, `.github/workflows/ci.yml`, `package.json`, this handoff, and the implementation plan
+- Files changed: `supabase/functions/extract-assessment-fields/iehp-skills-behaviors.ts`, `supabase/functions/extract-assessment-fields/iehp-skills-behaviors.test.ts`, `supabase/functions/extract-assessment-fields/index.ts`, `supabase/functions/extract-assessment-fields/index.test.ts`, `supabase/config.toml`, `src/server/iehpSkillsBehaviors.ts`, `src/server/api/assessment-checklist.ts`, `src/server/api/assessment-template-layout.ts`, their focused tests, `src/components/ClientDetails/IehpFbaLayoutReview.tsx`, `src/components/__tests__/IehpFbaLayoutReview.test.tsx`, smoke scripts/tests, `.github/workflows/ci.yml`, `package.json`, this handoff, and the implementation plan
 
 ## Scope
 
@@ -25,6 +25,8 @@
 - CI now runs the default phone/provenance smoke before the opt-in skills/behaviors proof and retains unconditional synthetic-admin cleanup.
 - The synthetic proof fixture uses the extractor's exact deterministic section anchors.
 - `supabase/config.toml` now registers `extract-assessment-fields` with `verify_jwt = true` so a subsequent Supabase PR preview can deploy the reviewed branch function.
+- Authenticated checklist and template-layout reads now derive the aggregate from current structured rows, and summary PATCHes strip client-supplied derived data. This prevents clinician edits from leaving the grouped review stale while promotion uses corrected detail rows.
+- The review UI accepts only reconciliation schema version `1` and fails closed on unknown versions.
 - Unrelated user-owned untracked files `pnpm-lock.yaml` and `pnpm-workspace.yaml` remain excluded from the branch commits.
 
 ## Test-First Evidence
@@ -34,6 +36,8 @@
 - UI RED: grouped output and malformed-payload behavior were absent; review RED later exposed typed `detailed_only` mis-grouping, mixed malformed acceptance, and invalid handling of a valid empty result. GREEN: the full component suite passes `18/18`.
 - Smoke RED: proof fixture/helper/flag/command were absent; review RED later exposed malformed-item filtering and cleanup-helper contract drift. GREEN: the focused smoke suite passes `64/64`, with assertion failure still entering fail-closed cleanup.
 - Preview registration RED: the focused CI smoke contract failed because `supabase/config.toml` lacked `[functions.extract-assessment-fields]`; GREEN: the exact config/JWT assertion passed and the complete focused smoke suite remained `64/64`.
+- Review P1 RED: checklist GET returned a deliberately stale stored aggregate; GREEN: current rows replace it in the authenticated response and client PATCH cannot persist a forged aggregate. Template-layout RED then proved the clinician UI read still needed the same adapter; GREEN: both authenticated reads return current reconciliation (`40/40` focused server/UI tests).
+- Review P2 RED: an otherwise valid version `2` payload was accepted; GREEN: unsupported versions return the explicit invalid-reconciliation state and the UI suite passes `19/19`.
 
 ## Verification / Evidence
 
@@ -59,7 +63,7 @@
 - Hosted evidence:
   - CI run `29783353571`: generated synthetic admin authenticated; default DOCX phone/provenance proof passed; first skills/behaviors attempt failed because the fixture summary heading did not match the deterministic parser anchor; both per-upload cleanup and unconditional admin cleanup succeeded.
   - CI run `29784074398`, job `88491826711`: corrected fixture reached `IEHP_FBA_BEHAVIOR_SKILL_TARGETS`; proof then failed because `payload.skills_behaviors` was absent from the main-project function response. Default DOCX phone/provenance proof again passed, evidence uploaded, and unconditional admin cleanup succeeded.
-  - Supabase preview project `ywqpvpvlcqvykombolus` was live but did not contain `extract-assessment-fields`; live function listing showed only the two functions previously registered in `supabase/config.toml`. This branch now adds the missing registration, but a new preview deployment and authenticated branch-data proof are still pending.
+  - Supabase preview project `ywqpvpvlcqvykombolus` initially lacked `extract-assessment-fields`; after commit `7e1f0752`, live inventory confirmed `extract-assessment-fields` version `1` active with `verify_jwt=true`. The Netlify preview and CI credentials still target the main Supabase project, so the browser gate does not yet invoke that branch function.
 - Cleanup evidence:
   - local seam proves assertion failure still runs document/storage cleanup and cleanup failure fails closed
   - both hosted attempts reached upload and completed document/storage cleanup; job-level synthetic admin cleanup also completed successfully
@@ -92,19 +96,21 @@
   - `npm run test:routes:tier0` -> pass (`220`)
   - latest `npm run test:ci` -> fail at the three unrelated cases listed above; CI `unit-tests` on head `f206721e` -> pass
   - hosted default phone/provenance smoke -> pass twice; hosted skills/behaviors smoke -> reaches the target section but main-project response lacks the branch-only reconciliation payload
+  - review-thread focused server/UI tests -> pass (`40/40`); strict UI version test -> RED then pass; `npm run ci:check-focused`, lint, typecheck, and build -> pass after review fixes
 - blocked checks:
   - local `npm run test:ci` and `npm run verify:local` remain blocked by unrelated baseline/runtime failures; the live PR `unit-tests` check passes
   - branch-hosted IEHP proof remains blocked until Supabase redeploys the newly registered function and branch-compatible synthetic auth/client data are available
   - live DB policy checks remain blocked by missing database environment variables
 - result: `pass-with-blocked-checks`
-- residual risk: the reconciler is locally proven, but field-level hosted proof cannot pass while CI invokes the main-project function; human review and a branch-deployment/auth-data verification path remain required
+- residual risk: the reconciler and stale-edit behavior are locally proven, but field-level browser proof cannot pass while the Netlify/CI app invokes the main Supabase project; human review and a branch-compatible app/auth/data path or post-merge proof remain required
 
 ## Review Findings
 
 - `code-review-engineer`: approve
 - `test-engineer`: approve
 - `security-engineer`: approve
-- preview-registration `specification-engineer`, `code-review-engineer`, and `security-engineer`: approve; test review pending at this update
+- preview-registration `specification-engineer`, `code-review-engineer`, `test-engineer`, and `security-engineer`: approve
+- review-thread `software-architect`, `specification-engineer`, `code-review-engineer`, and `security-engineer`: derive-on-read/strip-client-data approach approved; final test review pending at this update
 - `pr-hygiene`: `pr-ready: yes` for continued human review; `merge-ready: no` while the required IEHP smoke is red and human approval is absent
 - PR opening: complete; PR `#823` remains blocked by the required IEHP smoke and human review
 

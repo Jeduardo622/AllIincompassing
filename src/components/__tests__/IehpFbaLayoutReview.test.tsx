@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderWithProviders, screen, waitFor, within } from "../../test/utils";
 import { callApi } from "../../lib/api";
-import { IehpFbaLayoutReview } from "../ClientDetails/IehpFbaLayoutReview";
+import { __TESTING__, IehpFbaLayoutReview } from "../ClientDetails/IehpFbaLayoutReview";
 import type { AssessmentDocumentRecord } from "../../lib/assessment-documents";
 
 vi.mock("../../lib/api", () => ({
@@ -12,6 +12,23 @@ vi.mock("../../lib/toast", () => ({
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }));
+
+describe("IEHP skills and behaviors payload validation", () => {
+  it("rejects unsupported reconciliation payload versions", () => {
+    expect(__TESTING__.skillsBehaviorsPreviewItemsFromPayload({
+      skills_behaviors: {
+        version: 2,
+        items: [
+          {
+            name: "Synthetic Skill",
+            clinical_goal_type: "skill",
+            reconciliation_status: "matched",
+          },
+        ],
+      },
+    })).toBe("invalid");
+  });
+});
 
 const assessmentDocument: AssessmentDocumentRecord = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -1003,6 +1020,7 @@ describe("IehpFbaLayoutReview", () => {
                 payload: {
                   raw_text: "The behaviors and functional skills to be addressed are: Physical Aggression, Requesting Help, Transition Delay",
                   skills_behaviors: {
+                    version: 1,
                     items: [
                       {
                         name: "Physical Aggression",

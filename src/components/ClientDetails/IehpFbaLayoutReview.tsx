@@ -166,7 +166,12 @@ const skillsBehaviorsPreviewItemsFromPayload = (
   if (!payload || typeof payload !== "object" || !Object.prototype.hasOwnProperty.call(payload, "skills_behaviors")) return null;
 
   const value = payload.skills_behaviors;
-  if (!value || typeof value !== "object" || !Array.isArray((value as { items?: unknown }).items)) return "invalid";
+  if (
+    !value ||
+    typeof value !== "object" ||
+    (value as { version?: unknown }).version !== 1 ||
+    !Array.isArray((value as { items?: unknown }).items)
+  ) return "invalid";
 
   const items: SkillsBehaviorsPreviewItem[] = [];
 
@@ -189,6 +194,10 @@ const skillsBehaviorsPreviewItemsFromPayload = (
   }
 
   return items;
+};
+
+export const __TESTING__ = {
+  skillsBehaviorsPreviewItemsFromPayload,
 };
 
 const groupSkillsBehaviorsPreviewItems = (items: SkillsBehaviorsPreviewItem[]): SkillsBehaviorsPreviewGroups =>

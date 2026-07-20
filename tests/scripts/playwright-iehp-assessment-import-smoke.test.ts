@@ -417,11 +417,17 @@ describe('selectConfiguredSmokeClient', () => {
     );
   });
 
-  it('keeps the CI IEHP smoke path dedicated to the generated super-admin account', () => {
+  it('keeps both CI IEHP proofs on the generated super-admin and unconditional cleanup path', () => {
     const root = process.cwd();
     const workflow = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
     const script = readFileSync(path.join(root, 'scripts/playwright-iehp-assessment-import-smoke.ts'), 'utf8');
     const iehpJob = sliceWorkflowJob(workflow, 'iehp_assessment_import_smoke');
+    const cleanupStepStart = iehpJob.indexOf('- name: Cleanup IEHP smoke admin');
+    const cleanupStepEnd = iehpJob.indexOf('\n      - name:', cleanupStepStart + 1);
+    const cleanupStep = iehpJob.slice(
+      cleanupStepStart,
+      cleanupStepEnd === -1 ? undefined : cleanupStepEnd,
+    );
     const candidateBlock = script.slice(
       script.indexOf('const credentialCandidates = ['),
       script.indexOf('preflightCredentials(credentialCandidates);'),
@@ -437,6 +443,16 @@ describe('selectConfiguredSmokeClient', () => {
     );
     expect(iehpJob).not.toMatch(/^\s+PW_ADMIN_EMAIL/m);
     expect(iehpJob).not.toMatch(/^\s+PW_ADMIN_PASSWORD/m);
+    expect(iehpJob).toContain('npm run playwright:iehp-assessment-import-smoke');
+    expect(iehpJob).toContain('npm run playwright:iehp-assessment-import-skills-behaviors');
+    expect(iehpJob.indexOf('npm run playwright:iehp-assessment-import-smoke')).toBeLessThan(
+      iehpJob.indexOf('npm run playwright:iehp-assessment-import-skills-behaviors'),
+    );
+    expect(iehpJob.indexOf('npm run playwright:iehp-assessment-import-skills-behaviors')).toBeLessThan(
+      iehpJob.indexOf('name: Cleanup IEHP smoke admin'),
+    );
+    expect(cleanupStepStart).toBeGreaterThanOrEqual(0);
+    expect(cleanupStep).toContain('if: always()');
     expect(candidateBlock).toContain('PW_SUPERADMIN_EMAIL');
     expect(candidateBlock).not.toContain('PW_ADMIN_EMAIL');
     expect(candidateBlock).not.toContain('PLAYWRIGHT_ADMIN_EMAIL');

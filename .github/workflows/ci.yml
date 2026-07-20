@@ -817,6 +817,7 @@ jobs:
           fi
 
           npm run playwright:iehp-assessment-import-smoke
+          npm run playwright:iehp-assessment-import-skills-behaviors
 
       - name: Cleanup IEHP smoke admin
         if: always()

@@ -136,7 +136,7 @@ export const assertIehpDocumentChecklistField = (args: {
     throw new Error(`IEHP smoke expected ${args.fieldKey} to match the expected document value exactly.`);
   }
 
-  const provenanceRows = args.provenanceRows ?? [];
+  const provenanceRows = (args.provenanceRows ?? []).filter((row) => row.field_key === args.fieldKey);
   if (provenanceRows.length === 0) {
     throw new Error(`IEHP smoke could not find ${args.fieldKey} extraction provenance.`);
   }

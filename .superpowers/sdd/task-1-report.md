@@ -84,3 +84,50 @@ Output summary:
 ## Concerns
 
 - `node` is not on PATH in this shell, so the brief's `npx` command could not run directly. I used the repo runtime's `node.exe` to execute the same Vitest targets.
+
+## Follow-up Fix: Provenance field filtering
+
+### RED
+
+Command:
+
+```powershell
+& 'C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' .\node_modules\vitest\vitest.mjs run tests/scripts/iehp-assessment-import-smoke.test.ts tests/scripts/playwright-iehp-assessment-import-smoke.test.ts
+```
+
+Output summary:
+
+```text
+1 test file failed
+1 test failed, 43 passed
+
+Failure:
+- assertIehpDocumentChecklistField > ignores provenance rows for other field keys when enforcing the referral-date contract
+- IEHP smoke expected exactly one IEHP_FBA_REFERRAL_DATE extraction provenance row but found 2.
+```
+
+### Fix
+
+- Updated `assertIehpDocumentChecklistField` to filter provenance rows by the requested `fieldKey` before enforcing exactly-one-row and non-`client_snapshot` checks.
+- Added a focused success test that mixes `IEHP_FBA_REFERRAL_DATE` provenance with an unrelated `IEHP_FBA_ASSESSOR_PHONE` provenance row and requires the referral-date assertion to ignore the unrelated row.
+
+### GREEN
+
+Command:
+
+```powershell
+& 'C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' .\node_modules\vitest\vitest.mjs run tests/scripts/iehp-assessment-import-smoke.test.ts tests/scripts/playwright-iehp-assessment-import-smoke.test.ts
+```
+
+Output summary:
+
+```text
+2 test files passed
+44 tests passed
+0 failed
+```
+
+### Follow-up Self-Review
+
+- The fix stays inside the Task 1 helper/test surface.
+- The new test now proves the helper enforces provenance cardinality only for the requested checklist field, which matches the intended contract and closes the review gap.

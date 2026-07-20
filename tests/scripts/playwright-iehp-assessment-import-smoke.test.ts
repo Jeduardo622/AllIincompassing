@@ -809,6 +809,32 @@ describe('assertIehpDocumentChecklistField', () => {
     });
   });
 
+  it('ignores provenance rows for other field keys when enforcing the referral-date contract', () => {
+    expect(
+      assertIehpDocumentChecklistField({
+        checklist: checklistWithValue('06/30/2026'),
+        expectedValue: '06/30/2026',
+        fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+        provenanceRows: [
+          documentProvenanceRow,
+          {
+            field_key: 'IEHP_FBA_ASSESSOR_PHONE',
+            source_span: {
+              method: 'document_text',
+              field: 'IEHP_FBA_ASSESSOR_PHONE',
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+      rowCount: 1,
+      valueMatched: true,
+      provenanceRowCount: 1,
+      documentProvenanceVerified: true,
+    });
+  });
+
   it.each([
     {
       name: 'missing row',

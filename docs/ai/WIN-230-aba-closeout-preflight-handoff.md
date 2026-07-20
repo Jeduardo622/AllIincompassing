@@ -40,11 +40,12 @@ Linear: [WIN-230](https://linear.app/winningedgeai/issue/WIN-230/block-aba-close
   - `PREVIEW_PORT=4187 npm run test:routes:tier0`: pass, 220/220
   - `npm run ci:playwright`: blocked safely at credential preflight before browser launch
   - `npm run verify:local`: fail at the chained `test:ci` step with the same two out-of-scope failures after policy, lint, and typecheck passed
+  - PR #824 live CI at commit `ac28fffb`: pass, including Linux unit tests, policy, lint/typecheck, build, tenant safety, runtime migration parity, Tier-0 browser, auth browser smoke, optional Playwright smoke, IEHP import smoke, deploy preview, and final `ci-gate`
 - blocked checks:
   - `npm run ci:playwright`: missing synthetic `PW_SUPERADMIN_*` or `PW_ADMIN_*` credentials
   - database-backed policy checks: no `SUPABASE_DB_URL` / `DATABASE_URL`; no database surface changed
-- result: fail
-- residual risk: The focused closeout behavior and route surface are green. Human review and live Linux CI remain required because local aggregate testing has two unrelated Windows/runtime failures and credentialed end-to-end smoke could not run.
+- result: pass-with-blocked-checks
+- residual risk: The focused closeout behavior, route surface, and live Linux CI are green. Human review remains required, and the exact credentialed closeout smoke could not run locally because synthetic credentials were unavailable.
 
 ## PR Hygiene
 
@@ -55,8 +56,8 @@ Linear: [WIN-230](https://linear.app/winningedgeai/issue/WIN-230/block-aba-close
 - generated artifact drift: none
 - verification summary: present
 - pr-ready: yes for human review; not merge-ready until required live checks and human approval are complete
-- required follow-up: Push the isolated branch, open the PR, inspect live Linux checks, and keep the critical-lane human approval gate.
+- required follow-up: Obtain the mandatory critical-lane human approval before merge.
 
 ## Handoff Summary
 
-The modal now enters ABA closeout only after a fresh note lookup succeeds with a usable template; a forbidden lookup or missing template leaves the session in capture and surfaces the lookup error. Persisted draft restoration applies the same readiness rule, and the focused component suite passes 93/93 without changing backend authorization. Local policy, lint, typecheck, build, coverage, and Tier-0 routes pass; two unrelated aggregate-test failures and credentialed Playwright remain for live CI/human review.
+The modal now enters ABA closeout only after a fresh note lookup succeeds with a usable template; a forbidden lookup or missing template leaves the session in capture and surfaces the lookup error. Persisted draft restoration applies the same readiness rule, and the focused component suite passes 93/93 without changing backend authorization. Local policy, lint, typecheck, build, coverage, and Tier-0 routes pass, and PR #824's complete Linux CI matrix is green; credentialed local smoke remains blocked and critical-lane human approval is still required.

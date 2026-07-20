@@ -752,23 +752,62 @@ describe('normalizeAssessmentChecklistResponse', () => {
 });
 
 describe('playwright-iehp-assessment-import-smoke structure', () => {
-  it('loads checklist assertions before the unchanged cleanup finally block', () => {
+  it('requires explicit pdf mini matrix mode, per-case cleanup, and aggregate evidence ordering', () => {
     const script = readFileSync(
       path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
       'utf8',
     );
+    const packageJson = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    ) as {
+      scripts?: Record<string, string>;
+    };
 
+    const miniMatrixFlagIndex = script.indexOf("const isPdfMiniMatrixMode = process.argv.includes('--pdf-mini-matrix');");
+    const matrixCaseLoopIndex = script.indexOf('for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES)');
+    const generatorPageIndex = script.indexOf('const generatorPage = await context.newPage();');
+    const setContentIndex = script.indexOf('await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));');
+    const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
+    const generatorCloseIndex = script.indexOf('await generatorPage.close();');
+    const pdfMimeIndex = script.indexOf("mimeType: 'application/pdf'");
+    const pdfFileNameIndex = script.indexOf("buildIehpSmokeUploadFileName(Date.now(), 'pdf')");
+    const caseRunnerIndex = script.indexOf('const runSmokeCase = async (');
     const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
-    const provenanceFetchIndex = script.indexOf('const provenanceRows = await fetchIehpAssessorPhoneProvenance');
-    const assertionIndex = script.indexOf('const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist');
-    const cleanupFinallyIndex = script.indexOf('} finally {');
+    const provenanceFetchIndex = script.indexOf('const provenanceRows = await fetchIehpAssessmentProvenance');
+    const assessorPhoneAssertionIndex = script.indexOf('const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist');
+    const referralDateAssertionIndex = script.indexOf('const referralDateAssertion = assertIehpDocumentChecklistField');
+    const cleanupVerifiedIndex = script.indexOf('cleanupVerified = true;');
+    const caseEvidenceIndex = script.indexOf('console.log(JSON.stringify(caseEvidence, null, 2));');
+    const caseFinallyIndex = script.indexOf('} finally {');
     const cleanupCallIndex = script.indexOf('await cleanupAssessmentImportArtifacts({');
+    const aggregateEvidenceIndex = script.indexOf('console.log(JSON.stringify(aggregateEvidence, null, 2));');
+    const aggregateCleanupIndex = script.indexOf('cleanupVerifiedCases: passedCases.length,');
 
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-smoke']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts',
+    );
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-pdf-mini-matrix']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts --pdf-mini-matrix',
+    );
+    expect(miniMatrixFlagIndex).toBeGreaterThanOrEqual(0);
+    expect(caseRunnerIndex).toBeGreaterThan(miniMatrixFlagIndex);
+    expect(matrixCaseLoopIndex).toBeGreaterThan(miniMatrixFlagIndex);
+    expect(generatorPageIndex).toBeGreaterThan(matrixCaseLoopIndex);
+    expect(setContentIndex).toBeGreaterThan(generatorPageIndex);
+    expect(pagePdfIndex).toBeGreaterThan(setContentIndex);
+    expect(generatorCloseIndex).toBeGreaterThan(pagePdfIndex);
+    expect(pdfFileNameIndex).toBeGreaterThan(generatorCloseIndex);
+    expect(pdfMimeIndex).toBeGreaterThan(pdfFileNameIndex);
     expect(checklistFetchIndex).toBeGreaterThanOrEqual(0);
     expect(provenanceFetchIndex).toBeGreaterThan(checklistFetchIndex);
-    expect(assertionIndex).toBeGreaterThan(provenanceFetchIndex);
-    expect(cleanupFinallyIndex).toBeGreaterThan(assertionIndex);
-    expect(cleanupCallIndex).toBeGreaterThan(cleanupFinallyIndex);
+    expect(assessorPhoneAssertionIndex).toBeGreaterThan(provenanceFetchIndex);
+    expect(referralDateAssertionIndex).toBeGreaterThan(assessorPhoneAssertionIndex);
+    expect(caseFinallyIndex).toBeGreaterThan(referralDateAssertionIndex);
+    expect(cleanupCallIndex).toBeGreaterThan(caseFinallyIndex);
+    expect(cleanupVerifiedIndex).toBeGreaterThan(cleanupCallIndex);
+    expect(caseEvidenceIndex).toBeGreaterThan(cleanupVerifiedIndex);
+    expect(aggregateCleanupIndex).toBeGreaterThan(caseEvidenceIndex);
+    expect(aggregateEvidenceIndex).toBeGreaterThan(aggregateCleanupIndex);
   });
 });
 

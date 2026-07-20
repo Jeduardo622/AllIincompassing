@@ -149,6 +149,8 @@ const formatPayloadPreview = (value: unknown): string => {
 const VALID_SKILLS_BEHAVIORS_RECONCILIATION_STATUSES = new Set(["matched", "summary_only", "detailed_only", "ambiguous"]);
 const INVALID_SKILLS_BEHAVIORS_RECONCILIATION_MESSAGE =
   "Invalid reconciliation data. Needs Review before this section can be approved.";
+const AUTHORITATIVE_SKILLS_BEHAVIORS_STATUSES = new Set(["matched", "detailed_only"]);
+const REVIEW_ONLY_SKILLS_BEHAVIORS_STATUSES = new Set(["summary_only", "ambiguous"]);
 
 const behaviorTargetsFromPayload = (payload: Record<string, unknown> | undefined): string[] => {
   const targets = payload?.targets;
@@ -166,8 +168,10 @@ const skillsBehaviorsPreviewItemsFromPayload = (
   const value = payload.skills_behaviors;
   if (!value || typeof value !== "object" || !Array.isArray((value as { items?: unknown }).items)) return "invalid";
 
-  const items = (value as { items: unknown[] }).items.flatMap((candidate): SkillsBehaviorsPreviewItem[] => {
-    if (!candidate || typeof candidate !== "object") return [];
+  const items: SkillsBehaviorsPreviewItem[] = [];
+
+  for (const candidate of (value as { items: unknown[] }).items) {
+    if (!candidate || typeof candidate !== "object") return "invalid";
     const record = candidate as Record<string, unknown>;
     const name = typeof record.name === "string" ? record.name.trim() : "";
     const clinicalGoalType =
@@ -177,8 +181,12 @@ const skillsBehaviorsPreviewItemsFromPayload = (
         ? (record.reconciliation_status as SkillsBehaviorsPreviewItem["reconciliationStatus"])
         : null;
 
-    return name && reconciliationStatus ? [{ name, clinicalGoalType, reconciliationStatus }] : [];
-  });
+    if (!name || !reconciliationStatus) return "invalid";
+    if (AUTHORITATIVE_SKILLS_BEHAVIORS_STATUSES.has(reconciliationStatus) && clinicalGoalType === null) return "invalid";
+    if (REVIEW_ONLY_SKILLS_BEHAVIORS_STATUSES.has(reconciliationStatus) && clinicalGoalType !== null) return "invalid";
+
+    items.push({ name, clinicalGoalType, reconciliationStatus });
+  }
 
   return items.length > 0 ? items : "invalid";
 };
@@ -186,8 +194,8 @@ const skillsBehaviorsPreviewItemsFromPayload = (
 const groupSkillsBehaviorsPreviewItems = (items: SkillsBehaviorsPreviewItem[]): SkillsBehaviorsPreviewGroups =>
   items.reduce<SkillsBehaviorsPreviewGroups>(
     (groups, item) => {
-      if (item.reconciliationStatus === "matched" && item.clinicalGoalType === "behavior") groups.behavior.push(item.name);
-      else if (item.reconciliationStatus === "matched" && item.clinicalGoalType === "skill") groups.skill.push(item.name);
+      if (item.clinicalGoalType === "behavior") groups.behavior.push(item.name);
+      else if (item.clinicalGoalType === "skill") groups.skill.push(item.name);
       else groups.review.push(item.name);
       return groups;
     },

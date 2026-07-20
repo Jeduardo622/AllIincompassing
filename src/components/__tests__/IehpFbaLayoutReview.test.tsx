@@ -1017,6 +1017,16 @@ describe("IehpFbaLayoutReview", () => {
                         reconciliation_status: "matched",
                       },
                       {
+                        name: "Property Destruction",
+                        clinical_goal_type: "behavior",
+                        reconciliation_status: "detailed_only",
+                      },
+                      {
+                        name: "Functional Communication",
+                        clinical_goal_type: "skill",
+                        reconciliation_status: "detailed_only",
+                      },
+                      {
                         name: "Transition Delay",
                         clinical_goal_type: null,
                         reconciliation_status: "ambiguous",
@@ -1049,16 +1059,29 @@ describe("IehpFbaLayoutReview", () => {
     expect(screen.getByText("Needs Review")).toBeInTheDocument();
     expect(screen.getByText("Physical Aggression")).toBeInTheDocument();
     expect(screen.getByText("Requesting Help")).toBeInTheDocument();
+    expect(screen.getByText("Property Destruction")).toBeInTheDocument();
+    expect(screen.getByText("Functional Communication")).toBeInTheDocument();
     expect(screen.getByText("Transition Delay")).toBeInTheDocument();
     expect(screen.queryByText("behavior-summary-1")).not.toBeInTheDocument();
     expect(screen.queryByText("detailed-goal-1")).not.toBeInTheDocument();
     expect(screen.queryByText("Legacy target should stay hidden when reconciliation is valid")).not.toBeInTheDocument();
 
+    const behaviorSection = screen.getByText("Behavior Reduction").parentElement;
+    const skillSection = screen.getByText("Skill Acquisition").parentElement;
+    const reviewSection = screen.getByText("Needs Review").parentElement;
+    expect(behaviorSection).not.toBeNull();
+    expect(skillSection).not.toBeNull();
+    expect(reviewSection).not.toBeNull();
+    expect(within(behaviorSection as HTMLElement).getByText("Property Destruction")).toBeInTheDocument();
+    expect(within(skillSection as HTMLElement).getByText("Functional Communication")).toBeInTheDocument();
+    expect(within(reviewSection as HTMLElement).queryByText("Property Destruction")).not.toBeInTheDocument();
+    expect(within(reviewSection as HTMLElement).queryByText("Functional Communication")).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Expand Behaviors and Functional Skills to be Addressed" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy extracted" }));
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        "Behaviors and Functional Skills to be Addressed\nBehavior Reduction\n- Physical Aggression\nSkill Acquisition\n- Requesting Help\nNeeds Review\n- Transition Delay",
+        "Behaviors and Functional Skills to be Addressed\nBehavior Reduction\n- Physical Aggression\n- Property Destruction\nSkill Acquisition\n- Requesting Help\n- Functional Communication\nNeeds Review\n- Transition Delay",
       );
     });
   });
@@ -1183,13 +1206,28 @@ describe("IehpFbaLayoutReview", () => {
                   skills_behaviors: {
                     items: [
                       {
+                        name: "Requesting Help",
+                        clinical_goal_type: "skill",
+                        reconciliation_status: "matched",
+                      },
+                      {
                         name: "Physical Aggression",
                         clinical_goal_type: "behavior",
-                        reconciliation_status: "not-a-real-status",
+                        reconciliation_status: "matched",
+                      },
+                      {
+                        name: "Untyped Matched Item",
+                        clinical_goal_type: null,
+                        reconciliation_status: "matched",
+                      },
+                      {
+                        name: "Malformed Candidate",
+                        clinical_goal_type: "unsupported",
+                        reconciliation_status: "matched",
                       },
                     ],
                   },
-                  targets: ["Physical Aggression", "Self-Injury"],
+                  targets: ["Physical Aggression", "Requesting Help", "Self-Injury"],
                 },
                 source_span: { page_number: 3, method: "iehp_section_anchor" },
                 status: "drafted",
@@ -1212,8 +1250,13 @@ describe("IehpFbaLayoutReview", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Page 3/i }));
     expect(await screen.findByText(/Invalid reconciliation data/i)).toBeInTheDocument();
     expect(screen.getByText("Needs Review")).toBeInTheDocument();
+    expect(screen.queryByText("Behavior Reduction")).not.toBeInTheDocument();
+    expect(screen.queryByText("Skill Acquisition")).not.toBeInTheDocument();
     expect(screen.queryByText("Selected Behavior Targets")).not.toBeInTheDocument();
     expect(screen.queryByText("Physical Aggression")).not.toBeInTheDocument();
+    expect(screen.queryByText("Requesting Help")).not.toBeInTheDocument();
+    expect(screen.queryByText("Untyped Matched Item")).not.toBeInTheDocument();
+    expect(screen.queryByText("Malformed Candidate")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand Behaviors and Functional Skills to be Addressed" }));
     expect(screen.queryByTestId("raw-json-behavior-structured-invalid")).not.toBeInTheDocument();

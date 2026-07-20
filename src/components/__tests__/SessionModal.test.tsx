@@ -978,6 +978,77 @@ describe('SessionModal', () => {
     expect(screen.getByRole('button', { name: /^Close Session$/i })).toBeDisabled();
   });
 
+  it('keeps capture open when the closeout note refetch is forbidden', async () => {
+    vi.mocked(getBtAbaSessionNote)
+      .mockResolvedValueOnce({
+        noteId: null,
+        templateId: 'template-bt-1',
+        responses: null,
+        status: null,
+      })
+      .mockRejectedValueOnce(new Error('Forbidden'));
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={btInProgressSession}
+        dataCollectionOnly
+      />,
+    );
+
+    const closeSessionButton = await screen.findByRole('button', { name: /^Close Session$/i });
+    await waitFor(() => expect(closeSessionButton).not.toBeDisabled());
+    await userEvent.click(closeSessionButton);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Forbidden');
+    expect(screen.queryByRole('heading', { name: 'ABA Session Note' })).not.toBeInTheDocument();
+    expect(toastMocks.showError).toHaveBeenCalledWith('Forbidden');
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ status: 'in_progress' }));
+  });
+
+  it('keeps capture open when the closeout note refetch has no template', async () => {
+    vi.mocked(getBtAbaSessionNote)
+      .mockResolvedValueOnce({
+        noteId: null,
+        templateId: 'template-bt-1',
+        responses: null,
+        status: null,
+      })
+      .mockResolvedValueOnce({
+        noteId: null,
+        templateId: null,
+        responses: null,
+        status: null,
+      });
+    renderWithProviders(
+      <SessionModal {...defaultProps} session={btInProgressSession} dataCollectionOnly />,
+    );
+
+    const closeSessionButton = await screen.findByRole('button', { name: /^Close Session$/i });
+    await waitFor(() => expect(closeSessionButton).not.toBeDisabled());
+    await userEvent.click(closeSessionButton);
+
+    expect(screen.queryByRole('heading', { name: 'ABA Session Note' })).not.toBeInTheDocument();
+    expect(toastMocks.showError).toHaveBeenCalledWith('Unable to load the saved ABA session note draft.');
+  });
+
+  it('does not restore a persisted BT draft without its template', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-without-template',
+      templateId: null,
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'draft',
+    });
+    renderWithProviders(
+      <SessionModal {...defaultProps} session={btInProgressSession} dataCollectionOnly />,
+    );
+
+    await waitFor(() => expect(getBtAbaSessionNote).toHaveBeenCalled());
+    expect(screen.queryByRole('heading', { name: 'ABA Session Note' })).not.toBeInTheDocument();
+  });
+
   it('does not reinterpret completed RPC success as finalization failure when refresh callback rejects', async () => {
     vi.mocked(getBtAbaSessionNote).mockResolvedValue({
       noteId: 'note-completed', templateId: 'template-bt-1', responses: validBtAbaResponses as unknown as Record<string, unknown>, status: 'draft',

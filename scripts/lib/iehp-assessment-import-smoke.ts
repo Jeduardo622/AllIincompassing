@@ -51,6 +51,10 @@ type SkillsBehaviorsCounts = {
   ambiguous?: unknown;
 };
 
+type SkillsBehaviorsClinicalGoalType = 'behavior' | 'skill' | null;
+
+type SkillsBehaviorsReconciliationStatus = 'matched' | 'summary_only' | 'detailed_only' | 'ambiguous';
+
 export type IehpSkillsBehaviorsProofCase = {
   id: 'skills-behaviors-proof';
   expectedSectionKey: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS';
@@ -311,6 +315,20 @@ export const assertIehpDocumentChecklistField = (args: {
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
+const hasValidSkillsBehaviorsClinicalGoalType = (value: unknown): value is SkillsBehaviorsClinicalGoalType =>
+  value === 'behavior' || value === 'skill' || value === null;
+
+const hasValidSkillsBehaviorsReconciliationStatus = (value: unknown): value is SkillsBehaviorsReconciliationStatus =>
+  value === 'matched' || value === 'summary_only' || value === 'detailed_only' || value === 'ambiguous';
+
+const hasValidSkillsBehaviorsStatusTypePairing = (
+  clinicalGoalType: SkillsBehaviorsClinicalGoalType,
+  reconciliationStatus: SkillsBehaviorsReconciliationStatus,
+): boolean =>
+  (reconciliationStatus === 'matched' || reconciliationStatus === 'detailed_only')
+    ? clinicalGoalType === 'behavior' || clinicalGoalType === 'skill'
+    : clinicalGoalType === null;
+
 const sameGoalRef = (value: unknown, fieldKey: string, sectionIndex: number): boolean =>
   isObjectRecord(value) &&
   value.field_key === fieldKey &&
@@ -357,7 +375,30 @@ export const assertIehpSkillsBehaviorsChecklistSection = (args: {
     );
   }
 
-  const items = skillsBehaviors.items.filter((item): item is SkillsBehaviorsItem => isObjectRecord(item));
+  const rawItems = skillsBehaviors.items as unknown[];
+  if (rawItems.some((item) => !isObjectRecord(item))) {
+    throw new Error(
+      `IEHP smoke found ${proofCase.expectedSectionKey} but payload.skills_behaviors.items contained a malformed entry.`,
+    );
+  }
+
+  const items = rawItems as SkillsBehaviorsItem[];
+  if (items.some((item) => !hasValidSkillsBehaviorsClinicalGoalType(item.clinical_goal_type))) {
+    throw new Error(
+      `IEHP smoke found ${proofCase.expectedSectionKey} but payload.skills_behaviors.items contained an invalid clinical_goal_type.`,
+    );
+  }
+  if (
+    items.some((item) =>
+      !hasValidSkillsBehaviorsReconciliationStatus(item.reconciliation_status) ||
+      !hasValidSkillsBehaviorsStatusTypePairing(item.clinical_goal_type, item.reconciliation_status)
+    )
+  ) {
+    throw new Error(
+      `IEHP smoke found ${proofCase.expectedSectionKey} but payload.skills_behaviors.items contained an invalid reconciliation_status for its clinical_goal_type.`,
+    );
+  }
+
   const findByName = (name: string): SkillsBehaviorsItem | undefined =>
     items.find((item) => item.name === name);
 

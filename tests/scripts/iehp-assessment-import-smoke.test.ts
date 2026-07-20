@@ -394,6 +394,75 @@ describe('assertIehpSkillsBehaviorsChecklistSection', () => {
       message:
         'IEHP smoke expected every matched or detailed-only skills_behaviors item to expose provenance refs.',
     },
+    {
+      name: 'malformed mixed-array items',
+      checklist: buildChecklist([
+        {
+          ...validStructuredSection,
+          payload: {
+            ...validStructuredSection.payload,
+            skills_behaviors: {
+              ...validStructuredSection.payload.skills_behaviors,
+              items: [
+                validStructuredSection.payload.skills_behaviors.items[0],
+                'malformed-item',
+                ...validStructuredSection.payload.skills_behaviors.items.slice(1),
+              ],
+            },
+          },
+        },
+      ]),
+      message:
+        'IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors.items contained a malformed entry.',
+    },
+    {
+      name: 'wrong clinical goal type',
+      checklist: buildChecklist([
+        {
+          ...validStructuredSection,
+          payload: {
+            ...validStructuredSection.payload,
+            skills_behaviors: {
+              ...validStructuredSection.payload.skills_behaviors,
+              items: [
+                {
+                  ...validStructuredSection.payload.skills_behaviors.items[0],
+                  clinical_goal_type: 'unsupported',
+                },
+                ...validStructuredSection.payload.skills_behaviors.items.slice(1),
+              ],
+            },
+          },
+        },
+      ]),
+      message:
+        'IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors.items contained an invalid clinical_goal_type.',
+    },
+    {
+      name: 'wrong reconciliation status type pairing',
+      checklist: buildChecklist([
+        {
+          ...validStructuredSection,
+          payload: {
+            ...validStructuredSection.payload,
+            skills_behaviors: {
+              ...validStructuredSection.payload.skills_behaviors,
+              items: [
+                validStructuredSection.payload.skills_behaviors.items[0],
+                {
+                  ...validStructuredSection.payload.skills_behaviors.items[1],
+                  clinical_goal_type: 'skill',
+                  reconciliation_status: 'summary_only',
+                },
+                ...validStructuredSection.payload.skills_behaviors.items.slice(2),
+              ],
+            },
+          },
+        },
+      ]),
+      message:
+        'IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors.items contained an invalid reconciliation_status for its clinical_goal_type.',
+    },
   ])('fails clearly for $name', ({ checklist, message }) => {
     expect(() =>
       assertIehpSkillsBehaviorsChecklistSection({

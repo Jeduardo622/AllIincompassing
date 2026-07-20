@@ -8,10 +8,12 @@ import { assertIehpDocumentChecklistField } from '../../scripts/lib/iehp-assessm
 
 import {
   assertIehpAssessorPhoneChecklist,
+  executeIehpSmokeCaseWithCleanup,
   fetchIehpAssessorPhoneProvenance,
   normalizeAssessmentChecklistResponse,
   selectConfiguredSmokeClient,
 } from '../../scripts/playwright-iehp-assessment-import-smoke';
+import { assertIehpSkillsBehaviorsChecklistSection } from '../../scripts/lib/iehp-assessment-import-smoke';
 
 const sliceWorkflowJob = (workflow: string, jobName: string): string => {
   const start = workflow.indexOf(`  ${jobName}:`);
@@ -798,6 +800,33 @@ describe('normalizeAssessmentChecklistResponse', () => {
 });
 
 describe('playwright-iehp-assessment-import-smoke structure', () => {
+  it('keeps cleanup fail-closed when the skills behaviors assertion throws inside the case runner finally boundary', async () => {
+    const cleanupCase = vi.fn().mockRejectedValue(new Error('cleanup failed'));
+
+    await expect(
+      executeIehpSmokeCaseWithCleanup({
+        caseId: 'skills-behaviors-proof',
+        latestDir: path.join(process.cwd(), 'artifacts', 'latest'),
+        executeCase: async () => {
+          assertIehpSkillsBehaviorsChecklistSection({
+            checklist: {
+              items: [],
+              structured_sections: [],
+            },
+          });
+
+          return {
+            ok: true as const,
+          };
+        },
+        cleanupCase,
+        cleanupTargetKnown: true,
+      }),
+    ).rejects.toThrow('IEHP assessment import smoke failed and cleanup did not complete.');
+
+    expect(cleanupCase).toHaveBeenCalledTimes(1);
+  });
+
   it('requires explicit pdf mini matrix mode, per-case cleanup, and aggregate evidence ordering', () => {
     const script = readFileSync(
       path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
@@ -818,13 +847,12 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const pdfMimeIndex = script.indexOf("mimeType: 'application/pdf'");
     const pdfFileNameIndex = script.indexOf("buildIehpSmokeUploadFileName(Date.now(), 'pdf')");
     const caseRunnerIndex = script.indexOf('const runSmokeCase = async (');
+    const cleanupHelperIndex = script.indexOf('return executeIehpSmokeCaseWithCleanup({');
     const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
     const provenanceFetchIndex = script.indexOf('const provenanceRows = await fetchIehpAssessmentProvenance');
     const assessorPhoneAssertionIndex = script.indexOf('const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist');
     const referralDateAssertionIndex = script.indexOf('const referralDateAssertion = caseInput.expectedReferralDate');
-    const cleanupVerifiedIndex = script.indexOf('cleanupVerified = true;');
     const caseEvidenceIndex = script.indexOf('console.log(JSON.stringify(caseEvidence, null, 2));');
-    const caseFinallyIndex = script.indexOf('} finally {');
     const cleanupCallIndex = script.indexOf('await cleanupAssessmentImportArtifacts({');
     const aggregateEvidenceIndex = script.indexOf('console.log(JSON.stringify(aggregateEvidence, null, 2));');
     const aggregateCleanupIndex = script.indexOf('cleanupVerifiedCases: passedCases.length,');
@@ -844,14 +872,14 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(generatorCloseIndex).toBeGreaterThan(pagePdfIndex);
     expect(pdfFileNameIndex).toBeGreaterThan(generatorCloseIndex);
     expect(pdfMimeIndex).toBeGreaterThan(pdfFileNameIndex);
+    expect(cleanupHelperIndex).toBeGreaterThan(caseRunnerIndex);
     expect(checklistFetchIndex).toBeGreaterThanOrEqual(0);
+    expect(checklistFetchIndex).toBeGreaterThan(cleanupHelperIndex);
     expect(provenanceFetchIndex).toBeGreaterThan(checklistFetchIndex);
     expect(assessorPhoneAssertionIndex).toBeGreaterThan(provenanceFetchIndex);
     expect(referralDateAssertionIndex).toBeGreaterThan(assessorPhoneAssertionIndex);
-    expect(caseFinallyIndex).toBeGreaterThan(referralDateAssertionIndex);
-    expect(cleanupCallIndex).toBeGreaterThan(caseFinallyIndex);
-    expect(cleanupVerifiedIndex).toBeGreaterThan(cleanupCallIndex);
-    expect(caseEvidenceIndex).toBeGreaterThan(cleanupVerifiedIndex);
+    expect(cleanupCallIndex).toBeGreaterThan(referralDateAssertionIndex);
+    expect(caseEvidenceIndex).toBeGreaterThan(cleanupCallIndex);
     expect(aggregateCleanupIndex).toBeGreaterThan(caseEvidenceIndex);
     expect(aggregateEvidenceIndex).toBeGreaterThan(aggregateCleanupIndex);
   });
@@ -896,6 +924,7 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
     const proofCaseRunnerIndex = script.indexOf("caseId: IEHP_SKILLS_BEHAVIORS_PROOF_CASE.id");
     const proofEvidenceIndex = script.indexOf('skillsBehaviorsAssertion');
+    const proofModeIndex = script.indexOf("mode: 'skills-behaviors-proof'");
 
     expect(packageJson.scripts?.['playwright:iehp-assessment-import-smoke']).toBe(
       'tsx scripts/playwright-iehp-assessment-import-smoke.ts',
@@ -914,6 +943,7 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(checklistFetchIndex).toBeGreaterThanOrEqual(0);
     expect(checklistAssertionIndex).toBeGreaterThan(checklistFetchIndex);
     expect(proofEvidenceIndex).toBeGreaterThan(checklistAssertionIndex);
+    expect(proofModeIndex).toBeGreaterThan(proofCaseRunnerIndex);
   });
 });
 

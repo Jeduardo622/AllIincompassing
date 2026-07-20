@@ -86,7 +86,7 @@ type IehpSmokeCaseInput = {
 
 type IehpSmokeCaseEvidence = {
   ok: true;
-  mode: 'default-docx' | 'pdf-mini-matrix-case';
+  mode: 'default-docx' | 'pdf-mini-matrix-case' | 'skills-behaviors-proof';
   caseId: string;
   templateType: 'iehp_fba';
   status: AssessmentDocumentRecord['status'];
@@ -161,6 +161,79 @@ const writeCleanupFailureManifest = (args: {
     JSON.stringify(buildIehpSmokeCleanupFailureManifestPayload(args), null, 2),
   );
   return manifestPath;
+};
+
+export const executeIehpSmokeCaseWithCleanup = async <TEvidence>(args: {
+  caseId: string;
+  latestDir: string;
+  executeCase: () => Promise<TEvidence>;
+  cleanupCase: () => Promise<void>;
+  cleanupTargetKnown: () => boolean;
+  onRunFailure?: (error: Error) => Promise<void>;
+}): Promise<TEvidence> => {
+  let caseEvidence: TEvidence | undefined;
+  let cleanupFailure: Error | null = null;
+  let runFailure: Error | null = null;
+  let cleanupFailureManifestPath: string | null = null;
+  let cleanupFailureManifestError: Error | null = null;
+
+  try {
+    caseEvidence = await args.executeCase();
+  } catch (error) {
+    runFailure = error instanceof Error ? error : new Error(String(error));
+    await args.onRunFailure?.(runFailure);
+  } finally {
+    await args.cleanupCase().catch((cleanupError) => {
+      cleanupFailure = cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError));
+      console.error(`IEHP assessment import smoke cleanup failed for ${args.caseId}.`);
+    });
+    if (cleanupFailure) {
+      try {
+        cleanupFailureManifestPath = writeCleanupFailureManifest({
+          latestDir: args.latestDir,
+          cleanupError: cleanupFailure,
+          cleanupTargetKnown: args.cleanupTargetKnown(),
+          runError: runFailure,
+        });
+        console.error(
+          `IEHP assessment import smoke cleanup manifest written to ${cleanupFailureManifestPath} for ${args.caseId}`,
+        );
+      } catch (manifestError) {
+        cleanupFailureManifestError =
+          manifestError instanceof Error ? manifestError : new Error(String(manifestError));
+        console.error('IEHP assessment import smoke could not write cleanup manifest', cleanupFailureManifestError);
+      }
+    }
+  }
+
+  if (runFailure && cleanupFailure) {
+    throw new Error(
+      buildIehpSmokeCleanupFailureMessage({
+        cleanupFailed: true,
+        cleanupManifestPath: cleanupFailureManifestPath,
+        cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
+        runFailed: true,
+      }),
+    );
+  }
+  if (runFailure) {
+    throw runFailure;
+  }
+  if (cleanupFailure) {
+    throw new Error(
+      buildIehpSmokeCleanupFailureMessage({
+        cleanupFailed: true,
+        cleanupManifestPath: cleanupFailureManifestPath,
+        cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
+        runFailed: false,
+      }),
+    );
+  }
+  if (caseEvidence === undefined) {
+    throw new Error(`IEHP assessment import smoke case ${args.caseId} did not produce cleanup-verified evidence.`);
+  }
+
+  return caseEvidence;
 };
 
 const fetchAssessmentDocuments = async (
@@ -556,14 +629,10 @@ async function run() {
     await loginAndAssertSession(page, baseUrl, credentials.email, credentials.password);
     const runSmokeCase = async (caseInput: IehpSmokeCaseInput): Promise<IehpSmokeCaseEvidence> => {
       let createdAssessment: AssessmentDocumentRecord | null = null;
-      let cleanupFailure: Error | null = null;
-      let runFailure: Error | null = null;
-      let cleanupFailureManifestPath: string | null = null;
-      let cleanupFailureManifestError: Error | null = null;
-      let cleanupVerified = false;
-      let caseEvidence: IehpSmokeCaseEvidence | null = null;
-
-      try {
+      return executeIehpSmokeCaseWithCleanup({
+        caseId: caseInput.caseId,
+        latestDir,
+        executeCase: async () => {
         await page.goto(`${baseUrl}/clients/${clientId}?tab=programs-goals`, {
           waitUntil: 'domcontentloaded',
           timeout: 60_000,
@@ -653,9 +722,13 @@ async function run() {
         const screenshotPath = path.join(latestDir, `iehp-assessment-import-smoke-${caseInput.caseId}-${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath, fullPage: true });
 
-        caseEvidence = {
+        return {
           ok: true,
-          mode: isPdfMiniMatrixMode ? 'pdf-mini-matrix-case' : 'default-docx',
+          mode: isSkillsBehaviorsProofMode
+            ? 'skills-behaviors-proof'
+            : isPdfMiniMatrixMode
+              ? 'pdf-mini-matrix-case'
+              : 'default-docx',
           caseId: caseInput.caseId,
           templateType: 'iehp_fba',
           status: createdAssessment.status,
@@ -667,15 +740,11 @@ async function run() {
           cleanupVerified: true,
           screenshot: screenshotPath,
         };
-      } catch (error) {
-        const screenshot = await captureFailureScreenshot(
-          page,
-          `playwright-iehp-assessment-import-smoke-${caseInput.caseId}-failure`,
-        );
-        console.error(`IEHP assessment import smoke failed for ${caseInput.caseId}. Screenshot: ${screenshot}`);
-        runFailure = error instanceof Error ? error : new Error(String(error));
-      } finally {
-        if (createdAssessment) {
+        },
+        cleanupCase: async () => {
+          if (!createdAssessment) {
+            return;
+          }
           await cleanupAssessmentImportArtifacts({
             accessToken,
             baseUrl,
@@ -686,61 +755,17 @@ async function run() {
               bucketId: createdAssessment.bucket_id?.trim() || 'client-documents',
               objectPath: createdAssessment.object_path,
             },
-          }).catch((cleanupError) => {
-            cleanupFailure = cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError));
-            console.error(`IEHP assessment import smoke cleanup failed for ${caseInput.caseId}.`);
           });
-        }
-        if (!cleanupFailure && caseEvidence) {
-          cleanupVerified = true;
-        }
-        if (cleanupFailure) {
-          try {
-            cleanupFailureManifestPath = writeCleanupFailureManifest({
-              latestDir,
-              cleanupError: cleanupFailure,
-              cleanupTargetKnown: Boolean(createdAssessment),
-              runError: runFailure,
-            });
-            console.error(
-              `IEHP assessment import smoke cleanup manifest written to ${cleanupFailureManifestPath} for ${caseInput.caseId}`,
-            );
-          } catch (manifestError) {
-            cleanupFailureManifestError =
-              manifestError instanceof Error ? manifestError : new Error(String(manifestError));
-            console.error('IEHP assessment import smoke could not write cleanup manifest', cleanupFailureManifestError);
-          }
-        }
-      }
-
-      if (runFailure && cleanupFailure) {
-        throw new Error(
-          buildIehpSmokeCleanupFailureMessage({
-            cleanupFailed: true,
-            cleanupManifestPath: cleanupFailureManifestPath,
-            cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
-            runFailed: true,
-          }),
-        );
-      }
-      if (runFailure) {
-        throw runFailure;
-      }
-      if (cleanupFailure) {
-        throw new Error(
-          buildIehpSmokeCleanupFailureMessage({
-            cleanupFailed: true,
-            cleanupManifestPath: cleanupFailureManifestPath,
-            cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
-            runFailed: false,
-          }),
-        );
-      }
-      if (!caseEvidence || !cleanupVerified) {
-        throw new Error(`IEHP assessment import smoke case ${caseInput.caseId} did not produce cleanup-verified evidence.`);
-      }
-
-      return caseEvidence;
+        },
+        cleanupTargetKnown: () => Boolean(createdAssessment),
+        onRunFailure: async () => {
+          const screenshot = await captureFailureScreenshot(
+            page,
+            `playwright-iehp-assessment-import-smoke-${caseInput.caseId}-failure`,
+          );
+          console.error(`IEHP assessment import smoke failed for ${caseInput.caseId}. Screenshot: ${screenshot}`);
+        },
+      });
     };
 
     if (isPdfMiniMatrixMode) {

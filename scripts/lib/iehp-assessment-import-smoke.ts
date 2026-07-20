@@ -99,6 +99,11 @@ export const buildIehpSmokeUploadFileName = (
   extension: 'docx' | 'pdf' = 'docx',
 ): string => `iehp-fba-smoke-${timestamp}.${extension}`;
 
+export const canonicalizeUsPhoneForComparison = (phone: string): string => {
+  const digits = phone.replace(/\D/g, '');
+  return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+};
+
 export const buildIehpPdfMiniMatrixHtml = (caseDefinition: IehpPdfMiniMatrixCase): string => `<!doctype html>
 <html lang="en">
   <head>
@@ -107,7 +112,7 @@ export const buildIehpPdfMiniMatrixHtml = (caseDefinition: IehpPdfMiniMatrixCase
   </head>
   <body>
     <section>
-      ${caseDefinition.pageBreakBeforeTarget ? '<div style="page-break-before: always;"></div>' : ''}
+      ${caseDefinition.pageBreakBeforeTarget ? '<p>IEHP FBA PDF mini-matrix page one</p><div style="page-break-before: always;"></div>' : ''}
       <p>Referral Date: ${caseDefinition.referralDate}</p>
       <p>Assessor's phone number: ${caseDefinition.documentPhone}</p>
     </section>

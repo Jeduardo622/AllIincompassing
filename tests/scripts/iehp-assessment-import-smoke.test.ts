@@ -4,6 +4,7 @@ import { isValidPhone } from '../../src/lib/validation';
 import {
   IEHP_PDF_MINI_MATRIX_CASES,
   buildIehpPdfMiniMatrixHtml,
+  canonicalizeUsPhoneForComparison,
   buildIehpSmokeUploadFileName,
   buildIehpSmokeCleanupFailureMessage,
   buildIehpSmokeCleanupFailureManifestPayload,
@@ -114,12 +115,20 @@ describe('IEHP assessment import smoke helpers', () => {
       IEHP_PDF_MINI_MATRIX_CASES.find((caseDefinition) => caseDefinition.id === 'multi-page-target-content')!,
     );
     const pageBreakIndex = html.indexOf('page-break-before: always;');
+    const pageOneContentIndex = html.indexOf('IEHP FBA PDF mini-matrix page one');
     const referralDateIndex = html.indexOf('Referral Date: 07/01/2026');
     const assessorPhoneIndex = html.indexOf("Assessor's phone number: 909-555-0102");
 
+    expect(pageOneContentIndex).toBeGreaterThanOrEqual(0);
+    expect(pageOneContentIndex).toBeLessThan(pageBreakIndex);
     expect(pageBreakIndex).toBeGreaterThanOrEqual(0);
     expect(pageBreakIndex).toBeLessThan(referralDateIndex);
     expect(pageBreakIndex).toBeLessThan(assessorPhoneIndex);
+  });
+
+  it('canonicalizes equivalent ten-digit and +1 US phones to the same comparison value', () => {
+    expect(canonicalizeUsPhoneForComparison('909-555-0103')).toBe('9095550103');
+    expect(canonicalizeUsPhoneForComparison('+1 909 555 0103')).toBe('9095550103');
   });
 
   it('redacts cleanup failure manifests', () => {

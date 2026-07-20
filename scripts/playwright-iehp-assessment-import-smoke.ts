@@ -10,6 +10,7 @@ import {
   IEHP_PDF_MINI_MATRIX_CASES,
   assertIehpDocumentChecklistField,
   buildIehpPdfMiniMatrixHtml,
+  canonicalizeUsPhoneForComparison,
   buildIehpSmokeCleanupFailureMessage,
   buildIehpSmokeCleanupFailureManifestPayload,
   buildIehpSmokeUploadFileName,
@@ -736,7 +737,10 @@ async function run() {
     if (isPdfMiniMatrixMode) {
       const passedCases: IehpSmokeCaseEvidence[] = [];
       for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
-        if (sanitizePhone(caseDefinition.documentPhone) === sanitizePhone(expectedAssessorPhone)) {
+        if (
+          canonicalizeUsPhoneForComparison(caseDefinition.documentPhone) ===
+          canonicalizeUsPhoneForComparison(expectedAssessorPhone)
+        ) {
           throw new Error(
             `IEHP PDF mini matrix case ${caseDefinition.id} normalized document phone matched the configured snapshot phone, so precedence proof would be ambiguous.`,
           );

@@ -29,7 +29,8 @@
 - Reviewer follow-up on Task 1: RED with 1/43, then GREEN with 44 passing.
 - Task 2: RED with structure failures, then GREEN with 44 passing.
 - Reviewer follow-up on Task 2: RED with 2 failures, then GREEN with 46 passing.
-- Final post-review focused run: 2 files, 48 tests passed.
+- Final pre-PR-review focused run: 2 files, 48 tests passed.
+- Codex PR review follow-up: RED with 2 focused failures, then GREEN with 49 passing.
 
 ## Hosted Proof
 
@@ -80,7 +81,8 @@
 ## Self-Review
 
 - Scope stayed within the WIN-228 IEHP PDF mini-matrix review-fix slice across the helper manifest/HTML, focused helper tests, and this handoff.
-- No PHI, raw credentials, IDs, or raw phone values were added.
+- No PHI, raw credentials, customer IDs, or real phone values were added.
 - The document-phone fixtures now use three distinct reserved `909-555-0101` to `0103` formats that pass the shared phone validator.
-- The multi-page HTML now places the page break before both the referral date and assessor phone so the asserted content is constrained to page two.
-- `verify-change` and `pr-hygiene` are still pending for the overall branch and are not claimed here.
+- The multi-page HTML now renders deterministic page-one content before the forced break and places both asserted fields after it.
+- The precedence ambiguity guard now canonicalizes equivalent 10-digit and `+1` US phone formats before comparison.
+- `verify-change` and `pr-hygiene` were executed; the slice is reviewable, while local full-suite status remains red only on the two documented unrelated Windows baselines.

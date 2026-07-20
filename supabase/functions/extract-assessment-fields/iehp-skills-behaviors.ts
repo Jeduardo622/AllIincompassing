@@ -151,19 +151,30 @@ const reconcileTargets = (
     }
   }
 
-  const consumedGoalRefs = new Set<string>();
-  const items: IehpSkillsBehaviorsItem[] = [];
-
-  targets.forEach((target, summaryTargetIndex) => {
+  const summaryMatches = targets.map((target) => {
     const normalizedTarget = normalizeComparableName(target);
-    const matches = normalizedTarget
+    return normalizedTarget
       ? (goalMatchesByAlias.get(normalizedTarget) ?? []).filter((goal, index, source) =>
         source.findIndex((candidate) =>
           candidate.field_key === goal.field_key && candidate.section_index === goal.section_index
         ) === index
       )
       : [];
+  });
 
+  const summaryMatchCountByGoalRef = new Map<string, number>();
+  summaryMatches.forEach((matches) => {
+    matches.forEach((goal) => {
+      const goalRef = `${goal.field_key}:${goal.section_index}`;
+      summaryMatchCountByGoalRef.set(goalRef, (summaryMatchCountByGoalRef.get(goalRef) ?? 0) + 1);
+    });
+  });
+
+  const consumedGoalRefs = new Set<string>();
+  const items: IehpSkillsBehaviorsItem[] = [];
+
+  targets.forEach((target, summaryTargetIndex) => {
+    const matches = summaryMatches[summaryTargetIndex];
     matches.forEach((goal) => consumedGoalRefs.add(`${goal.field_key}:${goal.section_index}`));
 
     if (matches.length === 0) {
@@ -188,6 +199,22 @@ const reconcileTargets = (
         classification_source: null,
       });
       return;
+    }
+
+    if (matches.length === 1) {
+      const match = matches[0];
+      const matchRef = `${match.field_key}:${match.section_index}`;
+      if ((summaryMatchCountByGoalRef.get(matchRef) ?? 0) > 1) {
+        items.push({
+          name: target,
+          clinical_goal_type: null,
+          reconciliation_status: "ambiguous",
+          summary_target_index: summaryTargetIndex,
+          matched_goal_refs: [{ field_key: match.field_key, section_index: match.section_index }],
+          classification_source: null,
+        });
+        return;
+      }
     }
 
     const match = matches[0];

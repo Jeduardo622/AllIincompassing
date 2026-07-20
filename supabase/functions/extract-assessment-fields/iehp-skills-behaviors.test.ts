@@ -187,6 +187,57 @@ Deno.test("buildIehpSkillsBehaviorsResult groups unmatched detailed goals by ove
   });
 });
 
+Deno.test("buildIehpSkillsBehaviorsResult keeps duplicate summary aliases ambiguous without consuming the shared detailed goal", () => {
+  const result = buildIehpSkillsBehaviorsResult([
+    {
+      field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+      section_index: 0,
+      payload: {
+        targets: [
+          "Requesting Help",
+          "Functional Communication",
+        ],
+      },
+    },
+    {
+      field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+      section_index: 0,
+      payload: {
+        goal_type: "child",
+        program_name: "Requesting Help",
+        title: "Functional Communication",
+      },
+    },
+  ]);
+
+  expect(result?.items).toEqual([
+    {
+      name: "Requesting Help",
+      clinical_goal_type: null,
+      reconciliation_status: "ambiguous",
+      summary_target_index: 0,
+      matched_goal_refs: [{ field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", section_index: 0 }],
+      classification_source: null,
+    },
+    {
+      name: "Functional Communication",
+      clinical_goal_type: null,
+      reconciliation_status: "ambiguous",
+      summary_target_index: 1,
+      matched_goal_refs: [{ field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", section_index: 0 }],
+      classification_source: null,
+    },
+  ]);
+  expect(result?.counts).toEqual({
+    total: 2,
+    behavior: 0,
+    skill: 0,
+    summary_only: 0,
+    detailed_only: 0,
+    ambiguous: 2,
+  });
+});
+
 Deno.test("buildIehpSkillsBehaviorsResult reads summary input from payload targets only", () => {
   const result = buildIehpSkillsBehaviorsResult([
     {

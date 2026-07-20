@@ -1158,6 +1158,99 @@ describe("IehpFbaLayoutReview", () => {
     expect(screen.queryByText("Behavior Reduction")).not.toBeInTheDocument();
   });
 
+  it("treats an empty skills_behaviors result as a valid empty state without falling back", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 3, title: "Behaviors", layout_json: {} }],
+          fields: [
+            {
+              page_number: 3,
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+              label: "Behaviors and Functional Skills to be Addressed",
+              field_type: "checkbox_grid",
+              mode: "ASSISTED",
+              required: true,
+              source: "uploaded_assessment_document",
+              layout_json: {},
+            },
+          ],
+          values: {
+            checklist_items: [
+              {
+                id: "item-behavior-empty",
+                placeholder_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+                section_key: "behavior_background_services",
+                label: "Behaviors and Functional Skills to be Addressed",
+                mode: "ASSISTED",
+                required: true,
+                status: "drafted",
+                value_text: null,
+                value_json: null,
+                review_notes: null,
+              },
+            ],
+            structured_sections: [
+              {
+                id: "behavior-structured-empty",
+                field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+                section_index: 0,
+                payload: {
+                  raw_text: "Valid empty reconciliation payload should render an empty grouped state.",
+                  skills_behaviors: {
+                    version: 1,
+                    items: [],
+                    counts: {
+                      total: 0,
+                      behavior: 0,
+                      skill: 0,
+                      summary_only: 0,
+                      detailed_only: 0,
+                      ambiguous: 0,
+                    },
+                  },
+                  targets: ["Legacy target should not render"],
+                },
+                source_span: { page_number: 3, method: "iehp_section_anchor" },
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          },
+          unresolved_required_count: 1,
+          extracted_value_count: 1,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Page 3/i }));
+    expect(await screen.findByText("Behavior Reduction")).toBeInTheDocument();
+    expect(screen.getByText("Skill Acquisition")).toBeInTheDocument();
+    expect(screen.getByText("Needs Review")).toBeInTheDocument();
+    expect(screen.getAllByText("None reconciled.")).toHaveLength(2);
+    expect(screen.getByText("No review items.")).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid reconciliation data/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Selected Behavior Targets")).not.toBeInTheDocument();
+    expect(screen.queryByText("Legacy target should not render")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand Behaviors and Functional Skills to be Addressed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show technical details" }));
+    expect(await screen.findByTestId("raw-json-behavior-structured-empty")).toBeInTheDocument();
+    expect(screen.getByLabelText("Behaviors and Functional Skills to be Addressed structured section 1 payload")).toBeInTheDocument();
+  });
+
   it("shows an explicit warning when skills_behaviors is present but malformed", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string) => {
       if (path.startsWith("/api/assessment-template-layout?")) {

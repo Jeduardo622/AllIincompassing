@@ -188,7 +188,7 @@ const skillsBehaviorsPreviewItemsFromPayload = (
     items.push({ name, clinicalGoalType, reconciliationStatus });
   }
 
-  return items.length > 0 ? items : "invalid";
+  return items;
 };
 
 const groupSkillsBehaviorsPreviewItems = (items: SkillsBehaviorsPreviewItem[]): SkillsBehaviorsPreviewGroups =>

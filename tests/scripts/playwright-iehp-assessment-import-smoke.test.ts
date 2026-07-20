@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { assertIehpDocumentChecklistField } from '../../scripts/lib/iehp-assessment-import-smoke';
 
 import {
   assertIehpAssessorPhoneChecklist,
@@ -768,5 +769,124 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(assertionIndex).toBeGreaterThan(provenanceFetchIndex);
     expect(cleanupFinallyIndex).toBeGreaterThan(assertionIndex);
     expect(cleanupCallIndex).toBeGreaterThan(cleanupFinallyIndex);
+  });
+});
+
+describe('assertIehpDocumentChecklistField', () => {
+  const checklistWithValue = (valueText: string) => ({
+    items: [
+      {
+        id: 'row-1',
+        placeholder_key: 'IEHP_FBA_REFERRAL_DATE',
+        label: 'Referral Date',
+        value_text: valueText,
+      },
+    ],
+  });
+
+  const documentProvenanceRow = {
+    field_key: 'IEHP_FBA_REFERRAL_DATE',
+    source_span: {
+      method: 'document_text',
+      field: 'IEHP_FBA_REFERRAL_DATE',
+    },
+  };
+
+  it('returns redacted boolean evidence for a single exact document-backed referral date match', () => {
+    expect(
+      assertIehpDocumentChecklistField({
+        checklist: checklistWithValue('06/30/2026'),
+        expectedValue: '06/30/2026',
+        fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+        provenanceRows: [documentProvenanceRow],
+      }),
+    ).toEqual({
+      fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+      rowCount: 1,
+      valueMatched: true,
+      provenanceRowCount: 1,
+      documentProvenanceVerified: true,
+    });
+  });
+
+  it.each([
+    {
+      name: 'missing row',
+      checklist: { items: [] },
+      provenanceRows: [documentProvenanceRow],
+      message: 'IEHP smoke could not find IEHP_FBA_REFERRAL_DATE in assessment checklist.',
+    },
+    {
+      name: 'duplicate rows',
+      checklist: {
+        items: [
+          {
+            id: 'row-1',
+            placeholder_key: 'IEHP_FBA_REFERRAL_DATE',
+            value_text: '06/30/2026',
+          },
+          {
+            id: 'row-2',
+            placeholder_key: 'IEHP_FBA_REFERRAL_DATE',
+            value_text: '07/01/2026',
+          },
+        ],
+      },
+      provenanceRows: [documentProvenanceRow],
+      message: 'IEHP smoke expected exactly one IEHP_FBA_REFERRAL_DATE row but found 2.',
+    },
+    {
+      name: 'empty value',
+      checklist: checklistWithValue('   '),
+      provenanceRows: [documentProvenanceRow],
+      message: 'IEHP smoke found IEHP_FBA_REFERRAL_DATE but its value was empty.',
+    },
+    {
+      name: 'mismatched value',
+      checklist: checklistWithValue('07/01/2026'),
+      provenanceRows: [documentProvenanceRow],
+      message: 'IEHP smoke expected IEHP_FBA_REFERRAL_DATE to match the expected document value exactly.',
+    },
+    {
+      name: 'missing provenance row',
+      checklist: checklistWithValue('06/30/2026'),
+      provenanceRows: [],
+      message: 'IEHP smoke could not find IEHP_FBA_REFERRAL_DATE extraction provenance.',
+    },
+    {
+      name: 'duplicate provenance rows',
+      checklist: checklistWithValue('06/30/2026'),
+      provenanceRows: [documentProvenanceRow, documentProvenanceRow],
+      message: 'IEHP smoke expected exactly one IEHP_FBA_REFERRAL_DATE extraction provenance row but found 2.',
+    },
+    {
+      name: 'client snapshot provenance row',
+      checklist: checklistWithValue('06/30/2026'),
+      provenanceRows: [
+        {
+          field_key: 'IEHP_FBA_REFERRAL_DATE',
+          source_span: {
+            method: 'client_snapshot',
+            field: 'referral_date',
+          },
+        },
+      ],
+      message: 'IEHP smoke expected IEHP_FBA_REFERRAL_DATE provenance to come from document extraction, not client_snapshot.',
+    },
+    {
+      name: 'missing provenance source span',
+      checklist: checklistWithValue('06/30/2026'),
+      provenanceRows: [{ field_key: 'IEHP_FBA_REFERRAL_DATE', source_span: null }],
+      message: 'IEHP smoke expected IEHP_FBA_REFERRAL_DATE provenance to expose exactly one non-client_snapshot source span.',
+    },
+  ])('fails clearly for $name', ({ checklist, provenanceRows, message }) => {
+    expect(() =>
+      assertIehpDocumentChecklistField({
+        checklist,
+        expectedValue: '06/30/2026',
+        fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+        provenanceRows,
+      }),
+    ).toThrow(message);
   });
 });

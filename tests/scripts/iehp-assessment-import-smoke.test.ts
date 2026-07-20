@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  IEHP_PDF_MINI_MATRIX_CASES,
+  buildIehpPdfMiniMatrixHtml,
   buildIehpSmokeUploadFileName,
   buildIehpSmokeCleanupFailureMessage,
   buildIehpSmokeCleanupFailureManifestPayload,
@@ -52,6 +54,46 @@ describe('IEHP assessment import smoke helpers', () => {
 
   it('uses a synthetic upload file name instead of the source file name', () => {
     expect(buildIehpSmokeUploadFileName(12345)).toBe('iehp-fba-smoke-12345.docx');
+  });
+
+  it('keeps the default DOCX upload name and supports PDF uploads explicitly', () => {
+    expect(buildIehpSmokeUploadFileName(12345)).toBe('iehp-fba-smoke-12345.docx');
+    expect(buildIehpSmokeUploadFileName(12345, 'pdf')).toBe('iehp-fba-smoke-12345.pdf');
+  });
+
+  it('defines exactly the approved IEHP PDF mini matrix cases with unique synthetic values', () => {
+    expect(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.id)).toEqual([
+      'clean-single-page',
+      'multi-page-target-content',
+      'alternate-document-phone-format',
+    ]);
+
+    expect(new Set(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.referralDate)).size).toBe(
+      IEHP_PDF_MINI_MATRIX_CASES.length,
+    );
+    expect(new Set(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.documentPhone)).size).toBe(
+      IEHP_PDF_MINI_MATRIX_CASES.length,
+    );
+    expect(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.documentPhone)).toEqual([
+      '555-0101',
+      '555-0102',
+      '555-0103',
+    ]);
+  });
+
+  it('renders the referral label and document phone into selectable HTML with a page break only for the multi-page case', () => {
+    for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
+      const html = buildIehpPdfMiniMatrixHtml(caseDefinition);
+
+      expect(html).toContain(`Referral Date: ${caseDefinition.referralDate}`);
+      expect(html).toContain(`Assessor's phone number: ${caseDefinition.documentPhone}`);
+
+      if (caseDefinition.pageBreakBeforeTarget) {
+        expect(html).toContain('page-break-before: always;');
+      } else {
+        expect(html).not.toContain('page-break-before: always;');
+      }
+    }
   });
 
   it('redacts cleanup failure manifests', () => {

@@ -16,7 +16,7 @@
   - `npm run ci:playwright` remained blocked by invalid configured superadmin credential
   - hosted `playwright:iehp-assessment-import-skills-behaviors` remained blocked by unavailable authenticated IEHP import smoke credentials
   - live DB policy checks remained skipped because `SUPABASE_DB_URL` / `DATABASE_URL` were unavailable
-  - `pr-hygiene` is complete; PR opening remains pending
+  - `pr-hygiene` is complete; PR `#823` is open for required human review
 
 **Goal:** Reconcile the early IEHP behavior/skill target list with the later authoritative goal blocks into one reviewable result and prove behavior and skill parsing through focused tests and an authenticated synthetic browser smoke.
 
@@ -382,7 +382,7 @@ Record issue/route, files changed, exact RED/GREEN proof, mandatory verification
 
 Use `verify-change` to produce the verification card and `pr-hygiene` to produce the `pr-ready` verdict.
 
-- [ ] **Step 5: Commit, update Linear, push, and open the PR**
+- [x] **Step 5: Commit, update Linear, push, and open the PR**
 
 ```powershell
 git add docs/ai/win-229-iehp-skills-behaviors-handoff.md docs/superpowers/plans/2026-07-20-iehp-skills-behaviors-reconciliation.md

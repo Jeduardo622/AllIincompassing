@@ -3,6 +3,7 @@
 - Date: July 20, 2026
 - Linear: `WIN-229`
 - Branch: `codex/iehp-fba-skills-behaviors-reconcile`
+- PR: `#823` (`https://github.com/Jeduardo622/AllIincompassing/pull/823`)
 - Classification: `high-risk human-reviewed`
 - Lane: `critical`
 - Required agents: `specification-engineer` -> `software-architect` -> `implementation-engineer` -> `code-review-engineer` -> `test-engineer` -> `security-engineer` -> `documentation-engineer`
@@ -100,7 +101,7 @@
 - `test-engineer`: approve
 - `security-engineer`: approve
 - `pr-hygiene`: `pr-ready: yes` for human-review PR submission; merge remains blocked by required human review and unresolved live/CI checks
-- PR opening: not yet executed in this task
+- PR opening: complete; PR `#823` is awaiting required human review and live checks
 
 ## Handoff Summary
 

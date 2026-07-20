@@ -2,6 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## Progress Update
+
+- Completed:
+  - Task 1: pure reconciliation contract
+  - Task 2: attach reconciliation to extracted IEHP sections
+  - Task 3: render the one review result
+  - Task 4: add authenticated browser parsing proof
+- Not yet completed in this docs-only update:
+  - Task 5: verification, handoff, and PR readiness
+- Deviations from the original plan:
+  - `npm run test:ci` and `npm run verify:local` remained blocked by the unrelated synthetic BCBA workflow env assertion
+  - `npm run ci:playwright` remained blocked by invalid configured superadmin credential
+  - hosted `playwright:iehp-assessment-import-skills-behaviors` remained blocked by unavailable authenticated IEHP import smoke credentials
+  - live DB policy checks remained skipped because `SUPABASE_DB_URL` / `DATABASE_URL` were unavailable
+  - `pr-hygiene` is complete; PR opening remains pending
+
 **Goal:** Reconcile the early IEHP behavior/skill target list with the later authoritative goal blocks into one reviewable result and prove behavior and skill parsing through focused tests and an authenticated synthetic browser smoke.
 
 **Architecture:** Add a pure IEHP reconciliation module beside the existing Edge extractor and attach its versioned result to the existing `IEHP_FBA_BEHAVIOR_SKILL_TARGETS` payload after all IEHP goal sections have been parsed. Preserve all existing payload fields and promotion semantics. Render the derived items in the IEHP document review UI and add an opt-in hosted proof mode that inspects the authenticated structured-section response without publishing live goals.
@@ -32,7 +48,7 @@
 - Produces: `buildIehpSkillsBehaviorsResult(sections): IehpSkillsBehaviorsResult | null`.
 - The result is `{ version: 1, items, counts }`; items use `clinical_goal_type`, `reconciliation_status`, `summary_target_index`, `matched_goal_refs`, and `classification_source` exactly as defined in the approved design.
 
-- [ ] **Step 1: Write the failing contract test**
+- [x] **Step 1: Write the failing contract test**
 
 Create a synthetic section array containing matched behavior and skill targets, an unmatched summary target, a detailed-only child goal, a parent goal, duplicate normalized detailed labels, and an explicit `clinical_goal_type` override. Assert:
 
@@ -63,7 +79,7 @@ expect(result?.counts).toEqual({
 
 Also assert exact `{ field_key, section_index }` references, stable summary-first ordering, `null` for an absent summary row, and no mutation of the input sections.
 
-- [ ] **Step 2: Run the focused test and capture RED**
+- [x] **Step 2: Run the focused test and capture RED**
 
 Run:
 
@@ -73,7 +89,7 @@ deno test --allow-env --allow-read supabase/functions/extract-assessment-fields/
 
 Expected: FAIL because `iehp-skills-behaviors.ts` or `buildIehpSkillsBehaviorsResult` does not exist.
 
-- [ ] **Step 3: Implement the minimal pure module**
+- [x] **Step 3: Implement the minimal pure module**
 
 Define the exported result types and implement:
 
@@ -115,11 +131,11 @@ const reconcileTargets = (
 
 `normalizeComparableName` is limited to `trim()`, lowercase, whitespace collapse, and removal of leading/trailing punctuation. Index each detailed goal by normalized `program_name`, `title`, and `target_behavior`. Treat multiple matching section references as ambiguous, including duplicates with the same apparent type. Group duplicate detailed-only names into one ambiguous item instead of emitting duplicate logical targets.
 
-- [ ] **Step 4: Run the focused test and capture GREEN**
+- [x] **Step 4: Run the focused test and capture GREEN**
 
 Run the same Deno command. Expected: PASS with all reconciliation cases covered.
 
-- [ ] **Step 5: Commit the pure contract**
+- [x] **Step 5: Commit the pure contract**
 
 ```powershell
 git add supabase/functions/extract-assessment-fields/iehp-skills-behaviors.ts supabase/functions/extract-assessment-fields/iehp-skills-behaviors.test.ts
@@ -136,7 +152,7 @@ git commit -m "feat(win-229): define IEHP skills behaviors reconciliation"
 - Consumes: `buildIehpSkillsBehaviorsResult` from Task 1.
 - Produces: `IEHP_FBA_BEHAVIOR_SKILL_TARGETS.payload.skills_behaviors` while preserving `payload.targets`.
 
-- [ ] **Step 1: Add a failing extraction-level test**
+- [x] **Step 1: Add a failing extraction-level test**
 
 Build one synthetic IEHP document text containing the early mixed list plus later behavior, replacement/skill, detailed-only, and parent blocks. Assert the extracted summary section contains the exact reconciliation statuses/types/counts and still contains the original string array:
 
@@ -152,7 +168,7 @@ expect(summary?.payload.skills_behaviors).toMatchObject({
 });
 ```
 
-- [ ] **Step 2: Run the extraction test and capture RED**
+- [x] **Step 2: Run the extraction test and capture RED**
 
 ```powershell
 deno test --allow-env --allow-read --allow-net supabase/functions/extract-assessment-fields/index.test.ts --filter "reconciles IEHP summary targets"
@@ -160,7 +176,7 @@ deno test --allow-env --allow-read --allow-net supabase/functions/extract-assess
 
 Expected: FAIL because `skills_behaviors` is absent.
 
-- [ ] **Step 3: Integrate after all IEHP goal extraction**
+- [x] **Step 3: Integrate after all IEHP goal extraction**
 
 Import the Task 1 helper. Immediately before `extractStructuredSections` returns its IEHP sections, compute the result and replace only the summary section payload:
 
@@ -179,7 +195,7 @@ if (summarySection && skillsBehaviors) {
 
 Do not change detailed section payloads, statuses, required flags, source spans, review notes, summaries, or promotion inputs.
 
-- [ ] **Step 4: Run focused and full extractor GREEN tests**
+- [x] **Step 4: Run focused and full extractor GREEN tests**
 
 ```powershell
 deno test --allow-env --allow-read --allow-net supabase/functions/extract-assessment-fields/index.test.ts --filter "reconciles IEHP summary targets"
@@ -188,7 +204,7 @@ deno test --allow-env --allow-read --allow-net supabase/functions/extract-assess
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit extractor integration**
+- [x] **Step 5: Commit extractor integration**
 
 ```powershell
 git add supabase/functions/extract-assessment-fields/index.ts supabase/functions/extract-assessment-fields/index.test.ts
@@ -205,11 +221,11 @@ git commit -m "feat(win-229): attach IEHP skills behaviors result"
 - Consumes: `payload.skills_behaviors.items` from Task 2, with legacy fallback to `payload.targets`.
 - Produces: staff-visible Behavior Reduction, Skill Acquisition, and Needs Review groups.
 
-- [ ] **Step 1: Add failing UI tests**
+- [x] **Step 1: Add failing UI tests**
 
 Render an IEHP summary section with one item in each type/review bucket. Assert all three headings and item names are visible, matched references are not dumped as raw JSON, and copy text includes the grouped labels. Add a second fixture without `skills_behaviors` and assert the existing flat legacy target list remains visible. Add a third fixture with a present-but-malformed `skills_behaviors` object and assert an explicit invalid reconciliation / Needs Review warning is visible while the legacy flat list is not silently substituted.
 
-- [ ] **Step 2: Run the focused UI test and capture RED**
+- [x] **Step 2: Run the focused UI test and capture RED**
 
 ```powershell
 npx vitest run src/components/__tests__/IehpFbaLayoutReview.test.tsx -t "renders reconciled skills and behaviors"
@@ -217,7 +233,7 @@ npx vitest run src/components/__tests__/IehpFbaLayoutReview.test.tsx -t "renders
 
 Expected: FAIL because the component still renders only `payload.targets`.
 
-- [ ] **Step 3: Implement a defensive payload reader and grouped renderer**
+- [x] **Step 3: Implement a defensive payload reader and grouped renderer**
 
 Parse only well-formed items:
 
@@ -250,7 +266,7 @@ const skillsBehaviorsFromPayload = (payload: Record<string, unknown> | undefined
 
 For valid reconciliation data, render `behavior`, `skill`, then `null`/review items. Label unmatched and ambiguous entries as Needs Review. When the `skills_behaviors` key is absent, call the existing legacy `behaviorTargetsFromPayload` path. When the key is present but `skillsBehaviorsFromPayload` returns invalid, render an explicit invalid reconciliation / Needs Review warning and retain the existing editable raw payload surface; do not silently substitute the legacy list.
 
-- [ ] **Step 4: Run focused UI GREEN tests**
+- [x] **Step 4: Run focused UI GREEN tests**
 
 ```powershell
 npx vitest run src/components/__tests__/IehpFbaLayoutReview.test.tsx
@@ -258,7 +274,7 @@ npx vitest run src/components/__tests__/IehpFbaLayoutReview.test.tsx
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the review UI**
+- [x] **Step 5: Commit the review UI**
 
 ```powershell
 git add src/components/ClientDetails/IehpFbaLayoutReview.tsx src/components/__tests__/IehpFbaLayoutReview.test.tsx
@@ -278,11 +294,11 @@ git commit -m "feat(win-229): render reconciled IEHP skills behaviors"
 - Consumes: authenticated checklist response `structured_sections` and the Task 2 payload contract.
 - Produces: opt-in `playwright:iehp-assessment-import-skills-behaviors` JSON evidence with counts/type/status booleans and cleanup outcome.
 
-- [ ] **Step 1: Add failing helper and script-contract tests**
+- [x] **Step 1: Add failing helper and script-contract tests**
 
 Define a single synthetic proof case with early-list behavior/skill/unmatched targets, later matching typed goal blocks, one detailed-only child goal, and one parent goal. Test an assertion helper that fails clearly for a missing/duplicate summary row, malformed result, wrong count, wrong type, unexpected parent inclusion, or missing reference. Test that the runtime script exposes a dedicated opt-in flag/package command and retains its `try`/`finally` cleanup boundary.
 
-- [ ] **Step 2: Run smoke tests and capture RED**
+- [x] **Step 2: Run smoke tests and capture RED**
 
 ```powershell
 npx vitest run tests/scripts/iehp-assessment-import-smoke.test.ts tests/scripts/playwright-iehp-assessment-import-smoke.test.ts
@@ -290,7 +306,7 @@ npx vitest run tests/scripts/iehp-assessment-import-smoke.test.ts tests/scripts/
 
 Expected: FAIL because the proof case, assertion helper, flag, and evidence do not exist.
 
-- [ ] **Step 3: Implement the opt-in synthetic proof**
+- [x] **Step 3: Implement the opt-in synthetic proof**
 
 Add `--skills-behaviors-proof` without changing the existing default DOCX or three-case PDF mini-matrix semantics. Generate a synthetic PDF through the existing Chromium `page.pdf()` path. After status reaches `extracted`, reuse `fetchAssessmentChecklist` (the authenticated `/api/assessment-checklist` path) and assert exactly one `IEHP_FBA_BEHAVIOR_SKILL_TARGETS` structured row with the expected version, item counts, behavior/skill classifications, Needs Review result, detailed-only item, parent exclusion, and references.
 
@@ -312,11 +328,11 @@ skillsBehaviorsAssertion: {
 
 Keep upload/storage cleanup in the existing unconditional `finally`. Any assertion or cleanup failure must fail the run; never log raw target names, document/client IDs, credentials, or storage paths in JSON evidence.
 
-- [ ] **Step 4: Run focused smoke GREEN tests**
+- [x] **Step 4: Run focused smoke GREEN tests**
 
 Run the same Vitest command. Expected: PASS.
 
-- [ ] **Step 5: Run hosted proof when a compatible deployment and credentials are available**
+- [ ] **Step 5: Run hosted proof when a compatible deployment and credentials are available** (blocked: no configured credential authenticated)
 
 ```powershell
 npm run playwright:iehp-assessment-import-skills-behaviors
@@ -324,7 +340,7 @@ npm run playwright:iehp-assessment-import-skills-behaviors
 
 Expected: one cleanup-verified synthetic case with both behavior and skill parsing booleans true. If the configured host does not contain this branch's Edge parser or credentials are unavailable, record the check as blocked; do not claim it passed.
 
-- [ ] **Step 6: Commit the browser proof**
+- [x] **Step 6: Commit the browser proof**
 
 ```powershell
 git add scripts/lib/iehp-assessment-import-smoke.ts scripts/playwright-iehp-assessment-import-smoke.ts tests/scripts/iehp-assessment-import-smoke.test.ts tests/scripts/playwright-iehp-assessment-import-smoke.test.ts package.json
@@ -341,7 +357,7 @@ git commit -m "test(win-229): prove IEHP skills behaviors parsing"
 - Consumes: exact command output, hosted evidence, specialist findings, and final diff.
 - Produces: verification card, PR hygiene verdict, Linear evidence update, and review-ready PR.
 
-- [ ] **Step 1: Run mandatory verification**
+- [x] **Step 1: Run mandatory verification**
 
 ```powershell
 npm run ci:check-focused
@@ -354,15 +370,15 @@ npm run verify:local
 
 Run `verify:local` only when its environment requirements are available. Record every skipped/blocked subcheck exactly, especially DB-backed checks and hosted proof.
 
-- [ ] **Step 2: Run critical-lane reviews**
+- [x] **Step 2: Run critical-lane reviews**
 
 Use `code-review-engineer`, `test-engineer`, and `security-engineer` against the final diff. Resolve all actionable findings in scope and rerun affected checks.
 
-- [ ] **Step 3: Write the concise handoff**
+- [x] **Step 3: Write the concise handoff**
 
 Record issue/route, files changed, exact RED/GREEN proof, mandatory verification results, hosted proof or blocker, cleanup evidence, review findings, residual risk, and next slice. Do not include PHI or secrets.
 
-- [ ] **Step 4: Run workflow closure skills**
+- [x] **Step 4: Run workflow closure skills**
 
 Use `verify-change` to produce the verification card and `pr-hygiene` to produce the `pr-ready` verdict.
 

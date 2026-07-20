@@ -517,6 +517,52 @@ describe('assertIehpAssessorPhoneChecklist', () => {
     });
   });
 
+  it('ignores mixed-field provenance rows when enforcing assessor phone provenance cardinality', () => {
+    expect(
+      assertIehpAssessorPhoneChecklist({
+        checklist: {
+          items: [
+            {
+              id: 'row-1',
+              placeholder_key: 'IEHP_FBA_ASSESSOR_PHONE',
+              label: "Assessor's phone number",
+              value_text: '(951) 555-0101',
+            },
+          ],
+        },
+        expectedPhone: '(951) 555-0101',
+        provenanceRows: [
+          {
+            field_key: 'IEHP_FBA_REFERRAL_DATE',
+            source_span: {
+              method: 'document_text',
+              field: 'IEHP_FBA_REFERRAL_DATE',
+            },
+          },
+          {
+            field_key: 'IEHP_FBA_ASSESSOR_PHONE',
+            source_span: {
+              method: 'client_snapshot',
+              field: 'primary_therapist_phone',
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      fieldKey: 'IEHP_FBA_ASSESSOR_PHONE',
+      rowCount: 1,
+      nonEmpty: true,
+      validFormat: true,
+      precedenceMatchedExpectedPhone: true,
+      provenanceRowCount: 1,
+      provenanceVerified: true,
+      sourceMethod: 'client_snapshot',
+      sourceField: 'primary_therapist_phone',
+      expectedPhoneRedacted: '(***) ***-0101',
+      actualPhoneRedacted: '(***) ***-0101',
+    });
+  });
+
   it.each([
     {
       name: 'missing provenance row',
@@ -775,7 +821,7 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
     const provenanceFetchIndex = script.indexOf('const provenanceRows = await fetchIehpAssessmentProvenance');
     const assessorPhoneAssertionIndex = script.indexOf('const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist');
-    const referralDateAssertionIndex = script.indexOf('const referralDateAssertion = assertIehpDocumentChecklistField');
+    const referralDateAssertionIndex = script.indexOf('const referralDateAssertion = caseInput.expectedReferralDate');
     const cleanupVerifiedIndex = script.indexOf('cleanupVerified = true;');
     const caseEvidenceIndex = script.indexOf('console.log(JSON.stringify(caseEvidence, null, 2));');
     const caseFinallyIndex = script.indexOf('} finally {');
@@ -808,6 +854,25 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(caseEvidenceIndex).toBeGreaterThan(cleanupVerifiedIndex);
     expect(aggregateCleanupIndex).toBeGreaterThan(caseEvidenceIndex);
     expect(aggregateEvidenceIndex).toBeGreaterThan(aggregateCleanupIndex);
+  });
+
+  it('keeps default docx invocation free of referral-date requirements while matrix cases keep them', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+
+    const matrixReferralIndex = script.indexOf('expectedReferralDate: caseDefinition.referralDate');
+    const defaultReferralIndex = script.indexOf("expectedReferralDate: '06/30/2026'");
+    const nullableReferralAssertionIndex = script.indexOf('const referralDateAssertion = caseInput.expectedReferralDate');
+    const defaultCaseStartIndex = script.indexOf("const defaultCaseEvidence = await runSmokeCase({");
+    const defaultCaseBlock = script.slice(defaultCaseStartIndex, script.indexOf('});', defaultCaseStartIndex) + 3);
+
+    expect(matrixReferralIndex).toBeGreaterThanOrEqual(0);
+    expect(defaultReferralIndex).toBe(-1);
+    expect(nullableReferralAssertionIndex).toBeGreaterThanOrEqual(0);
+    expect(defaultCaseStartIndex).toBeGreaterThan(nullableReferralAssertionIndex);
+    expect(defaultCaseBlock).not.toContain('expectedReferralDate:');
   });
 });
 

@@ -78,7 +78,7 @@ type IehpSmokeCaseInput = {
   uploadFileName: string;
   mimeType: string;
   sourceFileBuffer: Buffer;
-  expectedReferralDate: string;
+  expectedReferralDate?: string | null;
 };
 
 type IehpSmokeCaseEvidence = {
@@ -346,7 +346,7 @@ export const assertIehpAssessorPhoneChecklist = (args: {
     );
   }
 
-  const provenanceRows = args.provenanceRows ?? [];
+  const provenanceRows = (args.provenanceRows ?? []).filter((row) => row.field_key === IEHP_ASSESSOR_PHONE_FIELD_KEY);
   if (provenanceRows.length === 0) {
     throw new Error('IEHP smoke could not find IEHP_FBA_ASSESSOR_PHONE extraction provenance.');
   }
@@ -614,19 +614,23 @@ async function run() {
           organizationId,
           supabaseAnonKey,
           supabaseUrl,
-          fieldKeys: [IEHP_ASSESSOR_PHONE_FIELD_KEY, IEHP_REFERRAL_DATE_FIELD_KEY],
+          fieldKeys: caseInput.expectedReferralDate
+            ? [IEHP_ASSESSOR_PHONE_FIELD_KEY, IEHP_REFERRAL_DATE_FIELD_KEY]
+            : [IEHP_ASSESSOR_PHONE_FIELD_KEY],
         });
         const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist({
           checklist,
           expectedPhone: expectedAssessorPhone,
           provenanceRows,
         });
-        const referralDateAssertion = assertIehpDocumentChecklistField({
-          checklist,
-          expectedValue: caseInput.expectedReferralDate,
-          fieldKey: IEHP_REFERRAL_DATE_FIELD_KEY,
-          provenanceRows,
-        });
+        const referralDateAssertion = caseInput.expectedReferralDate
+          ? assertIehpDocumentChecklistField({
+              checklist,
+              expectedValue: caseInput.expectedReferralDate,
+              fieldKey: IEHP_REFERRAL_DATE_FIELD_KEY,
+              provenanceRows,
+            })
+          : null;
 
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
         await page.waitForLoadState('networkidle').catch(() => undefined);
@@ -774,7 +778,6 @@ async function run() {
       uploadFileName: buildIehpSmokeUploadFileName(),
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       sourceFileBuffer: defaultSourceFileBuffer!,
-      expectedReferralDate: '06/30/2026',
     });
     console.log(
       JSON.stringify(

@@ -761,7 +761,7 @@ jobs:
     needs:
       - policy
       - change_scope
-    if: needs.change_scope.outputs.docs_only != 'true'
+    if: needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -787,7 +787,7 @@ jobs:
 
       - name: IEHP assessment import smoke gate
         env:
-          PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
+          PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ASSESSMENT_CLIENT_ID: ${{ secrets.PW_ASSESSMENT_CLIENT_ID }}
           PW_ASSESSMENT_SAMPLE_FILE: ${{ secrets.PW_ASSESSMENT_SAMPLE_FILE }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

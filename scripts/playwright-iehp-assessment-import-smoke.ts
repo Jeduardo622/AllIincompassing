@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
+import { isValidPhone, sanitizePhone } from '../src/lib/validation';
 
 import { cleanupAssessmentImportArtifacts } from './lib/assessment-import-cleanup';
 import {
@@ -34,6 +35,39 @@ type AssessmentDraftsResponse = {
   goals?: unknown[];
 };
 
+type ChecklistResponse = {
+  items: Array<{
+    id: string;
+    placeholder_key: string;
+    label?: string | null;
+    value_text?: string | null;
+  }>;
+  structured_sections?: unknown[];
+};
+
+type ChecklistResponsePayload =
+  | ChecklistResponse
+  | ChecklistResponse['items'];
+
+type AssessmentExtractionProvenanceRow = {
+  field_key?: string | null;
+  source_span?: unknown;
+};
+
+type IehpAssessorPhoneAssertion = {
+  fieldKey: 'IEHP_FBA_ASSESSOR_PHONE';
+  rowCount: number;
+  nonEmpty: true;
+  validFormat: true;
+  precedenceMatchedExpectedPhone: true;
+  provenanceRowCount: number;
+  provenanceVerified: true;
+  sourceMethod: 'client_snapshot';
+  sourceField: 'primary_therapist_phone';
+  expectedPhoneRedacted: string;
+  actualPhoneRedacted: string;
+};
+
 const DEFAULT_BASE_URL = 'https://app.allincompassing.ai';
 const EXTRACTION_TIMEOUT_MS = 120_000;
 
@@ -44,6 +78,8 @@ type CredentialCandidate = {
   password?: string;
   label: string;
 };
+
+const IEHP_ASSESSOR_PHONE_FIELD_KEY = 'IEHP_FBA_ASSESSOR_PHONE';
 
 const getRequiredEnv = (name: string): string => {
   const value = process.env[name]?.trim();
@@ -143,6 +179,148 @@ const fetchAssessmentDraftCounts = async (
   };
 };
 
+const fetchAssessmentChecklist = async (
+  baseUrl: string,
+  accessToken: string,
+  assessmentDocumentId: string,
+): Promise<ChecklistResponse> => {
+  const response = await fetchWithRetry(
+    `${baseUrl}/api/assessment-checklist?assessment_document_id=${encodeURIComponent(assessmentDocumentId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+    'Assessment checklist query',
+  );
+
+  if (!response.ok) {
+    throw new Error(`Assessment checklist query failed with status ${response.status}.`);
+  }
+
+  return normalizeAssessmentChecklistResponse((await response.json()) as ChecklistResponsePayload);
+};
+
+export const fetchIehpAssessorPhoneProvenance = async (args: {
+  accessToken: string;
+  assessmentDocumentId: string;
+  organizationId: string;
+  supabaseAnonKey: string;
+  supabaseUrl: string;
+}): Promise<AssessmentExtractionProvenanceRow[]> => {
+  const response = await fetchWithRetry(
+    `${args.supabaseUrl}/rest/v1/assessment_extractions?select=field_key,source_span&assessment_document_id=eq.${encodeURIComponent(
+      args.assessmentDocumentId,
+    )}&field_key=eq.${encodeURIComponent(IEHP_ASSESSOR_PHONE_FIELD_KEY)}&organization_id=eq.${encodeURIComponent(
+      args.organizationId,
+    )}&limit=2`,
+    {
+      headers: {
+        apikey: args.supabaseAnonKey,
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    },
+    'IEHP assessor phone extraction provenance query',
+  );
+
+  if (!response.ok) {
+    throw new Error(`IEHP assessor phone extraction provenance query failed with status ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as unknown;
+  return Array.isArray(payload) ? payload as AssessmentExtractionProvenanceRow[] : [];
+};
+
+export const normalizeAssessmentChecklistResponse = (
+  payload: ChecklistResponsePayload,
+): ChecklistResponse => {
+  if (Array.isArray(payload)) {
+    return {
+      items: payload,
+      structured_sections: [],
+    };
+  }
+
+  return {
+    items: Array.isArray(payload.items) ? payload.items : [],
+    structured_sections: Array.isArray(payload.structured_sections) ? payload.structured_sections : [],
+  };
+};
+
+const redactPhone = (phone: string): string => {
+  const digits = sanitizePhone(phone).replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `(***) ***-${digits.slice(-4)}`;
+  }
+  if (digits.length > 4) {
+    return `${'*'.repeat(digits.length - 4)}${digits.slice(-4)}`;
+  }
+  return '*'.repeat(Math.max(digits.length, 1));
+};
+
+export const assertIehpAssessorPhoneChecklist = (args: {
+  checklist: ChecklistResponse;
+  expectedPhone: string;
+  provenanceRows?: AssessmentExtractionProvenanceRow[];
+}): IehpAssessorPhoneAssertion => {
+  const matchingRows = args.checklist.items.filter((item) => item.placeholder_key === IEHP_ASSESSOR_PHONE_FIELD_KEY);
+  if (matchingRows.length === 0) {
+    throw new Error('IEHP smoke could not find IEHP_FBA_ASSESSOR_PHONE in assessment checklist.');
+  }
+  if (matchingRows.length !== 1) {
+    throw new Error(`IEHP smoke expected exactly one IEHP_FBA_ASSESSOR_PHONE row but found ${matchingRows.length}.`);
+  }
+
+  const actualPhone = matchingRows[0]?.value_text?.trim() ?? '';
+  if (!actualPhone) {
+    throw new Error('IEHP smoke found IEHP_FBA_ASSESSOR_PHONE but its value was empty.');
+  }
+  if (!isValidPhone(actualPhone)) {
+    throw new Error('IEHP smoke found IEHP_FBA_ASSESSOR_PHONE but its value did not match the accepted phone format.');
+  }
+  if (sanitizePhone(actualPhone) !== sanitizePhone(args.expectedPhone)) {
+    throw new Error(
+      'IEHP smoke expected IEHP_FBA_ASSESSOR_PHONE to match the configured client primary therapist snapshot phone.',
+    );
+  }
+
+  const provenanceRows = args.provenanceRows ?? [];
+  if (provenanceRows.length === 0) {
+    throw new Error('IEHP smoke could not find IEHP_FBA_ASSESSOR_PHONE extraction provenance.');
+  }
+  if (provenanceRows.length !== 1) {
+    throw new Error(
+      `IEHP smoke expected exactly one IEHP_FBA_ASSESSOR_PHONE extraction provenance row but found ${provenanceRows.length}.`,
+    );
+  }
+  const sourceSpan = provenanceRows[0]?.source_span;
+  const sourceMethod = sourceSpan && typeof sourceSpan === 'object' && 'method' in sourceSpan
+    ? (sourceSpan as { method?: unknown }).method
+    : undefined;
+  const sourceField = sourceSpan && typeof sourceSpan === 'object' && 'field' in sourceSpan
+    ? (sourceSpan as { field?: unknown }).field
+    : undefined;
+  if (sourceMethod !== 'client_snapshot' || sourceField !== 'primary_therapist_phone') {
+    throw new Error(
+      'IEHP smoke expected IEHP_FBA_ASSESSOR_PHONE provenance to be client_snapshot.primary_therapist_phone.',
+    );
+  }
+
+  return {
+    fieldKey: IEHP_ASSESSOR_PHONE_FIELD_KEY,
+    rowCount: matchingRows.length,
+    nonEmpty: true,
+    validFormat: true,
+    precedenceMatchedExpectedPhone: true,
+    provenanceRowCount: provenanceRows.length,
+    provenanceVerified: true,
+    sourceMethod,
+    sourceField,
+    expectedPhoneRedacted: redactPhone(args.expectedPhone),
+    actualPhoneRedacted: redactPhone(actualPhone),
+  };
+};
+
 const isInvalidCredentialsError = (error: unknown): boolean => {
   if (!error || typeof error !== 'object') {
     return false;
@@ -174,7 +352,14 @@ export const selectConfiguredSmokeClient = async (
     clientFactory?: SupabaseClientFactory;
     env?: NodeJS.ProcessEnv;
   } = {},
-): Promise<{ accessToken: string; clientId: string; credentials: { email: string; password: string; label: string } }> => {
+): Promise<{
+  accessToken: string;
+  clientId: string;
+  therapistId: string;
+  organizationId: string;
+  expectedAssessorPhone: string;
+  credentials: { email: string; password: string; label: string };
+}> => {
   const env = options.env ?? process.env;
   const configuredClientId = env.PW_ASSESSMENT_CLIENT_ID?.trim();
   if (!configuredClientId) {
@@ -196,7 +381,7 @@ export const selectConfiguredSmokeClient = async (
       const authResult = await signInSmokeUser(supabase, email, password);
       const { data: client, error } = await supabase
         .from('clients')
-        .select('id')
+        .select('id, therapist_id, organization_id')
         .eq('id', configuredClientId)
         .maybeSingle();
 
@@ -210,9 +395,48 @@ export const selectConfiguredSmokeClient = async (
         );
       }
 
+      const organizationId = typeof client.organization_id === 'string' ? client.organization_id.trim() : '';
+      if (!organizationId) {
+        throw new Error(
+          'Configured PW_ASSESSMENT_CLIENT_ID must expose a non-empty organization for IEHP assessment import smoke.',
+        );
+      }
+
+      const therapistId = typeof client.therapist_id === 'string' ? client.therapist_id.trim() : '';
+      if (!therapistId) {
+        throw new Error(
+          'Configured PW_ASSESSMENT_CLIENT_ID must expose a primary therapist with a non-empty phone for IEHP assessment import smoke.',
+        );
+      }
+
+      const { data: therapist, error: therapistError } = await supabase
+        .from('therapists')
+        .select('id, phone')
+        .eq('id', therapistId)
+        .maybeSingle();
+
+      if (therapistError) {
+        throw therapistError;
+      }
+
+      const expectedAssessorPhone = typeof therapist?.phone === 'string' ? therapist.phone.trim() : '';
+      if (!expectedAssessorPhone) {
+        throw new Error(
+          'Configured PW_ASSESSMENT_CLIENT_ID must expose a primary therapist with a non-empty phone for IEHP assessment import smoke.',
+        );
+      }
+      if (!isValidPhone(expectedAssessorPhone)) {
+        throw new Error(
+          'Configured PW_ASSESSMENT_CLIENT_ID must expose a primary therapist with an accepted phone format for IEHP assessment import smoke.',
+        );
+      }
+
       return {
         accessToken: authResult.accessToken,
         clientId: client.id,
+        therapistId,
+        organizationId,
+        expectedAssessorPhone,
         credentials: {
           email,
           password,
@@ -247,7 +471,7 @@ async function run() {
     },
   ];
   preflightCredentials(credentialCandidates);
-  const { accessToken, clientId, credentials } = await selectConfiguredSmokeClient(
+  const { accessToken, clientId, organizationId, expectedAssessorPhone, credentials } = await selectConfiguredSmokeClient(
     supabaseUrl,
     supabaseAnonKey,
     credentialCandidates,
@@ -313,6 +537,19 @@ async function run() {
     if (programCount !== 0 || goalCount !== 0) {
       throw new Error(`IEHP import smoke expected zero drafts but found ${programCount} program(s) and ${goalCount} goal(s).`);
     }
+    const checklist = await fetchAssessmentChecklist(baseUrl, accessToken, createdAssessment.id);
+    const provenanceRows = await fetchIehpAssessorPhoneProvenance({
+      accessToken,
+      assessmentDocumentId: createdAssessment.id,
+      organizationId,
+      supabaseAnonKey,
+      supabaseUrl,
+    });
+    const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist({
+      checklist,
+      expectedPhone: expectedAssessorPhone,
+      provenanceRows,
+    });
 
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForLoadState('networkidle').catch(() => undefined);
@@ -331,6 +568,7 @@ async function run() {
           status: createdAssessment.status,
           draftPrograms: programCount,
           draftGoals: goalCount,
+          assessorPhoneAssertion,
           screenshot: screenshotPath,
         },
         null,

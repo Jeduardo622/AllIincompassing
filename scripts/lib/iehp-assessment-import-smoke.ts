@@ -230,28 +230,40 @@ export const buildIehpSkillsBehaviorsProofPdfHtml = (
   </head>
   <body>
     <section>
-      <h1>Behaviors and Functional Skills to be Addressed</h1>
-      <p>${proofCase.expectedTargets.join(', ')}</p>
+      <h1>BEHAVIORS:</h1>
+      <p>The behaviors and functional skills to be addressed are:</p>
+      <p>${proofCase.expectedTargets.join('; ')}</p>
+      <h2>BACKGROUND INFORMATION</h2>
     </section>
     <section style="page-break-before: always;">
-      <h2>Target Behavior and Intervention Blocks</h2>
-      <p>goal type: child</p>
-      <p>program name: ${proofCase.expectedItems.behavior}</p>
-      <p>target behavior: Hit peers during transitions</p>
-      <p>clinical goal type: behavior</p>
-      <p>goal type: child</p>
-      <p>program name: ${proofCase.expectedItems.detailedOnly}</p>
-      <p>target behavior: Wait safely before crossing</p>
-      <p>clinical goal type: skill</p>
+      <h2>TARGET BEHAVIORS:</h2>
+      <p>Program Name: ${proofCase.expectedItems.behavior}</p>
+      <p>Instrumental Goal: Member will reduce physical aggression during transitions.</p>
+      <p>Data Collection: Rate per hour.</p>
+      <p>Mastery Criteria: Zero instances across four consecutive weeks.</p>
+      <p>Baseline: Three instances per hour.</p>
+      <h2>REPLACEMENT BEHAVIORS:</h2>
+      <p>Program Name: ${proofCase.expectedItems.skill}</p>
+      <p>Instrumental Goal: Member will request help using functional communication.</p>
+      <p>Data Collection: Percentage of opportunities.</p>
+      <p>Mastery Criteria: Eighty percent across four consecutive weeks.</p>
+      <p>Baseline: Zero percent independent.</p>
+      <p>Program Name: ${proofCase.expectedItems.detailedOnly}</p>
+      <p>Instrumental Goal: Member will wait safely before crossing in the community.</p>
+      <p>Data Collection: Percentage of opportunities.</p>
+      <p>Mastery Criteria: Eighty percent across four consecutive weeks.</p>
+      <p>Baseline: Zero percent independent.</p>
+      <h2>Safety/Crisis Procedure</h2>
     </section>
     <section style="page-break-before: always;">
-      <h2>Skill and School Goal Blocks</h2>
-      <p>goal type: child</p>
-      <p>program name: ${proofCase.expectedItems.skill}</p>
-      <p>title: Request help with visuals</p>
-      <p>goal type: parent</p>
-      <p>program name: ${proofCase.expectedItems.excludedParent}</p>
-      <p>title: Parent carries out home plan</p>
+      <h2>PARENT EDUCATION:</h2>
+      <p>Program Name: ${proofCase.expectedItems.excludedParent}</p>
+      <p>Instrumental Goal: Caregiver will carry out the synthetic home plan with fidelity.</p>
+      <p>Data Collection: Percentage of opportunities.</p>
+      <p>Mastery Criteria: Eighty percent across four consecutive weeks.</p>
+      <p>Baseline: Zero percent independent.</p>
+      <h2>Location of Service:</h2>
+      <p>Synthetic test setting.</p>
     </section>
   </body>
 </html>`;

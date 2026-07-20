@@ -155,15 +155,34 @@ describe('IEHP assessment import smoke helpers', () => {
   it('renders the dedicated skills behaviors proof html with early summary targets, later child goal blocks, one detailed-only child, and one excluded parent goal', () => {
     const html = buildIehpSkillsBehaviorsProofPdfHtml(IEHP_SKILLS_BEHAVIORS_PROOF_CASE);
 
-    expect(html).toContain('Behaviors and Functional Skills to be Addressed');
+    expect(html).toContain('BEHAVIORS:');
+    expect(html).toContain('The behaviors and functional skills to be addressed are:');
+    expect(html).toContain('BACKGROUND INFORMATION');
     expect(html).toContain('Physical Aggression');
     expect(html).toContain('Functional Communication');
     expect(html).toContain('Community Safety');
-    expect(html).toContain('Target Behavior and Intervention Blocks');
-    expect(html).toContain('Skill and School Goal Blocks');
+    expect(html).toContain(IEHP_SKILLS_BEHAVIORS_PROOF_CASE.expectedTargets.join('; '));
+    expect(html).toContain('TARGET BEHAVIORS:');
+    expect(html).toContain('REPLACEMENT BEHAVIORS:');
+    expect(html).toContain('Program Name:');
+    expect(html).toContain('Instrumental Goal:');
     expect(html).toContain('Waiting');
+    expect(html).toContain('Safety/Crisis Procedure');
     expect(html).toContain('Parent Coaching');
-    expect(html).toContain('goal type: parent');
+    expect(html).toContain('PARENT EDUCATION:');
+    expect(html).toContain('Location of Service:');
+
+    const orderedAnchors = [
+      'BEHAVIORS:',
+      'BACKGROUND INFORMATION',
+      'TARGET BEHAVIORS:',
+      'REPLACEMENT BEHAVIORS:',
+      'Safety/Crisis Procedure',
+      'PARENT EDUCATION:',
+      'Location of Service:',
+    ].map((anchor) => html.indexOf(anchor));
+    expect(orderedAnchors.every((index) => index >= 0)).toBe(true);
+    expect(orderedAnchors).toEqual([...orderedAnchors].sort((left, right) => left - right));
   });
 
   it('redacts cleanup failure manifests', () => {

@@ -47,9 +47,9 @@ This contract never infers that a phrase such as “functional communication” 
 
 ## Data flow
 
-After deterministic IEHP structured-section extraction completes, a pure reconciliation helper reads the three existing field-key groups and enriches the summary section payload. The result is review data and may be present while sections are still drafted; it does not affect live promotion until the existing clinician approval and publication gates succeed. Existing storage persists the JSON payload in `assessment_structured_sections`; the authenticated assessment-document response already returns those rows.
+After deterministic IEHP structured-section extraction completes, a pure reconciliation helper reads the three existing field-key groups and enriches the summary section payload. The result is review data and may be present while sections are still drafted; it does not affect live promotion until the existing clinician approval and publication gates succeed. Existing storage persists the JSON payload in `assessment_structured_sections`; the authenticated `/api/assessment-checklist` response already returns those rows.
 
-The IEHP document-layout review reads `skills_behaviors.items` when available and renders the three review groups. Historical rows without the new object continue to render the legacy `targets` list.
+The IEHP document-layout review reads `skills_behaviors.items` when available and renders the three review groups. Historical rows without the new object continue to render the legacy `targets` list. A present-but-malformed object renders an explicit invalid reconciliation / Needs Review warning instead of silently falling back.
 
 IEHP publication remains based on the reviewed detailed goal sections. Reconciliation does not bypass approval, create drafts, or independently write live programs/goals.
 
@@ -58,6 +58,7 @@ IEHP publication remains based on the reviewed detailed goal sections. Reconcili
 - An absent summary section yields no synthetic summary row and does not mutate unrelated structured sections.
 - An empty summary list can still carry detailed-only child goals if the summary structured row exists.
 - Unmatched and ambiguous items remain visible under Needs Review and cannot silently become typed live goals through this result.
+- A missing `skills_behaviors` key uses the legacy `targets` renderer; a present-but-malformed key fails closed in the UI with an explicit invalid reconciliation warning and leaves the editable raw payload available to staff review.
 - The original `targets`, raw text, section status, source span, and review notes remain unchanged.
 - CalOptima extraction and promotion are unchanged.
 

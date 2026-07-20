@@ -207,7 +207,7 @@ git commit -m "feat(win-229): attach IEHP skills behaviors result"
 
 - [ ] **Step 1: Add failing UI tests**
 
-Render an IEHP summary section with one item in each type/review bucket. Assert all three headings and item names are visible, matched references are not dumped as raw JSON, and copy text includes the grouped labels. Add a second fixture without `skills_behaviors` and assert the existing flat legacy target list remains visible.
+Render an IEHP summary section with one item in each type/review bucket. Assert all three headings and item names are visible, matched references are not dumped as raw JSON, and copy text includes the grouped labels. Add a second fixture without `skills_behaviors` and assert the existing flat legacy target list remains visible. Add a third fixture with a present-but-malformed `skills_behaviors` object and assert an explicit invalid reconciliation / Needs Review warning is visible while the legacy flat list is not silently substituted.
 
 - [ ] **Step 2: Run the focused UI test and capture RED**
 
@@ -248,7 +248,7 @@ const skillsBehaviorsFromPayload = (payload: Record<string, unknown> | undefined
 };
 ```
 
-For valid reconciliation data, render `behavior`, `skill`, then `null`/review items. Label unmatched and ambiguous entries as Needs Review. For missing/malformed data, call the existing legacy `behaviorTargetsFromPayload` path.
+For valid reconciliation data, render `behavior`, `skill`, then `null`/review items. Label unmatched and ambiguous entries as Needs Review. When the `skills_behaviors` key is absent, call the existing legacy `behaviorTargetsFromPayload` path. When the key is present but `skillsBehaviorsFromPayload` returns invalid, render an explicit invalid reconciliation / Needs Review warning and retain the existing editable raw payload surface; do not silently substitute the legacy list.
 
 - [ ] **Step 4: Run focused UI GREEN tests**
 
@@ -292,7 +292,7 @@ Expected: FAIL because the proof case, assertion helper, flag, and evidence do n
 
 - [ ] **Step 3: Implement the opt-in synthetic proof**
 
-Add `--skills-behaviors-proof` without changing the existing default DOCX or three-case PDF mini-matrix semantics. Generate a synthetic PDF through the existing Chromium `page.pdf()` path. After status reaches `extracted`, reuse `fetchAssessmentChecklist` and assert exactly one `IEHP_FBA_BEHAVIOR_SKILL_TARGETS` structured row with the expected version, item counts, behavior/skill classifications, Needs Review result, detailed-only item, parent exclusion, and references.
+Add `--skills-behaviors-proof` without changing the existing default DOCX or three-case PDF mini-matrix semantics. Generate a synthetic PDF through the existing Chromium `page.pdf()` path. After status reaches `extracted`, reuse `fetchAssessmentChecklist` (the authenticated `/api/assessment-checklist` path) and assert exactly one `IEHP_FBA_BEHAVIOR_SKILL_TARGETS` structured row with the expected version, item counts, behavior/skill classifications, Needs Review result, detailed-only item, parent exclusion, and references.
 
 Return only redacted evidence:
 

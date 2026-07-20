@@ -420,6 +420,7 @@ describe('selectConfiguredSmokeClient', () => {
   it('keeps both CI IEHP proofs on the generated super-admin and unconditional cleanup path', () => {
     const root = process.cwd();
     const workflow = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+    const supabaseConfig = readFileSync(path.join(root, 'supabase/config.toml'), 'utf8');
     const script = readFileSync(path.join(root, 'scripts/playwright-iehp-assessment-import-smoke.ts'), 'utf8');
     const iehpJob = sliceWorkflowJob(workflow, 'iehp_assessment_import_smoke');
     const cleanupStepStart = iehpJob.indexOf('- name: Cleanup IEHP smoke admin');
@@ -453,6 +454,9 @@ describe('selectConfiguredSmokeClient', () => {
     );
     expect(cleanupStepStart).toBeGreaterThanOrEqual(0);
     expect(cleanupStep).toContain('if: always()');
+    expect(supabaseConfig).toContain(
+      '[functions.extract-assessment-fields]\nverify_jwt = true',
+    );
     expect(candidateBlock).toContain('PW_SUPERADMIN_EMAIL');
     expect(candidateBlock).not.toContain('PW_ADMIN_EMAIL');
     expect(candidateBlock).not.toContain('PLAYWRIGHT_ADMIN_EMAIL');

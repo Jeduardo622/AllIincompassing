@@ -136,3 +136,75 @@ Deno.test("buildIehpSkillsBehaviorsResult reconciles summary and detailed IEHP t
 Deno.test("buildIehpSkillsBehaviorsResult returns null when the summary section is absent", () => {
   expect(buildIehpSkillsBehaviorsResult([])).toBeNull();
 });
+
+Deno.test("buildIehpSkillsBehaviorsResult groups unmatched detailed goals by overlapping aliases", () => {
+  const result = buildIehpSkillsBehaviorsResult([
+    {
+      field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+      section_index: 0,
+      payload: { targets: [] },
+    },
+    {
+      field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+      section_index: 0,
+      payload: {
+        goal_type: "child",
+        program_name: "Elopement Reduction",
+        title: "Shared Title",
+      },
+    },
+    {
+      field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+      section_index: 1,
+      payload: {
+        goal_type: "child",
+        program_name: "Functional Requesting",
+        title: "  shared   title!! ",
+      },
+    },
+  ]);
+
+  expect(result?.items).toEqual([
+    {
+      name: "Elopement Reduction",
+      clinical_goal_type: null,
+      reconciliation_status: "ambiguous",
+      summary_target_index: null,
+      matched_goal_refs: [
+        { field_key: "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS", section_index: 0 },
+        { field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS", section_index: 1 },
+      ],
+      classification_source: null,
+    },
+  ]);
+  expect(result?.counts).toEqual({
+    total: 1,
+    behavior: 0,
+    skill: 0,
+    summary_only: 0,
+    detailed_only: 0,
+    ambiguous: 1,
+  });
+});
+
+Deno.test("buildIehpSkillsBehaviorsResult reads summary input from payload targets only", () => {
+  const result = buildIehpSkillsBehaviorsResult([
+    {
+      field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+      section_index: 0,
+      payload: {
+        raw_text: "Physical Aggression, Functional Communication",
+      },
+    },
+  ]);
+
+  expect(result?.items).toEqual([]);
+  expect(result?.counts).toEqual({
+    total: 0,
+    behavior: 0,
+    skill: 0,
+    summary_only: 0,
+    detailed_only: 0,
+    ambiguous: 0,
+  });
+});

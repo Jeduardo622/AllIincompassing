@@ -59,21 +59,11 @@ const normalizeComparableName = (value: unknown): string =>
 
 const readSummaryTargets = (payload: Record<string, unknown>): string[] => {
   const rawTargets = payload.targets;
-  if (Array.isArray(rawTargets)) {
-    return rawTargets
-      .map((target) => normalizeScalar(target))
-      .filter(Boolean);
-  }
-
-  const rawText = normalizeScalar(payload.raw_text);
-  if (!rawText) {
-    return [];
-  }
-
-  return rawText
-    .split(/[\n,;]+/)
+  return Array.isArray(rawTargets)
+    ? rawTargets
     .map((target) => normalizeScalar(target))
-    .filter(Boolean);
+    .filter(Boolean)
+    : [];
 };
 
 const isDetailedGoalSection = (section: IehpSkillsBehaviorsSection): boolean =>
@@ -212,20 +202,49 @@ const reconcileTargets = (
   });
 
   const remainingGoals = goals.filter((goal) => !consumedGoalRefs.has(`${goal.field_key}:${goal.section_index}`));
-  const remainingByName = new Map<string, DetailedGoalCandidate[]>();
+  const remainingByAlias = new Map<string, DetailedGoalCandidate[]>();
   for (const goal of remainingGoals) {
-    const existing = remainingByName.get(goal.normalized_name) ?? [];
-    existing.push(goal);
-    remainingByName.set(goal.normalized_name, existing);
+    for (const alias of goal.aliases) {
+      const existing = remainingByAlias.get(alias) ?? [];
+      existing.push(goal);
+      remainingByAlias.set(alias, existing);
+    }
   }
 
-  const seenNames = new Set<string>();
+  const visitedRefs = new Set<string>();
   for (const goal of remainingGoals) {
-    if (seenNames.has(goal.normalized_name)) {
+    const goalRef = `${goal.field_key}:${goal.section_index}`;
+    if (visitedRefs.has(goalRef)) {
       continue;
     }
-    seenNames.add(goal.normalized_name);
-    const group = remainingByName.get(goal.normalized_name) ?? [];
+
+    const stack = [goal];
+    const group: DetailedGoalCandidate[] = [];
+    const groupRefs = new Set<string>();
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current) {
+        continue;
+      }
+      const currentRef = `${current.field_key}:${current.section_index}`;
+      if (groupRefs.has(currentRef)) {
+        continue;
+      }
+      groupRefs.add(currentRef);
+      visitedRefs.add(currentRef);
+      group.push(current);
+
+      for (const alias of current.aliases) {
+        for (const relatedGoal of remainingByAlias.get(alias) ?? []) {
+          const relatedRef = `${relatedGoal.field_key}:${relatedGoal.section_index}`;
+          if (!groupRefs.has(relatedRef)) {
+            stack.push(relatedGoal);
+          }
+        }
+      }
+    }
+
     if (group.length > 1) {
       items.push({
         name: goal.name,

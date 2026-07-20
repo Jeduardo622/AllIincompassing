@@ -7,6 +7,10 @@ import { isValidPhone, sanitizePhone } from '../src/lib/validation';
 
 import { cleanupAssessmentImportArtifacts } from './lib/assessment-import-cleanup';
 import {
+  IEHP_PDF_MINI_MATRIX_CASES,
+  assertIehpDocumentChecklistField,
+  buildIehpPdfMiniMatrixHtml,
+  canonicalizeUsPhoneForComparison,
   buildIehpSmokeCleanupFailureMessage,
   buildIehpSmokeCleanupFailureManifestPayload,
   buildIehpSmokeUploadFileName,
@@ -68,8 +72,33 @@ type IehpAssessorPhoneAssertion = {
   actualPhoneRedacted: string;
 };
 
+type IehpDocumentFieldAssertion = ReturnType<typeof assertIehpDocumentChecklistField>;
+
+type IehpSmokeCaseInput = {
+  caseId: string;
+  uploadFileName: string;
+  mimeType: string;
+  sourceFileBuffer: Buffer;
+  expectedReferralDate?: string | null;
+};
+
+type IehpSmokeCaseEvidence = {
+  ok: true;
+  mode: 'default-docx' | 'pdf-mini-matrix-case';
+  caseId: string;
+  templateType: 'iehp_fba';
+  status: AssessmentDocumentRecord['status'];
+  draftPrograms: number;
+  draftGoals: number;
+  assessorPhoneAssertion: IehpAssessorPhoneAssertion;
+  referralDateAssertion: IehpDocumentFieldAssertion | null;
+  cleanupVerified: true;
+  screenshot: string;
+};
+
 const DEFAULT_BASE_URL = 'https://app.allincompassing.ai';
 const EXTRACTION_TIMEOUT_MS = 120_000;
+const IEHP_REFERRAL_DATE_FIELD_KEY = 'IEHP_FBA_REFERRAL_DATE';
 
 type SupabaseClientFactory = typeof createClient;
 type SmokeAuthResult = { accessToken: string };
@@ -231,6 +260,40 @@ export const fetchIehpAssessorPhoneProvenance = async (args: {
   return Array.isArray(payload) ? payload as AssessmentExtractionProvenanceRow[] : [];
 };
 
+const fetchIehpAssessmentProvenance = async (args: {
+  accessToken: string;
+  assessmentDocumentId: string;
+  organizationId: string;
+  supabaseAnonKey: string;
+  supabaseUrl: string;
+  fieldKeys: string[];
+}): Promise<AssessmentExtractionProvenanceRow[]> => {
+  const encodedFieldKeys = args.fieldKeys
+    .map((fieldKey) => `"${fieldKey.replace(/"/g, '\\"')}"`)
+    .join(',');
+  const response = await fetchWithRetry(
+    `${args.supabaseUrl}/rest/v1/assessment_extractions?select=field_key,source_span&assessment_document_id=eq.${encodeURIComponent(
+      args.assessmentDocumentId,
+    )}&field_key=in.(${encodeURIComponent(encodedFieldKeys)})&organization_id=eq.${encodeURIComponent(
+      args.organizationId,
+    )}&limit=10`,
+    {
+      headers: {
+        apikey: args.supabaseAnonKey,
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    },
+    'IEHP assessment extraction provenance query',
+  );
+
+  if (!response.ok) {
+    throw new Error(`IEHP assessment extraction provenance query failed with status ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as unknown;
+  return Array.isArray(payload) ? payload as AssessmentExtractionProvenanceRow[] : [];
+};
+
 export const normalizeAssessmentChecklistResponse = (
   payload: ChecklistResponsePayload,
 ): ChecklistResponse => {
@@ -284,7 +347,7 @@ export const assertIehpAssessorPhoneChecklist = (args: {
     );
   }
 
-  const provenanceRows = args.provenanceRows ?? [];
+  const provenanceRows = (args.provenanceRows ?? []).filter((row) => row.field_key === IEHP_ASSESSOR_PHONE_FIELD_KEY);
   if (provenanceRows.length === 0) {
     throw new Error('IEHP smoke could not find IEHP_FBA_ASSESSOR_PHONE extraction provenance.');
   }
@@ -460,9 +523,9 @@ async function run() {
   const baseUrl = (process.env.PW_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
   const supabaseUrl = resolveSupabaseUrl();
   const supabaseAnonKey = resolveSupabaseAnonKey();
-  const sampleFilePath = resolveIehpSmokeSampleFile({ cwd: process.cwd() });
-  const sourceFileBuffer = readFileSync(sampleFilePath);
-  const uploadFileName = buildIehpSmokeUploadFileName();
+  const isPdfMiniMatrixMode = process.argv.includes('--pdf-mini-matrix');
+  const sampleFilePath = isPdfMiniMatrixMode ? null : resolveIehpSmokeSampleFile({ cwd: process.cwd() });
+  const defaultSourceFileBuffer = sampleFilePath ? readFileSync(sampleFilePath) : null;
   const credentialCandidates = [
     {
       email: process.env.PW_SUPERADMIN_EMAIL,
@@ -482,160 +545,262 @@ async function run() {
   const page = await context.newPage();
   const latestDir = ensureArtifactsDir();
 
-  let createdAssessment: AssessmentDocumentRecord | null = null;
-  let cleanupFailure: Error | null = null;
-  let runFailure: Error | null = null;
-  let cleanupFailureManifestPath: string | null = null;
-  let cleanupFailureManifestError: Error | null = null;
-
   try {
     await loginAndAssertSession(page, baseUrl, credentials.email, credentials.password);
-    await page.goto(`${baseUrl}/clients/${clientId}?tab=programs-goals`, {
-      waitUntil: 'domcontentloaded',
-      timeout: 60_000,
-    });
-    await page.waitForLoadState('networkidle').catch(() => undefined);
+    const runSmokeCase = async (caseInput: IehpSmokeCaseInput): Promise<IehpSmokeCaseEvidence> => {
+      let createdAssessment: AssessmentDocumentRecord | null = null;
+      let cleanupFailure: Error | null = null;
+      let runFailure: Error | null = null;
+      let cleanupFailureManifestPath: string | null = null;
+      let cleanupFailureManifestError: Error | null = null;
+      let cleanupVerified = false;
+      let caseEvidence: IehpSmokeCaseEvidence | null = null;
 
-    await page.locator('#programs-goals-fba-template').selectOption('iehp_fba');
-    await page.getByText('IEHP FBA Upload Workflow').waitFor({ timeout: 20_000 });
-    await page.locator('#programs-goals-fba-file-upload').setInputFiles({
-      name: uploadFileName,
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      buffer: sourceFileBuffer,
-    });
-    await page.getByRole('button', { name: /Upload IEHP FBA/i }).click();
-    await page.getByText('Uploading and processing your FBA. This can take a moment.').waitFor({ timeout: 20_000 });
+      try {
+        await page.goto(`${baseUrl}/clients/${clientId}?tab=programs-goals`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 60_000,
+        });
+        await page.waitForLoadState('networkidle').catch(() => undefined);
 
-    const deadline = Date.now() + EXTRACTION_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      const documents = await fetchAssessmentDocuments(baseUrl, accessToken, clientId);
-      createdAssessment =
-        documents.find((document) => document.file_name === uploadFileName && document.template_type === 'iehp_fba') ??
-        null;
-      if (createdAssessment && !['uploaded', 'extracting', 'extraction_running'].includes(createdAssessment.status)) {
-        break;
-      }
-      await pause(2_000);
-    }
+        await page.locator('#programs-goals-fba-template').selectOption('iehp_fba');
+        await page.getByText('IEHP FBA Upload Workflow').waitFor({ timeout: 20_000 });
+        await page.locator('#programs-goals-fba-file-upload').setInputFiles({
+          name: caseInput.uploadFileName,
+          mimeType: caseInput.mimeType,
+          buffer: caseInput.sourceFileBuffer,
+        });
+        await page.getByRole('button', { name: /Upload IEHP FBA/i }).click();
+        await page.getByText('Uploading and processing your FBA. This can take a moment.').waitFor({ timeout: 20_000 });
 
-    if (!createdAssessment) {
-      cleanupFailure = new Error('IEHP smoke could not rediscover the uploaded assessment for cleanup.');
-      throw new Error('Uploaded IEHP assessment document was not found in the queue.');
-    }
-    if (createdAssessment.status === 'drafted') {
-      throw new Error('IEHP import smoke unexpectedly created draft records and moved to drafted status.');
-    }
-    if (createdAssessment.status !== 'extracted') {
-      throw new Error(
-        `IEHP import smoke ended with ${createdAssessment.status}${
-          createdAssessment.extraction_error ? `: ${createdAssessment.extraction_error}` : ''
-        }`,
-      );
-    }
+        const deadline = Date.now() + EXTRACTION_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+          const documents = await fetchAssessmentDocuments(baseUrl, accessToken, clientId);
+          createdAssessment =
+            documents.find(
+              (document) => document.file_name === caseInput.uploadFileName && document.template_type === 'iehp_fba',
+            ) ?? null;
+          if (createdAssessment && !['uploaded', 'extracting', 'extraction_running'].includes(createdAssessment.status)) {
+            break;
+          }
+          await pause(2_000);
+        }
 
-    const { programCount, goalCount } = await fetchAssessmentDraftCounts(baseUrl, accessToken, createdAssessment.id);
-    if (programCount !== 0 || goalCount !== 0) {
-      throw new Error(`IEHP import smoke expected zero drafts but found ${programCount} program(s) and ${goalCount} goal(s).`);
-    }
-    const checklist = await fetchAssessmentChecklist(baseUrl, accessToken, createdAssessment.id);
-    const provenanceRows = await fetchIehpAssessorPhoneProvenance({
-      accessToken,
-      assessmentDocumentId: createdAssessment.id,
-      organizationId,
-      supabaseAnonKey,
-      supabaseUrl,
-    });
-    const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist({
-      checklist,
-      expectedPhone: expectedAssessorPhone,
-      provenanceRows,
-    });
+        if (!createdAssessment) {
+          cleanupFailure = new Error('IEHP smoke could not rediscover the uploaded assessment for cleanup.');
+          throw new Error('Uploaded IEHP assessment document was not found in the queue.');
+        }
+        if (createdAssessment.status === 'drafted') {
+          throw new Error('IEHP import smoke unexpectedly created draft records and moved to drafted status.');
+        }
+        if (createdAssessment.status !== 'extracted') {
+          throw new Error(
+            `IEHP import smoke ended with ${createdAssessment.status}${
+              createdAssessment.extraction_error ? `: ${createdAssessment.extraction_error}` : ''
+            }`,
+          );
+        }
 
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
-    await page.waitForLoadState('networkidle').catch(() => undefined);
-    await page.getByRole('button', { name: new RegExp(uploadFileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') })
-      .first()
-      .waitFor({ timeout: 20_000 });
+        const { programCount, goalCount } = await fetchAssessmentDraftCounts(baseUrl, accessToken, createdAssessment.id);
+        if (programCount !== 0 || goalCount !== 0) {
+          throw new Error(
+            `IEHP import smoke expected zero drafts but found ${programCount} program(s) and ${goalCount} goal(s).`,
+          );
+        }
 
-    const screenshotPath = path.join(latestDir, `iehp-assessment-import-smoke-${Date.now()}.png`);
-    await page.screenshot({ path: screenshotPath, fullPage: true });
+        const checklist = await fetchAssessmentChecklist(baseUrl, accessToken, createdAssessment.id);
+        const provenanceRows = await fetchIehpAssessmentProvenance({
+          accessToken,
+          assessmentDocumentId: createdAssessment.id,
+          organizationId,
+          supabaseAnonKey,
+          supabaseUrl,
+          fieldKeys: caseInput.expectedReferralDate
+            ? [IEHP_ASSESSOR_PHONE_FIELD_KEY, IEHP_REFERRAL_DATE_FIELD_KEY]
+            : [IEHP_ASSESSOR_PHONE_FIELD_KEY],
+        });
+        const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist({
+          checklist,
+          expectedPhone: expectedAssessorPhone,
+          provenanceRows,
+        });
+        const referralDateAssertion = caseInput.expectedReferralDate
+          ? assertIehpDocumentChecklistField({
+              checklist,
+              expectedValue: caseInput.expectedReferralDate,
+              fieldKey: IEHP_REFERRAL_DATE_FIELD_KEY,
+              provenanceRows,
+            })
+          : null;
 
-    console.log(
-      JSON.stringify(
-        {
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+        await page.waitForLoadState('networkidle').catch(() => undefined);
+        await page
+          .getByRole('button', {
+            name: new RegExp(caseInput.uploadFileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+          })
+          .first()
+          .waitFor({ timeout: 20_000 });
+
+        const screenshotPath = path.join(latestDir, `iehp-assessment-import-smoke-${caseInput.caseId}-${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+
+        caseEvidence = {
           ok: true,
+          mode: isPdfMiniMatrixMode ? 'pdf-mini-matrix-case' : 'default-docx',
+          caseId: caseInput.caseId,
           templateType: 'iehp_fba',
           status: createdAssessment.status,
           draftPrograms: programCount,
           draftGoals: goalCount,
           assessorPhoneAssertion,
+          referralDateAssertion,
+          cleanupVerified: true,
           screenshot: screenshotPath,
+        };
+      } catch (error) {
+        const screenshot = await captureFailureScreenshot(
+          page,
+          `playwright-iehp-assessment-import-smoke-${caseInput.caseId}-failure`,
+        );
+        console.error(`IEHP assessment import smoke failed for ${caseInput.caseId}. Screenshot: ${screenshot}`);
+        runFailure = error instanceof Error ? error : new Error(String(error));
+      } finally {
+        if (createdAssessment) {
+          await cleanupAssessmentImportArtifacts({
+            accessToken,
+            baseUrl,
+            supabaseAnonKey,
+            supabaseUrl,
+            target: {
+              assessmentDocumentId: createdAssessment.id,
+              bucketId: createdAssessment.bucket_id?.trim() || 'client-documents',
+              objectPath: createdAssessment.object_path,
+            },
+          }).catch((cleanupError) => {
+            cleanupFailure = cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError));
+            console.error(`IEHP assessment import smoke cleanup failed for ${caseInput.caseId}.`);
+          });
+        }
+        if (!cleanupFailure && caseEvidence) {
+          cleanupVerified = true;
+        }
+        if (cleanupFailure) {
+          try {
+            cleanupFailureManifestPath = writeCleanupFailureManifest({
+              latestDir,
+              cleanupError: cleanupFailure,
+              cleanupTargetKnown: Boolean(createdAssessment),
+              runError: runFailure,
+            });
+            console.error(
+              `IEHP assessment import smoke cleanup manifest written to ${cleanupFailureManifestPath} for ${caseInput.caseId}`,
+            );
+          } catch (manifestError) {
+            cleanupFailureManifestError =
+              manifestError instanceof Error ? manifestError : new Error(String(manifestError));
+            console.error('IEHP assessment import smoke could not write cleanup manifest', cleanupFailureManifestError);
+          }
+        }
+      }
+
+      if (runFailure && cleanupFailure) {
+        throw new Error(
+          buildIehpSmokeCleanupFailureMessage({
+            cleanupFailed: true,
+            cleanupManifestPath: cleanupFailureManifestPath,
+            cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
+            runFailed: true,
+          }),
+        );
+      }
+      if (runFailure) {
+        throw runFailure;
+      }
+      if (cleanupFailure) {
+        throw new Error(
+          buildIehpSmokeCleanupFailureMessage({
+            cleanupFailed: true,
+            cleanupManifestPath: cleanupFailureManifestPath,
+            cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
+            runFailed: false,
+          }),
+        );
+      }
+      if (!caseEvidence || !cleanupVerified) {
+        throw new Error(`IEHP assessment import smoke case ${caseInput.caseId} did not produce cleanup-verified evidence.`);
+      }
+
+      return caseEvidence;
+    };
+
+    if (isPdfMiniMatrixMode) {
+      const passedCases: IehpSmokeCaseEvidence[] = [];
+      for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
+        if (
+          canonicalizeUsPhoneForComparison(caseDefinition.documentPhone) ===
+          canonicalizeUsPhoneForComparison(expectedAssessorPhone)
+        ) {
+          throw new Error(
+            `IEHP PDF mini matrix case ${caseDefinition.id} normalized document phone matched the configured snapshot phone, so precedence proof would be ambiguous.`,
+          );
+        }
+        const generatorPage = await context.newPage();
+        try {
+          await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));
+          const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });
+          await generatorPage.close();
+          const caseEvidence = await runSmokeCase({
+            caseId: caseDefinition.id,
+            uploadFileName: buildIehpSmokeUploadFileName(Date.now(), 'pdf'),
+            mimeType: 'application/pdf',
+            sourceFileBuffer: pdfBuffer,
+            expectedReferralDate: caseDefinition.referralDate,
+          });
+          console.log(JSON.stringify(caseEvidence, null, 2));
+          passedCases.push(caseEvidence);
+        } finally {
+          if (!generatorPage.isClosed()) {
+            await generatorPage.close();
+          }
+        }
+      }
+
+      const aggregateEvidence = {
+        ok: true,
+        mode: 'pdf-mini-matrix',
+        totalCases: IEHP_PDF_MINI_MATRIX_CASES.length,
+        passedCases: passedCases.length,
+        cleanupVerifiedCases: passedCases.length,
+      };
+      console.log(JSON.stringify(aggregateEvidence, null, 2));
+      return;
+    }
+
+    const defaultCaseEvidence = await runSmokeCase({
+      caseId: 'default-docx',
+      uploadFileName: buildIehpSmokeUploadFileName(),
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      sourceFileBuffer: defaultSourceFileBuffer!,
+    });
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          templateType: 'iehp_fba',
+          status: defaultCaseEvidence.status,
+          draftPrograms: defaultCaseEvidence.draftPrograms,
+          draftGoals: defaultCaseEvidence.draftGoals,
+          assessorPhoneAssertion: defaultCaseEvidence.assessorPhoneAssertion,
+          screenshot: defaultCaseEvidence.screenshot,
         },
         null,
         2,
       ),
     );
-  } catch (error) {
-    const screenshot = await captureFailureScreenshot(page, 'playwright-iehp-assessment-import-smoke-failure');
-    console.error(`IEHP assessment import smoke failed. Screenshot: ${screenshot}`);
-    runFailure = error instanceof Error ? error : new Error(String(error));
   } finally {
-    if (createdAssessment) {
-      await cleanupAssessmentImportArtifacts({
-        accessToken,
-        baseUrl,
-        supabaseAnonKey,
-        supabaseUrl,
-        target: {
-          assessmentDocumentId: createdAssessment.id,
-          bucketId: createdAssessment.bucket_id?.trim() || 'client-documents',
-          objectPath: createdAssessment.object_path,
-        },
-      }).catch((cleanupError) => {
-        cleanupFailure = cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError));
-        console.error('IEHP assessment import smoke cleanup failed.');
-      });
-    }
     await context.close();
     await browser.close();
-    if (cleanupFailure) {
-      try {
-        cleanupFailureManifestPath = writeCleanupFailureManifest({
-          latestDir,
-          cleanupError: cleanupFailure,
-          cleanupTargetKnown: Boolean(createdAssessment),
-          runError: runFailure,
-        });
-        console.error(`IEHP assessment import smoke cleanup manifest written to ${cleanupFailureManifestPath}`);
-      } catch (manifestError) {
-        cleanupFailureManifestError =
-          manifestError instanceof Error ? manifestError : new Error(String(manifestError));
-        console.error('IEHP assessment import smoke could not write cleanup manifest', cleanupFailureManifestError);
-      }
-    }
-    if (runFailure && cleanupFailure) {
-      throw new Error(
-        buildIehpSmokeCleanupFailureMessage({
-          cleanupFailed: true,
-          cleanupManifestPath: cleanupFailureManifestPath,
-          cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
-          runFailed: true,
-        }),
-      );
-    }
-    if (runFailure) {
-      throw runFailure;
-    }
-    if (cleanupFailure) {
-      throw new Error(
-        buildIehpSmokeCleanupFailureMessage({
-          cleanupFailed: true,
-          cleanupManifestPath: cleanupFailureManifestPath,
-          cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
-          runFailed: false,
-        }),
-      );
-    }
   }
 }
 

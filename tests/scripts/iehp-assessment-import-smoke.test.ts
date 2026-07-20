@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { isValidPhone } from '../../src/lib/validation';
 
 import {
+  IEHP_PDF_MINI_MATRIX_CASES,
+  buildIehpPdfMiniMatrixHtml,
+  canonicalizeUsPhoneForComparison,
   buildIehpSmokeUploadFileName,
   buildIehpSmokeCleanupFailureMessage,
   buildIehpSmokeCleanupFailureManifestPayload,
@@ -52,6 +56,79 @@ describe('IEHP assessment import smoke helpers', () => {
 
   it('uses a synthetic upload file name instead of the source file name', () => {
     expect(buildIehpSmokeUploadFileName(12345)).toBe('iehp-fba-smoke-12345.docx');
+  });
+
+  it('keeps the default DOCX upload name and supports PDF uploads explicitly', () => {
+    expect(buildIehpSmokeUploadFileName(12345)).toBe('iehp-fba-smoke-12345.docx');
+    expect(buildIehpSmokeUploadFileName(12345, 'pdf')).toBe('iehp-fba-smoke-12345.pdf');
+  });
+
+  it('defines exactly the approved IEHP PDF mini matrix cases with unique synthetic values', () => {
+    expect(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.id)).toEqual([
+      'clean-single-page',
+      'multi-page-target-content',
+      'alternate-document-phone-format',
+    ]);
+
+    expect(new Set(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.referralDate)).size).toBe(
+      IEHP_PDF_MINI_MATRIX_CASES.length,
+    );
+    expect(new Set(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.documentPhone)).size).toBe(
+      IEHP_PDF_MINI_MATRIX_CASES.length,
+    );
+    expect(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.documentPhone)).toEqual([
+      '(909) 555-0101',
+      '909-555-0102',
+      '+1 909 555 0103',
+    ]);
+  });
+
+  it('keeps every matrix document phone in a distinct accepted format that passes the shared phone validator', () => {
+    expect(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.documentPhone)).toEqual([
+      '(909) 555-0101',
+      '909-555-0102',
+      '+1 909 555 0103',
+    ]);
+
+    for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
+      expect(isValidPhone(caseDefinition.documentPhone)).toBe(true);
+    }
+  });
+
+  it('renders the referral label and document phone into selectable HTML with a page break only for the multi-page case', () => {
+    for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
+      const html = buildIehpPdfMiniMatrixHtml(caseDefinition);
+
+      expect(html).toContain(`Referral Date: ${caseDefinition.referralDate}`);
+      expect(html).toContain(`Assessor's phone number: ${caseDefinition.documentPhone}`);
+
+      if (caseDefinition.pageBreakBeforeTarget) {
+        expect(html).toContain('page-break-before: always;');
+      } else {
+        expect(html).not.toContain('page-break-before: always;');
+      }
+    }
+  });
+
+  it('places the multi-page page-break token before both the referral date and assessor phone so the asserted content lands on page two', () => {
+    const html = buildIehpPdfMiniMatrixHtml(
+      IEHP_PDF_MINI_MATRIX_CASES.find((caseDefinition) => caseDefinition.id === 'multi-page-target-content')!,
+    );
+    const pageBreakIndex = html.indexOf('page-break-before: always;');
+    const pageOneContentIndex = html.indexOf('IEHP FBA PDF mini-matrix page one');
+    const referralDateIndex = html.indexOf('Referral Date: 07/01/2026');
+    const assessorPhoneIndex = html.indexOf("Assessor's phone number: 909-555-0102");
+
+    expect(pageOneContentIndex).toBeGreaterThanOrEqual(0);
+    expect(pageOneContentIndex).toBeLessThan(pageBreakIndex);
+    expect(pageBreakIndex).toBeGreaterThanOrEqual(0);
+    expect(pageBreakIndex).toBeLessThan(referralDateIndex);
+    expect(pageBreakIndex).toBeLessThan(assessorPhoneIndex);
+  });
+
+  it('canonicalizes equivalent ten-digit and +1 US phones to the same comparison value', () => {
+    expect(canonicalizeUsPhoneForComparison('909-555-0103')).toBe('9095550103');
+    expect(canonicalizeUsPhoneForComparison('+1 909 555 0103')).toBe('9095550103');
   });
 
   it('redacts cleanup failure manifests', () => {

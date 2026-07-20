@@ -1,6 +1,56 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
+export type IehpPdfMiniMatrixCase = {
+  id: 'clean-single-page' | 'multi-page-target-content' | 'alternate-document-phone-format';
+  referralDate: string;
+  documentPhone: string;
+  pageBreakBeforeTarget: boolean;
+};
+
+type DocumentChecklistItem = {
+  placeholder_key: string;
+  value_text?: string | null;
+};
+
+type DocumentChecklistResponse = {
+  items: DocumentChecklistItem[];
+};
+
+type AssessmentExtractionProvenanceRow = {
+  field_key?: string | null;
+  source_span?: unknown;
+};
+
+export type IehpDocumentFieldAssertion = {
+  fieldKey: string;
+  rowCount: number;
+  valueMatched: true;
+  provenanceRowCount: number;
+  documentProvenanceVerified: true;
+};
+
+export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
+  {
+    id: 'clean-single-page',
+    referralDate: '06/30/2026',
+    documentPhone: '(909) 555-0101',
+    pageBreakBeforeTarget: false,
+  },
+  {
+    id: 'multi-page-target-content',
+    referralDate: '07/01/2026',
+    documentPhone: '909-555-0102',
+    pageBreakBeforeTarget: true,
+  },
+  {
+    id: 'alternate-document-phone-format',
+    referralDate: '07/02/2026',
+    documentPhone: '+1 909 555 0103',
+    pageBreakBeforeTarget: false,
+  },
+] as const;
+
 type ResolveIehpSmokeSampleFileArgs = {
   cwd: string;
   env?: Pick<NodeJS.ProcessEnv, 'PW_ASSESSMENT_SAMPLE_FILE'>;
@@ -44,7 +94,86 @@ export const resolveIehpSmokeSampleFile = ({
   return path.resolve(cwd, matches[0]);
 };
 
-export const buildIehpSmokeUploadFileName = (timestamp = Date.now()): string => `iehp-fba-smoke-${timestamp}.docx`;
+export const buildIehpSmokeUploadFileName = (
+  timestamp = Date.now(),
+  extension: 'docx' | 'pdf' = 'docx',
+): string => `iehp-fba-smoke-${timestamp}.${extension}`;
+
+export const canonicalizeUsPhoneForComparison = (phone: string): string => {
+  const digits = phone.replace(/\D/g, '');
+  return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+};
+
+export const buildIehpPdfMiniMatrixHtml = (caseDefinition: IehpPdfMiniMatrixCase): string => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${caseDefinition.id}</title>
+  </head>
+  <body>
+    <section>
+      ${caseDefinition.pageBreakBeforeTarget ? '<p>IEHP FBA PDF mini-matrix page one</p><div style="page-break-before: always;"></div>' : ''}
+      <p>Referral Date: ${caseDefinition.referralDate}</p>
+      <p>Assessor's phone number: ${caseDefinition.documentPhone}</p>
+    </section>
+  </body>
+</html>`;
+
+export const assertIehpDocumentChecklistField = (args: {
+  checklist: DocumentChecklistResponse;
+  expectedValue: string;
+  fieldKey: string;
+  provenanceRows?: AssessmentExtractionProvenanceRow[];
+}): IehpDocumentFieldAssertion => {
+  const matchingRows = args.checklist.items.filter((item) => item.placeholder_key === args.fieldKey);
+  if (matchingRows.length === 0) {
+    throw new Error(`IEHP smoke could not find ${args.fieldKey} in assessment checklist.`);
+  }
+  if (matchingRows.length !== 1) {
+    throw new Error(`IEHP smoke expected exactly one ${args.fieldKey} row but found ${matchingRows.length}.`);
+  }
+
+  const valueText = matchingRows[0]?.value_text?.trim() ?? '';
+  if (!valueText) {
+    throw new Error(`IEHP smoke found ${args.fieldKey} but its value was empty.`);
+  }
+  if (valueText !== args.expectedValue) {
+    throw new Error(`IEHP smoke expected ${args.fieldKey} to match the expected document value exactly.`);
+  }
+
+  const provenanceRows = (args.provenanceRows ?? []).filter((row) => row.field_key === args.fieldKey);
+  if (provenanceRows.length === 0) {
+    throw new Error(`IEHP smoke could not find ${args.fieldKey} extraction provenance.`);
+  }
+  if (provenanceRows.length !== 1) {
+    throw new Error(
+      `IEHP smoke expected exactly one ${args.fieldKey} extraction provenance row but found ${provenanceRows.length}.`,
+    );
+  }
+
+  const sourceSpan = provenanceRows[0]?.source_span;
+  const sourceMethod = sourceSpan && typeof sourceSpan === 'object' && 'method' in sourceSpan
+    ? (sourceSpan as { method?: unknown }).method
+    : undefined;
+  if (!sourceMethod) {
+    throw new Error(
+      `IEHP smoke expected ${args.fieldKey} provenance to expose exactly one non-client_snapshot source span.`,
+    );
+  }
+  if (sourceMethod === 'client_snapshot') {
+    throw new Error(
+      `IEHP smoke expected ${args.fieldKey} provenance to come from document extraction, not client_snapshot.`,
+    );
+  }
+
+  return {
+    fieldKey: args.fieldKey,
+    rowCount: matchingRows.length,
+    valueMatched: true,
+    provenanceRowCount: provenanceRows.length,
+    documentProvenanceVerified: true,
+  };
+};
 
 export const buildIehpSmokeCleanupFailureManifestPayload = (args: {
   cleanupError: Error;

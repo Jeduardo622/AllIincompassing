@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { assertIehpDocumentChecklistField } from '../../scripts/lib/iehp-assessment-import-smoke';
 
 import {
   assertIehpAssessorPhoneChecklist,
@@ -516,6 +517,52 @@ describe('assertIehpAssessorPhoneChecklist', () => {
     });
   });
 
+  it('ignores mixed-field provenance rows when enforcing assessor phone provenance cardinality', () => {
+    expect(
+      assertIehpAssessorPhoneChecklist({
+        checklist: {
+          items: [
+            {
+              id: 'row-1',
+              placeholder_key: 'IEHP_FBA_ASSESSOR_PHONE',
+              label: "Assessor's phone number",
+              value_text: '(951) 555-0101',
+            },
+          ],
+        },
+        expectedPhone: '(951) 555-0101',
+        provenanceRows: [
+          {
+            field_key: 'IEHP_FBA_REFERRAL_DATE',
+            source_span: {
+              method: 'document_text',
+              field: 'IEHP_FBA_REFERRAL_DATE',
+            },
+          },
+          {
+            field_key: 'IEHP_FBA_ASSESSOR_PHONE',
+            source_span: {
+              method: 'client_snapshot',
+              field: 'primary_therapist_phone',
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      fieldKey: 'IEHP_FBA_ASSESSOR_PHONE',
+      rowCount: 1,
+      nonEmpty: true,
+      validFormat: true,
+      precedenceMatchedExpectedPhone: true,
+      provenanceRowCount: 1,
+      provenanceVerified: true,
+      sourceMethod: 'client_snapshot',
+      sourceField: 'primary_therapist_phone',
+      expectedPhoneRedacted: '(***) ***-0101',
+      actualPhoneRedacted: '(***) ***-0101',
+    });
+  });
+
   it.each([
     {
       name: 'missing provenance row',
@@ -751,22 +798,225 @@ describe('normalizeAssessmentChecklistResponse', () => {
 });
 
 describe('playwright-iehp-assessment-import-smoke structure', () => {
-  it('loads checklist assertions before the unchanged cleanup finally block', () => {
+  it('requires explicit pdf mini matrix mode, per-case cleanup, and aggregate evidence ordering', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+    const packageJson = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    ) as {
+      scripts?: Record<string, string>;
+    };
+
+    const miniMatrixFlagIndex = script.indexOf("const isPdfMiniMatrixMode = process.argv.includes('--pdf-mini-matrix');");
+    const matrixCaseLoopIndex = script.indexOf('for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES)');
+    const generatorPageIndex = script.indexOf('const generatorPage = await context.newPage();');
+    const setContentIndex = script.indexOf('await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));');
+    const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
+    const generatorCloseIndex = script.indexOf('await generatorPage.close();');
+    const pdfMimeIndex = script.indexOf("mimeType: 'application/pdf'");
+    const pdfFileNameIndex = script.indexOf("buildIehpSmokeUploadFileName(Date.now(), 'pdf')");
+    const caseRunnerIndex = script.indexOf('const runSmokeCase = async (');
+    const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
+    const provenanceFetchIndex = script.indexOf('const provenanceRows = await fetchIehpAssessmentProvenance');
+    const assessorPhoneAssertionIndex = script.indexOf('const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist');
+    const referralDateAssertionIndex = script.indexOf('const referralDateAssertion = caseInput.expectedReferralDate');
+    const cleanupVerifiedIndex = script.indexOf('cleanupVerified = true;');
+    const caseEvidenceIndex = script.indexOf('console.log(JSON.stringify(caseEvidence, null, 2));');
+    const caseFinallyIndex = script.indexOf('} finally {');
+    const cleanupCallIndex = script.indexOf('await cleanupAssessmentImportArtifacts({');
+    const aggregateEvidenceIndex = script.indexOf('console.log(JSON.stringify(aggregateEvidence, null, 2));');
+    const aggregateCleanupIndex = script.indexOf('cleanupVerifiedCases: passedCases.length,');
+
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-smoke']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts',
+    );
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-pdf-mini-matrix']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts --pdf-mini-matrix',
+    );
+    expect(miniMatrixFlagIndex).toBeGreaterThanOrEqual(0);
+    expect(caseRunnerIndex).toBeGreaterThan(miniMatrixFlagIndex);
+    expect(matrixCaseLoopIndex).toBeGreaterThan(miniMatrixFlagIndex);
+    expect(generatorPageIndex).toBeGreaterThan(matrixCaseLoopIndex);
+    expect(setContentIndex).toBeGreaterThan(generatorPageIndex);
+    expect(pagePdfIndex).toBeGreaterThan(setContentIndex);
+    expect(generatorCloseIndex).toBeGreaterThan(pagePdfIndex);
+    expect(pdfFileNameIndex).toBeGreaterThan(generatorCloseIndex);
+    expect(pdfMimeIndex).toBeGreaterThan(pdfFileNameIndex);
+    expect(checklistFetchIndex).toBeGreaterThanOrEqual(0);
+    expect(provenanceFetchIndex).toBeGreaterThan(checklistFetchIndex);
+    expect(assessorPhoneAssertionIndex).toBeGreaterThan(provenanceFetchIndex);
+    expect(referralDateAssertionIndex).toBeGreaterThan(assessorPhoneAssertionIndex);
+    expect(caseFinallyIndex).toBeGreaterThan(referralDateAssertionIndex);
+    expect(cleanupCallIndex).toBeGreaterThan(caseFinallyIndex);
+    expect(cleanupVerifiedIndex).toBeGreaterThan(cleanupCallIndex);
+    expect(caseEvidenceIndex).toBeGreaterThan(cleanupVerifiedIndex);
+    expect(aggregateCleanupIndex).toBeGreaterThan(caseEvidenceIndex);
+    expect(aggregateEvidenceIndex).toBeGreaterThan(aggregateCleanupIndex);
+  });
+
+  it('keeps default docx invocation free of referral-date requirements while matrix cases keep them', () => {
     const script = readFileSync(
       path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
       'utf8',
     );
 
-    const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
-    const provenanceFetchIndex = script.indexOf('const provenanceRows = await fetchIehpAssessorPhoneProvenance');
-    const assertionIndex = script.indexOf('const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist');
-    const cleanupFinallyIndex = script.indexOf('} finally {');
-    const cleanupCallIndex = script.indexOf('await cleanupAssessmentImportArtifacts({');
+    const matrixReferralIndex = script.indexOf('expectedReferralDate: caseDefinition.referralDate');
+    const defaultReferralIndex = script.indexOf("expectedReferralDate: '06/30/2026'");
+    const nullableReferralAssertionIndex = script.indexOf('const referralDateAssertion = caseInput.expectedReferralDate');
+    const defaultCaseStartIndex = script.indexOf("const defaultCaseEvidence = await runSmokeCase({");
+    const defaultCaseBlock = script.slice(defaultCaseStartIndex, script.indexOf('});', defaultCaseStartIndex) + 3);
 
-    expect(checklistFetchIndex).toBeGreaterThanOrEqual(0);
-    expect(provenanceFetchIndex).toBeGreaterThan(checklistFetchIndex);
-    expect(assertionIndex).toBeGreaterThan(provenanceFetchIndex);
-    expect(cleanupFinallyIndex).toBeGreaterThan(assertionIndex);
-    expect(cleanupCallIndex).toBeGreaterThan(cleanupFinallyIndex);
+    expect(matrixReferralIndex).toBeGreaterThanOrEqual(0);
+    expect(defaultReferralIndex).toBe(-1);
+    expect(nullableReferralAssertionIndex).toBeGreaterThanOrEqual(0);
+    expect(defaultCaseStartIndex).toBeGreaterThan(nullableReferralAssertionIndex);
+    expect(defaultCaseBlock).not.toContain('expectedReferralDate:');
+  });
+});
+
+describe('assertIehpDocumentChecklistField', () => {
+  const checklistWithValue = (valueText: string) => ({
+    items: [
+      {
+        id: 'row-1',
+        placeholder_key: 'IEHP_FBA_REFERRAL_DATE',
+        label: 'Referral Date',
+        value_text: valueText,
+      },
+    ],
+  });
+
+  const documentProvenanceRow = {
+    field_key: 'IEHP_FBA_REFERRAL_DATE',
+    source_span: {
+      method: 'document_text',
+      field: 'IEHP_FBA_REFERRAL_DATE',
+    },
+  };
+
+  it('returns redacted boolean evidence for a single exact document-backed referral date match', () => {
+    expect(
+      assertIehpDocumentChecklistField({
+        checklist: checklistWithValue('06/30/2026'),
+        expectedValue: '06/30/2026',
+        fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+        provenanceRows: [documentProvenanceRow],
+      }),
+    ).toEqual({
+      fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+      rowCount: 1,
+      valueMatched: true,
+      provenanceRowCount: 1,
+      documentProvenanceVerified: true,
+    });
+  });
+
+  it('ignores provenance rows for other field keys when enforcing the referral-date contract', () => {
+    expect(
+      assertIehpDocumentChecklistField({
+        checklist: checklistWithValue('06/30/2026'),
+        expectedValue: '06/30/2026',
+        fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+        provenanceRows: [
+          documentProvenanceRow,
+          {
+            field_key: 'IEHP_FBA_ASSESSOR_PHONE',
+            source_span: {
+              method: 'document_text',
+              field: 'IEHP_FBA_ASSESSOR_PHONE',
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+      rowCount: 1,
+      valueMatched: true,
+      provenanceRowCount: 1,
+      documentProvenanceVerified: true,
+    });
+  });
+
+  it.each([
+    {
+      name: 'missing row',
+      checklist: { items: [] },
+      provenanceRows: [documentProvenanceRow],
+      message: 'IEHP smoke could not find IEHP_FBA_REFERRAL_DATE in assessment checklist.',
+    },
+    {
+      name: 'duplicate rows',
+      checklist: {
+        items: [
+          {
+            id: 'row-1',
+            placeholder_key: 'IEHP_FBA_REFERRAL_DATE',
+            value_text: '06/30/2026',
+          },
+          {
+            id: 'row-2',
+            placeholder_key: 'IEHP_FBA_REFERRAL_DATE',
+            value_text: '07/01/2026',
+          },
+        ],
+      },
+      provenanceRows: [documentProvenanceRow],
+      message: 'IEHP smoke expected exactly one IEHP_FBA_REFERRAL_DATE row but found 2.',
+    },
+    {
+      name: 'empty value',
+      checklist: checklistWithValue('   '),
+      provenanceRows: [documentProvenanceRow],
+      message: 'IEHP smoke found IEHP_FBA_REFERRAL_DATE but its value was empty.',
+    },
+    {
+      name: 'mismatched value',
+      checklist: checklistWithValue('07/01/2026'),
+      provenanceRows: [documentProvenanceRow],
+      message: 'IEHP smoke expected IEHP_FBA_REFERRAL_DATE to match the expected document value exactly.',
+    },
+    {
+      name: 'missing provenance row',
+      checklist: checklistWithValue('06/30/2026'),
+      provenanceRows: [],
+      message: 'IEHP smoke could not find IEHP_FBA_REFERRAL_DATE extraction provenance.',
+    },
+    {
+      name: 'duplicate provenance rows',
+      checklist: checklistWithValue('06/30/2026'),
+      provenanceRows: [documentProvenanceRow, documentProvenanceRow],
+      message: 'IEHP smoke expected exactly one IEHP_FBA_REFERRAL_DATE extraction provenance row but found 2.',
+    },
+    {
+      name: 'client snapshot provenance row',
+      checklist: checklistWithValue('06/30/2026'),
+      provenanceRows: [
+        {
+          field_key: 'IEHP_FBA_REFERRAL_DATE',
+          source_span: {
+            method: 'client_snapshot',
+            field: 'referral_date',
+          },
+        },
+      ],
+      message: 'IEHP smoke expected IEHP_FBA_REFERRAL_DATE provenance to come from document extraction, not client_snapshot.',
+    },
+    {
+      name: 'missing provenance source span',
+      checklist: checklistWithValue('06/30/2026'),
+      provenanceRows: [{ field_key: 'IEHP_FBA_REFERRAL_DATE', source_span: null }],
+      message: 'IEHP smoke expected IEHP_FBA_REFERRAL_DATE provenance to expose exactly one non-client_snapshot source span.',
+    },
+  ])('fails clearly for $name', ({ checklist, provenanceRows, message }) => {
+    expect(() =>
+      assertIehpDocumentChecklistField({
+        checklist,
+        expectedValue: '06/30/2026',
+        fieldKey: 'IEHP_FBA_REFERRAL_DATE',
+        provenanceRows,
+      }),
+    ).toThrow(message);
   });
 });

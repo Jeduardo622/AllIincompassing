@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { isValidPhone, sanitizePhone } from '../src/lib/validation';
+import * as iehpAssessmentImportSmoke from './lib/iehp-assessment-import-smoke';
 
 import { cleanupAssessmentImportArtifacts } from './lib/assessment-import-cleanup';
 import {
@@ -80,6 +81,7 @@ type IehpSmokeCaseInput = {
   mimeType: string;
   sourceFileBuffer: Buffer;
   expectedReferralDate?: string | null;
+  assessmentAssertions?: (args: { checklist: ChecklistResponse }) => Record<string, unknown> | null;
 };
 
 type IehpSmokeCaseEvidence = {
@@ -92,6 +94,7 @@ type IehpSmokeCaseEvidence = {
   draftGoals: number;
   assessorPhoneAssertion: IehpAssessorPhoneAssertion;
   referralDateAssertion: IehpDocumentFieldAssertion | null;
+  skillsBehaviorsProofResult?: Record<string, unknown> | null;
   cleanupVerified: true;
   screenshot: string;
 };
@@ -524,7 +527,11 @@ async function run() {
   const supabaseUrl = resolveSupabaseUrl();
   const supabaseAnonKey = resolveSupabaseAnonKey();
   const isPdfMiniMatrixMode = process.argv.includes('--pdf-mini-matrix');
-  const sampleFilePath = isPdfMiniMatrixMode ? null : resolveIehpSmokeSampleFile({ cwd: process.cwd() });
+  const isSkillsBehaviorsProofMode = process.argv.includes('--skills-behaviors-proof');
+  const IEHP_SKILLS_BEHAVIORS_PROOF_CASE = iehpAssessmentImportSmoke.IEHP_SKILLS_BEHAVIORS_PROOF_CASE;
+  // buildIehpSkillsBehaviorsProofPdfHtml
+  const sampleFilePath =
+    isPdfMiniMatrixMode || isSkillsBehaviorsProofMode ? null : resolveIehpSmokeSampleFile({ cwd: process.cwd() });
   const defaultSourceFileBuffer = sampleFilePath ? readFileSync(sampleFilePath) : null;
   const credentialCandidates = [
     {
@@ -632,6 +639,7 @@ async function run() {
               provenanceRows,
             })
           : null;
+        const skillsBehaviorsProofResult = caseInput.assessmentAssertions?.({ checklist }) ?? null;
 
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
         await page.waitForLoadState('networkidle').catch(() => undefined);
@@ -655,6 +663,7 @@ async function run() {
           draftGoals: goalCount,
           assessorPhoneAssertion,
           referralDateAssertion,
+          skillsBehaviorsProofResult,
           cleanupVerified: true,
           screenshot: screenshotPath,
         };
@@ -761,7 +770,7 @@ async function run() {
           passedCases.push(caseEvidence);
         } finally {
           if (!generatorPage.isClosed()) {
-            await generatorPage.close();
+            await generatorPage.close().then(() => undefined);
           }
         }
       }
@@ -775,6 +784,51 @@ async function run() {
       };
       console.log(JSON.stringify(aggregateEvidence, null, 2));
       return;
+    }
+
+    if (isSkillsBehaviorsProofMode) {
+      const generatorPage = await context.newPage();
+      try {
+        await generatorPage.setContent(
+          iehpAssessmentImportSmoke.buildIehpSkillsBehaviorsProofPdfHtml(IEHP_SKILLS_BEHAVIORS_PROOF_CASE),
+        );
+        const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });
+        await generatorPage.close().then(() => undefined);
+        const proofCaseEvidence = await runSmokeCase({
+          caseId: IEHP_SKILLS_BEHAVIORS_PROOF_CASE.id,
+          uploadFileName: (buildIehpSmokeUploadFileName(Date.now()))
+            .replace(/\.docx$/i, '.pdf'),
+          mimeType: 'application/pdf',
+          sourceFileBuffer: pdfBuffer,
+          assessmentAssertions: ({ checklist }) =>
+            iehpAssessmentImportSmoke.assertIehpSkillsBehaviorsChecklistSection({
+              checklist,
+              proofCase: IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+            }),
+        });
+        console.log(
+          JSON.stringify(
+            {
+              ok: true,
+              mode: 'skills-behaviors-proof',
+              caseId: proofCaseEvidence.caseId,
+              templateType: proofCaseEvidence.templateType,
+              status: proofCaseEvidence.status,
+              draftPrograms: proofCaseEvidence.draftPrograms,
+              draftGoals: proofCaseEvidence.draftGoals,
+              skillsBehaviorsAssertion: proofCaseEvidence.skillsBehaviorsProofResult,
+              cleanupVerified: proofCaseEvidence.cleanupVerified,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      } finally {
+        if (!generatorPage.isClosed()) {
+          await generatorPage.close().then(() => undefined);
+        }
+      }
     }
 
     const defaultCaseEvidence = await runSmokeCase({

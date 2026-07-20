@@ -3,7 +3,10 @@ import { isValidPhone } from '../../src/lib/validation';
 
 import {
   IEHP_PDF_MINI_MATRIX_CASES,
+  IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+  assertIehpSkillsBehaviorsChecklistSection,
   buildIehpPdfMiniMatrixHtml,
+  buildIehpSkillsBehaviorsProofPdfHtml,
   canonicalizeUsPhoneForComparison,
   buildIehpSmokeUploadFileName,
   buildIehpSmokeCleanupFailureMessage,
@@ -131,6 +134,38 @@ describe('IEHP assessment import smoke helpers', () => {
     expect(canonicalizeUsPhoneForComparison('+1 909 555 0103')).toBe('9095550103');
   });
 
+  it('defines one dedicated opt-in skills behaviors proof case without changing the existing mini matrix cases', () => {
+    expect(IEHP_PDF_MINI_MATRIX_CASES).toHaveLength(3);
+    expect(IEHP_SKILLS_BEHAVIORS_PROOF_CASE).toMatchObject({
+      id: 'skills-behaviors-proof',
+      expectedSectionKey: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+      expectedVersion: 1,
+      expectedCounts: {
+        total: 4,
+        behavior: 1,
+        skill: 2,
+        summary_only: 1,
+        detailed_only: 1,
+        ambiguous: 0,
+      },
+      expectedTargets: ['Physical Aggression', 'Functional Communication', 'Community Safety'],
+    });
+  });
+
+  it('renders the dedicated skills behaviors proof html with early summary targets, later child goal blocks, one detailed-only child, and one excluded parent goal', () => {
+    const html = buildIehpSkillsBehaviorsProofPdfHtml(IEHP_SKILLS_BEHAVIORS_PROOF_CASE);
+
+    expect(html).toContain('Behaviors and Functional Skills to be Addressed');
+    expect(html).toContain('Physical Aggression');
+    expect(html).toContain('Functional Communication');
+    expect(html).toContain('Community Safety');
+    expect(html).toContain('Target Behavior and Intervention Blocks');
+    expect(html).toContain('Skill and School Goal Blocks');
+    expect(html).toContain('Waiting');
+    expect(html).toContain('Parent Coaching');
+    expect(html).toContain('goal type: parent');
+  });
+
   it('redacts cleanup failure manifests', () => {
     const payload = buildIehpSmokeCleanupFailureManifestPayload({
       cleanupError: new Error('Storage cleanup failed for client-documents/clients/client-1/assessments/file.docx'),
@@ -162,5 +197,209 @@ describe('IEHP assessment import smoke helpers', () => {
     expect(message).toContain('artifacts/latest/manifest.json');
     expect(message).not.toContain('client-documents');
     expect(message).not.toContain('doc-1');
+  });
+});
+
+describe('assertIehpSkillsBehaviorsChecklistSection', () => {
+  const buildChecklist = (structuredSectionOverrides: Array<Record<string, unknown>>) => ({
+    items: [],
+    structured_sections: structuredSectionOverrides,
+  });
+
+  const validStructuredSection = {
+    field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+    section_index: 0,
+    payload: {
+      targets: ['Physical Aggression', 'Functional Communication', 'Community Safety'],
+      skills_behaviors: {
+        version: 1,
+        counts: {
+          total: 4,
+          behavior: 1,
+          skill: 2,
+          summary_only: 1,
+          detailed_only: 1,
+          ambiguous: 0,
+        },
+        items: [
+          {
+            name: 'Physical Aggression',
+            clinical_goal_type: 'behavior',
+            reconciliation_status: 'matched',
+            summary_target_index: 0,
+            matched_goal_refs: [
+              { field_key: 'IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS', section_index: 0 },
+            ],
+            classification_source: 'detailed_goal_field_key',
+          },
+          {
+            name: 'Functional Communication',
+            clinical_goal_type: 'skill',
+            reconciliation_status: 'matched',
+            summary_target_index: 1,
+            matched_goal_refs: [
+              { field_key: 'IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS', section_index: 0 },
+            ],
+            classification_source: 'detailed_goal_field_key',
+          },
+          {
+            name: 'Community Safety',
+            clinical_goal_type: null,
+            reconciliation_status: 'summary_only',
+            summary_target_index: 2,
+            matched_goal_refs: [],
+            classification_source: null,
+          },
+          {
+            name: 'Waiting',
+            clinical_goal_type: 'skill',
+            reconciliation_status: 'detailed_only',
+            summary_target_index: null,
+            matched_goal_refs: [
+              { field_key: 'IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS', section_index: 1 },
+            ],
+            classification_source: 'explicit_goal_type',
+          },
+        ],
+      },
+    },
+  };
+
+  it('returns redacted count-and-boolean-only evidence for the dedicated proof contract', () => {
+    expect(
+      assertIehpSkillsBehaviorsChecklistSection({
+        checklist: buildChecklist([validStructuredSection]),
+        proofCase: IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+      }),
+    ).toEqual({
+      rowCount: 1,
+      version: 1,
+      totalCountMatched: true,
+      behaviorParsed: true,
+      skillParsed: true,
+      needsReviewPreserved: true,
+      detailedOnlyPreserved: true,
+      parentExcluded: true,
+      provenanceVerified: true,
+    });
+  });
+
+  it.each([
+    {
+      name: 'missing summary row',
+      checklist: buildChecklist([]),
+      message:
+        'IEHP smoke could not find IEHP_FBA_BEHAVIOR_SKILL_TARGETS in structured sections.',
+    },
+    {
+      name: 'duplicate summary rows',
+      checklist: buildChecklist([validStructuredSection, validStructuredSection]),
+      message:
+        'IEHP smoke expected exactly one IEHP_FBA_BEHAVIOR_SKILL_TARGETS structured section row but found 2.',
+    },
+    {
+      name: 'missing skills behaviors payload',
+      checklist: buildChecklist([
+        {
+          ...validStructuredSection,
+          payload: {
+            targets: ['Physical Aggression', 'Functional Communication', 'Community Safety'],
+          },
+        },
+      ]),
+      message:
+        'IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors was missing or malformed.',
+    },
+    {
+      name: 'wrong counts',
+      checklist: buildChecklist([
+        {
+          ...validStructuredSection,
+          payload: {
+            ...validStructuredSection.payload,
+            skills_behaviors: {
+              ...validStructuredSection.payload.skills_behaviors,
+              counts: {
+                total: 5,
+                behavior: 1,
+                skill: 2,
+                summary_only: 1,
+                detailed_only: 1,
+                ambiguous: 0,
+              },
+            },
+          },
+        },
+      ]),
+      message:
+        'IEHP smoke expected IEHP_FBA_BEHAVIOR_SKILL_TARGETS counts to match the synthetic proof contract exactly.',
+    },
+    {
+      name: 'parent included',
+      checklist: buildChecklist([
+        {
+          ...validStructuredSection,
+          payload: {
+            ...validStructuredSection.payload,
+            skills_behaviors: {
+              ...validStructuredSection.payload.skills_behaviors,
+              items: [
+                ...validStructuredSection.payload.skills_behaviors.items,
+                {
+                  name: 'Parent Coaching',
+                  clinical_goal_type: 'skill',
+                  reconciliation_status: 'detailed_only',
+                  summary_target_index: null,
+                  matched_goal_refs: [
+                    { field_key: 'IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS', section_index: 2 },
+                  ],
+                  classification_source: 'detailed_goal_field_key',
+                },
+              ],
+              counts: {
+                total: 5,
+                behavior: 1,
+                skill: 3,
+                summary_only: 1,
+                detailed_only: 2,
+                ambiguous: 0,
+              },
+            },
+          },
+        },
+      ]),
+      message:
+        'IEHP smoke expected the parent education goal to stay excluded from skills_behaviors items.',
+    },
+    {
+      name: 'missing matched goal refs',
+      checklist: buildChecklist([
+        {
+          ...validStructuredSection,
+          payload: {
+            ...validStructuredSection.payload,
+            skills_behaviors: {
+              ...validStructuredSection.payload.skills_behaviors,
+              items: [
+                {
+                  ...validStructuredSection.payload.skills_behaviors.items[0],
+                  matched_goal_refs: [],
+                },
+                ...validStructuredSection.payload.skills_behaviors.items.slice(1),
+              ],
+            },
+          },
+        },
+      ]),
+      message:
+        'IEHP smoke expected every matched or detailed-only skills_behaviors item to expose provenance refs.',
+    },
+  ])('fails clearly for $name', ({ checklist, message }) => {
+    expect(() =>
+      assertIehpSkillsBehaviorsChecklistSection({
+        checklist,
+        proofCase: IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+      }),
+    ).toThrow(message);
   });
 });

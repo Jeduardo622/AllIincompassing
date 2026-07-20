@@ -15,11 +15,80 @@ type DocumentChecklistItem = {
 
 type DocumentChecklistResponse = {
   items: DocumentChecklistItem[];
+  structured_sections?: unknown[];
 };
 
 type AssessmentExtractionProvenanceRow = {
   field_key?: string | null;
   source_span?: unknown;
+};
+
+type SkillsBehaviorsChecklistStructuredSection = {
+  field_key?: unknown;
+  payload?: unknown;
+};
+
+type SkillsBehaviorsGoalRef = {
+  field_key?: unknown;
+  section_index?: unknown;
+};
+
+type SkillsBehaviorsItem = {
+  name?: unknown;
+  clinical_goal_type?: unknown;
+  reconciliation_status?: unknown;
+  summary_target_index?: unknown;
+  matched_goal_refs?: unknown;
+  classification_source?: unknown;
+};
+
+type SkillsBehaviorsCounts = {
+  total?: unknown;
+  behavior?: unknown;
+  skill?: unknown;
+  summary_only?: unknown;
+  detailed_only?: unknown;
+  ambiguous?: unknown;
+};
+
+export type IehpSkillsBehaviorsProofCase = {
+  id: 'skills-behaviors-proof';
+  expectedSectionKey: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS';
+  expectedVersion: 1;
+  expectedTargets: readonly [string, string, string];
+  expectedCounts: {
+    total: 4;
+    behavior: 1;
+    skill: 2;
+    summary_only: 1;
+    detailed_only: 1;
+    ambiguous: 0;
+  };
+  expectedStatuses: {
+    behaviorMatched: 'matched';
+    skillMatched: 'matched';
+    needsReview: 'summary_only';
+    detailedOnly: 'detailed_only';
+  };
+  expectedItems: {
+    behavior: string;
+    skill: string;
+    needsReview: string;
+    detailedOnly: string;
+    excludedParent: string;
+  };
+};
+
+export type IehpSkillsBehaviorsAssertion = {
+  rowCount: 1;
+  version: 1;
+  totalCountMatched: true;
+  behaviorParsed: true;
+  skillParsed: true;
+  needsReviewPreserved: true;
+  detailedOnlyPreserved: true;
+  parentExcluded: true;
+  provenanceVerified: true;
 };
 
 export type IehpDocumentFieldAssertion = {
@@ -50,6 +119,34 @@ export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
     pageBreakBeforeTarget: false,
   },
 ] as const;
+
+export const IEHP_SKILLS_BEHAVIORS_PROOF_CASE: IehpSkillsBehaviorsProofCase = {
+  id: 'skills-behaviors-proof',
+  expectedSectionKey: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+  expectedVersion: 1,
+  expectedTargets: ['Physical Aggression', 'Functional Communication', 'Community Safety'],
+  expectedCounts: {
+    total: 4,
+    behavior: 1,
+    skill: 2,
+    summary_only: 1,
+    detailed_only: 1,
+    ambiguous: 0,
+  },
+  expectedStatuses: {
+    behaviorMatched: 'matched',
+    skillMatched: 'matched',
+    needsReview: 'summary_only',
+    detailedOnly: 'detailed_only',
+  },
+  expectedItems: {
+    behavior: 'Physical Aggression',
+    skill: 'Functional Communication',
+    needsReview: 'Community Safety',
+    detailedOnly: 'Waiting',
+    excludedParent: 'Parent Coaching',
+  },
+};
 
 type ResolveIehpSmokeSampleFileArgs = {
   cwd: string;
@@ -119,6 +216,42 @@ export const buildIehpPdfMiniMatrixHtml = (caseDefinition: IehpPdfMiniMatrixCase
   </body>
 </html>`;
 
+export const buildIehpSkillsBehaviorsProofPdfHtml = (
+  proofCase: IehpSkillsBehaviorsProofCase,
+): string => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${proofCase.id}</title>
+  </head>
+  <body>
+    <section>
+      <h1>Behaviors and Functional Skills to be Addressed</h1>
+      <p>${proofCase.expectedTargets.join(', ')}</p>
+    </section>
+    <section style="page-break-before: always;">
+      <h2>Target Behavior and Intervention Blocks</h2>
+      <p>goal type: child</p>
+      <p>program name: ${proofCase.expectedItems.behavior}</p>
+      <p>target behavior: Hit peers during transitions</p>
+      <p>clinical goal type: behavior</p>
+      <p>goal type: child</p>
+      <p>program name: ${proofCase.expectedItems.detailedOnly}</p>
+      <p>target behavior: Wait safely before crossing</p>
+      <p>clinical goal type: skill</p>
+    </section>
+    <section style="page-break-before: always;">
+      <h2>Skill and School Goal Blocks</h2>
+      <p>goal type: child</p>
+      <p>program name: ${proofCase.expectedItems.skill}</p>
+      <p>title: Request help with visuals</p>
+      <p>goal type: parent</p>
+      <p>program name: ${proofCase.expectedItems.excludedParent}</p>
+      <p>title: Parent carries out home plan</p>
+    </section>
+  </body>
+</html>`;
+
 export const assertIehpDocumentChecklistField = (args: {
   checklist: DocumentChecklistResponse;
   expectedValue: string;
@@ -172,6 +305,165 @@ export const assertIehpDocumentChecklistField = (args: {
     valueMatched: true,
     provenanceRowCount: provenanceRows.length,
     documentProvenanceVerified: true,
+  };
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const sameGoalRef = (value: unknown, fieldKey: string, sectionIndex: number): boolean =>
+  isObjectRecord(value) &&
+  value.field_key === fieldKey &&
+  value.section_index === sectionIndex;
+
+export const assertIehpSkillsBehaviorsChecklistSection = (args: {
+  checklist: DocumentChecklistResponse;
+  proofCase?: IehpSkillsBehaviorsProofCase;
+}): IehpSkillsBehaviorsAssertion => {
+  const proofCase = args.proofCase ?? IEHP_SKILLS_BEHAVIORS_PROOF_CASE;
+  const sections = Array.isArray(args.checklist.structured_sections) ? args.checklist.structured_sections : [];
+  const matchingRows = sections.filter((section) =>
+    isObjectRecord(section) && section.field_key === proofCase.expectedSectionKey
+  ) as SkillsBehaviorsChecklistStructuredSection[];
+
+  if (matchingRows.length === 0) {
+    throw new Error(`IEHP smoke could not find ${proofCase.expectedSectionKey} in structured sections.`);
+  }
+  if (matchingRows.length !== 1) {
+    throw new Error(
+      `IEHP smoke expected exactly one ${proofCase.expectedSectionKey} structured section row but found ${matchingRows.length}.`,
+    );
+  }
+
+  const payload = matchingRows[0]?.payload;
+  if (!isObjectRecord(payload) || !Array.isArray(payload.targets)) {
+    throw new Error(`IEHP smoke found ${proofCase.expectedSectionKey} but payload.targets was missing or malformed.`);
+  }
+  const targets = payload.targets.filter((target): target is string => typeof target === 'string');
+  if (
+    targets.length !== proofCase.expectedTargets.length ||
+    targets.some((target, index) => target !== proofCase.expectedTargets[index])
+  ) {
+    throw new Error(`IEHP smoke expected ${proofCase.expectedSectionKey} payload.targets to preserve the synthetic summary list exactly.`);
+  }
+
+  const skillsBehaviors = payload.skills_behaviors;
+  if (!isObjectRecord(skillsBehaviors) || !Array.isArray(skillsBehaviors.items) || !isObjectRecord(skillsBehaviors.counts)) {
+    throw new Error(`IEHP smoke found ${proofCase.expectedSectionKey} but payload.skills_behaviors was missing or malformed.`);
+  }
+  if (skillsBehaviors.version !== proofCase.expectedVersion) {
+    throw new Error(
+      `IEHP smoke expected ${proofCase.expectedSectionKey} skills_behaviors.version to equal ${proofCase.expectedVersion}.`,
+    );
+  }
+
+  const items = skillsBehaviors.items.filter((item): item is SkillsBehaviorsItem => isObjectRecord(item));
+  const findByName = (name: string): SkillsBehaviorsItem | undefined =>
+    items.find((item) => item.name === name);
+
+  if (findByName(proofCase.expectedItems.excludedParent)) {
+    throw new Error('IEHP smoke expected the parent education goal to stay excluded from skills_behaviors items.');
+  }
+
+  const itemsMissingRefs = items.some((item) =>
+    (item.reconciliation_status === 'matched' || item.reconciliation_status === 'detailed_only') &&
+    (!Array.isArray(item.matched_goal_refs) || item.matched_goal_refs.length === 0)
+  );
+  if (itemsMissingRefs) {
+    throw new Error(
+      'IEHP smoke expected every matched or detailed-only skills_behaviors item to expose provenance refs.',
+    );
+  }
+
+  const counts = skillsBehaviors.counts as SkillsBehaviorsCounts;
+  const expectedCounts = proofCase.expectedCounts;
+  if (
+    counts.total !== expectedCounts.total ||
+    counts.behavior !== expectedCounts.behavior ||
+    counts.skill !== expectedCounts.skill ||
+    counts.summary_only !== expectedCounts.summary_only ||
+    counts.detailed_only !== expectedCounts.detailed_only ||
+    counts.ambiguous !== expectedCounts.ambiguous
+  ) {
+    throw new Error(
+      `IEHP smoke expected ${proofCase.expectedSectionKey} counts to match the synthetic proof contract exactly.`,
+    );
+  }
+
+  if (items.length !== expectedCounts.total) {
+    throw new Error(
+      `IEHP smoke expected ${proofCase.expectedSectionKey} to contain exactly ${expectedCounts.total} skills_behaviors items but found ${items.length}.`,
+    );
+  }
+
+  const behaviorItem = findByName(proofCase.expectedItems.behavior);
+  if (
+    !behaviorItem ||
+    behaviorItem.clinical_goal_type !== 'behavior' ||
+    behaviorItem.reconciliation_status !== proofCase.expectedStatuses.behaviorMatched ||
+    !Array.isArray(behaviorItem.matched_goal_refs) ||
+    !behaviorItem.matched_goal_refs.some((ref) =>
+      sameGoalRef(ref, 'IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS', 0)
+    )
+  ) {
+    throw new Error(
+      `IEHP smoke expected ${proofCase.expectedItems.behavior} to remain a matched behavior with deterministic provenance refs.`,
+    );
+  }
+
+  const skillItem = findByName(proofCase.expectedItems.skill);
+  if (
+    !skillItem ||
+    skillItem.clinical_goal_type !== 'skill' ||
+    skillItem.reconciliation_status !== proofCase.expectedStatuses.skillMatched ||
+    !Array.isArray(skillItem.matched_goal_refs) ||
+    !skillItem.matched_goal_refs.some((ref) =>
+      sameGoalRef(ref, 'IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS', 0)
+    )
+  ) {
+    throw new Error(
+      `IEHP smoke expected ${proofCase.expectedItems.skill} to remain a matched skill with deterministic provenance refs.`,
+    );
+  }
+
+  const needsReviewItem = findByName(proofCase.expectedItems.needsReview);
+  if (
+    !needsReviewItem ||
+    needsReviewItem.clinical_goal_type !== null ||
+    needsReviewItem.reconciliation_status !== proofCase.expectedStatuses.needsReview ||
+    !Array.isArray(needsReviewItem.matched_goal_refs) ||
+    needsReviewItem.matched_goal_refs.length !== 0
+  ) {
+    throw new Error(
+      `IEHP smoke expected ${proofCase.expectedItems.needsReview} to stay a summary-only Needs Review item with no matched refs.`,
+    );
+  }
+
+  const detailedOnlyItem = findByName(proofCase.expectedItems.detailedOnly);
+  if (
+    !detailedOnlyItem ||
+    detailedOnlyItem.clinical_goal_type !== 'skill' ||
+    detailedOnlyItem.reconciliation_status !== proofCase.expectedStatuses.detailedOnly ||
+    !Array.isArray(detailedOnlyItem.matched_goal_refs) ||
+    !detailedOnlyItem.matched_goal_refs.some((ref) =>
+      sameGoalRef(ref, 'IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS', 1)
+    )
+  ) {
+    throw new Error(
+      `IEHP smoke expected ${proofCase.expectedItems.detailedOnly} to remain a detailed-only classified child item.`,
+    );
+  }
+
+  return {
+    rowCount: 1,
+    version: 1,
+    totalCountMatched: true,
+    behaviorParsed: true,
+    skillParsed: true,
+    needsReviewPreserved: true,
+    detailedOnlyPreserved: true,
+    parentExcluded: true,
+    provenanceVerified: true,
   };
 };
 

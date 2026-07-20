@@ -874,6 +874,47 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(defaultCaseStartIndex).toBeGreaterThan(nullableReferralAssertionIndex);
     expect(defaultCaseBlock).not.toContain('expectedReferralDate:');
   });
+
+  it('adds an opt-in skills behaviors proof mode without changing the default docx or existing pdf mini matrix commands', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+    const packageJson = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    ) as {
+      scripts?: Record<string, string>;
+    };
+
+    const skillsBehaviorsFlagIndex = script.indexOf(
+      "const isSkillsBehaviorsProofMode = process.argv.includes('--skills-behaviors-proof');",
+    );
+    const skillsBehaviorsCaseIndex = script.indexOf('IEHP_SKILLS_BEHAVIORS_PROOF_CASE');
+    const proofHtmlIndex = script.indexOf('buildIehpSkillsBehaviorsProofPdfHtml');
+    const checklistAssertionIndex = script.indexOf('assertIehpSkillsBehaviorsChecklistSection');
+    const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
+    const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
+    const proofCaseRunnerIndex = script.indexOf("caseId: IEHP_SKILLS_BEHAVIORS_PROOF_CASE.id");
+    const proofEvidenceIndex = script.indexOf('skillsBehaviorsAssertion');
+
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-smoke']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts',
+    );
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-pdf-mini-matrix']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts --pdf-mini-matrix',
+    );
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-skills-behaviors']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts --skills-behaviors-proof',
+    );
+    expect(skillsBehaviorsFlagIndex).toBeGreaterThanOrEqual(0);
+    expect(skillsBehaviorsCaseIndex).toBeGreaterThan(skillsBehaviorsFlagIndex);
+    expect(proofHtmlIndex).toBeGreaterThan(skillsBehaviorsCaseIndex);
+    expect(pagePdfIndex).toBeGreaterThan(proofHtmlIndex);
+    expect(proofCaseRunnerIndex).toBeGreaterThan(pagePdfIndex);
+    expect(checklistFetchIndex).toBeGreaterThanOrEqual(0);
+    expect(checklistAssertionIndex).toBeGreaterThan(checklistFetchIndex);
+    expect(proofEvidenceIndex).toBeGreaterThan(checklistAssertionIndex);
+  });
 });
 
 describe('assertIehpDocumentChecklistField', () => {

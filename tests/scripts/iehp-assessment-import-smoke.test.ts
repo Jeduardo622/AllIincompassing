@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isValidPhone } from '../../src/lib/validation';
 
 import {
   IEHP_PDF_MINI_MATRIX_CASES,
@@ -75,10 +76,22 @@ describe('IEHP assessment import smoke helpers', () => {
       IEHP_PDF_MINI_MATRIX_CASES.length,
     );
     expect(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.documentPhone)).toEqual([
-      '555-0101',
-      '555-0102',
-      '555-0103',
+      '(909) 555-0101',
+      '909-555-0102',
+      '+1 909 555 0103',
     ]);
+  });
+
+  it('keeps every matrix document phone in a distinct accepted format that passes the shared phone validator', () => {
+    expect(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.documentPhone)).toEqual([
+      '(909) 555-0101',
+      '909-555-0102',
+      '+1 909 555 0103',
+    ]);
+
+    for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
+      expect(isValidPhone(caseDefinition.documentPhone)).toBe(true);
+    }
   });
 
   it('renders the referral label and document phone into selectable HTML with a page break only for the multi-page case', () => {
@@ -94,6 +107,19 @@ describe('IEHP assessment import smoke helpers', () => {
         expect(html).not.toContain('page-break-before: always;');
       }
     }
+  });
+
+  it('places the multi-page page-break token before both the referral date and assessor phone so the asserted content lands on page two', () => {
+    const html = buildIehpPdfMiniMatrixHtml(
+      IEHP_PDF_MINI_MATRIX_CASES.find((caseDefinition) => caseDefinition.id === 'multi-page-target-content')!,
+    );
+    const pageBreakIndex = html.indexOf('page-break-before: always;');
+    const referralDateIndex = html.indexOf('Referral Date: 07/01/2026');
+    const assessorPhoneIndex = html.indexOf("Assessor's phone number: 909-555-0102");
+
+    expect(pageBreakIndex).toBeGreaterThanOrEqual(0);
+    expect(pageBreakIndex).toBeLessThan(referralDateIndex);
+    expect(pageBreakIndex).toBeLessThan(assessorPhoneIndex);
   });
 
   it('redacts cleanup failure manifests', () => {

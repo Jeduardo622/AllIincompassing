@@ -76,6 +76,8 @@
 
 ## Self-Review
 
-- Scope stayed within a single docs handoff file.
+- Scope stayed within the WIN-228 IEHP PDF mini-matrix review-fix slice across the helper manifest/HTML, focused helper tests, and this handoff.
 - No PHI, raw credentials, IDs, or raw phone values were added.
-- No other files were changed.
+- The document-phone fixtures now use three distinct reserved `909-555-0101` to `0103` formats that pass the shared phone validator.
+- The multi-page HTML now places the page break before both the referral date and assessor phone so the asserted content is constrained to page two.
+- `verify-change` and `pr-hygiene` are still pending for the overall branch and are not claimed here.

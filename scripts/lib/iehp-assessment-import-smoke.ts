@@ -34,19 +34,19 @@ export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
   {
     id: 'clean-single-page',
     referralDate: '06/30/2026',
-    documentPhone: '555-0101',
+    documentPhone: '(909) 555-0101',
     pageBreakBeforeTarget: false,
   },
   {
     id: 'multi-page-target-content',
     referralDate: '07/01/2026',
-    documentPhone: '555-0102',
+    documentPhone: '909-555-0102',
     pageBreakBeforeTarget: true,
   },
   {
     id: 'alternate-document-phone-format',
     referralDate: '07/02/2026',
-    documentPhone: '555-0103',
+    documentPhone: '+1 909 555 0103',
     pageBreakBeforeTarget: false,
   },
 ] as const;
@@ -107,8 +107,8 @@ export const buildIehpPdfMiniMatrixHtml = (caseDefinition: IehpPdfMiniMatrixCase
   </head>
   <body>
     <section>
-      <p>Referral Date: ${caseDefinition.referralDate}</p>
       ${caseDefinition.pageBreakBeforeTarget ? '<div style="page-break-before: always;"></div>' : ''}
+      <p>Referral Date: ${caseDefinition.referralDate}</p>
       <p>Assessor's phone number: ${caseDefinition.documentPhone}</p>
     </section>
   </body>

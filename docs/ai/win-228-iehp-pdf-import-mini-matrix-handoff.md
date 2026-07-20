@@ -29,11 +29,13 @@
 - Reviewer follow-up on Task 1: RED with 1/43, then GREEN with 44 passing.
 - Task 2: RED with structure failures, then GREEN with 44 passing.
 - Reviewer follow-up on Task 2: RED with 2 failures, then GREEN with 46 passing.
-- Final focused run: 2 files, 46 tests passed.
+- Final post-review focused run: 2 files, 48 tests passed.
 
 ## Hosted Proof
 
 - All three cases were clean.
+- The final hosted rerun used three distinct accepted synthetic document-phone formats, all different from the snapshot phone.
+- The multi-page case placed both asserted fields after the page break.
 - All statuses were extracted.
 - Programs: 0.
 - Goals: 0.
@@ -57,6 +59,7 @@
   - 3065 tests passed
   - 2 files failed
 - Both failures were reproduced in focused runs.
+- `verify:local` ran and stopped at the same two `test:ci` failures after its policy, lint, and typecheck stages passed.
 - No baseline fixes were made.
 - Local policy skips:
   - `SUPABASE_DB_URL`

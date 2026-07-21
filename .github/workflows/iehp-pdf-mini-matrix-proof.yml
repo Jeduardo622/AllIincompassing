@@ -1,0 +1,464 @@
+name: IEHP PDF mini-matrix proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        required: true
+        type: string
+      pull_request_number:
+        required: true
+        type: string
+      approval_acknowledgement:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iehp-pdf-mini-matrix-proof-${{ github.event.inputs.pull_request_number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate immutable owner-approved PR head
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      validated_sha: ${{ steps.approval.outputs.validated_sha }}
+      validated_pr_number: ${{ steps.approval.outputs.validated_pr_number }}
+      preview_url: ${{ steps.approval.outputs.preview_url }}
+    steps:
+      - name: Validate owner approval and open PR head
+        id: approval
+        env:
+          APPROVAL_ACKNOWLEDGEMENT: ${{ inputs.approval_acknowledgement }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ inputs.pull_request_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+
+          const commitSha = process.env.COMMIT_SHA ?? '';
+          const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
+          const repository = process.env.REPOSITORY ?? '';
+          if (!/^[0-9a-f]{40}$/.test(commitSha)) {
+            throw new Error('commit_sha must be exactly 40 lowercase hexadecimal characters.');
+          }
+          if (!/^[1-9][0-9]*$/.test(pullRequestNumber)) {
+            throw new Error('pull_request_number must be a positive integer.');
+          }
+          if (process.env.APPROVAL_ACKNOWLEDGEMENT !== 'I_APPROVE_IEHP_PDF_MINI_MATRIX') {
+            throw new Error('Exact protected execution approval acknowledgement is required.');
+          }
+          if (process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) {
+            throw new Error('Only the repository owner may approve this protected proof.');
+          }
+          if (!/^[^/]+\/[^/]+$/.test(repository)) {
+            throw new Error('Repository identity is invalid.');
+          }
+
+          const response = await fetch(`https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}`, {
+            headers: {
+              Accept: 'application/vnd.github+json',
+              Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`Unable to validate pull request: HTTP ${response.status}.`);
+          }
+
+          const pull = await response.json();
+          if (pull.state !== 'open') throw new Error('Pull request must be open.');
+          if (pull.base?.ref !== 'main') throw new Error('Pull request base must be main.');
+          if (pull.head?.repo?.full_name !== repository) throw new Error('Pull request must originate from this repository.');
+          if (pull.head?.sha !== commitSha) throw new Error('Pull request head SHA does not match commit_sha.');
+
+          const previewUrl = `https://deploy-preview-${pullRequestNumber}--velvety-cendol-dae4d6.netlify.app`;
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\n`, { encoding: 'utf8' });
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_pr_number=${pullRequestNumber}\n`, { encoding: 'utf8' });
+          appendFileSync(process.env.GITHUB_OUTPUT, `preview_url=${previewUrl}\n`, { encoding: 'utf8' });
+          NODE
+
+      - name: Checkout validated commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ steps.approval.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Verify immutable validation checkout
+        env:
+          EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
+        run: |
+          actual_sha="$(git rev-parse HEAD)"
+          test "$actual_sha" = "$EXPECTED_SHA" || {
+            echo "::error::Validation checkout SHA mismatch."
+            exit 1
+          }
+
+  proof:
+    name: Hosted IEHP PDF mini-matrix proof
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      checks: read
+      contents: read
+      statuses: read
+    env:
+      CI_SMOKE_ADMIN_EMAIL: playwright.ci.iehp_pdf_matrix_proof.${{ github.run_id }}.${{ github.run_attempt }}@example.com
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.validate.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Verify immutable proof checkout
+        env:
+          EXPECTED_SHA: ${{ needs.validate.outputs.validated_sha }}
+        run: |
+          actual_sha="$(git rev-parse HEAD)"
+          test "$actual_sha" = "$EXPECTED_SHA" || {
+            echo "::error::Proof checkout SHA mismatch."
+            exit 1
+          }
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify exact Netlify preview deployment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+
+          const expectedPr = '${{ needs.validate.outputs.validated_pr_number }}';
+          const expectedSha = '${{ needs.validate.outputs.validated_sha }}';
+          const expectedUrl = '${{ needs.validate.outputs.preview_url }}';
+          const repository = process.env.REPOSITORY ?? '';
+          const token = process.env.GITHUB_TOKEN ?? '';
+          if (!repository || !token) {
+            throw new Error('GitHub repository identity and token are required.');
+          }
+
+          let immutablePreviewUrl = null;
+          for (let attempt = 1; attempt <= 60; attempt += 1) {
+            const headers = {
+              Accept: 'application/vnd.github+json',
+              Authorization: `Bearer ${token}`,
+              'X-GitHub-Api-Version': '2022-11-28',
+            };
+            const [statusResponse, checksResponse] = await Promise.all([
+              fetch(`https://api.github.com/repos/${repository}/commits/${expectedSha}/status`, { headers }),
+              fetch(`https://api.github.com/repos/${repository}/commits/${expectedSha}/check-runs`, {
+                headers,
+              }),
+            ]);
+            if (!statusResponse.ok) {
+              throw new Error(`Unable to query GitHub commit status: HTTP ${statusResponse.status}.`);
+            }
+            if (!checksResponse.ok) {
+              throw new Error(`Unable to query GitHub check runs: HTTP ${checksResponse.status}.`);
+            }
+
+            const commitStatus = await statusResponse.json();
+            const checkRuns = await checksResponse.json();
+            const statusMatch = (commitStatus.statuses ?? []).find((status) => (
+              status.context === 'netlify/velvety-cendol-dae4d6/deploy-preview'
+              && status.state === 'success'
+              && status.target_url === expectedUrl
+            ));
+            const deployIds = [...new Set((checkRuns.check_runs ?? []).flatMap((checkRun) => {
+              if (!['success', 'neutral'].includes(checkRun.conclusion)) return [];
+              const deployMatch = checkRun.details_url?.match(/\/deploys\/([a-f0-9]+)$/);
+              return deployMatch ? [deployMatch[1]] : [];
+            }))];
+
+            if (statusMatch && deployIds.length === 1) {
+              const deployId = deployIds[0];
+              const candidateUrl = `https://${deployId}--velvety-cendol-dae4d6.netlify.app`;
+              const previewResponse = await fetch(candidateUrl, { redirect: 'manual' });
+              if (previewResponse.ok) {
+                immutablePreviewUrl = candidateUrl;
+                break;
+              }
+            }
+            if (attempt < 60) {
+              await new Promise((resolve) => setTimeout(resolve, 10_000));
+            }
+          }
+          if (!immutablePreviewUrl) {
+            throw new Error(`No unique, successful, and reachable immutable Netlify deploy matched PR ${expectedPr}, SHA ${expectedSha}, and alias ${expectedUrl}.`);
+          }
+          if (!process.env.GITHUB_ENV) {
+            throw new Error('GITHUB_ENV is unavailable.');
+          }
+          appendFileSync(process.env.GITHUB_ENV, `PW_BASE_URL=${immutablePreviewUrl}\n`, { encoding: 'utf8' });
+          appendFileSync(process.env.GITHUB_ENV, `IEHP_PROOF_PREVIEW_URL=${immutablePreviewUrl}\n`, { encoding: 'utf8' });
+          NODE
+
+      - name: Provision synthetic smoke admin
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          PRIVATE_ADMIN_ENV_PATH="$RUNNER_TEMP/iehp-pdf-mini-matrix-private/admin.env"
+          mkdir -p "$RUNNER_TEMP/iehp-pdf-mini-matrix-private"
+          install -m 600 /dev/null "$PRIVATE_ADMIN_ENV_PATH"
+          GITHUB_ENV="$PRIVATE_ADMIN_ENV_PATH" npx tsx scripts/provision-ci-smoke-admin.ts
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run hosted IEHP PDF mini-matrix
+        env:
+          PRIVATE_ADMIN_ENV_PATH: ${{ runner.temp }}/iehp-pdf-mini-matrix-private/admin.env
+          PRIVATE_MATRIX_LOG_PATH: ${{ runner.temp }}/iehp-pdf-mini-matrix-private/matrix-output.log
+          PW_ASSESSMENT_CLIENT_ID: ${{ secrets.PW_ASSESSMENT_CLIENT_ID }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          set -a
+          source "$PRIVATE_ADMIN_ENV_PATH"
+          set +a
+
+          required=(
+            PW_BASE_URL
+            PW_SUPERADMIN_EMAIL
+            PW_SUPERADMIN_PASSWORD
+            PW_ASSESSMENT_CLIENT_ID
+            VITE_SUPABASE_URL
+            VITE_SUPABASE_ANON_KEY
+          )
+          missing=()
+          for key in "${required[@]}"; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("$key")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required secrets for hosted IEHP PDF mini-matrix proof: ${missing[*]}"
+            exit 1
+          fi
+
+          npm run playwright:iehp-assessment-import-pdf-mini-matrix | tee "$PRIVATE_MATRIX_LOG_PATH"
+
+      - name: Clean synthetic smoke admin
+        if: always()
+        env:
+          PRIVATE_ADMIN_ENV_PATH: ${{ runner.temp }}/iehp-pdf-mini-matrix-private/admin.env
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -f "$PRIVATE_ADMIN_ENV_PATH" ]; then
+            source "$PRIVATE_ADMIN_ENV_PATH"
+          fi
+          export CI_SMOKE_ADMIN_EMAIL
+          npx tsx scripts/provision-ci-smoke-admin.ts --cleanup
+
+      - name: Finalize redacted run evidence
+        if: always()
+        env:
+          PRIVATE_MATRIX_LOG_PATH: ${{ runner.temp }}/iehp-pdf-mini-matrix-private/matrix-output.log
+          WORKFLOW_STATUS: ${{ job.status }}
+          VALIDATED_SHA: ${{ needs.validate.outputs.validated_sha }}
+          VALIDATED_PR_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}
+          PREVIEW_URL: ${{ env.IEHP_PROOF_PREVIEW_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+
+          const publicDir = path.join(process.env.RUNNER_TEMP, 'iehp-pdf-mini-matrix-public');
+          const logPath = process.env.PRIVATE_MATRIX_LOG_PATH;
+          const workflowSucceeded = process.env.WORKFLOW_STATUS === 'success';
+
+          rmSync(publicDir, { recursive: true, force: true });
+          mkdirSync(publicDir, { recursive: true });
+
+          const runStatus = {
+            ok: workflowSucceeded,
+            status: process.env.WORKFLOW_STATUS ?? 'unknown',
+            workflowRunId: process.env.GITHUB_RUN_ID ?? null,
+            workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+            validatedSha: process.env.VALIDATED_SHA ?? null,
+            validatedPrNumber: process.env.VALIDATED_PR_NUMBER ?? null,
+            previewUrl: process.env.PREVIEW_URL ?? null,
+          };
+
+          const writeRunStatus = () => {
+            writeFileSync(path.join(publicDir, 'run-status.json'), `${JSON.stringify(runStatus, null, 2)}\n`, 'utf8');
+          };
+
+          try {
+            if (!logPath || !existsSync(logPath)) {
+              writeRunStatus();
+              if (workflowSucceeded) {
+                throw new Error('PRIVATE_MATRIX_LOG_PATH is missing after a successful matrix run.');
+              }
+              process.exit(0);
+            }
+
+            const source = readFileSync(logPath, 'utf8');
+            const objects = [];
+            let depth = 0;
+            let start = -1;
+            let inString = false;
+            let escaping = false;
+
+            for (let index = 0; index < source.length; index += 1) {
+              const char = source[index];
+              if (inString) {
+                if (escaping) {
+                  escaping = false;
+                } else if (char === '\\') {
+                  escaping = true;
+                } else if (char === '"') {
+                  inString = false;
+                }
+                continue;
+              }
+
+              if (char === '"') {
+                inString = true;
+                continue;
+              }
+
+              if (char === '{') {
+                if (depth === 0) {
+                  start = index;
+                }
+                depth += 1;
+                continue;
+              }
+
+              if (char === '}') {
+                if (depth === 0) continue;
+                depth -= 1;
+                if (depth === 0 && start >= 0) {
+                  const candidate = source.slice(start, index + 1);
+                  try {
+                    objects.push(JSON.parse(candidate));
+                  } catch {
+                    // Ignore non-JSON brace blocks.
+                  }
+                  start = -1;
+                }
+              }
+            }
+
+            const expectedCaseIds = [
+              'clean-single-page',
+              'multi-page-target-content',
+              'alternate-document-phone-format',
+              'skills-behaviors-proof',
+            ];
+            const matrixCases = objects
+              .filter((entry) => entry?.mode === 'pdf-mini-matrix-case')
+              .map((entry) => {
+                const {
+                  screenshotPath,
+                  screenshot,
+                  ...rest
+                } = entry;
+                return rest;
+              });
+            const aggregate = objects.find((entry) => entry?.mode === 'pdf-mini-matrix');
+
+            if (matrixCases.length !== 4) {
+              throw new Error(`Expected exactly four case evidence objects but found ${matrixCases.length}.`);
+            }
+            if (!aggregate) {
+              throw new Error('Missing aggregate matrix evidence.');
+            }
+
+            const actualCaseIds = matrixCases.map((entry) => entry.caseId);
+            if (JSON.stringify(actualCaseIds) !== JSON.stringify(expectedCaseIds)) {
+              throw new Error(`Matrix case IDs did not match the expected order. Received: ${JSON.stringify(actualCaseIds)}.`);
+            }
+            const redactedPhonePattern = /^\(\*\*\*\) \*\*\*-\d{4}$/;
+            for (const matrixCase of matrixCases) {
+              const phoneAssertion = matrixCase.assessorPhoneAssertion;
+              if (
+                !phoneAssertion
+                || !redactedPhonePattern.test(phoneAssertion.expectedPhoneRedacted ?? '')
+                || !redactedPhonePattern.test(phoneAssertion.actualPhoneRedacted ?? '')
+              ) {
+                throw new Error(`Matrix case ${matrixCase.caseId} did not contain redacted assessor-phone evidence.`);
+              }
+            }
+            const rawPhonePattern = /(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/;
+            if (rawPhonePattern.test(JSON.stringify(matrixCases))) {
+              throw new Error('Curated matrix evidence contained a raw phone number.');
+            }
+            if (aggregate.totalCases !== 4) {
+              throw new Error(`Expected aggregate totalCases to equal 4 but received ${aggregate.totalCases}.`);
+            }
+            if (aggregate.passedCases !== 4) {
+              throw new Error(`Expected aggregate passedCases to equal 4 but received ${aggregate.passedCases}.`);
+            }
+            if (aggregate.cleanupVerifiedCases !== 4) {
+              throw new Error(`Expected aggregate cleanupVerifiedCases to equal 4 but received ${aggregate.cleanupVerifiedCases}.`);
+            }
+            if (aggregate.skillsBehaviorsVerifiedCases !== 1) {
+              throw new Error(`Expected aggregate skillsBehaviorsVerifiedCases to equal 1 but received ${aggregate.skillsBehaviorsVerifiedCases}.`);
+            }
+
+            const metadata = {
+              ok: workflowSucceeded,
+              status: process.env.WORKFLOW_STATUS ?? 'unknown',
+              workflowRunId: process.env.GITHUB_RUN_ID ?? null,
+              workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+              validatedSha: process.env.VALIDATED_SHA ?? null,
+              validatedPrNumber: process.env.VALIDATED_PR_NUMBER ?? null,
+              previewUrl: process.env.PREVIEW_URL ?? null,
+              caseCount: matrixCases.length,
+            };
+
+            writeFileSync(path.join(publicDir, 'cases.json'), `${JSON.stringify(matrixCases, null, 2)}\n`, 'utf8');
+            writeFileSync(path.join(publicDir, 'aggregate.json'), `${JSON.stringify(aggregate, null, 2)}\n`, 'utf8');
+            writeFileSync(path.join(publicDir, 'run-metadata.json'), `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+            writeRunStatus();
+          } catch (error) {
+            runStatus.evidenceError = error instanceof Error ? error.message : String(error);
+            writeRunStatus();
+            if (workflowSucceeded) {
+              throw error;
+            }
+          }
+          NODE
+
+      - name: Upload redacted matrix evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: iehp-pdf-mini-matrix-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/iehp-pdf-mini-matrix-public/run-status.json
+            ${{ runner.temp }}/iehp-pdf-mini-matrix-public/run-metadata.json
+            ${{ runner.temp }}/iehp-pdf-mini-matrix-public/cases.json
+            ${{ runner.temp }}/iehp-pdf-mini-matrix-public/aggregate.json
+          if-no-files-found: warn
+          retention-days: 7

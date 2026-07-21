@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Chart as ChartJS,
+  BarElement,
   CategoryScale,
   LinearScale,
   PointElement,
@@ -9,19 +10,26 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { Line } from 'react-chartjs-2';
+import { Bar, Line } from 'react-chartjs-2';
 import { AlertTriangle, BarChart3, Download, Inbox, Loader2 } from 'lucide-react';
 import type { Chart as ChartInstance, ChartData, ChartOptions, PointStyle } from 'chart.js';
-import type { Goal } from '../../types';
+import type { Goal, TrialEvent } from '../../types';
+import { callApi } from '../../lib/api';
 import { fetchClientSessionNotes } from '../../lib/session-notes';
 import { useActiveOrganizationId } from '../../lib/organization';
 import { supabase } from '../../lib/supabase';
+import {
+  buildPromptOutcomeModel,
+  PROMPT_OUTCOME_COLORS,
+  PROMPT_OUTCOME_LABELS,
+  PROMPT_OUTCOME_ORDER,
+} from '../../lib/trial-prompt-outcomes';
 import {
   buildSessionTrendModel,
   type SessionTrendDisplayPeriod,
 } from '../../lib/session-trends';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+ChartJS.register(BarElement, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
 interface ClientSessionTrendsTabProps {
   client: { id: string };
@@ -47,6 +55,14 @@ const defaultStartDate = (): string => {
 };
 
 const todayDate = (): string => toLocalDateInputValue(new Date());
+
+const toUtcStartOfDayIso = (value: string): string => `${value}T00:00:00.000Z`;
+
+const toExclusiveEndDateIso = (value: string): string => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString();
+};
 
 const formatPercent = (value: number): string =>
   Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`;
@@ -87,6 +103,7 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [selectedTherapistId, setSelectedTherapistId] = useState<string | null>(null);
   const chartRef = useRef<ChartInstance<'line', Array<number | null>, string> | undefined>(undefined);
+  const outcomeChartRef = useRef<ChartInstance<'bar', Array<number | null>, string> | undefined>(undefined);
 
   const {
     data: sessionNotes = [],
@@ -149,6 +166,43 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
     },
     enabled: Boolean(client.id && organizationId),
   });
+  const {
+    data: goalTargets = [],
+  } = useQuery({
+    queryKey: ['goal-targets', selectedGoalId, 'session-trends'],
+    queryFn: async () => {
+      if (!selectedGoalId) {
+        return [];
+      }
+      const response = await callApi(`/api/goal-targets?goal_id=${encodeURIComponent(selectedGoalId)}`);
+      if (!response.ok) {
+        throw new Error('Failed to load goal targets.');
+      }
+      return await response.json() as Array<{ id: string; name: string }>;
+    },
+    enabled: Boolean(selectedGoalId),
+  });
+  const {
+    data: promptOutcomeEvents = [],
+    error: promptOutcomeError,
+  } = useQuery({
+    queryKey: ['trial-events', 'prompt-outcomes', client.id, selectedGoalId, startDate, endDate],
+    queryFn: async () => {
+      if (!selectedGoalId) {
+        return [];
+      }
+      const startAt = encodeURIComponent(toUtcStartOfDayIso(startDate));
+      const endBefore = encodeURIComponent(toExclusiveEndDateIso(endDate));
+      const response = await callApi(
+        `/api/trial-events?view=prompt_outcomes&client_id=${encodeURIComponent(client.id)}&goal_id=${encodeURIComponent(selectedGoalId)}&start_at=${startAt}&end_before=${endBefore}`,
+      );
+      if (!response.ok) {
+        throw new Error('Prompt outcomes failed to load.');
+      }
+      return await response.json() as TrialEvent[];
+    },
+    enabled: Boolean(selectedGoalId),
+  });
 
   const trendModel = useMemo(() => buildSessionTrendModel(sessionNotes, goals, {
     selectedGoalId,
@@ -156,12 +210,23 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
     displayPeriod,
     dateRange: { startDate, endDate },
   }), [displayPeriod, endDate, goals, selectedGoalId, selectedTherapistId, sessionNotes, startDate]);
+  const availableGoalOptions = useMemo(() => (
+    trendModel.goalOptions.length > 0
+      ? trendModel.goalOptions
+      : goals.map((goal) => ({
+        id: goal.id,
+        label: goal.title,
+        programName: goal.program_name ?? null,
+      }))
+  ), [goals, trendModel.goalOptions]);
 
   useEffect(() => {
-    if (trendModel.selectedGoalId !== selectedGoalId) {
-      setSelectedGoalId(trendModel.selectedGoalId);
+    if (!selectedGoalId && availableGoalOptions.length > 0) {
+      setSelectedGoalId(availableGoalOptions[0].id);
+    } else if (selectedGoalId && !availableGoalOptions.some((goal) => goal.id === selectedGoalId)) {
+      setSelectedGoalId(availableGoalOptions[0]?.id ?? null);
     }
-  }, [selectedGoalId, trendModel.selectedGoalId]);
+  }, [availableGoalOptions, selectedGoalId]);
 
   const isLoading = isLoadingSessionNotes || isLoadingGoals;
   const error = sessionNotesError ?? goalsError;
@@ -196,6 +261,30 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
   const selectedTherapistLabel = trendModel.selectedTherapistId
     ? trendModel.therapistOptions.find((therapist) => therapist.id === trendModel.selectedTherapistId)?.label ?? null
     : null;
+  const targetLabelsById = useMemo(
+    () => Object.fromEntries(goalTargets.map((target) => [target.id, target.name])),
+    [goalTargets],
+  );
+  const promptOutcomeModel = useMemo(() => {
+    if (!selectedGoalId) {
+      return buildPromptOutcomeModel({
+        goalId: '',
+        displayPeriod,
+        rawEvents: [],
+        sessionNotes: [],
+      });
+    }
+    return buildPromptOutcomeModel({
+      goalId: selectedGoalId,
+      displayPeriod,
+      rawEvents: promptOutcomeEvents,
+      sessionNotes,
+      targetLabelsById,
+      selectedTherapistId: trendModel.selectedTherapistId,
+      requireSessionMembership: true,
+      rawEventsArePromptOnly: true,
+    });
+  }, [displayPeriod, promptOutcomeEvents, selectedGoalId, sessionNotes, targetLabelsById, trendModel.selectedTherapistId]);
 
   const chartBuckets = useMemo(() => {
     const bucketsByKey = new Map<string, string>();
@@ -299,6 +388,57 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
     .slice()
     .sort((left, right) => right.sessionDate.localeCompare(left.sessionDate))
     .slice(0, 10);
+  const promptOutcomeChartData = useMemo<ChartData<'bar', Array<number | null>, string>>(() => ({
+    labels: promptOutcomeModel.buckets.map((bucket) => bucket.label),
+    datasets: PROMPT_OUTCOME_ORDER.map((outcome) => ({
+      label: PROMPT_OUTCOME_LABELS[outcome],
+      data: promptOutcomeModel.buckets.map((bucket) => (
+        bucket.segments.find((segment) => segment.outcome === outcome)?.percentage ?? 0
+      )),
+      backgroundColor: PROMPT_OUTCOME_COLORS[outcome],
+      stack: 'outcomes',
+    })),
+  }), [promptOutcomeModel.buckets]);
+  const promptOutcomeChartOptions = useMemo<ChartOptions<'bar'>>(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom',
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const bucket = promptOutcomeModel.buckets[context.dataIndex];
+            const outcome = PROMPT_OUTCOME_ORDER[context.datasetIndex];
+            const segment = bucket?.segments.find((item) => item.outcome === outcome);
+            return `${context.dataset.label}: ${segment?.value ?? 0} (${segment?.percentage ?? 0}%)`;
+          },
+        },
+      },
+    },
+    scales: {
+      x: { stacked: true },
+      y: {
+        stacked: true,
+        beginAtZero: true,
+        max: 100,
+        ticks: {
+          callback: (value) => `${value}%`,
+        },
+      },
+    },
+  }), [promptOutcomeModel.buckets]);
+  const handleDownloadOutcomeGraph = () => {
+    const imageUrl = outcomeChartRef.current?.toBase64Image('image/png', 1);
+    if (!imageUrl) {
+      return;
+    }
+    const anchor = document.createElement('a');
+    anchor.href = imageUrl;
+    anchor.download = `session-prompt-outcomes-${client.id}-${todayDate()}.png`;
+    anchor.click();
+  };
 
   if (!organizationId) {
     return (
@@ -334,12 +474,12 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
               setSelectedGoalId(event.target.value || null);
             }}
             className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-dark dark:text-white"
-            disabled={trendModel.goalOptions.length === 0}
+            disabled={availableGoalOptions.length === 0}
           >
-            {trendModel.goalOptions.length === 0 ? (
+            {availableGoalOptions.length === 0 ? (
               <option value="">No trial data</option>
             ) : (
-              trendModel.goalOptions.map((goal) => (
+              availableGoalOptions.map((goal) => (
                 <option key={goal.id} value={goal.id}>
                   {goal.programName ? `${goal.programName}: ${goal.label}` : goal.label}
                 </option>
@@ -415,43 +555,73 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-100">
           {error instanceof Error ? error.message : 'Session trends failed to load.'}
         </div>
-      ) : chartBuckets.length === 0 ? (
-        <div className="rounded-md border border-dashed border-gray-300 p-8 text-center dark:border-gray-700">
-          <Inbox className="mx-auto h-10 w-10 text-gray-400" />
-          <h3 className="mt-3 text-sm font-semibold text-gray-900 dark:text-white">No graphable trial data</h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Save session notes with opportunities or percent-based measurements for this client to populate trends.
-          </p>
-        </div>
       ) : (
         <>
+          {chartBuckets.length === 0 ? (
+            <div className="rounded-md border border-dashed border-gray-300 p-8 text-center dark:border-gray-700">
+              <Inbox className="mx-auto h-10 w-10 text-gray-400" />
+              <h3 className="mt-3 text-sm font-semibold text-gray-900 dark:text-white">No graphable trial data</h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Save session notes with opportunities or percent-based measurements for this client to populate trends.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-md border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-dark-lighter">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {selectedTherapistLabel ? `Therapist: ${selectedTherapistLabel}` : 'All therapists'}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadGraph}
+                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-dark dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download graph
+                </button>
+              </div>
+              {overRangeBucketCount > 0 && (
+                <div className="mb-3 flex items-start rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-100">
+                  <AlertTriangle className="mr-2 mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <span>
+                    {overRangeBucketCount} plotted value{overRangeBucketCount === 1 ? ' exceeds' : 's exceed'} 100% because recorded successes are greater than opportunities.
+                  </span>
+                </div>
+              )}
+              <div className="h-80">
+                <Line ref={chartRef} options={chartOptions} data={chartData} />
+              </div>
+            </div>
+          )}
           <div className="rounded-md border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-dark-lighter">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {selectedTherapistLabel ? `Therapist: ${selectedTherapistLabel}` : 'All therapists'}
+                Prompt outcomes
               </div>
               <button
                 type="button"
-                onClick={handleDownloadGraph}
+                onClick={handleDownloadOutcomeGraph}
                 className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-dark dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 <Download className="mr-2 h-4 w-4" />
-                Download graph
+                Download outcome graph
               </button>
             </div>
-            {overRangeBucketCount > 0 && (
-              <div className="mb-3 flex items-start rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-100">
-                <AlertTriangle className="mr-2 mt-0.5 h-4 w-4 flex-shrink-0" />
-                <span>
-                  {overRangeBucketCount} plotted value{overRangeBucketCount === 1 ? ' exceeds' : 's exceed'} 100% because recorded successes are greater than opportunities.
-                </span>
+            {promptOutcomeError ? (
+              <p className="text-sm text-red-700 dark:text-red-200">
+                {promptOutcomeError instanceof Error ? promptOutcomeError.message : 'Prompt outcomes failed to load.'}
+              </p>
+            ) : promptOutcomeModel.buckets.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No prompted outcome data in the selected range.</p>
+            ) : (
+              <div className="h-72">
+                <Bar ref={outcomeChartRef} data={promptOutcomeChartData} options={promptOutcomeChartOptions} />
               </div>
             )}
-            <div className="h-80">
-              <Line ref={chartRef} options={chartOptions} data={chartData} />
-            </div>
           </div>
 
+          {chartBuckets.length > 0 && (
+            <>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
               <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Buckets</div>
@@ -494,6 +664,43 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
                       </td>
                       <td className="whitespace-nowrap px-4 py-2 text-gray-500 dark:text-gray-400">
                         {point.source === 'target_trials' ? 'Target trials' : point.source === 'flat_trials' ? 'Trial summary' : 'Percent'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+            </>
+          )}
+          <div className="overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
+            <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Prompt outcome evidence</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-300">Date</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-300">Target</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-300">Correct</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-300">Incorrect</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-300">No response</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white dark:divide-gray-800 dark:bg-dark-lighter">
+                  {promptOutcomeModel.evidence.map((row) => (
+                    <tr key={`${row.sessionKey}-${row.targetKey}`}>
+                      <td className="whitespace-nowrap px-4 py-2 text-gray-900 dark:text-white">{row.sessionDate}</td>
+                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{row.targetLabel}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-gray-700 dark:text-gray-300">
+                        {row.correct} ({row.total > 0 ? Math.round((row.correct / row.total) * 100) : 0}%)
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 text-gray-700 dark:text-gray-300">
+                        {row.incorrect} ({row.total > 0 ? Math.round((row.incorrect / row.total) * 100) : 0}%)
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 text-gray-700 dark:text-gray-300">
+                        {row.noResponse} ({row.total > 0 ? Math.round((row.noResponse / row.total) * 100) : 0}%)
                       </td>
                     </tr>
                   ))}

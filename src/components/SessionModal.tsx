@@ -27,6 +27,7 @@ import type {
   Program,
   SessionNoteUpsertResult,
   SessionPromptCount,
+  PromptOutcome,
   BtAbaSessionNotePayload,
   BtAbaFinalizeResult,
 } from '../types';
@@ -135,23 +136,50 @@ const promptCaptureOptions = [
   { label: 'Partial physical', promptType: 'physical', promptLevel: 'partial' },
 ] as const;
 
-export const setPromptCorrectnessForTarget = (
-  current: Record<string, boolean>,
+const promptOutcomeOptions: Array<{ value: PromptOutcome; label: string }> = [
+  { value: 'correct', label: 'Correct' },
+  { value: 'incorrect', label: 'Incorrect' },
+  { value: 'noResponse', label: 'No response' },
+];
+
+const getPromptOutcomeSegmentClasses = (selected: boolean, outcome: PromptOutcome): string => {
+  if (selected) {
+    if (outcome === 'correct') {
+      return 'border-emerald-600 bg-emerald-600 text-white';
+    }
+    if (outcome === 'incorrect') {
+      return 'border-rose-600 bg-rose-600 text-white';
+    }
+    return 'border-amber-500 bg-amber-500 text-white';
+  }
+
+  if (outcome === 'correct') {
+    return 'border-emerald-200 bg-white text-emerald-900 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-dark dark:text-emerald-100 dark:hover:bg-emerald-950/40';
+  }
+  if (outcome === 'incorrect') {
+    return 'border-rose-200 bg-white text-rose-900 hover:bg-rose-50 dark:border-rose-800 dark:bg-dark dark:text-rose-100 dark:hover:bg-rose-950/40';
+  }
+  return 'border-amber-200 bg-white text-amber-900 hover:bg-amber-50 dark:border-amber-800 dark:bg-dark dark:text-amber-100 dark:hover:bg-amber-950/40';
+};
+
+export const setPromptOutcomeForTarget = (
+  current: Record<string, PromptOutcome>,
   targetId: string,
-  checked: boolean,
-): Record<string, boolean> => ({ ...current, [targetId]: checked });
+  outcome: PromptOutcome,
+): Record<string, PromptOutcome> => ({ ...current, [targetId]: outcome });
 
 export const incrementLegacyPromptCount = (
   current: SessionPromptCount[] | null | undefined,
   prompt: { promptType: SessionPromptCount['prompt_type']; promptLevel: SessionPromptCount['prompt_level'] },
-  correct: boolean,
+  outcome: PromptOutcome,
 ): SessionPromptCount[] => normalizePromptCounts([
   ...(current ?? []),
   {
     prompt_type: prompt.promptType,
     prompt_level: prompt.promptLevel,
-    correct_trials: correct ? 1 : 0,
-    incorrect_trials: correct ? 0 : 1,
+    correct_trials: outcome === 'correct' ? 1 : 0,
+    incorrect_trials: outcome === 'incorrect' ? 1 : 0,
+    ...(outcome === 'noResponse' ? { no_response_trials: 1 } : {}),
   },
 ]);
 
@@ -159,23 +187,49 @@ export const decrementLegacyPromptCounts = (
   current: SessionPromptCount[] | null | undefined,
   field: 'correct_trials' | 'incorrect_trials',
   amount: number,
+  preferredOutcome: PromptOutcome,
 ): SessionPromptCount[] => {
   const next = normalizePromptCounts(current).map((count) => ({ ...count }));
   let remaining = Math.max(0, amount);
   for (let index = next.length - 1; index >= 0 && remaining > 0; index -= 1) {
-    const removable = Math.min(next[index][field], remaining);
-    next[index][field] -= removable;
-    remaining -= removable;
+    if (field === 'correct_trials') {
+      const removable = Math.min(next[index].correct_trials, remaining);
+      next[index].correct_trials -= removable;
+      remaining -= removable;
+      continue;
+    }
+
+    const unsuccessfulFields: Array<'incorrect_trials' | 'no_response_trials'> = preferredOutcome === 'noResponse'
+      ? ['no_response_trials', 'incorrect_trials']
+      : ['incorrect_trials', 'no_response_trials'];
+    for (const unsuccessfulField of unsuccessfulFields) {
+      const currentValue = unsuccessfulField === 'no_response_trials'
+        ? next[index].no_response_trials ?? 0
+        : next[index].incorrect_trials;
+      if (currentValue <= 0) {
+        continue;
+      }
+      const removable = Math.min(currentValue, remaining);
+      if (unsuccessfulField === 'no_response_trials') {
+        next[index].no_response_trials = currentValue - removable;
+      } else {
+        next[index].incorrect_trials -= removable;
+      }
+      remaining -= removable;
+      if (remaining === 0) {
+        break;
+      }
+    }
   }
   return normalizePromptCounts(next);
 };
 
 export const remapLegacyPromptCorrectnessAfterRemoval = (
-  current: Record<string, boolean>,
+  current: Record<string, PromptOutcome>,
   goalId: string,
   removedIndex: number,
   previousLength: number,
-): Record<string, boolean> => {
+): Record<string, PromptOutcome> => {
   const next = { ...current };
   for (let index = removedIndex; index < previousLength - 1; index += 1) {
     const nextKey = `legacy:${goalId}:${index + 1}`;
@@ -190,11 +244,14 @@ export const remapLegacyPromptCorrectnessAfterRemoval = (
   return next;
 };
 
-const sumLegacyPromptCounts = (
+export const sumLegacyPromptCounts = (
   counts: SessionPromptCount[] | null | undefined,
   field: 'correct_trials' | 'incorrect_trials',
 ): number => normalizePromptCounts(counts).reduce(
-  (total, count) => Math.min(Number.MAX_SAFE_INTEGER, total + count[field]),
+  (total, count) => Math.min(
+    Number.MAX_SAFE_INTEGER,
+    total + count[field] + (field === 'incorrect_trials' ? count.no_response_trials ?? 0 : 0),
+  ),
   0,
 );
 
@@ -512,7 +569,7 @@ export function SessionModal({
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [pendingTrialEvents, setPendingTrialEvents] = useState<SessionCaptureTrialEventInput[]>([]);
-  const [promptCorrectByTargetId, setPromptCorrectByTargetId] = useState<Record<string, boolean>>({});
+  const [promptOutcomeByTargetId, setPromptOutcomeByTargetId] = useState<Record<string, PromptOutcome>>({});
   const [pendingNumericTrialValues, setPendingNumericTrialValues] = useState<Record<string, string>>({});
   const [progressionNotices, setProgressionNotices] = useState<string[]>([]);
   const [progressionConflict, setProgressionConflict] = useState<string | null>(null);
@@ -549,7 +606,7 @@ export function SessionModal({
     isDataCollectionOnly && (session?.status === 'scheduled' || session?.status === 'in_progress'),
   );
   const shouldHideGoalCaptureFields = hideGoalCaptureFields;
-  const shouldShowPromptCorrectnessToggle = !isBtClinicalCaptureSession;
+  const shouldShowPromptCorrectnessToggle = true;
 
   const {
     data: btAbaNoteState,
@@ -1020,7 +1077,7 @@ export function SessionModal({
 
   useEffect(() => {
     setPendingTrialEvents([]);
-    setPromptCorrectByTargetId({});
+    setPromptOutcomeByTargetId({});
     setPendingNumericTrialValues({});
   }, [session?.id, clientId]);
 
@@ -1809,6 +1866,7 @@ export function SessionModal({
           return [...current, ...appended];
         });
         void queryClient.invalidateQueries({ queryKey: sessionTrialEventsQueryKey });
+        void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'trial-events' });
       }
       setPendingTrialEvents((current) =>
         trialEventsForSubmit.length > 0
@@ -2241,6 +2299,7 @@ export function SessionModal({
       field: 'metric_value' | 'incorrect_trials',
       delta: number,
       configuredTarget?: GoalTarget | null,
+      preferredPromptOutcome: PromptOutcome = 'correct',
     ) => {
       if (configuredTarget) {
         const dirtyPath =
@@ -2314,7 +2373,7 @@ export function SessionModal({
         if (promptReduction > 0) {
           setValue(
             promptCountsPath,
-            decrementLegacyPromptCounts(currentPromptCounts, promptField, promptReduction),
+            decrementLegacyPromptCounts(currentPromptCounts, promptField, promptReduction, preferredPromptOutcome),
             { shouldDirty: true, shouldTouch: true },
           );
         }
@@ -2358,25 +2417,25 @@ export function SessionModal({
       targetIndex: number,
       configuredTarget: GoalTarget | null,
       prompt: { promptType: SessionPromptCount['prompt_type']; promptLevel: SessionPromptCount['prompt_level'] },
-      correct: boolean,
+      outcome: PromptOutcome,
     ) => {
       if (configuredTarget && responseRequiredMeasurementTypes.has(configuredTarget.measurement_type)) {
         recordResponseTrial(
           goalId,
           targetIndex,
           configuredTarget,
-          correct ? 'correct' : 'incorrect',
+          outcome,
           prompt,
         );
         return;
       }
 
-      const aggregateField = correct ? 'metric_value' : 'incorrect_trials';
-      bumpTrialCount(goalId, targetIndex, aggregateField, 1, null);
+      const aggregateField = outcome === 'correct' ? 'metric_value' : 'incorrect_trials';
+      bumpTrialCount(goalId, targetIndex, aggregateField, 1, null, outcome);
       const promptCountsPath =
         `session_note_goal_measurements.${goalId}.data.target_trials.${targetIndex}.prompt_counts` as const;
       const current = getValues(promptCountsPath) as SessionPromptCount[] | null | undefined;
-      setValue(promptCountsPath, incrementLegacyPromptCount(current, prompt, correct), {
+      setValue(promptCountsPath, incrementLegacyPromptCount(current, prompt, outcome), {
         shouldDirty: true,
         shouldTouch: true,
       });
@@ -2463,7 +2522,7 @@ export function SessionModal({
       const nextTargetTrials = Array.isArray(currentTargetTrials)
         ? currentTargetTrials.filter((_, index) => index !== targetIndex)
         : undefined;
-      setPromptCorrectByTargetId((current) =>
+      setPromptOutcomeByTargetId((current) =>
         remapLegacyPromptCorrectnessAfterRemoval(current, goalId, targetIndex, existingTargets.length));
       updateGoalTargets(goalId, nextTargets.length > 0 ? nextTargets : [''], nextTargetTrials);
     },
@@ -4109,6 +4168,7 @@ export function SessionModal({
                                       : targetIncorrectDisplay;
                                     const promptCorrectnessKey = configuredTarget?.id ??
                                       `legacy:${selectedGoalId}:${sourceIndex}`;
+                                    const promptOutcome = promptOutcomeByTargetId[promptCorrectnessKey] ?? 'correct';
                                     const targetOpportunitiesDisplay = getTargetTrialNullableValue(sourceIndex, 'opportunities');
                                     const targetTrialBoundsError = getCorrectTrialsOpportunityError(
                                       targetCorrectDisplay,
@@ -4262,21 +4322,38 @@ export function SessionModal({
                                                   </div>
                                                   <div className="mt-3 rounded-md border border-indigo-200 bg-white/80 p-2 dark:border-indigo-800 dark:bg-dark/70">
                                                     {shouldShowPromptCorrectnessToggle ? (
-                                                      <label className="flex min-h-10 items-center gap-2 text-xs font-medium text-gray-800 dark:text-gray-200">
-                                                        <input
-                                                          type="checkbox"
-                                                          checked={promptCorrectByTargetId[promptCorrectnessKey] ?? true}
-                                                          onChange={(event) => setPromptCorrectByTargetId((current) =>
-                                                            setPromptCorrectnessForTarget(
-                                                              current,
-                                                              promptCorrectnessKey,
-                                                              event.target.checked,
-                                                            ))}
-                                                          aria-label={`Prompted response was correct for target ${targetIndex + 1}: ${configuredTarget.name}`}
-                                                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                        />
-                                                        Prompted response was correct
-                                                      </label>
+                                                      <fieldset>
+                                                        <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
+                                                          Prompt outcome
+                                                        </legend>
+                                                        <div
+                                                          className="flex flex-wrap gap-2"
+                                                          role="radiogroup"
+                                                          aria-label={`Prompt outcome for target ${targetIndex + 1}: ${configuredTarget.name}`}
+                                                        >
+                                                          {promptOutcomeOptions.map((option) => (
+                                                            <label
+                                                              key={option.value}
+                                                              className={[
+                                                                'flex min-h-10 min-w-[7rem] cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-xs font-semibold transition',
+                                                                getPromptOutcomeSegmentClasses(promptOutcome === option.value, option.value),
+                                                              ].join(' ')}
+                                                            >
+                                                              <input
+                                                                type="radio"
+                                                                name={`prompt-outcome-${promptCorrectnessKey}`}
+                                                                value={option.value}
+                                                                checked={promptOutcome === option.value}
+                                                                onChange={() => setPromptOutcomeByTargetId((current) =>
+                                                                  setPromptOutcomeForTarget(current, promptCorrectnessKey, option.value))}
+                                                                aria-label={`${option.label} for target ${targetIndex + 1}: ${configuredTarget.name}`}
+                                                                className="sr-only"
+                                                              />
+                                                              {option.label}
+                                                            </label>
+                                                          ))}
+                                                        </div>
+                                                      </fieldset>
                                                     ) : null}
                                                     <div
                                                       className={`${shouldShowPromptCorrectnessToggle ? 'mt-2' : ''} flex flex-wrap gap-2`}
@@ -4294,7 +4371,7 @@ export function SessionModal({
                                                             sourceIndex,
                                                             configuredTarget,
                                                             { promptType: prompt.promptType, promptLevel: prompt.promptLevel },
-                                                            promptCorrectByTargetId[promptCorrectnessKey] ?? true,
+                                                            promptOutcome,
                                                           )}
                                                         >
                                                           {prompt.label}
@@ -4311,7 +4388,7 @@ export function SessionModal({
                                                 type="button"
                                                 aria-label={`Increase correct trials for target ${targetIndex + 1}`}
                                                 className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-lg font-bold text-white shadow-sm hover:bg-emerald-700"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', 1, configuredTarget)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', 1, configuredTarget, promptOutcome)}
                                               >
                                                 +
                                               </button>
@@ -4323,7 +4400,7 @@ export function SessionModal({
                                                 aria-label={`Decrease correct trials for target ${targetIndex + 1}`}
                                                 disabled={pendingCorrectDisplay < 1}
                                                 className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-700 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-400 dark:text-emerald-200"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -1, configuredTarget)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -1, configuredTarget, promptOutcome)}
                                               >
                                                 -
                                               </button>
@@ -4331,7 +4408,7 @@ export function SessionModal({
                                                 type="button"
                                                 aria-label={`Add 5 correct trials for target ${targetIndex + 1}`}
                                                 className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', 5, configuredTarget)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', 5, configuredTarget, promptOutcome)}
                                               >
                                                 +5
                                               </button>
@@ -4340,7 +4417,7 @@ export function SessionModal({
                                                 aria-label={`Subtract 5 correct trials for target ${targetIndex + 1}`}
                                                 disabled={pendingCorrectDisplay < 5}
                                                 className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -5, configuredTarget)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'metric_value', -5, configuredTarget, promptOutcome)}
                                               >
                                                 -5
                                               </button>
@@ -4351,7 +4428,7 @@ export function SessionModal({
                                                 type="button"
                                                 aria-label={`Increase incorrect or no-response trials for target ${targetIndex + 1}`}
                                                 className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 text-lg font-bold text-white shadow-sm hover:bg-rose-700"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', 1, configuredTarget)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', 1, configuredTarget, promptOutcome)}
                                               >
                                                 +
                                               </button>
@@ -4363,7 +4440,7 @@ export function SessionModal({
                                                 aria-label={`Decrease incorrect trials for target ${targetIndex + 1}`}
                                                 disabled={pendingIncorrectDisplay < 1}
                                                 className="flex h-10 w-10 items-center justify-center rounded-full border border-rose-700 text-rose-700 hover:bg-rose-50 dark:border-rose-400 dark:text-rose-200"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -1, configuredTarget)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -1, configuredTarget, promptOutcome)}
                                               >
                                                 -
                                               </button>
@@ -4371,7 +4448,7 @@ export function SessionModal({
                                                 type="button"
                                                 aria-label={`Add 5 incorrect or no-response trials for target ${targetIndex + 1}`}
                                                 className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', 5, configuredTarget)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', 5, configuredTarget, promptOutcome)}
                                               >
                                                 +5
                                               </button>
@@ -4380,7 +4457,7 @@ export function SessionModal({
                                                 aria-label={`Subtract 5 incorrect trials for target ${targetIndex + 1}`}
                                                 disabled={pendingIncorrectDisplay < 5}
                                                 className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
-                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -5, configuredTarget)}
+                                                onClick={() => bumpTrialCount(selectedGoalId, sourceIndex, 'incorrect_trials', -5, configuredTarget, promptOutcome)}
                                               >
                                                 -5
                                               </button>
@@ -4388,21 +4465,38 @@ export function SessionModal({
                                             {!configuredTarget ? (
                                             <div className="w-full rounded-md border border-indigo-200 bg-white/80 p-2 dark:border-indigo-800 dark:bg-dark/70">
                                               {shouldShowPromptCorrectnessToggle ? (
-                                                <label className="flex min-h-10 items-center gap-2 text-xs font-medium text-gray-800 dark:text-gray-200">
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={promptCorrectByTargetId[promptCorrectnessKey] ?? true}
-                                                    onChange={(event) => setPromptCorrectByTargetId((current) =>
-                                                      setPromptCorrectnessForTarget(
-                                                        current,
-                                                        promptCorrectnessKey,
-                                                        event.target.checked,
-                                                      ))}
-                                                    aria-label={`Prompted response was correct for target ${targetIndex + 1}: ${targetValue}`}
-                                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                  />
-                                                  Prompted response was correct
-                                                </label>
+                                                <fieldset>
+                                                  <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
+                                                    Prompt outcome
+                                                  </legend>
+                                                  <div
+                                                    className="flex flex-wrap gap-2"
+                                                    role="radiogroup"
+                                                    aria-label={`Prompt outcome for target ${targetIndex + 1}: ${targetValue}`}
+                                                  >
+                                                    {promptOutcomeOptions.map((option) => (
+                                                      <label
+                                                        key={option.value}
+                                                        className={[
+                                                          'flex min-h-10 min-w-[7rem] cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-xs font-semibold transition',
+                                                          getPromptOutcomeSegmentClasses(promptOutcome === option.value, option.value),
+                                                        ].join(' ')}
+                                                      >
+                                                        <input
+                                                          type="radio"
+                                                          name={`prompt-outcome-${promptCorrectnessKey}`}
+                                                          value={option.value}
+                                                          checked={promptOutcome === option.value}
+                                                          onChange={() => setPromptOutcomeByTargetId((current) =>
+                                                            setPromptOutcomeForTarget(current, promptCorrectnessKey, option.value))}
+                                                          aria-label={`${option.label} for target ${targetIndex + 1}: ${targetValue}`}
+                                                          className="sr-only"
+                                                        />
+                                                        {option.label}
+                                                      </label>
+                                                    ))}
+                                                  </div>
+                                                </fieldset>
                                               ) : null}
                                               <div
                                                 className={`${shouldShowPromptCorrectnessToggle ? 'mt-2' : ''} flex flex-wrap gap-2`}
@@ -4420,7 +4514,7 @@ export function SessionModal({
                                                       sourceIndex,
                                                       configuredTarget,
                                                       { promptType: prompt.promptType, promptLevel: prompt.promptLevel },
-                                                      promptCorrectByTargetId[promptCorrectnessKey] ?? true,
+                                                      promptOutcome,
                                                     )}
                                                   >
                                                     {prompt.label}
@@ -4481,11 +4575,6 @@ export function SessionModal({
                                   })}
                                 </div>
                               </div>
-                              {selectedGoal?.target_criteria?.trim() ? (
-                                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                                  Current plan target: {selectedGoal.target_criteria}
-                                </p>
-                              ) : null}
                               <input
                                 type="hidden"
                                 {...register(targetFieldKey)}

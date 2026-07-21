@@ -538,12 +538,14 @@ export interface SessionTargetTrialData {
 
 export type SessionPromptType = 'verbal' | 'gesture' | 'model' | 'visual' | 'physical';
 export type SessionPromptLevel = 'full' | 'partial' | null;
+export type PromptOutcome = 'correct' | 'incorrect' | 'noResponse';
 
 export interface SessionPromptCount {
   prompt_type: SessionPromptType;
   prompt_level: SessionPromptLevel;
   correct_trials: number;
   incorrect_trials: number;
+  no_response_trials?: number | null;
 }
 
 export interface SessionGoalMeasurementEntry {

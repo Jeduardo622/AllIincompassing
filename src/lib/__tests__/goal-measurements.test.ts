@@ -178,6 +178,61 @@ describe('goal-measurements helpers', () => {
     })]);
   });
 
+  it('preserves positive no-response prompt counts and folds them into derived incorrect totals', () => {
+    const normalized = normalizeGoalMeasurementEntry({
+      targets: ['Target'],
+      target_trials: [{
+        target: 'Target',
+        metric_value: 0,
+        incorrect_trials: 0,
+        prompt_counts: [
+          {
+            prompt_type: 'verbal',
+            prompt_level: 'full',
+            correct_trials: 1,
+            incorrect_trials: 0,
+            no_response_trials: 2,
+          },
+          {
+            prompt_type: 'gesture',
+            prompt_level: null,
+            correct_trials: 0,
+            incorrect_trials: 1,
+            no_response_trials: 0,
+          },
+          {
+            prompt_type: 'model',
+            prompt_level: null,
+            correct_trials: 0,
+            incorrect_trials: 0,
+            no_response_trials: -4,
+          },
+        ],
+      }],
+    });
+
+    expect(normalized?.data.target_trials).toEqual([expect.objectContaining({
+      metric_value: 1,
+      incorrect_trials: 3,
+      prompt_counts: [
+        {
+          prompt_type: 'verbal',
+          prompt_level: 'full',
+          correct_trials: 1,
+          incorrect_trials: 0,
+          no_response_trials: 2,
+        },
+        {
+          prompt_type: 'gesture',
+          prompt_level: null,
+          correct_trials: 0,
+          incorrect_trials: 1,
+        },
+      ],
+    })]);
+    expect(normalized?.data.incorrect_trials).toBe(3);
+  });
+
   it('builds a goal-scoped measurement entry with goal defaults', () => {
     expect(
       buildGoalMeasurementEntry(

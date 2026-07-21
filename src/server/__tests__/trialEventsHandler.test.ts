@@ -53,6 +53,13 @@ const buildGetRequest = (query = `target_id=${TARGET_ID}`) =>
     method: "GET",
   });
 
+const buildPromptOutcomesRequest = (
+  query = `view=prompt_outcomes&client_id=${CLIENT_ID}&goal_id=${GOAL_ID}&start_at=2026-07-01T00:00:00.000Z&end_before=2026-07-02T00:00:00.000Z`,
+) =>
+  new Request(`http://localhost/api/trial-events?${query}`, {
+    method: "GET",
+  });
+
 const mockTargetAndSessionLookups = (measurementType = "frequency") => {
   vi.mocked(fetchJson)
     .mockResolvedValueOnce({
@@ -111,6 +118,20 @@ const mockSessionReadLookup = (clientId = CLIENT_ID) => {
       },
     ],
   });
+};
+
+const mockPromptOutcomesScopeLookups = () => {
+  vi.mocked(fetchJson)
+    .mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [{ id: CLIENT_ID }],
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [{ id: GOAL_ID, client_id: CLIENT_ID }],
+    });
 };
 
 describe("trialEventsHandler", () => {
@@ -233,6 +254,233 @@ describe("trialEventsHandler", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "session_id and target_id must belong to the same client" });
     expect(currentUserCanCaptureTrialEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects client scope mixed with session or target anchors outside prompt outcome mode", async () => {
+    const response = await trialEventsHandler(buildGetRequest(`client_id=${CLIENT_ID}&target_id=${TARGET_ID}`));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "client_id cannot be combined with session_id or target_id unless view=prompt_outcomes",
+    });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("rejects prompt outcome reads that mix client scope with target or session anchors", async () => {
+    const response = await trialEventsHandler(
+      buildPromptOutcomesRequest(
+        `view=prompt_outcomes&client_id=${CLIENT_ID}&goal_id=${GOAL_ID}&start_at=2026-07-01T00:00:00.000Z&end_before=2026-07-02T00:00:00.000Z&target_id=${TARGET_ID}`,
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "view=prompt_outcomes cannot be combined with session_id or target_id",
+    });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("rejects prompt outcome reads with invalid ranges before scope lookups", async () => {
+    const response = await trialEventsHandler(
+      buildPromptOutcomesRequest(
+        `view=prompt_outcomes&client_id=${CLIENT_ID}&goal_id=${GOAL_ID}&start_at=2026-07-02T00:00:00.000Z&end_before=2026-07-02T00:00:00.000Z`,
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "start_at must be before end_before" });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [CLIENT_ID, GOAL_ID],
+    ["77777777-7777-4777-8777-777777777777", "88888888-8888-4888-8888-888888888888"],
+  ])("denies prompt outcome reads before privileged scope lookups regardless of requested ids", async (clientId, goalId) => {
+    vi.mocked(currentUserCanCaptureTrialEvent).mockResolvedValue({ allowed: false, upstreamError: false });
+
+    const response = await trialEventsHandler(
+      buildPromptOutcomesRequest(
+        `view=prompt_outcomes&client_id=${clientId}&goal_id=${goalId}&start_at=2026-07-01T00:00:00.000Z&end_before=2026-07-02T00:00:00.000Z`,
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Forbidden" });
+    expect(currentUserCanCaptureTrialEvent).toHaveBeenCalledWith(ACCESS_TOKEN, ORG_ID, clientId);
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("returns a generic access error before privileged prompt outcome scope lookups", async () => {
+    vi.mocked(currentUserCanCaptureTrialEvent).mockResolvedValue({ allowed: false, upstreamError: true });
+
+    const response = await trialEventsHandler(buildPromptOutcomesRequest());
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "Unable to validate trial-event read access" });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["nonexistent", []],
+    ["cross-client", [{ id: GOAL_ID, client_id: "77777777-7777-4777-8777-777777777777" }]],
+  ])("returns the same generic response for %s prompt outcome goals", async (_case, goalRows) => {
+    vi.mocked(currentUserCanCaptureTrialEvent).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: CLIENT_ID }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: goalRows,
+      });
+
+    const response = await trialEventsHandler(buildPromptOutcomesRequest());
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "goal_id is not in scope for this client" });
+    expect(fetchJson).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads prompt outcomes after service-role scope validation and final user-token read", async () => {
+    mockPromptOutcomesScopeLookups();
+    vi.mocked(currentUserCanCaptureTrialEvent).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          id: "event-1",
+          session_id: SESSION_ID,
+          target_id: TARGET_ID,
+          goal_id: GOAL_ID,
+          therapist_id: THERAPIST_ID,
+          response: "correct",
+          event_timestamp: "2026-07-01T01:00:00.000Z",
+        },
+      ],
+    });
+
+    const response = await trialEventsHandler(buildPromptOutcomesRequest());
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([
+      {
+        id: "event-1",
+        session_id: SESSION_ID,
+        target_id: TARGET_ID,
+        goal_id: GOAL_ID,
+        therapist_id: THERAPIST_ID,
+        response: "correct",
+        event_timestamp: "2026-07-01T01:00:00.000Z",
+      },
+    ]);
+    expect(currentUserCanCaptureTrialEvent).toHaveBeenCalledWith(ACCESS_TOKEN, ORG_ID, CLIENT_ID);
+    expect(vi.mocked(currentUserCanCaptureTrialEvent).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(fetchJson).mock.invocationCallOrder[0],
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining(`/rest/v1/clients?select=id&id=eq.${CLIENT_ID}&organization_id=eq.${ORG_ID}`),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        }),
+      }),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining(
+        `/rest/v1/goals?select=id,client_id&id=eq.${GOAL_ID}&organization_id=eq.${ORG_ID}&client_id=eq.${CLIENT_ID}`,
+      ),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        }),
+      }),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(
+        `/rest/v1/trial_events?select=id,session_id,target_id,goal_id,therapist_id,response,event_timestamp`,
+      ),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: "anon-key",
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+        }),
+      }),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`organization_id=eq.${ORG_ID}`),
+      expect.any(Object),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`client_id=eq.${CLIENT_ID}`),
+      expect.any(Object),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`goal_id=eq.${GOAL_ID}`),
+      expect.any(Object),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`event_timestamp=gte.2026-07-01T00%3A00%3A00.000Z`),
+      expect.any(Object),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`event_timestamp=lt.2026-07-02T00%3A00%3A00.000Z`),
+      expect.any(Object),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`prompt_type=not.is.null`),
+      expect.any(Object),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`response=in.(correct%2Cincorrect%2CnoResponse)`),
+      expect.any(Object),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`limit=5001`),
+      expect.any(Object),
+    );
+  });
+
+  it("returns 422 when prompt outcome reads exceed the 5000 row cap", async () => {
+    mockPromptOutcomesScopeLookups();
+    vi.mocked(currentUserCanCaptureTrialEvent).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: Array.from({ length: 5001 }, (_, index) => ({
+        id: `event-${index + 1}`,
+        session_id: SESSION_ID,
+        target_id: TARGET_ID,
+        goal_id: GOAL_ID,
+        therapist_id: THERAPIST_ID,
+        response: "correct",
+        event_timestamp: "2026-07-01T01:00:00.000Z",
+      })),
+    });
+
+    const response = await trialEventsHandler(buildPromptOutcomesRequest());
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "Prompt outcome query exceeds 5000 events" });
   });
 
   it("denies trial-event creation before insert when caller cannot capture data for the client", async () => {

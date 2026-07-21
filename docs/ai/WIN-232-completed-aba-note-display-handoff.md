@@ -18,10 +18,11 @@
 - PASS: `npm run lint`.
 - PASS: `npm run typecheck`.
 - PASS: `npm run test:routes:tier0`, 220 Cypress checks.
+- PASS: `completed_aba_note.cy.ts`, 1 synthetic browser check with screenshot evidence of populated read-only responses.
 - PASS: `npm run build`.
 - FAIL, unrelated baseline: `npm run test:ci` reported failures in the PDF Blob test, CI workflow contract fixture, and IEHP Supabase config newline assertion. None of those files are changed by WIN-232.
 
 ## Residual Risk
 
-- Hosted visual proof requires deployment of this branch and a clearly synthetic completed BT ABA session.
+- Hosted end-to-end visual proof remains blocked until this branch is merged and deployed; the current screenshot uses synthetic, redacted browser fixtures.
 - The read path remains constrained by the existing `get_bt_aba_session_note` assigned-BT authorization RPC.

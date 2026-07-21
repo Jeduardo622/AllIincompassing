@@ -876,8 +876,11 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const setContentIndex = script.indexOf('await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));');
     const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
     const generatorCloseIndex = script.indexOf('await generatorPage.close();');
-    const pdfMimeIndex = script.indexOf("mimeType: 'application/pdf'");
-    const pdfFileNameIndex = script.indexOf("buildIehpSmokeUploadFileName(Date.now(), 'pdf')");
+    const pdfFileNameIndex = script.indexOf(
+      "buildIehpSmokeUploadFileName(Date.now(), 'pdf')",
+      matrixCaseLoopIndex,
+    );
+    const pdfMimeIndex = script.indexOf("mimeType: 'application/pdf'", pdfFileNameIndex);
     const caseRunnerIndex = script.indexOf('const runSmokeCase = async (');
     const cleanupHelperIndex = script.indexOf('return executeIehpSmokeCaseWithCleanup({');
     const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
@@ -916,6 +919,41 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(aggregateEvidenceIndex).toBeGreaterThan(aggregateCleanupIndex);
   });
 
+  it('adds the existing skills behaviors proof as one cleaned pdf mini matrix case', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+
+    const matrixCaseLoopIndex = script.indexOf('for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES)');
+    const reusableProofRunnerIndex = script.indexOf('const runSkillsBehaviorsProofCase = async () =>');
+    const matrixProofCallIndex = script.indexOf(
+      'const skillsBehaviorsCaseEvidence = await runSkillsBehaviorsProofCase();',
+      matrixCaseLoopIndex,
+    );
+    const matrixProofPushIndex = script.indexOf('passedCases.push(skillsBehaviorsCaseEvidence);', matrixProofCallIndex);
+    const aggregateTotalIndex = script.indexOf('totalCases: IEHP_PDF_MINI_MATRIX_CASES.length + 1,');
+    const computedSkillsCountIndex = script.indexOf(
+      'const skillsBehaviorsVerifiedCases = passedCases.filter(',
+      matrixProofPushIndex,
+    );
+    const exactSkillsCountGuardIndex = script.indexOf('if (skillsBehaviorsVerifiedCases !== 1)', computedSkillsCountIndex);
+    const aggregateSkillsIndex = script.indexOf('skillsBehaviorsVerifiedCases,', exactSkillsCountGuardIndex);
+    const standaloneProofCallIndex = script.indexOf(
+      'const proofCaseEvidence = await runSkillsBehaviorsProofCase();',
+      aggregateSkillsIndex,
+    );
+
+    expect(reusableProofRunnerIndex).toBeGreaterThanOrEqual(0);
+    expect(matrixProofCallIndex).toBeGreaterThan(matrixCaseLoopIndex);
+    expect(matrixProofPushIndex).toBeGreaterThan(matrixProofCallIndex);
+    expect(computedSkillsCountIndex).toBeGreaterThan(matrixProofPushIndex);
+    expect(exactSkillsCountGuardIndex).toBeGreaterThan(computedSkillsCountIndex);
+    expect(aggregateTotalIndex).toBeGreaterThan(exactSkillsCountGuardIndex);
+    expect(aggregateSkillsIndex).toBeGreaterThan(aggregateTotalIndex);
+    expect(standaloneProofCallIndex).toBeGreaterThan(aggregateSkillsIndex);
+  });
+
   it('keeps default docx invocation free of referral-date requirements while matrix cases keep them', () => {
     const script = readFileSync(
       path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
@@ -950,11 +988,15 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
       "const isSkillsBehaviorsProofMode = process.argv.includes('--skills-behaviors-proof');",
     );
     const skillsBehaviorsCaseIndex = script.indexOf('IEHP_SKILLS_BEHAVIORS_PROOF_CASE');
-    const proofHtmlIndex = script.indexOf('buildIehpSkillsBehaviorsProofPdfHtml');
+    const reusableProofRunnerIndex = script.indexOf('const runSkillsBehaviorsProofCase = async () =>');
+    const proofHtmlIndex = script.indexOf('buildIehpSkillsBehaviorsProofPdfHtml', reusableProofRunnerIndex);
     const checklistAssertionIndex = script.indexOf('assertIehpSkillsBehaviorsChecklistSection');
     const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
-    const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
-    const proofCaseRunnerIndex = script.indexOf("caseId: IEHP_SKILLS_BEHAVIORS_PROOF_CASE.id");
+    const pagePdfIndex = script.indexOf(
+      "const pdfBuffer = await proofPdfPage.pdf({ format: 'Letter', printBackground: true });",
+      proofHtmlIndex,
+    );
+    const proofCaseRunnerIndex = script.indexOf('const proofCaseEvidence = await runSkillsBehaviorsProofCase();');
     const proofEvidenceIndex = script.indexOf('skillsBehaviorsAssertion');
     const proofModeIndex = script.indexOf("mode: 'skills-behaviors-proof'");
 
@@ -969,7 +1011,8 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     );
     expect(skillsBehaviorsFlagIndex).toBeGreaterThanOrEqual(0);
     expect(skillsBehaviorsCaseIndex).toBeGreaterThan(skillsBehaviorsFlagIndex);
-    expect(proofHtmlIndex).toBeGreaterThan(skillsBehaviorsCaseIndex);
+    expect(reusableProofRunnerIndex).toBeGreaterThan(skillsBehaviorsCaseIndex);
+    expect(proofHtmlIndex).toBeGreaterThan(reusableProofRunnerIndex);
     expect(pagePdfIndex).toBeGreaterThan(proofHtmlIndex);
     expect(proofCaseRunnerIndex).toBeGreaterThan(pagePdfIndex);
     expect(checklistFetchIndex).toBeGreaterThanOrEqual(0);

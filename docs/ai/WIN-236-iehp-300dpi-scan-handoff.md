@@ -1,90 +1,55 @@
-# WIN-236 — IEHP 300 DPI scanned PDF mini-matrix handoff
+# WIN-236 IEHP 300 DPI Scan Handoff
 
 - Date: July 21, 2026
 - Linear: `WIN-236`
 - Branch: `codex/win-236-iehp-300dpi-scan`
+- PR: `#830` (`https://github.com/Jeduardo622/AllIincompassing/pull/830`)
 - Classification: `high-risk human-reviewed`
 - Lane: `critical`
-- Triggering paths: `.github/workflows/iehp-pdf-mini-matrix-proof.yml`, `scripts/lib/iehp-assessment-import-smoke.ts`, `scripts/playwright-iehp-assessment-import-smoke.ts`, and their focused tests
-- Protected boundary: `.github/workflows/iehp-pdf-mini-matrix-proof.yml`; human review is required before merge
-
-## Route-task Card
-
-- classification: `high-risk human-reviewed`
-- lane: `critical`
-- rationale: the new scan case widens the hosted PDF mini-matrix contract and therefore touches the protected owner-dispatched workflow and its curated evidence counts
-- allowed files: the IEHP smoke helper, the IEHP Playwright smoke runner, the narrowest focused tests, the hosted matrix workflow contract, and this handoff
-- stop conditions: any parser/OCR/server/API/Supabase/auth/runtime-config/migration/secret/production-data change
+- Trigger: the hosted proof's exact evidence contract changes under `.github/workflows/**`
+- Required agents: `specification-engineer` -> `software-architect` -> `implementation-engineer` -> `code-review-engineer` -> `test-engineer` -> `security-engineer`
 
 ## Scope
 
-- Add one deterministic synthetic `scan-300dpi-monochrome` PDF mini-matrix case.
-- Generate that case at runtime as a 2550x3300 rasterized black-and-white JPEG-backed Letter PDF with no live data.
-- Preserve existing assessor-phone snapshot precedence assertions, referral-date assertions, extracted status assertions, zero-draft assertions, and unconditional document/storage cleanup.
-- Widen the hosted matrix workflow and workflow-contract test from four to five total cases so curated evidence stays exact.
+- Add one deterministic synthetic `scan-300dpi-monochrome` case to the on-demand IEHP PDF mini-matrix.
+- Render a 2550 x 3300 black-on-white source image with light JPEG compression and embed only that image in a straight Letter PDF.
+- Reuse the existing authenticated upload, extracted-status, zero-draft, checklist/provenance assertions, per-document cleanup, and synthetic-admin cleanup.
+- Require five ordered, redacted, cleanup-verified hosted evidence objects: four PDF cases plus the existing Skills & Behaviors proof.
 
-## Non-goals
+## Non-goals and Stop Conditions
 
-- No parser or OCR changes.
-- No new extraction fields.
-- No server/API/Supabase/auth/workflow-secret changes.
-- No production data, PHI, or real phone numbers.
-- No broad smoke-framework refactor.
+- No parser, OCR, extraction-field, server/API, Supabase function, migration, auth, secret, or production-data changes.
+- If the hosted extractor cannot process the image-only PDF, stop with that limitation; do not widen this slice into parser/OCR work.
 
 ## Test-first Evidence
 
-- RED:
-  - `npm test -- tests/scripts/iehp-assessment-import-smoke.test.ts` failed `4/26` because `IEHP_PDF_MINI_MATRIX_CASES` still had only three cases and no scan metadata.
-  - `npm test -- tests/scripts/playwright-iehp-assessment-import-smoke.test.ts tests/workflows/iehp-pdf-mini-matrix-proof.test.ts` failed the smoke structure assertion because the `raster-scan` generation branch was missing.
-- GREEN:
-  - `npm test -- tests/scripts/iehp-assessment-import-smoke.test.ts` passed `26/26`.
-  - `npm test -- tests/scripts/iehp-assessment-import-smoke.test.ts tests/workflows/iehp-pdf-mini-matrix-proof.test.ts` passed `29/29`.
-  - `npm run test -- tests/scripts/playwright-iehp-assessment-import-smoke.test.ts` now passes the new scan-branch structure assertion; the only remaining failure in that file is the unchanged baseline `supabase/config.toml` expectation outside this slice.
+- RED: focused tests failed on the missing fourth case, missing raster generation path, and the workflow's four-case evidence contract (`6` slice-specific failures).
+- GREEN: helper/workflow tests passed (`29/29`); runner structure tests passed (`6/6`); `npm run typecheck` passed.
+- The full runner test file also exposes an unchanged Windows line-ending baseline assertion in `supabase/config.toml`; the narrowed changed-surface runner tests are green.
 
 ## Verification Card
 
 - classification: `high-risk human-reviewed`
 - lane: `critical`
-- change type:
-  - CI/workflow/policy
-  - test harness / Playwright smoke runner
-- required checks:
-  - focused script/workflow tests
-  - `npm run ci:check-focused`
-  - `npm run lint`
-  - `npm run typecheck`
-  - `npm run test:ci`
-  - `npm run build`
-  - `npm run verify:local`
-  - hosted `npm run playwright:iehp-assessment-import-pdf-mini-matrix` against the protected preview workflow
+- change type: browser smoke harness plus CI/workflow evidence contract
+- required checks: focused tests; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run build`; `npm run verify:local`; owner-approved hosted IEHP PDF mini-matrix workflow
 - executed checks:
-  - `npm test -- tests/scripts/iehp-assessment-import-smoke.test.ts` -> pass (`26/26`)
-  - `npm test -- tests/scripts/playwright-iehp-assessment-import-smoke.test.ts` -> fail on one unchanged baseline assertion in `selectConfiguredSmokeClient > keeps both CI IEHP proofs on the generated super-admin and unconditional cleanup path`; the new scan-branch structure assertion passed
-  - `npm test -- tests/scripts/iehp-assessment-import-smoke.test.ts tests/workflows/iehp-pdf-mini-matrix-proof.test.ts` -> pass (`29/29`)
-  - `npm run ci:check-focused` -> pass; branch-protection, DB grant, and auth-parity probes skipped outside CI as reported by the command
+  - focused helper/workflow tests -> pass (`29/29`)
+  - focused runner structure tests -> pass (`6/6`)
+  - `npm run ci:check-focused` -> pass; environment-dependent database and branch-protection probes skipped as reported
   - `npm run lint` -> pass
   - `npm run typecheck` -> pass
   - `npm run build` -> pass
-  - `npm run test:ci` -> fail outside this slice on:
-    - `tests/ci/deploy-session-edge-bundle.test.ts` timeout
-    - `src/lib/__tests__/ai-documentation.test.ts` fetch/null-text baseline
-    - Vitest coverage temp-file `ENOENT` under `coverage/.tmp`
-  - `npm run verify:local` -> fail at its `test:ci` stage on the same unrelated `deploy-session-edge-bundle`, `ai-documentation`, and coverage-temp-file failures; upstream policy, lint, and typecheck stages passed
+  - isolated `npm run test:ci` -> `3134` pass / `2` unrelated baseline failures: Windows `Blob.text()` behavior and the missing BCBA workflow provision-step expectation
+  - focused rerun of an earlier load-sensitive deployment-bundle timeout -> pass (`1/1`)
+  - `npm run verify:local` -> policy, lint, and typecheck passed; stopped at the same aggregate baseline boundary before coverage/build/tier-0 continuation
 - blocked checks:
-  - local hosted smoke command -> blocked because `PW_BASE_URL`, `PW_SUPERADMIN_EMAIL`, `PW_SUPERADMIN_PASSWORD`, `PW_ASSESSMENT_CLIENT_ID`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` are all missing from the current process
+  - hosted five-case proof -> pending immutable preview deployment and owner-approved workflow dispatch for PR `#830`
 - result: `pass-with-blocked-checks`
-- residual risk: local structure tests prove the new synthetic scan path and workflow contract, but only the hosted workflow can prove the current extraction stack actually handles the rasterized PDF end-to-end
+- residual risk: local tests prove fixture shape and orchestration, but only the hosted run can prove that deployed extraction handles an image-only PDF and still cleans every upload
 
-## Review
+## Protected-path Review
 
-- `code-review-engineer`: completed; no blocking findings. Noted only a low-severity maintainability follow-up to derive workflow case-count guards from `expectedCaseIds.length`.
-- `test-engineer`: requested but did not return findings before interruption.
-- `security-engineer`: requested but did not return findings before interruption.
-
-## Current Hosted-verification Blocker
-
-This local process has no Playwright or Supabase smoke credentials, so no local hosted smoke was run. The protected GitHub workflow still needs to be exercised from the PR head SHA after push.
-
-## Next action
-
-Push the branch, open the PR, dispatch the protected `iehp-pdf-mini-matrix-proof` workflow against the PR head SHA, and stop for human review if the hosted five-case proof fails or if the rasterized case shows the parser lacks existing OCR support.
+- The workflow change only adds the new ordered case ID and raises exact case/aggregate guards from four to five.
+- Triggers, immutable PR-head validation, Netlify deployment binding, secret names, private environment handling, redaction, and unconditional cleanup are unchanged.
+- Human review is required before merge.

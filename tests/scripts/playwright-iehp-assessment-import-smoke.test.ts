@@ -454,8 +454,8 @@ describe('selectConfiguredSmokeClient', () => {
     );
     expect(cleanupStepStart).toBeGreaterThanOrEqual(0);
     expect(cleanupStep).toContain('if: always()');
-    expect(supabaseConfig).toMatch(
-      /\[functions\.extract-assessment-fields\]\r?\nverify_jwt = true/,
+    expect(supabaseConfig).toContain(
+      '[functions.extract-assessment-fields]\nverify_jwt = true',
     );
     expect(candidateBlock).toContain('PW_SUPERADMIN_EMAIL');
     expect(candidateBlock).not.toContain('PW_ADMIN_EMAIL');

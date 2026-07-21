@@ -36,6 +36,8 @@ const GOAL_ID = "55555555-5555-4555-8555-555555555555";
 const THERAPIST_ID = "66666666-6666-4666-8666-666666666666";
 const SERVICE_ROLE_KEY = "service-role-key";
 const ORIGINAL_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const PROMPT_OUTCOMES_START_AT = "2026-07-01T00:00:00.000Z";
+const PROMPT_OUTCOMES_END_BEFORE = "2026-07-02T00:00:00.000Z";
 
 const buildPostRequest = () =>
   new Request("http://localhost/api/trial-events", {
@@ -54,7 +56,7 @@ const buildGetRequest = (query = `target_id=${TARGET_ID}`) =>
   });
 
 const buildPromptOutcomesRequest = (
-  query = `view=prompt_outcomes&client_id=${CLIENT_ID}&goal_id=${GOAL_ID}&start_at=2026-07-01T00:00:00.000Z&end_before=2026-07-02T00:00:00.000Z`,
+  query = `view=prompt_outcomes&client_id=${CLIENT_ID}&goal_id=${GOAL_ID}&start_at=${PROMPT_OUTCOMES_START_AT}&end_before=${PROMPT_OUTCOMES_END_BEFORE}`,
 ) =>
   new Request(`http://localhost/api/trial-events?${query}`, {
     method: "GET",
@@ -293,6 +295,26 @@ describe("trialEventsHandler", () => {
   });
 
   it.each([
+    ["2026-07-01T12:00:00.000Z", "2026-07-02T00:00:00.000Z"],
+    ["2026-07-01T00:00:00.000Z", "2026-07-02T12:00:00.000Z"],
+  ])("rejects prompt outcome reads whose date range is not aligned to UTC day boundaries", async (startAt, endBefore) => {
+    vi.mocked(currentUserCanCaptureTrialEvent).mockResolvedValue({ allowed: false, upstreamError: false });
+
+    const response = await trialEventsHandler(
+      buildPromptOutcomesRequest(
+        `view=prompt_outcomes&client_id=${CLIENT_ID}&goal_id=${GOAL_ID}&start_at=${startAt}&end_before=${endBefore}`,
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "start_at and end_before must be UTC day boundaries at 00:00:00.000Z",
+    });
+    expect(currentUserCanCaptureTrialEvent).not.toHaveBeenCalled();
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it.each([
     [CLIENT_ID, GOAL_ID],
     ["77777777-7777-4777-8777-777777777777", "88888888-8888-4888-8888-888888888888"],
   ])("denies prompt outcome reads before privileged scope lookups regardless of requested ids", async (clientId, goalId) => {
@@ -358,15 +380,23 @@ describe("trialEventsHandler", () => {
           goal_id: GOAL_ID,
           therapist_id: THERAPIST_ID,
           response: "correct",
-          event_timestamp: "2026-07-01T01:00:00.000Z",
+          event_timestamp: "2026-07-02T07:30:00.000Z",
+          sessions: {
+            client_session_notes: [
+              {
+                session_date: "2026-07-01",
+              },
+            ],
+          },
         },
       ],
     });
 
     const response = await trialEventsHandler(buildPromptOutcomesRequest());
+    const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([
+    expect(payload).toEqual([
       {
         id: "event-1",
         session_id: SESSION_ID,
@@ -374,7 +404,7 @@ describe("trialEventsHandler", () => {
         goal_id: GOAL_ID,
         therapist_id: THERAPIST_ID,
         response: "correct",
-        event_timestamp: "2026-07-01T01:00:00.000Z",
+        event_timestamp: "2026-07-02T07:30:00.000Z",
       },
     ]);
     expect(currentUserCanCaptureTrialEvent).toHaveBeenCalledWith(ACCESS_TOKEN, ORG_ID, CLIENT_ID);
@@ -408,7 +438,7 @@ describe("trialEventsHandler", () => {
     expect(fetchJson).toHaveBeenNthCalledWith(
       3,
       expect.stringContaining(
-        `/rest/v1/trial_events?select=id,session_id,target_id,goal_id,therapist_id,response,event_timestamp`,
+        `/rest/v1/trial_events?select=id,session_id,target_id,goal_id,therapist_id,response,event_timestamp,sessions!inner(client_session_notes!inner(session_date))`,
       ),
       expect.objectContaining({
         method: "GET",
@@ -435,12 +465,22 @@ describe("trialEventsHandler", () => {
     );
     expect(fetchJson).toHaveBeenNthCalledWith(
       3,
-      expect.stringContaining(`event_timestamp=gte.2026-07-01T00%3A00%3A00.000Z`),
+      expect.stringContaining(`sessions.client_session_notes.organization_id=eq.${ORG_ID}`),
       expect.any(Object),
     );
     expect(fetchJson).toHaveBeenNthCalledWith(
       3,
-      expect.stringContaining(`event_timestamp=lt.2026-07-02T00%3A00%3A00.000Z`),
+      expect.stringContaining(`sessions.client_session_notes.client_id=eq.${CLIENT_ID}`),
+      expect.any(Object),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`sessions.client_session_notes.session_date=gte.2026-07-01`),
+      expect.any(Object),
+    );
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`sessions.client_session_notes.session_date=lt.2026-07-02`),
       expect.any(Object),
     );
     expect(fetchJson).toHaveBeenNthCalledWith(
@@ -458,6 +498,9 @@ describe("trialEventsHandler", () => {
       expect.stringContaining(`limit=5001`),
       expect.any(Object),
     );
+    expect(vi.mocked(fetchJson).mock.calls[2]?.[0]).not.toContain("event_timestamp=gte");
+    expect(vi.mocked(fetchJson).mock.calls[2]?.[0]).not.toContain("event_timestamp=lt");
+    expect(payload[0]).not.toHaveProperty("sessions");
   });
 
   it("returns 422 when prompt outcome reads exceed the 5000 row cap", async () => {

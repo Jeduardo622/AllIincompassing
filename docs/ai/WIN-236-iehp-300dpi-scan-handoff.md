@@ -27,6 +27,7 @@
 - GREEN: helper/workflow tests passed (`29/29`); runner structure tests passed (`6/6`); `npm run typecheck` passed.
 - Hosted follow-up RED: run `29876647651` reached the scan case and failed before upload with `page.evaluate: ReferenceError: __name is not defined`; a focused regression then failed on the nested helper that `tsx` serialized into the browser context.
 - Hosted follow-up GREEN: the browser callback now uses `HTMLImageElement.decode()` without a nested transpiled helper; runner structure tests passed (`6/6`) and typecheck passed before the immutable rerun.
+- Hosted extraction GREEN: workflow run `29877347962` validated implementation commit `83af7083`, bound the exact Netlify deployment, and completed all five smoke cases. The new scan case reached `extracted`, retained zero drafts, matched the synthetic referral date and snapshot-precedence assessor phone with document/client-snapshot provenance, and verified document plus storage cleanup.
 - The full runner test file also exposes an unchanged Windows line-ending baseline assertion in `supabase/config.toml`; the narrowed changed-surface runner tests are green.
 
 ## Verification Card
@@ -45,13 +46,15 @@
   - isolated `npm run test:ci` -> `3134` pass / `2` unrelated baseline failures: Windows `Blob.text()` behavior and the missing BCBA workflow provision-step expectation
   - focused rerun of an earlier load-sensitive deployment-bundle timeout -> pass (`1/1`)
   - `npm run verify:local` -> policy, lint, and typecheck passed; stopped at the same aggregate baseline boundary before coverage/build/tier-0 continuation
+  - hosted workflow run `29877347962` -> immutable head and deployment checks passed; smoke command emitted `5/5` passing cases with `5/5` cleanup verification, including `scan-300dpi-monochrome`
 - blocked checks:
-  - hosted five-case proof -> pending owner-approved rerun against the corrected PR `#830` head
+  - the workflow run's finalizer used the default-branch four-case definition and rejected the otherwise valid five-case artifact (`Expected exactly four case evidence objects but found 5`); the PR changes and focused workflow test update that contract to five, so a post-merge dispatch is required to exercise the promoted finalizer
 - result: `pass-with-blocked-checks`
-- residual risk: local tests prove fixture shape and orchestration, but only the hosted run can prove that deployed extraction handles an image-only PDF and still cleans every upload
+- residual risk: hosted extraction and cleanup are proven, but GitHub cannot exercise the PR version of a `workflow_dispatch` finalizer before that workflow definition reaches the default branch
 
 ## Protected-path Review
 
 - The workflow change only adds the new ordered case ID and raises exact case/aggregate guards from four to five.
 - Triggers, immutable PR-head validation, Netlify deployment binding, secret names, private environment handling, redaction, and unconditional cleanup are unchanged.
+- `code-review-engineer`, `security-engineer`, and deployment review found no required changes; the optional follow-up is a stronger artifact-shape unit assertion.
 - Human review is required before merge.

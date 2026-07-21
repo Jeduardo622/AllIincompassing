@@ -70,6 +70,17 @@ const maxPromptOutcomeWindowMs = 366 * 24 * 60 * 60 * 1000;
 const maxPromptOutcomeRows = 5000;
 const promptOutcomeFetchLimit = maxPromptOutcomeRows + 1;
 
+type PromptOutcomeRow = {
+  id: string;
+  session_id: string;
+  target_id: string;
+  goal_id: string;
+  therapist_id: string;
+  response: string | null;
+  event_timestamp: string;
+  sessions?: unknown;
+};
+
 const buildHeaders = (anonKey: string, accessToken: string): Record<string, string> => ({
   "Content-Type": "application/json",
   apikey: anonKey,
@@ -87,6 +98,11 @@ const buildServiceRoleHeaders = (): Record<string, string> | null => {
     Authorization: `Bearer ${serviceRoleKey}`,
   };
 };
+
+const toUtcDateString = (value: string): string => new Date(value).toISOString().slice(0, 10);
+
+const isUtcDayBoundary = (value: string): boolean =>
+  new Date(value).toISOString().endsWith("T00:00:00.000Z");
 
 const validateMeasurementPayload = (
   measurementType: string,
@@ -158,6 +174,9 @@ const parsePromptOutcomesQuery = (url: URL): { value: PromptOutcomesQuery | null
   }
   if (endBeforeMs - startAtMs > maxPromptOutcomeWindowMs) {
     return { value: null, error: "Prompt outcome query window cannot exceed 366 days" };
+  }
+  if (!isUtcDayBoundary(startAt) || !isUtcDayBoundary(endBefore)) {
+    return { value: null, error: "start_at and end_before must be UTC day boundaries at 00:00:00.000Z" };
   }
 
   return {
@@ -311,13 +330,18 @@ export async function trialEventsHandler(request: Request): Promise<Response> {
         return json({ error: "goal_id is not in scope for this client" }, 403);
       }
 
+      const startDate = toUtcDateString(startAt);
+      const endDate = toUtcDateString(endBefore);
+
       const filters = [
-        `select=id,session_id,target_id,goal_id,therapist_id,response,event_timestamp`,
+        `select=id,session_id,target_id,goal_id,therapist_id,response,event_timestamp,sessions!inner(client_session_notes!inner(session_date))`,
         `organization_id=eq.${encodeURIComponent(organizationId)}`,
         `client_id=eq.${encodeURIComponent(clientId)}`,
         `goal_id=eq.${encodeURIComponent(goalId)}`,
-        `event_timestamp=gte.${encodeURIComponent(startAt)}`,
-        `event_timestamp=lt.${encodeURIComponent(endBefore)}`,
+        `sessions.client_session_notes.organization_id=eq.${encodeURIComponent(organizationId)}`,
+        `sessions.client_session_notes.client_id=eq.${encodeURIComponent(clientId)}`,
+        `sessions.client_session_notes.session_date=gte.${encodeURIComponent(startDate)}`,
+        `sessions.client_session_notes.session_date=lt.${encodeURIComponent(endDate)}`,
         "prompt_type=not.is.null",
         `response=in.(${encodeURIComponent(Array.from(promptOutcomeResponseValues).join(","))})`,
         "order=event_timestamp.asc,trial_number.asc",
@@ -332,11 +356,21 @@ export async function trialEventsHandler(request: Request): Promise<Response> {
         return json({ error: "Failed to load prompt outcomes" }, result.status || 500);
       }
 
-      const rows = Array.isArray(result.data) ? result.data : [];
+      const rows = Array.isArray(result.data) ? (result.data as PromptOutcomeRow[]) : [];
       if (rows.length > maxPromptOutcomeRows) {
         return json({ error: "Prompt outcome query exceeds 5000 events" }, 422);
       }
-      return json(rows);
+      return json(
+        rows.map(({ id, session_id, target_id, goal_id, therapist_id, response, event_timestamp }) => ({
+          id,
+          session_id,
+          target_id,
+          goal_id,
+          therapist_id,
+          response,
+          event_timestamp,
+        })),
+      );
     }
 
     if (!sessionId && !targetId) {

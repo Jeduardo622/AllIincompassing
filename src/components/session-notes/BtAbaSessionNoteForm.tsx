@@ -33,6 +33,7 @@ export type BtAbaSessionNoteFormProps = {
   onSaveDraft: (responses: BtAbaSessionNoteResponses) => void | Promise<void>;
   onFinalize: (responses: BtAbaSessionNoteResponses) => void | Promise<void>;
   busy: boolean;
+  readOnly?: boolean;
 };
 
 type ResponseKey = keyof BtAbaSessionNoteResponses;
@@ -75,17 +76,26 @@ function CheckboxGroup({ field, label, options, values, disabled, error, onToggl
   );
 }
 
-export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, onFinalize, busy }: BtAbaSessionNoteFormProps) {
-  const [responses, setResponses] = useState<BtAbaSessionNoteResponses>({ ...initialResponses, link_unlinked_data: false });
+export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, onFinalize, busy, readOnly = false }: BtAbaSessionNoteFormProps) {
+  const [responses, setResponses] = useState<BtAbaSessionNoteResponses>({
+    ...initialResponses,
+    link_unlinked_data: readOnly ? initialResponses.link_unlinked_data : false,
+  });
   const [errors, setErrors] = useState<Errors>({});
   const formRef = useRef<HTMLFormElement>(null);
   const latestInitialResponses = useRef(initialResponses);
   latestInitialResponses.current = initialResponses;
+  const readOnlyInitialResponses = readOnly ? initialResponses : null;
+  const inputsDisabled = busy || readOnly;
 
   useEffect(() => {
-    setResponses({ ...latestInitialResponses.current, link_unlinked_data: false });
+    const nextResponses = readOnlyInitialResponses ?? latestInitialResponses.current;
+    setResponses({
+      ...nextResponses,
+      link_unlinked_data: readOnly ? nextResponses.link_unlinked_data : false,
+    });
     setErrors({});
-  }, [context.sessionId]);
+  }, [context.sessionId, readOnly, readOnlyInitialResponses]);
 
   const setField = <Key extends ResponseKey>(field: Key, value: BtAbaSessionNoteResponses[Key]) => {
     setResponses((current) => ({ ...current, [field]: value }));
@@ -162,7 +172,7 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
         id={otherField}
         data-field={otherField}
         value={responses[otherField] ?? ''}
-        disabled={busy}
+        disabled={inputsDisabled}
         aria-invalid={errors[otherField] ? 'true' : undefined}
         aria-describedby={errors[otherField] ? `${otherField}-error` : undefined}
         onChange={(event) => setField(otherField, event.target.value)}
@@ -190,7 +200,11 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
     <form ref={formRef} onSubmit={(event) => event.preventDefault()} className="space-y-6" noValidate>
       <header>
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">ABA Session Note</h2>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Review the session context, complete the note, and sign before finalizing.</p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+          {readOnly
+            ? 'Review the finalized session note.'
+            : 'Review the session context, complete the note, and sign before finalizing.'}
+        </p>
       </header>
 
       <section aria-labelledby="session-context-heading" className={sectionClass}>
@@ -214,7 +228,7 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
       </section>
 
       <section className={sectionClass}>
-        <CheckboxGroup field="purpose_of_session" label={BT_ABA_FIELD_LABELS.purpose_of_session} options={BT_ABA_PURPOSE_OPTIONS} values={responses.purpose_of_session} disabled={busy} error={errors.purpose_of_session} onToggle={(option, checked) => toggleSelection('purpose_of_session', option, checked)} />
+        <CheckboxGroup field="purpose_of_session" label={BT_ABA_FIELD_LABELS.purpose_of_session} options={BT_ABA_PURPOSE_OPTIONS} values={responses.purpose_of_session} disabled={inputsDisabled} error={errors.purpose_of_session} onToggle={(option, checked) => toggleSelection('purpose_of_session', option, checked)} />
         {renderOther('purpose_of_session', 'purpose_other', BT_ABA_FIELD_LABELS.purpose_other)}
       </section>
 
@@ -222,27 +236,27 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
         <h3 id="interventions-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">Interventions and Strategies Used</h3>
         <div>
           <label htmlFor="client-status" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.client_status}</label>
-          <textarea id="client-status" data-field="client_status" rows={3} value={responses.client_status} disabled={busy} aria-invalid={errors.client_status ? 'true' : undefined} aria-describedby={errors.client_status ? 'client-status-error' : undefined} onChange={(event) => setField('client_status', event.target.value)} className={inputClass} />
+          <textarea id="client-status" data-field="client_status" rows={3} value={responses.client_status} disabled={inputsDisabled} aria-invalid={errors.client_status ? 'true' : undefined} aria-describedby={errors.client_status ? 'client-status-error' : undefined} onChange={(event) => setField('client_status', event.target.value)} className={inputClass} />
           {errors.client_status && <p id="client-status-error" role="alert" className="text-sm text-red-600">{errors.client_status}</p>}
         </div>
-        <CheckboxGroup field="skill_strategies" label={BT_ABA_FIELD_LABELS.skill_strategies} options={BT_ABA_SKILL_STRATEGY_OPTIONS} values={responses.skill_strategies} disabled={busy} error={errors.skill_strategies} onToggle={(option, checked) => toggleSelection('skill_strategies', option, checked)} />
+        <CheckboxGroup field="skill_strategies" label={BT_ABA_FIELD_LABELS.skill_strategies} options={BT_ABA_SKILL_STRATEGY_OPTIONS} values={responses.skill_strategies} disabled={inputsDisabled} error={errors.skill_strategies} onToggle={(option, checked) => toggleSelection('skill_strategies', option, checked)} />
         {renderOther('skill_strategies', 'skill_strategies_other', BT_ABA_FIELD_LABELS.skill_strategies_other)}
-        <CheckboxGroup field="behavior_strategies" label={BT_ABA_FIELD_LABELS.behavior_strategies} options={BT_ABA_BEHAVIOR_STRATEGY_OPTIONS} values={responses.behavior_strategies} disabled={busy} error={errors.behavior_strategies} onToggle={(option, checked) => toggleSelection('behavior_strategies', option, checked)} />
+        <CheckboxGroup field="behavior_strategies" label={BT_ABA_FIELD_LABELS.behavior_strategies} options={BT_ABA_BEHAVIOR_STRATEGY_OPTIONS} values={responses.behavior_strategies} disabled={inputsDisabled} error={errors.behavior_strategies} onToggle={(option, checked) => toggleSelection('behavior_strategies', option, checked)} />
         {renderOther('behavior_strategies', 'behavior_strategies_other', BT_ABA_FIELD_LABELS.behavior_strategies_other)}
       </section>
 
       <section aria-labelledby="clinical-summary-heading" className={sectionClass}>
         <h3 id="clinical-summary-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">Supervision and Clinical Summary</h3>
-        <CheckboxGroup field="supervisor_support" label={BT_ABA_FIELD_LABELS.supervisor_support} options={BT_ABA_SUPERVISOR_SUPPORT_OPTIONS} values={responses.supervisor_support} disabled={busy} error={errors.supervisor_support} onToggle={(option, checked) => toggleSelection('supervisor_support', option, checked)} />
+        <CheckboxGroup field="supervisor_support" label={BT_ABA_FIELD_LABELS.supervisor_support} options={BT_ABA_SUPERVISOR_SUPPORT_OPTIONS} values={responses.supervisor_support} disabled={inputsDisabled} error={errors.supervisor_support} onToggle={(option, checked) => toggleSelection('supervisor_support', option, checked)} />
         {renderOther('supervisor_support', 'supervisor_support_other', BT_ABA_FIELD_LABELS.supervisor_support_other)}
         <div>
           <label htmlFor="progress-toward-goals" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.progress_toward_goals}</label>
-          <textarea id="progress-toward-goals" data-field="progress_toward_goals" rows={4} value={responses.progress_toward_goals} disabled={busy} aria-invalid={errors.progress_toward_goals ? 'true' : undefined} aria-describedby={errors.progress_toward_goals ? 'progress-error' : undefined} onChange={(event) => setField('progress_toward_goals', event.target.value)} className={inputClass} />
+          <textarea id="progress-toward-goals" data-field="progress_toward_goals" rows={4} value={responses.progress_toward_goals} disabled={inputsDisabled} aria-invalid={errors.progress_toward_goals ? 'true' : undefined} aria-describedby={errors.progress_toward_goals ? 'progress-error' : undefined} onChange={(event) => setField('progress_toward_goals', event.target.value)} className={inputClass} />
           {errors.progress_toward_goals && <p id="progress-error" role="alert" className="text-sm text-red-600">{errors.progress_toward_goals}</p>}
         </div>
         <div>
           <label htmlFor="client-response" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{BT_ABA_FIELD_LABELS.client_response_to_treatment}</label>
-          <textarea id="client-response" data-field="client_response_to_treatment" rows={4} value={responses.client_response_to_treatment} disabled={busy} aria-invalid={errors.client_response_to_treatment ? 'true' : undefined} aria-describedby={errors.client_response_to_treatment ? 'response-error' : undefined} onChange={(event) => setField('client_response_to_treatment', event.target.value)} className={inputClass} />
+          <textarea id="client-response" data-field="client_response_to_treatment" rows={4} value={responses.client_response_to_treatment} disabled={inputsDisabled} aria-invalid={errors.client_response_to_treatment ? 'true' : undefined} aria-describedby={errors.client_response_to_treatment ? 'response-error' : undefined} onChange={(event) => setField('client_response_to_treatment', event.target.value)} className={inputClass} />
           {errors.client_response_to_treatment && <p id="response-error" role="alert" className="text-sm text-red-600">{errors.client_response_to_treatment}</p>}
         </div>
       </section>
@@ -263,11 +277,11 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
         </div>
         <fieldset className="space-y-2">
           <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.data_point_scope}</legend>
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="radio" name="data-point-scope" checked={responses.data_point_scope === 'linked'} disabled={busy} onChange={() => setField('data_point_scope', 'linked')} /> Include only linked data points</label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="radio" name="data-point-scope" checked={responses.data_point_scope === 'all'} disabled={busy} onChange={() => setField('data_point_scope', 'all')} /> Include all data points</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="radio" name="data-point-scope" checked={responses.data_point_scope === 'linked'} disabled={inputsDisabled} onChange={() => setField('data_point_scope', 'linked')} /> Include only linked data points</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="radio" name="data-point-scope" checked={responses.data_point_scope === 'all'} disabled={inputsDisabled} onChange={() => setField('data_point_scope', 'all')} /> Include all data points</label>
         </fieldset>
         <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
-          <input type="checkbox" checked={false} disabled aria-describedby="link-unlinked-data-unavailable" className="mt-0.5" />
+          <input type="checkbox" checked={responses.link_unlinked_data} disabled aria-describedby="link-unlinked-data-unavailable" className="mt-0.5" />
           Link unlinked data for this service date
         </label>
         <p id="link-unlinked-data-unavailable" className="text-sm text-gray-600 dark:text-gray-300">
@@ -276,13 +290,15 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
       </section>
 
       <section className={sectionClass}>
-        <SignatureInput value={responses.bt_signature} disabled={busy} error={errors.bt_signature} onChange={(signature) => setField('bt_signature', signature)} />
+        <SignatureInput value={responses.bt_signature} disabled={inputsDisabled} error={errors.bt_signature} onChange={(signature) => setField('bt_signature', signature)} />
       </section>
 
-      <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-4 sm:flex-row sm:justify-end dark:border-gray-700">
-        <button type="button" disabled={busy} onClick={() => void onSaveDraft(responses)} className="rounded-md border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800">Save Draft</button>
-        <button type="button" disabled={busy} onClick={finalize} className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Finalize Session</button>
-      </div>
+      {!readOnly && (
+        <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-4 sm:flex-row sm:justify-end dark:border-gray-700">
+          <button type="button" disabled={busy} onClick={() => void onSaveDraft(responses)} className="rounded-md border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800">Save Draft</button>
+          <button type="button" disabled={busy} onClick={finalize} className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Finalize Session</button>
+        </div>
+      )}
     </form>
   );
 }

@@ -217,6 +217,57 @@ describe('BtAbaSessionNoteForm', () => {
     expect(screen.getByLabelText('Client Status')).toBeDisabled();
   });
 
+  it('renders finalized responses read-only without draft or finalization actions', () => {
+    render(
+      <BtAbaSessionNoteForm
+        {...makeProps()}
+        initialResponses={{ ...emptyResponses, client_status: 'Finalized status' }}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByLabelText('Client Status')).toHaveValue('Finalized status');
+    expect(screen.getByLabelText('Client Status')).toBeDisabled();
+    expect(screen.getByLabelText('Include only linked data points')).toBeDisabled();
+    expect(screen.getByLabelText('Type Behavior Technician signature')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save Draft' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finalize Session' })).not.toBeInTheDocument();
+  });
+
+  it('preserves the persisted unlinked-data choice in read-only mode', () => {
+    render(
+      <BtAbaSessionNoteForm
+        {...makeProps()}
+        initialResponses={{ ...emptyResponses, link_unlinked_data: true }}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByLabelText('Link unlinked data for this service date')).toBeDisabled();
+    expect(screen.getByLabelText('Link unlinked data for this service date')).toBeChecked();
+  });
+
+  it('rehydrates read-only responses when a newer amendment arrives for the same session', () => {
+    const props = makeProps();
+    const view = render(
+      <BtAbaSessionNoteForm
+        {...props}
+        initialResponses={{ ...emptyResponses, client_status: 'Original finalized response' }}
+        readOnly
+      />,
+    );
+
+    view.rerender(
+      <BtAbaSessionNoteForm
+        {...props}
+        initialResponses={{ ...emptyResponses, client_status: 'Latest amended response' }}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByLabelText('Client Status')).toHaveValue('Latest amended response');
+  });
+
   it('keeps unlinked-data association visible but unavailable during closeout', () => {
     render(<BtAbaSessionNoteForm {...makeProps()} initialResponses={{ ...emptyResponses, link_unlinked_data: true }} />);
     expect(screen.getByLabelText('Link unlinked data for this service date')).toBeDisabled();

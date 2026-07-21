@@ -795,4 +795,81 @@ describe("Dashboard staff dashboard query gate", () => {
     });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ["dashboard"] });
   });
+
+  it("invalidates the completed session note after a successful BT correction resubmission", async () => {
+    const task = {
+      id: "request-1",
+      organizationId: "org-9",
+      sessionId: "session-1",
+      clientId: "client-1",
+      btTherapistId: "bt-1",
+      assignedAdminUserId: "bcba-1",
+      status: "correction_required",
+      statusLabel: "Correction Required",
+      createdAt: "2026-07-18T10:00:00Z",
+      clientName: "Taylor Client",
+      btTherapistName: "Jordan BT",
+      btTherapistTitle: "BT",
+      correction: {
+        id: "correction-1",
+        round: 1,
+        reason: "Clarify the client response and re-sign.",
+        requestedAt: "2026-07-18T11:00:00Z",
+        reviewerUserId: "bcba-1",
+      },
+      originalVersion: {
+        versionNumber: 1,
+        noteId: "note-1",
+        source: "original",
+        correctionRound: null,
+        responses: validBtResponses,
+        templateSnapshot: { sections: [] },
+        signatureMethod: "typed",
+        signatureValue: "Jordan BT",
+        signedAt: "2026-07-18T09:15:00Z",
+      },
+      latestVersion: {
+        versionNumber: 1,
+        noteId: "note-1",
+        source: "original",
+        correctionRound: null,
+        responses: validBtResponses,
+        templateSnapshot: { sections: [] },
+        signatureMethod: "typed",
+        signatureValue: "Jordan BT",
+        signedAt: "2026-07-18T09:15:00Z",
+      },
+      versions: [],
+    };
+
+    mockUseQuery.mockImplementation((config: Record<string, unknown>) => {
+      const serializedKey = JSON.stringify(config.queryKey);
+      if (serializedKey === JSON.stringify(["supervision-session-note-requests", "bt-correction-tasks", "org-9", "bt-1", "profile-bt", "bt"])) {
+        return { data: [task], isLoading: false, error: null, isSuccess: true };
+      }
+      return { data: null, isLoading: false, error: null, isSuccess: false };
+    });
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "bt-1" },
+        profile: { id: "profile-bt", organization_id: "org-9", role: "bt" },
+        effectiveRole: "bt",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+      }),
+    );
+
+    const { client } = renderDashboard();
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+
+    await userEvent.click(await screen.findByRole("button", { name: /amend bt note for taylor client/i }));
+    await userEvent.click(screen.getByRole("radio", { name: /type signature/i }));
+    await userEvent.type(screen.getByLabelText(/type behavior technician signature/i), "Jordan BT");
+    await userEvent.click(screen.getByRole("button", { name: /re-attest and resubmit/i }));
+
+    await waitFor(() => {
+      expect(mockShowSuccess).toHaveBeenCalledWith("BT correction resubmitted.");
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["bt-aba-session-note", "session-1"] });
+  });
 });

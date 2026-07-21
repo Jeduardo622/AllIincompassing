@@ -31,7 +31,10 @@ import type {
   BtAbaSessionNotePayload,
   BtAbaFinalizeResult,
 } from '../types';
-import type { BtAbaSessionNoteResponses } from '../lib/bt-aba-session-note';
+import {
+  validateBtAbaSessionNoteResponses,
+  type BtAbaSessionNoteResponses,
+} from '../lib/bt-aba-session-note';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
 import { logger } from '../lib/logger/logger';
 import { AlternativeTimes } from './AlternativeTimes';
@@ -605,6 +608,7 @@ export function SessionModal({
   const isBtClinicalCaptureSession = Boolean(
     isDataCollectionOnly && (session?.status === 'scheduled' || session?.status === 'in_progress'),
   );
+  const isCompletedBtAbaSession = Boolean(isDataCollectionOnly && session?.status === 'completed');
   const shouldHideGoalCaptureFields = hideGoalCaptureFields;
   const shouldShowPromptCorrectnessToggle = true;
 
@@ -612,11 +616,12 @@ export function SessionModal({
     data: btAbaNoteState,
     error: btAbaNoteLoadError,
     isError: isBtAbaNoteLoadError,
+    isLoading: isBtAbaNoteLoading,
     refetch: refetchBtAbaNoteState,
   } = useQuery({
     queryKey: ['bt-aba-session-note', session?.id],
     queryFn: () => getBtAbaSessionNote(session!.id),
-    enabled: Boolean(isBtClinicalCaptureSession && session?.id),
+    enabled: Boolean((isBtClinicalCaptureSession || isCompletedBtAbaSession) && session?.id),
   });
 
   useEffect(() => {
@@ -918,6 +923,13 @@ export function SessionModal({
   const selectedClient = clients.find(c => c.id === clientId);
   const selectedTherapistServices = selectedTherapist?.service_type ?? [];
   const selectedClientServices = selectedClient?.service_preference ?? [];
+  const completedBtAbaResponses = useMemo(() => {
+    if (!isCompletedBtAbaSession || btAbaNoteState?.status !== 'completed') {
+      return null;
+    }
+    const result = validateBtAbaSessionNoteResponses(btAbaNoteState.responses);
+    return result.success ? result.data : null;
+  }, [btAbaNoteState?.responses, btAbaNoteState?.status, isCompletedBtAbaSession]);
   const initialBtAbaResponses = useMemo<BtAbaSessionNoteResponses>(() => ({
     purpose_of_session: [],
     client_status: '',
@@ -929,8 +941,8 @@ export function SessionModal({
     data_point_scope: 'linked',
     link_unlinked_data: false,
     bt_signature: { method: 'typed', value: '' },
-    ...(btAbaNoteState?.responses ?? {}),
-  }), [btAbaNoteState?.responses]);
+    ...(completedBtAbaResponses ?? btAbaNoteState?.responses ?? {}),
+  }), [btAbaNoteState?.responses, completedBtAbaResponses]);
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const activePrograms = programs.filter((program) => program.status === 'active');
   const availableGoals = useMemo(
@@ -2052,6 +2064,13 @@ export function SessionModal({
         expectedTargetVersions: closeoutCaptureRef.current.expectedTargetVersions,
       });
       if (result.status !== 'completed') throw new Error('Session finalization did not complete. Please retry.');
+      queryClient.setQueryData(['bt-aba-session-note', session.id], {
+        noteId: result.noteId,
+        templateId: btAbaNoteState?.templateId ?? null,
+        responses,
+        status: 'completed',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['bt-aba-session-note', session.id] });
     } catch (error) {
       btAbaTransitionRef.current = 'idle';
       const message = error instanceof Error ? error.message : 'Unable to finalize the ABA session note.';
@@ -2153,8 +2172,11 @@ export function SessionModal({
     if (!session) {
       return 'New Session';
     }
+    if (isCompletedBtAbaSession) {
+      return 'Completed ABA Session Note';
+    }
     return isInProgressSession ? 'Live session' : 'Edit Session';
-  }, [session, isInProgressSession]);
+  }, [isCompletedBtAbaSession, session, isInProgressSession]);
   const modalSubtitle = useMemo(() => {
     if (!session) {
       return shouldHideGoalCaptureFields
@@ -2164,13 +2186,23 @@ export function SessionModal({
     if (isBtClinicalCaptureSession) {
       return 'Appointment details are locked. Edit the clinical capture below, then save it with this session.';
     }
+    if (isCompletedBtAbaSession) {
+      return 'Review the finalized session documentation.';
+    }
     if (isInProgressSession) {
       return shouldHideGoalCaptureFields
         ? 'Review scheduling details and save updates while the visit is active.'
         : 'Log trials and per-goal notes, then save to sync. Use Close session when the visit ends.';
     }
     return 'Review core details first, then add notes before saving.';
-  }, [isBtClinicalCaptureSession, session, isInProgressSession, shouldHideGoalCaptureFields]);
+  }, [isBtClinicalCaptureSession, isCompletedBtAbaSession, session, isInProgressSession, shouldHideGoalCaptureFields]);
+  const isCompletedBtAbaNoteReady = Boolean(
+    isCompletedBtAbaSession &&
+    btAbaNoteState?.status === 'completed' &&
+    btAbaNoteState.templateId &&
+    completedBtAbaResponses &&
+    btAbaNoteState.noteId,
+  );
   const sessionNoteGoalIds = useMemo(
     () => mergeUniqueGoalIds(
       Array.isArray(goalIds) ? goalIds : [],
@@ -2797,6 +2829,20 @@ export function SessionModal({
   }, [btAbaNoteState, getValues, isBtClinicalCaptureSession, isOpen, linkedSessionNote, session?.status]);
 
   useEffect(() => {
+    if (
+      !isOpen ||
+      !isCompletedBtAbaSession ||
+      !isCompletedBtAbaNoteReady ||
+      !btAbaNoteState?.noteId
+    ) {
+      return;
+    }
+    setBtAbaNoteId(btAbaNoteState.noteId);
+    setBtAbaError(null);
+    setModalStep('closeout');
+  }, [btAbaNoteState?.noteId, isCompletedBtAbaNoteReady, isCompletedBtAbaSession, isOpen]);
+
+  useEffect(() => {
     if (!isOpen) {
       setIsPlanSummaryExpanded(false);
     }
@@ -2905,7 +2951,18 @@ export function SessionModal({
               {btAbaNoteLoadError instanceof Error ? btAbaNoteLoadError.message : 'Unable to load the saved ABA session note draft.'}
             </p>
           ) : null}
-          {modalStep === 'closeout' && session?.id ? (
+          {isCompletedBtAbaSession && !isCompletedBtAbaNoteReady ? (
+            <section data-testid="completed-bt-aba-note-unavailable" className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/20">
+              <h2 className="font-semibold text-amber-900 dark:text-amber-100">
+                {isBtAbaNoteLoading ? 'Loading finalized ABA session note...' : 'Finalized ABA session note is unavailable.'}
+              </h2>
+              {!isBtAbaNoteLoading && (
+                <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                  Close this dialog and retry. The completed session remains unchanged.
+                </p>
+              )}
+            </section>
+          ) : modalStep === 'closeout' && session?.id ? (
             <div className="space-y-4">
               {btAbaError ? <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{btAbaError}</p> : null}
               <BtAbaSessionNoteForm
@@ -2919,13 +2976,20 @@ export function SessionModal({
                   placeOfService: sessionDetails?.location_type?.trim() || 'Not recorded',
                   billingCode: linkedSessionNote?.service_code || getValues('session_note_service_code') || firstServiceCodeOnAuthorization(primaryBillingAuthorization) || 'Not recorded',
                   modifiers: ['Not recorded'],
-                  programs: selectedProgramIds.map((selectedProgramId) => ({
-                    name: programsById.get(selectedProgramId)?.name ?? 'Program',
-                    goals: sessionNoteGoalIds
-                      .map((selectedGoalId) => goalsById.get(selectedGoalId))
-                      .filter((selectedGoal): selectedGoal is Goal => Boolean(selectedGoal?.program_id === selectedProgramId))
-                      .map((selectedGoal) => selectedGoal.title),
-                  })),
+                  programs: isCompletedBtAbaSession
+                    ? [{
+                        name: 'Finalized session goals',
+                        goals: (linkedSessionNote?.goals_addressed ?? [])
+                          .map((goalLabel) => goalLabel.trim())
+                          .filter(Boolean),
+                      }]
+                    : selectedProgramIds.map((selectedProgramId) => ({
+                        name: programsById.get(selectedProgramId)?.name ?? 'Program',
+                        goals: sessionNoteGoalIds
+                          .map((selectedGoalId) => goalsById.get(selectedGoalId))
+                          .filter((selectedGoal): selectedGoal is Goal => Boolean(selectedGoal?.program_id === selectedProgramId))
+                          .map((selectedGoal) => selectedGoal.title),
+                      })),
                   collectedDataPointCount: closeoutDataPoints.length,
                   linkedDataPoints: closeoutDataPoints.filter((point) => point.linked),
                   allDataPoints: closeoutDataPoints,
@@ -2934,8 +2998,11 @@ export function SessionModal({
                 onSaveDraft={handleSaveBtAbaDraft}
                 onFinalize={handleFinalizeBtAba}
                 busy={btAbaBusy}
+                readOnly={isCompletedBtAbaSession}
               />
-              <button type="button" disabled={btAbaBusy || btAbaFinalized} onClick={() => setModalStep('capture')} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">Back to capture</button>
+              {!isCompletedBtAbaSession && (
+                <button type="button" disabled={btAbaBusy || btAbaFinalized} onClick={() => setModalStep('capture')} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">Back to capture</button>
+              )}
             </div>
           ) : (
           <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5 sm:space-y-6">
@@ -4625,7 +4692,7 @@ export function SessionModal({
         </div>
 
         {/* Footer */}
-        {modalStep === 'capture' ? (
+        {modalStep === 'capture' && !isCompletedBtAbaSession ? (
         <div className="sticky bottom-0 z-10 border-t border-gray-200/80 bg-white/90 px-4 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md dark:border-gray-700 dark:bg-dark-lighter/90 sm:px-5 sm:py-4 sm:pb-4">
           <div className="flex flex-col gap-3">
             <div

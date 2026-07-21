@@ -65,6 +65,7 @@
   - CI run `29783353571`: generated synthetic admin authenticated; default DOCX phone/provenance proof passed; first skills/behaviors attempt failed because the fixture summary heading did not match the deterministic parser anchor; both per-upload cleanup and unconditional admin cleanup succeeded.
   - CI run `29784074398`, job `88491826711`: corrected fixture reached `IEHP_FBA_BEHAVIOR_SKILL_TARGETS`; proof then failed because `payload.skills_behaviors` was absent from the main-project function response. Default DOCX phone/provenance proof again passed, evidence uploaded, and unconditional admin cleanup succeeded.
   - CI run `29786127201`, job `88501613796`: authenticated derive-on-read exposed the current reconciliation payload. Default phone/provenance proof passed with one row, accepted format, snapshot precedence, and `client_snapshot` / `primary_therapist_phone` provenance. Skills/behaviors then failed only because the smoke expected `Waiting` to reference the target-behavior field instead of the replacement-behavior skill field. Document/storage cleanup, synthetic-admin cleanup, evidence recording, and artifact upload all succeeded.
+  - CI run `29787876724`, job `88506488261`, head `9c656428`: current-head hosted proof passed. JSON evidence reported `status: extracted`, exactly one version-1 reconciliation row, exact total counts, `behaviorParsed`, `skillParsed`, `needsReviewPreserved`, `detailedOnlyPreserved`, `parentExcluded`, `provenanceVerified`, and `cleanupVerified` all `true`; draft programs/goals remained zero. Default phone evidence also passed one-row, accepted-format, snapshot-precedence, and `client_snapshot` provenance assertions. Job-level synthetic-admin cleanup, evidence recording, and artifact upload all passed.
   - Supabase preview project `ywqpvpvlcqvykombolus` initially lacked `extract-assessment-fields`; after commit `7e1f0752`, live inventory confirmed `extract-assessment-fields` version `1` active with `verify_jwt=true`. The Netlify preview and CI credentials still target the main Supabase project, so the browser gate does not yet invoke that branch function.
 - Cleanup evidence:
   - local seam proves assertion failure still runs document/storage cleanup and cleanup failure fails closed
@@ -102,10 +103,10 @@
   - hosted-provenance fix -> RED (`1/25` focused helper failure), then GREEN (`64/64` smoke tests); `npm run ci:check-focused`, lint, typecheck, and build -> pass
 - blocked checks:
   - local `npm run test:ci` and `npm run verify:local` remain blocked by unrelated baseline/runtime failures; the live PR `unit-tests` check passes
-  - the corrected current-head hosted IEHP rerun is pending after the provenance-expectation fix
+  - no IEHP hosted check is blocked: run `29787876724`, job `88506488261` passed with cleanup and JSON evidence
   - live DB policy checks remain blocked by missing database environment variables
 - result: `pass-with-blocked-checks`
-- residual risk: the reconciler and stale-edit behavior are locally proven; the latest hosted run reached and validated the derived payload but the corrected exact provenance expectation still requires a green rerun. Human review remains required.
+- residual risk: reconciliation and parsing are proven locally and in the hosted authenticated path. Human review and the remaining required PR checks are still required because the slice touches protected paths.
 
 ## Review Findings
 
@@ -120,5 +121,5 @@
 ## Handoff Summary
 
 - The branch contains the reconciliation implementation, strict synthetic proof, CI gate, and the smallest preview-function registration needed to deploy the reviewed extractor.
-- The hosted gate now proves credentials, upload, phone precedence/provenance, authenticated derive-on-read, structured-section discovery, evidence capture, and cleanup. Run `29786127201` exposed one exact smoke-only provenance mismatch, now corrected test-first.
-- Next practical step: require the current-head CI rerun, including green skills/behaviors evidence and cleanup, then obtain the mandatory human approval. Do not merge while the required smoke is red or pending.
+- The hosted gate now proves credentials, upload, phone precedence/provenance, authenticated derive-on-read, one reconciled Skills & Behaviors result, behavior and skill parsing, Needs Review preservation, detailed-only preservation, parent exclusion, provenance, zero drafts, evidence capture, and cleanup.
+- Next practical step: obtain the mandatory human approval after the remaining required PR checks finish. Do not merge critical-lane work without that review.

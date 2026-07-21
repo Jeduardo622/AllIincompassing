@@ -12,6 +12,12 @@ import {
   type AssessmentTemplateType,
 } from "../../lib/assessment-documents";
 import { supabase } from "../../lib/supabase";
+import {
+  buildPromptOutcomeModel,
+  PROMPT_OUTCOME_COLORS,
+  PROMPT_OUTCOME_LABELS,
+  PROMPT_OUTCOME_ORDER,
+} from "../../lib/trial-prompt-outcomes";
 import { IehpFbaLayoutReview } from "./IehpFbaLayoutReview";
 import { canRoleManageGoalTargetProgression, GoalTargetProgressionEditor, type ManualOverrideInput, type SaveCriterionInput } from "./GoalTargetProgressionEditor";
 import { GoalTargetProgressionHistory } from "./GoalTargetProgressionHistory";
@@ -644,6 +650,26 @@ function TargetProgressPanel({ clientId, organizationId, target }: TargetTrialEv
   });
   const graphEvents = latestTrialEventsForGraph(trialEvents);
   const maxGraphScore = Math.max(1, ...graphEvents.map(trialEventGraphScore));
+  const promptOutcomeModel = useMemo(() => buildPromptOutcomeModel({
+    goalId: target.goal_id,
+    displayPeriod: "day",
+    rawEvents: trialEvents,
+    sessionNotes: [],
+    targetLabelsById: { [target.id]: target.name },
+    selectedTargetLabel: target.name,
+  }), [target.goal_id, target.id, target.name, trialEvents]);
+  const promptOutcomeSegments = PROMPT_OUTCOME_ORDER.map((outcome) => {
+    const value = promptOutcomeModel.summary[outcome];
+    return {
+      outcome,
+      label: PROMPT_OUTCOME_LABELS[outcome],
+      value,
+      percentage: promptOutcomeModel.summary.total > 0
+        ? Math.round((value / promptOutcomeModel.summary.total) * 1000) / 10
+        : 0,
+      color: PROMPT_OUTCOME_COLORS[outcome],
+    };
+  });
 
   return (
     <div
@@ -667,6 +693,30 @@ function TargetProgressPanel({ clientId, organizationId, target }: TargetTrialEv
         <p className="text-slate-500">No trial-level data yet.</p>
       ) : (
         <div className="space-y-3">
+          {promptOutcomeModel.summary.total > 0 && (
+            <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-dark">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                Prompt outcomes
+              </div>
+              <div className="flex h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" aria-label={`Prompt outcomes for ${target.name}`}>
+                {promptOutcomeSegments.map((segment) => (
+                  <div
+                    key={segment.outcome}
+                    className="h-full"
+                    style={{ width: `${segment.percentage}%`, backgroundColor: segment.color }}
+                    title={`${segment.label}: ${segment.value} (${segment.percentage}%)`}
+                  />
+                ))}
+              </div>
+              <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-slate-600 dark:text-slate-300 sm:grid-cols-3">
+                {promptOutcomeSegments.map((segment) => (
+                  <span key={segment.outcome}>
+                    {PROMPT_OUTCOME_LABELS[segment.outcome]} {segment.percentage}% ({segment.value})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="space-y-1" aria-label={`Recent graph points for ${target.name}`}>
             {graphEvents.map((event) => {
               const score = trialEventGraphScore(event);

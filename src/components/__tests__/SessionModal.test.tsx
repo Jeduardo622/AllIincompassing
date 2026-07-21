@@ -7,9 +7,11 @@ import {
   decrementLegacyPromptCounts,
   dedupeProgressionNotices,
   formatProgressionNotices,
+  incrementLegacyPromptCount,
   remapLegacyPromptCorrectnessAfterRemoval,
+  sumLegacyPromptCounts,
   selectSessionCaptureTargets,
-  setPromptCorrectnessForTarget,
+  setPromptOutcomeForTarget,
 } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
 import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-linked-fetch';
@@ -107,24 +109,39 @@ describe('SessionModal', () => {
     expect(selectSessionCaptureTargets([current, stale, archived], new Set(['stale']))).toEqual([current, stale]);
   });
 
-  it('keeps prompt correctness isolated by configured target', () => {
-    const current = { 'target-1': false, 'target-2': true };
-    expect(setPromptCorrectnessForTarget(current, 'target-1', true)).toEqual({
-      'target-1': true,
-      'target-2': true,
+  it('keeps prompt outcomes isolated by configured target', () => {
+    const current = { 'target-1': 'incorrect', 'target-2': 'noResponse' } as const;
+    expect(setPromptOutcomeForTarget(current, 'target-1', 'correct')).toEqual({
+      'target-1': 'correct',
+      'target-2': 'noResponse',
     });
+  });
+
+  it('increments legacy prompt counts using exact outcome buckets', () => {
+    expect(incrementLegacyPromptCount([], {
+      promptType: 'gesture',
+      promptLevel: null,
+    }, 'noResponse')).toEqual([
+      {
+        prompt_type: 'gesture',
+        prompt_level: null,
+        correct_trials: 0,
+        incorrect_trials: 0,
+        no_response_trials: 1,
+      },
+    ]);
   });
 
   it('keeps legacy prompt correctness aligned when an earlier target is removed', () => {
     expect(remapLegacyPromptCorrectnessAfterRemoval({
-      'legacy:goal-1:0': true,
-      'legacy:goal-1:1': false,
-      'legacy:goal-1:2': true,
-      configured: false,
+      'legacy:goal-1:0': 'correct',
+      'legacy:goal-1:1': 'incorrect',
+      'legacy:goal-1:2': 'noResponse',
+      configured: 'incorrect',
     }, 'goal-1', 0, 3)).toEqual({
-      'legacy:goal-1:0': false,
-      'legacy:goal-1:1': true,
-      configured: false,
+      'legacy:goal-1:0': 'incorrect',
+      'legacy:goal-1:1': 'noResponse',
+      configured: 'incorrect',
     });
   });
 
@@ -132,10 +149,29 @@ describe('SessionModal', () => {
     expect(decrementLegacyPromptCounts([
       { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: 0 },
       { prompt_type: 'gesture', prompt_level: null, correct_trials: 2, incorrect_trials: 1 },
-    ], 'correct_trials', 2)).toEqual([
+    ], 'correct_trials', 2, 'correct')).toEqual([
       { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: 0 },
       { prompt_type: 'gesture', prompt_level: null, correct_trials: 0, incorrect_trials: 1 },
     ]);
+  });
+
+  it('decrements legacy incorrect totals from the selected unsuccessful bucket first', () => {
+    expect(decrementLegacyPromptCounts([
+      { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 0, incorrect_trials: 1, no_response_trials: 1 },
+    ], 'incorrect_trials', 1, 'noResponse')).toEqual([
+      { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 0, incorrect_trials: 1 },
+    ]);
+    expect(decrementLegacyPromptCounts([
+      { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 0, incorrect_trials: 1, no_response_trials: 1 },
+    ], 'incorrect_trials', 1, 'incorrect')).toEqual([
+      { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 0, incorrect_trials: 0, no_response_trials: 1 },
+    ]);
+  });
+
+  it('treats no-response prompt counts as part of the legacy unsuccessful aggregate floor', () => {
+    expect(sumLegacyPromptCounts([
+      { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 0, incorrect_trials: 1, no_response_trials: 2 },
+    ], 'incorrect_trials')).toBe(3);
   });
 
   it('formats every progression outcome and incomplete-criteria warning', () => {
@@ -3497,13 +3533,19 @@ describe('SessionModal', () => {
       })).toBeInTheDocument();
     }
 
-    const correctness = screen.getByRole('checkbox', {
-      name: /Prompted response was correct for target 1/i,
+    const noResponseOutcome = screen.getByRole('radio', {
+      name: /^No response for target 1:/i,
     });
-    expect(correctness).toBeChecked();
+    const correctOutcome = screen.getByRole('radio', {
+      name: /^Correct for target 1:/i,
+    });
+    expect(correctOutcome).toBeChecked();
+    expect(correctOutcome.closest('label')).toHaveClass('bg-emerald-600');
+    expect(screen.getByText('Prompt outcome')).toBeInTheDocument();
 
-    await userEvent.click(correctness);
-    expect(correctness).not.toBeChecked();
+    await userEvent.click(noResponseOutcome);
+    expect(noResponseOutcome).toBeChecked();
+    expect(noResponseOutcome.closest('label')).toHaveClass('bg-amber-500');
     rerender(
       <SessionModal
         {...defaultProps}
@@ -3512,7 +3554,9 @@ describe('SessionModal', () => {
         session={{ ...session, id: 'session-task-analysis-trials-next' }}
       />,
     );
-    await waitFor(() => expect(correctness).toBeChecked());
+    await waitFor(() => expect(screen.getByRole('radio', {
+      name: /^Correct for target 1:/i,
+    })).toBeChecked());
 
     await userEvent.click(screen.getByRole('button', { name: /Record independent response for target 1/i }));
     await userEvent.click(screen.getByRole('button', { name: /Record prompted response for target 1/i }));
@@ -3521,7 +3565,7 @@ describe('SessionModal', () => {
         name: new RegExp(`Record ${label.toLowerCase()} prompt for target 1`, 'i'),
       }));
     }
-    await userEvent.click(correctness);
+    await userEvent.click(noResponseOutcome);
     await userEvent.click(screen.getByRole('button', {
       name: /Record partial physical prompt for target 1/i,
     }));
@@ -3546,7 +3590,7 @@ describe('SessionModal', () => {
       expect.objectContaining({ target_id: targetId, trial_number: 10, response: 'correct', prompt_type: 'model', prompt_level: null, expected_progression_version: 7 }),
       expect.objectContaining({ target_id: targetId, trial_number: 11, response: 'correct', prompt_type: 'visual', prompt_level: null, expected_progression_version: 7 }),
       expect.objectContaining({ target_id: targetId, trial_number: 12, response: 'correct', prompt_type: 'physical', prompt_level: 'full', expected_progression_version: 7 }),
-      expect.objectContaining({ target_id: targetId, trial_number: 13, response: 'incorrect', prompt_type: 'physical', prompt_level: 'partial', expected_progression_version: 7 }),
+      expect.objectContaining({ target_id: targetId, trial_number: 13, response: 'noResponse', prompt_type: 'physical', prompt_level: 'partial', expected_progression_version: 7 }),
     ]);
     expect(submitted.session_note_trial_events?.[0]).not.toHaveProperty('prompt_type');
     expect(submitted.session_note_trial_events?.[0]).not.toHaveProperty('prompt_level');
@@ -3556,7 +3600,7 @@ describe('SessionModal', () => {
   }, 15000);
 
   it.each(['scheduled', 'in_progress'] as const)(
-    'hides prompted response correctness controls during %s BT data-collection capture',
+    'shows prompt outcome controls during %s BT data-collection capture',
     async (status) => {
       const onSubmit = vi.fn().mockResolvedValue(undefined);
       const targetId = '88888888-8888-4888-8888-8888888888bt';
@@ -3647,9 +3691,11 @@ describe('SessionModal', () => {
 
       await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
 
-      expect(screen.queryByRole('checkbox', {
-        name: /Prompted response was correct for target 1/i,
-      })).not.toBeInTheDocument();
+      const correctOutcome = screen.getByRole('radio', {
+        name: /^Correct for target 1:/i,
+      });
+      expect(correctOutcome).toBeChecked();
+      expect(screen.getByText('Prompt outcome')).toBeInTheDocument();
       const promptLabels = [
         'full verbal',
         'partial verbal',
@@ -3677,9 +3723,9 @@ describe('SessionModal', () => {
           session={session}
         />,
       );
-      expect(await screen.findByRole('checkbox', {
-        name: /Prompted response was correct for target 1/i,
-      })).toBeInTheDocument();
+      expect(await screen.findByRole('radio', {
+        name: /^Correct for target 1:/i,
+      })).toBeChecked();
     },
     15000,
   );
@@ -4143,12 +4189,12 @@ describe('SessionModal', () => {
     fireEvent.change(targetFields[targetFields.length - 1], {
       target: { value: 'Target A' },
     });
-    expect(screen.queryByRole('checkbox', {
-      name: /Prompted response was correct for target 1: Target A/i,
-    })).not.toBeInTheDocument();
     expect(await screen.findByRole('button', {
       name: /Record full verbal prompt for target 1: Target A/i,
     })).toBeInTheDocument();
+    expect(screen.getByRole('radio', {
+      name: /^Correct for target 1: Target A$/i,
+    })).toBeChecked();
     const addTargetButtons = screen.getAllByRole('button', { name: /add target/i });
     await userEvent.click(addTargetButtons[addTargetButtons.length - 1]);
     const secondTargetFields = screen.getAllByLabelText(/^Target 2$/i);
@@ -4692,10 +4738,10 @@ describe('SessionModal', () => {
     expect(planTargetButton).toHaveTextContent(planTarget);
     expect(screen.queryByText(legacyFreeformTarget)).not.toBeInTheDocument();
 
-    const promptCorrectness = screen.getByRole('checkbox', {
-      name: /Prompted response was correct for target 1/i,
+    const noResponseOutcome = screen.getByRole('radio', {
+      name: /^No response for target 1:/i,
     });
-    expect(promptCorrectness).toBeChecked();
+    expect(screen.getByRole('radio', { name: /^Correct for target 1:/i })).toBeChecked();
     for (const label of ['full verbal', 'partial verbal', 'gesture', 'model', 'visual', 'full physical', 'partial physical']) {
       expect(screen.getByRole('button', {
         name: new RegExp(`Record ${label} prompt for target 1`, 'i'),
@@ -4712,7 +4758,7 @@ describe('SessionModal', () => {
     await userEvent.click(screen.getByRole('button', {
       name: /Record full verbal prompt for target 1/i,
     }));
-    await userEvent.click(promptCorrectness);
+    await userEvent.click(noResponseOutcome);
     await userEvent.click(screen.getByRole('button', {
       name: /Record gesture prompt for target 1/i,
     }));
@@ -4744,7 +4790,7 @@ describe('SessionModal', () => {
                   trial_prompt_note: 'Edited plan target prompt note',
                   prompt_counts: [
                     { prompt_type: 'verbal', prompt_level: 'full', correct_trials: 1, incorrect_trials: 0 },
-                    { prompt_type: 'gesture', prompt_level: null, correct_trials: 0, incorrect_trials: 1 },
+                    { prompt_type: 'gesture', prompt_level: null, correct_trials: 0, incorrect_trials: 0, no_response_trials: 1 },
                   ],
                 }),
               ],

@@ -78,12 +78,15 @@ const toNonNegativeSafeInteger = (value: unknown): number => {
 const addSafeCounts = (left: number, right: number): number =>
   Math.min(Number.MAX_SAFE_INTEGER, left + right);
 
+const sumPromptCountIncorrectTrials = (count: Pick<SessionPromptCount, 'incorrect_trials' | 'no_response_trials'>): number =>
+  addSafeCounts(count.incorrect_trials, toNonNegativeSafeInteger(count.no_response_trials));
+
 export const normalizePromptCounts = (value: unknown): SessionPromptCount[] => {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  const totals = new Map<string, { correct: number; incorrect: number }>();
+  const totals = new Map<string, { correct: number; incorrect: number; noResponse: number }>();
   for (const entry of value) {
     if (!entry || typeof entry !== 'object') {
       continue;
@@ -96,16 +99,17 @@ export const normalizePromptCounts = (value: unknown): SessionPromptCount[] => {
       continue;
     }
     const key = `${canonical[0]}:${canonical[1] ?? ''}`;
-    const existing = totals.get(key) ?? { correct: 0, incorrect: 0 };
+    const existing = totals.get(key) ?? { correct: 0, incorrect: 0, noResponse: 0 };
     totals.set(key, {
       correct: addSafeCounts(existing.correct, toNonNegativeSafeInteger(source.correct_trials)),
       incorrect: addSafeCounts(existing.incorrect, toNonNegativeSafeInteger(source.incorrect_trials)),
+      noResponse: addSafeCounts(existing.noResponse, toNonNegativeSafeInteger(source.no_response_trials)),
     });
   }
 
   return canonicalPromptPairs.flatMap(([promptType, promptLevel]) => {
     const total = totals.get(`${promptType}:${promptLevel ?? ''}`);
-    if (!total || (total.correct === 0 && total.incorrect === 0)) {
+    if (!total || (total.correct === 0 && total.incorrect === 0 && total.noResponse === 0)) {
       return [];
     }
     return [{
@@ -113,6 +117,7 @@ export const normalizePromptCounts = (value: unknown): SessionPromptCount[] => {
       prompt_level: promptLevel,
       correct_trials: total.correct,
       incorrect_trials: total.incorrect,
+      ...(total.noResponse > 0 ? { no_response_trials: total.noResponse } : {}),
     }];
   });
 };
@@ -141,7 +146,7 @@ const normalizeTargetTrials = (
       const source = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
       const promptCounts = normalizePromptCounts(source.prompt_counts);
       const promptedCorrect = promptCounts.reduce((total, count) => addSafeCounts(total, count.correct_trials), 0);
-      const promptedIncorrect = promptCounts.reduce((total, count) => addSafeCounts(total, count.incorrect_trials), 0);
+      const promptedIncorrect = promptCounts.reduce((total, count) => addSafeCounts(total, sumPromptCountIncorrectTrials(count)), 0);
       const sourceMetricValue = toOptionalNumber(source.metric_value ?? source.count ?? source.value);
       const sourceIncorrectTrials = toOptionalNumber(source.incorrect_trials ?? source.incorrectTrials);
       const trial: SessionTargetTrialData = {
@@ -167,7 +172,7 @@ const buildLegacyTargetTrial = (
 ): SessionTargetTrialData | null => {
   const promptCounts = normalizePromptCounts(sourceData.prompt_counts);
   const promptedCorrect = promptCounts.reduce((total, count) => addSafeCounts(total, count.correct_trials), 0);
-  const promptedIncorrect = promptCounts.reduce((total, count) => addSafeCounts(total, count.incorrect_trials), 0);
+  const promptedIncorrect = promptCounts.reduce((total, count) => addSafeCounts(total, sumPromptCountIncorrectTrials(count)), 0);
   const sourceMetricValue = toOptionalNumber(sourceData.metric_value ?? sourceData.count ?? sourceData.value);
   const sourceIncorrectTrials = toOptionalNumber(sourceData.incorrect_trials ?? sourceData.incorrectTrials);
   const trial: SessionTargetTrialData = {

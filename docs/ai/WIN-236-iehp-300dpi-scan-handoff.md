@@ -25,6 +25,8 @@
 
 - RED: focused tests failed on the missing fourth case, missing raster generation path, and the workflow's four-case evidence contract (`6` slice-specific failures).
 - GREEN: helper/workflow tests passed (`29/29`); runner structure tests passed (`6/6`); `npm run typecheck` passed.
+- Hosted follow-up RED: run `29876647651` reached the scan case and failed before upload with `page.evaluate: ReferenceError: __name is not defined`; a focused regression then failed on the nested helper that `tsx` serialized into the browser context.
+- Hosted follow-up GREEN: the browser callback now uses `HTMLImageElement.decode()` without a nested transpiled helper; runner structure tests passed (`6/6`) and typecheck passed before the immutable rerun.
 - The full runner test file also exposes an unchanged Windows line-ending baseline assertion in `supabase/config.toml`; the narrowed changed-surface runner tests are green.
 
 ## Verification Card
@@ -44,7 +46,7 @@
   - focused rerun of an earlier load-sensitive deployment-bundle timeout -> pass (`1/1`)
   - `npm run verify:local` -> policy, lint, and typecheck passed; stopped at the same aggregate baseline boundary before coverage/build/tier-0 continuation
 - blocked checks:
-  - hosted five-case proof -> pending immutable preview deployment and owner-approved workflow dispatch for PR `#830`
+  - hosted five-case proof -> pending owner-approved rerun against the corrected PR `#830` head
 - result: `pass-with-blocked-checks`
 - residual risk: local tests prove fixture shape and orchestration, but only the hosted run can prove that deployed extraction handles an image-only PDF and still cleans every upload
 

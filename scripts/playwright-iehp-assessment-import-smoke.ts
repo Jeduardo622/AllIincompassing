@@ -138,22 +138,10 @@ const buildMonochromeScanImageDataUrl = async (args: {
 
   return args.page.evaluate(
     async ({ base64, quality }) => {
-      const loadImage = async (): Promise<HTMLImageElement> => {
-        const image = new Image();
-        image.decoding = 'async';
-        image.src = `data:image/png;base64,${base64}`;
-        if ('decode' in image) {
-          await image.decode();
-          return image;
-        }
-        await new Promise<void>((resolve, reject) => {
-          image.onload = () => resolve();
-          image.onerror = () => reject(new Error('Failed to load IEHP scan screenshot into canvas.'));
-        });
-        return image;
-      };
-
-      const image = await loadImage();
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = `data:image/png;base64,${base64}`;
+      await image.decode();
       const canvas = document.createElement('canvas');
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;

@@ -917,6 +917,7 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(scanModeIndex).toBeGreaterThan(setContentIndex);
     expect(scanViewportIndex).toBeGreaterThan(scanModeIndex);
     expect(monochromeHelperIndex).toBeLessThan(setContentIndex);
+    expect(script).not.toContain('const loadImage = async');
     expect(scanScreenshotIndex).toBeGreaterThan(monochromeHelperIndex);
     expect(scanCanvasIndex).toBeGreaterThan(scanScreenshotIndex);
     expect(scanLuminanceIndex).toBeGreaterThan(scanCanvasIndex);

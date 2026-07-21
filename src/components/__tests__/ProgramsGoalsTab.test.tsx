@@ -1309,12 +1309,14 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
               id: "trial-event-1",
               organization_id: ORG_ID,
               client_id: "client-1",
-              session_id: "session-1",
+              session_id: "session-2",
               target_id: "target-1",
               goal_id: "goal-1",
               therapist_id: "therapist-1",
               trial_number: 1,
-              response: null,
+              response: "correct",
+              prompt_type: "verbal",
+              prompt_level: "partial",
               value: 3,
               event_timestamp: "2026-02-11T00:30:00.000Z",
               metadata: {},
@@ -1330,12 +1332,14 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
               goal_id: "goal-1",
               therapist_id: "therapist-1",
               trial_number: 2,
-              response: null,
+              response: "noResponse",
+              prompt_type: "gesture",
+              prompt_level: "full",
               value: 5,
-              event_timestamp: "2026-02-11T17:05:00.000Z",
+              event_timestamp: "2026-02-12T17:05:00.000Z",
               metadata: {},
-              created_at: "2026-02-11T17:05:00.000Z",
-              updated_at: "2026-02-11T17:05:00.000Z",
+              created_at: "2026-02-12T17:05:00.000Z",
+              updated_at: "2026-02-12T17:05:00.000Z",
             },
           ]),
           { status: 200 },
@@ -1394,9 +1398,15 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(within(trialTable).getByRole("columnheader", { name: "Result" })).toBeInTheDocument();
     expect(within(trialTable).getByText("1")).toBeInTheDocument();
     expect(within(trialTable).getByText("2")).toBeInTheDocument();
-    expect(within(trialTable).getAllByText("Feb 11")).toHaveLength(2);
+    expect(within(trialTable).getByText("Feb 11")).toBeInTheDocument();
+    expect(within(trialTable).getByText("Feb 12")).toBeInTheDocument();
     expect(within(trialTable).getByText("5")).toBeInTheDocument();
-    expect(within(trialTable).getAllByText("None recorded")).toHaveLength(2);
+    expect(within(trialTable).getByText("verbal / partial")).toBeInTheDocument();
+    expect(within(trialTable).getByText("gesture / full")).toBeInTheDocument();
+    expect(within(mandsProgress).getByText("Prompt outcomes")).toBeInTheDocument();
+    expect(within(mandsProgress).getByText("Correct 50% (1)")).toBeInTheDocument();
+    expect(within(mandsProgress).getByText("No response 50% (1)")).toBeInTheDocument();
+    expect(within(mandsProgress).getByTitle("Correct: 1 (50%)")).toBeInTheDocument();
 
     expect(await screen.findByText("Sustained engagement")).toBeInTheDocument();
     const engagementGraph = await screen.findByLabelText("Trial-event progress for Sustained engagement");

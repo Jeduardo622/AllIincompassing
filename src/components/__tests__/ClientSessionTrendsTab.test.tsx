@@ -4,6 +4,7 @@ import { fireEvent, screen, waitFor } from '../../test/utils';
 import { renderWithProviders } from '../../test/utils';
 import { ClientSessionTrendsTab } from '../ClientDetails/ClientSessionTrendsTab';
 import { fetchClientSessionNotes } from '../../lib/session-notes';
+import { callApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 
 vi.mock('react-chartjs-2', () => ({
@@ -26,6 +27,25 @@ vi.mock('react-chartjs-2', () => ({
       </div>
     );
   }),
+  Bar: React.forwardRef(({
+    data,
+    options,
+  }: {
+    data: { labels: string[]; datasets: Array<{ label: string; data: Array<number | null> }> };
+    options?: { scales?: { y?: { max?: number } } };
+  }, ref) => {
+    if (ref && typeof ref !== 'function') {
+      ref.current = {
+        toBase64Image: vi.fn(() => 'data:image/png;base64,outcome-chart-image'),
+      };
+    }
+
+    return (
+      <div data-testid="prompt-outcomes-chart">
+        {data.labels.join(',')}:{data.datasets.map((dataset) => `${dataset.label}:${dataset.data.join('|')}`).join(';')}:yMax={options?.scales?.y?.max ?? 'unset'}
+      </div>
+    );
+  }),
 }));
 
 vi.mock('../../lib/session-notes', async () => {
@@ -35,6 +55,10 @@ vi.mock('../../lib/session-notes', async () => {
     fetchClientSessionNotes: vi.fn(),
   };
 });
+
+vi.mock('../../lib/api', () => ({
+  callApi: vi.fn(),
+}));
 
 const createGoalsBuilder = () => {
   const builder: any = {};
@@ -99,6 +123,70 @@ describe('ClientSessionTrendsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.setSystemTime(new Date('2025-06-30T12:00:00Z'));
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path === '/api/goal-targets?goal_id=goal-1') {
+        return new Response(JSON.stringify([
+          {
+            id: 'target-1',
+            organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+            client_id: 'client-1',
+            goal_id: 'goal-1',
+            name: 'lost in community',
+            measurement_type: 'correctIncorrect',
+            graph_config: { defaultChart: 'bar', source: 'trial_events' },
+            status: 'active',
+            sort_order: 0,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+          {
+            id: 'target-2',
+            organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+            client_id: 'client-1',
+            goal_id: 'goal-1',
+            name: 'cross street safely',
+            measurement_type: 'correctIncorrect',
+            graph_config: { defaultChart: 'bar', source: 'trial_events' },
+            status: 'active',
+            sort_order: 1,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ]), { status: 200 });
+      }
+      if (path.startsWith('/api/trial-events?view=prompt_outcomes&')) {
+        return new Response(JSON.stringify([
+          {
+            id: 'prompt-event-1',
+            session_id: 'session-1',
+            target_id: 'target-1',
+            goal_id: 'goal-1',
+            therapist_id: 'therapist-1',
+            response: 'correct',
+            event_timestamp: '2025-06-01T17:00:00.000Z',
+          },
+          {
+            id: 'prompt-event-2',
+            session_id: 'session-1',
+            target_id: 'target-2',
+            goal_id: 'goal-1',
+            therapist_id: 'therapist-1',
+            response: 'incorrect',
+            event_timestamp: '2025-06-01T17:05:00.000Z',
+          },
+          {
+            id: 'prompt-event-3',
+            session_id: 'session-2',
+            target_id: 'target-1',
+            goal_id: 'goal-1',
+            therapist_id: 'therapist-1',
+            response: 'noResponse',
+            event_timestamp: '2025-06-08T17:00:00.000Z',
+          },
+        ]), { status: 200 });
+      }
+      throw new Error(`Unhandled API path ${path}`);
+    });
     vi.mocked(fetchClientSessionNotes).mockResolvedValue([
       {
         id: 'note-1',
@@ -188,6 +276,23 @@ describe('ClientSessionTrendsTab', () => {
     expect(screen.getByRole('option', { name: 'Day' })).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument();
     expect(screen.getAllByText(/80%|100%/).length).toBeGreaterThan(0);
+    expect(await screen.findByTestId('prompt-outcomes-chart')).toHaveTextContent('Correct:33.3;Incorrect:33.3;No response:33.3:yMax=100');
+  });
+
+  it('fetches prompt outcomes with an exclusive end date and renders compact evidence counts', async () => {
+    renderWithProviders(<ClientSessionTrendsTab client={{ id: 'client-1' }} />, {
+      auth: { role: 'admin', userId: 'admin-user-id' },
+    });
+
+    await screen.findByTestId('prompt-outcomes-chart');
+
+    expect(callApi).toHaveBeenCalledWith(
+      '/api/trial-events?view=prompt_outcomes&client_id=client-1&goal_id=goal-1&start_at=2024-12-01T00%3A00%3A00.000Z&end_before=2025-07-01T00%3A00%3A00.000Z',
+    );
+    expect(screen.getByRole('button', { name: /Download outcome graph/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Correct' })).toBeInTheDocument();
+    expect(screen.getAllByText('cross street safely').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('1 (100%)').length).toBeGreaterThan(0);
   });
 
   it('renders each target as a separate chart series with distinct point symbols', async () => {
@@ -382,5 +487,49 @@ describe('ClientSessionTrendsTab', () => {
     });
 
     expect(await screen.findByText('No graphable trial data')).toBeInTheDocument();
+  });
+
+  it('renders prompt outcomes when the median chart has no graphable data', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([
+      createSessionNote('1', '2025-06-01', []),
+      createSessionNote('2', '2025-06-08', []),
+    ]);
+
+    renderWithProviders(<ClientSessionTrendsTab client={{ id: 'client-1' }} />, {
+      auth: { role: 'admin', userId: 'admin-user-id' },
+    });
+
+    expect(await screen.findByText('No graphable trial data')).toBeInTheDocument();
+    expect(await screen.findByTestId('prompt-outcomes-chart')).toBeInTheDocument();
+  });
+
+  it('shows the exact prompt outcome empty copy', async () => {
+    const defaultCallApi = vi.mocked(callApi).getMockImplementation();
+    vi.mocked(callApi).mockImplementation(async (path: string) => (
+      path.startsWith('/api/trial-events?view=prompt_outcomes&')
+        ? new Response(JSON.stringify([]), { status: 200 })
+        : defaultCallApi!(path)
+    ));
+
+    renderWithProviders(<ClientSessionTrendsTab client={{ id: 'client-1' }} />, {
+      auth: { role: 'admin', userId: 'admin-user-id' },
+    });
+
+    expect(await screen.findByText('No prompted outcome data in the selected range.')).toBeInTheDocument();
+  });
+
+  it('surfaces a prompt outcome fetch error', async () => {
+    const defaultCallApi = vi.mocked(callApi).getMockImplementation();
+    vi.mocked(callApi).mockImplementation(async (path: string) => (
+      path.startsWith('/api/trial-events?view=prompt_outcomes&')
+        ? new Response(null, { status: 500 })
+        : defaultCallApi!(path)
+    ));
+
+    renderWithProviders(<ClientSessionTrendsTab client={{ id: 'client-1' }} />, {
+      auth: { role: 'admin', userId: 'admin-user-id' },
+    });
+
+    expect(await screen.findByText('Prompt outcomes failed to load.')).toBeInTheDocument();
   });
 });

@@ -258,6 +258,9 @@ inspector_port = 8083
 [functions.assign-therapist-user]
 verify_jwt = true
 
+[functions.extract-assessment-fields]
+verify_jwt = true
+
 [functions.generate-assessment-plan-docx]
 verify_jwt = true
 static_files = [ "./functions/generate-assessment-plan-docx/fill_docs/Updated FBA -IEHP.docx" ]

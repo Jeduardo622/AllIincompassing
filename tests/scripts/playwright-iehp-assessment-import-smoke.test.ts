@@ -8,10 +8,12 @@ import { assertIehpDocumentChecklistField } from '../../scripts/lib/iehp-assessm
 
 import {
   assertIehpAssessorPhoneChecklist,
+  executeIehpSmokeCaseWithCleanup,
   fetchIehpAssessorPhoneProvenance,
   normalizeAssessmentChecklistResponse,
   selectConfiguredSmokeClient,
 } from '../../scripts/playwright-iehp-assessment-import-smoke';
+import { assertIehpSkillsBehaviorsChecklistSection } from '../../scripts/lib/iehp-assessment-import-smoke';
 
 const sliceWorkflowJob = (workflow: string, jobName: string): string => {
   const start = workflow.indexOf(`  ${jobName}:`);
@@ -415,11 +417,18 @@ describe('selectConfiguredSmokeClient', () => {
     );
   });
 
-  it('keeps the CI IEHP smoke path dedicated to the generated super-admin account', () => {
+  it('keeps both CI IEHP proofs on the generated super-admin and unconditional cleanup path', () => {
     const root = process.cwd();
     const workflow = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+    const supabaseConfig = readFileSync(path.join(root, 'supabase/config.toml'), 'utf8');
     const script = readFileSync(path.join(root, 'scripts/playwright-iehp-assessment-import-smoke.ts'), 'utf8');
     const iehpJob = sliceWorkflowJob(workflow, 'iehp_assessment_import_smoke');
+    const cleanupStepStart = iehpJob.indexOf('- name: Cleanup IEHP smoke admin');
+    const cleanupStepEnd = iehpJob.indexOf('\n      - name:', cleanupStepStart + 1);
+    const cleanupStep = iehpJob.slice(
+      cleanupStepStart,
+      cleanupStepEnd === -1 ? undefined : cleanupStepEnd,
+    );
     const candidateBlock = script.slice(
       script.indexOf('const credentialCandidates = ['),
       script.indexOf('preflightCredentials(credentialCandidates);'),
@@ -435,6 +444,19 @@ describe('selectConfiguredSmokeClient', () => {
     );
     expect(iehpJob).not.toMatch(/^\s+PW_ADMIN_EMAIL/m);
     expect(iehpJob).not.toMatch(/^\s+PW_ADMIN_PASSWORD/m);
+    expect(iehpJob).toContain('npm run playwright:iehp-assessment-import-smoke');
+    expect(iehpJob).toContain('npm run playwright:iehp-assessment-import-skills-behaviors');
+    expect(iehpJob.indexOf('npm run playwright:iehp-assessment-import-smoke')).toBeLessThan(
+      iehpJob.indexOf('npm run playwright:iehp-assessment-import-skills-behaviors'),
+    );
+    expect(iehpJob.indexOf('npm run playwright:iehp-assessment-import-skills-behaviors')).toBeLessThan(
+      iehpJob.indexOf('name: Cleanup IEHP smoke admin'),
+    );
+    expect(cleanupStepStart).toBeGreaterThanOrEqual(0);
+    expect(cleanupStep).toContain('if: always()');
+    expect(supabaseConfig).toContain(
+      '[functions.extract-assessment-fields]\nverify_jwt = true',
+    );
     expect(candidateBlock).toContain('PW_SUPERADMIN_EMAIL');
     expect(candidateBlock).not.toContain('PW_ADMIN_EMAIL');
     expect(candidateBlock).not.toContain('PLAYWRIGHT_ADMIN_EMAIL');
@@ -798,6 +820,45 @@ describe('normalizeAssessmentChecklistResponse', () => {
 });
 
 describe('playwright-iehp-assessment-import-smoke structure', () => {
+  it('does not mutate helper-local cleanup failure state from the missing-assessment branch', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+
+    expect(script).not.toContain(
+      "cleanupFailure = new Error('IEHP smoke could not rediscover the uploaded assessment for cleanup.');",
+    );
+    expect(script).toContain("throw new Error('Uploaded IEHP assessment document was not found in the queue.');");
+  });
+
+  it('keeps cleanup fail-closed when the skills behaviors assertion throws inside the case runner finally boundary', async () => {
+    const cleanupCase = vi.fn().mockRejectedValue(new Error('cleanup failed'));
+
+    await expect(
+      executeIehpSmokeCaseWithCleanup({
+        caseId: 'skills-behaviors-proof',
+        latestDir: path.join(process.cwd(), 'artifacts', 'latest'),
+        executeCase: async () => {
+          assertIehpSkillsBehaviorsChecklistSection({
+            checklist: {
+              items: [],
+              structured_sections: [],
+            },
+          });
+
+          return {
+            ok: true as const,
+          };
+        },
+        cleanupCase,
+        cleanupTargetKnown: () => true,
+      }),
+    ).rejects.toThrow('IEHP assessment import smoke failed and cleanup did not complete.');
+
+    expect(cleanupCase).toHaveBeenCalledTimes(1);
+  });
+
   it('requires explicit pdf mini matrix mode, per-case cleanup, and aggregate evidence ordering', () => {
     const script = readFileSync(
       path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
@@ -818,13 +879,12 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const pdfMimeIndex = script.indexOf("mimeType: 'application/pdf'");
     const pdfFileNameIndex = script.indexOf("buildIehpSmokeUploadFileName(Date.now(), 'pdf')");
     const caseRunnerIndex = script.indexOf('const runSmokeCase = async (');
+    const cleanupHelperIndex = script.indexOf('return executeIehpSmokeCaseWithCleanup({');
     const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
     const provenanceFetchIndex = script.indexOf('const provenanceRows = await fetchIehpAssessmentProvenance');
     const assessorPhoneAssertionIndex = script.indexOf('const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist');
     const referralDateAssertionIndex = script.indexOf('const referralDateAssertion = caseInput.expectedReferralDate');
-    const cleanupVerifiedIndex = script.indexOf('cleanupVerified = true;');
     const caseEvidenceIndex = script.indexOf('console.log(JSON.stringify(caseEvidence, null, 2));');
-    const caseFinallyIndex = script.indexOf('} finally {');
     const cleanupCallIndex = script.indexOf('await cleanupAssessmentImportArtifacts({');
     const aggregateEvidenceIndex = script.indexOf('console.log(JSON.stringify(aggregateEvidence, null, 2));');
     const aggregateCleanupIndex = script.indexOf('cleanupVerifiedCases: passedCases.length,');
@@ -844,14 +904,14 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(generatorCloseIndex).toBeGreaterThan(pagePdfIndex);
     expect(pdfFileNameIndex).toBeGreaterThan(generatorCloseIndex);
     expect(pdfMimeIndex).toBeGreaterThan(pdfFileNameIndex);
+    expect(cleanupHelperIndex).toBeGreaterThan(caseRunnerIndex);
     expect(checklistFetchIndex).toBeGreaterThanOrEqual(0);
+    expect(checklistFetchIndex).toBeGreaterThan(cleanupHelperIndex);
     expect(provenanceFetchIndex).toBeGreaterThan(checklistFetchIndex);
     expect(assessorPhoneAssertionIndex).toBeGreaterThan(provenanceFetchIndex);
     expect(referralDateAssertionIndex).toBeGreaterThan(assessorPhoneAssertionIndex);
-    expect(caseFinallyIndex).toBeGreaterThan(referralDateAssertionIndex);
-    expect(cleanupCallIndex).toBeGreaterThan(caseFinallyIndex);
-    expect(cleanupVerifiedIndex).toBeGreaterThan(cleanupCallIndex);
-    expect(caseEvidenceIndex).toBeGreaterThan(cleanupVerifiedIndex);
+    expect(cleanupCallIndex).toBeGreaterThan(referralDateAssertionIndex);
+    expect(caseEvidenceIndex).toBeGreaterThan(cleanupCallIndex);
     expect(aggregateCleanupIndex).toBeGreaterThan(caseEvidenceIndex);
     expect(aggregateEvidenceIndex).toBeGreaterThan(aggregateCleanupIndex);
   });
@@ -873,6 +933,49 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(nullableReferralAssertionIndex).toBeGreaterThanOrEqual(0);
     expect(defaultCaseStartIndex).toBeGreaterThan(nullableReferralAssertionIndex);
     expect(defaultCaseBlock).not.toContain('expectedReferralDate:');
+  });
+
+  it('adds an opt-in skills behaviors proof mode without changing the default docx or existing pdf mini matrix commands', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+    const packageJson = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    ) as {
+      scripts?: Record<string, string>;
+    };
+
+    const skillsBehaviorsFlagIndex = script.indexOf(
+      "const isSkillsBehaviorsProofMode = process.argv.includes('--skills-behaviors-proof');",
+    );
+    const skillsBehaviorsCaseIndex = script.indexOf('IEHP_SKILLS_BEHAVIORS_PROOF_CASE');
+    const proofHtmlIndex = script.indexOf('buildIehpSkillsBehaviorsProofPdfHtml');
+    const checklistAssertionIndex = script.indexOf('assertIehpSkillsBehaviorsChecklistSection');
+    const checklistFetchIndex = script.indexOf('const checklist = await fetchAssessmentChecklist');
+    const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
+    const proofCaseRunnerIndex = script.indexOf("caseId: IEHP_SKILLS_BEHAVIORS_PROOF_CASE.id");
+    const proofEvidenceIndex = script.indexOf('skillsBehaviorsAssertion');
+    const proofModeIndex = script.indexOf("mode: 'skills-behaviors-proof'");
+
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-smoke']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts',
+    );
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-pdf-mini-matrix']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts --pdf-mini-matrix',
+    );
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-skills-behaviors']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts --skills-behaviors-proof',
+    );
+    expect(skillsBehaviorsFlagIndex).toBeGreaterThanOrEqual(0);
+    expect(skillsBehaviorsCaseIndex).toBeGreaterThan(skillsBehaviorsFlagIndex);
+    expect(proofHtmlIndex).toBeGreaterThan(skillsBehaviorsCaseIndex);
+    expect(pagePdfIndex).toBeGreaterThan(proofHtmlIndex);
+    expect(proofCaseRunnerIndex).toBeGreaterThan(pagePdfIndex);
+    expect(checklistFetchIndex).toBeGreaterThanOrEqual(0);
+    expect(checklistAssertionIndex).toBeGreaterThan(checklistFetchIndex);
+    expect(proofEvidenceIndex).toBeGreaterThan(checklistAssertionIndex);
+    expect(proofModeIndex).toBeGreaterThan(proofCaseRunnerIndex);
   });
 });
 

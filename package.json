@@ -29,6 +29,7 @@
     "playwright:assessment-import-smoke": "tsx scripts/playwright-assessment-import-smoke.ts",
     "playwright:iehp-assessment-import-smoke": "tsx scripts/playwright-iehp-assessment-import-smoke.ts",
     "playwright:iehp-assessment-import-pdf-mini-matrix": "tsx scripts/playwright-iehp-assessment-import-smoke.ts --pdf-mini-matrix",
+    "playwright:iehp-assessment-import-skills-behaviors": "tsx scripts/playwright-iehp-assessment-import-smoke.ts --skills-behaviors-proof",
     "playwright:assessment-upload-promote-smoke": "tsx scripts/playwright-assessment-upload-promote-smoke.ts",
     "playwright:assessment-pdf-smoke": "tsx scripts/playwright-assessment-pdf-smoke.ts",
     "playwright:clinical-data-parity-agent": "tsx scripts/clinical-data-parity-agent.ts",

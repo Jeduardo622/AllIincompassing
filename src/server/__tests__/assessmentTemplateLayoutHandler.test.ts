@@ -71,7 +71,41 @@ describe("assessmentTemplateLayoutHandler", () => {
         };
       }
       if (url.includes("/rest/v1/assessment_structured_sections?")) {
-        return { ok: true, status: 200, data: [] };
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "section-summary",
+              section_key: "behavior_background_services",
+              field_key: "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+              section_index: 0,
+              payload: {
+                targets: ["Waiting"],
+                skills_behaviors: { version: 1, items: [], counts: { total: 0 } },
+              },
+              source_span: null,
+              status: "approved",
+              required: false,
+              review_notes: null,
+            },
+            {
+              id: "section-detail",
+              section_key: "goal_recommendations",
+              field_key: "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+              section_index: 1,
+              payload: {
+                program_name: "Waiting",
+                clinical_goal_type: "skill",
+                goal_type: "child",
+              },
+              source_span: null,
+              status: "approved",
+              required: false,
+              review_notes: null,
+            },
+          ],
+        };
       }
       if (url.includes("/rest/v1/assessment_template_versions?")) {
         return {
@@ -134,6 +168,11 @@ describe("assessmentTemplateLayoutHandler", () => {
     expect(body.pages).toHaveLength(2);
     expect(body.fields[0].field_key).toBe("IEHP_FBA_FIRST_NAME");
     expect(body.values.checklist_items[0].value_text).toBe("Synthetic");
+    expect(body.values.structured_sections[0].payload.skills_behaviors).toMatchObject({
+      version: 1,
+      counts: { total: 1, skill: 1 },
+      items: [{ name: "Waiting", clinical_goal_type: "skill", reconciliation_status: "matched" }],
+    });
     expect(body.unresolved_required_count).toBe(0);
   });
 

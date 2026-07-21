@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { isValidPhone, sanitizePhone } from '../src/lib/validation';
+import * as iehpAssessmentImportSmoke from './lib/iehp-assessment-import-smoke';
 
 import { cleanupAssessmentImportArtifacts } from './lib/assessment-import-cleanup';
 import {
@@ -80,11 +81,12 @@ type IehpSmokeCaseInput = {
   mimeType: string;
   sourceFileBuffer: Buffer;
   expectedReferralDate?: string | null;
+  assessmentAssertions?: (args: { checklist: ChecklistResponse }) => Record<string, unknown> | null;
 };
 
 type IehpSmokeCaseEvidence = {
   ok: true;
-  mode: 'default-docx' | 'pdf-mini-matrix-case';
+  mode: 'default-docx' | 'pdf-mini-matrix-case' | 'skills-behaviors-proof';
   caseId: string;
   templateType: 'iehp_fba';
   status: AssessmentDocumentRecord['status'];
@@ -92,6 +94,7 @@ type IehpSmokeCaseEvidence = {
   draftGoals: number;
   assessorPhoneAssertion: IehpAssessorPhoneAssertion;
   referralDateAssertion: IehpDocumentFieldAssertion | null;
+  skillsBehaviorsProofResult?: Record<string, unknown> | null;
   cleanupVerified: true;
   screenshot: string;
 };
@@ -158,6 +161,79 @@ const writeCleanupFailureManifest = (args: {
     JSON.stringify(buildIehpSmokeCleanupFailureManifestPayload(args), null, 2),
   );
   return manifestPath;
+};
+
+export const executeIehpSmokeCaseWithCleanup = async <TEvidence>(args: {
+  caseId: string;
+  latestDir: string;
+  executeCase: () => Promise<TEvidence>;
+  cleanupCase: () => Promise<void>;
+  cleanupTargetKnown: () => boolean;
+  onRunFailure?: (error: Error) => Promise<void>;
+}): Promise<TEvidence> => {
+  let caseEvidence: TEvidence | undefined;
+  let cleanupFailure: Error | null = null;
+  let runFailure: Error | null = null;
+  let cleanupFailureManifestPath: string | null = null;
+  let cleanupFailureManifestError: Error | null = null;
+
+  try {
+    caseEvidence = await args.executeCase();
+  } catch (error) {
+    runFailure = error instanceof Error ? error : new Error(String(error));
+    await args.onRunFailure?.(runFailure);
+  } finally {
+    await args.cleanupCase().catch((cleanupError) => {
+      cleanupFailure = cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError));
+      console.error(`IEHP assessment import smoke cleanup failed for ${args.caseId}.`);
+    });
+    if (cleanupFailure) {
+      try {
+        cleanupFailureManifestPath = writeCleanupFailureManifest({
+          latestDir: args.latestDir,
+          cleanupError: cleanupFailure,
+          cleanupTargetKnown: args.cleanupTargetKnown(),
+          runError: runFailure,
+        });
+        console.error(
+          `IEHP assessment import smoke cleanup manifest written to ${cleanupFailureManifestPath} for ${args.caseId}`,
+        );
+      } catch (manifestError) {
+        cleanupFailureManifestError =
+          manifestError instanceof Error ? manifestError : new Error(String(manifestError));
+        console.error('IEHP assessment import smoke could not write cleanup manifest', cleanupFailureManifestError);
+      }
+    }
+  }
+
+  if (runFailure && cleanupFailure) {
+    throw new Error(
+      buildIehpSmokeCleanupFailureMessage({
+        cleanupFailed: true,
+        cleanupManifestPath: cleanupFailureManifestPath,
+        cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
+        runFailed: true,
+      }),
+    );
+  }
+  if (runFailure) {
+    throw runFailure;
+  }
+  if (cleanupFailure) {
+    throw new Error(
+      buildIehpSmokeCleanupFailureMessage({
+        cleanupFailed: true,
+        cleanupManifestPath: cleanupFailureManifestPath,
+        cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
+        runFailed: false,
+      }),
+    );
+  }
+  if (caseEvidence === undefined) {
+    throw new Error(`IEHP assessment import smoke case ${args.caseId} did not produce cleanup-verified evidence.`);
+  }
+
+  return caseEvidence;
 };
 
 const fetchAssessmentDocuments = async (
@@ -524,7 +600,11 @@ async function run() {
   const supabaseUrl = resolveSupabaseUrl();
   const supabaseAnonKey = resolveSupabaseAnonKey();
   const isPdfMiniMatrixMode = process.argv.includes('--pdf-mini-matrix');
-  const sampleFilePath = isPdfMiniMatrixMode ? null : resolveIehpSmokeSampleFile({ cwd: process.cwd() });
+  const isSkillsBehaviorsProofMode = process.argv.includes('--skills-behaviors-proof');
+  const IEHP_SKILLS_BEHAVIORS_PROOF_CASE = iehpAssessmentImportSmoke.IEHP_SKILLS_BEHAVIORS_PROOF_CASE;
+  // buildIehpSkillsBehaviorsProofPdfHtml
+  const sampleFilePath =
+    isPdfMiniMatrixMode || isSkillsBehaviorsProofMode ? null : resolveIehpSmokeSampleFile({ cwd: process.cwd() });
   const defaultSourceFileBuffer = sampleFilePath ? readFileSync(sampleFilePath) : null;
   const credentialCandidates = [
     {
@@ -549,14 +629,10 @@ async function run() {
     await loginAndAssertSession(page, baseUrl, credentials.email, credentials.password);
     const runSmokeCase = async (caseInput: IehpSmokeCaseInput): Promise<IehpSmokeCaseEvidence> => {
       let createdAssessment: AssessmentDocumentRecord | null = null;
-      let cleanupFailure: Error | null = null;
-      let runFailure: Error | null = null;
-      let cleanupFailureManifestPath: string | null = null;
-      let cleanupFailureManifestError: Error | null = null;
-      let cleanupVerified = false;
-      let caseEvidence: IehpSmokeCaseEvidence | null = null;
-
-      try {
+      return executeIehpSmokeCaseWithCleanup({
+        caseId: caseInput.caseId,
+        latestDir,
+        executeCase: async () => {
         await page.goto(`${baseUrl}/clients/${clientId}?tab=programs-goals`, {
           waitUntil: 'domcontentloaded',
           timeout: 60_000,
@@ -587,7 +663,6 @@ async function run() {
         }
 
         if (!createdAssessment) {
-          cleanupFailure = new Error('IEHP smoke could not rediscover the uploaded assessment for cleanup.');
           throw new Error('Uploaded IEHP assessment document was not found in the queue.');
         }
         if (createdAssessment.status === 'drafted') {
@@ -632,6 +707,7 @@ async function run() {
               provenanceRows,
             })
           : null;
+        const skillsBehaviorsProofResult = caseInput.assessmentAssertions?.({ checklist }) ?? null;
 
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
         await page.waitForLoadState('networkidle').catch(() => undefined);
@@ -645,9 +721,13 @@ async function run() {
         const screenshotPath = path.join(latestDir, `iehp-assessment-import-smoke-${caseInput.caseId}-${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath, fullPage: true });
 
-        caseEvidence = {
+        return {
           ok: true,
-          mode: isPdfMiniMatrixMode ? 'pdf-mini-matrix-case' : 'default-docx',
+          mode: isSkillsBehaviorsProofMode
+            ? 'skills-behaviors-proof'
+            : isPdfMiniMatrixMode
+              ? 'pdf-mini-matrix-case'
+              : 'default-docx',
           caseId: caseInput.caseId,
           templateType: 'iehp_fba',
           status: createdAssessment.status,
@@ -655,18 +735,15 @@ async function run() {
           draftGoals: goalCount,
           assessorPhoneAssertion,
           referralDateAssertion,
+          skillsBehaviorsProofResult,
           cleanupVerified: true,
           screenshot: screenshotPath,
         };
-      } catch (error) {
-        const screenshot = await captureFailureScreenshot(
-          page,
-          `playwright-iehp-assessment-import-smoke-${caseInput.caseId}-failure`,
-        );
-        console.error(`IEHP assessment import smoke failed for ${caseInput.caseId}. Screenshot: ${screenshot}`);
-        runFailure = error instanceof Error ? error : new Error(String(error));
-      } finally {
-        if (createdAssessment) {
+        },
+        cleanupCase: async () => {
+          if (!createdAssessment) {
+            return;
+          }
           await cleanupAssessmentImportArtifacts({
             accessToken,
             baseUrl,
@@ -677,61 +754,17 @@ async function run() {
               bucketId: createdAssessment.bucket_id?.trim() || 'client-documents',
               objectPath: createdAssessment.object_path,
             },
-          }).catch((cleanupError) => {
-            cleanupFailure = cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError));
-            console.error(`IEHP assessment import smoke cleanup failed for ${caseInput.caseId}.`);
           });
-        }
-        if (!cleanupFailure && caseEvidence) {
-          cleanupVerified = true;
-        }
-        if (cleanupFailure) {
-          try {
-            cleanupFailureManifestPath = writeCleanupFailureManifest({
-              latestDir,
-              cleanupError: cleanupFailure,
-              cleanupTargetKnown: Boolean(createdAssessment),
-              runError: runFailure,
-            });
-            console.error(
-              `IEHP assessment import smoke cleanup manifest written to ${cleanupFailureManifestPath} for ${caseInput.caseId}`,
-            );
-          } catch (manifestError) {
-            cleanupFailureManifestError =
-              manifestError instanceof Error ? manifestError : new Error(String(manifestError));
-            console.error('IEHP assessment import smoke could not write cleanup manifest', cleanupFailureManifestError);
-          }
-        }
-      }
-
-      if (runFailure && cleanupFailure) {
-        throw new Error(
-          buildIehpSmokeCleanupFailureMessage({
-            cleanupFailed: true,
-            cleanupManifestPath: cleanupFailureManifestPath,
-            cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
-            runFailed: true,
-          }),
-        );
-      }
-      if (runFailure) {
-        throw runFailure;
-      }
-      if (cleanupFailure) {
-        throw new Error(
-          buildIehpSmokeCleanupFailureMessage({
-            cleanupFailed: true,
-            cleanupManifestPath: cleanupFailureManifestPath,
-            cleanupManifestWriteFailed: Boolean(cleanupFailureManifestError),
-            runFailed: false,
-          }),
-        );
-      }
-      if (!caseEvidence || !cleanupVerified) {
-        throw new Error(`IEHP assessment import smoke case ${caseInput.caseId} did not produce cleanup-verified evidence.`);
-      }
-
-      return caseEvidence;
+        },
+        cleanupTargetKnown: () => Boolean(createdAssessment),
+        onRunFailure: async () => {
+          const screenshot = await captureFailureScreenshot(
+            page,
+            `playwright-iehp-assessment-import-smoke-${caseInput.caseId}-failure`,
+          );
+          console.error(`IEHP assessment import smoke failed for ${caseInput.caseId}. Screenshot: ${screenshot}`);
+        },
+      });
     };
 
     if (isPdfMiniMatrixMode) {
@@ -761,7 +794,7 @@ async function run() {
           passedCases.push(caseEvidence);
         } finally {
           if (!generatorPage.isClosed()) {
-            await generatorPage.close();
+            await generatorPage.close().then(() => undefined);
           }
         }
       }
@@ -775,6 +808,51 @@ async function run() {
       };
       console.log(JSON.stringify(aggregateEvidence, null, 2));
       return;
+    }
+
+    if (isSkillsBehaviorsProofMode) {
+      const generatorPage = await context.newPage();
+      try {
+        await generatorPage.setContent(
+          iehpAssessmentImportSmoke.buildIehpSkillsBehaviorsProofPdfHtml(IEHP_SKILLS_BEHAVIORS_PROOF_CASE),
+        );
+        const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });
+        await generatorPage.close().then(() => undefined);
+        const proofCaseEvidence = await runSmokeCase({
+          caseId: IEHP_SKILLS_BEHAVIORS_PROOF_CASE.id,
+          uploadFileName: (buildIehpSmokeUploadFileName(Date.now()))
+            .replace(/\.docx$/i, '.pdf'),
+          mimeType: 'application/pdf',
+          sourceFileBuffer: pdfBuffer,
+          assessmentAssertions: ({ checklist }) =>
+            iehpAssessmentImportSmoke.assertIehpSkillsBehaviorsChecklistSection({
+              checklist,
+              proofCase: IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+            }),
+        });
+        console.log(
+          JSON.stringify(
+            {
+              ok: true,
+              mode: 'skills-behaviors-proof',
+              caseId: proofCaseEvidence.caseId,
+              templateType: proofCaseEvidence.templateType,
+              status: proofCaseEvidence.status,
+              draftPrograms: proofCaseEvidence.draftPrograms,
+              draftGoals: proofCaseEvidence.draftGoals,
+              skillsBehaviorsAssertion: proofCaseEvidence.skillsBehaviorsProofResult,
+              cleanupVerified: proofCaseEvidence.cleanupVerified,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      } finally {
+        if (!generatorPage.isClosed()) {
+          await generatorPage.close().then(() => undefined);
+        }
+      }
     }
 
     const defaultCaseEvidence = await runSmokeCase({

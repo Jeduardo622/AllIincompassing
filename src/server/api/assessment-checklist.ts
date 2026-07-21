@@ -9,6 +9,10 @@ import {
   resolveOrgAndRole,
 } from "./shared";
 import { normalizeIehpRequiredFlag } from "../iehpOptionalFinalOutput";
+import {
+  IEHP_SKILLS_BEHAVIORS_SUMMARY_FIELD_KEY,
+  withDerivedIehpSkillsBehaviors,
+} from "../iehpSkillsBehaviors";
 
 const reviewStatusSchema = z.enum(["not_started", "drafted", "verified", "approved", "rejected"]);
 
@@ -39,6 +43,7 @@ interface ChecklistRow {
   value_text?: string | null;
   value_json?: Record<string, unknown> | unknown[] | null;
   payload?: Record<string, unknown> | null;
+  section_index?: number | null;
 }
 
 type ReviewStatus = z.infer<typeof reviewStatusSchema>;
@@ -114,6 +119,18 @@ const hasMeaningfulChecklistValue = (
 const hasMeaningfulStructuredPayload = (payload: Record<string, unknown> | null | undefined): boolean =>
   Boolean(payload && hasMeaningfulReviewValue(payload));
 
+const stripDerivedSkillsBehaviors = (
+  fieldKey: string | null | undefined,
+  payload: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined => {
+  if (!payload || fieldKey !== IEHP_SKILLS_BEHAVIORS_SUMMARY_FIELD_KEY) {
+    return payload;
+  }
+
+  const { skills_behaviors: _ignored, ...sanitizedPayload } = payload;
+  return sanitizedPayload;
+};
+
 export async function assessmentChecklistHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
@@ -170,7 +187,7 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
     }
     return json({
       items: checklistResult.data ?? [],
-      structured_sections: structuredResult.data ?? [],
+      structured_sections: withDerivedIehpSkillsBehaviors(structuredResult.data ?? []),
     });
   }
 
@@ -215,7 +232,8 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
           400,
         );
       }
-      const finalStructuredPayload = parsed.data.payload ?? existing.payload;
+      const sanitizedStructuredPayload = stripDerivedSkillsBehaviors(existing.field_key, parsed.data.payload);
+      const finalStructuredPayload = sanitizedStructuredPayload ?? existing.payload;
       if (
         nextStatus === "approved" &&
         normalizeIehpRequiredFlag(existing.field_key, existing.required) &&
@@ -239,8 +257,8 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
       if (parsed.data.review_notes !== undefined) {
         updatePayload.review_notes = parsed.data.review_notes;
       }
-      if (parsed.data.payload !== undefined) {
-        updatePayload.payload = parsed.data.payload;
+      if (sanitizedStructuredPayload !== undefined) {
+        updatePayload.payload = sanitizedStructuredPayload;
       }
 
       const updateUrl = `${supabaseUrl}/rest/v1/assessment_structured_sections?id=eq.${encodeURIComponent(

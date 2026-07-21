@@ -686,6 +686,101 @@ Deno.test("extractStructuredSections maps LE-style IEHP headings into normalized
   expect(skillAndParentGoals.filter((section) => section.payload.goal_type === "parent")).toHaveLength(1);
 });
 
+Deno.test("extractStructuredSections reconciles IEHP summary targets", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      BEHAVIORS
+      The behaviors and functional skills to be addressed are:
+      Physical Aggression
+      Functional Communication
+      Community Safety
+      BACKGROUND INFORMATION:
+      Living Situation
+      Caregiver One Parent
+      Target Behaviors
+      TARGET BEHAVIORS:
+      Program Name: Physical Aggression
+      Instrumental Goal: By December 2027, member will reduce aggression from 3x per hour to 0x per hour.
+      Data Collection: Rate.
+      Mastery Criteria: 0x per hour across 4 consecutive weeks.
+      Baseline: 3x per hour.
+      REPLACEMENT BEHAVIORS:
+      Program Name: Functional Communication
+      Instrumental Goal: By December 2027, member will request help across 5 targets.
+      Data Collection: Percentage of opportunities.
+      Mastery Criteria: 80% across 4 consecutive weeks.
+      Baseline: 0% independent.
+      Program Name: Waiting
+      Instrumental Goal: By December 2027, member will wait safely in the community.
+      Data Collection: Percentage of opportunities.
+      Mastery Criteria: 80% across 4 consecutive weeks.
+      Baseline: 0% independent.
+      Safety/Crisis Procedure
+      Crisis safety narrative.
+      E. PARENT EDUCATION:
+      Program Name: Parent Coaching
+      Instrumental Goal: By December 2027, caregiver will implement prompting with fidelity.
+      Data Collection: Percentage of opportunities.
+      Mastery Criteria: 80% across 4 consecutive weeks.
+      Baseline: 0% independent.
+      Location of Service:
+      Home and community.
+    `,
+  );
+
+  const summary = sections.find((section) => section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS");
+  const skillsBehaviors = summary?.payload.skills_behaviors as
+    | { items?: Array<Record<string, unknown>>; counts?: Record<string, unknown>; version?: number }
+    | undefined;
+
+  expect(summary?.payload.targets).toEqual([
+    "Physical Aggression",
+    "Functional Communication",
+    "Community Safety",
+  ]);
+  expect(skillsBehaviors).toMatchObject({
+    version: 1,
+    counts: {
+      total: 4,
+      behavior: 1,
+      skill: 2,
+      summary_only: 1,
+      detailed_only: 1,
+      ambiguous: 0,
+    },
+    items: [
+      expect.objectContaining({
+        name: "Physical Aggression",
+        clinical_goal_type: "behavior",
+        reconciliation_status: "matched",
+      }),
+      expect.objectContaining({
+        name: "Functional Communication",
+        clinical_goal_type: "skill",
+        reconciliation_status: "matched",
+      }),
+      expect.objectContaining({
+        name: "Community Safety",
+        clinical_goal_type: null,
+        reconciliation_status: "summary_only",
+      }),
+      expect.objectContaining({
+        name: "Waiting",
+        clinical_goal_type: "skill",
+        reconciliation_status: "detailed_only",
+      }),
+    ],
+  });
+  expect(skillsBehaviors?.items).not.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        name: "Parent Coaching",
+      }),
+    ]),
+  );
+});
+
 Deno.test("extractStructuredSections preserves IEHP adaptive measure block slots when source content is missing", () => {
   const sections = asSections(
     "iehp_fba",

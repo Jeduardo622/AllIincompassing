@@ -13,6 +13,7 @@ import {
   type AssessmentTemplateVersion,
 } from "../assessmentTemplateLayout";
 import { normalizeIehpRequiredFlag } from "../iehpOptionalFinalOutput";
+import { withDerivedIehpSkillsBehaviors } from "../iehpSkillsBehaviors";
 
 const uuidSchema = z.string().uuid();
 
@@ -248,7 +249,9 @@ export async function assessmentTemplateLayoutHandler(request: Request): Promise
   const layout = { template_version: version, pages, fields };
 
   const checklistRows = Array.isArray(checklistResult.data) ? checklistResult.data : [];
-  const structuredSections = Array.isArray(structuredResult.data) ? structuredResult.data : [];
+  const structuredSections = withDerivedIehpSkillsBehaviors(
+    Array.isArray(structuredResult.data) ? structuredResult.data : [],
+  );
   const unresolvedRequiredCount = checklistRows
     .filter((row) => normalizeIehpRequiredFlag(row.placeholder_key, row.required) && row.status !== "approved")
     .length +

@@ -30,7 +30,10 @@ import type {
   BtAbaSessionNotePayload,
   BtAbaFinalizeResult,
 } from '../types';
-import type { BtAbaSessionNoteResponses } from '../lib/bt-aba-session-note';
+import {
+  validateBtAbaSessionNoteResponses,
+  type BtAbaSessionNoteResponses,
+} from '../lib/bt-aba-session-note';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
 import { logger } from '../lib/logger/logger';
 import { AlternativeTimes } from './AlternativeTimes';
@@ -863,6 +866,13 @@ export function SessionModal({
   const selectedClient = clients.find(c => c.id === clientId);
   const selectedTherapistServices = selectedTherapist?.service_type ?? [];
   const selectedClientServices = selectedClient?.service_preference ?? [];
+  const completedBtAbaResponses = useMemo(() => {
+    if (!isCompletedBtAbaSession || btAbaNoteState?.status !== 'completed') {
+      return null;
+    }
+    const result = validateBtAbaSessionNoteResponses(btAbaNoteState.responses);
+    return result.success ? result.data : null;
+  }, [btAbaNoteState?.responses, btAbaNoteState?.status, isCompletedBtAbaSession]);
   const initialBtAbaResponses = useMemo<BtAbaSessionNoteResponses>(() => ({
     purpose_of_session: [],
     client_status: '',
@@ -874,8 +884,8 @@ export function SessionModal({
     data_point_scope: 'linked',
     link_unlinked_data: false,
     bt_signature: { method: 'typed', value: '' },
-    ...(btAbaNoteState?.responses ?? {}),
-  }), [btAbaNoteState?.responses]);
+    ...(completedBtAbaResponses ?? btAbaNoteState?.responses ?? {}),
+  }), [btAbaNoteState?.responses, completedBtAbaResponses]);
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const activePrograms = programs.filter((program) => program.status === 'active');
   const availableGoals = useMemo(
@@ -2125,7 +2135,7 @@ export function SessionModal({
     isCompletedBtAbaSession &&
     btAbaNoteState?.status === 'completed' &&
     btAbaNoteState.templateId &&
-    btAbaNoteState.responses &&
+    completedBtAbaResponses &&
     btAbaNoteState.noteId,
   );
   const sessionNoteGoalIds = useMemo(
@@ -2900,13 +2910,20 @@ export function SessionModal({
                   placeOfService: sessionDetails?.location_type?.trim() || 'Not recorded',
                   billingCode: linkedSessionNote?.service_code || getValues('session_note_service_code') || firstServiceCodeOnAuthorization(primaryBillingAuthorization) || 'Not recorded',
                   modifiers: ['Not recorded'],
-                  programs: selectedProgramIds.map((selectedProgramId) => ({
-                    name: programsById.get(selectedProgramId)?.name ?? 'Program',
-                    goals: sessionNoteGoalIds
-                      .map((selectedGoalId) => goalsById.get(selectedGoalId))
-                      .filter((selectedGoal): selectedGoal is Goal => Boolean(selectedGoal?.program_id === selectedProgramId))
-                      .map((selectedGoal) => selectedGoal.title),
-                  })),
+                  programs: isCompletedBtAbaSession
+                    ? [{
+                        name: 'Finalized session goals',
+                        goals: (linkedSessionNote?.goals_addressed ?? [])
+                          .map((goalLabel) => goalLabel.trim())
+                          .filter(Boolean),
+                      }]
+                    : selectedProgramIds.map((selectedProgramId) => ({
+                        name: programsById.get(selectedProgramId)?.name ?? 'Program',
+                        goals: sessionNoteGoalIds
+                          .map((selectedGoalId) => goalsById.get(selectedGoalId))
+                          .filter((selectedGoal): selectedGoal is Goal => Boolean(selectedGoal?.program_id === selectedProgramId))
+                          .map((selectedGoal) => selectedGoal.title),
+                      })),
                   collectedDataPointCount: closeoutDataPoints.length,
                   linkedDataPoints: closeoutDataPoints.filter((point) => point.linked),
                   allDataPoints: closeoutDataPoints,

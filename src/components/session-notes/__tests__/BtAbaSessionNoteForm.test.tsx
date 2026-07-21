@@ -247,6 +247,27 @@ describe('BtAbaSessionNoteForm', () => {
     expect(screen.getByLabelText('Link unlinked data for this service date')).toBeChecked();
   });
 
+  it('rehydrates read-only responses when a newer amendment arrives for the same session', () => {
+    const props = makeProps();
+    const view = render(
+      <BtAbaSessionNoteForm
+        {...props}
+        initialResponses={{ ...emptyResponses, client_status: 'Original finalized response' }}
+        readOnly
+      />,
+    );
+
+    view.rerender(
+      <BtAbaSessionNoteForm
+        {...props}
+        initialResponses={{ ...emptyResponses, client_status: 'Latest amended response' }}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByLabelText('Client Status')).toHaveValue('Latest amended response');
+  });
+
   it('keeps unlinked-data association visible but unavailable during closeout', () => {
     render(<BtAbaSessionNoteForm {...makeProps()} initialResponses={{ ...emptyResponses, link_unlinked_data: true }} />);
     expect(screen.getByLabelText('Link unlinked data for this service date')).toBeDisabled();

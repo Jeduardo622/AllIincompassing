@@ -85,15 +85,17 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
   const formRef = useRef<HTMLFormElement>(null);
   const latestInitialResponses = useRef(initialResponses);
   latestInitialResponses.current = initialResponses;
+  const readOnlyInitialResponses = readOnly ? initialResponses : null;
   const inputsDisabled = busy || readOnly;
 
   useEffect(() => {
+    const nextResponses = readOnlyInitialResponses ?? latestInitialResponses.current;
     setResponses({
-      ...latestInitialResponses.current,
-      link_unlinked_data: readOnly ? latestInitialResponses.current.link_unlinked_data : false,
+      ...nextResponses,
+      link_unlinked_data: readOnly ? nextResponses.link_unlinked_data : false,
     });
     setErrors({});
-  }, [context.sessionId, readOnly]);
+  }, [context.sessionId, readOnly, readOnlyInitialResponses]);
 
   const setField = <Key extends ResponseKey>(field: Key, value: BtAbaSessionNoteResponses[Key]) => {
     setResponses((current) => ({ ...current, [field]: value }));

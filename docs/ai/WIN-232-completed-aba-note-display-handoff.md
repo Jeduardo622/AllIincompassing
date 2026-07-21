@@ -10,6 +10,7 @@
 - Refresh the completed-note query cache immediately after successful finalization.
 - Preserve the persisted unlinked-data choice when rendering a finalized note read-only.
 - Resolve completed-note responses from the latest tenant-scoped correction amendment while preserving the original note ID and RPC contract.
+- Invalidate the completed-note cache after BT correction resubmission and rehydrate an already-mounted read-only form when the amended response arrives.
 
 ## Non-goals
 
@@ -19,7 +20,7 @@
 
 ## Verification
 
-- PASS: targeted component, migration-contract, and correction-workflow suites, 140 tests.
+- PASS: targeted component, cache-invalidation, migration-contract, and correction-workflow suites, 159 tests.
 - PASS: `npm run ci:check-focused`.
 - PASS: `npm run lint`.
 - PASS: `npm run typecheck`.
@@ -52,7 +53,7 @@
 - Lane: `critical`.
 - Change type: privileged RPC read resolution, UI cache/read-only behavior, component tests, migration contract, and SQL smoke contract.
 - Required checks: focused tests, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run validate:tenant`, `npm run build`, `npm run test:routes:tier0`, `npm run ci:playwright`, and `npm run verify:local` when locally meaningful.
-- Executed checks: focused tests PASS (140); policy PASS; lint PASS; typecheck PASS; tenant validation PASS; build PASS; Tier-0 routes PASS (220); synthetic completed-note Cypress proof PASS (1).
+- Executed checks: focused tests PASS (159); policy PASS; lint PASS; typecheck PASS; tenant validation PASS; build PASS; Tier-0 routes PASS (220); synthetic completed-note Cypress proof PASS (1).
 - Blocked checks: `npm run test:ci` has 3 unrelated local baseline failures; `npm run ci:playwright` is blocked by invalid hosted smoke credentials; DB-backed grant/drift checks require `SUPABASE_DB_URL`; `npm run verify:local` cannot complete while `test:ci` is red.
 - Result: `pass-with-blocked-checks` pending refreshed branch CI.
 - Residual risk: human review and hosted deployment are required before the latest-amendment read can be visually proven in production.

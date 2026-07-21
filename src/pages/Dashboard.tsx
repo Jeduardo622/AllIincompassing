@@ -2314,11 +2314,12 @@ const Dashboard = () => {
         signature: getBtCorrectionSnapshotSignature(input.responses),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, input) => {
       showSuccess('BT correction resubmitted.');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [SUPERVISION_SESSION_NOTES_QUERY_KEY] }),
         queryClient.invalidateQueries({ queryKey: supervisionCountQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ['bt-aba-session-note', input.task.sessionId] }),
       ]);
     },
     onError: (error) => {

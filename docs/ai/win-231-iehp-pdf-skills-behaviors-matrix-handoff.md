@@ -3,6 +3,7 @@
 - Date: July 21, 2026
 - Linear: `WIN-231`
 - Branch: `codex/win-231-iehp-pdf-skills-behaviors-matrix`
+- PR: `#825` (`https://github.com/Jeduardo622/AllIincompassing/pull/825`)
 - Classification: `low-risk autonomous`
 - Lane: `standard`
 - Triggering paths: `scripts/playwright-iehp-assessment-import-smoke.ts`, its focused structure test, and this handoff
@@ -67,10 +68,11 @@
 - `protected-path drift`: none
 - `change summary`: present
 - `verification summary`: present
-- `pr handoff`: ready; add the created PR URL and live checks after push
+- `pr handoff`: PR `#825` is open for human review
 - `reviewer`: completed
 - `required follow-up`: run the authenticated four-case hosted matrix when credentials are available and resolve only slice-related PR failures
 
 ## Handoff
 
-- PR and live-check evidence will be added after verification, review, push, and PR creation.
+- PR `#825` opened at head `b6108c3c`; initial live state was mergeable but blocked with policy, Lighthouse, and Netlify checks pending, no submitted reviews, and no review threads.
+- Linear `WIN-231` is `In Review`, links PR `#825`, and records the exact local and blocked hosted evidence.

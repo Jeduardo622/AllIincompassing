@@ -641,11 +641,14 @@ export const shouldTryNextLifecyclePairAfterAttempts = ({
   attemptedStartCount,
   blockedAttemptCount,
   payloadStatus,
+  modalDisappeared = false,
 }: {
   attemptedStartCount: number;
   blockedAttemptCount: number;
   payloadStatus: number | null;
+  modalDisappeared?: boolean;
 }): boolean =>
+  modalDisappeared ||
   payloadStatus === 409 ||
   (attemptedStartCount > 0 && blockedAttemptCount >= attemptedStartCount);
 
@@ -999,6 +1002,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean, actor
     let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
     let payloadBody: { success?: boolean; data?: { session?: { id?: string } }; code?: string } | null = null;
     let blockedAttemptCount = 0;
+    let modalDisappeared = false;
 
     for (let attempt = 0; attempt < availableCandidateStarts.length; attempt += 1) {
       const attemptStart = availableCandidateStarts[attempt];
@@ -1014,11 +1018,30 @@ async function bookSession(page: Page, token: string, strictMode: boolean, actor
       page.once("dialog", (dialog) => {
         void dialog.accept().catch(() => undefined);
       });
-      const createSessionButton = await expectCreateSessionButtonReady(page, {
-        pairKey: selected.pairKey,
-        attempt: attempt + 1,
-        startIso,
-      });
+      let createSessionButton: Awaited<ReturnType<typeof expectCreateSessionButtonReady>>;
+      try {
+        createSessionButton = await expectCreateSessionButtonReady(page, {
+          pairKey: selected.pairKey,
+          attempt: attempt + 1,
+          startIso,
+        });
+      } catch (error) {
+        const sessionDialogVisible = await page
+          .locator('[role="dialog"][data-session-modal-mode]')
+          .first()
+          .isVisible()
+          .catch(() => false);
+        if (sessionDialogVisible) {
+          throw error;
+        }
+        console.warn("[lifecycle] session modal closed during booking; trying next pair", {
+          pairKey: selected.pairKey,
+          attempt: attempt + 1,
+          startIso,
+        });
+        modalDisappeared = true;
+        break;
+      }
       const responsePromise = page
         .waitForResponse(
           (res) => res.url().includes("/api/book") && res.request().method() === "POST",
@@ -1093,6 +1116,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean, actor
         attemptedStartCount: availableCandidateStarts.length,
         blockedAttemptCount,
         payloadStatus: payload?.status ?? null,
+        modalDisappeared,
       })
     ) {
       console.warn("[lifecycle] booking attempts exhausted for therapist-client pair; trying next pair", {

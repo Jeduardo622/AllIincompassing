@@ -182,6 +182,25 @@ describe("playwright session lifecycle booking starts", () => {
     ).toBe(false);
   });
 
+  it("recovers only when the lifecycle modal disappeared during booking", () => {
+    expect(
+      shouldTryNextLifecyclePairAfterAttempts({
+        attemptedStartCount: 1,
+        blockedAttemptCount: 0,
+        payloadStatus: null,
+        modalDisappeared: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldTryNextLifecyclePairAfterAttempts({
+        attemptedStartCount: 1,
+        blockedAttemptCount: 0,
+        payloadStatus: null,
+        modalDisappeared: false,
+      }),
+    ).toBe(false);
+  });
+
   it("bounds hosted lifecycle target pair attempts", () => {
     expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 7 })).toBe(false);
     expect(hasReachedLifecyclePairAttemptLimit({ attemptedPairCount: 8 })).toBe(true);

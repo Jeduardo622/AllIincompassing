@@ -123,3 +123,10 @@
 - The branch contains the reconciliation implementation, strict synthetic proof, CI gate, and the smallest preview-function registration needed to deploy the reviewed extractor.
 - The hosted gate now proves credentials, upload, phone precedence/provenance, authenticated derive-on-read, one reconciled Skills & Behaviors result, behavior and skill parsing, Needs Review preservation, detailed-only preservation, parent exclusion, provenance, zero drafts, evidence capture, and cleanup.
 - Next practical step: obtain the mandatory human approval after the remaining required PR checks finish. Do not merge critical-lane work without that review.
+
+## Auth Browser Smoke Recovery
+
+- CI run `29789364028` failed `playwright:session-no-show` twice after the create-session modal disappeared while the lifecycle harness was waiting for the submit button. The captured failure screenshot showed a healthy Schedule page with no session dialog, so this was isolated to harness retry behavior rather than an application-route crash.
+- The lifecycle harness now abandons only the current therapist-client pair when the session modal is no longer visible, cleans up the pair's synthetic program/goal through the existing exhaustion path, and continues to another authorized pair. If the modal remains visible, submit-button readiness errors still fail closed.
+- Local verification: focused lifecycle unit suite `16/16`, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run build`, and tier-0 browser gate `220/220` passed. `npm run test:ci` remains blocked by the same three unrelated branch-baseline failures already recorded above.
+- Independent code review approved with no required fixes. The remaining decisive proof is a green credentialed `auth-browser-smoke` run on the updated PR head.

@@ -16,7 +16,7 @@
 
 - No changes to session-note writes, finalization RPC behavior, RLS policies, roles, or table grants.
 - No changes to scheduled or in-progress capture behavior.
-- No production migration application from this task; deployment remains human-reviewed.
+- No application-code production deployment from this task; merge and deployment remain human-reviewed.
 
 ## Verification
 
@@ -28,14 +28,17 @@
 - PASS: `npm run test:routes:tier0`, 220 Cypress checks.
 - PASS: `completed_aba_note.cy.ts`, 1 synthetic browser check with screenshot evidence of populated read-only responses.
 - PASS: `npm run build`.
+- PASS: authorized hosted migration application to Supabase project `wnnjeqheqxxyrgsjmygy`; the ledger records version `20260721172928` with logical name `bt_aba_completed_note_latest_amendment`.
+- PASS: hosted RPC contract verification confirmed the function exists, `anon` execute is denied, `authenticated` and `service_role` execute are allowed, and the latest-amendment query remains scoped to the original BT note.
+- PASS: hosted Supabase security/performance advisors completed. The RPC warning reflects its intentional authenticated `security definer` API surface protected by exact-BT and organization checks; amendment-table index advisories pre-date and are outside this bounded function replacement.
 - FAIL, unrelated baseline: `npm run test:ci` completed with 3,101 passing and 3 failing tests in the PDF Blob test, CI workflow contract fixture, and IEHP Supabase config newline assertion. None of those files are changed by WIN-232.
-- BLOCKED: database-backed privileged-function grant and preview-drift checks require `SUPABASE_DB_URL`; static grant, RLS, migration-governance, and tenant checks passed.
+- PASS: hosted privileged-function existence and execute-grant checks via the Supabase plugin; local preview-drift checks still require `SUPABASE_DB_URL`.
 - BLOCKED: hosted `npm run ci:playwright` preflight passed, but auth stopped on invalid configured smoke credentials.
 
 ## Residual Risk
 
-- Hosted end-to-end proof of this follow-up remains blocked until the critical migration is reviewed, merged, and deployed; the current screenshot uses synthetic, redacted browser fixtures.
-- Database execution of the SQL smoke was not available locally without a configured database URL; static migration and smoke contracts passed.
+- Hosted end-to-end proof of the application-code follow-up remains blocked until the critical PR is reviewed, merged, and deployed; the current screenshot uses synthetic, redacted browser fixtures.
+- The hosted RPC and grants are verified, but a real assigned-BT completed-session visual check is still required after deployment without exposing PHI.
 
 ## Route Task
 
@@ -54,13 +57,13 @@
 - Change type: privileged RPC read resolution, UI cache/read-only behavior, component tests, migration contract, and SQL smoke contract.
 - Required checks: focused tests, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run validate:tenant`, `npm run build`, `npm run test:routes:tier0`, `npm run ci:playwright`, and `npm run verify:local` when locally meaningful.
 - Executed checks: focused tests PASS (159); policy PASS; lint PASS; typecheck PASS; tenant validation PASS; build PASS; Tier-0 routes PASS (220); synthetic completed-note Cypress proof PASS (1).
-- Blocked checks: `npm run test:ci` has 3 unrelated local baseline failures; `npm run ci:playwright` is blocked by invalid hosted smoke credentials; DB-backed grant/drift checks require `SUPABASE_DB_URL`; `npm run verify:local` cannot complete while `test:ci` is red.
-- Result: `pass-with-blocked-checks` pending refreshed branch CI.
-- Residual risk: human review and hosted deployment are required before the latest-amendment read can be visually proven in production.
+- Blocked checks: `npm run test:ci` has 3 unrelated local baseline failures; `npm run ci:playwright` is blocked by invalid hosted smoke credentials; local preview-drift checks require `SUPABASE_DB_URL`; `npm run verify:local` cannot complete while `test:ci` is red.
+- Result: `pass-with-blocked-checks`; hosted migration contract is verified and runtime-parity CI is being refreshed.
+- Residual risk: human review and application deployment are required before the latest-amendment read can be visually proven in production.
 
 ## PR Hygiene
 
-- PR-ready: yes after the critical review-fix commit is pushed and refreshed branch CI passes; merge remains human-blocked.
+- PR-ready: yes after this evidence update is pushed and refreshed branch CI passes; merge remains human-blocked.
 - Branch-ready: yes, `codex/win-232-completed-aba-note-display`.
 - Linear-ready: yes, WIN-232.
 - Single-purpose: yes.

@@ -62,23 +62,26 @@ vi.mock('../session-notes/BtAbaSessionNoteForm', () => ({
     onSaveDraft,
     onFinalize,
     busy,
+    readOnly,
   }: {
     initialResponses: BtAbaSessionNoteResponses;
     context: { placeOfService: string; billingCode: string; modifiers: string[]; linkedDataPoints: unknown[]; allDataPoints: unknown[] };
     onSaveDraft: (responses: BtAbaSessionNoteResponses) => Promise<void>;
     onFinalize: (responses: BtAbaSessionNoteResponses) => Promise<void>;
     busy: boolean;
+    readOnly?: boolean;
   }) => (
     <section>
       <h2>ABA Session Note</h2>
       <p>Draft client status: {initialResponses.client_status}</p>
+      <p>Mode: {readOnly ? 'finalized' : 'editable'}</p>
       <p>Place: {context.placeOfService}</p>
       <p>Billing: {context.billingCode}</p>
       <p>Modifiers: {context.modifiers.join(', ') || 'Not recorded'}</p>
       <p>Linked count: {context.linkedDataPoints.length}</p>
       <p>All count: {context.allDataPoints.length}</p>
-      <button type="button" disabled={busy} onClick={() => void onSaveDraft(validBtAbaResponses)}>Save ABA Draft</button>
-      <button type="button" disabled={busy} onClick={() => void onFinalize(validBtAbaResponses)}>Finalize ABA Session</button>
+      {!readOnly && <button type="button" disabled={busy} onClick={() => void onSaveDraft(validBtAbaResponses)}>Save ABA Draft</button>}
+      {!readOnly && <button type="button" disabled={busy} onClick={() => void onFinalize(validBtAbaResponses)}>Finalize ABA Session</button>}
     </section>
   ),
 }));
@@ -967,6 +970,54 @@ describe('SessionModal', () => {
     expect(onBtAbaSessionFinalized).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: 'session-bt-restored', noteId: 'note-restored', status: 'completed',
     }));
+  });
+
+  it('renders a persisted completed BT ABA note as finalized instead of the generic session form', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-readonly',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{ ...btInProgressSession, id: 'session-bt-completed', status: 'completed' }}
+      />,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Completed ABA Session Note' })).toBeInTheDocument();
+    expect(screen.getByText('Review the finalized session documentation.')).toBeInTheDocument();
+    expect(screen.getByText('Draft client status: Engaged')).toBeInTheDocument();
+    expect(screen.getByText('Mode: finalized')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save ABA Draft' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finalize ABA Session' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Back to capture' })).not.toBeInTheDocument();
+    expect(getBtAbaSessionNote).toHaveBeenCalledWith('session-bt-completed');
+  });
+
+  it('fails closed instead of showing the generic editor when completed ABA note data is unavailable', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-incomplete-state',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'draft',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{ ...btInProgressSession, id: 'session-bt-completed-inconsistent', status: 'completed' }}
+      />,
+    );
+
+    expect(await screen.findByText('Finalized ABA session note is unavailable.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'ABA Session Note' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Update Session' })).not.toBeInTheDocument();
   });
 
   it('surfaces persisted BT draft loading failure before closeout can advance', async () => {

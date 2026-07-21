@@ -1901,7 +1901,19 @@ export function SessionModal({
         });
         if (!transformed) return;
         const refreshedBtAbaNote = await refetchBtAbaNoteState();
-        setBtAbaNoteId(refreshedBtAbaNote.data?.noteId ?? null);
+        if (refreshedBtAbaNote.error || !refreshedBtAbaNote.data?.templateId) {
+          closeoutCaptureRef.current = null;
+          setModalStep('capture');
+          setBtAbaNoteId(null);
+          const message = refreshedBtAbaNote.error instanceof Error
+            ? refreshedBtAbaNote.error.message
+            : 'Unable to load the saved ABA session note draft.';
+          setBtAbaError(message);
+          showError(message);
+          return;
+        }
+
+        setBtAbaNoteId(refreshedBtAbaNote.data.noteId ?? null);
         const trialEvents = transformed.session_note_trial_events ?? [];
         closeoutCaptureRef.current = {
           notePayload: {
@@ -2703,6 +2715,7 @@ export function SessionModal({
       !isBtClinicalCaptureSession ||
       session?.status !== 'in_progress' ||
       btAbaNoteState?.status !== 'draft' ||
+      !btAbaNoteState.templateId ||
       !btAbaNoteState.responses ||
       !btAbaNoteState.noteId
     ) {

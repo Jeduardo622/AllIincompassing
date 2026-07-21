@@ -373,6 +373,7 @@ jobs:
               'clean-single-page',
               'multi-page-target-content',
               'alternate-document-phone-format',
+              'scan-300dpi-monochrome',
               'skills-behaviors-proof',
             ];
             const matrixCases = objects
@@ -387,8 +388,8 @@ jobs:
               });
             const aggregate = objects.find((entry) => entry?.mode === 'pdf-mini-matrix');
 
-            if (matrixCases.length !== 4) {
-              throw new Error(`Expected exactly four case evidence objects but found ${matrixCases.length}.`);
+            if (matrixCases.length !== 5) {
+              throw new Error(`Expected exactly five case evidence objects but found ${matrixCases.length}.`);
             }
             if (!aggregate) {
               throw new Error('Missing aggregate matrix evidence.');
@@ -413,14 +414,14 @@ jobs:
             if (rawPhonePattern.test(JSON.stringify(matrixCases))) {
               throw new Error('Curated matrix evidence contained a raw phone number.');
             }
-            if (aggregate.totalCases !== 4) {
-              throw new Error(`Expected aggregate totalCases to equal 4 but received ${aggregate.totalCases}.`);
+            if (aggregate.totalCases !== 5) {
+              throw new Error(`Expected aggregate totalCases to equal 5 but received ${aggregate.totalCases}.`);
             }
-            if (aggregate.passedCases !== 4) {
-              throw new Error(`Expected aggregate passedCases to equal 4 but received ${aggregate.passedCases}.`);
+            if (aggregate.passedCases !== 5) {
+              throw new Error(`Expected aggregate passedCases to equal 5 but received ${aggregate.passedCases}.`);
             }
-            if (aggregate.cleanupVerifiedCases !== 4) {
-              throw new Error(`Expected aggregate cleanupVerifiedCases to equal 4 but received ${aggregate.cleanupVerifiedCases}.`);
+            if (aggregate.cleanupVerifiedCases !== 5) {
+              throw new Error(`Expected aggregate cleanupVerifiedCases to equal 5 but received ${aggregate.cleanupVerifiedCases}.`);
             }
             if (aggregate.skillsBehaviorsVerifiedCases !== 1) {
               throw new Error(`Expected aggregate skillsBehaviorsVerifiedCases to equal 1 but received ${aggregate.skillsBehaviorsVerifiedCases}.`);

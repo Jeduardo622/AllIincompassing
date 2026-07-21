@@ -1,12 +1,30 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
-export type IehpPdfMiniMatrixCase = {
-  id: 'clean-single-page' | 'multi-page-target-content' | 'alternate-document-phone-format';
+type IehpPdfMiniMatrixBaseCase = {
   referralDate: string;
   documentPhone: string;
   pageBreakBeforeTarget: boolean;
 };
+
+type IehpDigitalPdfMiniMatrixCase = IehpPdfMiniMatrixBaseCase & {
+  id: 'clean-single-page' | 'multi-page-target-content' | 'alternate-document-phone-format';
+  renderMode: 'digital-pdf';
+};
+
+type IehpRasterPdfMiniMatrixCase = IehpPdfMiniMatrixBaseCase & {
+  id: 'scan-300dpi-monochrome';
+  renderMode: 'raster-scan';
+  scan: {
+    dpi: 300;
+    colorMode: 'black-and-white';
+    rotationDegrees: 0;
+    compression: 'jpeg';
+    jpegQuality: 85;
+  };
+};
+
+export type IehpPdfMiniMatrixCase = IehpDigitalPdfMiniMatrixCase | IehpRasterPdfMiniMatrixCase;
 
 type DocumentChecklistItem = {
   placeholder_key: string;
@@ -109,18 +127,35 @@ export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
     referralDate: '06/30/2026',
     documentPhone: '(909) 555-0101',
     pageBreakBeforeTarget: false,
+    renderMode: 'digital-pdf',
   },
   {
     id: 'multi-page-target-content',
     referralDate: '07/01/2026',
     documentPhone: '909-555-0102',
     pageBreakBeforeTarget: true,
+    renderMode: 'digital-pdf',
   },
   {
     id: 'alternate-document-phone-format',
     referralDate: '07/02/2026',
     documentPhone: '+1 909 555 0103',
     pageBreakBeforeTarget: false,
+    renderMode: 'digital-pdf',
+  },
+  {
+    id: 'scan-300dpi-monochrome',
+    referralDate: '07/03/2026',
+    documentPhone: '909.555.0104',
+    pageBreakBeforeTarget: false,
+    renderMode: 'raster-scan',
+    scan: {
+      dpi: 300,
+      colorMode: 'black-and-white',
+      rotationDegrees: 0,
+      compression: 'jpeg',
+      jpegQuality: 85,
+    },
   },
 ] as const;
 

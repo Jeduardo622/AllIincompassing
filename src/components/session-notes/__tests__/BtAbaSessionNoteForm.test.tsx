@@ -234,6 +234,19 @@ describe('BtAbaSessionNoteForm', () => {
     expect(screen.queryByRole('button', { name: 'Finalize Session' })).not.toBeInTheDocument();
   });
 
+  it('preserves the persisted unlinked-data choice in read-only mode', () => {
+    render(
+      <BtAbaSessionNoteForm
+        {...makeProps()}
+        initialResponses={{ ...emptyResponses, link_unlinked_data: true }}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByLabelText('Link unlinked data for this service date')).toBeDisabled();
+    expect(screen.getByLabelText('Link unlinked data for this service date')).toBeChecked();
+  });
+
   it('keeps unlinked-data association visible but unavailable during closeout', () => {
     render(<BtAbaSessionNoteForm {...makeProps()} initialResponses={{ ...emptyResponses, link_unlinked_data: true }} />);
     expect(screen.getByLabelText('Link unlinked data for this service date')).toBeDisabled();

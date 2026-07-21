@@ -77,7 +77,10 @@ function CheckboxGroup({ field, label, options, values, disabled, error, onToggl
 }
 
 export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, onFinalize, busy, readOnly = false }: BtAbaSessionNoteFormProps) {
-  const [responses, setResponses] = useState<BtAbaSessionNoteResponses>({ ...initialResponses, link_unlinked_data: false });
+  const [responses, setResponses] = useState<BtAbaSessionNoteResponses>({
+    ...initialResponses,
+    link_unlinked_data: readOnly ? initialResponses.link_unlinked_data : false,
+  });
   const [errors, setErrors] = useState<Errors>({});
   const formRef = useRef<HTMLFormElement>(null);
   const latestInitialResponses = useRef(initialResponses);
@@ -85,9 +88,12 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
   const inputsDisabled = busy || readOnly;
 
   useEffect(() => {
-    setResponses({ ...latestInitialResponses.current, link_unlinked_data: false });
+    setResponses({
+      ...latestInitialResponses.current,
+      link_unlinked_data: readOnly ? latestInitialResponses.current.link_unlinked_data : false,
+    });
     setErrors({});
-  }, [context.sessionId]);
+  }, [context.sessionId, readOnly]);
 
   const setField = <Key extends ResponseKey>(field: Key, value: BtAbaSessionNoteResponses[Key]) => {
     setResponses((current) => ({ ...current, [field]: value }));
@@ -273,7 +279,7 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="radio" name="data-point-scope" checked={responses.data_point_scope === 'all'} disabled={inputsDisabled} onChange={() => setField('data_point_scope', 'all')} /> Include all data points</label>
         </fieldset>
         <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
-          <input type="checkbox" checked={false} disabled aria-describedby="link-unlinked-data-unavailable" className="mt-0.5" />
+          <input type="checkbox" checked={responses.link_unlinked_data} disabled aria-describedby="link-unlinked-data-unavailable" className="mt-0.5" />
           Link unlinked data for this service date
         </label>
         <p id="link-unlinked-data-unavailable" className="text-sm text-gray-600 dark:text-gray-300">

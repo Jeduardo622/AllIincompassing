@@ -650,6 +650,8 @@ declare
   v_tasks jsonb;
   v_amendment_id uuid;
   v_count integer;
+  v_read_result jsonb;
+  v_original_note_id uuid;
   v_round1_responses jsonb := '{
     "purpose_of_session":["RBT/BT worked on goals as stated in the treatment plan"],
     "client_status":"Client participated",
@@ -712,6 +714,18 @@ begin
   );
   if v_amendment_id is null then
     raise exception 'original BT resubmission did not create amendment version 2';
+  end if;
+
+  select note.id into v_original_note_id
+  from public.client_session_notes note
+  where note.session_id = '00000000-0000-4000-8000-00000000b044';
+
+  v_read_result := public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b044');
+  if v_read_result->>'note_id' is distinct from v_original_note_id::text
+     or v_read_result->'responses'->>'progress_toward_goals' <> 'Amended correction round 1'
+     or v_read_result->'responses'->'bt_signature'->>'method' <> 'typed'
+     or v_read_result->'responses'->'bt_signature'->>'value' <> 'BT Correction Signature 1' then
+    raise exception 'assigned BT read did not return the latest signed amendment: %', v_read_result;
   end if;
 end
 $win224_round1_resubmit$;

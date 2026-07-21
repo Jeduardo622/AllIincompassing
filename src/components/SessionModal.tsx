@@ -2006,6 +2006,13 @@ export function SessionModal({
         expectedTargetVersions: closeoutCaptureRef.current.expectedTargetVersions,
       });
       if (result.status !== 'completed') throw new Error('Session finalization did not complete. Please retry.');
+      queryClient.setQueryData(['bt-aba-session-note', session.id], {
+        noteId: result.noteId,
+        templateId: btAbaNoteState?.templateId ?? null,
+        responses,
+        status: 'completed',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['bt-aba-session-note', session.id] });
     } catch (error) {
       btAbaTransitionRef.current = 'idle';
       const message = error instanceof Error ? error.message : 'Unable to finalize the ABA session note.';

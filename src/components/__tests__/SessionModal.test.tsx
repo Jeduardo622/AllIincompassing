@@ -1,6 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { fireEvent } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
 import {
   SessionModal,
   decrementLegacyPromptCounts,
@@ -971,6 +972,47 @@ describe('SessionModal', () => {
     expect(onBtAbaSessionFinalized).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: 'session-bt-restored', noteId: 'note-restored', status: 'completed',
     }));
+  });
+
+  it('updates the completed ABA-note cache after successful finalization', async () => {
+    const setQueryData = vi.spyOn(QueryClient.prototype, 'setQueryData');
+    const invalidateQueries = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-cache-refresh',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'draft',
+    });
+    vi.mocked(finalizeBtAbaSessionNote).mockResolvedValue({
+      status: 'completed',
+      noteId: 'note-cache-refresh',
+      progressionResults: [],
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={btInProgressSession}
+        onBtAbaSessionFinalized={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Finalize ABA Session' }));
+    await waitFor(() => expect(setQueryData).toHaveBeenCalledWith(
+      ['bt-aba-session-note', btInProgressSession.id],
+      expect.objectContaining({
+        noteId: 'note-cache-refresh',
+        templateId: 'template-bt-1',
+        responses: validBtAbaResponses,
+        status: 'completed',
+      }),
+    ));
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['bt-aba-session-note', btInProgressSession.id],
+    });
+    setQueryData.mockRestore();
+    invalidateQueries.mockRestore();
   });
 
   it('renders a persisted completed BT ABA note as finalized instead of the generic session form', async () => {

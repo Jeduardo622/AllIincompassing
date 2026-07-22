@@ -25,6 +25,14 @@ The migration revokes execution from `public` and `anon`, grants only `authentic
 - Supabase review: approved after adding the PostgREST schema reload; no tenant-boundary or grant finding remains.
 - Test-engineer review: approved; the only mandatory unexecuted browser proof is credential-blocked.
 
+## PR review follow-up
+
+- The Schedule BT-only mode now uses an exact active role-assignment signal instead of the normalized `effectiveRole`, so legacy `therapist` assignments cannot enter the assigned-BT resolver or BT start-session exception.
+- A successful empty `user_roles` read remains authoritative and cannot fall back to a stale `profiles.role = 'bt'`; profile fallback is limited to unavailable assignment data.
+- The Codex note-persistence finding was closed by current repo and hosted evidence: `client_session_notes` read/write policies use `app.current_user_can_take_client_data`, which permits exact BT/therapist users only for assigned clients. No RLS widening or follow-up migration was needed.
+- Protected runtime project `wnnjeqheqxxyrgsjmygy` is healthy and its hosted migration ledger now contains `20260722181239 / resolve_assigned_bt_session_capture_billing`. Live `pg_policy` and function-definition inspection match the reviewed assigned-client boundary.
+- Follow-up code, security, and Supabase reviews approve the corrected boundary. Targeted auth and Schedule tests pass (2 files / 39 tests), along with lint, typecheck, focused policy checks, tenant validation, build, and the Tier-0 route gate (7 specs / 220 tests).
+
 ## Verification card
 
 - Lane: `critical`
@@ -39,19 +47,19 @@ The migration revokes execution from `public` and `anon`, grants only `authentic
   - `npm run test:routes:tier0`: PASS, 7 specs / 220 tests.
   - `npm run ci:verify-coverage`: PASS, 92.71% line coverage against 86% threshold.
 - Blocked or non-green checks:
-  - `npm run test:ci`: NOT GREEN. It reproduced the clean-main workflow-contract failure in `tests/workflows/bt-aba-disposable-browser-proof.test.ts`, the Node 24 `blob.text is not a function` failure in `src/lib/__tests__/supabase.edge.test.ts`, and an unhandled coverage temporary-file `ENOENT`. The focused WIN-240 tests passed within the run.
+  - `npm run test:ci`: NOT GREEN. Under the local Node 24 runtime it reproduced the existing out-of-scope workflow-contract expectation failures, the `blob.text is not a function` failure in `src/lib/__tests__/supabase.edge.test.ts`, and an unhandled coverage temporary-file `ENOENT`. The focused WIN-240 tests passed separately.
   - `npm run ci:playwright`: BLOCKED at preflight because neither the super-admin nor admin Playwright credential pair is configured.
   - Local/dev migration apply plus immediate PostgREST RPC smoke: BLOCKED because no local/dev database URL or linked test project is configured. Static migration governance, grant checks, contract tests, and tenant validation passed.
   - `npm run verify:local`: not rerun as a wrapper because its `test:ci` constituent deterministically stops on the documented baseline failures; every reachable constituent was executed separately.
-- Result: review-ready, not merge-ready. Human approval and hosted CI/migration smoke remain mandatory.
-- Residual risk: hosted migration/schema-cache behavior and the credentialed assigned-BT end-to-end save require CI or a safe dev project; no production migration was applied in this task.
+- Result: review-ready. Human approval and refreshed hosted CI remain mandatory.
+- Residual risk: the credentialed assigned-BT end-to-end save still relies on hosted CI/browser credentials; the protected runtime migration and live RLS/function definitions are verified.
 
 ## PR hygiene verdict
 
 - `pr-ready: yes` for critical-lane human review.
 - Branch is isolated, exactly aligned with `origin/main` before the WIN-240 commit, and contains only the bounded client/server/migration/tests/plan/handoff surfaces.
 - `git diff --check` passed; no generated coverage/build artifacts or unrelated worktree files are included.
-- Merge remains blocked on human approval plus hosted CI and credentialed/migration smoke evidence.
+- Merge remains blocked on human approval plus refreshed hosted CI and credentialed browser evidence.
 
 ## Baseline note
 

@@ -881,6 +881,8 @@ async function run() {
                       width: 100%;
                       min-height: 100%;
                       padding: 240px 220px;
+                      transform: rotate(${caseDefinition.scan.rotationDegrees}deg);
+                      transform-origin: center center;
                     }
                   </style>
                 </head>

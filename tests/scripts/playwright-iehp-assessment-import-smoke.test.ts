@@ -877,6 +877,10 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
     const scanModeIndex = script.indexOf("caseDefinition.renderMode === 'raster-scan'", setContentIndex);
     const scanViewportIndex = script.indexOf('width: 2550, height: 3300', scanModeIndex);
+    const rotationIndex = script.indexOf(
+      'transform: rotate(${caseDefinition.scan.rotationDegrees}deg);',
+      scanViewportIndex,
+    );
     const monochromeHelperIndex = script.indexOf('const buildMonochromeScanImageDataUrl = async');
     const scanScreenshotIndex = script.indexOf("type: 'png'", monochromeHelperIndex);
     const scanCanvasIndex = script.indexOf('getImageData(0, 0, canvas.width, canvas.height)', scanScreenshotIndex);
@@ -916,6 +920,7 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(pagePdfIndex).toBeGreaterThan(setContentIndex);
     expect(scanModeIndex).toBeGreaterThan(setContentIndex);
     expect(scanViewportIndex).toBeGreaterThan(scanModeIndex);
+    expect(rotationIndex).toBeGreaterThan(scanViewportIndex);
     expect(monochromeHelperIndex).toBeLessThan(setContentIndex);
     expect(script).not.toContain('const loadImage = async');
     expect(scanScreenshotIndex).toBeGreaterThan(monochromeHelperIndex);

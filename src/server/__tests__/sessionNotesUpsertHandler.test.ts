@@ -527,7 +527,7 @@ describe("sessionNotesUpsertHandler", () => {
 
     expect(response.status).toBe(403);
     expect(currentUserCanTakeClientData).toHaveBeenCalledWith(ACCESS_TOKEN, "org-1", basePayload.clientId);
-    expect(currentUserIsBcbaForOrg).not.toHaveBeenCalled();
+    expect(currentUserIsBcbaForOrg).toHaveBeenCalledWith(ACCESS_TOKEN, "org-1");
     expect(fetchAuthenticatedUserIdWithStatus).toHaveBeenCalledWith(ACCESS_TOKEN);
   });
 
@@ -641,6 +641,317 @@ describe("sessionNotesUpsertHandler", () => {
 
     expect(response.status).toBe(400);
     expect(currentUserIsBcbaForOrg).not.toHaveBeenCalled();
+  });
+
+  it("uses the assigned-BT billing resolver when legacy capture cannot read authorizations directly", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: true, upstreamError: false });
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/rpc/resolve_assigned_bt_session_capture_billing")) {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body ?? "{}"))).toEqual({ p_session_id: basePayload.sessionId });
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            authorization_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            service_code: "97155",
+            strict_billing: true,
+            session_client_id: basePayload.clientId,
+            session_therapist_id: basePayload.therapistId,
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl === `${BASE_URL}/rest/v1/client_session_notes` && init?.method === "POST") {
+        const parsedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        expect(parsedBody.authorization_id).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        expect(parsedBody.service_code).toBe("97155");
+        return { ok: true, status: 201, data: [{ id: "note-created" }] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-created")) {
+        return { ok: true, status: 200, data: [buildSessionNoteRow("note-created")] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify(basePayload),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchJsonMock.mock.calls.some(([url]) => String(url).includes("/rest/v1/rpc/resolve_assigned_bt_session_capture_billing"))).toBe(true);
+  });
+
+  it("keeps BCBA legacy capture on the existing authorization path", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(currentUserIsBcbaForOrg).mockResolvedValue({ allowed: true, upstreamError: false });
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/rpc/resolve_assigned_bt_session_capture_billing")) {
+        throw new Error("BCBA capture must not use the assigned-BT resolver");
+      }
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl === `${BASE_URL}/rest/v1/client_session_notes` && init?.method === "POST") {
+        return { ok: true, status: 201, data: [{ id: "note-created" }] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-created")) {
+        return { ok: true, status: 200, data: [buildSessionNoteRow("note-created")] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify(basePayload),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(currentUserIsBcbaForOrg).toHaveBeenCalledWith(ACCESS_TOKEN, "org-1");
+    expect(fetchJsonMock.mock.calls.some(([url]) => String(url).includes("/rest/v1/authorizations?"))).toBe(true);
+  });
+
+  it.each([
+    { field: "clientId", value: "77777777-7777-4777-8777-777777777777" },
+    { field: "therapistId", value: "88888888-8888-4888-8888-888888888888" },
+  ])("rejects assigned-BT capture when caller $field does not match the resolved session", async ({ field, value }) => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(currentUserIsBcbaForOrg).mockResolvedValue({ allowed: false, upstreamError: false });
+
+    let wroteNote = false;
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/rpc/resolve_assigned_bt_session_capture_billing")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            authorization_id: basePayload.authorizationId,
+            service_code: basePayload.serviceCode,
+            strict_billing: true,
+            session_client_id: basePayload.clientId,
+            session_therapist_id: basePayload.therapistId,
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl === `${BASE_URL}/rest/v1/client_session_notes` && init?.method === "POST") {
+        wroteNote = true;
+        return { ok: true, status: 201, data: [{ id: "note-created" }] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-created")) {
+        return { ok: true, status: 200, data: [buildSessionNoteRow("note-created")] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(new Request("http://localhost/api/session-notes/upsert", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({ ...basePayload, [field]: value, trialEvents: [] }),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(wroteNote).toBe(false);
+  });
+
+  it("prefers canonical resolver billing over stale caller authorization hints on assigned-BT legacy capture", async () => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: true, upstreamError: false });
+
+    const canonicalAuthorizationId = "99999999-9999-4999-8999-999999999999";
+    const stalePayload = {
+      ...basePayload,
+      authorizationId: "88888888-8888-4888-8888-888888888888",
+      serviceCode: "99999",
+    };
+
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/rpc/resolve_assigned_bt_session_capture_billing")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            authorization_id: canonicalAuthorizationId,
+            service_code: "97155",
+            strict_billing: true,
+            session_client_id: basePayload.clientId,
+            session_therapist_id: basePayload.therapistId,
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: stalePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: stalePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl === `${BASE_URL}/rest/v1/client_session_notes` && init?.method === "POST") {
+        const parsedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        expect(parsedBody.authorization_id).toBe(canonicalAuthorizationId);
+        expect(parsedBody.service_code).toBe("97155");
+        return { ok: true, status: 201, data: [{ id: "note-created" }] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-created")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ ...buildSessionNoteRow("note-created"), authorization_id: canonicalAuthorizationId, service_code: "97155" }],
+        };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify(stalePayload),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it.each([
+    { label: "denial", rpcStatus: 403, rpcData: { code: "42501", message: "Forbidden" }, expectedStatus: 403 },
+    { label: "upstream failure", rpcStatus: 500, rpcData: { code: "XX000", message: "resolver failed" }, expectedStatus: 502 },
+  ])("fails closed when the assigned-BT billing resolver returns %s", async ({ rpcStatus, rpcData, expectedStatus }) => {
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(currentUserCanTakeClientData).mockResolvedValue({ allowed: true, upstreamError: false });
+
+    let wroteNote = false;
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/rpc/resolve_assigned_bt_session_capture_billing")) {
+        return {
+          ok: false,
+          status: rpcStatus,
+          data: rpcData,
+        };
+      }
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl === `${BASE_URL}/rest/v1/client_session_notes` && init?.method === "POST") {
+        wroteNote = true;
+        return { ok: true, status: 201, data: [{ id: "note-created" }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-created")) {
+        return { ok: true, status: 200, data: [buildSessionNoteRow("note-created")] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify(basePayload),
+      }),
+    );
+
+    expect(response.status).toBe(expectedStatus);
+    expect(wroteNote).toBe(false);
   });
 
   afterEach(() => {

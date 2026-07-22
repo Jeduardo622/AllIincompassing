@@ -199,6 +199,19 @@ describe("check-e2e-reliability-gates", () => {
     expect(resolveOpportunityCountForMetric(8, Number.NaN)).toBe(8);
   });
 
+  test("session note measurement activates the plan target before requiring target-trial controls", () => {
+    const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
+    const content = readFileSync(scriptPath, "utf8");
+
+    const goalCaptureScope = 'locator(`[data-testid="session-modal-goal-capture-${goalId}"]`)';
+    const activatePlanTarget = 'goalCaptureRow.getByRole("button", { name: /Use plan target/i })';
+
+    expect(content).toContain(goalCaptureScope);
+    expect(content).toContain(activatePlanTarget);
+    expect(content).not.toContain("await targetRow.waitFor({ state: \"visible\", timeout: 30_000 })");
+    expect(content.indexOf(activatePlanTarget)).toBeLessThan(content.indexOf("const metricInput ="));
+  });
+
   test("session note measurement filters the crowded schedule to its booked actor and client", () => {
     const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
     const content = readFileSync(scriptPath, "utf8");

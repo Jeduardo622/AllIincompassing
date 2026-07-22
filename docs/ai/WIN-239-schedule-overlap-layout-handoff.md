@@ -229,4 +229,10 @@ CI-fix verification card:
 - result: changed-surface verification passes; aggregate local verification remains failed outside this slice;
 - residual risk: only hosted `auth-browser-smoke` can prove the wider retry distribution against the shared synthetic environment.
 
-The user-authorized failed-job rerun still used pre-fix commit `bb83d0a0` and reproduced the same concentrated 409 exhaustion. The new helper must be pushed before GitHub can evaluate it.
+The user-authorized failed-job rerun still used pre-fix commit `bb83d0a0` and reproduced the same concentrated 409 exhaustion. Commit `11c3191c` then proved the fix in run `29964641185`: `playwright:schedule-blocked-close` passed in 5m27s.
+
+That same run exposed a separate downstream failure in the fifth session smoke. The uploaded screenshot showed the live-session dialog in its intentional `Use plan target` state, while the measurement script waited directly for `#goal-target-<goalId>-0`. The target row is rendered only after the plan target is selected.
+
+Fresh routing for this downstream follow-through remains `low-risk autonomous` / `standard`, bounded to the measurement smoke script, its reliability contract test, and this handoff. Production SessionModal behavior, API/schema/auth behavior, and workflow configuration remain non-goals. The script now activates the visible plan-target control before requiring target-trial inputs. A focused regression failed before that change and passes afterward.
+
+Downstream verification: five focused measurement reliability tests passed; policy, lint, typecheck, and build passed; independent code review approved the goal-scoped selector after its initial cross-goal finding was corrected. The remaining proof is the hosted `auth-browser-smoke` rerun.

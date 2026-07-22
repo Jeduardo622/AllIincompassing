@@ -28,6 +28,7 @@
 - Executed checks:
   - TDD RED confirmed the configured plan target rendered twice before selection.
   - TDD RED confirmed a legacy saved row with blank target text disappeared during the first correction.
+  - The first Linux CI run exposed a no-configured-target placeholder regression that did not reproduce in the earlier ordered local suite; the existing regression test now passes after restoring the empty capture row only when no plan target text exists.
   - Full `SessionModal` suite: pass (103 tests), including selector-to-capture deduplication and legacy saved-row hydration.
   - `npm run ci:check-focused`: pass; database-backed checks were skipped because no database URL is configured, and auth parity is disabled outside CI.
   - `npm run lint`: pass.

@@ -4015,8 +4015,11 @@ export function SessionModal({
                             planTargetText && selectedPlanTargets.length > 0,
                           );
                           const hasPersistedBlankPlanTargetEvidence = persistedBlankPlanTargetItems.length > 0;
-                          const visibleSessionTargetItems = isAdhocTarget || planGoalHasNoConfiguredTarget
+                          const unconfiguredTargetItems = sessionTargets.length > 0
                             ? sessionTargets.map((targetValue, sourceIndex) => ({ targetValue, sourceIndex }))
+                            : [{ targetValue: '', sourceIndex: 0 }];
+                          const visibleSessionTargetItems = isAdhocTarget || planGoalHasNoConfiguredTarget || !planTargetText
+                            ? unconfiguredTargetItems
                             : (selectedPlanTargets.length > 0 ? selectedPlanTargets : persistedBlankPlanTargetItems);
                           const getDisplayedTargetTrialValue = (
                             item: { targetValue: string; sourceIndex: number },

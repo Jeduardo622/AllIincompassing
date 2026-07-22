@@ -476,6 +476,7 @@ const provision = async (): Promise<void> => {
     today: new Date().toISOString().slice(0, 10),
   });
 
+  process.stdout.write(`::add-mask::${password}\n`);
   writeGithubEnv(githubEnv, buildBtSmokeGithubEnv({
     supabaseUrl, publishableKey, projectRef, marker, email, password, clientId, programId, goalId, authorizationId,
     authorizationServiceId, sessionNoteTemplateId, actorId, organizationId,

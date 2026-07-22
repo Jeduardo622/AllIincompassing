@@ -234,9 +234,11 @@ describe("provision-ci-smoke-bt-aba safeguards", () => {
     );
   });
 
-  it("never emits generated passwords through stdout workflow commands", () => {
+  it("masks the generated password before exporting it to the workflow environment", () => {
     const source = readFileSync(path.join(process.cwd(), "scripts/provision-ci-smoke-bt-aba.ts"), "utf8");
-    expect(source).not.toContain("::add-mask::");
+    expect(source).toContain('process.stdout.write(`::add-mask::${password}\\n`)');
+    expect(source.indexOf('process.stdout.write(`::add-mask::${password}\\n`)'))
+      .toBeLessThan(source.indexOf("writeGithubEnv(githubEnv"));
   });
 
   it("accepts only the exact marker-owned single-tenant BT graph", () => {

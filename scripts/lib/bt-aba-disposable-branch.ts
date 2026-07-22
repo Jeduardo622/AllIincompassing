@@ -52,8 +52,8 @@ export interface CleanupDisposableBranchOptions extends LifecycleOptions {
 export interface ManagedPreviewBranchOptions {
   parentRef: string;
   branchName: string;
-  branchId: string;
-  branchRef: string;
+  branchId?: string;
+  branchRef?: string;
   pullRequestNumber: number;
   runner?: SupabaseCommandRunner;
   githubEnvPath?: string;
@@ -374,19 +374,23 @@ export const useManagedPreviewBranch = async (
 ): Promise<BranchDetails> => {
   const parentRef = assertProjectRef('parentRef', options.parentRef);
   const branchName = assertGitBranchName(options.branchName);
-  const branchId = assertSingleLineValue('branchId', options.branchId);
-  const branchRef = assertProjectRef('branchRef', options.branchRef);
+  const branchId = options.branchId?.trim()
+    ? assertSingleLineValue('branchId', options.branchId)
+    : undefined;
+  const branchRef = options.branchRef?.trim()
+    ? assertProjectRef('branchRef', options.branchRef)
+    : undefined;
   if (!Number.isInteger(options.pullRequestNumber) || options.pullRequestNumber < 1) {
     throw new Error('pullRequestNumber must be a positive integer.');
   }
   const runner = options.runner ?? defaultRunner;
   const branches = parseBranchList(await runner(commandArgs(['branches', 'list'], parentRef)));
-  const matches = branches.filter((branch) => branch.id === branchId
-    && branch.name === branchName
+  const matches = branches.filter((branch) => branch.name === branchName
     && branch.git_branch === branchName
     && branch.pr_number === options.pullRequestNumber
-    && branch.project_ref === branchRef
-    && branch.parent_project_ref === parentRef);
+    && branch.parent_project_ref === parentRef
+    && (!branchId || branch.id === branchId)
+    && (!branchRef || branch.project_ref === branchRef));
   if (matches.length !== 1) {
     throw new Error('Supabase branches list must return exactly one requested managed PR preview branch.');
   }
@@ -397,11 +401,12 @@ export const useManagedPreviewBranch = async (
   }
 
   const githubEnvPath = options.githubEnvPath?.trim() || process.env.GITHUB_ENV?.trim();
+  const resolvedBranchRef = assertProjectRef('branch project ref', branch.project_ref ?? '');
   const publicValues = {
-    SUPABASE_BRANCH_ID: branchId,
+    SUPABASE_BRANCH_ID: assertSingleLineValue('branch id', branch.id ?? ''),
     SUPABASE_BRANCH_NAME: branchName,
-    SUPABASE_BRANCH_PROJECT_REF: branchRef,
-    SUPABASE_URL: `https://${branchRef}.supabase.co`,
+    SUPABASE_BRANCH_PROJECT_REF: resolvedBranchRef,
+    SUPABASE_URL: `https://${resolvedBranchRef}.supabase.co`,
   };
   if (options.retrieveKeys === false) {
     appendGitHubEnv(githubEnvPath, publicValues);
@@ -409,7 +414,7 @@ export const useManagedPreviewBranch = async (
   }
 
   const keys = classifyApiKeys(parseApiKeys(await runner([
-    'projects', 'api-keys', '--project-ref', branchRef, '--output', 'json',
+    'projects', 'api-keys', '--project-ref', resolvedBranchRef, '--output', 'json',
   ])));
   const mask = options.mask ?? ((value: string) => process.stdout.write(`::add-mask::${value}\n`));
   mask(keys.publishableKey);
@@ -508,8 +513,8 @@ const main = async (): Promise<void> => {
     const branch = await useManagedPreviewBranch({
       parentRef,
       branchName,
-      branchId: requireEnv('SUPABASE_BRANCH_ID'),
-      branchRef: requireEnv('SUPABASE_BRANCH_PROJECT_REF'),
+      branchId: process.env.SUPABASE_BRANCH_ID,
+      branchRef: process.env.SUPABASE_BRANCH_PROJECT_REF,
       pullRequestNumber: Number(requireEnv('SUPABASE_BRANCH_PR_NUMBER')),
       retrieveKeys: mode === 'managed-preview',
     });

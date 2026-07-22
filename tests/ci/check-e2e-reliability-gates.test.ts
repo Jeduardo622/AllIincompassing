@@ -202,14 +202,17 @@ describe("check-e2e-reliability-gates", () => {
   test("session note measurement activates the plan target before requiring target-trial controls", () => {
     const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
     const content = readFileSync(scriptPath, "utf8");
-
     const goalCaptureScope = 'locator(`[data-testid="session-modal-goal-capture-${goalId}"]`)';
-    const activatePlanTarget = 'goalCaptureRow.getByRole("button", { name: /Use plan target/i })';
+    const selectPlanTarget = 'goalCaptureRow.getByRole("button", { name: /Use plan target/i })';
+    const targetLocator = 'const targetLocator = dialog.locator(`#goal-target-${goalId}-0`)';
+    const clickPlanTarget = "await usePlanTargetButton.first().click();";
 
     expect(content).toContain(goalCaptureScope);
-    expect(content).toContain(activatePlanTarget);
-    expect(content).not.toContain("await targetRow.waitFor({ state: \"visible\", timeout: 30_000 })");
-    expect(content.indexOf(activatePlanTarget)).toBeLessThan(content.indexOf("const metricInput ="));
+    expect(content).toContain(selectPlanTarget);
+    expect(content).toContain(targetLocator);
+    expect(content).toContain(clickPlanTarget);
+    expect(content).not.toContain("await targetLocator.waitFor({ state: \"visible\", timeout: 30_000 })");
+    expect(content.indexOf(clickPlanTarget)).toBeLessThan(content.indexOf("const metricInput ="));
   });
 
   test("session note measurement filters the crowded schedule to its booked actor and client", () => {

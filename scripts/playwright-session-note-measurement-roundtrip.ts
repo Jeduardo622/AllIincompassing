@@ -242,10 +242,11 @@ const setFirstTargetCorrectTrialCount = async (
   count: number,
 ): Promise<boolean> => {
   await ensureGoalCaptureFieldsVisible(dialog, goalId);
-  const targetRow = dialog.locator(`#goal-target-${goalId}-0`);
-  if (!(await targetRow.isVisible().catch(() => false))) {
+  const targetLocator = dialog.locator(`#goal-target-${goalId}-0`);
+  const targetVisible = await targetLocator.isVisible().catch(() => false);
+  if (!targetVisible) {
     const goalCaptureRow = dialog.locator(`[data-testid="session-modal-goal-capture-${goalId}"]`);
-    const usePlanTargetButton = goalCaptureRow.getByRole("button", { name: /Use plan target/i });
+    const usePlanTargetButton = goalCaptureRow.getByRole("button", { name: /^Use plan target/i });
     if ((await usePlanTargetButton.count()) > 0 && (await usePlanTargetButton.first().isVisible().catch(() => false))) {
       await usePlanTargetButton.first().click();
     }

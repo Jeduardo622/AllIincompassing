@@ -20,7 +20,7 @@ const PRODUCTION_REF = 'wnnjeqheqxxyrgsjmygy';
 const BRANCH_REF = 'btproofbranch1234567';
 const BRANCH_ID = 'branch-id-123';
 const BRANCH_NAME = 'bt-aba-proof-123';
-const MANAGED_BRANCH_NAME = 'codex/win-221-bt-aba-session-note';
+const MANAGED_BRANCH_NAME = 'codex/win-232-hosted-visual-proof';
 const MANAGED_BRANCH_ID = '03d01a74-2ac3-4047-a983-c77b73a4ff6a';
 const MANAGED_BRANCH_REF = 'zutoyqdrpddtgkgooijx';
 
@@ -389,6 +389,63 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     expect(mask).toHaveBeenCalledWith('sb_secret_managed');
   });
 
+  it('discovers exactly one managed preview by parent ref plus branch and PR number when fixed identifiers are absent', async () => {
+    const runner: SupabaseCommandRunner = vi.fn(async (args) => {
+      if (args[0] === 'branches' && args[1] === 'list') return JSON.stringify([
+        {
+          id: 'branch-id-older',
+          name: MANAGED_BRANCH_NAME,
+          git_branch: 'codex/return-bt-correction',
+          pr_number: 813,
+          project_ref: 'aaaaaaaaaaaaaaaaaaaa',
+          parent_project_ref: PRODUCTION_REF,
+          status: 'FUNCTIONS_DEPLOYED',
+          preview_project_status: 'ACTIVE_HEALTHY',
+        },
+        {
+          id: MANAGED_BRANCH_ID,
+          name: MANAGED_BRANCH_NAME,
+          git_branch: MANAGED_BRANCH_NAME,
+          pr_number: 813,
+          project_ref: MANAGED_BRANCH_REF,
+          parent_project_ref: PRODUCTION_REF,
+          status: 'FUNCTIONS_DEPLOYED',
+          preview_project_status: 'ACTIVE_HEALTHY',
+        },
+      ]);
+      if (args[0] === 'projects' && args[1] === 'api-keys') return JSON.stringify([
+        { type: 'publishable', api_key: 'sb_publishable_managed' },
+        { type: 'secret', api_key: 'sb_secret_managed' },
+      ]);
+      throw new Error(`Unexpected command: ${args.join(' ')}`);
+    });
+
+    await expect(useManagedPreviewBranch({
+      parentRef: PRODUCTION_REF,
+      branchName: MANAGED_BRANCH_NAME,
+      pullRequestNumber: 813,
+      runner,
+    })).resolves.toMatchObject({
+      id: MANAGED_BRANCH_ID,
+      project_ref: MANAGED_BRANCH_REF,
+      git_branch: MANAGED_BRANCH_NAME,
+    });
+    expect(runner).toHaveBeenCalledWith([
+      'projects', 'api-keys', '--project-ref', MANAGED_BRANCH_REF, '--output', 'json',
+    ]);
+  });
+
+  it('keeps managed preview CLI identifiers optional for discovery mode', () => {
+    const source = readFileSync(
+      path.join(process.cwd(), 'scripts/lib/bt-aba-disposable-branch.ts'),
+      'utf8',
+    );
+    expect(source).toContain("branchId: process.env.SUPABASE_BRANCH_ID");
+    expect(source).toContain("branchRef: process.env.SUPABASE_BRANCH_PROJECT_REF");
+    expect(source).not.toContain("branchId: requireEnv('SUPABASE_BRANCH_ID')");
+    expect(source).not.toContain("branchRef: requireEnv('SUPABASE_BRANCH_PROJECT_REF')");
+  });
+
   it('fails closed for an ambiguous or mismatched managed preview identity', async () => {
     const exact = {
       id: MANAGED_BRANCH_ID,
@@ -404,8 +461,6 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     await expect(useManagedPreviewBranch({
       parentRef: PRODUCTION_REF,
       branchName: MANAGED_BRANCH_NAME,
-      branchId: MANAGED_BRANCH_ID,
-      branchRef: MANAGED_BRANCH_REF,
       pullRequestNumber: 813,
       runner,
     })).rejects.toThrow(/exactly one/i);
@@ -417,8 +472,6 @@ describe('BT ABA disposable branch lifecycle guard', () => {
     await expect(useManagedPreviewBranch({
       parentRef: PRODUCTION_REF,
       branchName: MANAGED_BRANCH_NAME,
-      branchId: MANAGED_BRANCH_ID,
-      branchRef: MANAGED_BRANCH_REF,
       pullRequestNumber: 813,
       runner: unhealthy,
     })).rejects.toThrow(/not healthy/i);

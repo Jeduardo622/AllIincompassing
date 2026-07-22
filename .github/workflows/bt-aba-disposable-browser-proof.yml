@@ -28,6 +28,7 @@ jobs:
     outputs:
       validated_sha: ${{ steps.approval.outputs.validated_sha }}
       validated_pr_number: ${{ steps.approval.outputs.validated_pr_number }}
+      validated_branch_name: ${{ steps.approval.outputs.validated_branch_name }}
     steps:
       - name: Validate owner approval and open PR head
         id: approval
@@ -73,16 +74,18 @@ jobs:
             throw new Error(`Unable to validate pull request: HTTP ${response.status}.`);
           }
           const pull = await response.json();
+          const allowedHeadRefs = new Set(['codex/return-bt-correction', 'codex/win-232-hosted-visual-proof']);
           if (pull.state !== 'open') throw new Error('Pull request must be open.');
           if (pull.base?.ref !== 'main') throw new Error('Pull request base must be main.');
           if (pull.head?.repo?.full_name !== repository) throw new Error('Pull request must originate from this repository.');
           if (pull.head?.sha !== commitSha) throw new Error('Pull request head SHA does not match commit_sha.');
-          if (pull.head?.ref !== 'codex/return-bt-correction') {
-            throw new Error('Proof is restricted to the exact WIN-224 managed PR preview branch.');
+          if (!allowedHeadRefs.has(pull.head?.ref ?? '')) {
+            throw new Error('Proof is restricted to the approved managed PR preview branches.');
           }
 
           appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\n`, { encoding: 'utf8' });
           appendFileSync(process.env.GITHUB_OUTPUT, `validated_pr_number=${pullRequestNumber}\n`, { encoding: 'utf8' });
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_branch_name=${pull.head.ref}\n`, { encoding: 'utf8' });
           NODE
 
       - name: Checkout validated commit
@@ -107,12 +110,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
+      checks: read
       contents: read
+      pull-requests: read
     env:
       SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
-      SUPABASE_BRANCH_ID: ${{ vars.BT_ABA_SUPERVISION_CORRECTION_BRANCH_ID }}
-      SUPABASE_BRANCH_NAME: codex/return-bt-correction
-      SUPABASE_BRANCH_PROJECT_REF: ${{ vars.BT_ABA_SUPERVISION_CORRECTION_PROJECT_REF }}
+      SUPABASE_BRANCH_NAME: ${{ needs.validate.outputs.validated_branch_name }}
       SUPABASE_BRANCH_PR_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}
       PW_BT_FIXTURE_MARKER: bt-aba-proof-${{ github.run_id }}-${{ github.run_attempt }}
       PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: retain-platform-managed-pr-preview
@@ -156,10 +159,47 @@ jobs:
 
       - name: Validate managed preview identifiers
         run: |
-          if [ -z "${SUPABASE_BRANCH_ID:-}" ] || [ -z "${SUPABASE_BRANCH_PROJECT_REF:-}" ]; then
-            echo "::error::WIN-224 managed preview identifiers are not configured."
+          if [ -z "${SUPABASE_BRANCH_NAME:-}" ] || [ -z "${SUPABASE_BRANCH_PR_NUMBER:-}" ]; then
+            echo "::error::Managed preview discovery inputs are incomplete."
             exit 1
           fi
+
+      - name: Validate exact managed preview deployment
+        env:
+          EXPECTED_SHA: ${{ needs.validate.outputs.validated_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          const expectedSha = process.env.EXPECTED_SHA ?? '';
+          const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
+          const repository = process.env.REPOSITORY ?? '';
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+          };
+          const pullResponse = await fetch(`https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}`, { headers });
+          if (!pullResponse.ok) throw new Error(`Unable to revalidate pull request: HTTP ${pullResponse.status}.`);
+          const pull = await pullResponse.json();
+          if (pull.state !== 'open' || pull.head?.sha !== expectedSha) {
+            throw new Error('Pull request head changed after immutable validation.');
+          }
+          const checksResponse = await fetch(
+            `https://api.github.com/repos/${repository}/commits/${expectedSha}/check-runs?filter=latest&per_page=100`,
+            { headers },
+          );
+          if (!checksResponse.ok) throw new Error(`Unable to validate preview deployment: HTTP ${checksResponse.status}.`);
+          const checks = await checksResponse.json();
+          const matching = (checks.check_runs ?? []).filter((run) => run.name === 'Supabase Preview'
+            && run.head_sha === expectedSha
+            && run.status === 'completed'
+            && run.conclusion === 'success');
+          if (matching.length !== 1) {
+            throw new Error('Exact validated commit must have one successful Supabase Preview deployment check.');
+          }
+          NODE
 
       - name: Validate managed PR preview branch and retrieve masked keys
         env:
@@ -245,16 +285,25 @@ jobs:
           cat "$RUNNER_TEMP/bt-aba-proof/preview.log"
           exit 1
 
-      - name: Run supervision correction browser proof
+      - name: Run completed ABA read-only browser proof
         env:
           PW_BT_PROOF_ARTIFACT_DIR: ${{ runner.temp }}/bt-aba-public-evidence
           PW_BT_CLEANUP_STATE_PATH: ${{ runner.temp }}/bt-aba-proof/cleanup-state.json
         run: |
           SUPABASE_SERVICE_ROLE_KEY="$(node -e 'const fs=require("node:fs");const p=process.argv[1];const k="SUPABASE_SECRET_KEY=";const x=fs.readFileSync(p,"utf8").split(/\r?\n/).filter((line)=>line.startsWith(k)).map((line)=>line.slice(k.length));if(x.length!==1||!x[0]||/[\r\n]/.test(x[0]))process.exit(1);process.stdout.write(x[0]);' "$RUNNER_TEMP/bt-aba-proof/branch-secrets.env")"
           export SUPABASE_SERVICE_ROLE_KEY
-          npm run playwright:bt-aba-session-note
-          npm run playwright:supervision-correction
-          echo "supervision_correction_browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
+          if [ "$SUPABASE_BRANCH_NAME" = "codex/win-232-hosted-visual-proof" ]; then
+            npm run playwright:bt-aba-session-note
+            test -f "$RUNNER_TEMP/bt-aba-public-evidence/WIN-232-completed-aba-note-read-only.png"
+            echo "completed_aba_read_only_browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
+          elif [ "$SUPABASE_BRANCH_NAME" = "codex/return-bt-correction" ]; then
+            npm run playwright:bt-aba-session-note
+            npm run playwright:supervision-correction
+            echo "supervision_correction_browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
+          else
+            echo "::error::Validated branch has no proof implementation."
+            exit 1
+          fi
 
       - name: Clean exact marker-owned synthetic fixture
         if: always() && env.PW_BT_FIXTURE_PROVISIONED == 'true'
@@ -291,9 +340,7 @@ jobs:
       contents: read
     env:
       SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
-      SUPABASE_BRANCH_ID: ${{ vars.BT_ABA_SUPERVISION_CORRECTION_BRANCH_ID }}
-      SUPABASE_BRANCH_NAME: codex/return-bt-correction
-      SUPABASE_BRANCH_PROJECT_REF: ${{ vars.BT_ABA_SUPERVISION_CORRECTION_PROJECT_REF }}
+      SUPABASE_BRANCH_NAME: ${{ needs.validate.outputs.validated_branch_name }}
       SUPABASE_BRANCH_PR_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}
     steps:
       - name: Checkout validated commit

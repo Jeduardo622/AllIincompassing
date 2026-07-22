@@ -11,6 +11,42 @@ import {
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
 describe("BT ABA proof capture-response diagnostics", () => {
+  it("reopens the completed session note in read-only mode and captures only the deterministic dialog artifact", () => {
+    const source = readFileSync(path.join(process.cwd(), "scripts/playwright-bt-aba-session-note.ts"), "utf8");
+    const completedCaptureBlock = source.slice(
+      source.indexOf("const captureCompletedDialogScreenshot"),
+      source.indexOf("const assertCompletedReadOnlyDialog"),
+    );
+    expect(source).toContain('Completed ABA Session Note');
+    expect(source).toContain('Review the finalized session documentation.');
+    expect(source).toContain('WIN-232-completed-aba-note-read-only.png');
+    expect(completedCaptureBlock).toContain('dialog.screenshot({ path: screenshotPath })');
+    expect(completedCaptureBlock).not.toContain('page.screenshot({ path: screenshotPath, fullPage: true })');
+    expect(source.indexOf('await assertCompletedReadOnlyDialog'))
+      .toBeLessThan(source.indexOf('await captureCompletedDialogScreenshot'));
+    expect(source).toContain('has: page.getByRole("heading", { name: "Completed ABA Session Note", exact: true })');
+  });
+
+  it("logs a success marker for the synthetic assigned-BT read-only dialog proof", () => {
+    const source = readFileSync(path.join(process.cwd(), "scripts/playwright-bt-aba-session-note.ts"), "utf8");
+    expect(source).toContain('reviewerVisibility: "verified:synthetic-assigned-bt-read-only-dialog"');
+  });
+
+  it("asserts finalized marker-owned fields and read-only absences after reopening the completed dialog", () => {
+    const source = readFileSync(path.join(process.cwd(), "scripts/playwright-bt-aba-session-note.ts"), "utf8");
+    expect(source).toContain('assert.equal(await clientStatus.inputValue(), marker)');
+    expect(source).toContain('assert.equal(await progress.inputValue(), progressSummary)');
+    expect(source).toContain('assert.equal(await response.inputValue(), responseSummary)');
+    expect(source).toContain('getByRole("button", { name: "Save Draft", exact: true }).count(), 0');
+    expect(source).toContain('getByRole("button", { name: "Finalize Session", exact: true }).count(), 0');
+    expect(source).toContain('doesNotMatch((await dialog.textContent()) ?? "", /loading finalized aba session note/i)');
+    expect(source).toContain('getByTestId("completed-bt-aba-note-unavailable").count(), 0');
+    expect(source).toContain('assert.equal(await clientStatus.isDisabled(), true)');
+    expect(source).toContain('assert.equal(await progress.isDisabled(), true)');
+    expect(source).toContain('assert.equal(await response.isDisabled(), true)');
+    expect(source).toContain('await response.scrollIntoViewIfNeeded()');
+  });
+
   it("uses exact deep links for closeout and calendar navigation only for the completed-card proof", () => {
     const source = readFileSync(path.join(process.cwd(), "scripts/playwright-bt-aba-session-note.ts"), "utf8");
     expect(source.match(/openScheduleSessionModalFromDeepLink\(/g)).toHaveLength(2);

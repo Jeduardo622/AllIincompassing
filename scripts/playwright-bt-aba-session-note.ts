@@ -8,7 +8,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
 
 import {
   buildCurrentDayVisibleScheduleBookingBaseStart,
@@ -111,6 +111,42 @@ const captureBtFailureScreenshot = async (page: Page): Promise<string> => {
   const screenshotPath = path.join(resolvedDirectory, `playwright-bt-aba-session-note-${Date.now()}.png`);
   await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => undefined);
   return screenshotPath;
+};
+
+const captureCompletedDialogScreenshot = async (dialog: Locator): Promise<string> => {
+  const dedicatedDirectory = normalizedEnv("PW_BT_PROOF_ARTIFACT_DIR");
+  if (!dedicatedDirectory) {
+    throw new Error("PW_BT_PROOF_ARTIFACT_DIR is required for the completed ABA read-only proof artifact.");
+  }
+  const resolvedDirectory = path.resolve(dedicatedDirectory);
+  await mkdir(resolvedDirectory, { recursive: true });
+  const screenshotPath = path.join(resolvedDirectory, "WIN-232-completed-aba-note-read-only.png");
+  await dialog.screenshot({ path: screenshotPath });
+  return screenshotPath;
+};
+
+const assertCompletedReadOnlyDialog = async (
+  dialog: Locator,
+  marker: string,
+  progressSummary: string,
+  responseSummary: string,
+): Promise<void> => {
+  await dialog.getByRole("heading", { name: "Completed ABA Session Note", exact: true }).waitFor({ state: "visible" });
+  await dialog.getByText("Review the finalized session documentation.", { exact: true }).waitFor({ state: "visible" });
+  const clientStatus = dialog.getByLabel("Client Status", { exact: true });
+  const progress = dialog.getByLabel("Summary of Progress Toward Treatment Goals", { exact: true });
+  const response = dialog.getByLabel("Client's Response to Treatment", { exact: true });
+  assert.equal(await clientStatus.inputValue(), marker);
+  assert.equal(await progress.inputValue(), progressSummary);
+  assert.equal(await response.inputValue(), responseSummary);
+  assert.equal(await clientStatus.isDisabled(), true);
+  assert.equal(await progress.isDisabled(), true);
+  assert.equal(await response.isDisabled(), true);
+  await response.scrollIntoViewIfNeeded();
+  assert.equal(await dialog.getByRole("button", { name: "Save Draft", exact: true }).count(), 0);
+  assert.equal(await dialog.getByRole("button", { name: "Finalize Session", exact: true }).count(), 0);
+  assert.doesNotMatch((await dialog.textContent()) ?? "", /loading finalized aba session note/i);
+  assert.equal(await dialog.getByTestId("completed-bt-aba-note-unavailable").count(), 0);
 };
 
 const loadSafetyConfig = (): SafetyConfig => {
@@ -549,8 +585,10 @@ async function run(): Promise<void> {
     await restored.getByRole("group", { name: "Skill Strategies", exact: true }).getByLabel("N/A", { exact: true }).check();
     await restored.getByRole("group", { name: "Behavior Strategies", exact: true }).getByLabel("N/A", { exact: true }).check();
     await restored.getByLabel("Supervisor did not attend this session", { exact: true }).check();
-    await restored.getByLabel("Summary of Progress Toward Treatment Goals", { exact: true }).fill(`Progress ${config.fixtureMarker}`);
-    await restored.getByLabel("Client's Response to Treatment", { exact: true }).fill(`Response ${config.fixtureMarker}`);
+    const progressSummary = `Progress ${config.fixtureMarker}`;
+    const responseSummary = `Response ${config.fixtureMarker}`;
+    await restored.getByLabel("Summary of Progress Toward Treatment Goals", { exact: true }).fill(progressSummary);
+    await restored.getByLabel("Client's Response to Treatment", { exact: true }).fill(responseSummary);
     await restored.getByLabel("Draw signature", { exact: true }).check();
     const pad = restored.getByRole("application", { name: "Draw Behavior Technician signature" });
     const box = await pad.boundingBox();
@@ -573,16 +611,22 @@ async function run(): Promise<void> {
     assert.equal(await completionSignal.count(), 1, "Schedule must emit exactly one completion success signal.");
     await waitForSessionStatus(admin, booked.sessionId, "completed");
     await openScheduleSessionModalFromCalendar(page, scheduleUrl, booked, { allowLockedTherapist: true });
-    const completedCard = page.locator(`[data-session-id="${booked.sessionId}"]`);
+    const completedCard = page.locator(`[data-session-id="${booked.sessionId}"]`).first();
     await completedCard.waitFor({ state: "attached" });
     assert.equal(await completedCard.getAttribute("data-session-status"), "completed");
+    const completedDialog = page.getByRole("dialog").filter({
+      has: page.getByRole("heading", { name: "Completed ABA Session Note", exact: true }),
+    });
+    await assertCompletedReadOnlyDialog(completedDialog, config.fixtureMarker, progressSummary, responseSummary);
+    const completedDialogArtifact = await captureCompletedDialogScreenshot(completedDialog);
     await assertFinalizedArtifacts(admin, booked, actor.id, config.fixtureMarker);
 
     console.log(JSON.stringify({
       ok: true,
       sessionId: booked.sessionId,
       projectRef: config.projectRef,
-      reviewerVisibility: "blocked:no-safe-synthetic-reviewer-path",
+      completedDialogArtifact,
+      reviewerVisibility: "verified:synthetic-assigned-bt-read-only-dialog",
     }));
   } catch (error) {
     runError = error;

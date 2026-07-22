@@ -20,6 +20,7 @@ const SLOT_DURATION_MINUTES = 15;
 const SLOT_HEIGHT_PX = 40;
 const OVERLAY_HORIZONTAL_INSET_PX = 4;
 const OVERLAY_VERTICAL_INSET_PX = 2;
+const MIN_OVERLAY_HEIGHT_PX = 20;
 const VISIBLE_GRID_START_HOUR = 8;
 const VISIBLE_GRID_END_HOUR = 18;
 const NEUTRAL_CARD_CLASSES =
@@ -147,6 +148,15 @@ function getSessionSourcePosition(session: Session): ScheduleSlotPosition | null
     date: start,
     time: format(start, 'HH:mm'),
   };
+}
+
+function getOverlayCardHeight(spanRows: number): number {
+  const unclampedHeight = spanRows * SLOT_HEIGHT_PX - OVERLAY_VERTICAL_INSET_PX * 2;
+  if (unclampedHeight <= 0) {
+    return unclampedHeight;
+  }
+
+  return Math.max(unclampedHeight, MIN_OVERLAY_HEIGHT_PX);
 }
 
 /**
@@ -543,6 +553,7 @@ function OverlaySessionCard({
   className = '',
   showStatus = false,
   buttonRef,
+  compact = false,
 }: {
   session: Session;
   onEditSession: ScheduleEditSessionHandler;
@@ -553,6 +564,7 @@ function OverlaySessionCard({
   className?: string;
   showStatus?: boolean;
   buttonRef?: React.Ref<HTMLButtonElement>;
+  compact?: boolean;
 }) {
   const hasFinePointer = useHasFinePointer();
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -564,6 +576,8 @@ function OverlaySessionCard({
   const touchMovePickup = !hasFinePointer && allowDragAndDrop && dragEligibleSession && sourcePosition !== null;
   const canDragWithFinePointer = allowDragAndDrop && hasFinePointer && dragEligibleSession && sourcePosition !== null;
   const range = getSafeSessionRange(session);
+  const compactTimeLabel = range.start ? format(range.start, 'h:mm a') : range.label;
+  const accessibleSessionDetails = `${getSessionDisplayName(session)}, ${getTherapistDisplayName(session)}, ${range.label}`;
 
   const clearLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current !== null) {
@@ -596,7 +610,13 @@ function OverlaySessionCard({
       data-session-id={session.id}
       draggable={canDragWithFinePointer}
       aria-grabbed={allowDragAndDrop && activeDragSessionId === session.id}
-      title={touchMovePickup ? 'Press and hold to move, then tap a time slot. Tap again to cancel.' : undefined}
+      title={
+        touchMovePickup
+          ? 'Press and hold to move, then tap a time slot. Tap again to cancel.'
+          : compact
+            ? accessibleSessionDetails
+            : undefined
+      }
       onDragStart={
         canDragWithFinePointer
           ? (event) => {
@@ -681,14 +701,31 @@ function OverlaySessionCard({
             ? 'cursor-grab active:cursor-grabbing'
             : 'cursor-pointer'
           : 'cursor-pointer'
-      } ${activeDragSessionId === session.id ? 'opacity-50 ring-2 ring-blue-400 ring-offset-1 dark:ring-offset-gray-900' : ''}`}
+      } ${
+        activeDragSessionId === session.id
+          ? 'pointer-events-auto opacity-50 ring-2 ring-blue-400 ring-offset-1 dark:ring-offset-gray-900'
+          : ''
+      } ${
+        compact ? 'overflow-hidden' : ''
+      }`}
+      data-layout-density={compact ? 'compact' : 'regular'}
+      aria-label={compact ? accessibleSessionDetails : undefined}
     >
-      <div className="truncate font-medium">{getSessionDisplayName(session)}</div>
-      <div className={`${statusStyles.secondary} truncate`}>{getTherapistDisplayName(session)}</div>
-      <div className={`flex items-center ${statusStyles.time}`}>
-        <Clock className="mr-1 h-3 w-3" />
-        {range.label}
-      </div>
+      {compact ? (
+        <div className="flex min-w-0 items-center justify-between gap-1">
+          <span className="truncate font-medium">{getSessionDisplayName(session)}</span>
+          <span className={`shrink-0 ${statusStyles.time}`}>{compactTimeLabel}</span>
+        </div>
+      ) : (
+        <>
+          <div className="truncate font-medium">{getSessionDisplayName(session)}</div>
+          <div className={`${statusStyles.secondary} truncate`}>{getTherapistDisplayName(session)}</div>
+          <div className={`flex items-center ${statusStyles.time}`}>
+            <Clock className="mr-1 h-3 w-3" />
+            {range.label}
+          </div>
+        </>
+      )}
       {showStatus ? (
         <div className="mt-0.5 text-[11px] uppercase tracking-wide">{getDisplayStatusLabel(session.status)}</div>
       ) : null}
@@ -780,15 +817,18 @@ function ScheduleOverlayItem({
 
   const style = {
     top: item.topRows * SLOT_HEIGHT_PX + OVERLAY_VERTICAL_INSET_PX,
-    height: item.spanRows * SLOT_HEIGHT_PX - OVERLAY_VERTICAL_INSET_PX * 2,
+    height: getOverlayCardHeight(item.spanRows),
     left: OVERLAY_HORIZONTAL_INSET_PX,
     right: OVERLAY_HORIZONTAL_INSET_PX,
   };
 
   if (item.kind === 'appointment') {
+    const compact = item.spanRows <= 1;
     return (
       <div
-        className="pointer-events-auto absolute"
+        className={`absolute ${activeDragSessionId !== null ? 'pointer-events-none' : 'pointer-events-auto'} ${
+          compact ? 'overflow-hidden' : ''
+        }`}
         data-layout-kind="appointment"
         data-clipped-start={item.clippedStart ? 'true' : 'false'}
         data-clipped-end={item.clippedEnd ? 'true' : 'false'}
@@ -802,6 +842,7 @@ function ScheduleOverlayItem({
           onStartSessionDrag={onStartSessionDrag}
           onEndSessionDrag={onEndSessionDrag}
           className="h-full shadow-sm"
+          compact={compact}
         />
       </div>
     );
@@ -811,7 +852,11 @@ function ScheduleOverlayItem({
   const clusterRangeLabel = getClusterRangeLabel(item.sessions, item);
 
   return (
-    <div className="pointer-events-auto absolute z-20" data-layout-kind="cluster" style={style}>
+    <div
+      className={`absolute z-20 ${activeDragSessionId !== null ? 'pointer-events-none' : 'pointer-events-auto'}`}
+      data-layout-kind="cluster"
+      style={style}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -819,7 +864,7 @@ function ScheduleOverlayItem({
         aria-expanded={open}
         aria-controls={open ? `schedule-cluster-${item.sessions.map((session) => session.id).join('-')}` : undefined}
         onClick={() => setOpen((current) => !current)}
-        className={`h-full w-full rounded px-2 py-1 text-left text-xs shadow-sm ${NEUTRAL_CARD_CLASSES}`}
+        className={`h-full w-full overflow-hidden rounded px-2 py-1 text-left text-xs shadow-sm ${NEUTRAL_CARD_CLASSES}`}
       >
         <div className="font-medium">{item.sessions.length} appointments</div>
         <div className="truncate text-[11px]">{clusterLabel.replace(/^\d+ appointments, /i, '')}</div>

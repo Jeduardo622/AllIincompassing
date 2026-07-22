@@ -458,6 +458,36 @@ describe("ScheduleWeekView drag and drop", () => {
       expect(secondDaySlot?.querySelector('[data-session-id="week-fractional"]')).toBeNull();
     });
 
+    it("keeps a 15-minute appointment compact within its week column", () => {
+      const sourceDay = new Date(2025, 6, 7);
+      const targetDay = new Date(2025, 6, 8);
+      const session = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "week-short-overlay",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T09:15:00",
+      });
+
+      const { container } = render(
+        <ScheduleWeekView
+          weekDays={[sourceDay, targetDay]}
+          timeSlots={["09:00", "09:15"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[session]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+        />,
+      );
+
+      const card = container.querySelector('[data-session-id="week-short-overlay"]') as HTMLElement;
+      expect(card.parentElement).toHaveClass("overflow-hidden");
+      expect(card).toHaveAttribute("data-layout-density", "compact");
+      expect(card).toHaveClass("overflow-hidden");
+      expect(card).toHaveTextContent("Jamie Client");
+      expect(card).toHaveTextContent("9:00 AM");
+      expect(card).not.toHaveTextContent("Dr. Myles");
+    });
+
     it("opens a neutral cluster popover, sorts rows, and restores focus on escape", () => {
       const sourceDay = new Date(2025, 6, 7);
       const targetDay = new Date(2025, 6, 8);
@@ -722,6 +752,8 @@ describe("ScheduleWeekView drag and drop", () => {
           "true",
         );
       });
+      expect(row.closest('[data-layout-kind="cluster"]')).toHaveClass("pointer-events-none");
+      expect(row).toHaveClass("pointer-events-auto");
       fireEvent.click(targetSlot!);
 
       expect(onRescheduleSession).toHaveBeenCalledWith(

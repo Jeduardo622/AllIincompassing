@@ -361,6 +361,82 @@ describe("ScheduleDayView drag and drop", () => {
       expect(onEditSession).not.toHaveBeenCalled();
     });
 
+    it("keeps a 15-minute appointment inside its visual duration", () => {
+      const selectedDate = new Date(2025, 6, 7);
+      const session = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "session-short-overlay",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T09:15:00",
+      });
+
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={["09:00", "09:15"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[session]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+        />,
+      );
+
+      const card = container.querySelector('[data-session-id="session-short-overlay"]') as HTMLElement;
+      const overlay = card.parentElement as HTMLElement;
+      expect(overlay).toHaveClass("overflow-hidden");
+      expect(card).toHaveAttribute("data-layout-density", "compact");
+      expect(card).toHaveClass("overflow-hidden");
+      expect(card).toHaveTextContent("Jamie Client");
+      expect(card).toHaveTextContent("9:00 AM");
+      expect(card).not.toHaveTextContent("Dr. Myles");
+    });
+
+    it("lets an active fine-pointer move target an occupied appointment period", () => {
+      const selectedDate = new Date(2025, 6, 7);
+      const moving = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "session-moving-overlay",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T10:00:00",
+      });
+      const occupied = buildSession(new Date(2025, 6, 7, 10, 15, 0, 0), {
+        id: "session-occupied-target",
+        start_time: "2025-07-07T10:15:00",
+        end_time: "2025-07-07T10:45:00",
+      });
+      const onRescheduleSession = vi.fn();
+
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={["09:00", "09:15", "10:15", "10:30"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[moving, occupied]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+          onRescheduleSession={onRescheduleSession}
+          allowDragAndDrop
+        />,
+      );
+
+      const movingCard = container.querySelector('[data-session-id="session-moving-overlay"]') as HTMLElement;
+      const occupiedCard = container.querySelector('[data-session-id="session-occupied-target"]') as HTMLElement;
+      const occupiedOverlay = occupiedCard.parentElement as HTMLElement;
+      const targetSlot = getSlotByTime(container, "10:15");
+      dragData.getData.mockReturnValueOnce("session-moving-overlay");
+
+      fireEvent.dragStart(movingCard, { dataTransfer: dragData });
+
+      expect(occupiedOverlay).toHaveClass("pointer-events-none");
+      fireEvent.dragOver(targetSlot!, { dataTransfer: dragData });
+      fireEvent.drop(targetSlot!, { dataTransfer: dragData });
+
+      expect(onRescheduleSession).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "session-moving-overlay" }),
+        expect.objectContaining({ time: "10:15", date: expect.any(Date) }),
+      );
+    });
+
     it("renders a neutral overlap cluster popover with sorted rows, focus management, and edit actions", () => {
       const selectedDate = new Date(2025, 6, 7);
       const sessions = [

@@ -164,3 +164,32 @@ Evidence:
 - fine-pointer drag, touch-only long-press, keyboard drop, same-slot cancellation, empty-slot creation, and editor actions remain covered.
 
 The three earlier production hypotheses were reverted. No shared gesture-controller refactor was introduced because current evidence shows that the existing production state flow preserves the required interaction.
+
+## PR #835 Codex review follow-through
+
+Two live unresolved Codex threads were reproduced and fixed on the PR branch:
+
+- P1 occupied target overlays: while a move is active, appointment and cluster wrappers now yield hit testing to the underlying 15-minute `TimeSlot`. The active card or cluster row explicitly remains pointer-reachable so the existing second-tap cancellation path is preserved.
+- P2 short appointment overflow: one-row appointments use a compact, overflow-clipped client/start-time presentation with full accessible details, and extremely small positive overlay fragments receive a bounded minimum height.
+
+TDD and review evidence:
+
+- the new occupied-target and compact-card tests failed before the production change for the expected missing classes/behavior;
+- day/week focused drag and layout suites pass with 34 tests;
+- the complete focused WIN-239 set passes with 52 tests across four files;
+- code review approved after a cancellation-reachability finding was fixed with an additional red/green regression;
+- UI/accessibility review found no protected-path drift; final closeout is recorded in the PR follow-up.
+
+Review-fix verification card:
+
+- Classification: low-risk autonomous
+- Lane: standard
+- Changed surfaces: `ScheduleCalendarViewShared.tsx`, day/week focused drag tests, and this handoff
+- `npm run ci:check-focused`: passed
+- `npm run lint`: passed
+- `npm run typecheck`: passed
+- `npm run build`: passed
+- focused WIN-239 set: 52 passed
+- `npm run verify:local`: executed; passed policy, lint, and typecheck, then stopped in `test:ci` on six unrelated repository-baseline failures outside the WIN-239 files
+- Result: schedule-scoped and static checks pass; aggregate repository contract remains blocked outside this review-fix scope
+- Residual risk: jsdom cannot perform browser hit testing itself, so the pointer-event regression asserts the CSS hit-test contract and the actual reschedule path; the refreshed Netlify preview remains the browser-level review surface

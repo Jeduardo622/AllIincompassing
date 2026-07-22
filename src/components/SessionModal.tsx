@@ -4005,16 +4005,15 @@ export function SessionModal({
                               return [];
                             }
                             const hasPersistedEvidence =
-                              getTargetTrialValue(sourceIndex, 'metric_value') > 0 ||
-                              getTargetTrialValue(sourceIndex, 'incorrect_trials') > 0 ||
-                              (getTargetTrialNullableValue(sourceIndex, 'opportunities') ?? 0) > 0 ||
+                              getTargetTrialNullableValue(sourceIndex, 'metric_value') !== null ||
+                              getTargetTrialNullableValue(sourceIndex, 'incorrect_trials') !== null ||
+                              getTargetTrialNullableValue(sourceIndex, 'opportunities') !== null ||
                               getTargetTrialNote(sourceIndex).trim().length > 0;
                             return hasPersistedEvidence ? [{ targetValue, sourceIndex }] : [];
                           });
                           const hasSelectedPlanTarget = Boolean(
                             planTargetText && selectedPlanTargets.length > 0,
                           );
-                          const hasPersistedBlankPlanTargetEvidence = persistedBlankPlanTargetItems.length > 0;
                           const unconfiguredTargetItems = sessionTargets.length > 0
                             ? sessionTargets.map((targetValue, sourceIndex) => ({ targetValue, sourceIndex }))
                             : [{ targetValue: '', sourceIndex: 0 }];
@@ -4178,7 +4177,7 @@ export function SessionModal({
                                 )}
                                 {!isAdhocTarget ? (
                                   <div className="mt-2">
-                                    {planTargetText && !hasSelectedPlanTarget && !hasPersistedBlankPlanTargetEvidence ? (
+                                    {planTargetText && !hasSelectedPlanTarget ? (
                                       <button
                                         type="button"
                                         onClick={() => updateGoalTargets(selectedGoalId, [planTargetText])}
@@ -4309,7 +4308,7 @@ export function SessionModal({
                                               id={`goal-target-${selectedGoalId}-${targetIndex}`}
                                               className="break-words rounded-md border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-950 shadow-sm dark:border-indigo-800 dark:bg-dark dark:text-indigo-100"
                                             >
-                                              {targetValue || planTargetText || 'No target selected'}
+                                              {targetValue || 'No target selected'}
                                             </p>
                                             <input
                                               type="hidden"

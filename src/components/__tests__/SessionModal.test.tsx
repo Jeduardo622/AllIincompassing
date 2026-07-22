@@ -4904,9 +4904,10 @@ describe('SessionModal', () => {
     expect(submitted.session_note_trial_events ?? []).toEqual([]);
   }, 10000);
 
-  it('keeps a blank persisted plan-target evidence row visible when legacy target strings are missing', async () => {
+  it('keeps a blank persisted plan-target evidence row visible and bindable when legacy target strings are missing', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const planTarget = 'Match peer greeting in 4/5 trials';
+    const targetId = '88888888-8888-4888-8888-888888888890';
     const linkedSessionNote = {
       id: 'linked-note-blank-plan-target-evidence',
       authorization_id: 'auth-1',
@@ -4998,6 +4999,35 @@ describe('SessionModal', () => {
         };
         return chain;
       }
+      if (table === 'goal_targets') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({
+            data: [{
+              id: targetId,
+              organization_id: 'org-a',
+              client_id: 'test-client-1',
+              goal_id: 'goal-1',
+              name: planTarget,
+              measurement_type: 'frequency',
+              graph_config: {},
+              status: 'active',
+              sort_order: 0,
+              is_current: true,
+              created_by: null,
+              updated_by: null,
+              created_at: '2024-01-01T00:00:00Z',
+              updated_at: '2024-01-01T00:00:00Z',
+            }],
+            error: null,
+          })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
@@ -5036,12 +5066,223 @@ describe('SessionModal', () => {
       expect(screen.getByDisplayValue('Observed saved evidence without a stored target label')).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole('button', { name: /Use plan target/i })).not.toBeInTheDocument();
+    const planTargetButton = screen.getByRole('button', { name: /Use plan target/i });
+    expect(planTargetButton).toHaveTextContent(planTarget);
     expect(screen.queryByRole('button', { name: /Plan target selected/i })).not.toBeInTheDocument();
     expect(screen.getAllByText(planTarget)).toHaveLength(1);
+    expect(screen.getByText('No target selected')).toBeInTheDocument();
     expect(screen.getByText(/\+4 · −1/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Prompts & reactions for target 1/i)).toHaveValue('Persisted blank target row note');
     expect(screen.getByRole('button', { name: /Increase correct trials for target 1/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Frequency value for target 1 \(count\)/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add frequency trial for target 1/i })).not.toBeInTheDocument();
+
+    await userEvent.click(planTargetButton);
+
+    expect(screen.queryByRole('button', { name: /Use plan target/i })).not.toBeInTheDocument();
+    expect(screen.getAllByText(planTarget)).toHaveLength(1);
+    expect(screen.queryByText('No target selected')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Prompts & reactions for target 1/i)).toHaveValue('Persisted blank target row note');
+    expect(screen.getByLabelText(/Frequency value for target 1 \(count\)/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add frequency trial for target 1/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_persist_requested: true,
+        session_note_goal_measurements: {
+          'goal-1': {
+            version: 1,
+            data: expect.objectContaining({
+              metric_value: 4,
+              incorrect_trials: 1,
+              opportunities: 6,
+              targets: [planTarget],
+              target: planTarget,
+              target_trials: [
+                expect.objectContaining({
+                  target: planTarget,
+                  metric_value: 4,
+                  incorrect_trials: 1,
+                  opportunities: 6,
+                  trial_prompt_note: 'Persisted blank target row note',
+                }),
+              ],
+              trial_prompt_note: 'Persisted blank target row note',
+            }),
+          },
+        },
+      }));
+    });
+  }, 10000);
+
+  it('treats explicit zero blank plan-target trial values as persisted evidence', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const planTarget = 'Match peer greeting in 4/5 trials';
+    const targetId = '88888888-8888-4888-8888-888888888891';
+    const linkedSessionNote = {
+      id: 'linked-note-blank-plan-target-zero-evidence',
+      authorization_id: 'auth-1',
+      service_code: '97153',
+      narrative: '',
+      goal_notes: {
+        'goal-1': 'Observed saved zero evidence without a stored target label',
+      },
+      goal_measurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            target_trials: [
+              {
+                metric_value: 0,
+                incorrect_trials: 0,
+                opportunities: 0,
+              },
+            ],
+          },
+        },
+      },
+      goal_ids: ['goal-1'],
+      goals_addressed: ['Default Goal'],
+    };
+
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'linked-note-blank-plan-target-zero-evidence',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: linkedSessionNote.goals_addressed,
+      goal_ids: linkedSessionNote.goal_ids,
+      goal_measurements: linkedSessionNote.goal_measurements as Record<string, unknown>,
+      goal_notes: linkedSessionNote.goal_notes,
+      session_id: 'session-linked-blank-plan-target-zero-evidence',
+      narrative: linkedSessionNote.narrative,
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T09:00:00.000Z',
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: mockPrograms, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'goals') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: mockGoals, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'authorizations') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({
+            data: [{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }],
+            error: null,
+          })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'goal_targets') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({
+            data: [{
+              id: targetId,
+              organization_id: 'org-a',
+              client_id: 'test-client-1',
+              goal_id: 'goal-1',
+              name: planTarget,
+              measurement_type: 'frequency',
+              graph_config: {},
+              status: 'active',
+              sort_order: 0,
+              is_current: true,
+              created_by: null,
+              updated_by: null,
+              created_at: '2024-01-01T00:00:00Z',
+              updated_at: '2024-01-01T00:00:00Z',
+            }],
+            error: null,
+          })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: [], error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-linked-blank-plan-target-zero-evidence',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Observed saved zero evidence without a stored target label')).toBeInTheDocument();
+    });
+
+    const planTargetButton = screen.getByRole('button', { name: /Use plan target/i });
+    expect(planTargetButton).toHaveTextContent(planTarget);
+    expect(screen.getByText('No target selected')).toBeInTheDocument();
+    expect(screen.getByText(/\+0 · −0/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Frequency value for target 1 \(count\)/i)).not.toBeInTheDocument();
   }, 10000);
 
   it('shows inline trial bounds validation and blocks save progress when correct trials exceed opportunities', async () => {

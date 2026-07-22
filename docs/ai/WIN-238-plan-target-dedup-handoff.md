@@ -29,7 +29,7 @@
   - TDD RED confirmed the configured plan target rendered twice before selection.
   - TDD RED confirmed a legacy saved row with blank target text disappeared during the first correction.
   - The first Linux CI run exposed a no-configured-target placeholder regression that did not reproduce in the earlier ordered local suite; the existing regression test now passes after restoring the empty capture row only when no plan target text exists.
-  - Full `SessionModal` suite: pass (103 tests), including selector-to-capture deduplication and legacy saved-row hydration.
+  - Full `SessionModal` suite: pass (104 tests), including selector-to-capture deduplication, blank legacy-row rebinding, explicit-zero evidence, and saved-row hydration.
   - `npm run ci:check-focused`: pass; database-backed checks were skipped because no database URL is configured, and auth parity is disabled outside CI.
   - `npm run lint`: pass.
   - `npm run typecheck`: pass.
@@ -41,9 +41,12 @@
     - `src/lib/__tests__/supabase.edge.test.ts`
   - `npm run verify:local`: fail at its `npm run test:ci` constituent for the same four unrelated failures; earlier policy, lint, and typecheck constituents passed.
   - PR #833 Linux CI after the scoped placeholder correction: pass, including unit tests, build, tier-0 browser, auth smoke, policy, tenant/runtime contracts, Lighthouse, IEHP smoke, and Netlify deploy preview.
+  - PR #833 Codex review follow-up:
+    - P1: blank persisted legacy rows retain an in-place `Use plan target` bind action, preserve saved evidence, and unlock configured target controls after binding.
+    - P2: explicit zero numeric fields count as persisted evidence through nullable presence checks.
 - Blocked checks:
   - `npm run ci:verify-coverage` and `npm run test:routes:tier0`: not reached because `verify:local` stops when `test:ci` fails.
-- Reviewer: `code-review-engineer` approved after the legacy blank-target hydration regression was corrected; `test-engineer` approved the integrated focused coverage.
+- Reviewer: `code-review-engineer` and `test-engineer` approved the integrated change and the P1/P2 review follow-up.
 - Result: `pass-with-blocked-checks` for the bounded WIN-238 change; repository-wide verification remains red outside this diff.
 - Residual risk: low for the deduplication behavior. Linux CI confirmed the configured, legacy hydration, and no-configured-target states; the four Windows-local baseline failures remain outside this diff and require their own bounded follow-up.
 

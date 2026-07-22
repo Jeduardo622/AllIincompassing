@@ -242,7 +242,15 @@ const setFirstTargetCorrectTrialCount = async (
   count: number,
 ): Promise<boolean> => {
   await ensureGoalCaptureFieldsVisible(dialog, goalId);
-  await dialog.locator(`#goal-target-${goalId}-0`).waitFor({ state: "visible", timeout: 30_000 });
+  const targetLocator = dialog.locator(`#goal-target-${goalId}-0`);
+  const targetVisible = await targetLocator.isVisible().catch(() => false);
+  if (!targetVisible) {
+    const usePlanTargetButton = dialog.getByRole("button", { name: /^Use plan target/i });
+    if ((await usePlanTargetButton.count()) > 0) {
+      await usePlanTargetButton.first().click();
+    }
+  }
+  await targetLocator.waitFor({ state: "visible", timeout: 30_000 });
 
   const addFiveButton = dialog.getByRole("button", { name: "Add 5 correct trials for target 1" });
   const incrementButton = dialog.getByRole("button", { name: "Increase correct trials for target 1" });

@@ -72,6 +72,7 @@ describe('IEHP assessment import smoke helpers', () => {
       'multi-page-target-content',
       'alternate-document-phone-format',
       'scan-300dpi-monochrome',
+      'scan-300dpi-monochrome-rotated-2deg',
     ]);
 
     expect(new Set(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.referralDate)).size).toBe(
@@ -85,6 +86,7 @@ describe('IEHP assessment import smoke helpers', () => {
       '909-555-0102',
       '+1 909 555 0103',
       '909.555.0104',
+      '909 555 0105',
     ]);
   });
 
@@ -94,6 +96,7 @@ describe('IEHP assessment import smoke helpers', () => {
       '909-555-0102',
       '+1 909 555 0103',
       '909.555.0104',
+      '909 555 0105',
     ]);
 
     for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
@@ -113,6 +116,26 @@ describe('IEHP assessment import smoke helpers', () => {
         dpi: 300,
         colorMode: 'black-and-white',
         rotationDegrees: 0,
+        compression: 'jpeg',
+        jpegQuality: 85,
+      },
+    });
+  });
+
+  it('defines one deterministic image-only 300 DPI monochrome scan rotated exactly 2 degrees', () => {
+    expect(
+      IEHP_PDF_MINI_MATRIX_CASES.find(
+        (caseDefinition) => caseDefinition.id === 'scan-300dpi-monochrome-rotated-2deg',
+      ),
+    ).toMatchObject({
+      referralDate: '07/04/2026',
+      documentPhone: '909 555 0105',
+      pageBreakBeforeTarget: false,
+      renderMode: 'raster-scan',
+      scan: {
+        dpi: 300,
+        colorMode: 'black-and-white',
+        rotationDegrees: 2,
         compression: 'jpeg',
         jpegQuality: 85,
       },
@@ -156,7 +179,7 @@ describe('IEHP assessment import smoke helpers', () => {
   });
 
   it('defines one dedicated opt-in skills behaviors proof case without changing the existing mini matrix cases', () => {
-    expect(IEHP_PDF_MINI_MATRIX_CASES).toHaveLength(4);
+    expect(IEHP_PDF_MINI_MATRIX_CASES).toHaveLength(5);
     expect(IEHP_SKILLS_BEHAVIORS_PROOF_CASE).toMatchObject({
       id: 'skills-behaviors-proof',
       expectedSectionKey: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',

@@ -13,12 +13,12 @@ type IehpDigitalPdfMiniMatrixCase = IehpPdfMiniMatrixBaseCase & {
 };
 
 type IehpRasterPdfMiniMatrixCase = IehpPdfMiniMatrixBaseCase & {
-  id: 'scan-300dpi-monochrome';
+  id: 'scan-300dpi-monochrome' | 'scan-300dpi-monochrome-rotated-2deg';
   renderMode: 'raster-scan';
   scan: {
     dpi: 300;
     colorMode: 'black-and-white';
-    rotationDegrees: 0;
+    rotationDegrees: 0 | 2;
     compression: 'jpeg';
     jpegQuality: 85;
   };
@@ -153,6 +153,20 @@ export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
       dpi: 300,
       colorMode: 'black-and-white',
       rotationDegrees: 0,
+      compression: 'jpeg',
+      jpegQuality: 85,
+    },
+  },
+  {
+    id: 'scan-300dpi-monochrome-rotated-2deg',
+    referralDate: '07/04/2026',
+    documentPhone: '909 555 0105',
+    pageBreakBeforeTarget: false,
+    renderMode: 'raster-scan',
+    scan: {
+      dpi: 300,
+      colorMode: 'black-and-white',
+      rotationDegrees: 2,
       compression: 'jpeg',
       jpegQuality: 85,
     },

@@ -152,10 +152,11 @@ describe('protected hosted IEHP PDF mini-matrix workflow', () => {
     expect(finalize?.if).toBe('always()');
     expect(finalize?.run).toContain('rmSync(publicDir, { recursive: true, force: true })');
     expect(finalize?.run).toContain("'scan-300dpi-monochrome'");
-    expect(finalize?.run).toContain('matrixCases.length !== 5');
-    expect(finalize?.run).toContain('aggregate.totalCases !== 5');
-    expect(finalize?.run).toContain('aggregate.passedCases !== 5');
-    expect(finalize?.run).toContain('aggregate.cleanupVerifiedCases !== 5');
+    expect(finalize?.run).toContain("'scan-300dpi-monochrome-rotated-2deg'");
+    expect(finalize?.run).toContain('matrixCases.length !== 6');
+    expect(finalize?.run).toContain('aggregate.totalCases !== 6');
+    expect(finalize?.run).toContain('aggregate.passedCases !== 6');
+    expect(finalize?.run).toContain('aggregate.cleanupVerifiedCases !== 6');
     expect(finalize?.run).toContain('redactedPhonePattern');
     expect(finalize?.run).toContain('rawPhonePattern');
     expect(finalize?.run).toContain("'cases.json'");

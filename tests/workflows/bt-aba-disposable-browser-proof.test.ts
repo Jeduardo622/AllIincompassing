@@ -284,6 +284,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
       },
     });
     expect(protectedProof?.permissions).toEqual({
+      checks: 'read',
       contents: 'read',
       'pull-requests': 'read',
     });

@@ -52,6 +52,7 @@
 - Hosted end-to-end proof of the application-code follow-up remains blocked until the critical PR is reviewed, merged, and deployed; the current screenshot uses synthetic, redacted browser fixtures.
 - The hosted RPC and grants are verified, but a real assigned-BT completed-session visual check is still required after deployment without exposing PHI.
 - BLOCKED after hosted execution: protected run `29881149024` validated PR #831 and checked out exact head `e6c74bb2cc100c93b1cb1757a965dce38c02eda0`, then failed closed with `Supabase branches list must return exactly one requested managed PR preview branch.` Supabase's PR integration explicitly skipped preview creation because the follow-up has no `supabase/**` changes.
+- PASS after review follow-up: protected dispatcher startup on run `29881991994` exposed the caller's missing `checks: read` delegation before any job started; the caller permission and its workflow contract test were corrected so the reusable exact-SHA preview gate can execute.
 - Local hosted-auth smoke remains non-authoritative because it is blocked by invalid configured smoke credentials.
 
 ## Route Task

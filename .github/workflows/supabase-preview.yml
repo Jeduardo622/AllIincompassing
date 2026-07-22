@@ -85,6 +85,7 @@ jobs:
     name: Protected BT ABA disposable proof
     if: inputs.mode == 'bt-aba-disposable-proof'
     permissions:
+      checks: read
       contents: read
       pull-requests: read
     uses: ./.github/workflows/bt-aba-disposable-browser-proof.yml

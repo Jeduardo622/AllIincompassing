@@ -130,8 +130,6 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     });
     expect(proof?.env).not.toHaveProperty('SUPABASE_ACCESS_TOKEN');
     expect(proof?.env).not.toHaveProperty('SUPABASE_SECRET_KEY');
-    expect(identifierStep?.run).toContain('SUPABASE_BRANCH_ID');
-    expect(identifierStep?.run).toContain('SUPABASE_BRANCH_PROJECT_REF');
     expect(identifierStep?.run).toContain('SUPABASE_BRANCH_NAME');
     expect(createStep?.env).toEqual({
       SUPABASE_ACCESS_TOKEN: '${{ secrets.SUPABASE_ACCESS_TOKEN }}',
@@ -199,8 +197,8 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(cleanupUpload?.uses).toContain('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02');
     expect(cleanupUpload?.with?.path).toContain('deletion-evidence.txt');
     expect(source.match(/secrets\.SUPABASE_ACCESS_TOKEN/g)).toHaveLength(2);
-    expect(source).toContain('SUPABASE_BRANCH_ID: ${{ vars.BT_ABA_MANAGED_BRANCH_ID }}');
-    expect(source).toContain('SUPABASE_BRANCH_PROJECT_REF: ${{ vars.BT_ABA_MANAGED_BRANCH_PROJECT_REF }}');
+    expect(source).not.toContain('BT_ABA_MANAGED_BRANCH_ID');
+    expect(source).not.toContain('BT_ABA_MANAGED_BRANCH_PROJECT_REF');
     expect(source).toContain('SUPABASE_BRANCH_PR_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}');
     expect(source).toContain('PW_BT_DISPOSABLE_BRANCH_TEARDOWN_ACK: retain-platform-managed-pr-preview');
   });
@@ -219,7 +217,10 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(source).toContain('PW_BT_CLEANUP_STATE_PATH: ${{ runner.temp }}/bt-aba-proof/cleanup-state.json');
     expect(source).toContain('npx tsx scripts/cleanup-ci-smoke-bt-aba.ts');
     expect(source).toContain('fixture_cleanup=passed');
-    expect(source).toContain('if [ "$SUPABASE_BRANCH_NAME" = "codex/return-bt-correction" ]; then');
+    expect(source).toContain('if [ "$SUPABASE_BRANCH_NAME" = "codex/win-232-hosted-visual-proof" ]; then');
+    expect(source).toContain('elif [ "$SUPABASE_BRANCH_NAME" = "codex/return-bt-correction" ]; then');
+    expect(source).not.toContain("elif [ \"$SUPABASE_BRANCH_NAME\" = \"codex/return-bt-correction\" ]; then\r\n            npm run playwright:bt-aba-session-note");
+    expect(source).not.toContain("elif [ \"$SUPABASE_BRANCH_NAME\" = \"codex/return-bt-correction\" ]; then\n            npm run playwright:bt-aba-session-note");
     expect(source).toContain('npm run playwright:supervision-correction');
     expect(source).toContain('supervision_correction_browser_proof=passed');
     expect(source).toContain('WIN-232-completed-aba-note-read-only.png');

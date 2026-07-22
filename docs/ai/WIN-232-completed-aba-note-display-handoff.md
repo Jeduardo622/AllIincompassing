@@ -28,7 +28,7 @@
 - PASS: `npm run lint`.
 - PASS: `npm run typecheck`.
 - PASS: `npm run validate:tenant`.
-- PASS: `npm run test:routes:tier0`, 220 Cypress checks.
+- PASS: `npm run test:routes:tier0`, 220 Cypress checks after clearing an orphaned local preview process on `127.0.0.1:4173`.
 - PASS: `completed_aba_note.cy.ts`, 1 synthetic browser check with screenshot evidence of populated read-only responses.
 - PASS: `npm run build`.
 - PASS: authorized hosted migration application to Supabase project `wnnjeqheqxxyrgsjmygy`; the ledger records version `20260721172928` with logical name `bt_aba_completed_note_latest_amendment`.
@@ -44,7 +44,6 @@
 - PASS: `npm run validate:tenant`.
 - PASS: `npm run build`.
 - FAIL, unrelated/local baseline: `npm run test:ci` still fails outside WIN-232 scope in `src/lib/__tests__/supabase.edge.test.ts` (`blob.text is not a function`) and `tests/ci/check-e2e-reliability-gates.test.ts` (BCBA provisioning contract fixture drift), then terminates with an additional local coverage write error `EPERM: operation not permitted, open 'coverage/.tmp/coverage-56.json'`.
-- BLOCKED, local harness: `npm run test:routes:tier0` first failed on a stale `scripts/run-cypress.ts` listener holding `127.0.0.1:4173`; after terminating the orphaned Node preview process, a clean rerun still exited non-zero without preserved Cypress failure detail in this shell.
 - BLOCKED, hosted credentials: `npm run ci:playwright` on Tuesday, July 21, 2026 passed `playwright:preflight` and then failed `playwright:auth` with `Invalid email or password. Please check your credentials and try again.` Screenshot: `artifacts/latest/playwright-auth-smoke-failure-1784680377451.png`.
 
 ## Residual Risk
@@ -52,7 +51,7 @@
 - Hosted end-to-end proof of the application-code follow-up remains blocked until the critical PR is reviewed, merged, and deployed; the current screenshot uses synthetic, redacted browser fixtures.
 - The hosted RPC and grants are verified, but a real assigned-BT completed-session visual check is still required after deployment without exposing PHI.
 - The new hosted-proof workflow is still unexecuted on GitHub until the follow-up branch is pushed and a managed Supabase preview branch for that exact PR head is available.
-- Local Tier-0 and local hosted-auth smoke remain non-authoritative because one is blocked by the local preview harness and the other by invalid configured smoke credentials.
+- Local hosted-auth smoke remains non-authoritative because it is blocked by invalid configured smoke credentials.
 
 ## Route Task
 
@@ -79,10 +78,10 @@
 - Lane: `critical`.
 - Change type: privileged RPC read resolution, UI cache/read-only behavior, component tests, migration contract, and SQL smoke contract.
 - Required checks: focused tests, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run validate:tenant`, `npm run build`, `npm run test:routes:tier0`, `npm run ci:playwright`, and `npm run verify:local` when locally meaningful.
-- Executed checks: original WIN-232 focused tests PASS (159); hosted-proof focused workflow/script tests PASS (59); policy PASS; lint PASS; typecheck PASS; tenant validation PASS; build PASS.
-- Blocked checks: `npm run test:ci` still fails in unrelated baseline areas and local coverage write cleanup; `npm run test:routes:tier0` remains blocked by local preview-harness instability around `127.0.0.1:4173`; `npm run ci:playwright` is blocked by invalid hosted smoke credentials; local preview-drift checks require `SUPABASE_DB_URL`; `npm run verify:local` cannot complete while `test:ci` and `test:routes:tier0` are not green.
+- Executed checks: original WIN-232 focused tests PASS (159); hosted-proof focused workflow/script tests PASS (59); policy PASS; lint PASS; typecheck PASS; tenant validation PASS; build PASS; route gate PASS; `npm run test:ci` run completed with unrelated baseline failures as below.
+- Blocked checks: `npm run test:ci` still fails in unrelated baseline areas and local coverage write cleanup; `npm run ci:playwright` is blocked by invalid hosted smoke credentials; local preview-drift checks require `SUPABASE_DB_URL`; `npm run verify:local` cannot complete while `test:ci` remains non-green.
 - Result: `pass-with-blocked-checks`.
-- Residual risk: human review, follow-up branch CI, and one executed hosted managed-preview proof run are still required before the new screenshot workflow can be treated as complete evidence.
+- Residual risk: human review and one executed hosted managed-preview proof run are still required before the new screenshot workflow can be treated as complete evidence.
 
 ## PR Hygiene
 

@@ -203,7 +203,7 @@ describe("check-e2e-reliability-gates", () => {
     const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
     const content = readFileSync(scriptPath, "utf8");
     const goalCaptureScope = 'locator(`[data-testid="session-modal-goal-capture-${goalId}"]`)';
-    const selectPlanTarget = 'goalCaptureRow.getByRole("button", { name: /Use plan target/i })';
+    const selectPlanTarget = 'goalCaptureRow.getByRole("button", { name: /^Use plan target/i })';
     const targetLocator = 'const targetLocator = dialog.locator(`#goal-target-${goalId}-0`)';
     const clickPlanTarget = "await usePlanTargetButton.first().click();";
 

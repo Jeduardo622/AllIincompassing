@@ -4000,12 +4000,26 @@ export function SessionModal({
                               ? [{ targetValue: trimmed, sourceIndex }]
                               : [];
                           });
+                          const persistedBlankPlanTargetItems = sessionTargets.flatMap((targetValue, sourceIndex) => {
+                            if (targetValue.trim().length > 0) {
+                              return [];
+                            }
+                            const hasPersistedEvidence =
+                              getTargetTrialNullableValue(sourceIndex, 'metric_value') !== null ||
+                              getTargetTrialNullableValue(sourceIndex, 'incorrect_trials') !== null ||
+                              getTargetTrialNullableValue(sourceIndex, 'opportunities') !== null ||
+                              getTargetTrialNote(sourceIndex).trim().length > 0;
+                            return hasPersistedEvidence ? [{ targetValue, sourceIndex }] : [];
+                          });
                           const hasSelectedPlanTarget = Boolean(
                             planTargetText && selectedPlanTargets.length > 0,
                           );
-                          const visibleSessionTargetItems = isAdhocTarget || planGoalHasNoConfiguredTarget
+                          const unconfiguredTargetItems = sessionTargets.length > 0
                             ? sessionTargets.map((targetValue, sourceIndex) => ({ targetValue, sourceIndex }))
-                            : (selectedPlanTargets.length > 0 ? selectedPlanTargets : [{ targetValue: '', sourceIndex: 0 }]);
+                            : [{ targetValue: '', sourceIndex: 0 }];
+                          const visibleSessionTargetItems = isAdhocTarget || planGoalHasNoConfiguredTarget || !planTargetText
+                            ? unconfiguredTargetItems
+                            : (selectedPlanTargets.length > 0 ? selectedPlanTargets : persistedBlankPlanTargetItems);
                           const getDisplayedTargetTrialValue = (
                             item: { targetValue: string; sourceIndex: number },
                             field: 'metric_value' | 'incorrect_trials',
@@ -4163,24 +4177,23 @@ export function SessionModal({
                                 )}
                                 {!isAdhocTarget ? (
                                   <div className="mt-2">
-                                    {planTargetText ? (
+                                    {planTargetText && !hasSelectedPlanTarget ? (
                                       <button
                                         type="button"
                                         onClick={() => updateGoalTargets(selectedGoalId, [planTargetText])}
-                                        disabled={hasSelectedPlanTarget}
-                                        className="w-full rounded-md border border-indigo-200 bg-white px-3 py-2 text-left text-sm font-medium text-indigo-900 shadow-sm hover:bg-indigo-50 disabled:cursor-default disabled:border-emerald-200 disabled:bg-emerald-50 disabled:text-emerald-900 dark:border-indigo-800 dark:bg-dark dark:text-indigo-100 dark:hover:bg-indigo-950/40 dark:disabled:border-emerald-900/60 dark:disabled:bg-emerald-900/20 dark:disabled:text-emerald-100"
+                                        className="w-full rounded-md border border-indigo-200 bg-white px-3 py-2 text-left text-sm font-medium text-indigo-900 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark dark:text-indigo-100 dark:hover:bg-indigo-950/40"
                                       >
                                         <span className="block text-[11px] font-semibold uppercase tracking-wide">
-                                          {hasSelectedPlanTarget ? 'Plan target selected' : 'Use plan target'}
+                                          Use plan target
                                         </span>
                                         <span className="mt-1 block break-words">{planTargetText}</span>
                                       </button>
-                                    ) : (
+                                    ) : !planTargetText ? (
                                       <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-100">
                                         No plan target is set for this goal. Ask an admin to add the target under
                                         Programs &amp; Goals.
                                       </p>
-                                    )}
+                                    ) : null}
                                   </div>
                                 ) : null}
                                 <div className="mt-1 space-y-2">
@@ -4295,7 +4308,7 @@ export function SessionModal({
                                               id={`goal-target-${selectedGoalId}-${targetIndex}`}
                                               className="break-words rounded-md border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-950 shadow-sm dark:border-indigo-800 dark:bg-dark dark:text-indigo-100"
                                             >
-                                              {targetValue || planTargetText || 'No target selected'}
+                                              {targetValue || 'No target selected'}
                                             </p>
                                             <input
                                               type="hidden"

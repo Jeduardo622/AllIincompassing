@@ -5,7 +5,11 @@ import { Clock, Edit2, Plus } from 'lucide-react';
 import type { Session } from '../types';
 import { buildScheduleDayLayout, type ScheduleLayoutItem } from './schedule-layout';
 import { createSessionSlotKey } from './schedule-utils';
-import { getSessionStatusClasses, isScheduleSessionDragEligible } from './ScheduleSessionStatusStyles';
+import {
+  getSessionStatusClasses,
+  isScheduleSessionDragEligible,
+  normalizeScheduleSessionStatus,
+} from './ScheduleSessionStatusStyles';
 
 export type ScheduleTimeSlotHandler = (timeSlot: { date: Date; time: string }) => void;
 export type ScheduleEditSessionHandler = (session: Session) => void;
@@ -16,6 +20,8 @@ const SLOT_DURATION_MINUTES = 15;
 const SLOT_HEIGHT_PX = 40;
 const OVERLAY_HORIZONTAL_INSET_PX = 4;
 const OVERLAY_VERTICAL_INSET_PX = 2;
+const VISIBLE_GRID_START_HOUR = 8;
+const VISIBLE_GRID_END_HOUR = 18;
 const NEUTRAL_CARD_CLASSES =
   'bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800/80 dark:text-slate-100 dark:hover:bg-slate-700/80';
 
@@ -82,7 +88,10 @@ function getSafeSessionRange(session: Session): { label: string; start: Date | n
   };
 }
 
-function getClusterLabel(sessions: readonly Session[]): string {
+function getClusterLabel(
+  sessions: readonly Session[],
+  clipping: { clippedStart: boolean; clippedEnd: boolean },
+): string {
   const validTimes = sessions
     .map((session) => {
       const range = getSafeSessionRange(session);
@@ -94,9 +103,38 @@ function getClusterLabel(sessions: readonly Session[]): string {
     return `${sessions.length} appointments, time unavailable`;
   }
 
-  const earliest = validTimes.reduce((current, next) => (next.start < current ? next.start : current), validTimes[0].start);
-  const latest = validTimes.reduce((current, next) => (next.end > current ? next.end : current), validTimes[0].end);
+  const earliest = new Date(
+    validTimes.reduce((current, next) => (next.start < current ? next.start : current), validTimes[0].start),
+  );
+  const latest = new Date(
+    validTimes.reduce((current, next) => (next.end > current ? next.end : current), validTimes[0].end),
+  );
+  if (clipping.clippedStart) {
+    earliest.setHours(VISIBLE_GRID_START_HOUR, 0, 0, 0);
+  }
+  if (clipping.clippedEnd) {
+    latest.setHours(VISIBLE_GRID_END_HOUR, 0, 0, 0);
+  }
   return `${sessions.length} appointments, ${format(earliest, 'h:mm a')} to ${format(latest, 'h:mm a')}`;
+}
+
+function getClusterRangeLabel(
+  sessions: readonly Session[],
+  clipping: { clippedStart: boolean; clippedEnd: boolean },
+): string {
+  return getClusterLabel(sessions, clipping).replace(/^\d+ appointments, /i, '');
+}
+
+function getDisplayStatusLabel(status: Session['status'] | string | null | undefined): string {
+  const normalized = normalizeScheduleSessionStatus(status);
+  switch (normalized) {
+    case 'in_progress':
+      return 'in progress';
+    case 'no-show':
+      return 'no show';
+    default:
+      return normalized.replace(/_/g, ' ');
+  }
 }
 
 function getSessionSourcePosition(session: Session): ScheduleSlotPosition | null {
@@ -651,7 +689,9 @@ function OverlaySessionCard({
         <Clock className="mr-1 h-3 w-3" />
         {range.label}
       </div>
-      {showStatus ? <div className="mt-0.5 text-[11px] uppercase tracking-wide">{String(session.status).trim().toLowerCase()}</div> : null}
+      {showStatus ? (
+        <div className="mt-0.5 text-[11px] uppercase tracking-wide">{getDisplayStatusLabel(session.status)}</div>
+      ) : null}
       <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1 opacity-0 group-hover/session:opacity-100">
         <Edit2 className="h-3 w-3" />
       </span>
@@ -706,6 +746,7 @@ function ScheduleOverlayItem({
         return;
       }
       setOpen(false);
+      triggerRef.current?.focus({ preventScroll: true });
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
@@ -766,7 +807,8 @@ function ScheduleOverlayItem({
     );
   }
 
-  const clusterLabel = getClusterLabel(item.sessions);
+  const clusterLabel = getClusterLabel(item.sessions, item);
+  const clusterRangeLabel = getClusterRangeLabel(item.sessions, item);
 
   return (
     <div className="pointer-events-auto absolute z-20" data-layout-kind="cluster" style={style}>
@@ -788,7 +830,7 @@ function ScheduleOverlayItem({
           id={`schedule-cluster-${item.sessions.map((session) => session.id).join('-')}`}
           ref={dialogRef}
           role="dialog"
-          aria-label={`${item.sessions.length} overlapping appointments`}
+          aria-label={`${item.sessions.length} overlapping appointments, ${clusterRangeLabel}`}
           tabIndex={-1}
           className="absolute left-0 top-0 z-30 min-w-[16rem] max-w-[20rem] rounded-lg border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
         >

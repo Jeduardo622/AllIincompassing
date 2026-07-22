@@ -13,6 +13,8 @@ let latestRescheduleHandler:
   | ((session: Session, target: { date: Date; time: string }) => void)
   | null = null;
 let latestAllowDragAndDrop: boolean | undefined;
+let latestUseImprovedAppointmentLayout: boolean | undefined;
+let latestScheduleSessions: readonly Session[] | undefined;
 
 type ScheduleStore = {
   sessions: Session[];
@@ -82,15 +84,21 @@ vi.mock("../ScheduleWeekView", () => ({
     sessionSlotIndex,
     onRescheduleSession,
     allowDragAndDrop,
+    useImprovedAppointmentLayout,
+    scheduleSessions,
   }: {
     weekDays: Date[];
     timeSlots: string[];
     sessionSlotIndex: Map<string, Session[]>;
     onRescheduleSession?: (session: Session, target: { date: Date; time: string }) => void;
     allowDragAndDrop?: boolean;
+    useImprovedAppointmentLayout?: boolean;
+    scheduleSessions?: readonly Session[];
   }) => {
     latestRescheduleHandler = onRescheduleSession ?? null;
     latestAllowDragAndDrop = allowDragAndDrop;
+    latestUseImprovedAppointmentLayout = useImprovedAppointmentLayout;
+    latestScheduleSessions = scheduleSessions;
     const allSessions = Array.from(sessionSlotIndex.values()).flat();
     const sessionToMove = allSessions[0] ?? null;
     const targetDate = sessionToMove ? new Date(sessionToMove.start_time) : weekDays[0];
@@ -185,6 +193,8 @@ describe("Schedule reschedule integration", () => {
     scheduleStore = buildScheduleStore();
     latestRescheduleHandler = null;
     latestAllowDragAndDrop = undefined;
+    latestUseImprovedAppointmentLayout = undefined;
+    latestScheduleSessions = undefined;
   });
 
   afterEach(() => {
@@ -302,4 +312,28 @@ describe("Schedule reschedule integration", () => {
       expect(latestAllowDragAndDrop).toBe(expectedAllowDragAndDrop);
     });
   });
+
+  it.each([
+    ["admin schedule", "admin_schedule", true],
+    ["admin", "admin", true],
+    ["BCBA", "bcba", true],
+    ["super admin", "super_admin", true],
+    ["BT", "bt", false],
+    ["therapist", "therapist", false],
+    ["midtier", "midtier", false],
+  ] as const)(
+    "wires improved day/week appointment presentation only for %s users",
+    async (_label, role, expectedImprovedLayout) => {
+      renderWithProviders(<Schedule />, {
+        auth: { role },
+      });
+
+      await screen.findByRole("heading", { name: /Schedule/i });
+
+      await waitFor(() => {
+        expect(latestUseImprovedAppointmentLayout).toBe(expectedImprovedLayout);
+        expect(latestScheduleSessions).toEqual(scheduleStore.sessions);
+      });
+    },
+  );
 });

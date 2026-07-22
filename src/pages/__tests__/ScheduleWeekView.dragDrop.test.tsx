@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { format } from "date-fns";
 import type { Session } from "../../types";
 import { createSessionSlotKey } from "../schedule-utils";
@@ -41,6 +41,14 @@ const installMatchMedia = (matchesFinePointer: boolean) => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     })),
+  });
+};
+
+const installPointerEvent = () => {
+  Object.defineProperty(window, "PointerEvent", {
+    writable: true,
+    configurable: true,
+    value: MouseEvent,
   });
 };
 
@@ -381,6 +389,33 @@ describe("ScheduleWeekView drag and drop", () => {
   });
 
   describe("improved appointment layout", () => {
+    it("treats an explicit empty scheduleSessions array as authoritative", () => {
+      const sourceDay = new Date(2025, 6, 7);
+      const targetDay = new Date(2025, 6, 8);
+      const session = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "week-fallback-should-not-render",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T10:00:00",
+      });
+      const sourceKey = createSessionSlotKey("2025-07-07", "09:00");
+      const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+      const { container } = render(
+        <ScheduleWeekView
+          weekDays={[sourceDay, targetDay]}
+          timeSlots={["09:00", "09:15"]}
+          sessionSlotIndex={sessionSlotIndex}
+          scheduleSessions={[]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+        />,
+      );
+
+      expect(container.querySelector('[data-session-id="week-fallback-should-not-render"]')).toBeNull();
+      expect(container.querySelector('[data-layout-kind="appointment"]')).toBeNull();
+    });
+
     it("renders fractional overlays in the correct day column and shows invalid fallback only once", () => {
       const sourceDay = new Date(2025, 6, 7);
       const targetDay = new Date(2025, 6, 8);
@@ -478,6 +513,88 @@ describe("ScheduleWeekView drag and drop", () => {
       fireEvent.keyDown(dialog, { key: "Escape" });
       expect(screen.queryByRole("dialog", { name: /3 overlapping appointments/i })).toBeNull();
       expect(trigger).toHaveFocus();
+
+      fireEvent.click(trigger);
+      expect(screen.getByRole("dialog", { name: /3 overlapping appointments/i })).toBeTruthy();
+      fireEvent.pointerDown(document.body);
+      expect(screen.queryByRole("dialog", { name: /3 overlapping appointments/i })).toBeNull();
+      expect(trigger).toHaveFocus();
+    });
+
+    it("shows normalized display-safe status labels and exact range in the week cluster dialog label", () => {
+      const sourceDay = new Date(2025, 6, 7);
+      const targetDay = new Date(2025, 6, 8);
+      const sessions = [
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "week-scheduled-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:15:00",
+          status: "scheduled",
+          client: { id: "client-week-scheduled", full_name: "Week Scheduled Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "week-in-progress-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:20:00",
+          status: "in_progress",
+          client: { id: "client-week-progress", full_name: "Week In Progress Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "week-completed-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:25:00",
+          status: "completed",
+          client: { id: "client-week-completed", full_name: "Week Completed Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "week-cancelled-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:30:00",
+          status: "cancelled",
+          client: { id: "client-week-cancelled", full_name: "Week Cancelled Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "week-no-show-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:35:00",
+          status: "no-show",
+          client: { id: "client-week-no-show", full_name: "Week No Show Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "week-drift-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:45:00",
+          // @ts-expect-error regression coverage for drift fallback
+          status: "drifted-status",
+          client: { id: "client-week-drift", full_name: "Week Drift Client" },
+        }),
+      ];
+
+      render(
+        <ScheduleWeekView
+          weekDays={[sourceDay, targetDay]}
+          timeSlots={["09:00", "09:15", "09:30", "09:45"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={sessions}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /6 appointments/i }));
+
+      const dialog = screen.getByRole("dialog", {
+        name: "6 overlapping appointments, 9:00 AM to 9:45 AM",
+      });
+      const rows = within(dialog).getAllByRole("button");
+      const rowByClient = (clientName: string) => rows.find((row) => row.textContent?.includes(clientName));
+      expect(rowByClient("Week Scheduled Client")).toHaveTextContent("scheduled");
+      expect(rowByClient("Week In Progress Client")).toHaveTextContent("in progress");
+      expect(rowByClient("Week Completed Client")).toHaveTextContent("completed");
+      expect(rowByClient("Week Cancelled Client")).toHaveTextContent("cancelled");
+      expect(rowByClient("Week No Show Client")).toHaveTextContent("no show");
+      expect(rowByClient("Week Drift Client")).toHaveTextContent("scheduled");
     });
 
     it("supports fine-pointer drag from an overlay card and from a cluster popover row", () => {
@@ -542,6 +659,73 @@ describe("ScheduleWeekView drag and drop", () => {
       expect(onRescheduleSession).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({ id: "week-cluster-beta" }),
+        expect.objectContaining({ time: "10:15", date: expect.any(Date) }),
+      );
+    });
+  });
+
+  describe("improved layout coarse-pointer move path", () => {
+    beforeEach(() => {
+      installMatchMedia(false);
+      installPointerEvent();
+    });
+
+    it("long-presses a cluster row for 480ms and reschedules it by slot tap in week view", async () => {
+      const sourceDay = new Date(2025, 6, 7);
+      const targetDay = new Date(2025, 6, 8);
+      const alpha = buildSession(new Date(2025, 6, 7, 10, 0, 0, 0), {
+        id: "touch-alpha",
+        start_time: "2025-07-07T10:00:00",
+        end_time: "2025-07-07T10:30:00",
+        client: { id: "client-alpha", full_name: "Alpha Client" },
+      });
+      const beta = buildSession(new Date(2025, 6, 7, 10, 0, 0, 0), {
+        id: "touch-beta",
+        start_time: "2025-07-07T10:00:00",
+        end_time: "2025-07-07T10:45:00",
+        client: { id: "client-beta", full_name: "Beta Client" },
+      });
+      const onRescheduleSession = vi.fn();
+
+      const { container } = render(
+        <ScheduleWeekView
+          weekDays={[sourceDay, targetDay]}
+          timeSlots={["10:00", "10:15"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[alpha, beta]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+          onRescheduleSession={onRescheduleSession}
+          allowDragAndDrop
+          allowCreateInEmptySlot={false}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /2 appointments/i }));
+      const dialog = screen.getByRole("dialog", {
+        name: "2 overlapping appointments, 10:00 AM to 10:45 AM",
+      });
+      const row = within(dialog).getByRole("button", { name: /beta client/i });
+      const targetSlot = getSlotByDayAndTime(container, sourceDay, "10:15");
+      expect(targetSlot).toBeTruthy();
+      expect(row).toHaveAttribute("title", expect.stringContaining("Press and hold"));
+      expect(row).toHaveAttribute("draggable", "false");
+
+      fireEvent.pointerDown(row, { button: 0, clientX: 10, clientY: 10, pointerId: 1, pointerType: "touch" });
+      await waitFor(() => {
+        const activeDialog = screen.getByRole("dialog", {
+          name: "2 overlapping appointments, 10:00 AM to 10:45 AM",
+        });
+        expect(within(activeDialog).getByRole("button", { name: /beta client/i })).toHaveAttribute(
+          "aria-grabbed",
+          "true",
+        );
+      });
+      fireEvent.click(targetSlot!);
+
+      expect(onRescheduleSession).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "touch-beta" }),
         expect.objectContaining({ time: "10:15", date: expect.any(Date) }),
       );
     });

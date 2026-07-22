@@ -761,6 +761,11 @@ export const Schedule = React.memo(() => {
   }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
 
   const therapistScopedView = effectiveRole === "bt" || effectiveRole === "therapist";
+  const useImprovedAppointmentLayout =
+    effectiveRole === "admin_schedule" ||
+    effectiveRole === "admin" ||
+    effectiveRole === "bcba" ||
+    effectiveRole === "super_admin";
 
   const showOrgDirectoryEmpty =
     displayData.therapists.length === 0 && displayData.clients.length === 0;
@@ -2706,6 +2711,8 @@ export const Schedule = React.memo(() => {
               selectedDate={selectedDate}
               timeSlots={timeSlots}
               sessionSlotIndex={sessionSlotIndex}
+              scheduleSessions={renderedSessions}
+              useImprovedAppointmentLayout={useImprovedAppointmentLayout}
               onCreateSession={handleCreateSession}
               onEditSession={handleEditSession}
               onRescheduleSession={handleRescheduleSession}
@@ -2717,6 +2724,8 @@ export const Schedule = React.memo(() => {
               weekDays={weekDays}
               timeSlots={timeSlots}
               sessionSlotIndex={sessionSlotIndex}
+              scheduleSessions={renderedSessions}
+              useImprovedAppointmentLayout={useImprovedAppointmentLayout}
               onCreateSession={handleCreateSession}
               onEditSession={handleEditSession}
               onRescheduleSession={handleRescheduleSession}

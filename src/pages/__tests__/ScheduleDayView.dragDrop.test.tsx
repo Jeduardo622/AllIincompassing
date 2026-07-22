@@ -45,6 +45,14 @@ const installMatchMedia = (matchesFinePointer: boolean) => {
   });
 };
 
+const installPointerEvent = () => {
+  Object.defineProperty(window, "PointerEvent", {
+    writable: true,
+    configurable: true,
+    value: MouseEvent,
+  });
+};
+
 const getSlotByTime = (container: HTMLElement, time: string) =>
   Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
     const slotKey = slot.getAttribute("data-slot-key");
@@ -272,6 +280,32 @@ describe("ScheduleDayView drag and drop", () => {
   });
 
   describe("improved appointment layout", () => {
+    it("treats an explicit empty scheduleSessions array as authoritative", () => {
+      const selectedDate = new Date(2025, 6, 7);
+      const session = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "fallback-should-not-render",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T10:00:00",
+      });
+      const sourceKey = createSessionSlotKey("2025-07-07", "09:00");
+      const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={["09:00", "09:15"]}
+          sessionSlotIndex={sessionSlotIndex}
+          scheduleSessions={[]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+        />,
+      );
+
+      expect(container.querySelector('[data-session-id="fallback-should-not-render"]')).toBeNull();
+      expect(container.querySelector('[data-layout-kind="appointment"]')).toBeNull();
+    });
+
     it("renders one fractional-duration overlay card, preserves empty-slot create, and shows invalid fallback once", () => {
       const selectedDate = new Date(2025, 6, 7);
       const regularStart = new Date(2025, 6, 7, 9, 7, 0, 0);
@@ -397,6 +431,120 @@ describe("ScheduleDayView drag and drop", () => {
       expect(screen.getByRole("dialog", { name: /3 overlapping appointments/i })).toBeTruthy();
       fireEvent.pointerDown(document.body);
       expect(screen.queryByRole("dialog", { name: /3 overlapping appointments/i })).toBeNull();
+      expect(trigger).toHaveFocus();
+    });
+
+    it("announces a clipped cluster by its visible grid range while preserving exact row times", () => {
+      const selectedDate = new Date(2025, 6, 7);
+      const early = buildSession(new Date(2025, 6, 7, 7, 30, 0, 0), {
+        id: "clipped-early",
+        start_time: "2025-07-07T07:30:00",
+        end_time: "2025-07-07T08:30:00",
+        client: { id: "client-early", full_name: "Early Client" },
+      });
+      const overlap = buildSession(new Date(2025, 6, 7, 8, 15, 0, 0), {
+        id: "clipped-overlap",
+        start_time: "2025-07-07T08:15:00",
+        end_time: "2025-07-07T08:45:00",
+        client: { id: "client-overlap", full_name: "Overlap Client" },
+      });
+
+      render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={["08:00", "08:15", "08:30", "08:45"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[early, overlap]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+        />,
+      );
+
+      const trigger = screen.getByRole("button", { name: "2 appointments 8:00 AM to 8:45 AM" });
+      fireEvent.click(trigger);
+
+      const dialog = screen.getByRole("dialog", {
+        name: "2 overlapping appointments, 8:00 AM to 8:45 AM",
+      });
+      expect(within(dialog).getByRole("button", { name: /Early Client/i })).toHaveTextContent(
+        "7:30 AM - 8:30 AM",
+      );
+    });
+
+    it("shows normalized display-safe status labels and exact range in the cluster dialog label", () => {
+      const selectedDate = new Date(2025, 6, 7);
+      const sessions = [
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "scheduled-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:15:00",
+          status: "scheduled",
+          client: { id: "client-scheduled", full_name: "Scheduled Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "in-progress-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:20:00",
+          status: "in_progress",
+          client: { id: "client-progress", full_name: "In Progress Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "completed-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:25:00",
+          status: "completed",
+          client: { id: "client-completed", full_name: "Completed Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "cancelled-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:30:00",
+          status: "cancelled",
+          client: { id: "client-cancelled", full_name: "Cancelled Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "no-show-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:35:00",
+          status: "no-show",
+          client: { id: "client-no-show", full_name: "No Show Client" },
+        }),
+        buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+          id: "drift-row",
+          start_time: "2025-07-07T09:00:00",
+          end_time: "2025-07-07T09:45:00",
+          // @ts-expect-error regression coverage for drift fallback
+          status: "drifted-status",
+          client: { id: "client-drift", full_name: "Drift Client" },
+        }),
+      ];
+
+      render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={["09:00", "09:15", "09:30", "09:45"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={sessions}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /6 appointments/i }));
+
+      const dialog = screen.getByRole("dialog", {
+        name: "6 overlapping appointments, 9:00 AM to 9:45 AM",
+      });
+      const rows = within(dialog).getAllByRole("button");
+      const rowByClient = (clientName: string) => rows.find((row) => row.textContent?.includes(clientName));
+      expect(rowByClient("Scheduled Client")).toHaveTextContent("scheduled");
+      expect(rowByClient("In Progress Client")).toHaveTextContent("in progress");
+      expect(rowByClient("Completed Client")).toHaveTextContent("completed");
+      expect(rowByClient("Cancelled Client")).toHaveTextContent("cancelled");
+      expect(rowByClient("No Show Client")).toHaveTextContent("no show");
+      expect(rowByClient("Drift Client")).toHaveTextContent("scheduled");
     });
 
     it("supports fine-pointer drag on an ordinary overlay card", () => {
@@ -444,6 +592,7 @@ describe("ScheduleDayView drag and drop", () => {
     beforeEach(() => {
       vi.useFakeTimers();
       installMatchMedia(false);
+      installPointerEvent();
     });
 
     afterEach(() => {

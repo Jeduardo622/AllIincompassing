@@ -42,7 +42,7 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
   const draggedSessionRef = useRef<Session | null>(null);
   const sourceSlotKeyRef = useRef<string | null>(null);
   const renderedScheduleSessions = useMemo(() => {
-    if (scheduleSessions && scheduleSessions.length > 0) {
+    if (scheduleSessions !== undefined) {
       return [...scheduleSessions];
     }
     const next: Session[] = [];

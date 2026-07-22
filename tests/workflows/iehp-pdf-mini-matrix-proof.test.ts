@@ -151,7 +151,11 @@ describe('protected hosted IEHP PDF mini-matrix workflow', () => {
     expect(cleanup?.run).toContain('npx tsx scripts/provision-ci-smoke-admin.ts --cleanup');
     expect(finalize?.if).toBe('always()');
     expect(finalize?.run).toContain('rmSync(publicDir, { recursive: true, force: true })');
-    expect(finalize?.run).toContain("aggregate.totalCases !== 4");
+    expect(finalize?.run).toContain("'scan-300dpi-monochrome'");
+    expect(finalize?.run).toContain('matrixCases.length !== 5');
+    expect(finalize?.run).toContain('aggregate.totalCases !== 5');
+    expect(finalize?.run).toContain('aggregate.passedCases !== 5');
+    expect(finalize?.run).toContain('aggregate.cleanupVerifiedCases !== 5');
     expect(finalize?.run).toContain('redactedPhonePattern');
     expect(finalize?.run).toContain('rawPhonePattern');
     expect(finalize?.run).toContain("'cases.json'");

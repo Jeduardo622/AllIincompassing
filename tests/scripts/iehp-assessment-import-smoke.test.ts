@@ -71,6 +71,7 @@ describe('IEHP assessment import smoke helpers', () => {
       'clean-single-page',
       'multi-page-target-content',
       'alternate-document-phone-format',
+      'scan-300dpi-monochrome',
     ]);
 
     expect(new Set(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.referralDate)).size).toBe(
@@ -83,6 +84,7 @@ describe('IEHP assessment import smoke helpers', () => {
       '(909) 555-0101',
       '909-555-0102',
       '+1 909 555 0103',
+      '909.555.0104',
     ]);
   });
 
@@ -91,11 +93,30 @@ describe('IEHP assessment import smoke helpers', () => {
       '(909) 555-0101',
       '909-555-0102',
       '+1 909 555 0103',
+      '909.555.0104',
     ]);
 
     for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
       expect(isValidPhone(caseDefinition.documentPhone)).toBe(true);
     }
+  });
+
+  it('defines one deterministic image-only 300 DPI monochrome scan case', () => {
+    expect(
+      IEHP_PDF_MINI_MATRIX_CASES.find((caseDefinition) => caseDefinition.id === 'scan-300dpi-monochrome'),
+    ).toMatchObject({
+      referralDate: '07/03/2026',
+      documentPhone: '909.555.0104',
+      pageBreakBeforeTarget: false,
+      renderMode: 'raster-scan',
+      scan: {
+        dpi: 300,
+        colorMode: 'black-and-white',
+        rotationDegrees: 0,
+        compression: 'jpeg',
+        jpegQuality: 85,
+      },
+    });
   });
 
   it('renders the referral label and document phone into selectable HTML with a page break only for the multi-page case', () => {
@@ -135,7 +156,7 @@ describe('IEHP assessment import smoke helpers', () => {
   });
 
   it('defines one dedicated opt-in skills behaviors proof case without changing the existing mini matrix cases', () => {
-    expect(IEHP_PDF_MINI_MATRIX_CASES).toHaveLength(3);
+    expect(IEHP_PDF_MINI_MATRIX_CASES).toHaveLength(4);
     expect(IEHP_SKILLS_BEHAVIORS_PROOF_CASE).toMatchObject({
       id: 'skills-behaviors-proof',
       expectedSectionKey: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',

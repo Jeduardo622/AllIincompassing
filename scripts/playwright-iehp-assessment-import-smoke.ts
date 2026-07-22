@@ -129,6 +129,47 @@ const pause = async (ms: number): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 };
 
+const buildMonochromeScanImageDataUrl = async (args: {
+  page: import('playwright').Page;
+  jpegQuality: number;
+}): Promise<string> => {
+  const screenshotBuffer = await args.page.screenshot({ type: 'png' });
+  const screenshotBase64 = screenshotBuffer.toString('base64');
+
+  return args.page.evaluate(
+    async ({ base64, quality }) => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = `data:image/png;base64,${base64}`;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) {
+        throw new Error('Canvas 2d context is unavailable for IEHP scan rendering.');
+      }
+
+      context.drawImage(image, 0, 0);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const { data } = imageData;
+      for (let index = 0; index < data.length; index += 4) {
+        const luminance = Math.round(data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114);
+        const monochrome = luminance < 192 ? 0 : 255;
+        data[index] = monochrome;
+        data[index + 1] = monochrome;
+        data[index + 2] = monochrome;
+        data[index + 3] = 255;
+      }
+      context.putImageData(imageData, 0, 0);
+
+      return canvas.toDataURL('image/jpeg', quality / 100);
+    },
+    { base64: screenshotBase64, quality: args.jpegQuality },
+  );
+};
+
 const fetchWithRetry = async (url: string, init: RequestInit, label: string): Promise<Response> => {
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= 4; attempt += 1) {
@@ -810,13 +851,101 @@ async function run() {
         const generatorPage = await context.newPage();
         try {
           await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));
-          const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });
+          let uploadPdfBuffer: Buffer;
+          if (caseDefinition.renderMode === 'raster-scan') {
+            await generatorPage.setViewportSize({ width: 2550, height: 3300 });
+            await generatorPage.setContent(`
+              <!doctype html>
+              <html lang="en">
+                <head>
+                  <meta charset="utf-8" />
+                  <title>${caseDefinition.id}</title>
+                  <style>
+                    html, body {
+                      margin: 0;
+                      padding: 0;
+                      width: 2550px;
+                      height: 3300px;
+                      background: white;
+                    }
+
+                    body {
+                      color: black;
+                      font-family: Arial, sans-serif;
+                      font-size: 54px;
+                      line-height: 1.4;
+                    }
+
+                    main {
+                      box-sizing: border-box;
+                      width: 100%;
+                      min-height: 100%;
+                      padding: 240px 220px;
+                    }
+                  </style>
+                </head>
+                <body>
+                  <main>
+                    <p>Referral Date: ${caseDefinition.referralDate}</p>
+                    <p>Assessor's phone number: ${caseDefinition.documentPhone}</p>
+                  </main>
+                </body>
+              </html>
+            `);
+            const monochromeScanDataUrl = await buildMonochromeScanImageDataUrl({
+              page: generatorPage,
+              jpegQuality: caseDefinition.scan.jpegQuality,
+            });
+            const rasterPdfPage = await context.newPage();
+            try {
+              await rasterPdfPage.setContent(`
+                <!doctype html>
+                <html lang="en">
+                  <head>
+                    <meta charset="utf-8" />
+                    <title>${caseDefinition.id}</title>
+                    <style>
+                      @page {
+                        size: Letter;
+                        margin: 0;
+                      }
+
+                      html, body {
+                        margin: 0;
+                        padding: 0;
+                        width: 8.5in;
+                        height: 11in;
+                        background: white;
+                      }
+
+                      img {
+                        display: block;
+                        width: 8.5in;
+                        height: 11in;
+                      }
+                    </style>
+                  </head>
+                  <body>
+                    <img alt="${caseDefinition.id}" src="${monochromeScanDataUrl}" />
+                  </body>
+                </html>
+              `);
+              uploadPdfBuffer = await rasterPdfPage.pdf({ format: 'Letter', printBackground: true });
+            } finally {
+              if (!rasterPdfPage.isClosed()) {
+                await rasterPdfPage.close().then(() => undefined);
+              }
+            }
+          } else {
+            const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });
+            uploadPdfBuffer = pdfBuffer;
+          }
           await generatorPage.close();
           const caseEvidence = await runSmokeCase({
             caseId: caseDefinition.id,
             uploadFileName: buildIehpSmokeUploadFileName(Date.now(), 'pdf'),
             mimeType: 'application/pdf',
-            sourceFileBuffer: pdfBuffer,
+            sourceFileBuffer: uploadPdfBuffer,
             expectedReferralDate: caseDefinition.referralDate,
           });
           console.log(JSON.stringify(caseEvidence, null, 2));

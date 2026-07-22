@@ -40,11 +40,12 @@
     - `tests/workflows/bt-aba-disposable-browser-proof.test.ts`
     - `src/lib/__tests__/supabase.edge.test.ts`
   - `npm run verify:local`: fail at its `npm run test:ci` constituent for the same four unrelated failures; earlier policy, lint, and typecheck constituents passed.
+  - PR #833 Linux CI after the scoped placeholder correction: pass, including unit tests, build, tier-0 browser, auth smoke, policy, tenant/runtime contracts, Lighthouse, IEHP smoke, and Netlify deploy preview.
 - Blocked checks:
   - `npm run ci:verify-coverage` and `npm run test:routes:tier0`: not reached because `verify:local` stops when `test:ci` fails.
 - Reviewer: `code-review-engineer` approved after the legacy blank-target hydration regression was corrected; `test-engineer` approved the integrated focused coverage.
 - Result: `pass-with-blocked-checks` for the bounded WIN-238 change; repository-wide verification remains red outside this diff.
-- Residual risk: low for the deduplication behavior. CI must confirm the same focused behavior on Linux, while the four unrelated baseline failures require their own bounded follow-up rather than expansion of WIN-238.
+- Residual risk: low for the deduplication behavior. Linux CI confirmed the configured, legacy hydration, and no-configured-target states; the four Windows-local baseline failures remain outside this diff and require their own bounded follow-up.
 
 ## PR handoff
 

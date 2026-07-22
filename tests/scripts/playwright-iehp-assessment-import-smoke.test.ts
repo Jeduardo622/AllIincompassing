@@ -875,6 +875,16 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const generatorPageIndex = script.indexOf('const generatorPage = await context.newPage();');
     const setContentIndex = script.indexOf('await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));');
     const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
+    const scanModeIndex = script.indexOf("caseDefinition.renderMode === 'raster-scan'", setContentIndex);
+    const scanViewportIndex = script.indexOf('width: 2550, height: 3300', scanModeIndex);
+    const monochromeHelperIndex = script.indexOf('const buildMonochromeScanImageDataUrl = async');
+    const scanScreenshotIndex = script.indexOf("type: 'png'", monochromeHelperIndex);
+    const scanCanvasIndex = script.indexOf('getImageData(0, 0, canvas.width, canvas.height)', scanScreenshotIndex);
+    const scanLuminanceIndex = script.indexOf('const luminance = Math.round(', scanCanvasIndex);
+    const scanQualityIndex = script.indexOf("canvas.toDataURL('image/jpeg', quality / 100)", scanLuminanceIndex);
+    const rasterPageIndex = script.indexOf('const rasterPdfPage = await context.newPage();', scanQualityIndex);
+    const imageOnlyHtmlIndex = script.indexOf('monochromeScanDataUrl', rasterPageIndex);
+    const rasterPdfIndex = script.indexOf("await rasterPdfPage.pdf({ format: 'Letter', printBackground: true })", imageOnlyHtmlIndex);
     const generatorCloseIndex = script.indexOf('await generatorPage.close();');
     const pdfFileNameIndex = script.indexOf(
       "buildIehpSmokeUploadFileName(Date.now(), 'pdf')",
@@ -904,6 +914,17 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(generatorPageIndex).toBeGreaterThan(matrixCaseLoopIndex);
     expect(setContentIndex).toBeGreaterThan(generatorPageIndex);
     expect(pagePdfIndex).toBeGreaterThan(setContentIndex);
+    expect(scanModeIndex).toBeGreaterThan(setContentIndex);
+    expect(scanViewportIndex).toBeGreaterThan(scanModeIndex);
+    expect(monochromeHelperIndex).toBeLessThan(setContentIndex);
+    expect(script).not.toContain('const loadImage = async');
+    expect(scanScreenshotIndex).toBeGreaterThan(monochromeHelperIndex);
+    expect(scanCanvasIndex).toBeGreaterThan(scanScreenshotIndex);
+    expect(scanLuminanceIndex).toBeGreaterThan(scanCanvasIndex);
+    expect(scanQualityIndex).toBeGreaterThan(scanLuminanceIndex);
+    expect(rasterPageIndex).toBeGreaterThan(scanQualityIndex);
+    expect(imageOnlyHtmlIndex).toBeGreaterThan(rasterPageIndex);
+    expect(rasterPdfIndex).toBeGreaterThan(imageOnlyHtmlIndex);
     expect(generatorCloseIndex).toBeGreaterThan(pagePdfIndex);
     expect(pdfFileNameIndex).toBeGreaterThan(generatorCloseIndex);
     expect(pdfMimeIndex).toBeGreaterThan(pdfFileNameIndex);

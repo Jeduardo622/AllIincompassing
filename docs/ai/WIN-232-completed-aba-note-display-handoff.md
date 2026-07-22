@@ -50,7 +50,7 @@
 
 - Hosted end-to-end proof of the application-code follow-up remains blocked until the critical PR is reviewed, merged, and deployed; the current screenshot uses synthetic, redacted browser fixtures.
 - The hosted RPC and grants are verified, but a real assigned-BT completed-session visual check is still required after deployment without exposing PHI.
-- The new hosted-proof workflow is still unexecuted on GitHub until the follow-up branch is pushed and a managed Supabase preview branch for that exact PR head is available.
+- BLOCKED after hosted execution: protected run `29881149024` validated PR #831 and checked out exact head `e6c74bb2cc100c93b1cb1757a965dce38c02eda0`, then failed closed with `Supabase branches list must return exactly one requested managed PR preview branch.` Supabase's PR integration explicitly skipped preview creation because the follow-up has no `supabase/**` changes.
 - Local hosted-auth smoke remains non-authoritative because it is blocked by invalid configured smoke credentials.
 
 ## Route Task
@@ -79,9 +79,9 @@
 - Change type: privileged RPC read resolution, UI cache/read-only behavior, component tests, migration contract, and SQL smoke contract.
 - Required checks: focused tests, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run validate:tenant`, `npm run build`, `npm run test:routes:tier0`, `npm run ci:playwright`, and `npm run verify:local` when locally meaningful.
 - Executed checks: original WIN-232 focused tests PASS (159); hosted-proof focused workflow/script tests PASS (59); policy PASS; lint PASS; typecheck PASS; tenant validation PASS; build PASS; route gate PASS; `npm run test:ci` run completed with unrelated baseline failures as below.
-- Blocked checks: `npm run test:ci` still fails in unrelated baseline areas and local coverage write cleanup; `npm run ci:playwright` is blocked by invalid hosted smoke credentials; local preview-drift checks require `SUPABASE_DB_URL`; `npm run verify:local` cannot complete while `test:ci` remains non-green.
+- Blocked checks: hosted proof run `29881149024` cannot proceed without an exact managed Supabase PR preview branch; `npm run test:ci` still fails in unrelated baseline areas and local coverage write cleanup; `npm run ci:playwright` is blocked by invalid hosted smoke credentials; local preview-drift checks require `SUPABASE_DB_URL`; `npm run verify:local` cannot complete while `test:ci` remains non-green.
 - Result: `pass-with-blocked-checks`.
-- Residual risk: human review and one executed hosted managed-preview proof run are still required before the new screenshot workflow can be treated as complete evidence.
+- Residual risk: human review and availability of an exact non-production managed preview remain required before the screenshot workflow can produce complete evidence. No paid branch was created and production safeguards were not weakened.
 
 ## PR Hygiene
 

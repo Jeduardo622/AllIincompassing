@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { format } from "date-fns";
 import type { Session } from "../../types";
 import { createSessionSlotKey } from "../schedule-utils";
@@ -30,19 +30,28 @@ const dragData = {
   effectAllowed: "move",
 };
 
+const installMatchMedia = (matchesFinePointer: boolean) => {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: query === "(any-pointer: fine)" ? matchesFinePointer : !matchesFinePointer && query === "(pointer: coarse)",
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+};
+
+const getSlotByDayAndTime = (container: HTMLElement, day: Date, time: string) =>
+  container.querySelector(`[data-slot-key="${createSessionSlotKey(format(day, "yyyy-MM-dd"), time)}"]`) as
+    | HTMLElement
+    | null;
+
 describe("ScheduleWeekView drag and drop", () => {
   beforeEach(() => {
-    Object.defineProperty(window, "matchMedia", {
-      writable: true,
-      configurable: true,
-      value: vi.fn().mockImplementation((query: string) => ({
-        matches: query === "(any-pointer: fine)",
-        media: query,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })),
-    });
+    installMatchMedia(true);
   });
 
   afterEach(() => {
@@ -369,5 +378,172 @@ describe("ScheduleWeekView drag and drop", () => {
     const previewSlotKeys = previewSlots.map((slot) => slot.getAttribute("data-slot-key"));
     expect(previewSlotKeys).toHaveLength(2);
     expect(previewSlotKeys).toEqual(expect.arrayContaining([sourceKey, nextVisibleOverlapKey]));
+  });
+
+  describe("improved appointment layout", () => {
+    it("renders fractional overlays in the correct day column and shows invalid fallback only once", () => {
+      const sourceDay = new Date(2025, 6, 7);
+      const targetDay = new Date(2025, 6, 8);
+      const regularSession = buildSession(new Date(2025, 6, 7, 9, 7, 0, 0), {
+        id: "week-fractional",
+        start_time: "2025-07-07T09:07:00",
+        end_time: "2025-07-07T09:52:00",
+      });
+      const invalidSession = buildSession(new Date(2025, 6, 7, 9, 7, 0, 0), {
+        id: "week-invalid",
+        end_time: "2025-07-07T09:52:00",
+        start_time: "not-a-date",
+      });
+
+      const { container } = render(
+        <ScheduleWeekView
+          weekDays={[sourceDay, targetDay]}
+          timeSlots={["09:00", "09:15", "09:30", "09:45", "10:00"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[regularSession, invalidSession]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+        />,
+      );
+
+      const card = container.querySelector('[data-session-id="week-fractional"]') as HTMLElement;
+      const overlay = card.parentElement as HTMLElement;
+      expect(card).toBeTruthy();
+      expect(container.querySelectorAll('[data-session-id="week-fractional"]')).toHaveLength(1);
+      expect(parseFloat(overlay.style.top)).toBeCloseTo(((9 * 60 + 7) - 8 * 60) / 15 * 40 + 2, 4);
+      expect(parseFloat(overlay.style.height)).toBeCloseTo((45 / 15) * 40 - 4, 4);
+      expect(card).toHaveTextContent("Jamie Client");
+      expect(card).toHaveTextContent("9:07 AM - 9:52 AM");
+      expect(screen.getAllByText("Time unavailable")).toHaveLength(1);
+
+      const firstDaySlot = getSlotByDayAndTime(container, sourceDay, "09:15");
+      const secondDaySlot = getSlotByDayAndTime(container, targetDay, "09:15");
+      expect(firstDaySlot?.querySelector('[data-preview-slot="week-fractional"]')).toBeNull();
+      expect(secondDaySlot?.querySelector('[data-session-id="week-fractional"]')).toBeNull();
+    });
+
+    it("opens a neutral cluster popover, sorts rows, and restores focus on escape", () => {
+      const sourceDay = new Date(2025, 6, 7);
+      const targetDay = new Date(2025, 6, 8);
+      const alpha = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "week-alpha",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T09:30:00",
+        client: { id: "client-alpha", full_name: "Alpha Client" },
+      });
+      const beta = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "week-beta",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T09:45:00",
+        client: { id: "client-beta", full_name: "Beta Client" },
+      });
+      const gamma = buildSession(new Date(2025, 6, 7, 9, 30, 0, 0), {
+        id: "week-gamma",
+        start_time: "2025-07-07T09:30:00",
+        end_time: "2025-07-07T10:15:00",
+        client: { id: "client-gamma", full_name: "Gamma Client" },
+      });
+      const onEditSession = vi.fn();
+
+      render(
+        <ScheduleWeekView
+          weekDays={[sourceDay, targetDay]}
+          timeSlots={["09:00", "09:15", "09:30", "09:45", "10:00", "10:15"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[gamma, beta, alpha]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={onEditSession}
+        />,
+      );
+
+      const trigger = screen.getByRole("button", { name: /3 appointments/i });
+      fireEvent.click(trigger);
+
+      const dialog = screen.getByRole("dialog", { name: /3 overlapping appointments/i });
+      const rows = within(dialog).getAllByRole("button");
+      expect(rows[0]).toHaveFocus();
+      expect(rows[0]).toHaveTextContent("Alpha Client");
+      expect(rows[1]).toHaveTextContent("Beta Client");
+      expect(rows[2]).toHaveTextContent("Gamma Client");
+
+      fireEvent.keyDown(rows[0], { key: "Enter" });
+      fireEvent.keyDown(rows[1], { key: " " });
+      fireEvent.click(rows[2]);
+      expect(onEditSession).toHaveBeenNthCalledWith(1, expect.objectContaining({ id: "week-alpha" }));
+      expect(onEditSession).toHaveBeenNthCalledWith(2, expect.objectContaining({ id: "week-beta" }));
+      expect(onEditSession).toHaveBeenNthCalledWith(3, expect.objectContaining({ id: "week-gamma" }));
+
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      expect(screen.queryByRole("dialog", { name: /3 overlapping appointments/i })).toBeNull();
+      expect(trigger).toHaveFocus();
+    });
+
+    it("supports fine-pointer drag from an overlay card and from a cluster popover row", () => {
+      const sourceDay = new Date(2025, 6, 7);
+      const targetDay = new Date(2025, 6, 8);
+      const ordinary = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "week-ordinary",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T10:00:00",
+      });
+      const alpha = buildSession(new Date(2025, 6, 7, 10, 0, 0, 0), {
+        id: "week-cluster-alpha",
+        start_time: "2025-07-07T10:00:00",
+        end_time: "2025-07-07T10:30:00",
+        client: { id: "client-alpha", full_name: "Alpha Client" },
+      });
+      const beta = buildSession(new Date(2025, 6, 7, 10, 0, 0, 0), {
+        id: "week-cluster-beta",
+        start_time: "2025-07-07T10:00:00",
+        end_time: "2025-07-07T10:45:00",
+        client: { id: "client-beta", full_name: "Beta Client" },
+      });
+      const onRescheduleSession = vi.fn();
+
+      const { container } = render(
+        <ScheduleWeekView
+          weekDays={[sourceDay, targetDay]}
+          timeSlots={["09:00", "09:15", "10:00", "10:15"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[ordinary, alpha, beta]}
+          useImprovedAppointmentLayout
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+          onRescheduleSession={onRescheduleSession}
+          allowDragAndDrop
+          allowCreateInEmptySlot={false}
+        />,
+      );
+
+      const ordinaryCard = container.querySelector('[data-session-id="week-ordinary"]') as HTMLElement;
+      const ordinaryTarget = getSlotByDayAndTime(container, targetDay, "09:15");
+      expect(ordinaryCard.getAttribute("draggable")).toBe("true");
+      dragData.getData.mockReturnValueOnce("week-ordinary");
+      fireEvent.dragStart(ordinaryCard, { dataTransfer: dragData });
+      fireEvent.dragOver(ordinaryTarget!, { dataTransfer: dragData });
+      fireEvent.drop(ordinaryTarget!, { dataTransfer: dragData });
+
+      fireEvent.click(screen.getByRole("button", { name: /2 appointments/i }));
+      const clusterDialog = screen.getByRole("dialog", { name: /2 overlapping appointments/i });
+      const clusterRow = within(clusterDialog).getByRole("button", { name: /beta client/i });
+      const clusterTarget = getSlotByDayAndTime(container, targetDay, "10:15");
+      dragData.getData.mockReturnValueOnce("week-cluster-beta");
+      fireEvent.dragStart(clusterRow, { dataTransfer: dragData });
+      fireEvent.dragOver(clusterTarget!, { dataTransfer: dragData });
+      fireEvent.drop(clusterTarget!, { dataTransfer: dragData });
+
+      expect(onRescheduleSession).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ id: "week-ordinary" }),
+        expect.objectContaining({ time: "09:15", date: expect.any(Date) }),
+      );
+      expect(onRescheduleSession).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ id: "week-cluster-beta" }),
+        expect.objectContaining({ time: "10:15", date: expect.any(Date) }),
+      );
+    });
   });
 });

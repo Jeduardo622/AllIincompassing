@@ -1,8 +1,9 @@
 /* eslint-disable jsx-a11y/no-static-element-interactions */
-import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { addMinutes, differenceInMinutes, format, parseISO } from 'date-fns';
 import { Clock, Edit2, Plus } from 'lucide-react';
 import type { Session } from '../types';
+import { buildScheduleDayLayout, type ScheduleLayoutItem } from './schedule-layout';
 import { createSessionSlotKey } from './schedule-utils';
 import { getSessionStatusClasses, isScheduleSessionDragEligible } from './ScheduleSessionStatusStyles';
 
@@ -12,6 +13,11 @@ export type ScheduleSlotPosition = { date: Date; time: string };
 export type ScheduleDropPayload = { target: ScheduleSlotPosition; draggedSessionId?: string | null };
 
 const SLOT_DURATION_MINUTES = 15;
+const SLOT_HEIGHT_PX = 40;
+const OVERLAY_HORIZONTAL_INSET_PX = 4;
+const OVERLAY_VERTICAL_INSET_PX = 2;
+const NEUTRAL_CARD_CLASSES =
+  'bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800/80 dark:text-slate-100 dark:hover:bg-slate-700/80';
 
 function parseSlotInstant(day: Date, time: string): Date | null {
   const [hoursRaw, minutesRaw] = time.split(':');
@@ -51,6 +57,58 @@ function doesSessionOverlapSlot(session: Session, day: Date, time: string): bool
 
   const slotEnd = addMinutes(slotStart, SLOT_DURATION_MINUTES);
   return start < slotEnd && end > slotStart;
+}
+
+function getSessionDisplayName(session: Session): string {
+  return session.client?.full_name?.trim() || 'Appointment';
+}
+
+function getTherapistDisplayName(session: Session): string {
+  return session.therapist?.full_name?.trim() || 'Unassigned';
+}
+
+function getSafeSessionRange(session: Session): { label: string; start: Date | null; end: Date | null } {
+  const start = parseISO(session.start_time);
+  const end = parseISO(session.end_time);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+    return { label: 'Time unavailable', start: null, end: null };
+  }
+
+  return {
+    label: `${format(start, 'h:mm a')} - ${format(end, 'h:mm a')}`,
+    start,
+    end,
+  };
+}
+
+function getClusterLabel(sessions: readonly Session[]): string {
+  const validTimes = sessions
+    .map((session) => {
+      const range = getSafeSessionRange(session);
+      return range.start && range.end ? range : null;
+    })
+    .filter((range): range is { label: string; start: Date; end: Date } => range !== null);
+
+  if (validTimes.length === 0) {
+    return `${sessions.length} appointments, time unavailable`;
+  }
+
+  const earliest = validTimes.reduce((current, next) => (next.start < current ? next.start : current), validTimes[0].start);
+  const latest = validTimes.reduce((current, next) => (next.end > current ? next.end : current), validTimes[0].end);
+  return `${sessions.length} appointments, ${format(earliest, 'h:mm a')} to ${format(latest, 'h:mm a')}`;
+}
+
+function getSessionSourcePosition(session: Session): ScheduleSlotPosition | null {
+  const start = parseISO(session.start_time);
+  if (Number.isNaN(start.getTime())) {
+    return null;
+  }
+
+  return {
+    date: start,
+    time: format(start, 'HH:mm'),
+  };
 }
 
 /**
@@ -146,7 +204,7 @@ export const TimeSlot = React.memo(
     const enableSlotCreateChrome = allowCreateInEmptySlot;
 
     const handleSlotClick = useCallback(() => {
-      if (!hasFinePointer && allowDragAndDrop && activeDragSessionId !== null) {
+      if (!hasFinePointer && allowDragAndDrop && (!enableSlotCreateChrome || activeDragSessionId !== null)) {
         onSessionDrop?.({ target: { date: day, time }, draggedSessionId: activeDragSessionId });
         return;
       }
@@ -437,6 +495,373 @@ export const TimeSlot = React.memo(
 
 TimeSlot.displayName = 'TimeSlot';
 
+function OverlaySessionCard({
+  session,
+  onEditSession,
+  allowDragAndDrop = false,
+  activeDragSessionId = null,
+  onStartSessionDrag,
+  onEndSessionDrag,
+  className = '',
+  showStatus = false,
+  buttonRef,
+}: {
+  session: Session;
+  onEditSession: ScheduleEditSessionHandler;
+  allowDragAndDrop?: boolean;
+  activeDragSessionId?: string | null;
+  onStartSessionDrag?: (session: Session, source: ScheduleSlotPosition) => void;
+  onEndSessionDrag?: () => void;
+  className?: string;
+  showStatus?: boolean;
+  buttonRef?: React.Ref<HTMLButtonElement>;
+}) {
+  const hasFinePointer = useHasFinePointer();
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressSessionClickRef = useRef(false);
+  const sourcePosition = useMemo(() => getSessionSourcePosition(session), [session]);
+  const statusStyles = getSessionStatusClasses(session.status);
+  const dragEligibleSession = isScheduleSessionDragEligible(session.status);
+  const touchMovePickup = !hasFinePointer && allowDragAndDrop && dragEligibleSession && sourcePosition !== null;
+  const canDragWithFinePointer = allowDragAndDrop && hasFinePointer && dragEligibleSession && sourcePosition !== null;
+  const range = getSafeSessionRange(session);
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressOriginRef.current = null;
+  }, []);
+
+  useEffect(() => clearLongPressTimer, [clearLongPressTimer]);
+
+  useEffect(() => {
+    if (activeDragSessionId === null) {
+      suppressSessionClickRef.current = false;
+    }
+  }, [activeDragSessionId]);
+
+  const startDrag = useCallback(() => {
+    if (!sourcePosition) {
+      return;
+    }
+    onStartSessionDrag?.(session, sourcePosition);
+  }, [onStartSessionDrag, session, sourcePosition]);
+
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      data-session-status={session.status}
+      data-session-id={session.id}
+      draggable={canDragWithFinePointer}
+      aria-grabbed={allowDragAndDrop && activeDragSessionId === session.id}
+      title={touchMovePickup ? 'Press and hold to move, then tap a time slot. Tap again to cancel.' : undefined}
+      onDragStart={
+        canDragWithFinePointer
+          ? (event) => {
+              event.stopPropagation();
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', session.id);
+              startDrag();
+            }
+          : undefined
+      }
+      onDragEnd={canDragWithFinePointer ? () => onEndSessionDrag?.() : undefined}
+      onPointerDown={
+        touchMovePickup
+          ? (event) => {
+              if (event.pointerType === 'mouse' && typeof event.button === 'number' && event.button !== 0) {
+                return;
+              }
+              clearLongPressTimer();
+              longPressOriginRef.current = { x: Number(event.clientX), y: Number(event.clientY) };
+              longPressTimerRef.current = setTimeout(() => {
+                longPressTimerRef.current = null;
+                longPressOriginRef.current = null;
+                suppressSessionClickRef.current = true;
+                startDrag();
+              }, 480);
+            }
+          : undefined
+      }
+      onPointerMove={
+        touchMovePickup
+          ? (event) => {
+              if (longPressTimerRef.current === null || !longPressOriginRef.current) {
+                return;
+              }
+              const currentX = Number(event.clientX);
+              const currentY = Number(event.clientY);
+              const dx = currentX - longPressOriginRef.current.x;
+              const dy = currentY - longPressOriginRef.current.y;
+              if (dx * dx + dy * dy > 100) {
+                clearLongPressTimer();
+              }
+            }
+          : undefined
+      }
+      onPointerUp={touchMovePickup ? () => clearLongPressTimer() : undefined}
+      onPointerLeave={touchMovePickup ? () => clearLongPressTimer() : undefined}
+      onPointerCancel={
+        touchMovePickup
+          ? () => {
+              clearLongPressTimer();
+              if (activeDragSessionId === session.id) {
+                suppressSessionClickRef.current = false;
+                onEndSessionDrag?.();
+              }
+            }
+          : undefined
+      }
+      onClick={(event) => {
+        if (suppressSessionClickRef.current) {
+          event.preventDefault();
+          event.stopPropagation();
+          suppressSessionClickRef.current = false;
+          return;
+        }
+        if (allowDragAndDrop && activeDragSessionId === session.id) {
+          event.preventDefault();
+          event.stopPropagation();
+          onEndSessionDrag?.();
+          return;
+        }
+        onEditSession(session);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onEditSession(session);
+        }
+      }}
+      className={`${statusStyles.card} ${className} group/session relative z-10 w-full rounded px-2 py-1 text-left text-xs transition-colors ${
+        allowDragAndDrop && dragEligibleSession
+          ? hasFinePointer
+            ? 'cursor-grab active:cursor-grabbing'
+            : 'cursor-pointer'
+          : 'cursor-pointer'
+      } ${activeDragSessionId === session.id ? 'opacity-50 ring-2 ring-blue-400 ring-offset-1 dark:ring-offset-gray-900' : ''}`}
+    >
+      <div className="truncate font-medium">{getSessionDisplayName(session)}</div>
+      <div className={`${statusStyles.secondary} truncate`}>{getTherapistDisplayName(session)}</div>
+      <div className={`flex items-center ${statusStyles.time}`}>
+        <Clock className="mr-1 h-3 w-3" />
+        {range.label}
+      </div>
+      {showStatus ? <div className="mt-0.5 text-[11px] uppercase tracking-wide">{String(session.status).trim().toLowerCase()}</div> : null}
+      <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1 opacity-0 group-hover/session:opacity-100">
+        <Edit2 className="h-3 w-3" />
+      </span>
+    </button>
+  );
+}
+
+function InvalidSessionFallback({ session, top }: { session: Session; top: number }) {
+  return (
+    <div
+      className={`absolute left-1 right-1 rounded px-2 py-1 text-xs shadow-sm ${NEUTRAL_CARD_CLASSES}`}
+      style={{ top }}
+    >
+      <div className="truncate font-medium">{getSessionDisplayName(session)}</div>
+      <div className="truncate text-slate-600 dark:text-slate-300">{getTherapistDisplayName(session)}</div>
+      <div className="flex items-center text-slate-700 dark:text-slate-200">
+        <Clock className="mr-1 h-3 w-3" />
+        Time unavailable
+      </div>
+    </div>
+  );
+}
+
+function ScheduleOverlayItem({
+  item,
+  onEditSession,
+  allowDragAndDrop = false,
+  activeDragSessionId = null,
+  onStartSessionDrag,
+  onEndSessionDrag,
+}: {
+  item: ScheduleLayoutItem;
+  onEditSession: ScheduleEditSessionHandler;
+  allowDragAndDrop?: boolean;
+  activeDragSessionId?: string | null;
+  onStartSessionDrag?: (session: Session, source: ScheduleSlotPosition) => void;
+  onEndSessionDrag?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const firstRowRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (dialogRef.current?.contains(target) || triggerRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    firstRowRef.current?.focus();
+  }, [open]);
+
+  const style = {
+    top: item.topRows * SLOT_HEIGHT_PX + OVERLAY_VERTICAL_INSET_PX,
+    height: item.spanRows * SLOT_HEIGHT_PX - OVERLAY_VERTICAL_INSET_PX * 2,
+    left: OVERLAY_HORIZONTAL_INSET_PX,
+    right: OVERLAY_HORIZONTAL_INSET_PX,
+  };
+
+  if (item.kind === 'appointment') {
+    return (
+      <div
+        className="pointer-events-auto absolute"
+        data-layout-kind="appointment"
+        data-clipped-start={item.clippedStart ? 'true' : 'false'}
+        data-clipped-end={item.clippedEnd ? 'true' : 'false'}
+        style={style}
+      >
+        <OverlaySessionCard
+          session={item.session}
+          onEditSession={onEditSession}
+          allowDragAndDrop={allowDragAndDrop}
+          activeDragSessionId={activeDragSessionId}
+          onStartSessionDrag={onStartSessionDrag}
+          onEndSessionDrag={onEndSessionDrag}
+          className="h-full shadow-sm"
+        />
+      </div>
+    );
+  }
+
+  const clusterLabel = getClusterLabel(item.sessions);
+
+  return (
+    <div className="pointer-events-auto absolute z-20" data-layout-kind="cluster" style={style}>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? `schedule-cluster-${item.sessions.map((session) => session.id).join('-')}` : undefined}
+        onClick={() => setOpen((current) => !current)}
+        className={`h-full w-full rounded px-2 py-1 text-left text-xs shadow-sm ${NEUTRAL_CARD_CLASSES}`}
+      >
+        <div className="font-medium">{item.sessions.length} appointments</div>
+        <div className="truncate text-[11px]">{clusterLabel.replace(/^\d+ appointments, /i, '')}</div>
+      </button>
+
+      {open ? (
+        <div
+          id={`schedule-cluster-${item.sessions.map((session) => session.id).join('-')}`}
+          ref={dialogRef}
+          role="dialog"
+          aria-label={`${item.sessions.length} overlapping appointments`}
+          tabIndex={-1}
+          className="absolute left-0 top-0 z-30 min-w-[16rem] max-w-[20rem] rounded-lg border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        >
+          <div className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">{clusterLabel}</div>
+          <div className="space-y-2">
+            {item.sessions.map((session, index) => (
+              <OverlaySessionCard
+                key={session.id}
+                session={session}
+                onEditSession={onEditSession}
+                allowDragAndDrop={allowDragAndDrop}
+                activeDragSessionId={activeDragSessionId}
+                onStartSessionDrag={onStartSessionDrag}
+                onEndSessionDrag={onEndSessionDrag}
+                className="shadow-none"
+                showStatus
+                buttonRef={index === 0 ? firstRowRef : undefined}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ScheduleOverlayColumn({
+  day,
+  scheduleSessions,
+  onEditSession,
+  allowDragAndDrop = false,
+  activeDragSessionId = null,
+  onStartSessionDrag,
+  onEndSessionDrag,
+  showInvalidSessions = true,
+}: {
+  day: Date;
+  scheduleSessions: readonly Session[];
+  onEditSession: ScheduleEditSessionHandler;
+  allowDragAndDrop?: boolean;
+  activeDragSessionId?: string | null;
+  onStartSessionDrag?: (session: Session, source: ScheduleSlotPosition) => void;
+  onEndSessionDrag?: () => void;
+  showInvalidSessions?: boolean;
+}) {
+  const { items, invalidSessions } = useMemo(
+    () => buildScheduleDayLayout(scheduleSessions, day),
+    [day, scheduleSessions],
+  );
+
+  return (
+    <div className="pointer-events-none absolute inset-0">
+      {items.map((item) => (
+        <ScheduleOverlayItem
+          key={item.kind === 'appointment' ? item.session.id : item.sessions.map((session) => session.id).join('|')}
+          item={item}
+          onEditSession={onEditSession}
+          allowDragAndDrop={allowDragAndDrop}
+          activeDragSessionId={activeDragSessionId}
+          onStartSessionDrag={onStartSessionDrag}
+          onEndSessionDrag={onEndSessionDrag}
+        />
+      ))}
+
+      {showInvalidSessions
+        ? invalidSessions.map((session, index) => (
+            <InvalidSessionFallback key={`invalid-${session.id}`} session={session} top={4 + index * 52} />
+          ))
+        : null}
+    </div>
+  );
+}
+
 export const DayColumn = React.memo(
   ({
     day,
@@ -456,6 +881,9 @@ export const DayColumn = React.memo(
     previewSessionId = null,
     onHoverPreviewSessionChange,
     onFocusPreviewSessionChange,
+    useImprovedAppointmentLayout = false,
+    scheduleSessions = [],
+    showInvalidSessions = true,
   }: {
     day: Date;
     timeSlots: string[];
@@ -474,6 +902,9 @@ export const DayColumn = React.memo(
     previewSessionId?: string | null;
     onHoverPreviewSessionChange?: (session: Session | null) => void;
     onFocusPreviewSessionChange?: (session: Session | null) => void;
+    useImprovedAppointmentLayout?: boolean;
+    scheduleSessions?: readonly Session[];
+    showInvalidSessions?: boolean;
   }) => {
     const dayKey = useMemo(() => format(day, 'yyyy-MM-dd'), [day]);
 
@@ -484,7 +915,7 @@ export const DayColumn = React.memo(
             key={time}
             time={time}
             day={day}
-            slotSessions={sessionSlotIndex.get(createSessionSlotKey(dayKey, time)) ?? []}
+            slotSessions={useImprovedAppointmentLayout ? [] : (sessionSlotIndex.get(createSessionSlotKey(dayKey, time)) ?? [])}
             onCreateSession={onCreateSession}
             onEditSession={onEditSession}
             allowCreateInEmptySlot={allowCreateInEmptySlot}
@@ -501,6 +932,18 @@ export const DayColumn = React.memo(
             onFocusPreviewSessionChange={onFocusPreviewSessionChange}
           />
         ))}
+        {useImprovedAppointmentLayout ? (
+          <ScheduleOverlayColumn
+            day={day}
+            scheduleSessions={scheduleSessions}
+            onEditSession={onEditSession}
+            allowDragAndDrop={allowDragAndDrop}
+            activeDragSessionId={activeDragSessionId}
+            onStartSessionDrag={onStartSessionDrag}
+            onEndSessionDrag={onEndSessionDrag}
+            showInvalidSessions={showInvalidSessions}
+          />
+        ) : null}
       </div>
     );
   },

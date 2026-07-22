@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { format, parseISO } from 'date-fns';
 import type { Session } from '../types';
 import {
-  TimeSlot,
+  DayColumn,
   type ScheduleDropPayload,
   type ScheduleEditSessionHandler,
   type ScheduleSlotPosition,
@@ -14,6 +14,8 @@ interface ScheduleDayViewProps {
   selectedDate: Date;
   timeSlots: string[];
   sessionSlotIndex: Map<string, Session[]>;
+  scheduleSessions?: readonly Session[];
+  useImprovedAppointmentLayout?: boolean;
   onCreateSession: ScheduleTimeSlotHandler;
   onEditSession: ScheduleEditSessionHandler;
   onRescheduleSession?: (session: Session, target: ScheduleSlotPosition) => void;
@@ -25,28 +27,37 @@ const ScheduleDayViewComponent: React.FC<ScheduleDayViewProps> = ({
   selectedDate,
   timeSlots,
   sessionSlotIndex,
+  scheduleSessions,
+  useImprovedAppointmentLayout = false,
   onCreateSession,
   onEditSession,
   onRescheduleSession,
   allowCreateInEmptySlot = true,
   allowDragAndDrop = false,
 }) => {
-  const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
   const [draggedSession, setDraggedSession] = useState<Session | null>(null);
   const [dropSlotKey, setDropSlotKey] = useState<string | null>(null);
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const draggedSessionRef = useRef<Session | null>(null);
   const sourceSlotKeyRef = useRef<string | null>(null);
-  const sessionsById = useMemo(() => {
-    const next = new Map<string, Session>();
+  const renderedScheduleSessions = useMemo(() => {
+    if (scheduleSessions && scheduleSessions.length > 0) {
+      return [...scheduleSessions];
+    }
+    const next: Session[] = [];
     for (const slotSessions of sessionSlotIndex.values()) {
-      for (const session of slotSessions) {
-        next.set(session.id, session);
-      }
+      next.push(...slotSessions);
     }
     return next;
-  }, [sessionSlotIndex]);
+  }, [scheduleSessions, sessionSlotIndex]);
+  const sessionsById = useMemo(() => {
+    const next = new Map<string, Session>();
+    for (const session of renderedScheduleSessions) {
+      next.set(session.id, session);
+    }
+    return next;
+  }, [renderedScheduleSessions]);
   const previewSessionId = focusedSessionId ?? hoveredSessionId;
   const previewSession = previewSessionId ? sessionsById.get(previewSessionId) ?? null : null;
 
@@ -135,30 +146,28 @@ const ScheduleDayViewComponent: React.FC<ScheduleDayViewProps> = ({
           ))}
         </div>
 
-        <div className="relative">
-          {timeSlots.map((time) => (
-            <TimeSlot
-              key={time}
-              time={time}
-              day={selectedDate}
-              slotSessions={sessionSlotIndex.get(createSessionSlotKey(selectedDateKey, time)) ?? []}
-              onCreateSession={onCreateSession}
-              onEditSession={onEditSession}
-              allowCreateInEmptySlot={allowCreateInEmptySlot}
-              allowDragAndDrop={allowDragAndDrop}
-              activeDragSessionId={draggedSession?.id ?? null}
-              activeDropSlotKey={dropSlotKey}
-              onStartSessionDrag={handleStartSessionDrag}
-              onSessionDrop={handleDropOnSlot}
-              onHoverSlotDuringDrag={handleHoverSlotDuringDrag}
-              onEndSessionDrag={clearDragState}
-              previewSession={previewSession}
-              previewSessionId={previewSessionId}
-              onHoverPreviewSessionChange={(session) => setHoveredSessionId(session?.id ?? null)}
-              onFocusPreviewSessionChange={(session) => setFocusedSessionId(session?.id ?? null)}
-            />
-          ))}
-        </div>
+        <DayColumn
+          day={selectedDate}
+          timeSlots={timeSlots}
+          sessionSlotIndex={sessionSlotIndex}
+          onCreateSession={onCreateSession}
+          onEditSession={onEditSession}
+          allowCreateInEmptySlot={allowCreateInEmptySlot}
+          allowDragAndDrop={allowDragAndDrop}
+          activeDragSessionId={draggedSession?.id ?? null}
+          activeDropSlotKey={dropSlotKey}
+          onStartSessionDrag={handleStartSessionDrag}
+          onSessionDrop={handleDropOnSlot}
+          onHoverSlotDuringDrag={handleHoverSlotDuringDrag}
+          onEndSessionDrag={clearDragState}
+          previewSession={previewSession}
+          previewSessionId={previewSessionId}
+          onHoverPreviewSessionChange={(session) => setHoveredSessionId(session?.id ?? null)}
+          onFocusPreviewSessionChange={(session) => setFocusedSessionId(session?.id ?? null)}
+          useImprovedAppointmentLayout={useImprovedAppointmentLayout}
+          scheduleSessions={renderedScheduleSessions}
+          showInvalidSessions
+        />
       </div>
     </div>
   );

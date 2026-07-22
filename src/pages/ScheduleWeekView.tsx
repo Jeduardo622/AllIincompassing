@@ -14,6 +14,8 @@ interface ScheduleWeekViewProps {
   weekDays: Date[];
   timeSlots: string[];
   sessionSlotIndex: Map<string, Session[]>;
+  scheduleSessions?: readonly Session[];
+  useImprovedAppointmentLayout?: boolean;
   onCreateSession: ScheduleTimeSlotHandler;
   onEditSession: ScheduleEditSessionHandler;
   onRescheduleSession?: (session: Session, target: ScheduleSlotPosition) => void;
@@ -25,6 +27,8 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
   weekDays,
   timeSlots,
   sessionSlotIndex,
+  scheduleSessions,
+  useImprovedAppointmentLayout = false,
   onCreateSession,
   onEditSession,
   onRescheduleSession,
@@ -37,15 +41,23 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const draggedSessionRef = useRef<Session | null>(null);
   const sourceSlotKeyRef = useRef<string | null>(null);
-  const sessionsById = useMemo(() => {
-    const next = new Map<string, Session>();
+  const renderedScheduleSessions = useMemo(() => {
+    if (scheduleSessions && scheduleSessions.length > 0) {
+      return [...scheduleSessions];
+    }
+    const next: Session[] = [];
     for (const slotSessions of sessionSlotIndex.values()) {
-      for (const session of slotSessions) {
-        next.set(session.id, session);
-      }
+      next.push(...slotSessions);
     }
     return next;
-  }, [sessionSlotIndex]);
+  }, [scheduleSessions, sessionSlotIndex]);
+  const sessionsById = useMemo(() => {
+    const next = new Map<string, Session>();
+    for (const session of renderedScheduleSessions) {
+      next.set(session.id, session);
+    }
+    return next;
+  }, [renderedScheduleSessions]);
   const previewSessionId = focusedSessionId ?? hoveredSessionId;
   const previewSession = previewSessionId ? sessionsById.get(previewSessionId) ?? null : null;
 
@@ -160,6 +172,9 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
             previewSessionId={previewSessionId}
             onHoverPreviewSessionChange={(session) => setHoveredSessionId(session?.id ?? null)}
             onFocusPreviewSessionChange={(session) => setFocusedSessionId(session?.id ?? null)}
+            useImprovedAppointmentLayout={useImprovedAppointmentLayout}
+            scheduleSessions={renderedScheduleSessions}
+            showInvalidSessions={useImprovedAppointmentLayout ? day.getTime() === weekDays[0]?.getTime() : true}
           />
         ))}
       </div>

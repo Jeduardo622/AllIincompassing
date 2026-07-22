@@ -135,7 +135,7 @@ None of the four failures reference the WIN-239 production or focused test files
 
 - Branch: `codex/win-239-schedule-overlap-layout`
 - Tracking: WIN-239 is In Review and links PR #835
-- Scope: schedule day/week presentation, its pure layout helper, focused tests, and this handoff only
+- Scope: schedule day/week presentation, its pure layout helper and focused tests, plus the later user-authorized Playwright fixture retry-distribution follow-through documented below
 - Protected-path drift: none
 - Specialist review: code review approved; UI/accessibility review approved; test audit approved the objective-specific coverage
 - Unrelated workspace files: excluded from staging
@@ -184,7 +184,7 @@ Review-fix verification card:
 
 - Classification: low-risk autonomous
 - Lane: standard
-- Changed surfaces: `ScheduleCalendarViewShared.tsx`, day/week focused drag tests, and this handoff
+- Changed surfaces for this earlier review-fix stage: `ScheduleCalendarViewShared.tsx`, day/week focused drag tests, and this handoff; the later CI follow-through expands the current PR surface as documented in its own section below
 - `npm run ci:check-focused`: passed
 - `npm run lint`: passed
 - `npm run typecheck`: passed
@@ -193,3 +193,40 @@ Review-fix verification card:
 - `npm run verify:local`: executed; passed policy, lint, and typecheck, then stopped in `test:ci` on six unrelated repository-baseline failures outside the WIN-239 files
 - Result: schedule-scoped and static checks pass; aggregate repository contract remains blocked outside this review-fix scope
 - Residual risk: jsdom cannot perform browser hit testing itself, so the pointer-event regression asserts the CSS hit-test contract and the actual reschedule path; the refreshed Netlify preview remains the browser-level review surface
+
+## PR #835 auth-browser-smoke follow-through
+
+The first live CI attempt failed in `playwright:schedule-blocked-close` before its browser assertions. Its shared fixture exhausted HTTP 409 booking responses across 12 adjacent candidate slots for each of three distinct therapist/client pairs, then hit the 240-second `book-session` step timeout. The PR does not change `/api/book`, conflict policy, auth, or production session persistence.
+
+Fresh routing for the user-requested CI fix remains:
+
+- Classification: low-risk autonomous
+- Lane: standard
+- Allowed surfaces: the shared Playwright in-progress fixture, its focused pure tests, and this handoff
+- Non-goals: production booking/conflict behavior, strict-parity fallback, auth/session authority, workflow configuration, server/API code, Supabase, Netlify, and schedule UI behavior
+- Stop conditions: any required production or protected-path change
+
+The bounded harness fix keeps the 12-attempt budget and strict `/api/book` parity, but distributes those attempts across 12 distinct rendered days while rotating the same visible grid hours. This replaces the previous concentration into roughly three adjacent rendered days and remains inside the existing 12-week session-search horizon.
+
+TDD evidence:
+
+- the focused attempt-distribution test first failed because `buildInProgressSessionBookingAttemptStart` did not exist;
+- the new pure helper and the browser fixture now share the distributed sequence;
+- `src/scripts/__tests__/playwrightInprogressSessionSetup.test.ts`: 8 passed;
+- `tests/scripts/playwright-schedule-session-modal.test.ts`: 19 passed.
+
+CI-fix verification card:
+
+- `src/scripts/__tests__/playwrightInprogressSessionSetup.test.ts` plus `tests/scripts/playwright-schedule-session-modal.test.ts`: passed, 27 tests;
+- `npm run ci:check-focused`: passed; database-backed checks skipped without a configured database URL;
+- `npm run lint`: passed;
+- `npm run typecheck`: passed;
+- `npm run build`: passed;
+- `npm run test:routes:tier0`: passed, 220 tests across seven Cypress specs;
+- `npm run test:ci`: executed and failed on six repository-baseline assertions outside the changed fixture/test files;
+- `npm run verify:local`: passed policy, lint, and typecheck, then stopped at `test:ci` on four unrelated baseline assertions; later stages were not reached;
+- code review: approved after the handoff scope was made internally consistent;
+- result: changed-surface verification passes; aggregate local verification remains failed outside this slice;
+- residual risk: only hosted `auth-browser-smoke` can prove the wider retry distribution against the shared synthetic environment.
+
+The user-authorized failed-job rerun still used pre-fix commit `bb83d0a0` and reproduced the same concentrated 409 exhaustion. The new helper must be pushed before GitHub can evaluate it.

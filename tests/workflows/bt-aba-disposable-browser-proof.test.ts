@@ -117,12 +117,13 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     const checkoutStep = findStep(proof, 'Checkout validated commit');
     const identifierStep = findStep(proof, 'Validate managed preview identifiers');
     const createStep = findStep(proof, 'Validate managed PR preview branch and retrieve masked keys');
+    const deploymentStep = findStep(proof, 'Validate exact managed preview deployment');
     const fixtureStep = findStep(proof, 'Provision marker-owned synthetic fixture');
     const previewStep = findStep(proof, 'Launch protected preview and wait for health');
     const browserStep = findStep(proof, 'Run completed ABA read-only browser proof');
 
     expect(proof?.needs).toBe('validate');
-    expect(proof?.permissions).toEqual({ contents: 'read' });
+    expect(proof?.permissions).toEqual({ checks: 'read', contents: 'read', 'pull-requests': 'read' });
     expect(proofSource).not.toContain('${{ inputs.');
     expect(checkoutStep?.with).toMatchObject({
       ref: '${{ needs.validate.outputs.validated_sha }}',
@@ -134,6 +135,16 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(createStep?.env).toEqual({
       SUPABASE_ACCESS_TOKEN: '${{ secrets.SUPABASE_ACCESS_TOKEN }}',
     });
+    expect(deploymentStep?.env).toEqual({
+      EXPECTED_SHA: '${{ needs.validate.outputs.validated_sha }}',
+      GITHUB_TOKEN: '${{ github.token }}',
+      PULL_REQUEST_NUMBER: '${{ needs.validate.outputs.validated_pr_number }}',
+      REPOSITORY: '${{ github.repository }}',
+    });
+    expect(deploymentStep?.run).toContain('pull.head?.sha !== expectedSha');
+    expect(deploymentStep?.run).toContain('/commits/${expectedSha}/check-runs');
+    expect(deploymentStep?.run).toContain("run.name === 'Supabase Preview'");
+    expect(deploymentStep?.run).toContain("run.conclusion === 'success'");
     expect(createStep?.run).toContain('install -m 600 /dev/null "$PRIVATE_BRANCH_ENV"');
     expect(createStep?.run).toContain('GITHUB_ENV="$PRIVATE_BRANCH_ENV" npm run bt-aba:disposable-branch -- --managed-preview');
     expect(createStep?.run).toContain("'SUPABASE_BRANCH_ID'");
@@ -219,8 +230,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(source).toContain('fixture_cleanup=passed');
     expect(source).toContain('if [ "$SUPABASE_BRANCH_NAME" = "codex/win-232-hosted-visual-proof" ]; then');
     expect(source).toContain('elif [ "$SUPABASE_BRANCH_NAME" = "codex/return-bt-correction" ]; then');
-    expect(source).not.toContain("elif [ \"$SUPABASE_BRANCH_NAME\" = \"codex/return-bt-correction\" ]; then\r\n            npm run playwright:bt-aba-session-note");
-    expect(source).not.toContain("elif [ \"$SUPABASE_BRANCH_NAME\" = \"codex/return-bt-correction\" ]; then\n            npm run playwright:bt-aba-session-note");
+    expect(source).toContain('elif [ "$SUPABASE_BRANCH_NAME" = "codex/return-bt-correction" ]; then\n            npm run playwright:bt-aba-session-note');
     expect(source).toContain('npm run playwright:supervision-correction');
     expect(source).toContain('supervision_correction_browser_proof=passed');
     expect(source).toContain('WIN-232-completed-aba-note-read-only.png');

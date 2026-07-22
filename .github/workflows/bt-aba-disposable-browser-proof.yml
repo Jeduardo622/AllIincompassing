@@ -110,7 +110,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
+      checks: read
       contents: read
+      pull-requests: read
     env:
       SUPABASE_PARENT_PROJECT_REF: wnnjeqheqxxyrgsjmygy
       SUPABASE_BRANCH_NAME: ${{ needs.validate.outputs.validated_branch_name }}
@@ -161,6 +163,43 @@ jobs:
             echo "::error::Managed preview discovery inputs are incomplete."
             exit 1
           fi
+
+      - name: Validate exact managed preview deployment
+        env:
+          EXPECTED_SHA: ${{ needs.validate.outputs.validated_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          const expectedSha = process.env.EXPECTED_SHA ?? '';
+          const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
+          const repository = process.env.REPOSITORY ?? '';
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+          };
+          const pullResponse = await fetch(`https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}`, { headers });
+          if (!pullResponse.ok) throw new Error(`Unable to revalidate pull request: HTTP ${pullResponse.status}.`);
+          const pull = await pullResponse.json();
+          if (pull.state !== 'open' || pull.head?.sha !== expectedSha) {
+            throw new Error('Pull request head changed after immutable validation.');
+          }
+          const checksResponse = await fetch(
+            `https://api.github.com/repos/${repository}/commits/${expectedSha}/check-runs?filter=latest&per_page=100`,
+            { headers },
+          );
+          if (!checksResponse.ok) throw new Error(`Unable to validate preview deployment: HTTP ${checksResponse.status}.`);
+          const checks = await checksResponse.json();
+          const matching = (checks.check_runs ?? []).filter((run) => run.name === 'Supabase Preview'
+            && run.head_sha === expectedSha
+            && run.status === 'completed'
+            && run.conclusion === 'success');
+          if (matching.length !== 1) {
+            throw new Error('Exact validated commit must have one successful Supabase Preview deployment check.');
+          }
+          NODE
 
       - name: Validate managed PR preview branch and retrieve masked keys
         env:
@@ -258,6 +297,7 @@ jobs:
             test -f "$RUNNER_TEMP/bt-aba-public-evidence/WIN-232-completed-aba-note-read-only.png"
             echo "completed_aba_read_only_browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
           elif [ "$SUPABASE_BRANCH_NAME" = "codex/return-bt-correction" ]; then
+            npm run playwright:bt-aba-session-note
             npm run playwright:supervision-correction
             echo "supervision_correction_browser_proof=passed" >> "$RUNNER_TEMP/bt-aba-public-evidence/evidence.txt"
           else

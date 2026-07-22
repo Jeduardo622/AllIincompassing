@@ -133,9 +133,16 @@ const assertCompletedReadOnlyDialog = async (
 ): Promise<void> => {
   await dialog.getByRole("heading", { name: "Completed ABA Session Note", exact: true }).waitFor({ state: "visible" });
   await dialog.getByText("Review the finalized session documentation.", { exact: true }).waitFor({ state: "visible" });
-  assert.equal(await dialog.getByLabel("Client Status", { exact: true }).inputValue(), marker);
-  assert.equal(await dialog.getByLabel("Summary of Progress Toward Treatment Goals", { exact: true }).inputValue(), progressSummary);
-  assert.equal(await dialog.getByLabel("Client's Response to Treatment", { exact: true }).inputValue(), responseSummary);
+  const clientStatus = dialog.getByLabel("Client Status", { exact: true });
+  const progress = dialog.getByLabel("Summary of Progress Toward Treatment Goals", { exact: true });
+  const response = dialog.getByLabel("Client's Response to Treatment", { exact: true });
+  assert.equal(await clientStatus.inputValue(), marker);
+  assert.equal(await progress.inputValue(), progressSummary);
+  assert.equal(await response.inputValue(), responseSummary);
+  assert.equal(await clientStatus.isDisabled(), true);
+  assert.equal(await progress.isDisabled(), true);
+  assert.equal(await response.isDisabled(), true);
+  await response.scrollIntoViewIfNeeded();
   assert.equal(await dialog.getByRole("button", { name: "Save Draft", exact: true }).count(), 0);
   assert.equal(await dialog.getByRole("button", { name: "Finalize Session", exact: true }).count(), 0);
   assert.doesNotMatch((await dialog.textContent()) ?? "", /loading finalized aba session note/i);

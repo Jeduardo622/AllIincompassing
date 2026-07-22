@@ -34,13 +34,17 @@ describe("BT ABA proof capture-response diagnostics", () => {
 
   it("asserts finalized marker-owned fields and read-only absences after reopening the completed dialog", () => {
     const source = readFileSync(path.join(process.cwd(), "scripts/playwright-bt-aba-session-note.ts"), "utf8");
-    expect(source).toContain('getByLabel("Client Status", { exact: true }).inputValue(), marker');
-    expect(source).toContain('getByLabel("Summary of Progress Toward Treatment Goals", { exact: true }).inputValue(), progressSummary');
-    expect(source).toContain('getByLabel("Client\'s Response to Treatment", { exact: true }).inputValue(), responseSummary');
+    expect(source).toContain('assert.equal(await clientStatus.inputValue(), marker)');
+    expect(source).toContain('assert.equal(await progress.inputValue(), progressSummary)');
+    expect(source).toContain('assert.equal(await response.inputValue(), responseSummary)');
     expect(source).toContain('getByRole("button", { name: "Save Draft", exact: true }).count(), 0');
     expect(source).toContain('getByRole("button", { name: "Finalize Session", exact: true }).count(), 0');
     expect(source).toContain('doesNotMatch((await dialog.textContent()) ?? "", /loading finalized aba session note/i)');
     expect(source).toContain('getByTestId("completed-bt-aba-note-unavailable").count(), 0');
+    expect(source).toContain('assert.equal(await clientStatus.isDisabled(), true)');
+    expect(source).toContain('assert.equal(await progress.isDisabled(), true)');
+    expect(source).toContain('assert.equal(await response.isDisabled(), true)');
+    expect(source).toContain('await response.scrollIntoViewIfNeeded()');
   });
 
   it("uses exact deep links for closeout and calendar navigation only for the completed-card proof", () => {

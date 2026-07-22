@@ -31,6 +31,7 @@
 - PASS: `npm run test:routes:tier0`, 220 Cypress checks after clearing an orphaned local preview process on `127.0.0.1:4173`.
 - PASS: `completed_aba_note.cy.ts`, 1 synthetic browser check with screenshot evidence of populated read-only responses.
 - PASS: `npm run build`.
+- PASS: post-review hosted-proof regression suite, 59 tests; the legacy WIN-224 path now runs its BT-note prerequisite, preview proof is bound to a successful `Supabase Preview` check for the immutable PR head, and the completed-note artifact asserts disabled populated controls after scrolling the response field into view.
 - PASS: authorized hosted migration application to Supabase project `wnnjeqheqxxyrgsjmygy`; the ledger records version `20260721172928` with logical name `bt_aba_completed_note_latest_amendment`.
 - PASS: hosted RPC contract verification confirmed the function exists, `anon` execute is denied, `authenticated` and `service_role` execute are allowed, and the latest-amendment query remains scoped to the original BT note.
 - PASS: hosted Supabase security/performance advisors completed. The RPC warning reflects its intentional authenticated `security definer` API surface protected by exact-BT and organization checks; amendment-table index advisories pre-date and are outside this bounded function replacement.
@@ -61,7 +62,7 @@
 - Protected path: `supabase/migrations/20260721165120_bt_aba_completed_note_latest_amendment.sql`.
 - Tenant boundary: unchanged exact-BT and organization authorization; request lookup is scoped by session, organization, client, and BT therapist; amendment lookup is scoped by request, organization, and original note.
 - Required agents: software architect, security engineer, Supabase reviewer, test engineer, and code reviewer. Security and Supabase review approved the implemented diff with no findings; human Supabase/security review remains mandatory before merge.
-- Linear: WIN-232 is linked to PR #826.
+- Linear: WIN-232 is linked to merged implementation PR #826 and hosted-proof follow-up PR #831.
 
 ### Hosted-proof follow-up route
 

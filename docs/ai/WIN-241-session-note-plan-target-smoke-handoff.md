@@ -13,6 +13,22 @@
 - Triggering surface: Playwright smoke behavior in `scripts/playwright-session-note-measurement-roundtrip.ts`
 - Linear: [WIN-241](https://linear.app/winningedgeai/issue/WIN-241/repair-session-note-measurement-smoke-after-plan-target-dedup)
 
+## Required Handoff Card
+
+- `classification`: low-risk autonomous
+- `lane`: standard
+- `files touched`:
+  - `scripts/playwright-session-note-measurement-roundtrip.ts`
+  - `tests/ci/check-e2e-reliability-gates.test.ts`
+  - `docs/ai/WIN-241-session-note-plan-target-smoke-handoff.md`
+- `required agents`: specification-engineer -> implementation-engineer -> code-review-engineer -> test-engineer
+- `required checks`: focused reliability-gate regression; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run build`; local or hosted session-note browser proof
+- `executed checks`: focused regression -> pass; `npm run ci:check-focused` -> pass; `npm run lint` -> pass; `npm run typecheck` -> pass; `npm run test:ci` -> fail on four unrelated baseline failures; `npm run build` -> pass; local browser proof -> blocked before launch by missing credentials
+- `blocked checks`: local browser proof -> protected Supabase and smoke credentials unavailable; hosted `auth-browser-smoke` -> pending on PR #836
+- `reviewer`: completed; no source-level code finding, handoff completeness finding addressed in this document
+- `residual risk`: secret-backed hosted browser behavior is not proven until PR #836 reports a green `auth-browser-smoke`
+- `pr handoff`: missing prerequisite until hosted `auth-browser-smoke` passes and required PR checks complete
+
 ## Verification Card
 
 - Classification: low-risk autonomous

@@ -4,6 +4,8 @@
 
 **Linear:** [WIN-239](https://linear.app/winningedgeai/issue/WIN-239/improve-admin-dayweek-schedule-duration-and-crowded-overlap-rendering)
 
+**Pull request:** [#835](https://github.com/Jeduardo622/AllIincompassing/pull/835) (open and intentionally unmerged)
+
 **Goal:** Make eligible admin schedule day/week views show real appointment duration and compact true-overlap clusters without changing scheduling authority, persistence, or established rescheduling gestures.
 
 **Architecture:** Add a schedule-local pure layout helper that parses, clips, sorts, and groups appointments for one calendar day. Keep existing 15-minute slot elements as the create/drop target layer, and add a positioned appointment overlay for the four eligible roles. Reuse the existing edit and reschedule callbacks from ordinary cards and cluster rows.
@@ -101,7 +103,7 @@ export const canUseImprovedScheduleLayout = (role: string | null | undefined): b
 - [x] Run `npm run verify:local` when secret-free and locally meaningful: executed; stopped at the same four `test:ci` failures.
 - [x] Run browser/Playwright proof with synthetic data when locally available; not run because this UI-only slice is fully exercised in jsdom and the hosted/auth browser path requires protected credentials.
 - [x] Complete repo-local `verify-change` and `pr-hygiene` cards below.
-- [ ] Push the branch, open an unmerged PR, update WIN-239, and report live check state.
+- [x] Push the branch, open unmerged PR #835, move WIN-239 to In Review, and record live check state.
 
 ## Verification card
 
@@ -121,22 +123,25 @@ export const canUseImprovedScheduleLayout = (role: string | null | undefined): b
 - Result: fail for the aggregate repository contract; pass for all required schedule-scoped and static checks
 - Residual risk: live CI must distinguish the current repository-baseline failures from this isolated UI diff; the PR must remain unmerged
 
-Known aggregate-suite failures:
+The aggregate run reported four failures across these unrelated baseline areas:
 
 - `tests/workflows/bt-aba-disposable-browser-proof.test.ts`: checked-in workflow no longer contains all branch-specific strings expected by the test
 - `src/lib/__tests__/supabase.edge.test.ts`: jsdom Blob instance does not expose `blob.text()`
 - `tests/ci/check-e2e-reliability-gates.test.ts`: checked-in workflow content does not contain the expected synthetic provisioning environment entry
-- one additional workflow-contract assertion reported by the same aggregate run; none of the four failures reference the WIN-239 production or focused test files
+
+None of the four failures reference the WIN-239 production or focused test files.
 
 ## PR hygiene card
 
 - Branch: `codex/win-239-schedule-overlap-layout`
-- Tracking: WIN-239 exists and is in progress
+- Tracking: WIN-239 is In Review and links PR #835
 - Scope: schedule day/week presentation, its pure layout helper, focused tests, and this handoff only
 - Protected-path drift: none
 - Specialist review: code review approved; UI/accessibility review approved; test audit approved the objective-specific coverage
 - Unrelated workspace files: excluded from staging
 - PR-ready: yes for human review with aggregate failures disclosed; not merge-ready until live checks are known
+
+Initial PR state after opening: open, non-draft, mergeable, and GitHub merge state `BLOCKED` while required checks run. `change-scope` passed; policy, Lighthouse, Netlify validation, and deploy preview were pending; Supabase Preview was skipped for this UI-only diff. The GitHub connector was unauthorized, so authenticated local `gh` supplied this live fallback evidence.
 
 ## Self-review
 

@@ -211,7 +211,7 @@ describe("check-e2e-reliability-gates", () => {
     expect(content).toContain(targetLocator);
     expect(content).toContain(clickPlanTarget);
     expect(content).toContain(waitForTargetControl);
-    expect(content.indexOf(selectPlanTarget)).toBeLessThan(content.indexOf(waitForTargetControl));
+    expect(content.indexOf(clickPlanTarget)).toBeLessThan(content.indexOf(waitForTargetControl));
   });
 
   test("session note measurement filters the crowded schedule to its booked actor and client", () => {

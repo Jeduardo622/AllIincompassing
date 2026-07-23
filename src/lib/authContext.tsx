@@ -65,9 +65,18 @@ export interface UserProfile {
 
 type Role = UserProfile['role'];
 type RoleRow = { is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null };
+type AssignedRoleResolution = { role: Role | null; exactRoleNames: string[] };
 
 const toRole = (value: unknown): Role | null => {
   return normalizeRole(value);
+};
+
+const toExactRoleName = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return normalized.length > 0 ? normalized : null;
 };
 
 const roleOrder: readonly Role[] = [...APP_ROLES].sort((left, right) => ROLE_RANK[right] - ROLE_RANK[left]);
@@ -89,15 +98,20 @@ const roleRowIsActive = (isActive: unknown, expiresAt: unknown): boolean => {
   return parsed.getTime() > Date.now();
 };
 
-const resolveRoleFromRoleRows = (rows: RoleRow[]): Role | null => {
+const resolveRoleFromRoleRows = (rows: RoleRow[]): AssignedRoleResolution => {
   const granted = new Set<Role>();
+  const exactRoleNames = new Set<string>();
 
   for (const row of rows) {
     if (!roleRowIsActive(row.is_active, row.expires_at)) {
       continue;
     }
 
-    const parsed = toRole(row.roles?.name);
+    const exactRoleName = toExactRoleName(row.roles?.name);
+    if (exactRoleName) {
+      exactRoleNames.add(exactRoleName);
+    }
+    const parsed = toRole(exactRoleName);
     if (parsed) {
       granted.add(parsed);
     }
@@ -105,11 +119,11 @@ const resolveRoleFromRoleRows = (rows: RoleRow[]): Role | null => {
 
   for (const role of roleOrder) {
     if (granted.has(role)) {
-      return role;
+      return { role, exactRoleNames: [...exactRoleNames] };
     }
   }
 
-  return null;
+  return { role: null, exactRoleNames: [...exactRoleNames] };
 };
 
 const sanitizeSignupRoleMetadata = (value: unknown): 'client' | 'bt' => {
@@ -191,6 +205,7 @@ interface AuthContextType {
   profileLoading: boolean;
   metadataRole: Role | null;
   effectiveRole: Role;
+  isExactBt: boolean;
   roleMismatch: boolean;
   isGuardian?: boolean;
   authFlow: 'normal' | 'password_recovery';
@@ -231,6 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [roleFromAssignments, setRoleFromAssignments] = useState<Role | null>(null);
+  const [roleAssignmentNames, setRoleAssignmentNames] = useState<string[] | null>(null);
   const [authFlow, setAuthFlow] = useState<'normal' | 'password_recovery'>('normal');
   const signOutInProgressRef = useRef(false);
   const authGenerationRef = useRef(0);
@@ -267,6 +283,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (profileRole) return profileRole;
     return 'client';
   }, [profileRole, roleFromAssignments]);
+
+  const isExactBt = useMemo(() => {
+    const profileExactRole = toExactRoleName(profile?.role);
+    const exactRoles = roleAssignmentNames !== null
+      ? roleAssignmentNames
+      : profileExactRole
+        ? [profileExactRole]
+        : [];
+    return exactRoles.includes('bt')
+      && !exactRoles.some((role) => ['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'].includes(role));
+  }, [profile?.role, roleAssignmentNames]);
 
   const roleMismatch = useMemo(
     () =>
@@ -394,7 +421,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const fetchAssignedRole = useCallback(async (userId: string): Promise<Role | null> => {
+  const fetchAssignedRole = useCallback(async (userId: string): Promise<AssignedRoleResolution | null> => {
     try {
       const { data, error, status } = await supabase
         .from('user_roles')
@@ -460,6 +487,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setProfile(null);
     setRoleFromAssignments(null);
+    setRoleAssignmentNames(null);
     setProfileLoading(false);
 
     try {
@@ -505,7 +533,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(initialSession);
       setProfileLoading(true);
       let profileData: UserProfile | null;
-      let assignedRole: Role | null;
+      let assignedRole: AssignedRoleResolution | null;
       try {
         profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
         assignedRole = await withTimeout(fetchAssignedRole(initialSession.user.id), 'fetchAssignedRole');
@@ -531,7 +559,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       setProfile(profileData);
-      setRoleFromAssignments(assignedRole);
+      setRoleFromAssignments(assignedRole?.role ?? null);
+      setRoleAssignmentNames(assignedRole?.exactRoleNames ?? null);
       setProfileLoading(false);
       return;
     }
@@ -542,6 +571,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(stubAuthState.session);
       setProfile(stubAuthState.profile);
       setRoleFromAssignments(null);
+      setRoleAssignmentNames(null);
       setProfileLoading(false);
       return;
     }
@@ -550,6 +580,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSession(null);
     setProfile(null);
     setRoleFromAssignments(null);
+    setRoleAssignmentNames(null);
     setProfileLoading(false);
   }, [fetchAssignedRole, fetchProfile, forceAuthSessionSignOut]);
 
@@ -597,6 +628,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(null);
         setProfile(null);
         setRoleFromAssignments(null);
+        setRoleAssignmentNames(null);
         setProfileLoading(false);
       }
       setLoading(false);
@@ -622,7 +654,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     let profileData: UserProfile | null;
-    let assignedRole: Role | null;
+    let assignedRole: AssignedRoleResolution | null;
     try {
       [profileData, assignedRole] = await Promise.all([
         withTimeout(
@@ -679,7 +711,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    setRoleFromAssignments(assignedRole);
+    setRoleFromAssignments(assignedRole?.role ?? null);
+    setRoleAssignmentNames(assignedRole?.exactRoleNames ?? null);
     setProfile((currentProfile) => {
       if (profileData) {
         return profileData;
@@ -743,6 +776,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(null);
             setProfile(null);
             setRoleFromAssignments(null);
+            setRoleAssignmentNames(null);
             setProfileLoading(false);
             signOutInProgressRef.current = false;
           }
@@ -768,10 +802,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(stubAuthState.session);
             setProfile(stubAuthState.profile);
             setRoleFromAssignments(null);
+            setRoleAssignmentNames(null);
             setProfileLoading(false);
           } else {
             setProfile(null);
             setRoleFromAssignments(null);
+            setRoleAssignmentNames(null);
             setProfileLoading(false);
           }
         }
@@ -782,6 +818,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setProfile(null);
           setSession(null);
           setRoleFromAssignments(null);
+          setRoleAssignmentNames(null);
           setProfileLoading(false);
         }
       } catch (error) {
@@ -914,6 +951,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfile(null);
       setSession(null);
       setRoleFromAssignments(null);
+      setRoleAssignmentNames(null);
 
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);
@@ -1053,6 +1091,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     profileLoading,
     metadataRole,
     effectiveRole,
+    isExactBt,
     roleMismatch,
     isGuardian,
     authFlow,

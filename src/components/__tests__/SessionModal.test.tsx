@@ -3,6 +3,7 @@ import { renderWithProviders, screen, userEvent, waitFor } from '../../test/util
 import { fireEvent } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import {
+  buildCloseoutDataPoints,
   SessionModal,
   decrementLegacyPromptCounts,
   dedupeProgressionNotices,
@@ -15,7 +16,7 @@ import {
 } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
 import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-linked-fetch';
-import type { Session } from '../../types';
+import type { Goal, GoalTarget, Session, TrialEvent } from '../../types';
 import { startSessionFromModal } from '../../features/scheduling/domain/sessionStart';
 import {
   finalizeBtAbaSessionNote,
@@ -68,7 +69,14 @@ vi.mock('../session-notes/BtAbaSessionNoteForm', () => ({
     readOnly,
   }: {
     initialResponses: BtAbaSessionNoteResponses;
-    context: { placeOfService: string; billingCode: string; modifiers: string[]; programs: Array<{ name: string; goals: string[] }>; linkedDataPoints: unknown[]; allDataPoints: unknown[] };
+    context: {
+      placeOfService: string;
+      billingCode: string;
+      modifiers: string[];
+      programs: Array<{ name: string; goals: string[] }>;
+      linkedDataPoints: Array<{ label: string; value: string | number }>;
+      allDataPoints: Array<{ label: string; value: string | number }>;
+    };
     onSaveDraft: (responses: BtAbaSessionNoteResponses) => Promise<void>;
     onFinalize: (responses: BtAbaSessionNoteResponses) => Promise<void>;
     busy: boolean;
@@ -84,6 +92,9 @@ vi.mock('../session-notes/BtAbaSessionNoteForm', () => ({
       <p>Goals: {context.programs.flatMap((program) => program.goals).join(', ') || 'None'}</p>
       <p>Linked count: {context.linkedDataPoints.length}</p>
       <p>All count: {context.allDataPoints.length}</p>
+      {context.allDataPoints.map((dataPoint, index) => (
+        <p key={`${dataPoint.label}:${index}`}>{dataPoint.label}: {dataPoint.value}</p>
+      ))}
       {!readOnly && <button type="button" disabled={busy} onClick={() => void onSaveDraft(validBtAbaResponses)}>Save ABA Draft</button>}
       {!readOnly && <button type="button" disabled={busy} onClick={() => void onFinalize(validBtAbaResponses)}>Finalize ABA Session</button>}
     </section>
@@ -246,6 +257,192 @@ describe('SessionModal', () => {
       updated_at: '2024-01-02T00:00:00Z',
     },
   ];
+
+  it('builds closeout preview rows from aggregate legacy goal measurements when raw trial events are absent', () => {
+    const goalTargetsById = new Map<string, GoalTarget>();
+    const goalsById = new Map<string, Goal>(mockGoals.map((goal) => [goal.id, goal]));
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById,
+      linkedGoalIds: ['goal-1'],
+      goalMeasurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            target_trials: [
+              {
+                target: 'Hosted aggregate target',
+                metric_value: 2,
+                prompt_counts: [
+                  { prompt_type: 'gesture', prompt_level: null, correct_trials: 2, incorrect_trials: 0 },
+                ],
+              },
+            ],
+          },
+        },
+        'goal-2': {
+          count: 4,
+          trials: 5,
+          promptLevel: 'Gestural',
+        },
+        'goal-note-only': {
+          note: 'Narrative only',
+        },
+        'goal-empty': {},
+      },
+    })).toEqual([
+      {
+        label: 'Hosted aggregate target',
+        value: 2,
+        linked: true,
+      },
+      {
+        label: 'Second Goal',
+        value: 4,
+        linked: false,
+      },
+    ]);
+  });
+
+  it('keeps raw closeout trial events one-for-one and skips duplicate aggregate rows for the same goal target', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-1',
+      {
+        id: 'target-1',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-1',
+        name: 'Hosted aggregate target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const goalsById = new Map<string, Goal>(mockGoals.map((goal) => [goal.id, goal]));
+    const existingTrialEvents = [{
+      id: 'trial-1',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-1',
+      goal_id: 'goal-1',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById,
+      linkedGoalIds: ['goal-1'],
+      goalMeasurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            target_trials: [
+              {
+                target: 'Hosted aggregate target',
+                metric_value: 2,
+                prompt_counts: [
+                  { prompt_type: 'gesture', prompt_level: null, correct_trials: 2, incorrect_trials: 0 },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Hosted aggregate target',
+        value: 'correct',
+        linked: true,
+      },
+    ]);
+  });
+
+  it('keeps an unlabeled aggregate row when a raw event only proves a different target for the same goal', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-1',
+      {
+        id: 'target-1',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-unlabeled',
+        name: 'Raw target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const existingTrialEvents = [{
+      id: 'trial-unlabeled-goal',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-1',
+      goal_id: 'goal-unlabeled',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-unlabeled'],
+      goalMeasurements: {
+        'goal-unlabeled': {
+          count: 3,
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Raw target',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'goal-unlabeled',
+        value: 3,
+        linked: true,
+      },
+    ]);
+  });
 
   beforeEach(() => {
     vi.mocked(startSessionFromModal).mockReset();
@@ -977,6 +1174,49 @@ describe('SessionModal', () => {
       responses: validBtAbaResponses as unknown as Record<string, unknown>,
       status: 'draft',
     });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-restored',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Default Goal'],
+      goal_ids: ['goal-1'],
+      goal_measurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            targets: ['Match peer greeting in 4/5 trials', 'Retired target'],
+            target_trials: [
+              {
+                target: 'Match peer greeting in 4/5 trials',
+                metric_value: 2,
+              },
+              {
+                target: 'Retired target',
+                metric_value: 9,
+              },
+            ],
+          },
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-restored',
+      narrative: '',
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T10:30:00.000Z',
+    });
     vi.mocked(finalizeBtAbaSessionNote)
       .mockRejectedValueOnce(new Error('Atomic finalization failed'))
       .mockResolvedValue({ status: 'completed', noteId: 'note-restored', progressionResults: [] });
@@ -1002,6 +1242,10 @@ describe('SessionModal', () => {
     expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(await screen.findByText('Draft client status: Engaged')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('All count: 1')).toBeInTheDocument();
+    expect(screen.getByText('Match peer greeting in 4/5 trials: 2')).toBeInTheDocument();
+    expect(screen.queryByText(/Retired target/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save ABA Draft' }));
     await waitFor(() => expect(saveBtAbaSessionNoteDraft).toHaveBeenCalledWith(expect.objectContaining({

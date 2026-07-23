@@ -428,6 +428,123 @@ const trimString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+export interface CloseoutDataPoint {
+  label: string;
+  value: string | number;
+  linked: boolean;
+}
+
+interface BuildCloseoutDataPointsArgs {
+  existingTrialEvents: readonly TrialEvent[];
+  pendingTrialEvents: readonly SessionCaptureTrialEventInput[];
+  goalTargetsById: ReadonlyMap<string, GoalTarget>;
+  goalsById: ReadonlyMap<string, Goal>;
+  linkedGoalIds: readonly string[];
+  goalMeasurements: Record<string, unknown> | null | undefined;
+}
+
+const toCloseoutAggregateKey = (goalId: string | null, targetLabel: string | null): string =>
+  `${goalId ?? '__unknown_goal__'}::${targetLabel ?? '__goal__'}`;
+
+const getTrialEventGoalId = (
+  event: TrialEvent | SessionCaptureTrialEventInput,
+  goalTargetsById: ReadonlyMap<string, GoalTarget>,
+): string | null =>
+  'goal_id' in event && typeof event.goal_id === 'string'
+    ? event.goal_id
+    : goalTargetsById.get(event.target_id)?.goal_id ?? null;
+
+const getTrialEventLabel = (
+  event: TrialEvent | SessionCaptureTrialEventInput,
+  goalTargetsById: ReadonlyMap<string, GoalTarget>,
+): string =>
+  goalTargetsById.get(event.target_id)?.name ?? event.target_id;
+
+export const buildCloseoutDataPoints = ({
+  existingTrialEvents,
+  pendingTrialEvents,
+  goalTargetsById,
+  goalsById,
+  linkedGoalIds,
+  goalMeasurements,
+}: BuildCloseoutDataPointsArgs): CloseoutDataPoint[] => {
+  const seenTrialKeys = new Set<string>();
+  const rawAggregateKeys = new Set<string>();
+
+  const rawDataPoints = [...existingTrialEvents, ...pendingTrialEvents]
+    .filter((event) => {
+      const key = `${event.target_id}:${event.trial_number}`;
+      if (seenTrialKeys.has(key)) {
+        return false;
+      }
+      seenTrialKeys.add(key);
+      return true;
+    })
+    .map((event) => {
+      const goalId = getTrialEventGoalId(event, goalTargetsById);
+      const label = getTrialEventLabel(event, goalTargetsById);
+      rawAggregateKeys.add(toCloseoutAggregateKey(goalId, label));
+      return {
+        label,
+        value: event.response ?? event.value ?? '',
+        linked: Boolean(goalId && linkedGoalIds.includes(goalId)),
+      };
+    });
+
+  if (!goalMeasurements || typeof goalMeasurements !== 'object') {
+    return rawDataPoints;
+  }
+
+  const aggregateDataPoints = Object.entries(goalMeasurements).flatMap(([goalId, rawValue]) => {
+    const goal = goalsById.get(goalId);
+    const normalized = normalizeGoalMeasurementEntry(rawValue, goal);
+    if (!normalized) {
+      return [];
+    }
+
+    const fallbackLabel = goal?.title ?? goalId;
+    const measurementTargets = getGoalMeasurementTargets(normalized.data);
+    const targetTrials = Array.isArray(normalized.data.target_trials) ? normalized.data.target_trials : [];
+    const linked = linkedGoalIds.includes(goalId);
+
+    if (targetTrials.length > 0) {
+      return targetTrials.flatMap((trial, index) => {
+        const value = toOptionalNumber(trial.metric_value);
+        if (value === null) {
+          return [];
+        }
+        const targetLabel = trimString(trial.target) ?? measurementTargets[index] ?? measurementTargets[0] ?? null;
+        if (rawAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))) {
+          return [];
+        }
+        return [{
+          label: targetLabel ?? fallbackLabel,
+          value,
+          linked,
+        }];
+      });
+    }
+
+    const value = toOptionalNumber(normalized.data.metric_value);
+    if (value === null) {
+      return [];
+    }
+
+    const targetLabel = trimString(normalized.data.target) ?? measurementTargets[0] ?? null;
+    if (rawAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))) {
+      return [];
+    }
+
+    return [{
+      label: targetLabel ?? fallbackLabel,
+      value,
+      linked,
+    }];
+  });
+
+  return [...rawDataPoints, ...aggregateDataPoints];
+};
+
 const sumPlanTargetTrials = (
   trials: NonNullable<SessionGoalMeasurementEntry['data']['target_trials']>,
   field: 'metric_value' | 'incorrect_trials' | 'opportunities',
@@ -2878,7 +2995,7 @@ export function SessionModal({
       notePayload: {
         goals_addressed: linkedSessionNote?.goals_addressed ?? getValues('session_note_goals_addressed') ?? [],
         goal_ids: linkedSessionNote?.goal_ids ?? getValues('session_note_goal_ids') ?? null,
-        goal_measurements: linkedSessionNote?.goal_measurements ?? getValues('session_note_goal_measurements') ?? null,
+        goal_measurements: getValues('session_note_goal_measurements') ?? linkedSessionNote?.goal_measurements ?? null,
         goal_notes: linkedSessionNote?.goal_notes ?? getValues('session_note_goal_notes') ?? null,
         narrative: linkedSessionNote?.narrative ?? getValues('session_note_narrative') ?? '',
       },
@@ -2928,24 +3045,15 @@ export function SessionModal({
   }, [isOpen, isInProgressSession, session?.id]);
 
   const closeoutDataPoints = useMemo(() => {
-    const seen = new Set<string>();
-    return [...existingTrialEvents, ...(closeoutCaptureRef.current?.trialEvents ?? [])]
-      .filter((event) => {
-        const key = `${event.target_id}:${event.trial_number}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map((event) => {
-        const persistedGoalId = 'goal_id' in event && typeof event.goal_id === 'string' ? event.goal_id : null;
-        const goalForEvent = persistedGoalId ?? goalTargetsById.get(event.target_id)?.goal_id ?? null;
-        return {
-          label: goalTargetsById.get(event.target_id)?.name ?? event.target_id,
-          value: event.response ?? event.value ?? '',
-          linked: Boolean(goalForEvent && sessionNoteGoalIds.includes(goalForEvent)),
-        };
-      });
-  }, [existingTrialEvents, goalTargetsById, modalStep, sessionNoteGoalIds]);
+    return buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: closeoutCaptureRef.current?.trialEvents ?? [],
+      goalTargetsById,
+      goalsById,
+      linkedGoalIds: sessionNoteGoalIds,
+      goalMeasurements: closeoutCaptureRef.current?.notePayload.goal_measurements,
+    });
+  }, [existingTrialEvents, goalTargetsById, goalsById, modalStep, sessionNoteGoalIds]);
 
   if (!isOpen) return null;
 

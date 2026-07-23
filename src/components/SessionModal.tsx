@@ -448,6 +448,9 @@ interface BuildCloseoutDataPointsArgs {
 const toCloseoutAggregateKey = (goalId: string | null, targetLabel: string | null): string =>
   `${goalId ?? '__unknown_goal__'}::${targetLabel ?? '__goal__'}`;
 
+const toCloseoutTargetIndexKey = (goalId: string, targetIndex: number): string =>
+  `${goalId}::index:${targetIndex}`;
+
 const getTrialEventGoalId = (
   event: TrialEvent | SessionCaptureTrialEventInput,
   goalTargetsById: ReadonlyMap<string, GoalTarget>,
@@ -456,19 +459,28 @@ const getTrialEventGoalId = (
     ? event.goal_id
     : goalTargetsById.get(event.target_id)?.goal_id ?? null;
 
+const getTrialEventTargetIndex = (
+  event: TrialEvent | SessionCaptureTrialEventInput,
+): number | null => {
+  const targetIndex = toOptionalNumber(event.metadata?.target_index);
+  return targetIndex !== null && Number.isInteger(targetIndex) && targetIndex >= 0
+    ? targetIndex
+    : null;
+};
+
 const getTrialEventLabel = (
   event: TrialEvent | SessionCaptureTrialEventInput,
   goalTargetsById: ReadonlyMap<string, GoalTarget>,
   aggregateTargetLabels: readonly (string | null)[],
 ): string => {
+  const targetIndex = getTrialEventTargetIndex(event);
+  if (targetIndex !== null && aggregateTargetLabels[targetIndex]) {
+    return aggregateTargetLabels[targetIndex];
+  }
+
   const currentTargetLabel = goalTargetsById.get(event.target_id)?.name;
   if (currentTargetLabel) {
     return currentTargetLabel;
-  }
-
-  const targetIndex = toOptionalNumber(event.metadata?.target_index);
-  if (targetIndex !== null && Number.isInteger(targetIndex) && targetIndex >= 0) {
-    return aggregateTargetLabels[targetIndex] ?? event.target_id;
   }
 
   return aggregateTargetLabels.length === 1 && aggregateTargetLabels[0]
@@ -482,8 +494,10 @@ const getCloseoutAggregateValue = (
   const metricValue = toOptionalNumber(measurement.metric_value);
   const incorrectTrials = toOptionalNumber(measurement.incorrect_trials);
   if (metricValue !== null) {
-    if (metricValue === 0 && incorrectTrials !== null && incorrectTrials > 0) {
-      return `${incorrectTrials} incorrect`;
+    if (incorrectTrials !== null && incorrectTrials > 0) {
+      return metricValue > 0
+        ? `${metricValue} correct / ${incorrectTrials} incorrect`
+        : `${incorrectTrials} incorrect`;
     }
     return metricValue;
   }
@@ -504,7 +518,8 @@ export const buildCloseoutDataPoints = ({
   goalMeasurements,
 }: BuildCloseoutDataPointsArgs): CloseoutDataPoint[] => {
   const seenTrialKeys = new Set<string>();
-  const rawAggregateKeys = new Set<string>();
+  const rawTargetIndexKeys = new Set<string>();
+  const rawFallbackAggregateKeys = new Set<string>();
   const normalizedMeasurements = !goalMeasurements || typeof goalMeasurements !== 'object'
     ? []
     : Object.entries(goalMeasurements).flatMap(([goalId, rawValue]) => {
@@ -535,12 +550,17 @@ export const buildCloseoutDataPoints = ({
     })
     .map((event) => {
       const goalId = getTrialEventGoalId(event, goalTargetsById);
+      const targetIndex = getTrialEventTargetIndex(event);
       const label = getTrialEventLabel(
         event,
         goalTargetsById,
         goalId ? aggregateTargetLabelsByGoal.get(goalId) ?? [] : [],
       );
-      rawAggregateKeys.add(toCloseoutAggregateKey(goalId, label));
+      if (goalId && targetIndex !== null) {
+        rawTargetIndexKeys.add(toCloseoutTargetIndexKey(goalId, targetIndex));
+      } else {
+        rawFallbackAggregateKeys.add(toCloseoutAggregateKey(goalId, label));
+      }
       return {
         label,
         value: event.response ?? event.value ?? '',
@@ -568,7 +588,10 @@ export const buildCloseoutDataPoints = ({
           return [];
         }
         const targetLabel = trimString(trial.target) ?? measurementTargets[index] ?? measurementTargets[0] ?? null;
-        if (rawAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))) {
+        if (
+          rawTargetIndexKeys.has(toCloseoutTargetIndexKey(goalId, index)) ||
+          rawFallbackAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))
+        ) {
           return [];
         }
         return [{
@@ -588,7 +611,7 @@ export const buildCloseoutDataPoints = ({
     }
 
     const targetLabel = trimString(normalized.data.target) ?? measurementTargets[0] ?? null;
-    if (rawAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))) {
+    if (rawFallbackAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))) {
       return [];
     }
 

@@ -445,6 +445,33 @@ describe('SessionModal', () => {
     }]);
   });
 
+  it('shows both correct and incorrect outcomes for a mixed legacy aggregate', () => {
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-prompt-mixed'],
+      goalMeasurements: {
+        'goal-prompt-mixed': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Mixed prompt outcome target',
+              metric_value: 2,
+              incorrect_trials: 3,
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Mixed prompt outcome target',
+      value: '2 correct / 3 incorrect',
+      linked: true,
+    }]);
+  });
+
   it('falls back to a top-level aggregate when target rows contain metadata only', () => {
     expect(buildCloseoutDataPoints({
       existingTrialEvents: [],
@@ -514,6 +541,117 @@ describe('SessionModal', () => {
       value: 'correct',
       linked: true,
     }]);
+  });
+
+  it('uses the persisted target index to deduplicate and label a renamed target', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-renamed',
+      {
+        id: 'target-renamed',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-renamed',
+        name: 'Current renamed target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const existingTrialEvents = [{
+      id: 'trial-renamed-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-renamed',
+      goal_id: 'goal-renamed',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-renamed'],
+      goalMeasurements: {
+        'goal-renamed': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Finalized target snapshot',
+              metric_value: 1,
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Finalized target snapshot',
+      value: 'correct',
+      linked: true,
+    }]);
+  });
+
+  it('does not suppress a different indexed target that shares the same label', () => {
+    const existingTrialEvents = [{
+      id: 'trial-duplicate-label-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-first',
+      goal_id: 'goal-duplicate-label',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-duplicate-label'],
+      goalMeasurements: {
+        'goal-duplicate-label': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [
+              { target: 'Shared target label', metric_value: 1 },
+              { target: 'Shared target label', metric_value: 2 },
+            ],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Shared target label',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'Shared target label',
+        value: 2,
+        linked: true,
+      },
+    ]);
   });
 
   it('preserves sparse aggregate target indexes when labeling archived raw targets', () => {

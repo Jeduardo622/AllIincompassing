@@ -182,12 +182,17 @@ describe('Clients page filtering', () => {
     });
   });
 
-  it('keeps the search input from collapsing at desktop widths with local responsive classes', () => {
+  it('keeps the search input usable below the xl breakpoint and lets filters wrap', () => {
     renderWithProviders(<Clients />);
 
     const searchInput = screen.getByRole('textbox', { name: /search clients/i });
+    const filterRow = searchInput.parentElement?.parentElement;
+
+    expect(searchInput).toHaveClass('sm:min-w-[16rem]');
     expect(searchInput).toHaveClass('xl:min-w-[20rem]');
     expect(searchInput).toHaveClass('2xl:min-w-[24rem]');
+    expect(filterRow).toHaveClass('sm:flex-wrap');
+    expect(filterRow).toHaveClass('xl:flex-nowrap');
   });
 
   it('invalidates the clients query after successful mutations', () => {

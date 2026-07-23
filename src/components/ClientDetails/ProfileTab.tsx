@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { format, parseISO } from 'date-fns';
 import {
   User, Mail, Calendar, Phone, MapPin,
   Edit2, Plus, CheckCircle, AlertTriangle, RefreshCw,
@@ -251,7 +252,7 @@ export function ProfileTab({ client, viewerRole }: ProfileTabProps) {
             <div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Date of Birth</p>
               <p className="text-sm text-gray-900 dark:text-white">
-                {client.date_of_birth ? new Date(client.date_of_birth).toLocaleDateString() : 'N/A'}
+                {client.date_of_birth ? format(parseISO(client.date_of_birth), 'M/d/yyyy') : 'N/A'}
               </p>
             </div>
           </div>

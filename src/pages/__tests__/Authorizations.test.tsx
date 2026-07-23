@@ -212,4 +212,21 @@ describe('Authorizations page query scope', () => {
     expect(therapistsInMock).not.toHaveBeenCalled();
     expect(screen.getByText('Authorizations')).toBeInTheDocument();
   });
+
+  it('renders authorization date-only ranges without shifting the calendar day', async () => {
+    useAuthMock.mockReturnValue({
+      user: null,
+      effectiveRole: 'admin',
+      profile: baseProfile({
+        id: 'admin-user',
+        role: 'admin',
+        organization_id: 'org-admin-1',
+      }),
+    });
+
+    renderWithProviders(<Authorizations />, { auth: false });
+
+    const authNumber = await screen.findByText('AUTH-1');
+    expect(authNumber.parentElement).toHaveTextContent(/Jan 1, 2025\s*-\s*Dec 31, 2025/);
+  });
 });

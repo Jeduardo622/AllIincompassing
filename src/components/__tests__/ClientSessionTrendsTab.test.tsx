@@ -4,7 +4,7 @@ import { fireEvent, screen, waitFor } from '../../test/utils';
 import { renderWithProviders } from '../../test/utils';
 import { ClientSessionTrendsTab } from '../ClientDetails/ClientSessionTrendsTab';
 import { fetchClientSessionNotes } from '../../lib/session-notes';
-import { callApi } from '../../lib/api';
+import { callApi, callEdgeFunctionHttp } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 
 vi.mock('react-chartjs-2', () => ({
@@ -58,6 +58,7 @@ vi.mock('../../lib/session-notes', async () => {
 
 vi.mock('../../lib/api', () => ({
   callApi: vi.fn(),
+  callEdgeFunctionHttp: vi.fn(),
 }));
 
 const createGoalsBuilder = () => {
@@ -154,7 +155,10 @@ describe('ClientSessionTrendsTab', () => {
           },
         ]), { status: 200 });
       }
-      if (path.startsWith('/api/trial-events?view=prompt_outcomes&')) {
+      throw new Error(`Unhandled API path ${path}`);
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string) => {
+      if (path.startsWith('trial-events?view=prompt_outcomes&')) {
         return new Response(JSON.stringify([
           {
             id: 'prompt-event-1',
@@ -185,7 +189,7 @@ describe('ClientSessionTrendsTab', () => {
           },
         ]), { status: 200 });
       }
-      throw new Error(`Unhandled API path ${path}`);
+      throw new Error(`Unhandled edge path ${path}`);
     });
     vi.mocked(fetchClientSessionNotes).mockResolvedValue([
       {
@@ -286,8 +290,9 @@ describe('ClientSessionTrendsTab', () => {
 
     await screen.findByTestId('prompt-outcomes-chart');
 
-    expect(callApi).toHaveBeenCalledWith(
-      '/api/trial-events?view=prompt_outcomes&client_id=client-1&goal_id=goal-1&start_at=2024-12-01T00%3A00%3A00.000Z&end_before=2025-07-01T00%3A00%3A00.000Z',
+    expect(callApi).toHaveBeenCalledWith('/api/goal-targets?goal_id=goal-1');
+    expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+      'trial-events?view=prompt_outcomes&client_id=client-1&goal_id=goal-1&start_at=2024-12-01T00%3A00%3A00.000Z&end_before=2025-07-01T00%3A00%3A00.000Z',
     );
     expect(screen.getByRole('button', { name: /Download outcome graph/i })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Correct' })).toBeInTheDocument();
@@ -504,11 +509,11 @@ describe('ClientSessionTrendsTab', () => {
   });
 
   it('shows the exact prompt outcome empty copy', async () => {
-    const defaultCallApi = vi.mocked(callApi).getMockImplementation();
-    vi.mocked(callApi).mockImplementation(async (path: string) => (
-      path.startsWith('/api/trial-events?view=prompt_outcomes&')
+    const defaultCallEdgeFunctionHttp = vi.mocked(callEdgeFunctionHttp).getMockImplementation();
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string) => (
+      path.startsWith('trial-events?view=prompt_outcomes&')
         ? new Response(JSON.stringify([]), { status: 200 })
-        : defaultCallApi!(path)
+        : defaultCallEdgeFunctionHttp!(path)
     ));
 
     renderWithProviders(<ClientSessionTrendsTab client={{ id: 'client-1' }} />, {
@@ -516,14 +521,15 @@ describe('ClientSessionTrendsTab', () => {
     });
 
     expect(await screen.findByText('No prompted outcome data in the selected range.')).toBeInTheDocument();
+    expect(screen.queryByText('Prompt outcomes failed to load.')).not.toBeInTheDocument();
   });
 
   it('surfaces a prompt outcome fetch error', async () => {
-    const defaultCallApi = vi.mocked(callApi).getMockImplementation();
-    vi.mocked(callApi).mockImplementation(async (path: string) => (
-      path.startsWith('/api/trial-events?view=prompt_outcomes&')
+    const defaultCallEdgeFunctionHttp = vi.mocked(callEdgeFunctionHttp).getMockImplementation();
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string) => (
+      path.startsWith('trial-events?view=prompt_outcomes&')
         ? new Response(null, { status: 500 })
-        : defaultCallApi!(path)
+        : defaultCallEdgeFunctionHttp!(path)
     ));
 
     renderWithProviders(<ClientSessionTrendsTab client={{ id: 'client-1' }} />, {
@@ -531,5 +537,6 @@ describe('ClientSessionTrendsTab', () => {
     });
 
     expect(await screen.findByText('Prompt outcomes failed to load.')).toBeInTheDocument();
+    expect(screen.queryByText('No prompted outcome data in the selected range.')).not.toBeInTheDocument();
   });
 });

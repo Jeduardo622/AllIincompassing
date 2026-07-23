@@ -12,6 +12,11 @@ const buildBookSessionApiPayloadMock = vi.fn((session: unknown) => session);
 const upsertClientSessionNoteForSessionMock = vi.fn();
 const invalidateSessionNoteCachesAfterSessionWriteMock = vi.fn();
 const completeSessionFromModalMock = vi.fn();
+const formatSessionNoteTimingMock = vi.fn(() => ({
+  sessionDate: "2026-07-23",
+  startTime: "14:00:00",
+  endTime: "15:00:00",
+}));
 
 const currentSessionStart = new Date();
 currentSessionStart.setHours(10, 0, 0, 0);
@@ -21,6 +26,11 @@ currentSessionEnd.setHours(11, 0, 0, 0);
 const originalSessionWindow = {
   start_time: currentSessionStart.toISOString(),
   end_time: currentSessionEnd.toISOString(),
+};
+
+const futureSessionNoteWindow = {
+  start_time: "2026-07-23T21:00:00.000Z",
+  end_time: "2026-07-23T22:00:00.000Z",
 };
 
 const originalSessionFixture = {
@@ -75,6 +85,10 @@ vi.mock("../../lib/optimizedQueries", () => ({
 vi.mock("../../features/scheduling/domain/booking", () => ({
   buildBookSessionApiPayload: (session: unknown) => buildBookSessionApiPayloadMock(session),
   bookSessionViaApi: (...args: unknown[]) => bookSessionViaApiMock(...args),
+}));
+
+vi.mock("../../features/scheduling/domain/time", () => ({
+  formatSessionNoteTiming: (...args: unknown[]) => formatSessionNoteTimingMock(...args),
 }));
 
 vi.mock("../../lib/sessionCancellation", () => ({
@@ -227,8 +241,8 @@ vi.mock("../../components/SessionModal", () => ({
               client_id: "client-1",
               program_id: "program-1",
               goal_id: "goal-1",
-              start_time: originalSessionWindow.start_time,
-              end_time: originalSessionWindow.end_time,
+              start_time: futureSessionNoteWindow.start_time,
+              end_time: futureSessionNoteWindow.end_time,
               status: "in_progress",
               session_note_goal_ids: ["goal-1", "adhoc-skill-550e8400-e29b-41d4-a716-446655440000"],
               session_note_goals_addressed: ["Goal 1", "Session target"],
@@ -315,8 +329,8 @@ vi.mock("../../components/SessionModal", () => ({
               client_id: "client-1",
               program_id: "program-1",
               goal_id: "goal-1",
-              start_time: originalSessionWindow.start_time,
-              end_time: originalSessionWindow.end_time,
+              start_time: futureSessionNoteWindow.start_time,
+              end_time: futureSessionNoteWindow.end_time,
               status: "in_progress",
               session_note_goal_ids: ["goal-1", "adhoc-skill-550e8400-e29b-41d4-a716-446655440000"],
               session_note_goals_addressed: ["Goal 1", "Session target"],
@@ -410,6 +424,11 @@ describe("Schedule orchestration integration hardening", () => {
     localStorage.clear();
     vi.clearAllMocks();
     resetScheduleFixture();
+    formatSessionNoteTimingMock.mockReturnValue({
+      sessionDate: "2026-07-23",
+      startTime: "14:00:00",
+      endTime: "15:00:00",
+    });
     upsertClientSessionNoteForSessionMock.mockResolvedValue({
       id: "linked-note-1",
     });
@@ -657,11 +676,19 @@ describe("Schedule orchestration integration hardening", () => {
       expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
       expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
     });
+    expect(formatSessionNoteTimingMock).toHaveBeenCalledWith({
+      startTimeIso: futureSessionNoteWindow.start_time,
+      endTimeIso: futureSessionNoteWindow.end_time,
+      resolvedTimeZone: expect.any(String),
+    });
     expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: "session-1",
       clientId: "client-1",
       authorizationId: "auth-1",
       serviceCode: "97153",
+      sessionDate: "2026-07-23",
+      startTime: "14:00:00",
+      endTime: "15:00:00",
       captureMergeGoalIds: [
         "goal-1",
         "adhoc-skill-550e8400-e29b-41d4-a716-446655440000",
@@ -912,11 +939,19 @@ describe("Schedule orchestration integration hardening", () => {
       expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
       expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
     });
+    expect(formatSessionNoteTimingMock).toHaveBeenCalledWith({
+      startTimeIso: futureSessionNoteWindow.start_time,
+      endTimeIso: futureSessionNoteWindow.end_time,
+      resolvedTimeZone: expect.any(String),
+    });
     expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: "session-1",
       clientId: "client-1",
       authorizationId: "auth-1",
       serviceCode: "97153",
+      sessionDate: "2026-07-23",
+      startTime: "14:00:00",
+      endTime: "15:00:00",
     }));
     expect(invalidateSessionNoteCachesAfterSessionWriteMock).toHaveBeenCalledWith(
       expect.anything(),

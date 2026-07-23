@@ -73,6 +73,7 @@ import {
 } from "../features/scheduling/domain/sessionScope";
 import { filterSessionsBySelectedScope } from "../features/scheduling/domain/sessionFilters";
 import { shouldClearMissingSelection } from "../features/scheduling/domain/selectionGuard";
+import { formatSessionNoteTiming } from "../features/scheduling/domain/time";
 
 type ScheduleDataErrorCategory =
   | "insufficient_privilege"
@@ -1610,6 +1611,11 @@ export const Schedule = React.memo(() => {
             "An authorization id is required to save session capture (add any authorization for this client).",
           );
         }
+        const sessionTiming = formatSessionNoteTiming({
+          startTimeIso: sessionPayload.start_time ?? sessionToPersist.start_time,
+          endTimeIso: sessionPayload.end_time ?? sessionToPersist.end_time,
+          resolvedTimeZone: userTimeZone,
+        });
         return upsertClientSessionNoteForSession({
           sessionId: sessionToPersist.id,
           clientId: sessionPayload.client_id ?? sessionToPersist.client_id,
@@ -1618,9 +1624,9 @@ export const Schedule = React.memo(() => {
           organizationId: activeOrganizationId,
           actorUserId: user.id,
           serviceCode: clinicalNoteDraft.serviceCode,
-          sessionDate: format(parseISO(sessionPayload.start_time ?? sessionToPersist.start_time), "yyyy-MM-dd"),
-          startTime: format(parseISO(sessionPayload.start_time ?? sessionToPersist.start_time), "HH:mm:ss"),
-          endTime: format(parseISO(sessionPayload.end_time ?? sessionToPersist.end_time), "HH:mm:ss"),
+          sessionDate: sessionTiming.sessionDate,
+          startTime: sessionTiming.startTime,
+          endTime: sessionTiming.endTime,
           goalsAddressed: clinicalNoteDraft.goalsAddressed,
           goalIds: clinicalNoteDraft.goalIds,
           goalMeasurements: clinicalNoteDraft.goalMeasurements,
@@ -1714,6 +1720,11 @@ export const Schedule = React.memo(() => {
           }
           let progressionResult;
           if (clinicalNoteDraft && effectiveSelectedSession && activeOrganizationId && user?.id) {
+            const sessionTiming = formatSessionNoteTiming({
+              startTimeIso: sessionPayload.start_time ?? effectiveSelectedSession.start_time,
+              endTimeIso: sessionPayload.end_time ?? effectiveSelectedSession.end_time,
+              resolvedTimeZone: userTimeZone,
+            });
             progressionResult = await upsertClientSessionNoteForSession({
               sessionId: effectiveSelectedSession.id,
               clientId: sessionPayload.client_id ?? effectiveSelectedSession.client_id,
@@ -1722,9 +1733,9 @@ export const Schedule = React.memo(() => {
               organizationId: activeOrganizationId,
               actorUserId: user.id,
               serviceCode: clinicalNoteDraft.serviceCode,
-              sessionDate: format(parseISO(sessionPayload.start_time ?? effectiveSelectedSession.start_time), "yyyy-MM-dd"),
-              startTime: format(parseISO(sessionPayload.start_time ?? effectiveSelectedSession.start_time), "HH:mm:ss"),
-              endTime: format(parseISO(sessionPayload.end_time ?? effectiveSelectedSession.end_time), "HH:mm:ss"),
+              sessionDate: sessionTiming.sessionDate,
+              startTime: sessionTiming.startTime,
+              endTime: sessionTiming.endTime,
               goalsAddressed: clinicalNoteDraft.goalsAddressed,
               goalIds: clinicalNoteDraft.goalIds,
               goalMeasurements: clinicalNoteDraft.goalMeasurements,

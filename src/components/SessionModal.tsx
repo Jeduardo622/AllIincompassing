@@ -478,16 +478,14 @@ const getTrialEventLabel = (
     return aggregateTargetLabels[targetIndex];
   }
 
-  if (aggregateTargetLabels.length === 1 && aggregateTargetLabels[0]) {
-    return aggregateTargetLabels[0];
-  }
-
   const currentTargetLabel = goalTargetsById.get(event.target_id)?.name;
   if (currentTargetLabel) {
     return currentTargetLabel;
   }
 
-  return event.target_id;
+  return aggregateTargetLabels.length === 1 && aggregateTargetLabels[0]
+    ? aggregateTargetLabels[0]
+    : event.target_id;
 };
 
 const getCloseoutAggregateValue = (

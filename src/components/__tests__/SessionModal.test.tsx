@@ -649,27 +649,7 @@ describe('SessionModal', () => {
     }]);
   });
 
-  it('uses a sole snapshot label to deduplicate a renamed target when an older raw trial has no index', () => {
-    const goalTargetsById = new Map<string, GoalTarget>([[
-      'target-renamed-no-index',
-      {
-        id: 'target-renamed-no-index',
-        organization_id: 'org-a',
-        client_id: 'test-client-1',
-        goal_id: 'goal-renamed-no-index',
-        name: 'Current renamed target',
-        measurement_type: 'frequency',
-        graph_config: {},
-        sort_order: 0,
-        current_phase: 'baseline',
-        status: 'active',
-        is_current: true,
-        evaluation_window_started_at: null,
-        progression_version: 1,
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      },
-    ]]);
+  it('uses a sole snapshot label for an older unindexed raw target that can no longer be identified', () => {
     const existingTrialEvents = [{
       id: 'trial-renamed-target-no-index',
       organization_id: 'org-a',
@@ -689,7 +669,7 @@ describe('SessionModal', () => {
     expect(buildCloseoutDataPoints({
       existingTrialEvents,
       pendingTrialEvents: [],
-      goalTargetsById,
+      goalTargetsById: new Map(),
       goalsById: new Map(),
       linkedGoalIds: ['goal-renamed-no-index'],
       goalMeasurements: {
@@ -709,6 +689,75 @@ describe('SessionModal', () => {
       value: 'correct',
       linked: true,
     }]);
+  });
+
+  it('preserves a distinct aggregate when an older unindexed raw target is still identifiable', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-known-no-index',
+      {
+        id: 'target-known-no-index',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-known-no-index',
+        name: 'Known raw target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const existingTrialEvents = [{
+      id: 'trial-known-target-no-index',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-known-no-index',
+      goal_id: 'goal-known-no-index',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-known-no-index'],
+      goalMeasurements: {
+        'goal-known-no-index': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Distinct aggregate target',
+              metric_value: 2,
+            }],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Known raw target',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'Distinct aggregate target',
+        value: 2,
+        linked: true,
+      },
+    ]);
   });
 
   it('does not suppress a different indexed target that shares the same label', () => {

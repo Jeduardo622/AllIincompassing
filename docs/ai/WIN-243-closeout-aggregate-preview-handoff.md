@@ -46,7 +46,8 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
 - subsequent PR review: found completed legacy measurements were marked unlinked when the finalized `goal_ids` column was null
 - exact-head PR review: found the sole-label fallback could mislabel an identifiable unindexed raw target and suppress a distinct aggregate
 - replacement-PR review: found that an unlabeled later aggregate inherited target zero and that non-count aggregates lost units or used count-specific wording
-- re-review: approved after preserving unlabeled aggregate identity, formatting non-count units, and retaining unit context for zero-valued mixed outcomes
+- subsequent exact-head review: found current goal metadata could overwrite persisted measurement type and a sole finalized label was not recovered when legacy `goal_ids` was null
+- re-review: approved after preserving persisted measurement type, limiting single-label inference to the unambiguous case, and covering ambiguous no-guess behavior
 
 ## Verification Card
 
@@ -64,7 +65,7 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
   - `npm run build`
   - `npm run verify:local`
 - executed checks:
-  - targeted `SessionModal` tests: pass, 125/125
+  - targeted `SessionModal` tests: pass, 128/128
   - `npm run ci:check-focused`: pass via bundled Node runtime
   - `npm run lint`: pass via bundled Node runtime
   - `npm run typecheck`: pass via bundled Node runtime
@@ -73,12 +74,12 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
   - `npm run test:routes:tier0`: pass, 220/220; one concurrent build/Cypress attempt returned transient 404s while `dist` was being rewritten, then the isolated rerun passed
   - `npm run ci:playwright`: preflight passed; auth smoke failed because the configured `superadmin@test.com` credential was rejected, so the fail-fast runner did not execute the remaining children
   - `npm run build`: pass
-  - PR #839 CI on commit `495ce07a`: all required checks passed, including Linux unit tests, policy, lint/typecheck, build, and the lane-scoped browser gates
+  - PR #839 CI on commit `04aabda0`: all required checks passed, including Linux unit tests, policy, lint/typecheck, build, and the lane-scoped browser gates
 - blocked checks:
   - `npm run verify:local`: blocked by the same unrelated `test:ci` baseline failures
   - remaining `npm run ci:playwright` children: blocked after the credential failure stopped the fail-fast runner
 - result: `pending-final-head-ci`
-- residual risk: the latest unit/identity correction requires final-head PR CI and credential-backed browser proof; aggregate values remain aggregate preview rows rather than fabricated raw trials
+- residual risk: the latest persisted-metadata and label-inference correction requires final-head PR CI and credential-backed browser proof; aggregate values remain aggregate preview rows rather than fabricated raw trials
 
 ## PR Hygiene
 
@@ -90,6 +91,6 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
 - generated artifact drift: none
 - change summary: present
 - verification summary: present
-- reviewer: completed and approved with no findings for the unit-aware and identity-safe aggregate fallback
+- reviewer: completed and approved with no findings for the persisted-metadata and unambiguous-label fallback
 - pr-ready: yes
 - required follow-up: commit and push the isolated correction, resolve the two current review threads, rerun final-head PR checks, and capture credential-backed closeout proof

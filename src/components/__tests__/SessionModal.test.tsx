@@ -481,6 +481,37 @@ describe('SessionModal', () => {
     ]);
   });
 
+  it('preserves persisted measurement metadata when the current goal type has changed', () => {
+    const currentGoal = {
+      ...mockGoals[0],
+      title: 'Goal now measured by percent',
+      measurement_type: 'percentage',
+    };
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map([[currentGoal.id, currentGoal]]),
+      linkedGoalIds: ['goal-1'],
+      goalMeasurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            target_trials: [{ target: 'Historical count target', metric_value: 2 }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Historical count target',
+      value: 2,
+      linked: true,
+    }]);
+  });
+
   it('keeps raw closeout trial events one-for-one and skips duplicate aggregate rows for the same goal target', () => {
     const goalTargetsById = new Map<string, GoalTarget>([[
       'target-1',
@@ -2254,6 +2285,128 @@ describe('SessionModal', () => {
     expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
     expect(screen.getByText('All count: 1')).toBeInTheDocument();
     expect(screen.getByText('Legacy linked target: 2')).toBeInTheDocument();
+  });
+
+  it('recovers a sole finalized label when a completed legacy note has no goal_ids', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-aggregate-inferred-label',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-completed-aggregate-inferred-label',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Archived Snapshot Goal'],
+      goal_ids: null,
+      goal_measurements: {
+        'goal-archived-inferred': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_value: 3,
+            opportunities: 3,
+          },
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-completed-aggregate-inferred-label',
+      narrative: 'Completed legacy aggregate note',
+      is_locked: true,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: '2026-03-01T11:00:00.000Z',
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T11:00:00.000Z',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{
+          ...btInProgressSession,
+          id: 'session-bt-completed-aggregate-inferred-label',
+          status: 'completed',
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('Archived Snapshot Goal: 3')).toBeInTheDocument();
+    expect(screen.queryByText('goal-archived-inferred: 3')).not.toBeInTheDocument();
+  });
+
+  it('does not guess finalized label mappings when legacy measurement keys are ambiguous', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-aggregate-ambiguous-label',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-completed-aggregate-ambiguous-label',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Ambiguous Snapshot Goal'],
+      goal_ids: null,
+      goal_measurements: {
+        'goal-ambiguous-a': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_value: 1,
+          },
+        },
+        'goal-ambiguous-b': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_value: 2,
+          },
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-completed-aggregate-ambiguous-label',
+      narrative: 'Completed ambiguous legacy aggregate note',
+      is_locked: true,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: '2026-03-01T11:00:00.000Z',
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T11:00:00.000Z',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{
+          ...btInProgressSession,
+          id: 'session-bt-completed-aggregate-ambiguous-label',
+          status: 'completed',
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 2')).toBeInTheDocument();
+    expect(screen.getByText('goal-ambiguous-a: 1')).toBeInTheDocument();
+    expect(screen.getByText('goal-ambiguous-b: 2')).toBeInTheDocument();
   });
 
   it('uses finalized snapshot labels for targetless measurements from archived goals', async () => {

@@ -523,6 +523,17 @@ const getCloseoutAggregateValue = (
   return opportunities === null ? null : `${opportunities} opportunities`;
 };
 
+const getPersistedMeasurementType = (rawValue: unknown): string | null => {
+  if (!rawValue || typeof rawValue !== 'object') {
+    return null;
+  }
+  const candidate = rawValue as { data?: unknown } & Record<string, unknown>;
+  const sourceData = candidate.data && typeof candidate.data === 'object'
+    ? candidate.data as Record<string, unknown>
+    : candidate;
+  return trimString(sourceData.measurement_type);
+};
+
 export const buildCloseoutDataPoints = ({
   existingTrialEvents,
   pendingTrialEvents,
@@ -539,7 +550,11 @@ export const buildCloseoutDataPoints = ({
     ? []
     : Object.entries(goalMeasurements).flatMap(([goalId, rawValue]) => {
         const goal = goalsById.get(goalId);
-        const normalized = normalizeGoalMeasurementEntry(rawValue, goal);
+        const persistedMeasurementType = getPersistedMeasurementType(rawValue);
+        const normalizationGoal = goal && persistedMeasurementType
+          ? { ...goal, measurement_type: persistedMeasurementType }
+          : goal;
+        const normalized = normalizeGoalMeasurementEntry(rawValue, normalizationGoal);
         return normalized ? [{ goalId, goal, normalized }] : [];
       });
   const aggregateTargetLabelsByGoal = new Map(
@@ -3152,22 +3167,26 @@ export function SessionModal({
   const closeoutDataPoints = useMemo(() => {
     const finalizedGoalIds = linkedSessionNote?.goal_ids ?? [];
     const finalizedGoalLabels = linkedSessionNote?.goals_addressed ?? [];
+    const goalMeasurements = isCompletedBtAbaSession
+      ? (linkedSessionNote?.goal_measurements as Record<string, unknown> | null | undefined)
+      : sessionNoteGoalMeasurements ?? closeoutCaptureRef.current?.notePayload.goal_measurements;
+    const measurementGoalIds = goalMeasurements && typeof goalMeasurements === 'object'
+      ? Object.keys(goalMeasurements)
+      : [];
+    const finalizedGoalLabelIds = finalizedGoalIds.length > 0
+      ? finalizedGoalIds
+      : measurementGoalIds.length === 1 && finalizedGoalLabels.length === 1
+        ? measurementGoalIds
+        : [];
     const finalizedGoalLabelsById = new Map(
-      finalizedGoalIds.flatMap((goalEntryId, index) => {
+      finalizedGoalLabelIds.flatMap((goalEntryId, index) => {
         const label = trimString(finalizedGoalLabels[index]);
         return label ? [[goalEntryId, label] as const] : [];
       }),
     );
-    const goalMeasurements = isCompletedBtAbaSession
-      ? (linkedSessionNote?.goal_measurements as Record<string, unknown> | null | undefined)
-      : sessionNoteGoalMeasurements ?? closeoutCaptureRef.current?.notePayload.goal_measurements;
     const completedLinkedGoalIds = Array.from(new Set([
       ...finalizedGoalIds,
-      ...(
-        goalMeasurements && typeof goalMeasurements === 'object'
-          ? Object.keys(goalMeasurements)
-          : []
-      ),
+      ...measurementGoalIds,
     ]));
 
     return buildCloseoutDataPoints({

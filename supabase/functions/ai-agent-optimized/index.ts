@@ -6,18 +6,12 @@ import { resolveOrgId } from "../_shared/org.ts";
 import { getLogger } from "../_shared/logging.ts";
 import { errorEnvelope, getRequestId, IsoDateSchema } from "../lib/http/error.ts";
 import { persistChatMessage } from "./persistence.ts";
-import { resolveAllowedOrigin } from "../_shared/cors.ts";
+import { corsHeadersForRequest } from "../_shared/cors.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
 });
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
 
 interface OptimizedAIResponse {
   response: string;
@@ -974,10 +968,11 @@ Deno.serve(async (req) => {
   const requestId = getRequestId(req);
   const correlationId = req.headers.get("x-correlation-id") ?? requestId;
   const responseHeaders = {
+    ...corsHeadersForRequest(req),
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Content-Type": "application/json",
     "x-request-id": requestId,
     "x-correlation-id": correlationId,
-    ...corsHeaders,
   };
 
   if (req.method === "OPTIONS") {

@@ -342,6 +342,145 @@ describe('SessionModal', () => {
     ]);
   });
 
+  it('keeps an unlabeled later aggregate distinct from target zero', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-first-unindexed',
+      {
+        id: 'target-first-unindexed',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-1',
+        name: 'First target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const existingTrialEvents = [{
+      id: 'trial-first-unindexed',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-first-unindexed',
+      goal_id: 'goal-1',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById: new Map(mockGoals.map((goal) => [goal.id, goal])),
+      linkedGoalIds: ['goal-1'],
+      goalMeasurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            targets: ['First target'],
+            target_trials: [
+              { target: 'First target', metric_value: 1 },
+              { target: null, metric_value: 7 },
+            ],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'First target',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'Default Goal',
+        value: 7,
+        linked: true,
+      },
+    ]);
+  });
+
+  it('retains units and avoids count wording for non-count aggregates', () => {
+    const goalsById = new Map<string, Goal>([
+      ['goal-duration', { ...mockGoals[0], id: 'goal-duration', title: 'Duration Goal', measurement_type: 'duration' }],
+      ['goal-percent', { ...mockGoals[0], id: 'goal-percent', title: 'Percent Goal', measurement_type: 'percentage' }],
+      ['goal-rate', { ...mockGoals[0], id: 'goal-rate', title: 'Rate Goal', measurement_type: 'rate' }],
+    ]);
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById,
+      linkedGoalIds: ['goal-duration', 'goal-percent', 'goal-rate'],
+      goalMeasurements: {
+        'goal-duration': {
+          version: 1,
+          data: {
+            measurement_type: 'duration',
+            metric_label: 'Duration',
+            metric_unit: 'minutes',
+            target_trials: [{ target: 'Engagement duration', metric_value: 15, incorrect_trials: 2 }],
+          },
+        },
+        'goal-percent': {
+          version: 1,
+          data: {
+            measurement_type: 'percentage',
+            metric_label: 'Percent',
+            metric_unit: '%',
+            target_trials: [
+              { target: 'Accuracy', metric_value: 80 },
+              { target: 'Zero accuracy', metric_value: 0, incorrect_trials: 2 },
+            ],
+          },
+        },
+        'goal-rate': {
+          version: 1,
+          data: {
+            measurement_type: 'rate',
+            metric_label: 'Rate',
+            metric_unit: 'per hour',
+            target_trials: [{ target: 'Requests', metric_value: 3 }],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Engagement duration',
+        value: '15 minutes / 2 incorrect',
+        linked: true,
+      },
+      {
+        label: 'Accuracy',
+        value: '80%',
+        linked: true,
+      },
+      {
+        label: 'Zero accuracy',
+        value: '0% / 2 incorrect',
+        linked: true,
+      },
+      {
+        label: 'Requests',
+        value: '3 per hour',
+        linked: true,
+      },
+    ]);
+  });
+
   it('keeps raw closeout trial events one-for-one and skips duplicate aggregate rows for the same goal target', () => {
     const goalTargetsById = new Map<string, GoalTarget>([[
       'target-1',

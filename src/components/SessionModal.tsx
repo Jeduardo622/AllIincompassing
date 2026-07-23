@@ -490,16 +490,31 @@ const getTrialEventLabel = (
 
 const getCloseoutAggregateValue = (
   measurement: Pick<SessionGoalMeasurementData, 'metric_value' | 'incorrect_trials' | 'opportunities'>,
+  metadata: Pick<SessionGoalMeasurementData, 'measurement_type' | 'metric_label' | 'metric_unit'>,
 ): string | number | null => {
   const metricValue = toOptionalNumber(measurement.metric_value);
   const incorrectTrials = toOptionalNumber(measurement.incorrect_trials);
   if (metricValue !== null) {
+    const isCountMeasurement = isCountTrialMeasurementMetadata(
+      metadata.measurement_type,
+      metadata.metric_label,
+      metadata.metric_unit,
+    );
+    const metricUnit = trimString(metadata.metric_unit);
+    const metricLabel = trimString(metadata.metric_label);
+    const formattedMetricValue = isCountMeasurement || (!metricUnit && !metricLabel)
+      ? metricValue
+      : metricUnit === '%'
+        ? `${metricValue}%`
+        : `${metricValue} ${metricUnit ?? metricLabel}`;
     if (incorrectTrials !== null && incorrectTrials > 0) {
-      return metricValue > 0
-        ? `${metricValue} correct / ${incorrectTrials} incorrect`
-        : `${incorrectTrials} incorrect`;
+      return isCountMeasurement
+        ? metricValue > 0
+          ? `${metricValue} correct / ${incorrectTrials} incorrect`
+          : `${incorrectTrials} incorrect`
+        : `${formattedMetricValue} / ${incorrectTrials} incorrect`;
     }
-    return metricValue;
+    return formattedMetricValue;
   }
   if (incorrectTrials !== null) {
     return `${incorrectTrials} incorrect`;
@@ -580,14 +595,14 @@ export const buildCloseoutDataPoints = ({
 
     if (targetTrials.length > 0) {
       const hasQuantitativeTargetValue = targetTrials.some(
-        (trial) => getCloseoutAggregateValue(trial) !== null,
+        (trial) => getCloseoutAggregateValue(trial, normalized.data) !== null,
       );
       const targetDataPoints = targetTrials.flatMap((trial, index) => {
-        const value = getCloseoutAggregateValue(trial);
+        const value = getCloseoutAggregateValue(trial, normalized.data);
         if (value === null) {
           return [];
         }
-        const targetLabel = trimString(trial.target) ?? measurementTargets[index] ?? measurementTargets[0] ?? null;
+        const targetLabel = trimString(trial.target) ?? measurementTargets[index] ?? null;
         if (
           rawTargetIndexKeys.has(toCloseoutTargetIndexKey(goalId, index)) ||
           rawFallbackAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))
@@ -605,7 +620,7 @@ export const buildCloseoutDataPoints = ({
       }
     }
 
-    const value = getCloseoutAggregateValue(normalized.data);
+    const value = getCloseoutAggregateValue(normalized.data, normalized.data);
     if (value === null) {
       return [];
     }

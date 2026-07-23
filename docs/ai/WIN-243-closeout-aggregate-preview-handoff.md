@@ -38,7 +38,8 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
 - reviewer: completed; the first review found overly broad same-goal aggregate suppression and stale restored-draft input risk
 - PR review: found that normalized preview state could replace historical persisted measurements and that completed aggregate-only sessions did not hydrate the preview
 - follow-up PR review: found that aggregate rows containing only `incorrect_trials` or `opportunities` were still omitted when `metric_value` was null
-- re-review: approved with no findings after adding explicit metric/incorrect/opportunity fallback handling and targeted coverage for both secondary quantitative shapes
+- final-head PR review: found that completed sessions still used current-target-filtered form measurements and that archived targetless goals could display a raw UUID instead of the finalized snapshot label
+- re-review: approved with no findings after switching completed previews to unfiltered linked-note measurements and finalized goal-label snapshots
 
 ## Verification Card
 
@@ -56,7 +57,7 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
   - `npm run build`
   - `npm run verify:local`
 - executed checks:
-  - targeted `SessionModal` tests: pass, 111/111
+  - targeted `SessionModal` tests: pass, 112/112
   - `npm run ci:check-focused`: pass via bundled Node runtime
   - `npm run lint`: pass via bundled Node runtime
   - `npm run typecheck`: pass via bundled Node runtime
@@ -70,7 +71,7 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
   - `npm run verify:local`: blocked by the same unrelated `test:ci` baseline failures
   - remaining `npm run ci:playwright` children: blocked after the credential failure stopped the fail-fast runner
 - result: `pending-final-head-ci`
-- residual risk: the secondary-field correction still requires final-head PR CI and credential-backed browser proof; aggregate values remain aggregate preview rows rather than fabricated raw trials
+- residual risk: the finalized-snapshot corrections still require final-head PR CI and credential-backed browser proof; aggregate values remain aggregate preview rows rather than fabricated raw trials
 
 ## PR Hygiene
 

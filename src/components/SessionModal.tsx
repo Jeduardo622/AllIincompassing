@@ -440,6 +440,7 @@ interface BuildCloseoutDataPointsArgs {
   pendingTrialEvents: readonly SessionCaptureTrialEventInput[];
   goalTargetsById: ReadonlyMap<string, GoalTarget>;
   goalsById: ReadonlyMap<string, Goal>;
+  goalLabelsById?: ReadonlyMap<string, string>;
   linkedGoalIds: readonly string[];
   goalMeasurements: Record<string, unknown> | null | undefined;
 }
@@ -481,6 +482,7 @@ export const buildCloseoutDataPoints = ({
   pendingTrialEvents,
   goalTargetsById,
   goalsById,
+  goalLabelsById = new Map(),
   linkedGoalIds,
   goalMeasurements,
 }: BuildCloseoutDataPointsArgs): CloseoutDataPoint[] => {
@@ -518,7 +520,7 @@ export const buildCloseoutDataPoints = ({
       return [];
     }
 
-    const fallbackLabel = goal?.title ?? goalId;
+    const fallbackLabel = goalLabelsById.get(goalId) ?? goal?.title ?? goalId;
     const measurementTargets = getGoalMeasurementTargets(normalized.data);
     const targetTrials = Array.isArray(normalized.data.target_trials) ? normalized.data.target_trials : [];
     const linked = linkedGoalIds.includes(goalId);
@@ -3061,18 +3063,33 @@ export function SessionModal({
   }, [isOpen, isInProgressSession, session?.id]);
 
   const closeoutDataPoints = useMemo(() => {
+    const finalizedGoalIds = linkedSessionNote?.goal_ids ?? [];
+    const finalizedGoalLabels = linkedSessionNote?.goals_addressed ?? [];
+    const finalizedGoalLabelsById = new Map(
+      finalizedGoalIds.flatMap((goalEntryId, index) => {
+        const label = trimString(finalizedGoalLabels[index]);
+        return label ? [[goalEntryId, label] as const] : [];
+      }),
+    );
+    const goalMeasurements = isCompletedBtAbaSession
+      ? (linkedSessionNote?.goal_measurements as Record<string, unknown> | null | undefined)
+      : sessionNoteGoalMeasurements ?? closeoutCaptureRef.current?.notePayload.goal_measurements;
+
     return buildCloseoutDataPoints({
       existingTrialEvents,
       pendingTrialEvents: closeoutCaptureRef.current?.trialEvents ?? [],
       goalTargetsById,
       goalsById,
-      linkedGoalIds: sessionNoteGoalIds,
-      goalMeasurements: sessionNoteGoalMeasurements ?? closeoutCaptureRef.current?.notePayload.goal_measurements,
+      goalLabelsById: finalizedGoalLabelsById,
+      linkedGoalIds: isCompletedBtAbaSession ? finalizedGoalIds : sessionNoteGoalIds,
+      goalMeasurements,
     });
   }, [
     existingTrialEvents,
     goalTargetsById,
     goalsById,
+    isCompletedBtAbaSession,
+    linkedSessionNote,
     modalStep,
     sessionNoteGoalIds,
     sessionNoteGoalMeasurements,

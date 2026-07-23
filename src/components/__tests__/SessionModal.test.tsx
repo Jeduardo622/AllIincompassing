@@ -1572,9 +1572,14 @@ describe('SessionModal', () => {
       goal_ids: ['goal-1'],
       goal_measurements: {
         'goal-1': {
-          count: 2,
-          trials: 2,
-          promptLevel: 'Full verbal',
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target: 'Finalized retired target',
+            targets: ['Finalized retired target'],
+            metric_value: 2,
+            opportunities: 2,
+          },
         },
       },
       goal_notes: {},
@@ -1601,7 +1606,65 @@ describe('SessionModal', () => {
     expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
     expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
     expect(screen.getByText('All count: 1')).toBeInTheDocument();
-    expect(screen.getByText('Default Goal: 2')).toBeInTheDocument();
+    expect(screen.getByText('Finalized retired target: 2')).toBeInTheDocument();
+  });
+
+  it('uses finalized snapshot labels for targetless measurements from archived goals', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-archived-aggregate',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-completed-archived-aggregate',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Archived Snapshot Goal'],
+      goal_ids: ['goal-archived'],
+      goal_measurements: {
+        'goal-archived': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_value: 3,
+            opportunities: 3,
+          },
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-completed-archived-aggregate',
+      narrative: 'Completed archived aggregate note',
+      is_locked: true,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: '2026-03-01T11:00:00.000Z',
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T11:00:00.000Z',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{
+          ...btInProgressSession,
+          id: 'session-bt-completed-archived-aggregate',
+          status: 'completed',
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('Archived Snapshot Goal: 3')).toBeInTheDocument();
+    expect(screen.queryByText('goal-archived: 3')).not.toBeInTheDocument();
   });
 
   it('surfaces persisted BT draft loading failure before closeout can advance', async () => {

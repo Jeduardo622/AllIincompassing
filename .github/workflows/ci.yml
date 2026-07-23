@@ -773,19 +773,34 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Select IEHP assessment import scope
+        id: browser_scope
+        env:
+          BASE_SHA: ${{ needs.change_scope.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.change_scope.outputs.head_sha }}
+        run: node scripts/ci/select-browser-checks.mjs --format github-output
+
+      - name: Skip IEHP assessment import smoke gate
+        if: steps.browser_scope.outputs.iehp_assessment_import_smoke_required != 'true'
+        run: echo "No IEHP assessment import surface changed; IEHP assessment import smoke required check passes without Playwright."
+
       - name: Install dependencies
+        if: steps.browser_scope.outputs.iehp_assessment_import_smoke_required == 'true'
         run: npm ci
 
       - name: Provision IEHP smoke admin
+        if: steps.browser_scope.outputs.iehp_assessment_import_smoke_required == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/provision-ci-smoke-admin.ts
 
       - name: Install Playwright browser
+        if: steps.browser_scope.outputs.iehp_assessment_import_smoke_required == 'true'
         run: npx playwright install --with-deps chromium
 
       - name: IEHP assessment import smoke gate
+        if: steps.browser_scope.outputs.iehp_assessment_import_smoke_required == 'true'
         env:
           PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ASSESSMENT_CLIENT_ID: ${{ secrets.PW_ASSESSMENT_CLIENT_ID }}
@@ -820,7 +835,7 @@ jobs:
           npm run playwright:iehp-assessment-import-skills-behaviors
 
       - name: Cleanup IEHP smoke admin
-        if: always()
+        if: always() && steps.browser_scope.outputs.iehp_assessment_import_smoke_required == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -856,12 +871,6 @@ jobs:
         with:
           node-version: 20
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
 
       - name: Optional Playwright smoke secret gate
         id: optional_gate
@@ -943,6 +952,14 @@ jobs:
           fi
 
           echo "run_optional=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Install dependencies
+        if: steps.optional_gate.outputs.run_optional == 'true'
+        run: npm ci
+
+      - name: Install Playwright browser
+        if: steps.optional_gate.outputs.run_optional == 'true'
+        run: npx playwright install --with-deps chromium
 
       - name: Run optional Playwright smoke suite
         if: steps.optional_gate.outputs.run_optional == 'true'

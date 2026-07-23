@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { 
   FileText,
   Search,
@@ -477,8 +477,8 @@ export function Authorizations() {
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
                             <Calendar className="w-3 h-3 mr-1" />
-                            {format(new Date(auth.start_date), 'MMM d, yyyy')} - 
-                            {format(new Date(auth.end_date), 'MMM d, yyyy')}
+                            {format(parseISO(auth.start_date), 'MMM d, yyyy')} -
+                            {format(parseISO(auth.end_date), 'MMM d, yyyy')}
                           </div>
                         </div>
                       </div>

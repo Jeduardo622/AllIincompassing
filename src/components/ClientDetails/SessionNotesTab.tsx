@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, isValid, parseISO } from 'date-fns';
 import {
   Calendar, ChevronRight, Plus, Download, Inbox,
   Clock, CheckCircle, AlertTriangle, User, Search
@@ -148,6 +148,16 @@ function GoalNoteEntry({ label, noteText, measurement }: GoalNoteEntryProps) {
 interface SessionNotesTabProps {
   client: { id: string };
 }
+
+const formatDateOnly = (
+  value: string | null | undefined,
+  pattern: string,
+  fallback = 'Date unavailable',
+) => {
+  if (!value) return fallback;
+  const parsed = parseISO(value);
+  return isValid(parsed) ? format(parsed, pattern) : fallback;
+};
 
 function hasMeaningfulNarrative(narrative: string): boolean {
   return narrative.trim().length > 0;
@@ -442,7 +452,7 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
                     Auth #{auth.authorization_number}
                   </div>
                   <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    {new Date(auth.start_date).toLocaleDateString()} - {new Date(auth.end_date).toLocaleDateString()}
+                    {formatDateOnly(auth.start_date, 'M/d/yyyy')} - {formatDateOnly(auth.end_date, 'M/d/yyyy')}
                   </div>
                   <div className="mt-2 space-y-1">
                     {auth.services.map(service => (
@@ -600,7 +610,7 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
                           <div className="flex items-center">
                             <Calendar className="w-4 h-4 text-gray-400 mr-1" />
                             <span className="text-sm font-medium text-gray-900 dark:text-white">
-                              {format(new Date(note.date), 'MMMM d, yyyy')}
+                              {formatDateOnly(note.date, 'MMMM d, yyyy')}
                             </span>
                             <Clock className="w-4 h-4 text-gray-400 ml-3 mr-1" />
                             <span className="text-sm text-gray-700 dark:text-gray-300">

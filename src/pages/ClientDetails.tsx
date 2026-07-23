@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { format, parseISO } from 'date-fns';
 import { User, FileText, ClipboardCheck, Contact as FileContract, ArrowLeft, Calendar, AlertCircle, Clock, BarChart3 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchClientByIdForViewer } from '../lib/clients/fetchers';
@@ -163,7 +164,7 @@ export function ClientDetails() {
   }), [authorizationReportEndDates, client?.auth_end_date, reportWindow.today]);
 
   const reportEndDateLabel = reportStatus.endDate
-    ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${reportStatus.endDate}T00:00:00`))
+    ? format(parseISO(reportStatus.endDate), 'MMM d, yyyy')
     : null;
 
   const tabs = useMemo(

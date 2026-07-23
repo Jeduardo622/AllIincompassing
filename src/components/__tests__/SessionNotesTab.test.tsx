@@ -15,6 +15,65 @@ vi.mock('../../lib/session-notes', async (importOriginal) => {
   return { ...mod, fetchClientSessionNotes: vi.fn() };
 });
 
+const {
+  supabaseFromMock,
+} = vi.hoisted(() => {
+  const createAuthorizationsBuilder = (data: unknown[]) => {
+    const builder = {
+      select: vi.fn(() => builder),
+      eq: vi.fn(() => builder),
+      order: vi.fn(() => builder),
+      then: (resolve: (value: { data: unknown[]; error: null }) => void, reject: (reason?: unknown) => void) =>
+        Promise.resolve({ data, error: null }).then(resolve, reject),
+    };
+
+    return builder;
+  };
+
+  const createTherapistsBuilder = () => {
+    const builder = {
+      select: vi.fn(() => builder),
+      eq: vi.fn(() => builder),
+      order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+    };
+
+    return builder;
+  };
+
+  const supabaseFromMock = vi.fn((table: string) => {
+    if (table === 'authorizations') {
+      return createAuthorizationsBuilder([
+        {
+          id: 'auth-1',
+          authorization_number: 'AUTH-SESSION',
+          start_date: '2026-06-23',
+          end_date: '2026-12-22',
+          services: [],
+        },
+      ]);
+    }
+
+    if (table === 'therapists') {
+      return createTherapistsBuilder();
+    }
+
+    return createAuthorizationsBuilder([]);
+  });
+
+  return { supabaseFromMock };
+});
+
+vi.mock('../../lib/supabase', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../lib/supabase')>();
+  return {
+    ...mod,
+    supabase: {
+      ...mod.supabase,
+      from: supabaseFromMock,
+    },
+  };
+});
+
 // ---------------------------------------------------------------------------
 // Shared fixtures
 // ---------------------------------------------------------------------------
@@ -156,6 +215,7 @@ describe('SessionNotesTab — goal notes display', () => {
   beforeEach(() => {
     // Default: empty note list so each test can override explicitly.
     vi.mocked(fetchClientSessionNotes).mockResolvedValue([]);
+    supabaseFromMock.mockClear();
   });
 
   // -------------------------------------------------------------------------
@@ -354,5 +414,34 @@ describe('SessionNotesTab — overall narrative visibility', () => {
 
     expect(screen.getByText('Client made excellent progress today.')).toBeInTheDocument();
     expect(screen.getByText('Motor skills')).toBeInTheDocument();
+  });
+
+  it('renders session note and authorization date-only values without shifting the calendar day', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([
+      {
+        ...noteWithNarrativeBody,
+        id: 'note-date-only',
+        date: '2026-06-23',
+      },
+    ]);
+
+    renderWithProviders(<SessionNotesTab client={CLIENT} />, AUTH_OPTS);
+
+    expect(await screen.findByText('June 23, 2026')).toBeInTheDocument();
+    expect(await screen.findByText('6/23/2026 - 12/22/2026')).toBeInTheDocument();
+  });
+
+  it('renders a fallback instead of crashing for a legacy note without a session date', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([
+      {
+        ...noteWithNarrativeBody,
+        id: 'note-without-date',
+        date: null as unknown as string,
+      },
+    ]);
+
+    renderWithProviders(<SessionNotesTab client={CLIENT} />, AUTH_OPTS);
+
+    expect(await screen.findByText('Date unavailable')).toBeInTheDocument();
   });
 });

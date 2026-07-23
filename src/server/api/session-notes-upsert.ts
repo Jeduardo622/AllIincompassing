@@ -219,6 +219,24 @@ type SessionScope = {
   therapist_id: string;
 };
 
+type AuthorizationRow = {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  services: Array<{ service_code: string; approved_units: number | null }> | null;
+};
+
+type AssignedBtSessionCaptureBillingRow = {
+  authorization_id?: unknown;
+  service_code?: unknown;
+  strict_billing?: unknown;
+  session_client_id?: unknown;
+  session_therapist_id?: unknown;
+};
+
 const responseRequiredMeasurementTypes = new Set(["correctIncorrect", "taskAnalysis"]);
 const valueRequiredMeasurementTypes = new Set(["frequency", "rate", "duration", "timeSample", "latency", "IRT"]);
 
@@ -534,6 +552,70 @@ const isMissingGoalMeasurementsError = (payload: unknown): boolean => {
   }
 
   return /goal_measurements/i.test(text) && /column|does not exist|schema cache/i.test(text);
+};
+
+const resolveAssignedBtSessionCaptureBilling = async (args: {
+  request: Request;
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  sessionId: string | null | undefined;
+}): Promise<{
+  authorizationId: string;
+  serviceCode: string;
+  strictBilling: boolean;
+  sessionClientId: string;
+  sessionTherapistId: string;
+} | Response> => {
+  if (!args.sessionId) {
+    return errorResponse(
+      args.request,
+      "validation_error",
+      "A session is required for assigned BT session capture authorization.",
+    );
+  }
+
+  const result = await fetchJson<AssignedBtSessionCaptureBillingRow[]>(
+    `${args.supabaseUrl}/rest/v1/rpc/resolve_assigned_bt_session_capture_billing`,
+    {
+      method: "POST",
+      headers: args.headers,
+      body: JSON.stringify({ p_session_id: args.sessionId }),
+    },
+  );
+
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) {
+      return errorResponse(args.request, "forbidden", "Forbidden", { status: 403 });
+    }
+    return errorResponse(args.request, "upstream_error", "Unable to resolve assigned BT billing", { status: 502 });
+  }
+
+  const resolved = Array.isArray(result.data) ? result.data[0] : null;
+  const authorizationId =
+    resolved && typeof resolved.authorization_id === "string" ? resolved.authorization_id.trim() : "";
+  const serviceCode = resolved && typeof resolved.service_code === "string" ? resolved.service_code.trim() : "";
+  const sessionClientId =
+    resolved && typeof resolved.session_client_id === "string" ? resolved.session_client_id.trim() : "";
+  const sessionTherapistId =
+    resolved && typeof resolved.session_therapist_id === "string" ? resolved.session_therapist_id.trim() : "";
+
+  if (
+    !UUID_PATTERN.test(authorizationId)
+    || serviceCode.length === 0
+    || typeof resolved?.strict_billing !== "boolean"
+    || !UUID_PATTERN.test(sessionClientId)
+    || !UUID_PATTERN.test(sessionTherapistId)
+  ) {
+    return errorResponse(args.request, "forbidden", "Forbidden", { status: 403 });
+  }
+
+  return {
+    authorizationId,
+    serviceCode,
+    strictBilling: resolved.strict_billing,
+    sessionClientId,
+    sessionTherapistId,
+  };
 };
 
 const isLegacyGoalIdsTypeError = (payload: unknown): boolean => {
@@ -1156,6 +1238,7 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   const isBtAbaRequest = request.method === "GET"
     || requestedAction === "draft_bt_aba"
     || requestedAction === "finalize_bt_aba";
+  let hasAssignedBtLegacyCaptureAuthority = false;
 
   if (!isBtAbaRequest) {
     const hasResolvedSessionNoteRole = isTherapist || isAdmin || isSuperAdmin || isOrgMember;
@@ -1169,14 +1252,15 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
       if (clientDataAuthority.upstreamError) {
         return errorResponse(request, "upstream_error", "Unable to validate client data access", { status: 502 });
       }
-      if (!clientDataAuthority.allowed) {
-        const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
-        if (bcbaAuthority.upstreamError) {
-          return errorResponse(request, "upstream_error", "Unable to validate BCBA access", { status: 502 });
-        }
-        if (!bcbaAuthority.allowed) {
-          return errorResponse(request, "forbidden", "Forbidden");
-        }
+      const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
+      if (bcbaAuthority.upstreamError) {
+        return errorResponse(request, "upstream_error", "Unable to validate BCBA access", { status: 502 });
+      }
+      hasAssignedBtLegacyCaptureAuthority = legacyPayload.success
+        && clientDataAuthority.allowed
+        && !bcbaAuthority.allowed;
+      if (!hasAssignedBtLegacyCaptureAuthority && !bcbaAuthority.allowed) {
+        return errorResponse(request, "forbidden", "Forbidden");
       }
     }
   }
@@ -1241,65 +1325,83 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (billingPolicy.upstreamError) {
     return errorResponse(request, "upstream_error", "Unable to resolve session capture policy", { status: 502 });
   }
-  const captureBillingRelaxed = !billingPolicy.strict;
+  let effectiveAuthorizationId = payload.authorizationId;
+  let requestedServiceCode = payload.serviceCode;
+  let captureBillingRelaxed = !billingPolicy.strict;
 
-  const authorizationUrl =
-    `${supabaseUrl}/rest/v1/authorizations?select=` +
-    encodeURIComponent(
-      "id,organization_id,client_id,status,start_date,end_date,services:authorization_services(service_code,approved_units)",
-    ) +
-    `&id=eq.${encodeURIComponent(payload.authorizationId)}&limit=1`;
-  const authorizationResult = await fetchJson<Array<{
-    id: string;
-    organization_id: string;
-    client_id: string;
-    status: string;
-    start_date: string;
-    end_date: string;
-    services: Array<{ service_code: string; approved_units: number | null }> | null;
-  }>>(authorizationUrl, { method: "GET", headers });
-
-  if (!authorizationResult.ok || !authorizationResult.data || authorizationResult.data.length === 0) {
-    return errorResponse(request, "not_found", "Authorization not found");
-  }
-
-  const authorization = authorizationResult.data[0];
-  if (authorization.organization_id !== organizationId) {
-    return errorResponse(request, "forbidden", "Authorization does not belong to the active organization.");
-  }
-  if (authorization.client_id !== payload.clientId) {
-    return errorResponse(request, "validation_error", "Client does not match the selected authorization.");
-  }
-
-  if (!captureBillingRelaxed) {
-    if (authorization.status !== "approved") {
-      return errorResponse(request, "validation_error", "Authorization must be approved before saving session notes.");
+  if (hasAssignedBtLegacyCaptureAuthority) {
+    const assignedBtBilling = await resolveAssignedBtSessionCaptureBilling({
+      request,
+      supabaseUrl,
+      headers,
+      sessionId: payload.sessionId,
+    });
+    if (assignedBtBilling instanceof Response) {
+      return assignedBtBilling;
     }
-
-    const sessionDateStrict = toDate(payload.sessionDate);
+    effectiveAuthorizationId = assignedBtBilling.authorizationId;
+    requestedServiceCode = assignedBtBilling.serviceCode;
+    captureBillingRelaxed = !assignedBtBilling.strictBilling;
     if (
-      sessionDateStrict < toDate(authorization.start_date) ||
-      sessionDateStrict > toDate(authorization.end_date)
+      payload.clientId !== assignedBtBilling.sessionClientId
+      || payload.therapistId !== assignedBtBilling.sessionTherapistId
     ) {
-      return errorResponse(request, "validation_error", "Session date must be within the authorization date range.");
-    }
-
-    const hasAuthorizedServiceStrict = (authorization.services ?? []).some(
-      (service) => service.service_code === payload.serviceCode,
-    );
-    if (!hasAuthorizedServiceStrict) {
-      return errorResponse(request, "validation_error", "Selected service code is not part of this authorization.");
+      return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
     }
   }
+  let effectiveServiceCode = requestedServiceCode;
 
-  const services = authorization.services ?? [];
-  const hasAuthorizedService = services.some((service) => service.service_code === payload.serviceCode);
-  const firstListedServiceCode =
-    services.map((service) => service.service_code?.trim()).find((code): code is string => Boolean(code)) ?? "";
-  const effectiveServiceCode =
-    captureBillingRelaxed && !hasAuthorizedService
-      ? firstListedServiceCode || "UNSPECIFIED"
-      : payload.serviceCode;
+  if (!hasAssignedBtLegacyCaptureAuthority) {
+    const authorizationUrl =
+      `${supabaseUrl}/rest/v1/authorizations?select=` +
+      encodeURIComponent(
+        "id,organization_id,client_id,status,start_date,end_date,services:authorization_services(service_code,approved_units)",
+      ) +
+      `&id=eq.${encodeURIComponent(effectiveAuthorizationId)}&limit=1`;
+    const authorizationResult = await fetchJson<AuthorizationRow[]>(authorizationUrl, { method: "GET", headers });
+
+    if (!authorizationResult.ok || !authorizationResult.data || authorizationResult.data.length === 0) {
+      return errorResponse(request, "not_found", "Authorization not found");
+    }
+
+    const authorization = authorizationResult.data[0];
+    if (authorization.organization_id !== organizationId) {
+      return errorResponse(request, "forbidden", "Authorization does not belong to the active organization.");
+    }
+    if (authorization.client_id !== payload.clientId) {
+      return errorResponse(request, "validation_error", "Client does not match the selected authorization.");
+    }
+
+    if (!captureBillingRelaxed) {
+      if (authorization.status !== "approved") {
+        return errorResponse(request, "validation_error", "Authorization must be approved before saving session notes.");
+      }
+
+      const sessionDateStrict = toDate(payload.sessionDate);
+      if (
+        sessionDateStrict < toDate(authorization.start_date) ||
+        sessionDateStrict > toDate(authorization.end_date)
+      ) {
+        return errorResponse(request, "validation_error", "Session date must be within the authorization date range.");
+      }
+
+      const hasAuthorizedServiceStrict = (authorization.services ?? []).some(
+        (service) => service.service_code === requestedServiceCode,
+      );
+      if (!hasAuthorizedServiceStrict) {
+        return errorResponse(request, "validation_error", "Selected service code is not part of this authorization.");
+      }
+    }
+
+    const services = authorization.services ?? [];
+    const hasAuthorizedService = services.some((service) => service.service_code === requestedServiceCode);
+    const firstListedServiceCode =
+      services.map((service) => service.service_code?.trim()).find((code): code is string => Boolean(code)) ?? "";
+    effectiveServiceCode =
+      captureBillingRelaxed && !hasAuthorizedService
+        ? firstListedServiceCode || "UNSPECIFIED"
+        : requestedServiceCode;
+  }
 
   const existingNote = await fetchExistingNote(supabaseUrl, headers, organizationId, {
     noteId: payload.noteId,
@@ -1376,7 +1478,7 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   }
 
   const writePayload = {
-    authorization_id: payload.authorizationId,
+    authorization_id: effectiveAuthorizationId,
     client_id: payload.clientId,
     therapist_id: payload.therapistId,
     organization_id: organizationId,
@@ -1430,8 +1532,8 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
         target_session_id: payload.sessionId,
         target_note_id: existingNote?.id ?? payload.noteId ?? null,
         note_payload: {
-          authorization_id: payload.authorizationId,
-          requested_service_code: payload.serviceCode,
+          authorization_id: effectiveAuthorizationId,
+          requested_service_code: requestedServiceCode,
           goals_addressed: alignedGoals.goalsAddressed,
           goal_ids: alignedGoals.goalIds.length > 0 ? alignedGoals.goalIds : null,
           goal_measurements: alignedGoals.goalMeasurements,

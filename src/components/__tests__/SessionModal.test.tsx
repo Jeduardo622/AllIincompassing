@@ -269,6 +269,19 @@ describe('SessionModal', () => {
       noteId: 'note-bt-1',
       progressionResults: [],
     });
+    vi.mocked(supabase.rpc).mockReset();
+    vi.mocked(supabase.rpc).mockImplementation(async (fn: string) => {
+      if (fn === 'get_session_capture_strict_billing_gate') {
+      return { data: false, error: null };
+      }
+      if (fn === 'resolve_assigned_bt_session_capture_billing') {
+        return {
+          data: [{ authorization_id: 'auth-1', service_code: '97153', strict_billing: false }],
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
 
     const buildChain = (rows: unknown[]) => {
       const chain: SupabaseQueryChain = {
@@ -284,6 +297,7 @@ describe('SessionModal', () => {
 
     const defaultChain = buildChain([]);
 
+    vi.mocked(supabase.from).mockClear();
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'programs') {
         return buildChain(mockPrograms);
@@ -1318,6 +1332,111 @@ describe('SessionModal', () => {
     expect(screen.getByText('Modifiers: Not recorded')).toBeInTheDocument();
     expect(screen.getByText('Linked count: 1')).toBeInTheDocument();
     expect(screen.getByText('All count: 2')).toBeInTheDocument();
+  });
+
+  it('uses the assigned-session billing resolver for BT capture without requiring direct authorization reads', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockClear();
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'sessions') {
+        return buildChain([], {
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          started_at: null,
+        });
+      }
+      if (table === 'session_goals') {
+        return buildChain([{ goal_id: 'goal-1' }]);
+      }
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'client_session_notes') {
+        return buildChain([]);
+      }
+      if (table === 'authorizations') {
+        return buildChain([]);
+      }
+      return buildChain([]);
+    });
+
+    await vi.mocked(supabase.rpc).withImplementation(
+      async (fn: string, args?: Record<string, unknown>) => {
+        if (fn === 'get_session_capture_strict_billing_gate') {
+          return { data: true, error: null };
+        }
+        if (fn === 'resolve_assigned_bt_session_capture_billing') {
+          expect(args).toEqual({ p_session_id: 'session-bt-resolver-capture' });
+          return {
+            data: [
+              {
+                authorization_id: 'auth-resolver',
+                service_code: '97155',
+                strict_billing: true,
+              },
+            ],
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      },
+      async () => {
+        renderWithProviders(
+          <SessionModal
+            {...defaultProps}
+            dataCollectionOnly
+            onSubmit={onSubmit}
+            session={{
+              id: 'session-bt-resolver-capture',
+              therapist_id: 'test-therapist-1',
+              client_id: 'test-client-1',
+              program_id: 'program-1',
+              goal_id: 'goal-1',
+              start_time: '2026-03-01T10:00:00.000Z',
+              end_time: '2026-03-01T11:00:00.000Z',
+              status: 'in_progress',
+              notes: '',
+              created_at: '2026-03-01T09:00:00.000Z',
+              created_by: null,
+              updated_at: '2026-03-01T09:00:00.000Z',
+              updated_by: null,
+              started_at: null,
+            } satisfies Session}
+          />,
+        );
+
+        fireEvent.change(await screen.findByLabelText(/^Per-goal note$/i), {
+          target: { value: 'Progress details from resolver path' },
+        });
+        await userEvent.click(screen.getByRole('button', { name: /Save clinical capture/i }));
+
+        await waitFor(() => {
+          expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+            session_note_authorization_id: 'auth-resolver',
+            session_note_service_code: '97155',
+          }));
+        });
+      },
+    );
+    expect(supabase.rpc).toHaveBeenCalledWith('resolve_assigned_bt_session_capture_billing', {
+      p_session_id: 'session-bt-resolver-capture',
+    });
+    expect(vi.mocked(supabase.from).mock.calls.filter(([table]) => table === 'authorizations')).toHaveLength(0);
   });
 
   it('closes an in-progress historical session even when stored program and goal are no longer active', async () => {

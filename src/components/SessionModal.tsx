@@ -103,6 +103,12 @@ export interface SessionModalClinicalNotesPayload {
   session_note_begin_closeout?: boolean;
 }
 
+interface AssignedBtSessionCaptureBillingDefaultsRow {
+  authorization_id: string | null;
+  service_code: string | null;
+  strict_billing: boolean | null;
+}
+
 const responseRequiredMeasurementTypes = new Set(['correctIncorrect', 'taskAnalysis']);
 const valueRequiredMeasurementTypes = new Set(['frequency', 'rate', 'duration', 'timeSample', 'latency', 'IRT']);
 
@@ -860,7 +866,30 @@ export function SessionModal({
     },
     enabled: Boolean(activeOrganizationId),
   });
-  const captureBillingRelaxed = !captureStrictBilling;
+  const shouldUseAssignedBtBillingResolver = Boolean(isDataCollectionOnly && session?.id);
+
+  const { data: assignedBtSessionCaptureBillingDefaults = null } = useQuery({
+    queryKey: ['assigned-bt-session-capture-billing-defaults', session?.id],
+    queryFn: async () => {
+      if (!session?.id) {
+        return null;
+      }
+      const { data, error } = await supabase.rpc('resolve_assigned_bt_session_capture_billing', {
+        p_session_id: session.id,
+      } as never);
+      if (error) {
+        throw error;
+      }
+      const [row] = ((data ?? []) as AssignedBtSessionCaptureBillingDefaultsRow[]);
+      return row ?? null;
+    },
+    enabled: shouldUseAssignedBtBillingResolver,
+  });
+
+  const effectiveCaptureStrictBilling = shouldUseAssignedBtBillingResolver
+    ? assignedBtSessionCaptureBillingDefaults?.strict_billing ?? true
+    : captureStrictBilling;
+  const captureBillingRelaxed = !effectiveCaptureStrictBilling;
 
   const { data: billingAuthorizations = [] } = useQuery({
     queryKey: [
@@ -870,7 +899,7 @@ export function SessionModal({
       captureBillingRelaxed ? 'relaxed' : 'strict',
     ],
     queryFn: async () => {
-      if (!clientId || !activeOrganizationId) {
+      if (!clientId || !activeOrganizationId || shouldUseAssignedBtBillingResolver) {
         return [];
       }
       let query = supabase
@@ -897,12 +926,36 @@ export function SessionModal({
         }>
       ) ?? [];
     },
-    enabled: Boolean(clientId && activeOrganizationId),
+    enabled: Boolean(clientId && activeOrganizationId && !shouldUseAssignedBtBillingResolver),
   });
 
+  const resolvedBillingAuthorizations = useMemo(() => {
+    if (!shouldUseAssignedBtBillingResolver) {
+      return billingAuthorizations;
+    }
+
+    if (!assignedBtSessionCaptureBillingDefaults?.authorization_id) {
+      return [];
+    }
+
+    return [{
+      id: assignedBtSessionCaptureBillingDefaults.authorization_id,
+      status: effectiveCaptureStrictBilling ? 'approved' : 'available',
+      authorization_number: '',
+      services: assignedBtSessionCaptureBillingDefaults.service_code
+        ? [{ service_code: assignedBtSessionCaptureBillingDefaults.service_code }]
+        : [],
+    }];
+  }, [
+    assignedBtSessionCaptureBillingDefaults,
+    billingAuthorizations,
+    effectiveCaptureStrictBilling,
+    shouldUseAssignedBtBillingResolver,
+  ]);
+
   const primaryBillingAuthorization = useMemo(
-    () => pickPrimaryBillingAuthorization(billingAuthorizations),
-    [billingAuthorizations],
+    () => pickPrimaryBillingAuthorization(resolvedBillingAuthorizations),
+    [resolvedBillingAuthorizations],
   );
 
   const { data: linkedSessionNote } = useQuery({

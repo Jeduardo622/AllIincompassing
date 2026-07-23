@@ -7,6 +7,7 @@ const {
   mockGetSession,
   mockSignOut,
   mockProfilesMaybeSingle,
+  mockRoleRowsEq,
   mockChannel,
   mockOnAuthStateChange,
   mockQueryClientClear,
@@ -20,6 +21,7 @@ const {
     mockGetSession: vi.fn(),
     mockSignOut: vi.fn(),
     mockProfilesMaybeSingle: vi.fn(),
+    mockRoleRowsEq: vi.fn(),
     mockOnAuthStateChange: vi.fn((callback: (event: string, session: unknown) => Promise<void>) => {
       authStateChangeListenerRef.current = callback;
       return {
@@ -56,11 +58,11 @@ vi.mock('../supabaseClient', () => {
         signOut: mockSignOut,
         onAuthStateChange: mockOnAuthStateChange,
       },
-      from: vi.fn(() => ({
+      from: vi.fn((table: string) => ({
         select: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            maybeSingle: mockProfilesMaybeSingle,
-          })),
+          eq: table === 'user_roles'
+            ? mockRoleRowsEq
+            : vi.fn(() => ({ maybeSingle: mockProfilesMaybeSingle })),
         })),
       })),
       channel: vi.fn(() => mockChannel),
@@ -70,13 +72,14 @@ vi.mock('../supabaseClient', () => {
 });
 
 const TestConsumer = () => {
-  const { user, loading, profile, authFlow, effectiveRole, signOut } = useAuth();
+  const { user, loading, profile, authFlow, effectiveRole, isExactBt, signOut } = useAuth();
   return (
     <>
       <div data-testid="loading">{loading ? 'yes' : 'no'}</div>
       <div data-testid="user">{user?.id ?? 'none'}</div>
       <div data-testid="role">{profile?.role ?? 'none'}</div>
       <div data-testid="effective-role">{effectiveRole}</div>
+      <div data-testid="exact-bt">{isExactBt ? 'yes' : 'no'}</div>
       <div data-testid="auth-flow">{authFlow}</div>
       <button type="button" data-testid="signout" onClick={() => void signOut()}>
         Sign out
@@ -90,6 +93,7 @@ describe('AuthProvider initializeAuth resilience', () => {
     vi.clearAllMocks();
     authStateChangeListenerRef.current = null;
     mockSignOut.mockResolvedValue({ error: null });
+    mockRoleRowsEq.mockResolvedValue({ data: [], error: null, status: 200 });
     mockProfilesMaybeSingle.mockResolvedValue({
       data: {
         id: 'user-1',
@@ -227,6 +231,81 @@ describe('AuthProvider initializeAuth resilience', () => {
     );
 
     await waitFor(() => expect(screen.getByTestId('effective-role')).toHaveTextContent('bt'));
+    expect(screen.getByTestId('exact-bt')).toHaveTextContent('no');
+  });
+
+  it('preserves an exact BT role assignment separately from normalized role aliases', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          user: {
+            id: 'user-1',
+            email: 'user@example.com',
+          },
+        },
+      },
+      error: null,
+    });
+    mockProfilesMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: 'user-1',
+        email: 'user@example.com',
+        role: 'therapist',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+    mockRoleRowsEq.mockResolvedValueOnce({
+      data: [{ is_active: true, expires_at: null, roles: { name: 'bt' } }],
+      error: null,
+      status: 200,
+    });
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('effective-role')).toHaveTextContent('bt'));
+    expect(screen.getByTestId('exact-bt')).toHaveTextContent('yes');
+  });
+
+  it('does not fall back to a stale BT profile after an authoritative empty role assignment read', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          user: {
+            id: 'user-1',
+            email: 'user@example.com',
+          },
+        },
+      },
+      error: null,
+    });
+    mockProfilesMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: 'user-1',
+        email: 'user@example.com',
+        role: 'bt',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+    mockRoleRowsEq.mockResolvedValueOnce({ data: [], error: null, status: 200 });
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('effective-role')).toHaveTextContent('bt'));
+    expect(screen.getByTestId('exact-bt')).toHaveTextContent('no');
   });
 
   it('keeps the existing profile when refresh-time profile fetch fails for same user', async () => {

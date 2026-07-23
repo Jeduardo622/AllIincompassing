@@ -3148,6 +3148,14 @@ export function SessionModal({
     const goalMeasurements = isCompletedBtAbaSession
       ? (linkedSessionNote?.goal_measurements as Record<string, unknown> | null | undefined)
       : sessionNoteGoalMeasurements ?? closeoutCaptureRef.current?.notePayload.goal_measurements;
+    const completedLinkedGoalIds = Array.from(new Set([
+      ...finalizedGoalIds,
+      ...(
+        goalMeasurements && typeof goalMeasurements === 'object'
+          ? Object.keys(goalMeasurements)
+          : []
+      ),
+    ]));
 
     return buildCloseoutDataPoints({
       existingTrialEvents,
@@ -3155,7 +3163,7 @@ export function SessionModal({
       goalTargetsById,
       goalsById,
       goalLabelsById: finalizedGoalLabelsById,
-      linkedGoalIds: isCompletedBtAbaSession ? finalizedGoalIds : sessionNoteGoalIds,
+      linkedGoalIds: isCompletedBtAbaSession ? completedLinkedGoalIds : sessionNoteGoalIds,
       goalMeasurements,
     });
   }, [

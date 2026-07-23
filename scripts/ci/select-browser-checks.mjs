@@ -105,6 +105,8 @@ const classifyFile = (file) => {
     /^scripts\/lib\/(?:iehp-)?assessment-import-smoke\.ts$/,
     /^scripts\/lib\/assessment-import-cleanup\.ts$/,
     /^scripts\/provision-ci-smoke-admin\.ts$/,
+    /^netlify\/functions\/assessment-(?:documents(?:-extract-background)?|drafts|checklist)\.ts$/,
+    /^supabase\/functions\/extract-assessment-fields\//,
     /^src\/components\/ClientDetails\/ProgramsGoalsTab(?:\.helpers)?\.ts(x)?$/,
     /^src\/components\/ClientDetails\/IehpFbaLayoutReview\.tsx$/,
     /^src\/lib\/assessment-documents\.ts$/,

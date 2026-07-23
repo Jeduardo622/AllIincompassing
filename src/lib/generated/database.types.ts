@@ -6891,40 +6891,23 @@ export type Database = {
         Returns: number
       }
       get_session_metrics:
-        | {
-            Args: {
-              p_client_id?: string
-              p_end_date: string
-              p_start_date: string
-              p_therapist_id?: string
-            }
-            Returns: {
-              cancelled_sessions: number
-              completed_sessions: number
-              no_show_sessions: number
-              sessions_by_client: Json
-              sessions_by_day: Json
-              sessions_by_therapist: Json
-              total_sessions: number
-            }[]
+        {
+          Args: {
+            p_client_id?: string
+            p_end_date: string
+            p_start_date: string
+            p_therapist_id?: string
           }
-        | {
-            Args: {
-              p_client_id?: string
-              p_end_date: string
-              p_start_date: string
-              p_therapist_id?: string
-            }
-            Returns: {
-              cancelled_sessions: number
-              completed_sessions: number
-              no_show_sessions: number
-              sessions_by_client: Json
-              sessions_by_day: Json
-              sessions_by_therapist: Json
-              total_sessions: number
-            }[]
-          }
+          Returns: {
+            cancelled_sessions: number
+            completed_sessions: number
+            no_show_sessions: number
+            sessions_by_client: Json
+            sessions_by_day: Json
+            sessions_by_therapist: Json
+            total_sessions: number
+          }[]
+        }
       get_session_notes_with_compliance: {
         Args: { p_client_id: string; p_limit?: number }
         Returns: {

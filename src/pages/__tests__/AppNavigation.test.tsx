@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from '../../App';
 
 type TestRole = 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
-type TestCapability = 'staffDashboard' | 'viewClients' | 'viewSchedule';
+type TestCapability = 'staffDashboard' | 'viewClients' | 'viewSchedule' | 'viewMonitoring' | 'viewSettings';
 
 let authRole: TestRole = 'client';
 let persistedProfileRole: TestRole | null = null;
@@ -31,6 +31,8 @@ vi.mock('../../lib/authContext', () => {
     staffDashboard: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
     viewClients: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     viewSchedule: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
+    viewMonitoring: ['admin', 'super_admin'],
+    viewSettings: ['admin', 'super_admin'],
   };
   return {
     useAuth: () => ({
@@ -331,10 +333,38 @@ describe('App navigation landing', () => {
     }
   });
 
+  it('allows admins and super admins to open monitoring', async () => {
+    for (const role of ['admin', 'super_admin'] as const) {
+      authRole = role;
+      window.history.pushState({}, '', '/monitoring');
+      const view = renderApp();
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/monitoring');
+      });
+
+      view.unmount();
+    }
+  });
+
   it('blocks non-admin roles from settings tabs', async () => {
-    for (const role of ['client', 'therapist'] as const) {
+    for (const role of ['client', 'therapist', 'bcba'] as const) {
       authRole = role;
       window.history.pushState({}, '', '/settings/admin');
+      const view = renderApp();
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/unauthorized');
+      });
+
+      view.unmount();
+    }
+  });
+
+  it('blocks BCBA from monitoring and its legacy alias route', async () => {
+    for (const path of ['/monitoring', '/monitoringdashboard']) {
+      authRole = 'bcba';
+      window.history.pushState({}, '', path);
       const view = renderApp();
 
       await waitFor(() => {

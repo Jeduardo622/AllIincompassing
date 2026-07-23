@@ -239,6 +239,32 @@ describe("Sidebar navigation active styling", () => {
     expect(screen.getByRole("link", { name: /settings/i })).toBeInTheDocument();
   });
 
+  it("hides monitoring and settings for BCBA while preserving My Account", () => {
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole: vi.fn((role: string) => role === "bcba"),
+      user: {
+        email: "bcba@example.com",
+        user_metadata: {},
+      },
+      profile: {
+        id: "user-1",
+        role: "bcba",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn(() => true),
+      effectiveRole: "bcba",
+      hasCapability: vi.fn(capabilityForRole("bcba")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("bcba"))),
+    });
+
+    renderSidebar(["/clients"]);
+
+    expect(screen.queryByRole("link", { name: /monitoring/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /settings/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /my account/i })).toBeInTheDocument();
+  });
+
   it("hides the chat assistant for guardian users", () => {
     const hasRole = vi.fn(
       (role: "client" | "therapist" | "admin" | "super_admin") => role === "client"

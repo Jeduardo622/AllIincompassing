@@ -36,6 +36,15 @@ import { createClient as createClientRecord } from '../lib/clients/mutations';
 import { useAuth } from '../lib/authContext';
 import { useActiveOrganizationId } from '../lib/organization';
 
+const normalizeClientSearchValue = (value: string | null | undefined): string =>
+  (value ?? '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’‘`´]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const Clients = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -304,12 +313,16 @@ const Clients = () => {
   const clientSaveErrorMessage = selectedClient
     ? getClientMutationErrorMessage(updateClientMutation.error)
     : getClientMutationErrorMessage(createClientMutation.error);
+  const normalizedSearchQuery = normalizeClientSearchValue(searchQuery);
 
   const filteredClients = clients.filter(client => {
+    const normalizedFullName = normalizeClientSearchValue(client?.full_name);
+    const normalizedEmail = normalizeClientSearchValue(client?.email);
+    const normalizedClientId = normalizeClientSearchValue(client?.client_id);
     const matchesSearch = (
-      (client?.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-      (client?.email?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-      (client?.client_id?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+      normalizedFullName.includes(normalizedSearchQuery) ||
+      normalizedEmail.includes(normalizedSearchQuery) ||
+      normalizedClientId.includes(normalizedSearchQuery)
     );
 
     // Email domain filter
@@ -411,7 +424,7 @@ const Clients = () => {
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
         <div className="p-4 border-b dark:border-gray-700">
           <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
+            <div className="relative flex-1 xl:flex-[1_0_20rem] 2xl:flex-[1_0_24rem]">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
@@ -419,7 +432,7 @@ const Clients = () => {
                 aria-label="Search clients"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
+                className="w-full xl:min-w-[20rem] 2xl:min-w-[24rem] pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
               />
             </div>
               <div className="flex flex-wrap gap-2">

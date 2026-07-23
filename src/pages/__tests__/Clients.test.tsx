@@ -91,6 +91,30 @@ const mockClients = [
     created_at: '2025-01-01T00:00:00.000Z',
     deleted_at: '2025-01-10T00:00:00.000Z',
   },
+  {
+    id: 'client-3',
+    full_name: 'Jose O’Connor',
+    email: 'jose.oconnor@example.com',
+    client_id: 'JOSE-123',
+    date_of_birth: '2017-03-15',
+    insurance_info: { provider: 'Kaiser', policy_number: 'JOSE-123' },
+    service_preference: ['ABA Therapy'],
+    one_to_one_units: 6,
+    supervision_units: 1,
+    parent_consult_units: 0,
+    assessment_units: 0,
+    availability_hours: {
+      monday: { start: '11:00', end: '13:00' },
+      tuesday: { start: null, end: null },
+      wednesday: { start: null, end: null },
+      thursday: { start: null, end: null },
+      friday: { start: null, end: null },
+      saturday: { start: null, end: null },
+      sunday: { start: null, end: null },
+    },
+    created_at: '2025-01-01T00:00:00.000Z',
+    deleted_at: null,
+  },
 ];
 
 beforeEach(() => {
@@ -135,6 +159,37 @@ describe('Clients page filtering', () => {
     });
   });
 
+  it('matches displayed names across apostrophe and diacritic variants while preserving email and client ID search', async () => {
+    renderWithProviders(<Clients />);
+
+    const searchInput = screen.getByRole('textbox', { name: /search clients/i });
+
+    await userEvent.type(searchInput, "josé o'connor");
+    await waitFor(() => {
+      expect(screen.getByText('Jose O’Connor')).toBeInTheDocument();
+    });
+
+    await userEvent.clear(searchInput);
+    await userEvent.type(searchInput, 'jose.oconnor@example.com');
+    await waitFor(() => {
+      expect(screen.getByText('Jose O’Connor')).toBeInTheDocument();
+    });
+
+    await userEvent.clear(searchInput);
+    await userEvent.type(searchInput, 'JOSE-123');
+    await waitFor(() => {
+      expect(screen.getByText('Jose O’Connor')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps the search input from collapsing at desktop widths with local responsive classes', () => {
+    renderWithProviders(<Clients />);
+
+    const searchInput = screen.getByRole('textbox', { name: /search clients/i });
+    expect(searchInput).toHaveClass('xl:min-w-[20rem]');
+    expect(searchInput).toHaveClass('2xl:min-w-[24rem]');
+  });
+
   it('invalidates the clients query after successful mutations', () => {
     renderWithProviders(<Clients />);
 
@@ -156,10 +211,8 @@ describe('Clients page filtering', () => {
 
     renderWithProviders(<Clients />);
 
-    const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
-    expect(deleteButtons).toHaveLength(1);
-
-    await userEvent.click(deleteButtons[0]);
+    const deleteButton = screen.getByRole('button', { name: /delete active client/i });
+    await userEvent.click(deleteButton);
 
     expect(mutationHandlers[3]?.mutateAsync).toHaveBeenCalledWith('client-1');
 

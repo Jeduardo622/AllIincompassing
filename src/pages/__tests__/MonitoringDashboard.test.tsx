@@ -59,12 +59,15 @@ const getQueryStats = vi.fn(() => ({
 let intervalCallbacks: Array<() => void> = [];
 let setIntervalSpy: ReturnType<typeof vi.spyOn>;
 let clearIntervalSpy: ReturnType<typeof vi.spyOn>;
+let authState = {
+  loading: false,
+  isAdmin: () => true,
+  hasCapability: (capability: string) => capability === 'viewMonitoring',
+  session: null,
+};
 
 vi.mock('../../lib/authContext', () => ({
-  useAuth: () => ({
-    loading: false,
-    isAdmin: () => true,
-  }),
+  useAuth: () => authState,
 }));
 
 vi.mock('../../lib/performance', () => ({
@@ -129,6 +132,12 @@ describe('MonitoringDashboard', () => {
     getAnalysis.mockClear();
     getQueryStats.mockClear();
     cleanupCallCount = 0;
+    authState = {
+      loading: false,
+      isAdmin: () => true,
+      hasCapability: (capability: string) => capability === 'viewMonitoring',
+      session: null,
+    };
     intervalCallbacks = [];
     setIntervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((cb: TimerHandler) => {
       if (typeof cb === 'function') {
@@ -183,6 +192,30 @@ describe('MonitoringDashboard', () => {
         value: originalLocation,
       });
     }
+  });
+
+  it('fails closed when broad admin status is true but the monitoring capability is absent', () => {
+    authState = {
+      loading: false,
+      isAdmin: () => true,
+      hasCapability: () => false,
+      session: null,
+    };
+
+    render(<MonitoringDashboard />);
+
+    expect(screen.getByText(/admin access required/i)).toBeInTheDocument();
+  });
+
+  it('keeps the monitoring tab strip horizontally scrollable without page overflow', () => {
+    render(<MonitoringDashboard />);
+
+    const overviewTab = screen.getByRole('button', { name: /overview/i });
+    const tabList = overviewTab.closest('nav');
+    const scroller = tabList?.parentElement;
+
+    expect(tabList).toHaveClass('min-w-max');
+    expect(scroller).toHaveClass('overflow-x-auto');
   });
 
 });

@@ -128,4 +128,12 @@ describe('Therapist profile staff invite', () => {
 
     expect(screen.queryByRole('button', { name: /invite to app/i })).not.toBeInTheDocument();
   });
+
+  it('does not expose the invite action to BCBA viewers', () => {
+    mockAuth('bcba');
+
+    renderWithProviders(<ProfileTab therapist={therapist} />);
+
+    expect(screen.queryByRole('button', { name: /invite to app/i })).not.toBeInTheDocument();
+  });
 });

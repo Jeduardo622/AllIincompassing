@@ -188,14 +188,14 @@ export function Sidebar() {
       icon: Activity,
       label: 'Monitoring',
       path: '/monitoring',
-      roles: ['admin', 'bcba', 'super_admin'] as AppRole[],
+      roles: ['admin', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
       icon: Settings,
       label: 'Settings',
       path: '/settings',
-      roles: ['admin', 'bcba', 'super_admin'] as AppRole[],
+      roles: ['admin', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {

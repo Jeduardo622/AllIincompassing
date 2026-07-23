@@ -85,7 +85,7 @@ const API_ENDPOINTS = {
 };
 
 // Test roles for authentication
-const TEST_ROLES = ['client', 'therapist', 'admin', 'super_admin'];
+const TEST_ROLES = ['client', 'therapist', 'admin', 'bcba', 'super_admin'];
 
 class RouteAuditor {
   constructor() {

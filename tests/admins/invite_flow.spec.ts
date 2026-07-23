@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubDenoEnv } from '../utils/stubDeno';
 
-type TestRole = 'client' | 'bt' | 'therapist' | 'admin' | 'super_admin';
+type TestRole = 'client' | 'bt' | 'therapist' | 'admin' | 'bcba' | 'super_admin';
 
 type TestUser = {
   id: string;
@@ -39,7 +39,7 @@ const envValues = new Map<string, string>([
 stubDenoEnv((key) => envValues.get(key) ?? '');
 
 const logApiAccess = vi.fn();
-const assertAdminOrSuperAdmin = vi.fn(async () => {});
+const getUserRoles = vi.fn(async () => [currentUserContext.profile.role]);
 const createRequestClient = vi.fn();
 
 const corsHeaders = {
@@ -187,7 +187,7 @@ vi.mock('../../supabase/functions/_shared/database.ts', () => ({
 }));
 
 vi.mock('../../supabase/functions/_shared/auth.ts', () => ({
-  assertAdminOrSuperAdmin,
+  getUserRoles,
 }));
 
 describe('admin invite edge function', () => {
@@ -213,7 +213,7 @@ describe('admin invite edge function', () => {
     fetchMock = vi.fn(async () => ({ ok: true, status: 202 }));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     logApiAccess.mockClear();
-    assertAdminOrSuperAdmin.mockClear();
+    getUserRoles.mockClear();
     createRequestClient.mockClear();
     createAdminRpc.mockClear();
   });
@@ -259,7 +259,7 @@ describe('admin invite edge function', () => {
       reason: 'Coverage for staff onboarding.',
     });
 
-    expect(assertAdminOrSuperAdmin).toHaveBeenCalledTimes(1);
+    expect(getUserRoles).toHaveBeenCalledTimes(1);
   }, 20_000);
 
   it('does not persist an invite token when the email service URL is missing', async () => {
@@ -533,5 +533,53 @@ describe('admin invite edge function', () => {
       role: 'bt',
       email_delivery_status: 'sent',
     });
+  }, 20_000);
+
+  it('fails closed for BCBA callers before invite side effects begin', async () => {
+    currentUserContext = {
+      user: { id: 'bcba-1', email: 'bcba@example.com' },
+      profile: { id: 'profile-bcba-1', email: 'bcba@example.com', role: 'bcba', is_active: true },
+    };
+
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'bt.staff@example.com', role: 'bt' }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: 'insufficient_role' });
+    expect(getUserRoles).toHaveBeenCalledTimes(1);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+    expect(inviteTokens).toHaveLength(0);
+  }, 20_000);
+
+  it('allows a multi-role caller with an active admin assignment', async () => {
+    currentUserContext = {
+      user: { id: 'multi-role-1', email: 'multi-role@example.com' },
+      profile: { id: 'profile-multi-role-1', email: 'multi-role@example.com', role: 'bcba', is_active: true },
+    };
+    getUserRoles.mockResolvedValueOnce(['bcba', 'admin']);
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'bt.staff@example.com', role: 'bt' }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(createAdminRpc).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(adminActionRows).toHaveLength(1);
+    expect(inviteTokens).toHaveLength(1);
   }, 20_000);
 });

@@ -36,7 +36,8 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
 - required sequence: specification-engineer, implementation-engineer, code-review-engineer, test-engineer
 - agents used: specification-engineer, implementation-engineer, code-review-engineer, test-engineer
 - reviewer: completed; the first review found overly broad same-goal aggregate suppression and stale restored-draft input risk
-- re-review: approved with no findings after exact goal/target deduplication, normalized restored-draft hydration, and regression coverage
+- PR review: found that normalized preview state could replace historical persisted measurements and that completed aggregate-only sessions did not hydrate the preview
+- re-review: approved with no findings after separating preview/persistence state, adding completed-session hydration, and covering both regressions
 
 ## Verification Card
 
@@ -54,11 +55,11 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
   - `npm run build`
   - `npm run verify:local`
 - executed checks:
-  - targeted `SessionModal` tests: pass, 110/110
+  - targeted `SessionModal` tests: pass, 111/111
   - `npm run ci:check-focused`: pass via bundled Node runtime
   - `npm run lint`: pass via bundled Node runtime
   - `npm run typecheck`: pass via bundled Node runtime
-  - `npm run test:ci`: fail on four pre-existing baseline tests; all 110 `SessionModal` tests pass within the full run
+  - `npm run test:ci`: fail on four pre-existing baseline tests; all WIN-243 `SessionModal` tests pass within the full run
   - focused baseline rerun: three deterministic unrelated failures remain in the async PDF blob test and two CI/workflow source-contract tests; the order-sensitive schedule-readiness test passes in isolation
   - `npm run test:routes:tier0`: pass, 220/220
   - `npm run ci:playwright`: preflight passed; auth smoke failed because the configured `superadmin@test.com` credential was rejected, so the fail-fast runner did not execute the remaining children

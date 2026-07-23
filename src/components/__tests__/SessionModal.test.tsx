@@ -1168,6 +1168,27 @@ describe('SessionModal', () => {
   });
 
   it('restores a persisted BT draft and finalizes atomically before reporting completion', async () => {
+    const persistedGoalMeasurements = {
+      'goal-1': {
+        version: 1,
+        data: {
+          measurement_type: 'frequency',
+          metric_label: 'Count',
+          metric_unit: 'responses',
+          targets: ['Match peer greeting in 4/5 trials', 'Retired target'],
+          target_trials: [
+            {
+              target: 'Match peer greeting in 4/5 trials',
+              metric_value: 2,
+            },
+            {
+              target: 'Retired target',
+              metric_value: 9,
+            },
+          ],
+        },
+      },
+    };
     vi.mocked(getBtAbaSessionNote).mockResolvedValue({
       noteId: 'note-restored',
       templateId: 'template-restored',
@@ -1184,27 +1205,7 @@ describe('SessionModal', () => {
       therapist_name: 'Test Therapist 1',
       goals_addressed: ['Default Goal'],
       goal_ids: ['goal-1'],
-      goal_measurements: {
-        'goal-1': {
-          version: 1,
-          data: {
-            measurement_type: 'frequency',
-            metric_label: 'Count',
-            metric_unit: 'responses',
-            targets: ['Match peer greeting in 4/5 trials', 'Retired target'],
-            target_trials: [
-              {
-                target: 'Match peer greeting in 4/5 trials',
-                metric_value: 2,
-              },
-              {
-                target: 'Retired target',
-                metric_value: 9,
-              },
-            ],
-          },
-        },
-      },
+      goal_measurements: persistedGoalMeasurements,
       goal_notes: {},
       session_id: 'session-bt-restored',
       narrative: '',
@@ -1249,12 +1250,18 @@ describe('SessionModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Save ABA Draft' }));
     await waitFor(() => expect(saveBtAbaSessionNoteDraft).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: 'session-bt-restored', templateId: 'template-restored', responses: validBtAbaResponses,
+      sessionId: 'session-bt-restored',
+      templateId: 'template-restored',
+      notePayload: expect.objectContaining({ goal_measurements: persistedGoalMeasurements }),
+      responses: validBtAbaResponses,
     })));
 
     await userEvent.click(screen.getByRole('button', { name: 'Finalize ABA Session' }));
     await waitFor(() => expect(finalizeBtAbaSessionNote).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: 'session-bt-restored', noteId: 'note-restored', responses: validBtAbaResponses,
+      sessionId: 'session-bt-restored',
+      noteId: 'note-restored',
+      notePayload: expect.objectContaining({ goal_measurements: persistedGoalMeasurements }),
+      responses: validBtAbaResponses,
       trialEvents: expect.any(Array), expectedTargetVersions: expect.any(Array),
     })));
     expect(await screen.findByRole('alert')).toHaveTextContent('Atomic finalization failed');
@@ -1512,6 +1519,57 @@ describe('SessionModal', () => {
 
     expect(await screen.findByText('Goals: Finalized Archived Goal')).toBeInTheDocument();
     expect(screen.queryByText('Goals: Default Goal')).not.toBeInTheDocument();
+  });
+
+  it('renders aggregate-only measurements when a completed BT session is reopened', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-aggregate',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-completed-aggregate',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Default Goal'],
+      goal_ids: ['goal-1'],
+      goal_measurements: {
+        'goal-1': {
+          count: 2,
+          trials: 2,
+          promptLevel: 'Full verbal',
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-completed-aggregate',
+      narrative: 'Completed aggregate note',
+      is_locked: true,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: '2026-03-01T11:00:00.000Z',
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T11:00:00.000Z',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{ ...btInProgressSession, id: 'session-bt-completed-aggregate', status: 'completed' }}
+      />,
+    );
+
+    expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('All count: 1')).toBeInTheDocument();
+    expect(screen.getByText('Default Goal: 2')).toBeInTheDocument();
   });
 
   it('surfaces persisted BT draft loading failure before closeout can advance', async () => {

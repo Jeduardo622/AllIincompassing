@@ -2995,7 +2995,7 @@ export function SessionModal({
       notePayload: {
         goals_addressed: linkedSessionNote?.goals_addressed ?? getValues('session_note_goals_addressed') ?? [],
         goal_ids: linkedSessionNote?.goal_ids ?? getValues('session_note_goal_ids') ?? null,
-        goal_measurements: getValues('session_note_goal_measurements') ?? linkedSessionNote?.goal_measurements ?? null,
+        goal_measurements: linkedSessionNote?.goal_measurements ?? getValues('session_note_goal_measurements') ?? null,
         goal_notes: linkedSessionNote?.goal_notes ?? getValues('session_note_goal_notes') ?? null,
         narrative: linkedSessionNote?.narrative ?? getValues('session_note_narrative') ?? '',
       },
@@ -3051,9 +3051,16 @@ export function SessionModal({
       goalTargetsById,
       goalsById,
       linkedGoalIds: sessionNoteGoalIds,
-      goalMeasurements: closeoutCaptureRef.current?.notePayload.goal_measurements,
+      goalMeasurements: sessionNoteGoalMeasurements ?? closeoutCaptureRef.current?.notePayload.goal_measurements,
     });
-  }, [existingTrialEvents, goalTargetsById, goalsById, modalStep, sessionNoteGoalIds]);
+  }, [
+    existingTrialEvents,
+    goalTargetsById,
+    goalsById,
+    modalStep,
+    sessionNoteGoalIds,
+    sessionNoteGoalMeasurements,
+  ]);
 
   if (!isOpen) return null;
 

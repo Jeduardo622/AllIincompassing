@@ -39,23 +39,27 @@
   - `npm run typecheck`: pass
   - `npm run validate:tenant`: pass
   - `npm run build`: pass
+  - Supabase preview migration: pass
+  - preview hosted RPC/ACL proof: pass; only the date overload remained, with execute granted to `authenticated` and denied to `anon`
+  - production migration promotion: pass; runtime ledger recorded `20260723163640/remove_session_metrics_text_overload`
+  - production hosted RPC/ACL proof: pass; only `get_session_metrics(date,date,uuid,uuid)` remains, with execute granted to `authenticated` and denied to `anon` and `PUBLIC`
 - blocked checks:
   - `npm run test:ci`: blocked by four unrelated baseline failures, including the existing `supabase.edge` Blob mock failure, stale BT browser-proof contract, and synthetic BCBA provisioning key expectation
   - `npm run verify:local`: reached and failed at the same unrelated `test:ci` baseline failures after policy, lint, and typecheck passed
 - pending checks:
-  - Supabase preview migration and hosted RPC/ACL proof
-- result: pass with blocked local full-suite checks; pending critical-lane hosted verification
-- residual risk: static tests cannot prove the effective preview schema or ACL; hosted preview evidence is required before merge
+  - refreshed GitHub runtime migration parity and aggregate CI gate
+- result: pass with blocked local full-suite checks; hosted preview and production runtime verification passed
+- residual risk: the production dashboard must still be rechecked through the authenticated BCBA UI after the refreshed CI suite passes
 
 ## Review
 
 - specification-engineer: approved the bounded migration/type/test direction
 - software-architect: approved after requiring generated-type alignment, contract coverage, and hosted preview proof
 - implementation-engineer: completed the bounded three-file implementation
-- code-review-engineer: no SQL correctness defect; approval pending handoff and hosted verification
-- test-engineer: static contract is appropriate but cannot replace hosted PostgREST proof
+- code-review-engineer: no SQL correctness defect; hosted verification requirement satisfied
+- test-engineer: static contract and hosted PostgREST proof both passed
 - security-engineer: approved; surviving date overload remains tenant-scoped and fail-closed
-- supabase-reviewer: migration is sound; approval pending hosted preview proof
+- supabase-reviewer: migration is sound; hosted preview proof passed
 - human review: mandatory before merge
 
 ## PR Hygiene
@@ -67,7 +71,7 @@
 - single-purpose: yes
 - unrelated changes: none
 - protected-path drift: none beyond the routed migration
-- pr handoff: local verification and specialist review documented; hosted preview verification remains mandatory
-- required follow-up: push the branch, open a human-reviewed PR, require Supabase preview success, and verify only the date overload remains
+- pr handoff: local verification, specialist review, Supabase preview, production migration promotion, and hosted RPC/ACL proof are documented
+- required follow-up: require refreshed runtime migration parity and aggregate CI gate success, then recheck the authenticated BCBA dashboard metrics
 
 The live production dashboard currently reports zero monthly metrics while the Reports route returns non-zero data. Production schema inspection found both date and text overloads with identical argument names; this slice removes only the legacy text overload that makes PostgREST resolution ambiguous.

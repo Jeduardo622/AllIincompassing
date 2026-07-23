@@ -423,8 +423,8 @@ const Clients = () => {
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
         <div className="p-4 border-b dark:border-gray-700">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1 xl:flex-[1_0_20rem] 2xl:flex-[1_0_24rem]">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap xl:flex-nowrap gap-4">
+            <div className="relative flex-1 sm:min-w-[16rem] xl:flex-[1_0_20rem] 2xl:flex-[1_0_24rem]">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
@@ -432,7 +432,7 @@ const Clients = () => {
                 aria-label="Search clients"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full xl:min-w-[20rem] 2xl:min-w-[24rem] pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
+                className="w-full sm:min-w-[16rem] xl:min-w-[20rem] 2xl:min-w-[24rem] pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
               />
             </div>
               <div className="flex flex-wrap gap-2">

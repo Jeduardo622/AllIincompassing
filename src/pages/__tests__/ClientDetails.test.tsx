@@ -251,6 +251,16 @@ describe('ClientDetails page', () => {
     expect(supabase.from).toHaveBeenCalledWith('authorizations');
   });
 
+  it('renders the report upcoming date label from the stored calendar day', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-07-07T12:00:00Z'));
+    mockAuthorizationEndDates = [{ end_date: '2026-07-08' }];
+
+    renderWithProviders(<ClientDetails />);
+
+    expect(await screen.findByText(/Authorization ends Jul 8, 2026/i)).toBeInTheDocument();
+  });
+
   it('does not expose report-upcoming authorization dates to viewers without authorization access', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date('2026-07-07T12:00:00Z'));

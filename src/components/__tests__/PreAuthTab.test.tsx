@@ -404,8 +404,11 @@ describe("PreAuthTab manual authorization upload", () => {
 
     renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
 
+    expect(await screen.findByText('6/23/2026 - 12/22/2026')).toBeInTheDocument();
+
     await user.click(await screen.findByRole("button", { name: /view/i }));
     expect(await screen.findByText("Behavioral Referral - IEHP Provider SeAp 6.15.pdf")).toBeInTheDocument();
+    expect(screen.getAllByText('6/23/2026 - 12/22/2026')).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: /download/i }));
 

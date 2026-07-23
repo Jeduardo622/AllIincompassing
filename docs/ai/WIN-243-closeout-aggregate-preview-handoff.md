@@ -41,7 +41,8 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
 - final-head PR review: found that completed sessions still used current-target-filtered form measurements and that archived targetless goals could display a raw UUID instead of the finalized snapshot label
 - subsequent PR review: found zero-correct prompt aggregates hid incorrect outcomes, metadata-only target rows suppressed valid top-level values, and archived raw targets could duplicate a human-labeled aggregate
 - latest PR review: found mixed correct/incorrect aggregates hid the incorrect count and label-based deduplication was unsafe for renamed or same-named targets
-- re-review: approved with no findings after switching indexed trial events to persisted target identity and preserving both mixed outcomes
+- final-head PR review: found an indexed raw event could duplicate a top-level fallback and older unindexed raw events could duplicate a renamed single-target snapshot
+- re-review: approved with no findings after matching indexed top-level fallbacks and preferring sole historical snapshot labels for unindexed events
 
 ## Verification Card
 
@@ -59,7 +60,7 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
   - `npm run build`
   - `npm run verify:local`
 - executed checks:
-  - targeted `SessionModal` tests: pass, 119/119
+  - targeted `SessionModal` tests: pass, 121/121
   - `npm run ci:check-focused`: pass via bundled Node runtime
   - `npm run lint`: pass via bundled Node runtime
   - `npm run typecheck`: pass via bundled Node runtime
@@ -73,7 +74,7 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
   - `npm run verify:local`: blocked by the same unrelated `test:ci` baseline failures
   - remaining `npm run ci:playwright` children: blocked after the credential failure stopped the fail-fast runner
 - result: `pending-final-head-ci`
-- residual risk: the latest correction still requires final-head PR CI and credential-backed browser proof; aggregate values remain aggregate preview rows rather than fabricated raw trials
+- residual risk: the latest final-head corrections require final-head PR CI and credential-backed browser proof; aggregate values remain aggregate preview rows rather than fabricated raw trials
 
 ## PR Hygiene
 
@@ -85,6 +86,6 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
 - generated artifact drift: none
 - change summary: present
 - verification summary: present
-- reviewer: completed and approved with no findings for the latest correction
+- reviewer: completed and approved with no findings for the latest final-head corrections
 - pr-ready: yes
 - required follow-up: commit and push the isolated correction, resolve the current review thread, rerun final-head PR checks, and capture credential-backed closeout proof

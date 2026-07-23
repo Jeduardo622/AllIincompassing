@@ -500,6 +500,50 @@ describe('SessionModal', () => {
     }]);
   });
 
+  it('does not duplicate a top-level fallback when an indexed raw trial matches its metadata-only target', () => {
+    const existingTrialEvents = [{
+      id: 'trial-metadata-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-metadata',
+      goal_id: 'goal-metadata-target',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-metadata-target'],
+      goalMeasurements: {
+        'goal-metadata-target': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target: 'Metadata-only target',
+            metric_value: 5,
+            target_trials: [{
+              target: 'Metadata-only target',
+              trial_prompt_note: 'Observed with a model prompt',
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Metadata-only target',
+      value: 'correct',
+      linked: true,
+    }]);
+  });
+
   it('uses aggregate target metadata to label and deduplicate archived raw targets', () => {
     const existingTrialEvents = [{
       id: 'trial-archived-target',
@@ -588,6 +632,68 @@ describe('SessionModal', () => {
       linkedGoalIds: ['goal-renamed'],
       goalMeasurements: {
         'goal-renamed': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Finalized target snapshot',
+              metric_value: 1,
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Finalized target snapshot',
+      value: 'correct',
+      linked: true,
+    }]);
+  });
+
+  it('uses a sole snapshot label to deduplicate a renamed target when an older raw trial has no index', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-renamed-no-index',
+      {
+        id: 'target-renamed-no-index',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-renamed-no-index',
+        name: 'Current renamed target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const existingTrialEvents = [{
+      id: 'trial-renamed-target-no-index',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-renamed-no-index',
+      goal_id: 'goal-renamed-no-index',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-renamed-no-index'],
+      goalMeasurements: {
+        'goal-renamed-no-index': {
           version: 1,
           data: {
             measurement_type: 'frequency',

@@ -478,14 +478,16 @@ const getTrialEventLabel = (
     return aggregateTargetLabels[targetIndex];
   }
 
+  if (aggregateTargetLabels.length === 1 && aggregateTargetLabels[0]) {
+    return aggregateTargetLabels[0];
+  }
+
   const currentTargetLabel = goalTargetsById.get(event.target_id)?.name;
   if (currentTargetLabel) {
     return currentTargetLabel;
   }
 
-  return aggregateTargetLabels.length === 1 && aggregateTargetLabels[0]
-    ? aggregateTargetLabels[0]
-    : event.target_id;
+  return event.target_id;
 };
 
 const getCloseoutAggregateValue = (
@@ -611,7 +613,17 @@ export const buildCloseoutDataPoints = ({
     }
 
     const targetLabel = trimString(normalized.data.target) ?? measurementTargets[0] ?? null;
-    if (rawFallbackAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))) {
+    const matchingTargetIndexes = targetTrials.flatMap((trial, index) => {
+      const trialLabel = trimString(trial.target) ?? measurementTargets[index] ?? null;
+      return trialLabel === targetLabel ? [index] : [];
+    });
+    const hasIndexedRawFallbackMatch =
+      matchingTargetIndexes.length === 1 &&
+      rawTargetIndexKeys.has(toCloseoutTargetIndexKey(goalId, matchingTargetIndexes[0]));
+    if (
+      hasIndexedRawFallbackMatch ||
+      rawFallbackAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))
+    ) {
       return [];
     }
 

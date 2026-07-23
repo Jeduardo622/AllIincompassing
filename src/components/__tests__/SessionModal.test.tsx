@@ -1024,6 +1024,100 @@ describe('SessionModal', () => {
     }));
   });
 
+  it('persists a BT draft before direct finalize when the read state has a generic note id and fallback template', async () => {
+    // The read RPC supplies the active template fallback even when the generic row has no persisted template binding.
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: '36d9-generic-note',
+      templateId: 'template-direct-finalize',
+      responses: null,
+      status: null,
+    });
+    vi.mocked(saveBtAbaSessionNoteDraft).mockResolvedValue({
+      status: 'draft',
+      noteId: 'note-direct-finalize',
+    });
+    vi.mocked(finalizeBtAbaSessionNote).mockResolvedValue({
+      status: 'completed',
+      noteId: 'note-direct-finalize',
+      progressionResults: [],
+    });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const onBtAbaSessionFinalized = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        onBtAbaSessionFinalized={onBtAbaSessionFinalized}
+        session={btInProgressSession}
+        dataCollectionOnly
+      />,
+    );
+
+    const closeSessionButton = await screen.findByRole('button', { name: /^Close Session$/i });
+    await waitFor(() => expect(closeSessionButton).not.toBeDisabled());
+    await userEvent.click(closeSessionButton);
+
+    expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finalize ABA Session' }));
+
+    await waitFor(() => expect(saveBtAbaSessionNoteDraft).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: btInProgressSession.id,
+      templateId: 'template-direct-finalize',
+      responses: validBtAbaResponses,
+    })));
+    await waitFor(() => expect(finalizeBtAbaSessionNote).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: btInProgressSession.id,
+      noteId: 'note-direct-finalize',
+      responses: validBtAbaResponses,
+    })));
+    expect(finalizeBtAbaSessionNote).not.toHaveBeenCalledWith(expect.objectContaining({
+      noteId: '36d9-generic-note',
+    }));
+    expect(saveBtAbaSessionNoteDraft.mock.invocationCallOrder[0]).toBeLessThan(
+      finalizeBtAbaSessionNote.mock.invocationCallOrder[0],
+    );
+    await waitFor(() => expect(onBtAbaSessionFinalized).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: btInProgressSession.id,
+      noteId: 'note-direct-finalize',
+      status: 'completed',
+    })));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ status: 'in_progress' }));
+    expect(toastMocks.showSuccess).not.toHaveBeenCalledWith('ABA session note draft saved');
+  });
+
+  it('surfaces BT draft preparation failure and skips direct finalize', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: null,
+      templateId: 'template-direct-finalize',
+      responses: null,
+      status: null,
+    });
+    vi.mocked(saveBtAbaSessionNoteDraft).mockRejectedValue(new Error('Draft preparation failed'));
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={btInProgressSession}
+        dataCollectionOnly
+      />,
+    );
+
+    const closeSessionButton = await screen.findByRole('button', { name: /^Close Session$/i });
+    await waitFor(() => expect(closeSessionButton).not.toBeDisabled());
+    await userEvent.click(closeSessionButton);
+
+    expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finalize ABA Session' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Draft preparation failed');
+    expect(saveBtAbaSessionNoteDraft).toHaveBeenCalledTimes(1);
+    expect(finalizeBtAbaSessionNote).not.toHaveBeenCalled();
+    expect(toastMocks.showError).toHaveBeenCalledWith('Draft preparation failed');
+  });
+
   it('updates the completed ABA-note cache after successful finalization', async () => {
     const setQueryData = vi.spyOn(QueryClient.prototype, 'setQueryData');
     const invalidateQueries = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
@@ -1278,6 +1372,8 @@ describe('SessionModal', () => {
     vi.mocked(getBtAbaSessionNote).mockResolvedValue({
       noteId: 'note-once', templateId: 'template-bt-1', responses: validBtAbaResponses as unknown as Record<string, unknown>, status: 'draft',
     });
+    let resolveDraft!: (value: Awaited<ReturnType<typeof saveBtAbaSessionNoteDraft>>) => void;
+    vi.mocked(saveBtAbaSessionNoteDraft).mockImplementation(() => new Promise((resolve) => { resolveDraft = resolve; }));
     let resolveFinalize!: (value: Awaited<ReturnType<typeof finalizeBtAbaSessionNote>>) => void;
     vi.mocked(finalizeBtAbaSessionNote).mockImplementation(() => new Promise((resolve) => { resolveFinalize = resolve; }));
     const onBtAbaSessionFinalized = vi.fn().mockResolvedValue(undefined);
@@ -1288,11 +1384,14 @@ describe('SessionModal', () => {
     const finalizeButton = await screen.findByRole('button', { name: 'Finalize ABA Session' });
     fireEvent.click(finalizeButton);
     fireEvent.click(finalizeButton);
-    expect(finalizeBtAbaSessionNote).toHaveBeenCalledTimes(1);
+    expect(saveBtAbaSessionNoteDraft).toHaveBeenCalledTimes(1);
+    expect(finalizeBtAbaSessionNote).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Close session modal' })).toBeDisabled();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(defaultProps.onClose).not.toHaveBeenCalled();
 
+    resolveDraft({ status: 'draft', noteId: 'note-once' });
+    await waitFor(() => expect(finalizeBtAbaSessionNote).toHaveBeenCalledTimes(1));
     resolveFinalize({ status: 'completed', noteId: 'note-once', progressionResults: [] });
     await waitFor(() => expect(onBtAbaSessionFinalized).toHaveBeenCalledTimes(1));
   });

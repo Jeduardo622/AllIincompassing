@@ -128,7 +128,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/monitoring',
-    allowedRoles: ['admin', 'bcba', 'super_admin'],
+    allowedRoles: ['admin', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['app.get_session_metrics: admin_super_admin_execute'],
   }),
@@ -147,7 +147,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/settings',
-    allowedRoles: ['admin', 'bcba', 'super_admin'],
+    allowedRoles: ['admin', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: [
       'supabase.functions.admin_users: admin_super_admin_execute',
@@ -156,7 +156,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/settings/:tabId',
-    allowedRoles: ['admin', 'bcba', 'super_admin'],
+    allowedRoles: ['admin', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: [
       'supabase.functions.admin_users: admin_super_admin_execute',

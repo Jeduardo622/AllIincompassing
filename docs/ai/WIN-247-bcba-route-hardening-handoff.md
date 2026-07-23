@@ -10,6 +10,7 @@
   - `src/components/Sidebar.tsx`
   - `src/components/TherapistDetails/ProfileTab.tsx`
   - `src/lib/roles.ts`
+  - `src/server/routes/guards.ts`
   - `src/pages/MonitoringDashboard.tsx`
   - `supabase/functions/admin-invite/index.ts`
 
@@ -29,7 +30,7 @@
   - `scripts/route-audit.cjs`
   - `supabase/functions/admin-invite/index.ts`
   - `supabase/functions/_shared/auth.ts`
-  - targeted tests under `src/**/__tests__` and `tests/admins/invite_flow.spec.ts`
+  - targeted tests under `src/**/__tests__`, `tests/admins/invite_flow.spec.ts`, and `tests/edge/route-guards-parity.test.ts`
 - single-purpose diff: yes
 - Linear: [WIN-247](https://linear.app/winningedgeai/issue/WIN-247/restrict-bcba-admin-settings-access-and-harden-audited-routes)
 
@@ -66,6 +67,7 @@
   - `npm run verify:local`
 - executed checks:
   - targeted Vitest across roles, navigation, sidebar, Clients, Monitoring, Organizations, therapist-profile invite, and admin-invite: pass, 8 files / 81 tests
+  - route-guard parity, server guard matrix, and admin-invite regression rerun after CI feedback: pass, 3 files / 30 tests
   - `npm run ci:check-focused`: pass
   - `npm run lint`: pass
   - `npm run typecheck`: pass
@@ -83,7 +85,7 @@
 
 - branch-ready: yes
 - linear-ready: yes, linked to WIN-247
-- protected-path drift: expected and routed as critical in `supabase/functions/admin-invite/index.ts`, `supabase/functions/_shared/auth.ts`, and `src/App.tsx`
+- protected-path drift: expected and routed as critical in `supabase/functions/admin-invite/index.ts`, `supabase/functions/_shared/auth.ts`, `src/server/routes/guards.ts`, and `src/App.tsx`
 - unrelated changes: none in this checkout
 - generated artifact drift: `dist/**` regenerated locally during build verification but not staged for handoff
 - verification summary: present

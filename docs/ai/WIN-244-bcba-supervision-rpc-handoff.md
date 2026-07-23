@@ -55,11 +55,18 @@
   - `npm run test:ci`: fail on existing unrelated Windows baseline failures
   - `npm run verify:local`: fail because it includes the same unrelated baseline failures
 - blocked checks:
-  - database-backed preview drift and grant checks: local `SUPABASE_DB_URL` is not configured
-- result: `pass-with-blocked-checks`
-- residual risk: the SQL contract is statically and structurally verified, but
-  the applied function and ACLs still require hosted verification after human
-  review and migration deployment.
+  - local database-backed drift and grant checks: local `SUPABASE_DB_URL` is not configured
+- hosted checks:
+  - Supabase preview migration: pass
+  - production migration promotion: pass; runtime ledger recorded `20260723212535/align_supervision_review_packet_template_name_type`
+  - production function definition: pass; `template.template_name::text as supervision_template_name` is present
+  - production ACL: pass; execute remains granted to `authenticated` and denied to `anon` and `PUBLIC`
+  - authenticated hosted dashboard: pass; Supervision Notes Due loaded three review packets without the prior result-structure error
+  - browser evidence: `.tmp/live-bcba-route-audit-2026-07-23/19-supervision-queue-runtime-fixed.jpg` (local audit artifact, not committed)
+- pending checks:
+  - refreshed GitHub runtime migration parity and aggregate CI gate
+- result: `pass-with-blocked-local-checks`; hosted preview, production runtime, and browser verification passed
+- residual risk: fresh CI must recognize the production ledger entry before auto-merge proceeds
 
 ## Review
 
@@ -77,13 +84,11 @@
 - unrelated changes: `.superpowers/brainstorm/`, `.tmp/`, `pnpm-lock.yaml`, and
   `pnpm-workspace.yaml` remain untracked and excluded
 - protected-path drift: none beyond the routed migration
-- pr handoff: ready after staging only the three files above
+- pr handoff: ready; production runtime and browser verification are documented
 - reviewer: completed
 
 ## Post-Merge Proof
 
-1. Confirm the hosted function definition contains
-   `template.template_name::text as supervision_template_name`.
-2. Confirm execute remains limited to `authenticated` and `service_role`.
-3. Refresh the live BCBA dashboard and capture the supervision queue without the
-   prior result-structure error.
+1. Confirm refreshed runtime migration parity and aggregate CI pass.
+2. Allow the existing auto-merge request to merge only after all required checks pass.
+3. Continue the remaining BCBA route audit from the corrected supervision dashboard.

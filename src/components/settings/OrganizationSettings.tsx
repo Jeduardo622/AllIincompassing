@@ -16,7 +16,7 @@ export function OrganizationSettings() {
     }
   }, []);
 
-  const roleLabel = profile?.role?.replace('_', ' ') ?? effectiveRole?.replace('_', ' ') ?? 'user';
+  const roleLabel = effectiveRole?.replace(/_/g, ' ') ?? profile?.role?.replace(/_/g, ' ') ?? 'user';
 
   return (
     <section>

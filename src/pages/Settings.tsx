@@ -105,8 +105,8 @@ export function Settings() {
       </div>
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow">
-        <div className="border-b border-gray-200 dark:border-gray-700">
-          <nav className="flex -mb-px">
+        <div className="overflow-x-auto border-b border-gray-200 dark:border-gray-700">
+          <nav className="flex min-w-max -mb-px">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (

@@ -8,7 +8,7 @@ vi.mock('../../../lib/authContext', async () => {
   return {
     ...actual,
     useAuth: () => ({
-      profile: { role: 'super_admin' },
+      profile: { role: 'bt' },
       effectiveRole: 'super_admin',
       hasCapability: () => true,
     }),
@@ -23,6 +23,12 @@ describe('OrganizationSettings', () => {
       screen.getByText(/Multi-organization features are temporarily paused/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/Single-clinic mode active/i)).toBeInTheDocument();
+  });
+
+  it('renders current access from the effective role before the stored profile role', () => {
+    render(<OrganizationSettings />);
+
+    expect(screen.getByText(/Current access:/i)).toHaveTextContent('Current access: super admin');
   });
 });
 

@@ -136,4 +136,12 @@ describe('route guard access controls', () => {
       expect(hasRoleAccess(path, 'admin')).toBe(false);
     }
   });
+
+  it('restricts monitoring and settings to exact admin roles', () => {
+    for (const path of ['/monitoring', '/settings', '/settings/admin']) {
+      expect(hasRoleAccess(path, 'admin')).toBe(true);
+      expect(hasRoleAccess(path, 'super_admin')).toBe(true);
+      expect(hasRoleAccess(path, 'bcba')).toBe(false);
+    }
+  });
 });

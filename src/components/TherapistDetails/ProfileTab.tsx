@@ -46,7 +46,7 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
         : null;
   const inviteOrganizationId =
     therapist.organization_id ?? profile?.organization_id ?? metadataOrganizationId;
-  const canInviteStaff = hasRole('admin');
+  const canInviteStaff = effectiveRole === 'admin' || effectiveRole === 'super_admin';
   const isOwnProfile = Boolean(
     effectiveRole === 'therapist' &&
       (profile?.id === therapist.id ||

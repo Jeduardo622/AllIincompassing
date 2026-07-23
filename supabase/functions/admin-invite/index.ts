@@ -7,7 +7,7 @@ import {
   type UserContext,
 } from "../_shared/auth-middleware.ts";
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
-import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
+import { getUserRoles } from "../_shared/auth.ts";
 
 const DEFAULT_EXPIRATION_HOURS = 72;
 const MIN_EXPIRATION_HOURS = 1;
@@ -143,7 +143,13 @@ async function handleInvite(req: Request, userContext: UserContext) {
 
   try {
     const adminClient = createRequestClient(req);
-    await assertAdminOrSuperAdmin(adminClient);
+    const callerRoles = await getUserRoles(adminClient);
+    const callerIsAdmin = callerRoles.includes("admin");
+    const callerIsSuperAdmin = callerRoles.includes("super_admin");
+    if (!callerIsAdmin && !callerIsSuperAdmin) {
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
+      return jsonResponse(403, { error: "insufficient_role" });
+    }
 
     const payloadResult = InviteRequestSchema.safeParse(await req.json());
     if (!payloadResult.success) {
@@ -170,13 +176,13 @@ async function handleInvite(req: Request, userContext: UserContext) {
       return jsonResponse(403, { error: "organization_context_required" });
     }
 
-    if (userContext.profile.role !== "super_admin" && targetOrganizationId !== callerOrganizationId) {
+    if (!callerIsSuperAdmin && targetOrganizationId !== callerOrganizationId) {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
       return jsonResponse(403, { error: "cross_org_invite_forbidden" });
     }
 
     const desiredRole = payload.role ?? "admin";
-    if ((desiredRole === "super_admin" || desiredRole === "bcba") && userContext.profile.role !== "super_admin") {
+    if ((desiredRole === "super_admin" || desiredRole === "bcba") && !callerIsSuperAdmin) {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
       return jsonResponse(403, { error: "insufficient_role_for_target" });
     }

@@ -6,12 +6,12 @@ export async function getUserOrThrow(db: SupabaseClient) {
   return data.user;
 }
 
-export async function assertAdminOrSuperAdmin(db: SupabaseClient) {
+export async function getUserRoles(db: SupabaseClient): Promise<string[]> {
   const { data, error } = await db.rpc("get_user_roles");
 
   if (error) throw new Response("Role check failed", { status: 500 });
 
-  const roles = Array.isArray(data)
+  return Array.isArray(data)
     ? data.flatMap(entry => {
         if (!entry) return [] as string[];
         if (Array.isArray((entry as { roles?: unknown }).roles)) {
@@ -34,6 +34,10 @@ export async function assertAdminOrSuperAdmin(db: SupabaseClient) {
         return [] as string[];
       })
     : [];
+}
+
+export async function assertAdminOrSuperAdmin(db: SupabaseClient) {
+  const roles = await getUserRoles(db);
 
   const hasAdminAccess = roles.some(role => role === "admin" || role === "bcba" || role === "super_admin");
 

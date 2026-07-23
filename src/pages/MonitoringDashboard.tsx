@@ -35,9 +35,9 @@ type TabType = 'ai' | 'database' | 'system' | 'overview' | 'cache' | 'queries' |
 type TraceSelectorMode = 'correlationId' | 'requestId' | 'agentOperationId';
 
 export function MonitoringDashboard() {
-  const { loading: authLoading, isAdmin, session } = useAuth();
-  const hasAdminAccess = isAdmin();
-  const monitoringEnabled = !authLoading && hasAdminAccess;
+  const { loading: authLoading, hasCapability, session } = useAuth();
+  const hasMonitoringAccess = hasCapability('viewMonitoring');
+  const monitoringEnabled = !authLoading && hasMonitoringAccess;
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(30000);
@@ -142,7 +142,7 @@ export function MonitoringDashboard() {
     );
   }
 
-  if (!hasAdminAccess) {
+  if (!hasMonitoringAccess) {
     return (
       <div className="p-6">
         <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6 text-center space-y-2">
@@ -875,8 +875,8 @@ export function MonitoringDashboard() {
 
       {/* Tabs */}
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
-        <div className="border-b border-gray-200 dark:border-gray-700">
-          <nav className="flex -mb-px">
+        <div className="overflow-x-auto border-b border-gray-200 dark:border-gray-700">
+          <nav className="flex min-w-max -mb-px">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (

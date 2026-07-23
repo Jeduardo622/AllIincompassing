@@ -296,7 +296,7 @@ function App() {
 
                     {/* Monitoring Dashboard - admin and super_admin only */}
                     <Route path="monitoring" element={
-                      <RoleGuard roles={['admin', 'bcba', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'super_admin']}>
                         <MonitoringDashboard />
                       </RoleGuard>
                     } />
@@ -324,12 +324,12 @@ function App() {
 
                     {/* Settings - admin and super_admin only */}
                     <Route path="settings" element={
-                      <RoleGuard roles={['admin', 'bcba', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'super_admin']}>
                         <Settings />
                       </RoleGuard>
                     } />
                     <Route path="settings/:tabId" element={
-                      <RoleGuard roles={['admin', 'bcba', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'super_admin']}>
                         <Settings />
                       </RoleGuard>
                     } />

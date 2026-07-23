@@ -15,7 +15,8 @@ describe('role capability matrix', () => {
     expect(roleHasCapability('bcba', 'manageStaff')).toBe(true);
     expect(roleHasCapability('bcba', 'manageAuthorizations')).toBe(true);
     expect(roleHasCapability('bcba', 'dataTaking')).toBe(true);
-    expect(roleHasCapability('bcba', 'viewSettings')).toBe(true);
+    expect(roleHasCapability('bcba', 'viewMonitoring')).toBe(false);
+    expect(roleHasCapability('bcba', 'viewSettings')).toBe(false);
   });
 
   it('reserves hard-delete of goal targets for BCBA and super-admin', () => {

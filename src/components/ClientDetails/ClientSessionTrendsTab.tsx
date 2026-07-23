@@ -14,7 +14,7 @@ import { Bar, Line } from 'react-chartjs-2';
 import { AlertTriangle, BarChart3, Download, Inbox, Loader2 } from 'lucide-react';
 import type { Chart as ChartInstance, ChartData, ChartOptions, PointStyle } from 'chart.js';
 import type { Goal, TrialEvent } from '../../types';
-import { callApi } from '../../lib/api';
+import { callApi, callEdgeFunctionHttp } from '../../lib/api';
 import { fetchClientSessionNotes } from '../../lib/session-notes';
 import { useActiveOrganizationId } from '../../lib/organization';
 import { supabase } from '../../lib/supabase';
@@ -193,8 +193,8 @@ export function ClientSessionTrendsTab({ client }: ClientSessionTrendsTabProps) 
       }
       const startAt = encodeURIComponent(toUtcStartOfDayIso(startDate));
       const endBefore = encodeURIComponent(toExclusiveEndDateIso(endDate));
-      const response = await callApi(
-        `/api/trial-events?view=prompt_outcomes&client_id=${encodeURIComponent(client.id)}&goal_id=${encodeURIComponent(selectedGoalId)}&start_at=${startAt}&end_before=${endBefore}`,
+      const response = await callEdgeFunctionHttp(
+        `trial-events?view=prompt_outcomes&client_id=${encodeURIComponent(client.id)}&goal_id=${encodeURIComponent(selectedGoalId)}&start_at=${startAt}&end_before=${endBefore}`,
       );
       if (!response.ok) {
         throw new Error('Prompt outcomes failed to load.');

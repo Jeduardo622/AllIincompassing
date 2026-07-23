@@ -3,6 +3,7 @@ import {
   addMinutesToLocalInput,
   diffMinutesBetweenLocalInputs,
   formatSessionLocalInput,
+  formatSessionNoteTiming,
   getDefaultSessionEndTime,
   normalizeQuarterHourLocalInput,
   resolveSchedulingTimeZone,
@@ -38,6 +39,76 @@ describe("scheduling time domain helpers", () => {
 
   it("returns empty default end time when start is missing", () => {
     expect(getDefaultSessionEndTime("")).toBe("");
+  });
+
+  it("formats session-note timing in the scheduling timezone", () => {
+    expect(
+      formatSessionNoteTiming({
+        startTimeIso: "2026-07-23T21:00:00.000Z",
+        endTimeIso: "2026-07-23T22:00:00.000Z",
+        resolvedTimeZone: "America/Los_Angeles",
+      }),
+    ).toEqual({
+      sessionDate: "2026-07-23",
+      startTime: "14:00:00",
+      endTime: "15:00:00",
+    });
+  });
+
+  it("preserves legacy UTC timing across the spring-forward DST gap", () => {
+    expect(
+      formatSessionNoteTiming({
+        startTimeIso: "2026-03-08T09:30:00.000Z",
+        endTimeIso: "2026-03-08T10:30:00.000Z",
+        resolvedTimeZone: "America/Los_Angeles",
+      }),
+    ).toEqual({
+      sessionDate: "2026-03-08",
+      startTime: "09:30:00",
+      endTime: "10:30:00",
+    });
+  });
+
+  it("preserves legacy UTC timing across the fall-back DST overlap", () => {
+    expect(
+      formatSessionNoteTiming({
+        startTimeIso: "2026-11-01T08:30:00.000Z",
+        endTimeIso: "2026-11-01T09:30:00.000Z",
+        resolvedTimeZone: "America/Los_Angeles",
+      }),
+    ).toEqual({
+      sessionDate: "2026-11-01",
+      startTime: "08:30:00",
+      endTime: "09:30:00",
+    });
+  });
+
+  it("preserves legacy UTC timing when local times cross midnight", () => {
+    expect(
+      formatSessionNoteTiming({
+        startTimeIso: "2026-07-24T06:30:00.000Z",
+        endTimeIso: "2026-07-24T08:30:00.000Z",
+        resolvedTimeZone: "America/Los_Angeles",
+      }),
+    ).toEqual({
+      sessionDate: "2026-07-24",
+      startTime: "06:30:00",
+      endTime: "08:30:00",
+    });
+  });
+
+  it("rejects invalid or reversed session-note timing", () => {
+    expect(() => formatSessionNoteTiming({
+      startTimeIso: "not-a-date",
+      endTimeIso: "2026-07-23T22:00:00.000Z",
+      resolvedTimeZone: "America/Los_Angeles",
+    })).toThrow("valid ISO datetimes");
+
+    expect(() => formatSessionNoteTiming({
+      startTimeIso: "2026-07-23T22:00:00.000Z",
+      endTimeIso: "2026-07-23T21:00:00.000Z",
+      resolvedTimeZone: "America/Los_Angeles",
+    })).toThrow("later than start time");
   });
 
   it("resolves explicit and runtime scheduling timezones", () => {

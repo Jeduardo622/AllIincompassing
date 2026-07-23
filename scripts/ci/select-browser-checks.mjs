@@ -83,11 +83,37 @@ const matchAny = (file, patterns) => patterns.some((pattern) => pattern.test(fil
 
 const classifyFile = (file) => {
   if (/^scripts\/ci\/select-browser-checks\.mjs$/.test(file)) {
-    return { specs: allSpecKeys, authSmoke: true, supervisionCorrection: true, reason: "browser CI support script" };
+    return { specs: allSpecKeys, authSmoke: true, iehpAssessmentImportSmoke: true, supervisionCorrection: true, reason: "browser CI support script" };
   }
 
   if (/^\.github\/workflows\/bt-aba-disposable-browser-proof\.yml$/.test(file)) {
     return { specs: allSpecKeys, authSmoke: true, supervisionCorrection: true, reason: "shared route/auth surface" };
+  }
+
+  if (/^\.github\/workflows\/ci\.yml$/.test(file)) {
+    return {
+      specs: allSpecKeys,
+      authSmoke: true,
+      iehpAssessmentImportSmoke: true,
+      supervisionCorrection: true,
+      reason: "shared CI workflow surface",
+    };
+  }
+
+  if (matchAny(file, [
+    /^scripts\/playwright-(?:iehp-)?assessment-import-smoke\.ts$/,
+    /^scripts\/lib\/(?:iehp-)?assessment-import-smoke\.ts$/,
+    /^scripts\/lib\/assessment-import-cleanup\.ts$/,
+    /^scripts\/provision-ci-smoke-admin\.ts$/,
+    /^netlify\/functions\/assessment-(?:documents(?:-extract-background)?|drafts|checklist)\.ts$/,
+    /^supabase\/functions\/extract-assessment-fields\//,
+    /^src\/components\/ClientDetails\/ProgramsGoalsTab(?:\.helpers)?\.ts(x)?$/,
+    /^src\/components\/ClientDetails\/IehpFbaLayoutReview\.tsx$/,
+    /^src\/lib\/assessment-documents\.ts$/,
+    /^src\/server\/(?:assessment|iehp)/,
+    /^src\/server\/api\/assessment-/,
+  ])) {
+    return { specs: ["client"], authSmoke: false, iehpAssessmentImportSmoke: true, reason: "IEHP assessment import surface" };
   }
 
   if (/^scripts\/playwright-supervision-correction\.ts$/.test(file)) {
@@ -203,12 +229,14 @@ const selectBrowserChecks = (files, fallbackFull) => {
   const selectedSpecs = new Set();
   const reasons = [];
   let authSmokeRequired = false;
+  let iehpAssessmentImportSmokeRequired = false;
   let supervisionCorrectionRequired = false;
 
   if (fallbackFull) {
     return {
       tier0Required: true,
       authSmokeRequired: true,
+      iehpAssessmentImportSmokeRequired: true,
       supervisionCorrectionRequired: true,
       tier0Specs: allSpecKeys.map((key) => TIER0_SPECS[key]),
       reasons: ["diff unavailable; running full browser gates"],
@@ -222,8 +250,9 @@ const selectBrowserChecks = (files, fallbackFull) => {
       selectedSpecs.add(spec);
     }
     authSmokeRequired = authSmokeRequired || classification.authSmoke;
+    iehpAssessmentImportSmokeRequired = iehpAssessmentImportSmokeRequired || classification.iehpAssessmentImportSmoke === true;
     supervisionCorrectionRequired = supervisionCorrectionRequired || classification.supervisionCorrection === true;
-    if (classification.specs.length > 0 || classification.authSmoke) {
+    if (classification.specs.length > 0 || classification.authSmoke || classification.iehpAssessmentImportSmoke) {
       reasons.push(`${file}: ${classification.reason}`);
     }
   }
@@ -231,6 +260,7 @@ const selectBrowserChecks = (files, fallbackFull) => {
   return {
     tier0Required: selectedSpecs.size > 0,
     authSmokeRequired,
+    iehpAssessmentImportSmokeRequired,
     supervisionCorrectionRequired,
     tier0Specs: [...selectedSpecs].map((key) => TIER0_SPECS[key]),
     reasons,
@@ -242,6 +272,7 @@ const writeGithubOutput = (selection) => {
   const lines = [
     `tier0_required=${selection.tier0Required ? "true" : "false"}`,
     `auth_smoke_required=${selection.authSmokeRequired ? "true" : "false"}`,
+    `iehp_assessment_import_smoke_required=${selection.iehpAssessmentImportSmokeRequired ? "true" : "false"}`,
     `supervision_correction_required=${selection.supervisionCorrectionRequired ? "true" : "false"}`,
     `tier0_specs=${selection.tier0Specs.join(",")}`,
   ];

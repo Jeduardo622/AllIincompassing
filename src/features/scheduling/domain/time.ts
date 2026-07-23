@@ -1,5 +1,6 @@
 import { addMinutes, differenceInMinutes, format, parseISO } from "date-fns";
 import {
+  formatInTimeZone,
   fromZonedTime as zonedTimeToUtc,
   toZonedTime as utcToZonedTime,
 } from "date-fns-tz";
@@ -54,6 +55,57 @@ export const getDefaultSessionEndTime = (startTimeStr: string): string => {
   const startTime = parseISO(startTimeStr);
   const endTime = addMinutes(startTime, 60);
   return format(endTime, "yyyy-MM-dd'T'HH:mm");
+};
+
+export const formatSessionNoteTiming = ({
+  startTimeIso,
+  endTimeIso,
+  resolvedTimeZone,
+}: {
+  startTimeIso: string;
+  endTimeIso: string;
+  resolvedTimeZone: string;
+}): {
+  sessionDate: string;
+  startTime: string;
+  endTime: string;
+} => {
+  const startUtc = parseISO(startTimeIso);
+  const endUtc = parseISO(endTimeIso);
+  if (Number.isNaN(startUtc.getTime()) || Number.isNaN(endUtc.getTime())) {
+    throw new Error("Session timing must contain valid ISO datetimes.");
+  }
+
+  const actualDurationMinutes = differenceInMinutes(endUtc, startUtc);
+  if (actualDurationMinutes <= 0) {
+    throw new Error("Session end time must be later than start time.");
+  }
+
+  const localStartDate = formatInTimeZone(startUtc, resolvedTimeZone, "yyyy-MM-dd");
+  const localEndDate = formatInTimeZone(endUtc, resolvedTimeZone, "yyyy-MM-dd");
+  const localStartTime = formatInTimeZone(startUtc, resolvedTimeZone, "HH:mm:ss");
+  const localEndTime = formatInTimeZone(endUtc, resolvedTimeZone, "HH:mm:ss");
+  const localStartMinutes = Number(localStartTime.slice(0, 2)) * 60 + Number(localStartTime.slice(3, 5));
+  const localEndMinutes = Number(localEndTime.slice(0, 2)) * 60 + Number(localEndTime.slice(3, 5));
+
+  if (
+    localStartDate === localEndDate
+    && localEndMinutes - localStartMinutes === actualDurationMinutes
+  ) {
+    return {
+      sessionDate: localStartDate,
+      startTime: localStartTime,
+      endTime: localEndTime,
+    };
+  }
+
+  // The note API stores date and times without offsets. Preserve the legacy UTC
+  // representation when local wall-clock values would distort elapsed duration.
+  return {
+    sessionDate: formatInTimeZone(startUtc, "UTC", "yyyy-MM-dd"),
+    startTime: formatInTimeZone(startUtc, "UTC", "HH:mm:ss"),
+    endTime: formatInTimeZone(endUtc, "UTC", "HH:mm:ss"),
+  };
 };
 
 /** Minutes between two local datetime-local values in the scheduling timezone; null if invalid. */

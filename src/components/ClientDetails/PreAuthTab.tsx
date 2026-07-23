@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { format, parseISO } from 'date-fns';
 import { 
   ClipboardCheck, Calendar, AlertCircle, 
   FileText, Plus, ArrowRight,
@@ -93,6 +94,7 @@ const AUTHORIZATION_STATUSES: AuthorizationStatus[] = ['approved', 'pending', 'd
 const NO_EMBEDDED_PDF_TEXT_MESSAGE = 'No embedded PDF text was found.';
 const GENERIC_PDF_PREFILL_ERROR_MESSAGE = 'PDF text extraction failed. Enter the authorization fields manually.';
 const createDocumentUploadKey = (sequence: number) => `upload-${sequence}`;
+const formatDateOnly = (value: string, pattern: string) => format(parseISO(value), pattern);
 
 const getFileExtension = (fileName: string) => {
   const extension = fileName.split('.').pop()?.toLowerCase();
@@ -1050,7 +1052,7 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                         <div className="flex items-center">
                           <Calendar className="w-4 h-4 text-gray-400 mr-1" />
                           <div className="text-sm text-gray-900 dark:text-white">
-                            {new Date(auth.start_date).toLocaleDateString()} - {new Date(auth.end_date).toLocaleDateString()}
+                            {formatDateOnly(auth.start_date, 'M/d/yyyy')} - {formatDateOnly(auth.end_date, 'M/d/yyyy')}
                           </div>
                         </div>
                         {isAuthExpiring && (
@@ -1807,8 +1809,8 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
               </p>
               <p>
                 <span className="font-medium">Date range:</span>{' '}
-                {new Date(selectedAuthorizationForView.start_date).toLocaleDateString()} -{' '}
-                {new Date(selectedAuthorizationForView.end_date).toLocaleDateString()}
+                {formatDateOnly(selectedAuthorizationForView.start_date, 'M/d/yyyy')} -{' '}
+                {formatDateOnly(selectedAuthorizationForView.end_date, 'M/d/yyyy')}
               </p>
               <p>
                 <span className="font-medium">Provider:</span>{' '}

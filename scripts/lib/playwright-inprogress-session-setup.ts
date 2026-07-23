@@ -588,6 +588,23 @@ export const buildVisibleScheduleBookingAttemptStart = (
   return toZonedGridStart(addRenderedScheduleDays(localDate, dayOffset, timeZone), visibleHour, timeZone);
 };
 
+export const buildInProgressSessionBookingAttemptStart = (
+  baseStart: Date,
+  attempt: number,
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+): Date => {
+  const localDate = formatInTimeZone(baseStart, timeZone, "yyyy-MM-dd");
+  const localHour = Number(formatInTimeZone(baseStart, timeZone, "H"));
+  const baseIndex = VISIBLE_SCHEDULE_START_HOURS.findIndex((hour) => hour === localHour);
+  const safeBaseIndex = baseIndex >= 0 ? baseIndex : 0;
+  const safeAttempt = Math.max(0, Math.trunc(attempt));
+  const visibleHour = VISIBLE_SCHEDULE_START_HOURS[
+    (safeBaseIndex + safeAttempt) % VISIBLE_SCHEDULE_START_HOURS.length
+  ];
+
+  return toZonedGridStart(addRenderedScheduleDays(localDate, safeAttempt, timeZone), visibleHour, timeZone);
+};
+
 export const resolveBrowserScheduleTimeZone = async (page: Pick<Page, "evaluate">): Promise<string> => {
   const timeZone = await page.evaluate(() => {
     try {
@@ -775,7 +792,7 @@ export async function bookSession(
     let payloadBody: { success?: boolean; data?: { session?: { id?: string } } } | null = null;
 
     for (let attempt = 0; attempt < BOOKING_ATTEMPTS_PER_TARGET_PAIR; attempt += 1) {
-      const attemptStart = buildVisibleScheduleBookingAttemptStart(start, attempt, timeZone);
+      const attemptStart = buildInProgressSessionBookingAttemptStart(start, attempt, timeZone);
       const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
       const startIso = attemptStart.toISOString();
       const endIso = attemptEnd.toISOString();

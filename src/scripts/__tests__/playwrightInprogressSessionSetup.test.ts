@@ -3,12 +3,15 @@ import { formatInTimeZone } from "date-fns-tz";
 
 import {
   BOOKING_ATTEMPTS_PER_TARGET_PAIR,
+  buildInProgressSessionBookingAttemptStart,
   buildCurrentDayVisibleScheduleBookingBaseStart,
   buildInProgressSessionBookingBaseStart,
   buildVisibleScheduleBookingAttemptStart,
   buildVisibleScheduleBookingBaseStart,
   resolveBrowserScheduleTimeZone,
 } from "../../../scripts/lib/playwright-inprogress-session-setup";
+
+const VISIBLE_HOURS = [8, 10, 12, 14, 16] as const;
 
 describe("playwright in-progress session setup", () => {
   it("chooses a visible hour in the browser's current Schedule week", () => {
@@ -92,6 +95,26 @@ describe("playwright in-progress session setup", () => {
     expect(dayDelta).toBeLessThanOrEqual(50);
     expect(formatInTimeZone(smokeBase, timeZone, "H")).toBe(formatInTimeZone(immediateBase, timeZone, "H"));
     expect(BOOKING_ATTEMPTS_PER_TARGET_PAIR).toBeLessThan(48);
+  });
+
+  it("spreads in-progress attempts across distinct rendered days within the existing search horizon", () => {
+    const timeZone = "UTC";
+    const now = new Date("2026-07-12T12:00:00.000Z");
+    const seed = 0;
+    const baseStart = buildInProgressSessionBookingBaseStart(now, seed, timeZone);
+    const attemptStarts = Array.from({ length: BOOKING_ATTEMPTS_PER_TARGET_PAIR }, (_, attempt) =>
+      buildInProgressSessionBookingAttemptStart(baseStart, attempt, timeZone),
+    );
+    const renderedDates = attemptStarts.map((start) => formatInTimeZone(start, timeZone, "yyyy-MM-dd"));
+    const localHours = attemptStarts.map((start) => Number(formatInTimeZone(start, timeZone, "H")));
+    const dayOffsetFromNow = Math.ceil(
+      (attemptStarts.at(-1)!.getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
+    );
+
+    expect(new Set(renderedDates).size).toBe(BOOKING_ATTEMPTS_PER_TARGET_PAIR);
+    expect(new Set(localHours).size).toBe(VISIBLE_HOURS.length);
+    expect(localHours.every((hour) => VISIBLE_HOURS.includes(hour))).toBe(true);
+    expect(dayOffsetFromNow).toBeLessThanOrEqual(77);
   });
 
   it("uses the browser timezone as the schedule grid timezone source", async () => {

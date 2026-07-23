@@ -199,19 +199,20 @@ describe("check-e2e-reliability-gates", () => {
     expect(resolveOpportunityCountForMetric(8, Number.NaN)).toBe(8);
   });
 
-  test("session note measurement selects a configured plan target before waiting for trial controls", () => {
+  test("session note measurement activates the plan target before requiring target-trial controls", () => {
     const scriptPath = path.join(repoRoot, "scripts", "playwright-session-note-measurement-roundtrip.ts");
     const content = readFileSync(scriptPath, "utf8");
-    const selectPlanTarget = 'getByRole("button", { name: /^Use plan target/i })';
+    const goalCaptureScope = 'locator(`[data-testid="session-modal-goal-capture-${goalId}"]`)';
+    const selectPlanTarget = 'goalCaptureRow.getByRole("button", { name: /^Use plan target/i })';
     const targetLocator = 'const targetLocator = dialog.locator(`#goal-target-${goalId}-0`)';
     const clickPlanTarget = "await usePlanTargetButton.first().click();";
-    const waitForTargetControl = "await targetLocator.waitFor";
 
+    expect(content).toContain(goalCaptureScope);
     expect(content).toContain(selectPlanTarget);
     expect(content).toContain(targetLocator);
     expect(content).toContain(clickPlanTarget);
-    expect(content).toContain(waitForTargetControl);
-    expect(content.indexOf(clickPlanTarget)).toBeLessThan(content.indexOf(waitForTargetControl));
+    expect(content).not.toContain("await targetLocator.waitFor({ state: \"visible\", timeout: 30_000 })");
+    expect(content.indexOf(clickPlanTarget)).toBeLessThan(content.indexOf("const metricInput ="));
   });
 
   test("session note measurement filters the crowded schedule to its booked actor and client", () => {

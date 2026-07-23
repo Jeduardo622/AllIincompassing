@@ -9,8 +9,8 @@ import {
 } from "../../scripts/lib/playwright-schedule-session-modal";
 import {
   BOOKING_ATTEMPTS_PER_TARGET_PAIR,
+  buildInProgressSessionBookingAttemptStart,
   buildInProgressSessionBookingBaseStart,
-  buildVisibleScheduleBookingAttemptStart,
 } from "../../scripts/lib/playwright-inprogress-session-setup";
 
 describe("openScheduleSessionModalFromCalendar", () => {
@@ -69,7 +69,7 @@ describe("openScheduleSessionModalFromCalendar", () => {
     const now = new Date("2026-07-12T12:00:00.000Z");
     const latestStarts = Array.from({ length: 21 }, (_, seed) => {
       const base = buildInProgressSessionBookingBaseStart(now, seed, "UTC");
-      return buildVisibleScheduleBookingAttemptStart(base, BOOKING_ATTEMPTS_PER_TARGET_PAIR - 1, "UTC");
+      return buildInProgressSessionBookingAttemptStart(base, BOOKING_ATTEMPTS_PER_TARGET_PAIR - 1, "UTC");
     });
     const maxOffsetDays = Math.ceil(Math.max(...latestStarts.map((start) => start.getTime() - now.getTime())) / 86_400_000);
 

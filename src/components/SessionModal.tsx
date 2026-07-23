@@ -586,7 +586,7 @@ export function SessionModal({
   const [modalStep, setModalStep] = useState<'capture' | 'closeout'>('capture');
   const [btAbaBusy, setBtAbaBusy] = useState(false);
   const [btAbaError, setBtAbaError] = useState<string | null>(null);
-  const [btAbaNoteId, setBtAbaNoteId] = useState<string | null>(null);
+  const [, setBtAbaNoteId] = useState<string | null>(null);
   const [btAbaFinalized, setBtAbaFinalized] = useState(false);
   const btAbaTransitionRef = useRef<'idle' | 'finalizing' | 'finalized'>('idle');
   const closeoutCaptureRef = useRef<{
@@ -2068,24 +2068,32 @@ export function SessionModal({
     })();
   };
 
-  const handleSaveBtAbaDraft = async (responses: BtAbaSessionNoteResponses) => {
+  const persistBtAbaDraft = async (
+    draftResponses: BtAbaSessionNoteResponses,
+    options?: { announceSuccess?: boolean },
+  ) => {
     if (!session?.id || !btAbaNoteState?.templateId || !closeoutCaptureRef.current) {
-      const message = 'The ABA session note is still loading. Please retry.';
-      setBtAbaError(message);
-      showError(message);
-      return;
+      throw new Error('The ABA session note is still loading. Please retry.');
     }
+
+    const result = await saveBtAbaSessionNoteDraft({
+      sessionId: session.id,
+      templateId: btAbaNoteState.templateId,
+      notePayload: closeoutCaptureRef.current.notePayload,
+      responses: draftResponses,
+    });
+    setBtAbaNoteId(result.noteId);
+    if (options?.announceSuccess) {
+      showSuccess('ABA session note draft saved');
+    }
+    return result.noteId;
+  };
+
+  const handleSaveBtAbaDraft = async (responses: BtAbaSessionNoteResponses) => {
     setBtAbaBusy(true);
     setBtAbaError(null);
     try {
-      const result = await saveBtAbaSessionNoteDraft({
-        sessionId: session.id,
-        templateId: btAbaNoteState.templateId,
-        notePayload: closeoutCaptureRef.current.notePayload,
-        responses,
-      });
-      setBtAbaNoteId(result.noteId);
-      showSuccess('ABA session note draft saved');
+      await persistBtAbaDraft(responses, { announceSuccess: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to save the ABA session note draft.';
       setBtAbaError(message);
@@ -2097,8 +2105,8 @@ export function SessionModal({
 
   const handleFinalizeBtAba = async (responses: BtAbaSessionNoteResponses) => {
     if (btAbaTransitionRef.current !== 'idle') return;
-    if (!session?.id || !btAbaNoteId || !closeoutCaptureRef.current) {
-      const message = 'Save the ABA session note draft before finalizing.';
+    if (!session?.id || !btAbaNoteState?.templateId || !closeoutCaptureRef.current) {
+      const message = 'The ABA session note is still loading. Please retry.';
       setBtAbaError(message);
       showError(message);
       return;
@@ -2108,9 +2116,10 @@ export function SessionModal({
     setBtAbaError(null);
     let result: BtAbaFinalizeResult;
     try {
+      const noteId = await persistBtAbaDraft(responses);
       result = await finalizeBtAbaSessionNote({
         sessionId: session.id,
-        noteId: btAbaNoteId,
+        noteId,
         notePayload: closeoutCaptureRef.current.notePayload,
         responses,
         trialEvents: closeoutCaptureRef.current.trialEvents,

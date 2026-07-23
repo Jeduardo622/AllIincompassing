@@ -414,6 +414,161 @@ describe('SessionModal', () => {
     ]);
   });
 
+  it('shows incorrect prompt outcomes when a legacy aggregate has zero correct trials', () => {
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-prompt-incorrect'],
+      goalMeasurements: {
+        'goal-prompt-incorrect': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Prompt outcome target',
+              prompt_counts: [{
+                prompt_type: 'verbal',
+                prompt_level: 'full',
+                correct_trials: 0,
+                incorrect_trials: 2,
+              }],
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Prompt outcome target',
+      value: '2 incorrect',
+      linked: true,
+    }]);
+  });
+
+  it('falls back to a top-level aggregate when target rows contain metadata only', () => {
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-metadata-target'],
+      goalMeasurements: {
+        'goal-metadata-target': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target: 'Metadata-only target',
+            metric_value: 5,
+            target_trials: [{
+              target: 'Metadata-only target',
+              trial_prompt_note: 'Observed with a model prompt',
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Metadata-only target',
+      value: 5,
+      linked: true,
+    }]);
+  });
+
+  it('uses aggregate target metadata to label and deduplicate archived raw targets', () => {
+    const existingTrialEvents = [{
+      id: 'trial-archived-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-archived',
+      goal_id: 'goal-archived',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-archived'],
+      goalMeasurements: {
+        'goal-archived': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Archived target snapshot',
+              metric_value: 1,
+              opportunities: 1,
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Archived target snapshot',
+      value: 'correct',
+      linked: true,
+    }]);
+  });
+
+  it('preserves sparse aggregate target indexes when labeling archived raw targets', () => {
+    const existingTrialEvents = [{
+      id: 'trial-archived-unlabeled-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-archived-unlabeled',
+      goal_id: 'goal-archived-sparse',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-archived-sparse'],
+      goalMeasurements: {
+        'goal-archived-sparse': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [
+              { trial_prompt_note: 'Unlabeled historical target' },
+              {
+                target: 'Later labeled target',
+                metric_value: 2,
+                opportunities: 2,
+              },
+            ],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'target-archived-unlabeled',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'Later labeled target',
+        value: 2,
+        linked: true,
+      },
+    ]);
+  });
+
   it('keeps an unlabeled aggregate row when a raw event only proves a different target for the same goal', () => {
     const goalTargetsById = new Map<string, GoalTarget>([[
       'target-1',

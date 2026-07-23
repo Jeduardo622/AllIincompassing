@@ -39,7 +39,8 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
 - PR review: found that normalized preview state could replace historical persisted measurements and that completed aggregate-only sessions did not hydrate the preview
 - follow-up PR review: found that aggregate rows containing only `incorrect_trials` or `opportunities` were still omitted when `metric_value` was null
 - final-head PR review: found that completed sessions still used current-target-filtered form measurements and that archived targetless goals could display a raw UUID instead of the finalized snapshot label
-- re-review: approved with no findings after switching completed previews to unfiltered linked-note measurements and finalized goal-label snapshots
+- subsequent PR review: found zero-correct prompt aggregates hid incorrect outcomes, metadata-only target rows suppressed valid top-level values, and archived raw targets could duplicate a human-labeled aggregate
+- re-review: approved with no findings after preserving sparse label slots and preventing cross-target fallback
 
 ## Verification Card
 
@@ -57,7 +58,7 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
   - `npm run build`
   - `npm run verify:local`
 - executed checks:
-  - targeted `SessionModal` tests: pass, 112/112
+  - targeted `SessionModal` tests: pass, 116/116
   - `npm run ci:check-focused`: pass via bundled Node runtime
   - `npm run lint`: pass via bundled Node runtime
   - `npm run typecheck`: pass via bundled Node runtime

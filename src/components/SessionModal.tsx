@@ -459,17 +459,34 @@ const getTrialEventGoalId = (
 const getTrialEventLabel = (
   event: TrialEvent | SessionCaptureTrialEventInput,
   goalTargetsById: ReadonlyMap<string, GoalTarget>,
-): string =>
-  goalTargetsById.get(event.target_id)?.name ?? event.target_id;
+  aggregateTargetLabels: readonly (string | null)[],
+): string => {
+  const currentTargetLabel = goalTargetsById.get(event.target_id)?.name;
+  if (currentTargetLabel) {
+    return currentTargetLabel;
+  }
+
+  const targetIndex = toOptionalNumber(event.metadata?.target_index);
+  if (targetIndex !== null && Number.isInteger(targetIndex) && targetIndex >= 0) {
+    return aggregateTargetLabels[targetIndex] ?? event.target_id;
+  }
+
+  return aggregateTargetLabels.length === 1 && aggregateTargetLabels[0]
+    ? aggregateTargetLabels[0]
+    : event.target_id;
+};
 
 const getCloseoutAggregateValue = (
   measurement: Pick<SessionGoalMeasurementData, 'metric_value' | 'incorrect_trials' | 'opportunities'>,
 ): string | number | null => {
   const metricValue = toOptionalNumber(measurement.metric_value);
+  const incorrectTrials = toOptionalNumber(measurement.incorrect_trials);
   if (metricValue !== null) {
+    if (metricValue === 0 && incorrectTrials !== null && incorrectTrials > 0) {
+      return `${incorrectTrials} incorrect`;
+    }
     return metricValue;
   }
-  const incorrectTrials = toOptionalNumber(measurement.incorrect_trials);
   if (incorrectTrials !== null) {
     return `${incorrectTrials} incorrect`;
   }
@@ -488,6 +505,24 @@ export const buildCloseoutDataPoints = ({
 }: BuildCloseoutDataPointsArgs): CloseoutDataPoint[] => {
   const seenTrialKeys = new Set<string>();
   const rawAggregateKeys = new Set<string>();
+  const normalizedMeasurements = !goalMeasurements || typeof goalMeasurements !== 'object'
+    ? []
+    : Object.entries(goalMeasurements).flatMap(([goalId, rawValue]) => {
+        const goal = goalsById.get(goalId);
+        const normalized = normalizeGoalMeasurementEntry(rawValue, goal);
+        return normalized ? [{ goalId, goal, normalized }] : [];
+      });
+  const aggregateTargetLabelsByGoal = new Map(
+    normalizedMeasurements.map(({ goalId, normalized }) => {
+      const measurementTargets = getGoalMeasurementTargets(normalized.data);
+      const targetTrials = normalized.data.target_trials ?? [];
+      const targetLabels = targetTrials.length > 0
+        ? targetTrials
+            .map((trial, index) => trimString(trial.target) ?? measurementTargets[index] ?? null)
+        : measurementTargets;
+      return [goalId, targetLabels] as const;
+    }),
+  );
 
   const rawDataPoints = [...existingTrialEvents, ...pendingTrialEvents]
     .filter((event) => {
@@ -500,7 +535,11 @@ export const buildCloseoutDataPoints = ({
     })
     .map((event) => {
       const goalId = getTrialEventGoalId(event, goalTargetsById);
-      const label = getTrialEventLabel(event, goalTargetsById);
+      const label = getTrialEventLabel(
+        event,
+        goalTargetsById,
+        goalId ? aggregateTargetLabelsByGoal.get(goalId) ?? [] : [],
+      );
       rawAggregateKeys.add(toCloseoutAggregateKey(goalId, label));
       return {
         label,
@@ -513,20 +552,17 @@ export const buildCloseoutDataPoints = ({
     return rawDataPoints;
   }
 
-  const aggregateDataPoints = Object.entries(goalMeasurements).flatMap(([goalId, rawValue]) => {
-    const goal = goalsById.get(goalId);
-    const normalized = normalizeGoalMeasurementEntry(rawValue, goal);
-    if (!normalized) {
-      return [];
-    }
-
+  const aggregateDataPoints = normalizedMeasurements.flatMap(({ goalId, goal, normalized }) => {
     const fallbackLabel = goalLabelsById.get(goalId) ?? goal?.title ?? goalId;
     const measurementTargets = getGoalMeasurementTargets(normalized.data);
     const targetTrials = Array.isArray(normalized.data.target_trials) ? normalized.data.target_trials : [];
     const linked = linkedGoalIds.includes(goalId);
 
     if (targetTrials.length > 0) {
-      return targetTrials.flatMap((trial, index) => {
+      const hasQuantitativeTargetValue = targetTrials.some(
+        (trial) => getCloseoutAggregateValue(trial) !== null,
+      );
+      const targetDataPoints = targetTrials.flatMap((trial, index) => {
         const value = getCloseoutAggregateValue(trial);
         if (value === null) {
           return [];
@@ -541,6 +577,9 @@ export const buildCloseoutDataPoints = ({
           linked,
         }];
       });
+      if (hasQuantitativeTargetValue) {
+        return targetDataPoints;
+      }
     }
 
     const value = getCloseoutAggregateValue(normalized.data);

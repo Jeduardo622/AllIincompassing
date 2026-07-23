@@ -43,13 +43,15 @@
   - preview hosted RPC/ACL proof: pass; only the date overload remained, with execute granted to `authenticated` and denied to `anon`
   - production migration promotion: pass; runtime ledger recorded `20260723163640/remove_session_metrics_text_overload`
   - production hosted RPC/ACL proof: pass; only `get_session_metrics(date,date,uuid,uuid)` remains, with execute granted to `authenticated` and denied to `anon` and `PUBLIC`
+  - refreshed GitHub runtime migration parity and aggregate CI gate: pass on commit `c556c2ae`
+  - authenticated production BCBA dashboard: pass after a full reload; Monthly Report Summary returned 282 total sessions, 54 completed sessions, 8 active clients, and 8 active therapists
+  - browser evidence: `.tmp/live-bcba-route-audit-2026-07-23/18-dashboard-runtime-fixed.jpg` (local audit artifact, not committed)
 - blocked checks:
   - `npm run test:ci`: blocked by four unrelated baseline failures, including the existing `supabase.edge` Blob mock failure, stale BT browser-proof contract, and synthetic BCBA provisioning key expectation
   - `npm run verify:local`: reached and failed at the same unrelated `test:ci` baseline failures after policy, lint, and typecheck passed
-- pending checks:
-  - refreshed GitHub runtime migration parity and aggregate CI gate
-- result: pass with blocked local full-suite checks; hosted preview and production runtime verification passed
-- residual risk: the production dashboard must still be rechecked through the authenticated BCBA UI after the refreshed CI suite passes
+- pending checks: none
+- result: pass with blocked local full-suite checks; hosted preview, production runtime, refreshed CI, and authenticated BCBA UI verification passed
+- residual risk: existing browser sessions can retain the pre-migration React Query result until reload; fresh requests return the corrected metrics
 
 ## Review
 
@@ -72,6 +74,6 @@
 - unrelated changes: none
 - protected-path drift: none beyond the routed migration
 - pr handoff: local verification, specialist review, Supabase preview, production migration promotion, and hosted RPC/ACL proof are documented
-- required follow-up: require refreshed runtime migration parity and aggregate CI gate success, then recheck the authenticated BCBA dashboard metrics
+- required follow-up: complete the required human-reviewed merge flow, then continue the remaining BCBA route audit
 
 The live production dashboard currently reports zero monthly metrics while the Reports route returns non-zero data. Production schema inspection found both date and text overloads with identical argument names; this slice removes only the legacy text overload that makes PostgREST resolution ambiguous.

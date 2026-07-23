@@ -37,7 +37,8 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
 - agents used: specification-engineer, implementation-engineer, code-review-engineer, test-engineer
 - reviewer: completed; the first review found overly broad same-goal aggregate suppression and stale restored-draft input risk
 - PR review: found that normalized preview state could replace historical persisted measurements and that completed aggregate-only sessions did not hydrate the preview
-- re-review: approved with no findings after separating preview/persistence state, adding completed-session hydration, and covering both regressions
+- follow-up PR review: found that aggregate rows containing only `incorrect_trials` or `opportunities` were still omitted when `metric_value` was null
+- re-review: approved with no findings after adding explicit metric/incorrect/opportunity fallback handling and targeted coverage for both secondary quantitative shapes
 
 ## Verification Card
 
@@ -64,11 +65,12 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
   - `npm run test:routes:tier0`: pass, 220/220
   - `npm run ci:playwright`: preflight passed; auth smoke failed because the configured `superadmin@test.com` credential was rejected, so the fail-fast runner did not execute the remaining children
   - `npm run build`: pass
+  - PR CI on commit `c7d4c8ae`: all required checks passed, including Linux unit tests, tier-0 browser, auth browser smoke, policy, lint/typecheck, and build
 - blocked checks:
   - `npm run verify:local`: blocked by the same unrelated `test:ci` baseline failures
   - remaining `npm run ci:playwright` children: blocked after the credential failure stopped the fail-fast runner
-- result: `pass-with-blocked-checks`
-- residual risk: live credential-backed closeout verification must rely on PR CI; aggregate values remain aggregate preview rows rather than fabricated raw trials
+- result: `pending-final-head-ci`
+- residual risk: the secondary-field correction still requires final-head PR CI and credential-backed browser proof; aggregate values remain aggregate preview rows rather than fabricated raw trials
 
 ## PR Hygiene
 
@@ -82,4 +84,4 @@ The earlier suspected scheduling/finalization assignment mismatch was not a prod
 - verification summary: present
 - reviewer: completed and approved
 - pr-ready: yes
-- required follow-up: commit the isolated files, push the branch, open the human-reviewed PR, move WIN-243 to In Review, and inspect live checks
+- required follow-up: commit and push the isolated correction, resolve the current review thread, rerun final-head PR checks, and capture credential-backed closeout proof

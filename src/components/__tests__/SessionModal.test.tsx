@@ -291,6 +291,28 @@ describe('SessionModal', () => {
           trials: 5,
           promptLevel: 'Gestural',
         },
+        'goal-incorrect-only': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [
+              {
+                target: 'All incorrect target',
+                metric_value: null,
+                incorrect_trials: 2,
+                opportunities: 2,
+              },
+            ],
+          },
+        },
+        'goal-opportunities-only': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target: 'Opportunity-only target',
+            opportunities: 4,
+          },
+        },
         'goal-note-only': {
           note: 'Narrative only',
         },
@@ -305,6 +327,16 @@ describe('SessionModal', () => {
       {
         label: 'Second Goal',
         value: 4,
+        linked: false,
+      },
+      {
+        label: 'All incorrect target',
+        value: '2 incorrect',
+        linked: false,
+      },
+      {
+        label: 'Opportunity-only target',
+        value: '4 opportunities',
         linked: false,
       },
     ]);

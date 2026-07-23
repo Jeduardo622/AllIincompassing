@@ -19,6 +19,7 @@ import type {
   Session,
   GoalTarget,
   SessionCaptureTrialEventInput,
+  SessionGoalMeasurementData,
   SessionGoalMeasurementEntry,
   TrialEvent,
   Therapist,
@@ -460,6 +461,21 @@ const getTrialEventLabel = (
 ): string =>
   goalTargetsById.get(event.target_id)?.name ?? event.target_id;
 
+const getCloseoutAggregateValue = (
+  measurement: Pick<SessionGoalMeasurementData, 'metric_value' | 'incorrect_trials' | 'opportunities'>,
+): string | number | null => {
+  const metricValue = toOptionalNumber(measurement.metric_value);
+  if (metricValue !== null) {
+    return metricValue;
+  }
+  const incorrectTrials = toOptionalNumber(measurement.incorrect_trials);
+  if (incorrectTrials !== null) {
+    return `${incorrectTrials} incorrect`;
+  }
+  const opportunities = toOptionalNumber(measurement.opportunities);
+  return opportunities === null ? null : `${opportunities} opportunities`;
+};
+
 export const buildCloseoutDataPoints = ({
   existingTrialEvents,
   pendingTrialEvents,
@@ -509,7 +525,7 @@ export const buildCloseoutDataPoints = ({
 
     if (targetTrials.length > 0) {
       return targetTrials.flatMap((trial, index) => {
-        const value = toOptionalNumber(trial.metric_value);
+        const value = getCloseoutAggregateValue(trial);
         if (value === null) {
           return [];
         }
@@ -525,7 +541,7 @@ export const buildCloseoutDataPoints = ({
       });
     }
 
-    const value = toOptionalNumber(normalized.data.metric_value);
+    const value = getCloseoutAggregateValue(normalized.data);
     if (value === null) {
       return [];
     }

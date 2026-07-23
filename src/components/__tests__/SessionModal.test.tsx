@@ -3,6 +3,7 @@ import { renderWithProviders, screen, userEvent, waitFor } from '../../test/util
 import { fireEvent } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import {
+  buildCloseoutDataPoints,
   SessionModal,
   decrementLegacyPromptCounts,
   dedupeProgressionNotices,
@@ -15,7 +16,7 @@ import {
 } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
 import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-linked-fetch';
-import type { Session } from '../../types';
+import type { Goal, GoalTarget, Session, TrialEvent } from '../../types';
 import { startSessionFromModal } from '../../features/scheduling/domain/sessionStart';
 import {
   finalizeBtAbaSessionNote,
@@ -68,7 +69,14 @@ vi.mock('../session-notes/BtAbaSessionNoteForm', () => ({
     readOnly,
   }: {
     initialResponses: BtAbaSessionNoteResponses;
-    context: { placeOfService: string; billingCode: string; modifiers: string[]; programs: Array<{ name: string; goals: string[] }>; linkedDataPoints: unknown[]; allDataPoints: unknown[] };
+    context: {
+      placeOfService: string;
+      billingCode: string;
+      modifiers: string[];
+      programs: Array<{ name: string; goals: string[] }>;
+      linkedDataPoints: Array<{ label: string; value: string | number }>;
+      allDataPoints: Array<{ label: string; value: string | number }>;
+    };
     onSaveDraft: (responses: BtAbaSessionNoteResponses) => Promise<void>;
     onFinalize: (responses: BtAbaSessionNoteResponses) => Promise<void>;
     busy: boolean;
@@ -84,6 +92,9 @@ vi.mock('../session-notes/BtAbaSessionNoteForm', () => ({
       <p>Goals: {context.programs.flatMap((program) => program.goals).join(', ') || 'None'}</p>
       <p>Linked count: {context.linkedDataPoints.length}</p>
       <p>All count: {context.allDataPoints.length}</p>
+      {context.allDataPoints.map((dataPoint, index) => (
+        <p key={`${dataPoint.label}:${index}`}>{dataPoint.label}: {dataPoint.value}</p>
+      ))}
       {!readOnly && <button type="button" disabled={busy} onClick={() => void onSaveDraft(validBtAbaResponses)}>Save ABA Draft</button>}
       {!readOnly && <button type="button" disabled={busy} onClick={() => void onFinalize(validBtAbaResponses)}>Finalize ABA Session</button>}
     </section>
@@ -246,6 +257,842 @@ describe('SessionModal', () => {
       updated_at: '2024-01-02T00:00:00Z',
     },
   ];
+
+  it('builds closeout preview rows from aggregate legacy goal measurements when raw trial events are absent', () => {
+    const goalTargetsById = new Map<string, GoalTarget>();
+    const goalsById = new Map<string, Goal>(mockGoals.map((goal) => [goal.id, goal]));
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById,
+      linkedGoalIds: ['goal-1'],
+      goalMeasurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            target_trials: [
+              {
+                target: 'Hosted aggregate target',
+                metric_value: 2,
+                prompt_counts: [
+                  { prompt_type: 'gesture', prompt_level: null, correct_trials: 2, incorrect_trials: 0 },
+                ],
+              },
+            ],
+          },
+        },
+        'goal-2': {
+          count: 4,
+          trials: 5,
+          promptLevel: 'Gestural',
+        },
+        'goal-incorrect-only': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [
+              {
+                target: 'All incorrect target',
+                metric_value: null,
+                incorrect_trials: 2,
+                opportunities: 2,
+              },
+            ],
+          },
+        },
+        'goal-opportunities-only': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target: 'Opportunity-only target',
+            opportunities: 4,
+          },
+        },
+        'goal-note-only': {
+          note: 'Narrative only',
+        },
+        'goal-empty': {},
+      },
+    })).toEqual([
+      {
+        label: 'Hosted aggregate target',
+        value: 2,
+        linked: true,
+      },
+      {
+        label: 'Second Goal',
+        value: 4,
+        linked: false,
+      },
+      {
+        label: 'All incorrect target',
+        value: '2 incorrect',
+        linked: false,
+      },
+      {
+        label: 'Opportunity-only target',
+        value: '4 opportunities',
+        linked: false,
+      },
+    ]);
+  });
+
+  it('keeps an unlabeled later aggregate distinct from target zero', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-first-unindexed',
+      {
+        id: 'target-first-unindexed',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-1',
+        name: 'First target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const existingTrialEvents = [{
+      id: 'trial-first-unindexed',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-first-unindexed',
+      goal_id: 'goal-1',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById: new Map(mockGoals.map((goal) => [goal.id, goal])),
+      linkedGoalIds: ['goal-1'],
+      goalMeasurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            targets: ['First target'],
+            target_trials: [
+              { target: 'First target', metric_value: 1 },
+              { target: null, metric_value: 7 },
+            ],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'First target',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'Default Goal',
+        value: 7,
+        linked: true,
+      },
+    ]);
+  });
+
+  it('retains units and avoids count wording for non-count aggregates', () => {
+    const goalsById = new Map<string, Goal>([
+      ['goal-duration', { ...mockGoals[0], id: 'goal-duration', title: 'Duration Goal', measurement_type: 'duration' }],
+      ['goal-percent', { ...mockGoals[0], id: 'goal-percent', title: 'Percent Goal', measurement_type: 'percentage' }],
+      ['goal-rate', { ...mockGoals[0], id: 'goal-rate', title: 'Rate Goal', measurement_type: 'rate' }],
+    ]);
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById,
+      linkedGoalIds: ['goal-duration', 'goal-percent', 'goal-rate'],
+      goalMeasurements: {
+        'goal-duration': {
+          version: 1,
+          data: {
+            measurement_type: 'duration',
+            metric_label: 'Duration',
+            metric_unit: 'minutes',
+            target_trials: [{ target: 'Engagement duration', metric_value: 15, incorrect_trials: 2 }],
+          },
+        },
+        'goal-percent': {
+          version: 1,
+          data: {
+            measurement_type: 'percentage',
+            metric_label: 'Percent',
+            metric_unit: '%',
+            target_trials: [
+              { target: 'Accuracy', metric_value: 80 },
+              { target: 'Zero accuracy', metric_value: 0, incorrect_trials: 2 },
+            ],
+          },
+        },
+        'goal-rate': {
+          version: 1,
+          data: {
+            measurement_type: 'rate',
+            metric_label: 'Rate',
+            metric_unit: 'per hour',
+            target_trials: [{ target: 'Requests', metric_value: 3 }],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Engagement duration',
+        value: '15 minutes / 2 incorrect',
+        linked: true,
+      },
+      {
+        label: 'Accuracy',
+        value: '80%',
+        linked: true,
+      },
+      {
+        label: 'Zero accuracy',
+        value: '0% / 2 incorrect',
+        linked: true,
+      },
+      {
+        label: 'Requests',
+        value: '3 per hour',
+        linked: true,
+      },
+    ]);
+  });
+
+  it('preserves persisted measurement metadata when the current goal type has changed', () => {
+    const currentGoal = {
+      ...mockGoals[0],
+      title: 'Goal now measured by percent',
+      measurement_type: 'percentage',
+    };
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map([[currentGoal.id, currentGoal]]),
+      linkedGoalIds: ['goal-1'],
+      goalMeasurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            target_trials: [{ target: 'Historical count target', metric_value: 2 }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Historical count target',
+      value: 2,
+      linked: true,
+    }]);
+  });
+
+  it('keeps raw closeout trial events one-for-one and skips duplicate aggregate rows for the same goal target', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-1',
+      {
+        id: 'target-1',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-1',
+        name: 'Hosted aggregate target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const goalsById = new Map<string, Goal>(mockGoals.map((goal) => [goal.id, goal]));
+    const existingTrialEvents = [{
+      id: 'trial-1',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-1',
+      goal_id: 'goal-1',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById,
+      linkedGoalIds: ['goal-1'],
+      goalMeasurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            target_trials: [
+              {
+                target: 'Hosted aggregate target',
+                metric_value: 2,
+                prompt_counts: [
+                  { prompt_type: 'gesture', prompt_level: null, correct_trials: 2, incorrect_trials: 0 },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Hosted aggregate target',
+        value: 'correct',
+        linked: true,
+      },
+    ]);
+  });
+
+  it('shows incorrect prompt outcomes when a legacy aggregate has zero correct trials', () => {
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-prompt-incorrect'],
+      goalMeasurements: {
+        'goal-prompt-incorrect': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Prompt outcome target',
+              prompt_counts: [{
+                prompt_type: 'verbal',
+                prompt_level: 'full',
+                correct_trials: 0,
+                incorrect_trials: 2,
+              }],
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Prompt outcome target',
+      value: '2 incorrect',
+      linked: true,
+    }]);
+  });
+
+  it('shows both correct and incorrect outcomes for a mixed legacy aggregate', () => {
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-prompt-mixed'],
+      goalMeasurements: {
+        'goal-prompt-mixed': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Mixed prompt outcome target',
+              metric_value: 2,
+              incorrect_trials: 3,
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Mixed prompt outcome target',
+      value: '2 correct / 3 incorrect',
+      linked: true,
+    }]);
+  });
+
+  it('falls back to a top-level aggregate when target rows contain metadata only', () => {
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents: [],
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-metadata-target'],
+      goalMeasurements: {
+        'goal-metadata-target': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target: 'Metadata-only target',
+            metric_value: 5,
+            target_trials: [{
+              target: 'Metadata-only target',
+              trial_prompt_note: 'Observed with a model prompt',
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Metadata-only target',
+      value: 5,
+      linked: true,
+    }]);
+  });
+
+  it('does not duplicate a top-level fallback when an indexed raw trial matches its metadata-only target', () => {
+    const existingTrialEvents = [{
+      id: 'trial-metadata-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-metadata',
+      goal_id: 'goal-metadata-target',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-metadata-target'],
+      goalMeasurements: {
+        'goal-metadata-target': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target: 'Metadata-only target',
+            metric_value: 5,
+            target_trials: [{
+              target: 'Metadata-only target',
+              trial_prompt_note: 'Observed with a model prompt',
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Metadata-only target',
+      value: 'correct',
+      linked: true,
+    }]);
+  });
+
+  it('uses aggregate target metadata to label and deduplicate archived raw targets', () => {
+    const existingTrialEvents = [{
+      id: 'trial-archived-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-archived',
+      goal_id: 'goal-archived',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-archived'],
+      goalMeasurements: {
+        'goal-archived': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Archived target snapshot',
+              metric_value: 1,
+              opportunities: 1,
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Archived target snapshot',
+      value: 'correct',
+      linked: true,
+    }]);
+  });
+
+  it('uses the persisted target index to deduplicate and label a renamed target', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-renamed',
+      {
+        id: 'target-renamed',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-renamed',
+        name: 'Current renamed target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const existingTrialEvents = [{
+      id: 'trial-renamed-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-renamed',
+      goal_id: 'goal-renamed',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-renamed'],
+      goalMeasurements: {
+        'goal-renamed': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Finalized target snapshot',
+              metric_value: 1,
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Finalized target snapshot',
+      value: 'correct',
+      linked: true,
+    }]);
+  });
+
+  it('uses a sole snapshot label for an older unindexed raw target that can no longer be identified', () => {
+    const existingTrialEvents = [{
+      id: 'trial-renamed-target-no-index',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-renamed-no-index',
+      goal_id: 'goal-renamed-no-index',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-renamed-no-index'],
+      goalMeasurements: {
+        'goal-renamed-no-index': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Finalized target snapshot',
+              metric_value: 1,
+            }],
+          },
+        },
+      },
+    })).toEqual([{
+      label: 'Finalized target snapshot',
+      value: 'correct',
+      linked: true,
+    }]);
+  });
+
+  it('preserves a distinct aggregate when an older unindexed raw target is still identifiable', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-known-no-index',
+      {
+        id: 'target-known-no-index',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-known-no-index',
+        name: 'Known raw target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const existingTrialEvents = [{
+      id: 'trial-known-target-no-index',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-known-no-index',
+      goal_id: 'goal-known-no-index',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-known-no-index'],
+      goalMeasurements: {
+        'goal-known-no-index': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [{
+              target: 'Distinct aggregate target',
+              metric_value: 2,
+            }],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Known raw target',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'Distinct aggregate target',
+        value: 2,
+        linked: true,
+      },
+    ]);
+  });
+
+  it('does not suppress a different indexed target that shares the same label', () => {
+    const existingTrialEvents = [{
+      id: 'trial-duplicate-label-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-first',
+      goal_id: 'goal-duplicate-label',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-duplicate-label'],
+      goalMeasurements: {
+        'goal-duplicate-label': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [
+              { target: 'Shared target label', metric_value: 1 },
+              { target: 'Shared target label', metric_value: 2 },
+            ],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Shared target label',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'Shared target label',
+        value: 2,
+        linked: true,
+      },
+    ]);
+  });
+
+  it('preserves sparse aggregate target indexes when labeling archived raw targets', () => {
+    const existingTrialEvents = [{
+      id: 'trial-archived-unlabeled-target',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-archived-unlabeled',
+      goal_id: 'goal-archived-sparse',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: { target_index: 0 },
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById: new Map(),
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-archived-sparse'],
+      goalMeasurements: {
+        'goal-archived-sparse': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target_trials: [
+              { trial_prompt_note: 'Unlabeled historical target' },
+              {
+                target: 'Later labeled target',
+                metric_value: 2,
+                opportunities: 2,
+              },
+            ],
+          },
+        },
+      },
+    })).toEqual([
+      {
+        label: 'target-archived-unlabeled',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'Later labeled target',
+        value: 2,
+        linked: true,
+      },
+    ]);
+  });
+
+  it('keeps an unlabeled aggregate row when a raw event only proves a different target for the same goal', () => {
+    const goalTargetsById = new Map<string, GoalTarget>([[
+      'target-1',
+      {
+        id: 'target-1',
+        organization_id: 'org-a',
+        client_id: 'test-client-1',
+        goal_id: 'goal-unlabeled',
+        name: 'Raw target',
+        measurement_type: 'frequency',
+        graph_config: {},
+        sort_order: 0,
+        current_phase: 'baseline',
+        status: 'active',
+        is_current: true,
+        evaluation_window_started_at: null,
+        progression_version: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]]);
+    const existingTrialEvents = [{
+      id: 'trial-unlabeled-goal',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      session_id: 'session-1',
+      target_id: 'target-1',
+      goal_id: 'goal-unlabeled',
+      therapist_id: 'test-therapist-1',
+      trial_number: 1,
+      response: 'correct',
+      event_timestamp: '2026-03-01T10:15:00.000Z',
+      metadata: {},
+      created_at: '2026-03-01T10:15:00.000Z',
+      updated_at: '2026-03-01T10:15:00.000Z',
+    }] satisfies TrialEvent[];
+
+    expect(buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: [],
+      goalTargetsById,
+      goalsById: new Map(),
+      linkedGoalIds: ['goal-unlabeled'],
+      goalMeasurements: {
+        'goal-unlabeled': {
+          count: 3,
+        },
+      },
+    })).toEqual([
+      {
+        label: 'Raw target',
+        value: 'correct',
+        linked: true,
+      },
+      {
+        label: 'goal-unlabeled',
+        value: 3,
+        linked: true,
+      },
+    ]);
+  });
 
   beforeEach(() => {
     vi.mocked(startSessionFromModal).mockReset();
@@ -971,11 +1818,55 @@ describe('SessionModal', () => {
   });
 
   it('restores a persisted BT draft and finalizes atomically before reporting completion', async () => {
+    const persistedGoalMeasurements = {
+      'goal-1': {
+        version: 1,
+        data: {
+          measurement_type: 'frequency',
+          metric_label: 'Count',
+          metric_unit: 'responses',
+          targets: ['Match peer greeting in 4/5 trials', 'Retired target'],
+          target_trials: [
+            {
+              target: 'Match peer greeting in 4/5 trials',
+              metric_value: 2,
+            },
+            {
+              target: 'Retired target',
+              metric_value: 9,
+            },
+          ],
+        },
+      },
+    };
     vi.mocked(getBtAbaSessionNote).mockResolvedValue({
       noteId: 'note-restored',
       templateId: 'template-restored',
       responses: validBtAbaResponses as unknown as Record<string, unknown>,
       status: 'draft',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-restored',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Default Goal'],
+      goal_ids: ['goal-1'],
+      goal_measurements: persistedGoalMeasurements,
+      goal_notes: {},
+      session_id: 'session-bt-restored',
+      narrative: '',
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T10:30:00.000Z',
     });
     vi.mocked(finalizeBtAbaSessionNote)
       .mockRejectedValueOnce(new Error('Atomic finalization failed'))
@@ -1002,15 +1893,25 @@ describe('SessionModal', () => {
     expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(await screen.findByText('Draft client status: Engaged')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('All count: 1')).toBeInTheDocument();
+    expect(screen.getByText('Match peer greeting in 4/5 trials: 2')).toBeInTheDocument();
+    expect(screen.queryByText(/Retired target/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save ABA Draft' }));
     await waitFor(() => expect(saveBtAbaSessionNoteDraft).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: 'session-bt-restored', templateId: 'template-restored', responses: validBtAbaResponses,
+      sessionId: 'session-bt-restored',
+      templateId: 'template-restored',
+      notePayload: expect.objectContaining({ goal_measurements: persistedGoalMeasurements }),
+      responses: validBtAbaResponses,
     })));
 
     await userEvent.click(screen.getByRole('button', { name: 'Finalize ABA Session' }));
     await waitFor(() => expect(finalizeBtAbaSessionNote).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: 'session-bt-restored', noteId: 'note-restored', responses: validBtAbaResponses,
+      sessionId: 'session-bt-restored',
+      noteId: 'note-restored',
+      notePayload: expect.objectContaining({ goal_measurements: persistedGoalMeasurements }),
+      responses: validBtAbaResponses,
       trialEvents: expect.any(Array), expectedTargetVersions: expect.any(Array),
     })));
     expect(await screen.findByRole('alert')).toHaveTextContent('Atomic finalization failed');
@@ -1268,6 +2169,302 @@ describe('SessionModal', () => {
 
     expect(await screen.findByText('Goals: Finalized Archived Goal')).toBeInTheDocument();
     expect(screen.queryByText('Goals: Default Goal')).not.toBeInTheDocument();
+  });
+
+  it('renders aggregate-only measurements when a completed BT session is reopened', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-aggregate',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-completed-aggregate',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Default Goal'],
+      goal_ids: ['goal-1'],
+      goal_measurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target: 'Finalized retired target',
+            targets: ['Finalized retired target'],
+            metric_value: 2,
+            opportunities: 2,
+          },
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-completed-aggregate',
+      narrative: 'Completed aggregate note',
+      is_locked: true,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: '2026-03-01T11:00:00.000Z',
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T11:00:00.000Z',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{ ...btInProgressSession, id: 'session-bt-completed-aggregate', status: 'completed' }}
+      />,
+    );
+
+    expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('All count: 1')).toBeInTheDocument();
+    expect(screen.getByText('Finalized retired target: 2')).toBeInTheDocument();
+  });
+
+  it('links completed legacy measurements by goal key when the finalized goal_ids column is null', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-aggregate-null-goal-ids',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-completed-aggregate-null-goal-ids',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: null,
+      goal_ids: null,
+      goal_measurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            target: 'Legacy linked target',
+            targets: ['Legacy linked target'],
+            metric_value: 2,
+            opportunities: 2,
+          },
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-completed-aggregate-null-goal-ids',
+      narrative: 'Completed legacy aggregate note',
+      is_locked: true,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: '2026-03-01T11:00:00.000Z',
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T11:00:00.000Z',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{
+          ...btInProgressSession,
+          id: 'session-bt-completed-aggregate-null-goal-ids',
+          status: 'completed',
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('All count: 1')).toBeInTheDocument();
+    expect(screen.getByText('Legacy linked target: 2')).toBeInTheDocument();
+  });
+
+  it('recovers a sole finalized label when a completed legacy note has no goal_ids', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-aggregate-inferred-label',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-completed-aggregate-inferred-label',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Archived Snapshot Goal'],
+      goal_ids: null,
+      goal_measurements: {
+        'goal-archived-inferred': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_value: 3,
+            opportunities: 3,
+          },
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-completed-aggregate-inferred-label',
+      narrative: 'Completed legacy aggregate note',
+      is_locked: true,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: '2026-03-01T11:00:00.000Z',
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T11:00:00.000Z',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{
+          ...btInProgressSession,
+          id: 'session-bt-completed-aggregate-inferred-label',
+          status: 'completed',
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('Archived Snapshot Goal: 3')).toBeInTheDocument();
+    expect(screen.queryByText('goal-archived-inferred: 3')).not.toBeInTheDocument();
+  });
+
+  it('does not guess finalized label mappings when legacy measurement keys are ambiguous', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-aggregate-ambiguous-label',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-completed-aggregate-ambiguous-label',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Ambiguous Snapshot Goal'],
+      goal_ids: null,
+      goal_measurements: {
+        'goal-ambiguous-a': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_value: 1,
+          },
+        },
+        'goal-ambiguous-b': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_value: 2,
+          },
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-completed-aggregate-ambiguous-label',
+      narrative: 'Completed ambiguous legacy aggregate note',
+      is_locked: true,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: '2026-03-01T11:00:00.000Z',
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T11:00:00.000Z',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{
+          ...btInProgressSession,
+          id: 'session-bt-completed-aggregate-ambiguous-label',
+          status: 'completed',
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 2')).toBeInTheDocument();
+    expect(screen.getByText('goal-ambiguous-a: 1')).toBeInTheDocument();
+    expect(screen.getByText('goal-ambiguous-b: 2')).toBeInTheDocument();
+  });
+
+  it('uses finalized snapshot labels for targetless measurements from archived goals', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-completed-archived-aggregate',
+      templateId: 'template-bt-1',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'completed',
+    });
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'note-completed-archived-aggregate',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Archived Snapshot Goal'],
+      goal_ids: ['goal-archived'],
+      goal_measurements: {
+        'goal-archived': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_value: 3,
+            opportunities: 3,
+          },
+        },
+      },
+      goal_notes: {},
+      session_id: 'session-bt-completed-archived-aggregate',
+      narrative: 'Completed archived aggregate note',
+      is_locked: true,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: '2026-03-01T11:00:00.000Z',
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T11:00:00.000Z',
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{
+          ...btInProgressSession,
+          id: 'session-bt-completed-archived-aggregate',
+          status: 'completed',
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Mode: finalized')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
+    expect(screen.getByText('Archived Snapshot Goal: 3')).toBeInTheDocument();
+    expect(screen.queryByText('goal-archived: 3')).not.toBeInTheDocument();
   });
 
   it('surfaces persisted BT draft loading failure before closeout can advance', async () => {

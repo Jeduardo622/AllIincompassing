@@ -19,6 +19,7 @@ import type {
   Session,
   GoalTarget,
   SessionCaptureTrialEventInput,
+  SessionGoalMeasurementData,
   SessionGoalMeasurementEntry,
   TrialEvent,
   Therapist,
@@ -426,6 +427,242 @@ const trimString = (value: unknown): string | null => {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+};
+
+export interface CloseoutDataPoint {
+  label: string;
+  value: string | number;
+  linked: boolean;
+}
+
+interface BuildCloseoutDataPointsArgs {
+  existingTrialEvents: readonly TrialEvent[];
+  pendingTrialEvents: readonly SessionCaptureTrialEventInput[];
+  goalTargetsById: ReadonlyMap<string, GoalTarget>;
+  goalsById: ReadonlyMap<string, Goal>;
+  goalLabelsById?: ReadonlyMap<string, string>;
+  linkedGoalIds: readonly string[];
+  goalMeasurements: Record<string, unknown> | null | undefined;
+}
+
+const toCloseoutAggregateKey = (goalId: string | null, targetLabel: string | null): string =>
+  `${goalId ?? '__unknown_goal__'}::${targetLabel ?? '__goal__'}`;
+
+const toCloseoutTargetIndexKey = (goalId: string, targetIndex: number): string =>
+  `${goalId}::index:${targetIndex}`;
+
+const getTrialEventGoalId = (
+  event: TrialEvent | SessionCaptureTrialEventInput,
+  goalTargetsById: ReadonlyMap<string, GoalTarget>,
+): string | null =>
+  'goal_id' in event && typeof event.goal_id === 'string'
+    ? event.goal_id
+    : goalTargetsById.get(event.target_id)?.goal_id ?? null;
+
+const getTrialEventTargetIndex = (
+  event: TrialEvent | SessionCaptureTrialEventInput,
+): number | null => {
+  const targetIndex = toOptionalNumber(event.metadata?.target_index);
+  return targetIndex !== null && Number.isInteger(targetIndex) && targetIndex >= 0
+    ? targetIndex
+    : null;
+};
+
+const getTrialEventLabel = (
+  event: TrialEvent | SessionCaptureTrialEventInput,
+  goalTargetsById: ReadonlyMap<string, GoalTarget>,
+  aggregateTargetLabels: readonly (string | null)[],
+): string => {
+  const targetIndex = getTrialEventTargetIndex(event);
+  if (targetIndex !== null && aggregateTargetLabels[targetIndex]) {
+    return aggregateTargetLabels[targetIndex];
+  }
+
+  const currentTargetLabel = goalTargetsById.get(event.target_id)?.name;
+  if (currentTargetLabel) {
+    return currentTargetLabel;
+  }
+
+  return aggregateTargetLabels.length === 1 && aggregateTargetLabels[0]
+    ? aggregateTargetLabels[0]
+    : event.target_id;
+};
+
+const getCloseoutAggregateValue = (
+  measurement: Pick<SessionGoalMeasurementData, 'metric_value' | 'incorrect_trials' | 'opportunities'>,
+  metadata: Pick<SessionGoalMeasurementData, 'measurement_type' | 'metric_label' | 'metric_unit'>,
+): string | number | null => {
+  const metricValue = toOptionalNumber(measurement.metric_value);
+  const incorrectTrials = toOptionalNumber(measurement.incorrect_trials);
+  if (metricValue !== null) {
+    const isCountMeasurement = isCountTrialMeasurementMetadata(
+      metadata.measurement_type,
+      metadata.metric_label,
+      metadata.metric_unit,
+    );
+    const metricUnit = trimString(metadata.metric_unit);
+    const metricLabel = trimString(metadata.metric_label);
+    const formattedMetricValue = isCountMeasurement || (!metricUnit && !metricLabel)
+      ? metricValue
+      : metricUnit === '%'
+        ? `${metricValue}%`
+        : `${metricValue} ${metricUnit ?? metricLabel}`;
+    if (incorrectTrials !== null && incorrectTrials > 0) {
+      return isCountMeasurement
+        ? metricValue > 0
+          ? `${metricValue} correct / ${incorrectTrials} incorrect`
+          : `${incorrectTrials} incorrect`
+        : `${formattedMetricValue} / ${incorrectTrials} incorrect`;
+    }
+    return formattedMetricValue;
+  }
+  if (incorrectTrials !== null) {
+    return `${incorrectTrials} incorrect`;
+  }
+  const opportunities = toOptionalNumber(measurement.opportunities);
+  return opportunities === null ? null : `${opportunities} opportunities`;
+};
+
+const getPersistedMeasurementType = (rawValue: unknown): string | null => {
+  if (!rawValue || typeof rawValue !== 'object') {
+    return null;
+  }
+  const candidate = rawValue as { data?: unknown } & Record<string, unknown>;
+  const sourceData = candidate.data && typeof candidate.data === 'object'
+    ? candidate.data as Record<string, unknown>
+    : candidate;
+  return trimString(sourceData.measurement_type);
+};
+
+export const buildCloseoutDataPoints = ({
+  existingTrialEvents,
+  pendingTrialEvents,
+  goalTargetsById,
+  goalsById,
+  goalLabelsById = new Map(),
+  linkedGoalIds,
+  goalMeasurements,
+}: BuildCloseoutDataPointsArgs): CloseoutDataPoint[] => {
+  const seenTrialKeys = new Set<string>();
+  const rawTargetIndexKeys = new Set<string>();
+  const rawFallbackAggregateKeys = new Set<string>();
+  const normalizedMeasurements = !goalMeasurements || typeof goalMeasurements !== 'object'
+    ? []
+    : Object.entries(goalMeasurements).flatMap(([goalId, rawValue]) => {
+        const goal = goalsById.get(goalId);
+        const persistedMeasurementType = getPersistedMeasurementType(rawValue);
+        const normalizationGoal = goal && persistedMeasurementType
+          ? { ...goal, measurement_type: persistedMeasurementType }
+          : goal;
+        const normalized = normalizeGoalMeasurementEntry(rawValue, normalizationGoal);
+        return normalized ? [{ goalId, goal, normalized }] : [];
+      });
+  const aggregateTargetLabelsByGoal = new Map(
+    normalizedMeasurements.map(({ goalId, normalized }) => {
+      const measurementTargets = getGoalMeasurementTargets(normalized.data);
+      const targetTrials = normalized.data.target_trials ?? [];
+      const targetLabels = targetTrials.length > 0
+        ? targetTrials
+            .map((trial, index) => trimString(trial.target) ?? measurementTargets[index] ?? null)
+        : measurementTargets;
+      return [goalId, targetLabels] as const;
+    }),
+  );
+
+  const rawDataPoints = [...existingTrialEvents, ...pendingTrialEvents]
+    .filter((event) => {
+      const key = `${event.target_id}:${event.trial_number}`;
+      if (seenTrialKeys.has(key)) {
+        return false;
+      }
+      seenTrialKeys.add(key);
+      return true;
+    })
+    .map((event) => {
+      const goalId = getTrialEventGoalId(event, goalTargetsById);
+      const targetIndex = getTrialEventTargetIndex(event);
+      const label = getTrialEventLabel(
+        event,
+        goalTargetsById,
+        goalId ? aggregateTargetLabelsByGoal.get(goalId) ?? [] : [],
+      );
+      if (goalId && targetIndex !== null) {
+        rawTargetIndexKeys.add(toCloseoutTargetIndexKey(goalId, targetIndex));
+      } else {
+        rawFallbackAggregateKeys.add(toCloseoutAggregateKey(goalId, label));
+      }
+      return {
+        label,
+        value: event.response ?? event.value ?? '',
+        linked: Boolean(goalId && linkedGoalIds.includes(goalId)),
+      };
+    });
+
+  if (!goalMeasurements || typeof goalMeasurements !== 'object') {
+    return rawDataPoints;
+  }
+
+  const aggregateDataPoints = normalizedMeasurements.flatMap(({ goalId, goal, normalized }) => {
+    const fallbackLabel = goalLabelsById.get(goalId) ?? goal?.title ?? goalId;
+    const measurementTargets = getGoalMeasurementTargets(normalized.data);
+    const targetTrials = Array.isArray(normalized.data.target_trials) ? normalized.data.target_trials : [];
+    const linked = linkedGoalIds.includes(goalId);
+
+    if (targetTrials.length > 0) {
+      const hasQuantitativeTargetValue = targetTrials.some(
+        (trial) => getCloseoutAggregateValue(trial, normalized.data) !== null,
+      );
+      const targetDataPoints = targetTrials.flatMap((trial, index) => {
+        const value = getCloseoutAggregateValue(trial, normalized.data);
+        if (value === null) {
+          return [];
+        }
+        const targetLabel = trimString(trial.target) ?? measurementTargets[index] ?? null;
+        if (
+          rawTargetIndexKeys.has(toCloseoutTargetIndexKey(goalId, index)) ||
+          rawFallbackAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))
+        ) {
+          return [];
+        }
+        return [{
+          label: targetLabel ?? fallbackLabel,
+          value,
+          linked,
+        }];
+      });
+      if (hasQuantitativeTargetValue) {
+        return targetDataPoints;
+      }
+    }
+
+    const value = getCloseoutAggregateValue(normalized.data, normalized.data);
+    if (value === null) {
+      return [];
+    }
+
+    const targetLabel = trimString(normalized.data.target) ?? measurementTargets[0] ?? null;
+    const matchingTargetIndexes = targetTrials.flatMap((trial, index) => {
+      const trialLabel = trimString(trial.target) ?? measurementTargets[index] ?? null;
+      return trialLabel === targetLabel ? [index] : [];
+    });
+    const hasIndexedRawFallbackMatch =
+      matchingTargetIndexes.length === 1 &&
+      rawTargetIndexKeys.has(toCloseoutTargetIndexKey(goalId, matchingTargetIndexes[0]));
+    if (
+      hasIndexedRawFallbackMatch ||
+      rawFallbackAggregateKeys.has(toCloseoutAggregateKey(goalId, targetLabel))
+    ) {
+      return [];
+    }
+
+    return [{
+      label: targetLabel ?? fallbackLabel,
+      value,
+      linked,
+    }];
+  });
+
+  return [...rawDataPoints, ...aggregateDataPoints];
 };
 
 const sumPlanTargetTrials = (
@@ -2928,24 +3165,49 @@ export function SessionModal({
   }, [isOpen, isInProgressSession, session?.id]);
 
   const closeoutDataPoints = useMemo(() => {
-    const seen = new Set<string>();
-    return [...existingTrialEvents, ...(closeoutCaptureRef.current?.trialEvents ?? [])]
-      .filter((event) => {
-        const key = `${event.target_id}:${event.trial_number}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map((event) => {
-        const persistedGoalId = 'goal_id' in event && typeof event.goal_id === 'string' ? event.goal_id : null;
-        const goalForEvent = persistedGoalId ?? goalTargetsById.get(event.target_id)?.goal_id ?? null;
-        return {
-          label: goalTargetsById.get(event.target_id)?.name ?? event.target_id,
-          value: event.response ?? event.value ?? '',
-          linked: Boolean(goalForEvent && sessionNoteGoalIds.includes(goalForEvent)),
-        };
-      });
-  }, [existingTrialEvents, goalTargetsById, modalStep, sessionNoteGoalIds]);
+    const finalizedGoalIds = linkedSessionNote?.goal_ids ?? [];
+    const finalizedGoalLabels = linkedSessionNote?.goals_addressed ?? [];
+    const goalMeasurements = isCompletedBtAbaSession
+      ? (linkedSessionNote?.goal_measurements as Record<string, unknown> | null | undefined)
+      : sessionNoteGoalMeasurements ?? closeoutCaptureRef.current?.notePayload.goal_measurements;
+    const measurementGoalIds = goalMeasurements && typeof goalMeasurements === 'object'
+      ? Object.keys(goalMeasurements)
+      : [];
+    const finalizedGoalLabelIds = finalizedGoalIds.length > 0
+      ? finalizedGoalIds
+      : measurementGoalIds.length === 1 && finalizedGoalLabels.length === 1
+        ? measurementGoalIds
+        : [];
+    const finalizedGoalLabelsById = new Map(
+      finalizedGoalLabelIds.flatMap((goalEntryId, index) => {
+        const label = trimString(finalizedGoalLabels[index]);
+        return label ? [[goalEntryId, label] as const] : [];
+      }),
+    );
+    const completedLinkedGoalIds = Array.from(new Set([
+      ...finalizedGoalIds,
+      ...measurementGoalIds,
+    ]));
+
+    return buildCloseoutDataPoints({
+      existingTrialEvents,
+      pendingTrialEvents: closeoutCaptureRef.current?.trialEvents ?? [],
+      goalTargetsById,
+      goalsById,
+      goalLabelsById: finalizedGoalLabelsById,
+      linkedGoalIds: isCompletedBtAbaSession ? completedLinkedGoalIds : sessionNoteGoalIds,
+      goalMeasurements,
+    });
+  }, [
+    existingTrialEvents,
+    goalTargetsById,
+    goalsById,
+    isCompletedBtAbaSession,
+    linkedSessionNote,
+    modalStep,
+    sessionNoteGoalIds,
+    sessionNoteGoalMeasurements,
+  ]);
 
   if (!isOpen) return null;
 

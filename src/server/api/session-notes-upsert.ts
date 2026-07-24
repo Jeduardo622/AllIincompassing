@@ -618,6 +618,27 @@ const resolveAssignedBtSessionCaptureBilling = async (args: {
   };
 };
 
+const currentUserHasExactMidTierRoleWithStatus = async (
+  accessToken: string,
+  organizationId: string,
+): Promise<{ allowed: boolean; upstreamError: boolean }> => {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const headers = {
+    "Content-Type": "application/json",
+    apikey: anonKey,
+    Authorization: `Bearer ${accessToken}`,
+  };
+  const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role_name: "midtier", target_organization_id: organizationId }),
+  });
+  return {
+    allowed: result.ok && result.data === true,
+    upstreamError: !result.ok && result.status >= 500,
+  };
+};
+
 const isLegacyGoalIdsTypeError = (payload: unknown): boolean => {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return false;
@@ -1243,6 +1264,17 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (!isBtAbaRequest) {
     const hasResolvedSessionNoteRole = isTherapist || isAdmin || isSuperAdmin || isOrgMember;
     if (!hasResolvedSessionNoteRole) {
+      const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
+      if (bcbaAuthority.upstreamError) {
+        return errorResponse(request, "upstream_error", "Unable to validate BCBA access", { status: 502 });
+      }
+      const exactMidTierAuthority = !bcbaAuthority.allowed
+        ? await currentUserHasExactMidTierRoleWithStatus(accessToken, organizationId)
+        : { allowed: false, upstreamError: false };
+      if (exactMidTierAuthority.upstreamError) {
+        return errorResponse(request, "upstream_error", "Unable to validate Mid Tier access", { status: 502 });
+      }
+      if (!bcbaAuthority.allowed && !exactMidTierAuthority.allowed) {
       const legacyPayload = requestedAction === undefined
         ? upsertSchema.safeParse(body)
         : { success: false as const };
@@ -1252,15 +1284,11 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
       if (clientDataAuthority.upstreamError) {
         return errorResponse(request, "upstream_error", "Unable to validate client data access", { status: 502 });
       }
-      const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
-      if (bcbaAuthority.upstreamError) {
-        return errorResponse(request, "upstream_error", "Unable to validate BCBA access", { status: 502 });
-      }
-      hasAssignedBtLegacyCaptureAuthority = legacyPayload.success
-        && clientDataAuthority.allowed
-        && !bcbaAuthority.allowed;
-      if (!hasAssignedBtLegacyCaptureAuthority && !bcbaAuthority.allowed) {
+        hasAssignedBtLegacyCaptureAuthority = legacyPayload.success
+          && clientDataAuthority.allowed;
+        if (!hasAssignedBtLegacyCaptureAuthority) {
         return errorResponse(request, "forbidden", "Forbidden");
+        }
       }
     }
   }

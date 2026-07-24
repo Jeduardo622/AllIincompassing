@@ -3,11 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, test } from "vitest";
+import { isAiAgentBundlePath } from "../../scripts/ci/check-session-deploy-safety.mjs";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const scriptPath = path.join(repoRoot, "scripts", "ci", "check-session-deploy-safety.mjs");
 
 const tempDirs: string[] = [];
+const AI_AGENT_PATH_PATTERN =
+  "^supabase/functions/(ai-agent-optimized/|_shared/(database|auth|org|logging|cors|supabaseEnv|requestAuthHeaders)\\.ts$|lib/http/error\\.ts$)";
 
 const write = (root: string, relativePath: string, content: string) => {
   const target = path.join(root, relativePath);
@@ -19,6 +22,26 @@ const ciWorkflow = ({
   mergeGroupHandling = `          elif [ "\${GITHUB_EVENT_NAME}" = "merge_group" ]; then
             base_sha="\${{ github.event.merge_group.base_sha }}"
             head_sha="\${{ github.event.merge_group.head_sha }}"`,
+  aiAgentPathPattern = AI_AGENT_PATH_PATTERN,
+  unavailableAiAgentChanged = "true",
+  aiAgentDiffHandling = `          if [ -z "\${base_sha}" ] || [ "\${base_sha}" = "0000000000000000000000000000000000000000" ]; then
+            echo "docs_only=false" >> "\${GITHUB_OUTPUT}"
+            echo "ai_agent_changed=${unavailableAiAgentChanged}" >> "\${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          changed_files="$(git diff --name-only "\${base_sha}" "\${head_sha}")"
+          if [ -z "\${changed_files}" ]; then
+            echo "docs_only=false" >> "\${GITHUB_OUTPUT}"
+            echo "ai_agent_changed=false" >> "\${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          ai_agent_changed=false
+          while IFS= read -r file; do
+            if printf '%s\\n' "\${file}" | grep -Eq '${aiAgentPathPattern}'; then
+              ai_agent_changed=true
+            fi
+          done <<< "\${changed_files}"
+          echo "ai_agent_changed=\${ai_agent_changed}" >> "\${GITHUB_OUTPUT}"`,
   policyExtra = "",
   deployRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main'",
   deployNeeds = [
@@ -31,6 +54,9 @@ const ciWorkflow = ({
     "build",
   ],
   deployRun = "npm run ci:deploy:session-edge-bundle",
+  deployAiAgentRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change_scope.outputs.ai_agent_changed == 'true'",
+  deployAiAgentNeeds = ["deploy_session_edge", "change_scope"],
+  deployAiAgentRun = "npm run ci:deploy:ai-agent-function",
   authNeeds = ["policy", "change_scope", "deploy_session_edge"],
   authIf = "always() && needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')",
   authExtra = "",
@@ -43,6 +69,7 @@ const ciWorkflow = ({
     "runtime_migration_parity",
     "start_session_runtime_contract",
     "deploy_session_edge",
+    "deploy_ai_agent_edge",
     "lint_typecheck",
     "unit_tests",
     "build",
@@ -57,6 +84,9 @@ const ciWorkflow = ({
     "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
     "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${DEPLOY_SESSION_EDGE_RESULT}\" != \"success\" ]; then",
     "failed+=(\"deploy-session-edge=${DEPLOY_SESSION_EDGE_RESULT}\")",
+    "fi",
+    "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${AI_AGENT_CHANGED}\" = \"true\" ] && [ \"${DEPLOY_AI_AGENT_EDGE_RESULT}\" != \"success\" ]; then",
+    "failed+=(\"deploy-ai-agent-edge=${DEPLOY_AI_AGENT_EDGE_RESULT}\")",
     "fi",
   ],
   ciGateInertText = "",
@@ -78,6 +108,7 @@ jobs:
       docs_only: \${{ steps.detect.outputs.docs_only }}
       base_sha: \${{ steps.detect.outputs.base_sha }}
       head_sha: \${{ steps.detect.outputs.head_sha }}
+      ai_agent_changed: \${{ steps.detect.outputs.ai_agent_changed }}
     steps:
       - id: detect
         run: |
@@ -93,6 +124,7 @@ ${mergeGroupHandling}
           fi
           echo "base_sha=\${base_sha}" >> "\${GITHUB_OUTPUT}"
           echo "head_sha=\${head_sha}" >> "\${GITHUB_OUTPUT}"
+${aiAgentDiffHandling}
           echo "docs_only=false" >> "\${GITHUB_OUTPUT}"
 
   docs_guard:
@@ -141,6 +173,16 @@ ${deployNeeds.map((need) => `      - ${need}`).join("\n")}
         run: node scripts/ci/check-session-edge-deploy-prerequisites.mjs
       - name: Deploy required session edge functions
         run: ${deployRun}
+
+  deploy_ai_agent_edge:
+    needs:
+${deployAiAgentNeeds.map((need) => `      - ${need}`).join("\n")}
+    if: ${deployAiAgentRestriction}
+    steps:
+      - name: Validate AI agent edge deploy prerequisites
+        run: node scripts/ci/check-ai-agent-deploy-prerequisites.mjs
+      - name: Deploy ai-agent-optimized edge function
+        run: ${deployAiAgentRun}
 
   lint_typecheck:
     needs: policy
@@ -198,12 +240,14 @@ ${ciGateNeeds.map((need) => `      - ${need}`).join("\n")}
           GITHUB_EVENT_NAME: \${{ github.event_name }}
           GITHUB_REF: \${{ github.ref }}
           DOCS_ONLY: \${{ needs.change_scope.outputs.docs_only }}
+          AI_AGENT_CHANGED: \${{ needs.change_scope.outputs.ai_agent_changed }}
           DOCS_GUARD_RESULT: \${{ needs.docs_guard.result }}
           POLICY_RESULT: \${{ needs.policy.result }}
           TENANT_SAFETY_RESULT: \${{ needs.tenant_safety.result }}
           RUNTIME_PARITY_RESULT: \${{ needs.runtime_migration_parity.result }}
           START_SESSION_RUNTIME_CONTRACT_RESULT: \${{ needs.start_session_runtime_contract.result }}
           DEPLOY_SESSION_EDGE_RESULT: \${{ needs.deploy_session_edge.result }}
+          DEPLOY_AI_AGENT_EDGE_RESULT: \${{ needs.deploy_ai_agent_edge.result }}
           LINT_RESULT: \${{ needs.lint_typecheck.result }}
           UNIT_RESULT: \${{ needs.unit_tests.result }}
           BUILD_RESULT: \${{ needs.build.result }}
@@ -290,6 +334,90 @@ describe("check-session-deploy-safety", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("Session deploy safety check passed.");
+  });
+
+  test("rejects workflows that do not expose ai_agent_changed from change_scope", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        aiAgentDiffHandling: "",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("change_scope must expose ai_agent_changed output");
+  });
+
+  test.each([
+    "supabase/functions/ai-agent-optimized/index.ts",
+    "supabase/functions/ai-agent-optimized/nested/prompt.ts",
+    "supabase/functions/_shared/database.ts",
+    "supabase/functions/_shared/auth.ts",
+    "supabase/functions/_shared/org.ts",
+    "supabase/functions/_shared/logging.ts",
+    "supabase/functions/_shared/cors.ts",
+    "supabase/functions/_shared/supabaseEnv.ts",
+    "supabase/functions/_shared/requestAuthHeaders.ts",
+    "supabase/functions/lib/http/error.ts",
+  ])("classifies %s as an ai-agent bundle change", (changedPath) => {
+    expect(isAiAgentBundlePath(changedPath)).toBe(true);
+  });
+
+  test.each([
+    "supabase/functions/other-function/index.ts",
+    "supabase/functions/_shared/other.ts",
+    "supabase/functions/lib/http/success.ts",
+    "src/lib/ai-agent-optimized.ts",
+    "docs/ai-agent-optimized.md",
+  ])("does not classify unrelated path %s as an ai-agent bundle change", (changedPath) => {
+    expect(isAiAgentBundlePath(changedPath)).toBe(false);
+  });
+
+  test.each([
+    ["function-local directory", "ai-agent-optimized/"],
+    ["database dependency", "database"],
+    ["auth dependency", "auth"],
+    ["org dependency", "org"],
+    ["logging dependency", "logging"],
+    ["CORS dependency", "cors"],
+    ["Supabase environment dependency", "supabaseEnv"],
+    ["request auth headers dependency", "requestAuthHeaders"],
+    ["HTTP error dependency", "lib/http/error"],
+  ])("rejects change_scope patterns missing the %s", (_dependencyClass, omittedToken) => {
+    const weakenedPattern = AI_AGENT_PATH_PATTERN.replace(String(omittedToken), "omitted");
+    const fixtureRoot = makeFixture({
+      ci: {
+        aiAgentPathPattern: weakenedPattern,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("actual ai-agent-optimized bundle manifest");
+  });
+
+  test("rejects a broadened ai-agent change pattern that includes unrelated functions", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        aiAgentPathPattern: "^supabase/functions/",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("actual ai-agent-optimized bundle manifest");
+  });
+
+  test("requires unavailable diff metadata to set ai_agent_changed true", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        unavailableAiAgentChanged: "false",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("safe fallback true when diff metadata is unavailable");
   });
 
   test("requires merge_group change-scope outputs to use nonempty event SHAs", () => {
@@ -380,6 +508,161 @@ describe("check-session-deploy-safety", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("must contain exactly one session edge deploy command");
+  });
+
+  test.each([
+    "SUPABASE_ACCESS_TOKEN=fake supabase functions deploy sessions-book",
+    "env SUPABASE_ACCESS_TOKEN=fake supabase functions deploy sessions-book",
+    "npx supabase functions deploy sessions-book",
+    "pnpm exec supabase functions deploy sessions-book",
+    "npm exec -- supabase functions deploy sessions-book",
+    "yarn exec supabase functions deploy sessions-book",
+    "./node_modules/.bin/supabase functions deploy sessions-book",
+    "/usr/local/bin/supabase functions deploy sessions-book",
+    String.raw`C:\tools\supabase.exe functions deploy sessions-book`,
+  ])("rejects raw session deploy spelling: %s", (deployCommand) => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: `      - run: ${deployCommand}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("must contain exactly one session edge deploy command");
+  });
+
+  test.each([
+    "bash -lc 'supabase functions deploy sessions-book'",
+    "/bin/sh -c 'npx supabase functions deploy sessions-book'",
+    "dash -ec 'pnpm exec supabase functions deploy sessions-book'",
+    "zsh -lc 'npm exec -- supabase functions deploy sessions-book'",
+    "pwsh -Command 'yarn exec supabase functions deploy sessions-book'",
+    "powershell.exe -c './node_modules/.bin/supabase functions deploy sessions-book'",
+    "cmd.exe /c \"C:\\tools\\supabase.exe functions deploy sessions-book\"",
+    "bash --noprofile -lc -- 'supabase functions deploy sessions-book'",
+    "pwsh -NoProfile -NonInteractive -Command 'supabase functions deploy sessions-book'",
+    "cmd.exe /d /s /c \"supabase functions deploy sessions-book\"",
+    "bash -lc 'node scripts/ci/deploy-session-edge-bundle.mjs'",
+  ])("rejects interpreter-wrapped raw session deploy spelling: %s", (deployCommand) => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: `      - run: ${deployCommand}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("must contain exactly one session edge deploy command");
+  });
+
+  test("rejects deploy_ai_agent_edge when it is not restricted to main pushes with ai_agent_changed true", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployAiAgentRestriction: "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_ai_agent_edge must be restricted to push on refs/heads/main with ai_agent_changed == 'true'");
+  });
+
+  test("rejects raw ai-agent deploy commands outside deploy_ai_agent_edge", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: "      - run: supabase functions deploy ai-agent-optimized --project-ref wnnjeqheqxxyrgsjmygy",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must contain exactly one ai-agent deploy command");
+  });
+
+  test.each([
+    "SUPABASE_ACCESS_TOKEN=fake supabase functions deploy ai-agent-optimized",
+    "env SUPABASE_ACCESS_TOKEN=fake supabase functions deploy ai-agent-optimized",
+    "npx supabase functions deploy ai-agent-optimized",
+    "pnpm exec supabase functions deploy ai-agent-optimized",
+    "npm exec -- supabase functions deploy ai-agent-optimized",
+    "yarn exec supabase functions deploy ai-agent-optimized",
+    "./node_modules/.bin/supabase functions deploy ai-agent-optimized",
+    "/usr/local/bin/supabase functions deploy ai-agent-optimized",
+    String.raw`C:\tools\supabase.exe functions deploy ai-agent-optimized`,
+  ])("rejects raw ai-agent deploy spelling: %s", (deployCommand) => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: `      - run: ${deployCommand}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must contain exactly one ai-agent deploy command");
+  });
+
+  test.each([
+    "bash -lc 'supabase functions deploy ai-agent-optimized'",
+    "/bin/sh -c 'npx supabase functions deploy ai-agent-optimized'",
+    "dash -ec 'pnpm exec supabase functions deploy ai-agent-optimized'",
+    "zsh -lc 'npm exec -- supabase functions deploy ai-agent-optimized'",
+    "pwsh -Command 'yarn exec supabase functions deploy ai-agent-optimized'",
+    "powershell.exe -c './node_modules/.bin/supabase functions deploy ai-agent-optimized'",
+    "cmd.exe /c \"C:\\tools\\supabase.exe functions deploy ai-agent-optimized\"",
+    "bash --noprofile -lc -- 'supabase functions deploy ai-agent-optimized'",
+    "pwsh -NoProfile -NonInteractive -Command 'supabase functions deploy ai-agent-optimized'",
+    "cmd.exe /d /s /c \"supabase functions deploy ai-agent-optimized\"",
+    "bash -lc \"sh -c 'supabase functions deploy ai-agent-optimized'\"",
+    "bash -lc 'node scripts/ci/deploy-ai-agent-function.mjs'",
+  ])("rejects interpreter-wrapped raw ai-agent deploy spelling: %s", (deployCommand) => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: `      - run: ${deployCommand}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must contain exactly one ai-agent deploy command");
+  });
+
+  test.each([
+    "# SUPABASE_ACCESS_TOKEN=fake supabase functions deploy ai-agent-optimized",
+    "echo 'npx supabase functions deploy ai-agent-optimized'",
+    "printf '%s\\n' 'pnpm exec supabase functions deploy ai-agent-optimized'",
+    "echo \"npm exec -- supabase functions deploy sessions-book\"",
+    "printf '%s\\n' '/usr/local/bin/supabase functions deploy sessions-book'",
+    "bash -lc \"echo 'supabase functions deploy ai-agent-optimized'\"",
+    "sh -c \"printf '%s\\n' 'node scripts/ci/deploy-session-edge-bundle.mjs'\"",
+  ])("ignores inert deploy text: %s", (inertText) => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: `      - run: |\n          ${inertText}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  test("rejects ci_gate when ai-agent deploy success is not conditionally enforced on main", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        ciGateChecks: [
+          "[ \"${TENANT_SAFETY_RESULT}\" = \"success\" ] || failed+=(\"tenant-safety=${TENANT_SAFETY_RESULT}\")",
+          "[ \"${RUNTIME_PARITY_RESULT}\" = \"success\" ] || failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+          "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${DEPLOY_SESSION_EDGE_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-session-edge=${DEPLOY_SESSION_EDGE_RESULT}\")",
+          "fi",
+        ],
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("ci_gate must enforce deploy_ai_agent_edge success when ai_agent_changed is true on main pushes");
   });
 
   test("rejects deploy_session_edge when it is not restricted to pushes on refs/heads/main", () => {
@@ -488,7 +771,7 @@ describe("check-session-deploy-safety", () => {
     const result = runCheck(fixtureRoot);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, and deploy_session_edge");
+    expect(result.stderr).toContain("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, deploy_session_edge, and deploy_ai_agent_edge");
   });
 
   test("does not accept commented or echoed ci-gate result checks", () => {

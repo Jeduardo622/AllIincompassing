@@ -1,14 +1,19 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const migrationSql = readFileSync(
   join(
     process.cwd(),
-    'supabase/migrations/20260724160000_forward_correct_staff_messaging_org_member_drift.sql',
+    'supabase/migrations/20260724221112_forward_correct_staff_messaging_org_member_drift.sql',
   ),
   'utf-8',
 );
+const historicalRepairPath = join(
+  process.cwd(),
+  'supabase/migrations/20260724155039_repair_staff_messaging_org_member_caller_gate.sql',
+);
+const historicalRepairSql = readFileSync(historicalRepairPath, 'utf-8');
 
 const extractFunction = (functionName: string): string => {
   const escapedFunctionName = functionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -30,6 +35,26 @@ describe('staff messaging midtier parity migration', () => {
   expect(callerGateMatch, 'Expected direct-messaging caller gate in list RPC').not.toBeNull();
   const callerGateRoles = callerGateMatch?.groups?.roles ?? '';
   const grantStatements = migrationSql.match(/grant execute on function[^;]+;/gi) ?? [];
+
+  it('replays the hosted org_member drift before the ledger-aligned forward correction', () => {
+    expect(historicalRepairSql).toMatch(
+      /if not app\.user_has_role_for_org\([\s\S]*?'org_member'[\s\S]*?\) then/i,
+    );
+    expect(historicalRepairSql).toMatch(
+      /when r\.name in \('therapist', 'org_member'\) then 'therapist'/i,
+    );
+    expect(migrationSql).toMatch(/app\.user_has_any_active_role_for_org\(/i);
+    expect(migrationSql).not.toContain("'org_member'");
+    expect(migrationSql).not.toMatch(/'client'/i);
+    expect(
+      existsSync(
+        join(
+          process.cwd(),
+          'supabase/migrations/20260724160000_forward_correct_staff_messaging_org_member_drift.sql',
+        ),
+      ),
+    ).toBe(false);
+  });
 
   it('keeps the migration limited to the two direct-messaging membership functions', () => {
     expect(migrationSql).not.toMatch(/\bcreate table\b|\balter table\b|\bcreate policy\b|\bdrop policy\b/i);

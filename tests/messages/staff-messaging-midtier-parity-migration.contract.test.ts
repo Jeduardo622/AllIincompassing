@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const migrationSql = readFileSync(
   join(
     process.cwd(),
-    'supabase/migrations/20260724100000_align_staff_messaging_direct_member_roles.sql',
+    'supabase/migrations/20260724160000_forward_correct_staff_messaging_org_member_drift.sql',
   ),
   'utf-8',
 );

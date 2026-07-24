@@ -1501,7 +1501,9 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
         />
         
         <form onSubmit={handleWizardSubmit} onKeyDownCapture={handleFormKeyDown}>
-          {renderStepContent()}
+          <div key={currentStep}>
+            {renderStepContent()}
+          </div>
           
           <div className="mt-8 flex justify-between">
             <button

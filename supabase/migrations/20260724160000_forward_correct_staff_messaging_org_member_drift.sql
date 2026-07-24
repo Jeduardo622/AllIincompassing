@@ -72,7 +72,7 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'Caller organization mismatch';
   END IF;
 
-  IF NOT app.user_has_role_for_org(
+  IF NOT app.user_has_any_active_role_for_org(
     v_actor,
     p_organization_id,
     ARRAY[

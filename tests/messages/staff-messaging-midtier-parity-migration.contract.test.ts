@@ -25,7 +25,7 @@ describe('staff messaging midtier parity migration', () => {
   const memberHelper = extractFunction('app.is_active_staff_messaging_member');
   const recipientList = extractFunction('public.list_eligible_staff_for_messaging');
   const callerGateMatch = recipientList.match(
-    /if not app\.user_has_role_for_org\(\s*v_actor,\s*p_organization_id,\s*array\[(?<roles>[\s\S]*?)\]\s*\) then/i,
+    /if not app\.user_has_any_active_role_for_org\(\s*v_actor,\s*p_organization_id,\s*array\[(?<roles>[\s\S]*?)\]\s*\) then/i,
   );
   expect(callerGateMatch, 'Expected direct-messaging caller gate in list RPC').not.toBeNull();
   const callerGateRoles = callerGateMatch?.groups?.roles ?? '';
@@ -71,6 +71,7 @@ describe('staff messaging midtier parity migration', () => {
     expect(recipientList).toMatch(/v_actor_org := app\.resolve_user_organization_id\(v_actor\)/i);
     expect(recipientList).toMatch(/v_actor_org is null or v_actor_org <> p_organization_id/i);
     expect(recipientList).toMatch(/insufficient role to list messaging recipients/i);
+    expect(recipientList).not.toMatch(/app\.user_has_role_for_org\(/i);
 
     for (const roleName of [
       'bt',

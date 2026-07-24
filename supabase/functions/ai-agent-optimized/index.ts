@@ -38,6 +38,33 @@ interface OptimizedAIResponse {
   }>;
 }
 
+class AgentUpstreamUnavailableError extends Error {
+  readonly code = "upstream_unavailable";
+
+  constructor() {
+    super("AI service is temporarily unavailable");
+    this.name = "AgentUpstreamUnavailableError";
+  }
+}
+
+const isInsufficientQuotaError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+
+  const candidate = error as Record<string, unknown>;
+  const nested =
+    candidate.error && typeof candidate.error === "object"
+      ? candidate.error as Record<string, unknown>
+      : null;
+  const providerCodes = [
+    candidate.code,
+    candidate.type,
+    nested?.code,
+    nested?.type,
+  ];
+
+  return candidate.status === 429 && providerCodes.includes("insufficient_quota");
+};
+
 type ToolExecutionMode = "server_execute" | "client_handoff" | "suggestion_only";
 
 type ExecutionGate = {
@@ -921,6 +948,10 @@ async function processOptimizedMessage(
       payload: { error: error?.message ?? String(error) },
     });
 
+    if (isInsufficientQuotaError(error)) {
+      throw new AgentUpstreamUnavailableError();
+    }
+
     return {
       response: "I apologize, but I'm experiencing technical difficulties. Please try again or use the manual interface.",
       conversationId: (context as any).conversationId as string,
@@ -1162,6 +1193,15 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error: any) {
+    if (error instanceof AgentUpstreamUnavailableError) {
+      return errorEnvelope({
+        requestId,
+        code: error.code,
+        message: error.message,
+        headers: responseHeaders,
+      });
+    }
+
     if (error instanceof Response) {
       const body = await error.text().catch(() => "");
       return new Response(body, {

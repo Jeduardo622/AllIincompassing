@@ -1,6 +1,6 @@
--- @migration-intent: Forward-correct hosted staff messaging drift by restoring the reviewed direct staff role allowlist and excluding ambiguous org_member/client aliases.
--- @migration-dependencies: 20260724100000_align_staff_messaging_direct_member_roles.sql, hosted 20260724155039_repair_staff_messaging_org_member_caller_gate
--- @migration-rollback: Restore app.is_active_staff_messaging_member(uuid, uuid) and public.list_eligible_staff_for_messaging(uuid) from the immediately previous hosted definitions only after security review.
+-- @migration-intent: Record the hosted staff messaging org_member repair exactly so migration history can replay before the later forward correction.
+-- @migration-dependencies: 20260724154653_align_staff_messaging_direct_member_roles.sql
+-- @migration-rollback: Do not roll back independently; apply 20260724221112_forward_correct_staff_messaging_org_member_drift.sql to restore the reviewed staff-only boundary.
 
 BEGIN;
 
@@ -32,6 +32,7 @@ AS $$
         'admin',
         'bcba',
         'super_admin',
+        'org_member',
         'org_admin',
         'org_super_admin'
       )
@@ -72,7 +73,7 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'Caller organization mismatch';
   END IF;
 
-  IF NOT app.user_has_any_active_role_for_org(
+  IF NOT app.user_has_role_for_org(
     v_actor,
     p_organization_id,
     ARRAY[
@@ -83,6 +84,7 @@ BEGIN
       'admin',
       'bcba',
       'super_admin',
+      'org_member',
       'org_admin',
       'org_super_admin'
     ]
@@ -98,7 +100,7 @@ BEGIN
     CASE
       WHEN r.name IN ('admin', 'org_admin') THEN 'admin'
       WHEN r.name IN ('super_admin', 'org_super_admin') THEN 'super_admin'
-      WHEN r.name = 'therapist' THEN 'therapist'
+      WHEN r.name IN ('therapist', 'org_member') THEN 'therapist'
       ELSE r.name
     END AS role
   FROM public.profiles p
@@ -117,6 +119,7 @@ BEGIN
       'admin',
       'bcba',
       'super_admin',
+      'org_member',
       'org_admin',
       'org_super_admin'
     )

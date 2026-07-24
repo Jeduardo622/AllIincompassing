@@ -1,6 +1,6 @@
--- @migration-intent: Align staff messaging direct-thread membership helpers to the current employee role set without widening RLS or RPC grants.
--- @migration-dependencies: 20260520143000_staff_messaging_tables_and_rls.sql, 20260521143000_list_eligible_staff_for_messaging.sql
--- @migration-rollback: Restore app.is_active_staff_messaging_member(uuid, uuid) and public.list_eligible_staff_for_messaging(uuid) from the immediately previous migrations if direct-thread eligibility must be narrowed.
+-- @migration-intent: Restore exact org_member therapist parity for staff messaging without widening the recipient-list caller gate to client identities.
+-- @migration-dependencies: 20260724100000_align_staff_messaging_direct_member_roles.sql
+-- @migration-rollback: Forward recovery only. Apply a later migration that reinstates the prior caller-gate semantics if direct staff recipient eligibility needs to change again.
 
 BEGIN;
 
@@ -73,21 +73,28 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'Caller organization mismatch';
   END IF;
 
-  IF NOT app.user_has_role_for_org(
-    v_actor,
-    p_organization_id,
-    ARRAY[
-      'bt',
-      'therapist',
-      'midtier',
-      'admin_schedule',
-      'admin',
-      'bcba',
-      'super_admin',
-      'org_member',
-      'org_admin',
-      'org_super_admin'
-    ]
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.profiles actor_profile
+    JOIN public.user_roles actor_role_link ON actor_role_link.user_id = actor_profile.id
+    JOIN public.roles actor_role ON actor_role.id = actor_role_link.role_id
+    WHERE actor_profile.id = v_actor
+      AND actor_profile.organization_id = p_organization_id
+      AND COALESCE(actor_profile.is_active, true) = true
+      AND COALESCE(actor_role_link.is_active, true) = true
+      AND (actor_role_link.expires_at IS NULL OR actor_role_link.expires_at > timezone('utc', now()))
+      AND actor_role.name IN (
+        'bt',
+        'therapist',
+        'midtier',
+        'admin_schedule',
+        'admin',
+        'bcba',
+        'super_admin',
+        'org_member',
+        'org_admin',
+        'org_super_admin'
+      )
   ) THEN
     RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'Insufficient role to list messaging recipients';
   END IF;

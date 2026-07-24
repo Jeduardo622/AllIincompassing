@@ -12,7 +12,7 @@ const extractFunctionFrom = (sourceSql: string, name: string): string => {
 
 describe('authorization midtier RPC parity migration', () => {
   const migrationsDir = join(process.cwd(), 'supabase/migrations');
-  const migrationFile = '20260724163000_forward_fix_midtier_authorization_rpc_parity.sql';
+  const migrationFile = '20260724154636_forward_fix_midtier_authorization_rpc_parity.sql';
   const migrationSql = readFileSync(join(migrationsDir, migrationFile), 'utf-8');
   const createAuthorizationSql = extractFunctionFrom(
     migrationSql,

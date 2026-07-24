@@ -113,10 +113,9 @@ does not claim to restore provider availability.
 - protected-path drift: none beyond the routed Edge Function
 - change summary: present
 - verification summary: present
-- pr handoff: ready after rebasing onto current `origin/main`
+- pr handoff: ready; rebased onto current `origin/main`
 - reviewer: completed
 - required follow-up:
-  - rebase onto current `origin/main`
   - require green branch CI and human review
   - verify governed deployment retains `verify_jwt=true`
   - repeat the live BCBA Assistant request with Computer

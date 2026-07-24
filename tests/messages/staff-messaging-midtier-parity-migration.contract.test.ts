@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const migrationSql = readFileSync(
   join(
     process.cwd(),
-    'supabase/migrations/20260724154930_repair_staff_messaging_org_member_caller_gate.sql',
+    'supabase/migrations/20260724100000_align_staff_messaging_direct_member_roles.sql',
   ),
   'utf-8',
 );
@@ -25,9 +25,9 @@ describe('staff messaging midtier parity migration', () => {
   const memberHelper = extractFunction('app.is_active_staff_messaging_member');
   const recipientList = extractFunction('public.list_eligible_staff_for_messaging');
   const callerGateMatch = recipientList.match(
-    /if not exists \(\s*select 1\s*from public\.profiles actor_profile\s*join public\.user_roles actor_role_link on actor_role_link\.user_id = actor_profile\.id\s*join public\.roles actor_role on actor_role\.id = actor_role_link\.role_id[\s\S]*?actor_role\.name in \((?<roles>[\s\S]*?)\)\s*\)\s*then/i,
+    /if not app\.user_has_role_for_org\(\s*v_actor,\s*p_organization_id,\s*array\[(?<roles>[\s\S]*?)\]\s*\) then/i,
   );
-  expect(callerGateMatch, 'Expected exact-role caller gate in list RPC').not.toBeNull();
+  expect(callerGateMatch, 'Expected direct-messaging caller gate in list RPC').not.toBeNull();
   const callerGateRoles = callerGateMatch?.groups?.roles ?? '';
   const grantStatements = migrationSql.match(/grant execute on function[^;]+;/gi) ?? [];
 
@@ -55,28 +55,22 @@ describe('staff messaging midtier parity migration', () => {
       'admin',
       'bcba',
       'super_admin',
-      'org_member',
       'org_admin',
       'org_super_admin',
     ]) {
       expect(memberHelper).toContain(`'${roleName}'`);
     }
 
+    expect(memberHelper).not.toContain("'org_member'");
     expect(memberHelper).not.toMatch(/'client'/i);
   });
 
-  it('keeps the recipient list security posture and preserves org_member parity without alias-expanding clients', () => {
+  it('keeps the recipient list security posture and expands caller eligibility through the same direct-messaging roles', () => {
     expect(recipientList).toMatch(/security definer/i);
     expect(recipientList).toMatch(/set search_path = public, auth, app/i);
     expect(recipientList).toMatch(/v_actor_org := app\.resolve_user_organization_id\(v_actor\)/i);
     expect(recipientList).toMatch(/v_actor_org is null or v_actor_org <> p_organization_id/i);
     expect(recipientList).toMatch(/insufficient role to list messaging recipients/i);
-    expect(recipientList).not.toMatch(/app\.user_has_role_for_org\(/i);
-    expect(recipientList).toMatch(/actor_profile\.id = v_actor/i);
-    expect(recipientList).toMatch(/actor_profile\.organization_id = p_organization_id/i);
-    expect(recipientList).toMatch(/coalesce\(actor_profile\.is_active, true\) = true/i);
-    expect(recipientList).toMatch(/coalesce\(actor_role_link\.is_active, true\) = true/i);
-    expect(recipientList).toMatch(/\(actor_role_link\.expires_at is null or actor_role_link\.expires_at > timezone\('utc', now\(\)\)\)/i);
 
     for (const roleName of [
       'bt',
@@ -90,21 +84,23 @@ describe('staff messaging midtier parity migration', () => {
       expect(callerGateRoles).toContain(`'${roleName}'`);
     }
 
-    for (const aliasRole of ['org_member', 'org_admin', 'org_super_admin']) {
+    for (const aliasRole of ['org_admin', 'org_super_admin']) {
       expect(callerGateRoles).toContain(`'${aliasRole}'`);
     }
 
+    expect(callerGateRoles).not.toContain("'org_member'");
     expect(callerGateRoles).not.toMatch(/'client'/i);
   });
 
   it('preserves legacy role aliases in the returned direct-messaging role labels', () => {
     expect(recipientList).toMatch(/when r\.name in \('admin', 'org_admin'\) then 'admin'/i);
     expect(recipientList).toMatch(/when r\.name in \('super_admin', 'org_super_admin'\) then 'super_admin'/i);
-    expect(recipientList).toMatch(/when r\.name in \('therapist', 'org_member'\) then 'therapist'/i);
+    expect(recipientList).toMatch(/when r\.name = 'therapist' then 'therapist'/i);
+    expect(recipientList).not.toContain("'org_member'");
     expect(recipientList).not.toMatch(/'client'/i);
   });
 
-  it('keeps client roles out of the staff recipient filter while preserving org_member parity', () => {
+  it('keeps org_member and client roles out of the staff recipient filter', () => {
     const recipientRoleFilterMatch = recipientList.match(
       /and r\.name in \((?<roles>[\s\S]*?)\)\s+order by/i,
     );
@@ -119,13 +115,13 @@ describe('staff messaging midtier parity migration', () => {
       'admin',
       'bcba',
       'super_admin',
-      'org_member',
       'org_admin',
       'org_super_admin',
     ]) {
       expect(recipientRoleFilter).toContain(`'${roleName}'`);
     }
 
+    expect(recipientRoleFilter).not.toContain("'org_member'");
     expect(recipientRoleFilter).not.toMatch(/'client'/i);
   });
 

@@ -32,7 +32,6 @@ AS $$
         'admin',
         'bcba',
         'super_admin',
-        'org_member',
         'org_admin',
         'org_super_admin'
       )
@@ -84,7 +83,6 @@ BEGIN
       'admin',
       'bcba',
       'super_admin',
-      'org_member',
       'org_admin',
       'org_super_admin'
     ]
@@ -100,7 +98,7 @@ BEGIN
     CASE
       WHEN r.name IN ('admin', 'org_admin') THEN 'admin'
       WHEN r.name IN ('super_admin', 'org_super_admin') THEN 'super_admin'
-      WHEN r.name IN ('therapist', 'org_member') THEN 'therapist'
+      WHEN r.name = 'therapist' THEN 'therapist'
       ELSE r.name
     END AS role
   FROM public.profiles p
@@ -119,7 +117,6 @@ BEGIN
       'admin',
       'bcba',
       'super_admin',
-      'org_member',
       'org_admin',
       'org_super_admin'
     )

@@ -3,7 +3,10 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const DEPLOY_COMMAND = "npm run ci:deploy:session-edge-bundle";
+const AI_DEPLOY_COMMAND = "npm run ci:deploy:ai-agent-function";
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+const AI_DEPLOY_IF =
+  "github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change_scope.outputs.ai_agent_changed == 'true'";
 const AUTH_SMOKE_IF =
   "always() && needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')";
 const DEPLOY_NEEDS = [
@@ -15,7 +18,14 @@ const DEPLOY_NEEDS = [
   "unit_tests",
   "build",
 ];
+const AI_DEPLOY_NEEDS = ["deploy_session_edge", "change_scope"];
 const AUTH_SMOKE_NEEDS = ["policy", "change_scope", "deploy_session_edge"];
+export const AI_AGENT_BUNDLE_PATH_PATTERN =
+  "^supabase/functions/(ai-agent-optimized/|_shared/(database|auth|org|logging|cors|supabaseEnv|requestAuthHeaders)\\.ts$|lib/http/error\\.ts$)";
+const AI_AGENT_BUNDLE_PATH_REGEX = new RegExp(AI_AGENT_BUNDLE_PATH_PATTERN);
+
+export const isAiAgentBundlePath = (changedPath) =>
+  AI_AGENT_BUNDLE_PATH_REGEX.test(changedPath);
 
 const getWorkflowPaths = (cwd = process.cwd()) => ({
   ciWorkflowPath: path.join(cwd, ".github", "workflows", "ci.yml"),
@@ -253,10 +263,109 @@ const stepIsExactCommand = (step, command) => {
   const lines = executableLines(step.run);
   return lines.length === 1 && lines[0] === command;
 };
-const isDeployInvocation = (line) =>
-  line === DEPLOY_COMMAND ||
-  /^node\s+scripts\/ci\/deploy-session-edge-bundle\.mjs(?:\s|$)/i.test(line) ||
-  /^(?:npx\s+)?supabase\s+functions\s+deploy\b/i.test(line);
+const stripCommandEnvironment = (line) => {
+  let command = line.trim();
+  if (/^env\s+/i.test(command)) {
+    command = command.replace(/^env\s+/i, "");
+  }
+  const assignment =
+    /^[A-Za-z_][A-Za-z0-9_]*=(?:"(?:\\.|[^"])*"|'[^']*'|\$\{\{[^}]*\}\}|\S+)\s+/;
+  while (assignment.test(command)) {
+    command = command.replace(assignment, "");
+  }
+  return command;
+};
+const unwrapPackageExec = (line) =>
+  stripCommandEnvironment(line).replace(
+    /^(?:npx(?:\s+--(?:yes|no-install))?|pnpm\s+exec|npm\s+exec\s+--|yarn\s+exec)\s+/i,
+    "",
+  );
+const splitExecutable = (line) => {
+  const match = line.match(/^(?:"([^"]+)"|'([^']+)'|(\S+))(?:\s+([\s\S]*))?$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    executable: match[1] ?? match[2] ?? match[3],
+    argumentsText: match[4] ?? "",
+  };
+};
+const unwrapQuotedCommand = (value) => {
+  const trimmed = value.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"')))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+};
+const unwrapInterpreterCommands = (line) => {
+  let commandText = line;
+  for (let depth = 0; depth < 4; depth += 1) {
+    const command = splitExecutable(stripCommandEnvironment(commandText));
+    if (!command) {
+      return commandText;
+    }
+    const executableName = command.executable.replaceAll("\\", "/").split("/").at(-1);
+    let wrappedCommand = null;
+
+    if (/^(?:ba|z|da|a|k)?sh$/i.test(executableName ?? "")) {
+      wrappedCommand =
+        command.argumentsText.match(
+          /^(?:--[A-Za-z0-9-]+\s+)*-[A-Za-z]*c[A-Za-z]*\s+(?:--\s+)?([\s\S]+)$/,
+        )?.[1] ?? null;
+    } else if (/^(?:pwsh|powershell)(?:\.exe)?$/i.test(executableName ?? "")) {
+      wrappedCommand =
+        command.argumentsText.match(
+          /^(?:-(?:NoProfile|NonInteractive|NoLogo)\s+)*(?:-ExecutionPolicy\s+\S+\s+)?-(?:Command|c)\s+([\s\S]+)$/i,
+        )?.[1] ?? null;
+    } else if (/^cmd(?:\.exe)?$/i.test(executableName ?? "")) {
+      wrappedCommand =
+        command.argumentsText.match(/^(?:\/[dqs]\s+)*\/c\s+([\s\S]+)$/i)?.[1] ??
+        null;
+    }
+
+    if (!wrappedCommand) {
+      return commandText;
+    }
+    commandText = unwrapQuotedCommand(wrappedCommand);
+  }
+  return commandText;
+};
+const isSupabaseDeployInvocation = (line) => {
+  const command = splitExecutable(unwrapPackageExec(unwrapInterpreterCommands(line)));
+  if (!command) {
+    return false;
+  }
+  const executableName = command.executable.replaceAll("\\", "/").split("/").at(-1);
+  return (
+    /^supabase(?:\.exe|\.cmd)?$/i.test(executableName ?? "") &&
+    /^functions\s+deploy\b/i.test(command.argumentsText)
+  );
+};
+const isDirectNodeDeployScript = (line, scriptPath) => {
+  const command = splitExecutable(
+    stripCommandEnvironment(unwrapInterpreterCommands(line)),
+  );
+  if (!command) {
+    return false;
+  }
+  const executableName = command.executable.replaceAll("\\", "/").split("/").at(-1);
+  return (
+    /^node(?:\.exe)?$/i.test(executableName ?? "") &&
+    new RegExp(`^${scriptPath.replaceAll("/", "\\/")}(?:\\s|$)`, "i").test(
+      command.argumentsText,
+    )
+  );
+};
+const isRawSessionDeployInvocation = (line) =>
+  isDirectNodeDeployScript(line, "scripts/ci/deploy-session-edge-bundle.mjs") ||
+  (isSupabaseDeployInvocation(line) && !/\bai-agent-optimized\b/i.test(line));
+const isRawAiDeployInvocation = (line) =>
+  isDirectNodeDeployScript(line, "scripts/ci/deploy-ai-agent-function.mjs") ||
+  (isSupabaseDeployInvocation(line) && /\bai-agent-optimized\b/i.test(line));
 const sameSet = (actual, expected) => {
   const sortedActual = [...actual].sort();
   const sortedExpected = [...expected].sort();
@@ -295,24 +404,58 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   const runtimeParity = requireJob(jobs, "runtime_migration_parity", violations);
   const runtimeContract = requireJob(jobs, "start_session_runtime_contract", violations);
   const deploy = requireJob(jobs, "deploy_session_edge", violations);
+  const deployAiAgent = requireJob(jobs, "deploy_ai_agent_edge", violations);
   const authSmoke = requireJob(jobs, "auth_browser_smoke", violations);
   const ciGate = requireJob(jobs, "ci_gate", violations);
 
   if (changeScope) {
     const detectRun = changeScope.steps.find((step) => step.id === "detect")?.run ?? "";
+    if (!String(changeScope.outputs?.ai_agent_changed ?? "").trim() && !/\bai_agent_changed\b/.test(detectRun)) {
+      violations.push("change_scope must expose ai_agent_changed output");
+    }
     const mergeGroupContract = /elif\s+\[\s*"\$\{GITHUB_EVENT_NAME\}"\s*=\s*"merge_group"\s*\]\s*;\s*then[\s\S]*?base_sha="\$\{\{\s*github\.event\.merge_group\.base_sha\s*\}\}"[\s\S]*?head_sha="\$\{\{\s*github\.event\.merge_group\.head_sha\s*\}\}"/;
     if (!mergeGroupContract.test(executableLines(detectRun).join("\n"))) {
       violations.push("change_scope must map merge_group base_sha and head_sha from the merge-group event");
+    }
+    if (!detectRun.includes(`grep -Eq '${AI_AGENT_BUNDLE_PATH_PATTERN}'`)) {
+      violations.push(
+        "change_scope ai_agent_changed must match the actual ai-agent-optimized bundle manifest exactly",
+      );
+    }
+    if (!/echo\s+"ai_agent_changed=true"\s*>>\s*"\$\{GITHUB_OUTPUT\}"/.test(detectRun)) {
+      violations.push(
+        "change_scope must use safe fallback true when diff metadata is unavailable",
+      );
+    }
+    if (
+      !/ai_agent_changed=false/.test(detectRun) ||
+      !/echo\s+"ai_agent_changed=\$\{ai_agent_changed\}"\s*>>\s*"\$\{GITHUB_OUTPUT\}"/.test(
+        detectRun,
+      )
+    ) {
+      violations.push(
+        "change_scope must initialize ai_agent_changed false and expose the detected result",
+      );
     }
   }
 
   const deploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
     job.steps.filter((step) => stepIsExactCommand(step, DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
   );
+  const aiDeploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
+    job.steps.filter((step) => stepIsExactCommand(step, AI_DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
+  );
   const deployInvocations = Object.entries(jobs).flatMap(([jobName, job]) =>
     job.steps.flatMap((step) =>
       executableLines(step.run)
-        .filter((line) => isDeployInvocation(line))
+        .filter((line) => line === DEPLOY_COMMAND || isRawSessionDeployInvocation(line))
+        .map((line) => ({ jobName, line })),
+    ),
+  );
+  const aiDeployInvocations = Object.entries(jobs).flatMap(([jobName, job]) =>
+    job.steps.flatMap((step) =>
+      executableLines(step.run)
+        .filter((line) => line === AI_DEPLOY_COMMAND || isRawAiDeployInvocation(line))
         .map((line) => ({ jobName, line })),
     ),
   );
@@ -327,10 +470,21 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   ) {
     violations.push("CI workflow must contain exactly one session edge deploy command");
   }
+  if (aiDeploySteps.length !== 1 || aiDeploySteps[0]?.jobName !== "deploy_ai_agent_edge") {
+    violations.push("CI workflow must contain exactly one ai-agent deploy command");
+    violations.push("CI workflow must contain exactly one real ai-agent deploy run step in deploy_ai_agent_edge");
+  }
+  if (
+    aiDeployInvocations.some(
+      ({ jobName, line }) => jobName !== "deploy_ai_agent_edge" || line !== AI_DEPLOY_COMMAND,
+    )
+  ) {
+    violations.push("CI workflow must contain exactly one ai-agent deploy command");
+  }
 
   if (policy) {
     const policyRuns = runText(policy);
-    for (const forbidden of [DEPLOY_COMMAND, "npm run validate:tenant", "check-runtime-migration-parity.mjs", "check-session-runtime-contract.mjs"]) {
+    for (const forbidden of [DEPLOY_COMMAND, AI_DEPLOY_COMMAND, "npm run validate:tenant", "check-runtime-migration-parity.mjs", "check-session-runtime-contract.mjs"]) {
       if (policyRuns.includes(forbidden)) {
         violations.push("policy job must stay read-only and may not run `" + forbidden + "`");
       }
@@ -370,6 +524,20 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     }
   }
 
+  if (deployAiAgent) {
+    if (deployAiAgent.if !== AI_DEPLOY_IF) {
+      violations.push("deploy_ai_agent_edge must be restricted to push on refs/heads/main with ai_agent_changed == 'true'");
+    }
+    if (!sameSet(deployAiAgent.needs, AI_DEPLOY_NEEDS)) {
+      violations.push(`deploy_ai_agent_edge needs must exactly equal ${AI_DEPLOY_NEEDS.join(", ")}`);
+    }
+    const prereqIndex = deployAiAgent.steps.findIndex((step) => step.name === "Validate AI agent edge deploy prerequisites");
+    const deployIndex = deployAiAgent.steps.findIndex((step) => stepIsExactCommand(step, AI_DEPLOY_COMMAND));
+    if (prereqIndex === -1 || deployIndex === -1 || prereqIndex > deployIndex) {
+      violations.push("deploy_ai_agent_edge must validate deploy prerequisites before deploying");
+    }
+  }
+
   if (authSmoke) {
     if (!sameSet(authSmoke.needs, AUTH_SMOKE_NEEDS)) {
       if (!authSmoke.needs.includes("deploy_session_edge")) {
@@ -387,19 +555,21 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   }
 
   if (ciGate) {
-    const requiredNeeds = ["tenant_safety", "runtime_migration_parity", "start_session_runtime_contract", "deploy_session_edge"];
+    const requiredNeeds = ["tenant_safety", "runtime_migration_parity", "start_session_runtime_contract", "deploy_session_edge", "deploy_ai_agent_edge"];
     if (!requiredNeeds.every((need) => ciGate.needs.includes(need))) {
-      violations.push("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, and deploy_session_edge");
+      violations.push("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, deploy_session_edge, and deploy_ai_agent_edge");
     }
 
     const gateStep = ciGate.steps.find((step) => step.name === "Enforce lane-specific CI results") ?? ciGate.steps[0];
     const expectedEnv = {
       GITHUB_EVENT_NAME: "${{ github.event_name }}",
       GITHUB_REF: "${{ github.ref }}",
+      AI_AGENT_CHANGED: "${{ needs.change_scope.outputs.ai_agent_changed }}",
       TENANT_SAFETY_RESULT: "${{ needs.tenant_safety.result }}",
       RUNTIME_PARITY_RESULT: "${{ needs.runtime_migration_parity.result }}",
       START_SESSION_RUNTIME_CONTRACT_RESULT: "${{ needs.start_session_runtime_contract.result }}",
       DEPLOY_SESSION_EDGE_RESULT: "${{ needs.deploy_session_edge.result }}",
+      DEPLOY_AI_AGENT_EDGE_RESULT: "${{ needs.deploy_ai_agent_edge.result }}",
     };
     for (const [name, value] of Object.entries(expectedEnv)) {
       if (gateStep?.env?.[name] !== value) {
@@ -424,6 +594,13 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
       "fi",
     ])) {
       violations.push("ci_gate must enforce deploy_session_edge success for main pushes");
+    }
+    if (!hasSequence(gateLines, [
+      'if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ] && [ "${AI_AGENT_CHANGED}" = "true" ] && [ "${DEPLOY_AI_AGENT_EDGE_RESULT}" != "success" ]; then',
+      'failed+=("deploy-ai-agent-edge=${DEPLOY_AI_AGENT_EDGE_RESULT}")',
+      "fi",
+    ])) {
+      violations.push("ci_gate must enforce deploy_ai_agent_edge success when ai_agent_changed is true on main pushes");
     }
     if (!hasOrderedSequence(gateLines, ['if [ "${#failed[@]}" -gt 0 ]; then', "exit 1", "fi"])) {
       violations.push("ci_gate must exit nonzero when any required result fails");

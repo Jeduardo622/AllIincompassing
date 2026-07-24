@@ -24,11 +24,12 @@
 - executed checks:
   - targeted authorization parity test: pass
   - `npm run ci:check-focused`: pass
+  - `npm run typecheck`: pass
   - `npm run validate:tenant`: pass
   - `npm run build`: pass
 - blocked checks:
   - DB-backed policy checks: `SUPABASE_DB_URL` is unavailable locally.
-  - full `npm run test:ci`: shared suite exceeded the bounded 300-second local window while exercising external-provider paths; targeted tests passed.
+  - full `npm run test:ci`: fails in unrelated baseline suites (`tests/ci/check-e2e-reliability-gates.test.ts`, `tests/scripts/playwright-iehp-assessment-import-smoke.test.ts`, `tests/workflows/bt-aba-disposable-browser-proof.test.ts`, `src/components/__tests__/ProgramsGoalsTab.test.tsx`, `src/lib/__tests__/supabase.edge.test.ts`); targeted authorization tests passed.
 - result: pass-with-blocked-checks
 - residual risk: live database apply and production UI revalidation remain required after human-reviewed merge.
 

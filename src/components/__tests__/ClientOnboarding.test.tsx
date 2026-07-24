@@ -162,6 +162,49 @@ describe('ClientOnboarding step progression', () => {
     expect(onComplete).not.toHaveBeenCalled();
   }, 15000);
 
+  it('does not leak guardian names into address fields when advancing to step 3', async () => {
+    const { user } = setup();
+
+    await user.type(screen.getByLabelText('First Name'), 'Ada');
+    await user.type(screen.getByLabelText('Last Name'), 'Lovelace');
+    await user.type(screen.getByLabelText('Date of Birth'), '2010-01-01');
+    const emailInput = screen.getByLabelText('Email');
+    await user.type(emailInput, 'ada@example.com');
+    await user.tab();
+
+    await waitFor(() => {
+      expect(checkClientEmailExistsMock).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Parent/Guardian Information');
+
+    await user.type(
+      screen.getByLabelText('First Name', { selector: '#onboarding-parent1-first-name' }),
+      'Grace',
+    );
+    await user.type(
+      screen.getByLabelText('Last Name', { selector: '#onboarding-parent1-last-name' }),
+      'Hopper',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Address & Contact Information');
+
+    expect(screen.getByLabelText('City')).toHaveValue('');
+    expect(screen.getByLabelText('State')).toHaveValue('');
+
+    await user.click(screen.getByRole('button', { name: 'Previous' }));
+    await screen.findByText('Parent/Guardian Information');
+
+    expect(
+      screen.getByLabelText('First Name', { selector: '#onboarding-parent1-first-name' }),
+    ).toHaveValue('Grace');
+    expect(
+      screen.getByLabelText('Last Name', { selector: '#onboarding-parent1-last-name' }),
+    ).toHaveValue('Hopper');
+  }, 15000);
+
   it('fails closed when email uniqueness check is unavailable', async () => {
     const { user, onComplete } = setup();
     checkClientEmailExistsMock.mockRejectedValueOnce(new Error('supabase unavailable'));

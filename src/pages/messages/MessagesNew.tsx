@@ -21,7 +21,12 @@ export function MessagesNew() {
   const [threadType, setThreadType] = useState<MessageThreadType>('direct');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  const { data: recipients = [], isLoading } = useQuery({
+  const {
+    data: recipients = [],
+    isError,
+    isLoading,
+    refetch,
+  } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'recipients', organizationId, profile?.id],
     queryFn: () => fetchStaffRecipients(organizationId!, profile!.id),
     enabled: Boolean(organizationId && profile?.id),
@@ -41,6 +46,9 @@ export function MessagesNew() {
   const effectiveThreadType = canCreateGroup ? threadType : 'direct';
 
   const validationMessage = useMemo(() => {
+    if (isError) {
+      return 'Staff recipients could not be loaded.';
+    }
     if (selectedIds.length === 0) {
       return 'Select at least one recipient.';
     }
@@ -51,7 +59,7 @@ export function MessagesNew() {
       return 'Group conversations require at least two recipients.';
     }
     return null;
-  }, [effectiveThreadType, selectedIds]);
+  }, [effectiveThreadType, isError, selectedIds]);
 
   const handleToggleRecipient = (userId: string) => {
     if (effectiveThreadType === 'direct') {
@@ -108,6 +116,20 @@ export function MessagesNew() {
 
       {isLoading ? (
         <p className="text-sm text-gray-500">Loading staff...</p>
+      ) : isError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+          <p role="alert">We could not load eligible staff right now.</p>
+          <button
+            type="button"
+            onClick={() => {
+              void refetch();
+            }}
+            className="mt-3 inline-flex items-center rounded-lg border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
+            data-testid="messages-retry-recipient-load"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <StaffRecipientPicker
           recipients={recipients}
@@ -123,7 +145,7 @@ export function MessagesNew() {
       <button
         type="button"
         onClick={handleCreate}
-        disabled={createMutation.isPending || Boolean(validationMessage)}
+        disabled={createMutation.isPending || isLoading || isError || Boolean(validationMessage)}
         className="mt-6 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         data-testid="messages-create-thread"
       >

@@ -7,6 +7,10 @@ import { getLogger } from "../_shared/logging.ts";
 import { errorEnvelope, getRequestId, IsoDateSchema } from "../lib/http/error.ts";
 import { persistChatMessage } from "./persistence.ts";
 import { corsHeadersForRequest } from "../_shared/cors.ts";
+import {
+  resolveAgentRole,
+  type AgentRole,
+} from "./roleResolution.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -34,7 +38,6 @@ interface OptimizedAIResponse {
   }>;
 }
 
-type AgentRole = "client" | "therapist" | "admin" | "super_admin";
 type ToolExecutionMode = "server_execute" | "client_handoff" | "suggestion_only";
 
 type ExecutionGate = {
@@ -104,27 +107,27 @@ const SESSION_TOOL_REGISTRY: Record<
   { roles: AgentRole[]; executionMode: ToolExecutionMode }
 > = {
   schedule_session: {
-    roles: ["therapist", "admin", "super_admin"],
+    roles: ["therapist", "admin", "bcba", "super_admin"],
     executionMode: "client_handoff",
   },
   cancel_sessions: {
-    roles: ["therapist", "admin", "super_admin"],
+    roles: ["therapist", "admin", "bcba", "super_admin"],
     executionMode: "client_handoff",
   },
   start_session: {
-    roles: ["therapist", "admin", "super_admin"],
+    roles: ["therapist", "admin", "bcba", "super_admin"],
     executionMode: "client_handoff",
   },
   predict_conflicts: {
-    roles: ["therapist", "admin", "super_admin"],
+    roles: ["therapist", "admin", "bcba", "super_admin"],
     executionMode: "suggestion_only",
   },
   suggest_optimal_times: {
-    roles: ["therapist", "admin", "super_admin"],
+    roles: ["therapist", "admin", "bcba", "super_admin"],
     executionMode: "suggestion_only",
   },
   get_monthly_session_count: {
-    roles: ["therapist", "admin", "super_admin"],
+    roles: ["therapist", "admin", "bcba", "super_admin"],
     executionMode: "server_execute",
   },
 };
@@ -286,42 +289,34 @@ const parseBoolean = (value: string | null | undefined): boolean => {
   return normalized === "true" || normalized === "1" || normalized === "yes";
 };
 
-const parseRoleList = (data: unknown): string[] => {
-  if (!Array.isArray(data)) {
-    return [];
-  }
-  return data.flatMap((entry) => {
-    if (!entry) return [] as string[];
-    const roleValue = (entry as { roles?: unknown }).roles;
-    if (Array.isArray(roleValue)) {
-      return roleValue.filter((role): role is string => typeof role === "string");
-    }
-    if (typeof roleValue === "string" && roleValue.length > 0) {
-      try {
-        const parsed = JSON.parse(roleValue) as unknown;
-        if (Array.isArray(parsed)) {
-          return parsed.filter((role): role is string => typeof role === "string");
-        }
-      } catch {
-        // fall through to comma separated
+const resolveActorRole = async (
+  db: ReturnType<typeof createRequestClient>,
+  orgId: string | null,
+): Promise<AgentRole> => {
+  return resolveAgentRole(
+    async (role) => {
+      if (role === "super_admin") {
+        const { data, error } = await db.rpc("current_user_is_super_admin");
+        if (error) throw error;
+        return data === true;
       }
-      return roleValue.split(",").map((role) => role.trim()).filter(Boolean);
-    }
-    return [] as string[];
-  });
-};
+      if (!orgId) return false;
 
-const resolveActorRole = async (db: ReturnType<typeof createRequestClient>): Promise<AgentRole> => {
-  const { data, error } = await db.rpc("get_user_roles");
-  if (error) {
-    console.warn("Failed to resolve user roles for agent request", error);
-    return "client";
-  }
-  const roles = parseRoleList(data);
-  if (roles.includes("super_admin")) return "super_admin";
-  if (roles.includes("admin")) return "admin";
-  if (roles.includes("therapist")) return "therapist";
-  return "client";
+      const roleNames = role === "admin" ? ["org_super_admin", "admin"] : [role];
+      for (const roleName of roleNames) {
+        const { data, error } = await db.rpc("user_has_role_for_org", {
+          role_name: roleName,
+          target_organization_id: orgId,
+        });
+        if (error) throw error;
+        if (data === true) return true;
+      }
+      return false;
+    },
+    (error) => {
+      console.warn("Failed to resolve organization-scoped role for agent request", error);
+    },
+  );
 };
 
 const resolveExecutionGate = (role: AgentRole, requestedTools: string[] = []): Omit<ExecutionGate, "killSwitchEnabled" | "killSwitchReason" | "killSwitchSource"> => {
@@ -1017,7 +1012,7 @@ Deno.serve(async (req) => {
       orgId,
     });
 
-    const actorRole = await resolveActorRole(db);
+    const actorRole = await resolveActorRole(db, orgId);
     const requestedTools = Array.isArray(context?.guardrails?.allowedTools)
       ? context?.guardrails?.allowedTools
       : [];

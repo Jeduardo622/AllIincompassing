@@ -5,13 +5,10 @@ import {
   RouteOptions,
   UserContext,
 } from "../_shared/auth-middleware.ts";
-import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
-import { getLogger } from "../_shared/logging.ts";
-import { requireOrg } from "../_shared/org.ts";
 
-type TemplateKey = "ER" | "FBA" | "PR";
+export type TemplateKey = "ER" | "FBA" | "PR";
 
-type FillDocsRequest = {
+export type FillDocsRequest = {
   template: TemplateKey;
   fields: Record<string, string>;
   outputFileName?: string;
@@ -22,31 +19,47 @@ type FillDocsResponse = {
   template: TemplateKey;
   filename: string;
   contentType: string;
-  // Prefer signed URL download (keeps responses small and avoids base64 inflation).
-  downloadUrl?: string;
-  bucketId?: string;
-  objectPath?: string;
-  // Legacy fallback (keep for compatibility / debugging).
-  base64?: string;
+  base64: string;
+};
+
+type TemplateMeta = {
+  fileName: string;
+  staticFile: string;
+  fileUrl: URL;
+};
+
+type FillDocsDeps = {
+  readTemplateBytes?: (template: TemplateMeta) => Promise<Uint8Array>;
+  fillDocxTemplate?: (
+    templateBytes: Uint8Array,
+    fields: Record<string, string>,
+  ) => Promise<Uint8Array>;
 };
 
 const CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-const TEMPLATES: Record<TemplateKey, { fileName: string; fileUrl: URL }> = {
+export const TEMPLATES: Record<TemplateKey, TemplateMeta> = {
   ER: {
     fileName: "Updated ER - IEHP.docx",
+    staticFile: "./functions/fill-docs/fill_docs/Updated ER - IEHP.docx",
     fileUrl: new URL("./fill_docs/Updated ER - IEHP.docx", import.meta.url),
   },
   FBA: {
-    fileName: "Updated FBA - IEHP.docx",
-    fileUrl: new URL("./fill_docs/Updated FBA - IEHP.docx", import.meta.url),
+    fileName: "Updated FBA -IEHP.docx",
+    staticFile: "./functions/fill-docs/fill_docs/Updated FBA -IEHP.docx",
+    fileUrl: new URL("./fill_docs/Updated FBA -IEHP.docx", import.meta.url),
   },
   PR: {
-    fileName: "Updated PR - IEHP.docx",
-    fileUrl: new URL("./fill_docs/Updated PR - IEHP.docx", import.meta.url),
+    fileName: "Updated PR -IEHP.docx",
+    staticFile: "./functions/fill-docs/fill_docs/Updated PR -IEHP.docx",
+    fileUrl: new URL("./fill_docs/Updated PR -IEHP.docx", import.meta.url),
   },
 };
+
+export const TEMPLATE_STATIC_FILES = Object.values(TEMPLATES).map((template) =>
+  template.staticFile
+);
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -105,7 +118,10 @@ function escapeXmlText(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
-function applyPlaceholdersToXml(xml: string, fields: Record<string, string>): string {
+function applyPlaceholdersToXml(
+  xml: string,
+  fields: Record<string, string>,
+): string {
   let next = xml;
   for (const [key, rawValue] of Object.entries(fields)) {
     const token = `{{${key}}}`;
@@ -114,7 +130,7 @@ function applyPlaceholdersToXml(xml: string, fields: Record<string, string>): st
   return next;
 }
 
-function toBase64(bytes: Uint8Array): string {
+export function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -123,31 +139,7 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-async function resolveTherapistIdForUser(
-  db: ReturnType<typeof createRequestClient>,
-  userId: string,
-): Promise<string> {
-  // Common case: therapist row id == auth uid
-  const direct = await db.from("therapists").select("id").eq("id", userId).maybeSingle();
-  if (direct.data?.id && !direct.error) {
-    return direct.data.id as string;
-  }
-
-  // Fallback: mapping table if present
-  const linked = await db
-    .from("user_therapist_links")
-    .select("therapist_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  const therapistId = (linked.data as Record<string, unknown> | null)?.therapist_id;
-  if (typeof therapistId === "string" && therapistId.length > 0) {
-    return therapistId;
-  }
-
-  return userId;
-}
-
-async function fillDocxTemplate(
+export async function fillDocxTemplate(
   templateBytes: Uint8Array,
   fields: Record<string, string>,
 ): Promise<Uint8Array> {
@@ -172,106 +164,70 @@ async function fillDocxTemplate(
   return out as Uint8Array;
 }
 
-export default createProtectedRoute(async (req: Request, userContext: UserContext) => {
-  const logger = getLogger(req, {
-    functionName: "fill-docs",
-    userId: userContext.user.id,
-  });
-
-  if (req.method !== "POST") {
-    logApiAccess(req.method, "/fill-docs", userContext, 405);
-    return jsonResponse({ error: "Method not allowed" }, 405);
-  }
-
-  try {
-    const requestClient = createRequestClient(req);
-    const orgId = await requireOrg(requestClient);
-    const therapistId = await resolveTherapistIdForUser(requestClient, userContext.user.id);
-
-    const parsed = parseRequest(await req.json());
-    if (!parsed.ok) {
-      logApiAccess("POST", "/fill-docs", userContext, 400);
-      logger.warn("request.invalid", { reason: parsed.error });
-      return jsonResponse({ error: parsed.error }, 400);
-    }
-
-    const { template, fields, outputFileName } = parsed.value;
-    const templateMeta = TEMPLATES[template];
-    const templateBytes = await Deno.readFile(templateMeta.fileUrl);
-
-    logger.info("fill.start", { template, fieldsCount: Object.keys(fields).length, orgId, therapistId });
-
-    const filledBytes = await fillDocxTemplate(templateBytes, fields);
-
-    const filename = ensureDocxExtension(
-      outputFileName ?? `${templateMeta.fileName.replace(".docx", "")} (filled).docx`,
-    );
-
-    // Persist to Storage so the client can download via signed URL (no huge JSON payloads).
-    const bucketId = "therapist-documents";
-    const documentKey = "fill-docs";
-    const safeName = filename.replaceAll(/[^a-zA-Z0-9._() -]/g, "_");
-    const objectPath = `therapists/${therapistId}/${documentKey}/${crypto.randomUUID()}-${safeName}`;
-
-    const uploadResult = await supabaseAdmin.storage.from(bucketId).upload(
-      objectPath,
-      filledBytes,
-      {
-        contentType: CONTENT_TYPE,
-        upsert: false,
-      },
-    );
-    if (uploadResult.error) {
-      throw new Error(`Storage upload failed: ${uploadResult.error.message}`);
-    }
-
-    // Record in therapist_documents manifest for auditability and reuse of existing conventions.
-    const manifestInsert = await supabaseAdmin.from("therapist_documents").insert({
-      therapist_id: therapistId,
-      organization_id: orgId,
-      document_key: documentKey,
-      bucket_id: bucketId,
-      object_path: objectPath,
-    });
-    if (manifestInsert.error) {
-      logger.warn("manifest.insert_failed", { error: manifestInsert.error.message, bucketId, objectPath });
-      // Non-fatal: file is already uploaded.
-    }
-
-    const signed = await supabaseAdmin.storage.from(bucketId).createSignedUrl(objectPath, 60 * 10);
-    if (signed.error || !signed.data?.signedUrl) {
-      throw new Error(`Signed URL generation failed: ${signed.error?.message ?? "unknown"}`);
-    }
-
-    const response: FillDocsResponse = {
-      success: true,
-      template,
-      filename,
-      contentType: CONTENT_TYPE,
-      downloadUrl: signed.data.signedUrl,
-      bucketId,
-      objectPath,
-    };
-
-    logApiAccess("POST", "/fill-docs", userContext, 200);
-    logger.info("fill.complete", { template, filename, bucketId, objectPath });
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Internal server error";
-    logApiAccess("POST", "/fill-docs", userContext, 500);
-    logger.error("fill.failed", { error: message });
-
-    // As a last-resort fallback for debugging (only if we still have the template + payload in scope).
-    return jsonResponse({ error: "Failed to fill document template" }, 500);
-  }
-}, RouteOptions.therapist);
-
 function ensureDocxExtension(name: string): string {
   const trimmed = name.trim();
   if (trimmed.toLowerCase().endsWith(".docx")) return trimmed;
   return `${trimmed}.docx`;
 }
 
+export function createFillDocsHandler(deps: FillDocsDeps = {}) {
+  const readTemplateBytes = deps.readTemplateBytes ??
+    ((template: TemplateMeta) => Deno.readFile(template.fileUrl));
+  const renderDocx = deps.fillDocxTemplate ?? fillDocxTemplate;
+
+  return async (
+    req: Request,
+    userContext: UserContext | null = null,
+  ): Promise<Response> => {
+    if (req.method !== "POST") {
+      logApiAccess(req.method, "/fill-docs", userContext, 405);
+      return jsonResponse({ error: "Method not allowed" }, 405);
+    }
+
+    try {
+      const parsed = parseRequest(await req.json());
+      if (!parsed.ok) {
+        logApiAccess("POST", "/fill-docs", userContext, 400);
+        return jsonResponse({ error: parsed.error }, 400);
+      }
+
+      const { template, fields, outputFileName } = parsed.value;
+      const templateMeta = TEMPLATES[template];
+      const templateBytes = await readTemplateBytes(templateMeta);
+      const filledBytes = await renderDocx(templateBytes, fields);
+      const filename = ensureDocxExtension(
+        outputFileName ??
+          `${templateMeta.fileName.replace(".docx", "")} (filled).docx`,
+      );
+
+      const response: FillDocsResponse = {
+        success: true,
+        template,
+        filename,
+        contentType: CONTENT_TYPE,
+        base64: toBase64(filledBytes),
+      };
+
+      logApiAccess("POST", "/fill-docs", userContext, 200);
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Internal server error";
+      logApiAccess("POST", "/fill-docs", userContext, 500);
+      console.error("fill-docs error", message);
+      return jsonResponse({ error: "Failed to fill document template" }, 500);
+    }
+  };
+}
+
+const fillDocsHandler = createFillDocsHandler();
+
+export default createProtectedRoute(
+  async (req: Request, userContext: UserContext) =>
+    fillDocsHandler(req, userContext),
+  RouteOptions.therapist,
+);

@@ -419,7 +419,7 @@ declare
 begin
   insert into role_smoke_results
   values (
-    'bcba_mixed_role_capability_helpers',
+    'bcba_exact_capability_helpers',
     not app.current_user_is_super_admin()
       and app.current_user_can_manage_staff_clients('00000000-0000-4000-8000-000000000001')
       and not app.current_user_can_manage_authorizations('00000000-0000-4000-8000-000000000001')

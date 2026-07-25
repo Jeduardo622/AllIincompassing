@@ -3,6 +3,27 @@ import { describe, expect, it, vi } from "vitest";
 import { evaluateTherapistAuthorization } from "../../supabase/functions/_shared/authorization";
 
 describe("scheduling edge therapist authorization", () => {
+  it.each(["midtier", "admin_schedule"] as const)(
+    "allows exact %s schedule staff to authorize a target therapist",
+    async (allowedRole) => {
+      const rpc = vi.fn(async (_name: string, args: { role_name?: string }) => ({
+        data: args.role_name === allowedRole,
+        error: null,
+      }));
+
+      const result = await evaluateTherapistAuthorization(
+        { rpc } as never,
+        "therapist-row-1",
+      );
+
+      expect(result).toEqual({ ok: true });
+      expect(rpc).toHaveBeenCalledWith("user_has_role_for_org", {
+        role_name: allowedRole,
+        target_therapist_id: "therapist-row-1",
+      });
+    },
+  );
+
   it("allows an exact BCBA role to authorize a target therapist", async () => {
     const rpc = vi.fn(async (_name: string, args: { role_name?: string }) => ({
       data: args.role_name === "bcba",

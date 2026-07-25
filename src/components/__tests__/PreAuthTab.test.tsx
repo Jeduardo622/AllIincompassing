@@ -229,7 +229,11 @@ describe("PreAuthTab manual authorization upload", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authorizationsMockData.splice(0, authorizationsMockData.length);
-    useAuthMock.mockReturnValue({ user: { id: "admin-user-id" }, isAdmin: () => false });
+    useAuthMock.mockReturnValue({
+      user: { id: "admin-user-id" },
+      isAdmin: () => false,
+      hasCapability: () => true,
+    });
     useActiveOrganizationIdMock.mockReturnValue(ORG_ID);
     createAuthorizationWithServicesMock.mockResolvedValue({ id: "auth-created-id" });
     updateAuthorizationDocumentsMock.mockResolvedValue(undefined);
@@ -246,6 +250,42 @@ describe("PreAuthTab manual authorization upload", () => {
         error: null,
       }),
     );
+  });
+
+  it("keeps BCBA authorization data visible without create or renew controls", async () => {
+    authorizationsMockData.push({
+      id: "auth-readonly",
+      authorization_number: "AUTH-READONLY",
+      start_date: "2026-01-01",
+      end_date: "2026-12-31",
+      status: "approved",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+      services: [{
+        id: "service-1",
+        service_code: "97153",
+        service_description: "Adaptive behavior treatment by protocol",
+        requested_units: 120,
+        approved_units: 120,
+        unit_type: "Units",
+      }],
+      documents: [],
+    });
+    useAuthMock.mockReturnValue({
+      user: { id: "bcba-user-id" },
+      isAdmin: () => false,
+      hasCapability: (capability: string) => capability === "viewAuthorizations",
+    });
+
+    renderWithProviders(<PreAuthTab client={{ id: "client-1" }} />, { auth: false });
+
+    expect(await screen.findByText(/AUTH-READONLY/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /new authorization/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Renew" })).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).not.toBeInTheDocument();
+    expect(updateAuthorizationDocumentsMock).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "View" }));
+    expect(screen.getByText(/120\/120 Units/)).toBeInTheDocument();
   });
 
   it("creates an authorization from entered notice fields and attaches the uploaded PDF", async () => {
@@ -373,7 +413,11 @@ describe("PreAuthTab manual authorization upload", () => {
 
   it("lets admins download an uploaded authorization notice from the detail view", async () => {
     const { anchorClickSpy, createObjectUrlSpy, revokeObjectUrlSpy } = installDownloadBrowserMocks();
-    useAuthMock.mockReturnValue({ user: { id: "admin-user-id" }, isAdmin: () => true });
+    useAuthMock.mockReturnValue({
+      user: { id: "admin-user-id" },
+      isAdmin: () => true,
+      hasCapability: () => true,
+    });
     authorizationsMockData.push({
       id: "auth-created-id",
       authorization_number: "IEHP-AUTH-DOC",
@@ -423,7 +467,11 @@ describe("PreAuthTab manual authorization upload", () => {
   });
 
   it("blocks admin downloads when stored authorization notice paths do not match the client authorization", async () => {
-    useAuthMock.mockReturnValue({ user: { id: "admin-user-id" }, isAdmin: () => true });
+    useAuthMock.mockReturnValue({
+      user: { id: "admin-user-id" },
+      isAdmin: () => true,
+      hasCapability: () => true,
+    });
     authorizationsMockData.push({
       id: "auth-created-id",
       authorization_number: "IEHP-AUTH-DOC",
@@ -455,7 +503,11 @@ describe("PreAuthTab manual authorization upload", () => {
   it("clears the download loading state when storage download fails", async () => {
     installDownloadBrowserMocks();
     storageDownloadMock.mockResolvedValue({ data: null, error: new Error("Storage download failed") });
-    useAuthMock.mockReturnValue({ user: { id: "admin-user-id" }, isAdmin: () => true });
+    useAuthMock.mockReturnValue({
+      user: { id: "admin-user-id" },
+      isAdmin: () => true,
+      hasCapability: () => true,
+    });
     authorizationsMockData.push({
       id: "auth-created-id",
       authorization_number: "IEHP-AUTH-DOC",
@@ -488,7 +540,11 @@ describe("PreAuthTab manual authorization upload", () => {
 
   it("lets super admins download uploaded authorization notices through the admin role helper", async () => {
     const { anchorClickSpy } = installDownloadBrowserMocks();
-    useAuthMock.mockReturnValue({ user: { id: "super-admin-user-id" }, isAdmin: () => true });
+    useAuthMock.mockReturnValue({
+      user: { id: "super-admin-user-id" },
+      isAdmin: () => true,
+      hasCapability: () => true,
+    });
     authorizationsMockData.push({
       id: "auth-created-id",
       authorization_number: "IEHP-AUTH-DOC",

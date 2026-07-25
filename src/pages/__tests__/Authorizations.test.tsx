@@ -152,6 +152,7 @@ describe('Authorizations page query scope', () => {
     useAuthMock.mockReturnValue({
       user: null,
       effectiveRole: 'midtier',
+      hasCapability: (capability: string) => capability === 'manageAuthorizations',
       profile: baseProfile({
         id: therapistUserId,
         role: 'midtier',
@@ -192,6 +193,7 @@ describe('Authorizations page query scope', () => {
     useAuthMock.mockReturnValue({
       user: null,
       effectiveRole: 'admin',
+      hasCapability: () => true,
       profile: baseProfile({
         id: 'admin-user',
         role: 'admin',
@@ -211,12 +213,16 @@ describe('Authorizations page query scope', () => {
 
     expect(therapistsInMock).not.toHaveBeenCalled();
     expect(screen.getByText('Authorizations')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New Authorization' })).toBeInTheDocument();
+    expect(screen.getByTitle('Edit authorization')).toBeInTheDocument();
+    expect(screen.getByTitle('Delete authorization')).toBeInTheDocument();
   });
 
   it('renders authorization date-only ranges without shifting the calendar day', async () => {
     useAuthMock.mockReturnValue({
       user: null,
       effectiveRole: 'admin',
+      hasCapability: () => true,
       profile: baseProfile({
         id: 'admin-user',
         role: 'admin',
@@ -228,5 +234,25 @@ describe('Authorizations page query scope', () => {
 
     const authNumber = await screen.findByText('AUTH-1');
     expect(authNumber.parentElement).toHaveTextContent(/Jan 1, 2025\s*-\s*Dec 31, 2025/);
+  });
+
+  it('keeps authorization records visible but hides mutation controls for BCBA', async () => {
+    useAuthMock.mockReturnValue({
+      user: null,
+      effectiveRole: 'bcba',
+      hasCapability: (capability: string) => capability === 'viewAuthorizations',
+      profile: baseProfile({
+        id: 'bcba-user',
+        role: 'bcba',
+        organization_id: 'org-bcba-1',
+      }),
+    });
+
+    renderWithProviders(<Authorizations />, { auth: false });
+
+    expect(await screen.findByText('AUTH-1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New Authorization' })).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Edit authorization')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Delete authorization')).not.toBeInTheDocument();
   });
 });

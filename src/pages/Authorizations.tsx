@@ -53,9 +53,10 @@ export function Authorizations() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedAuthorization, setSelectedAuthorization] = useState<Authorization | undefined>();
   const queryClient = useQueryClient();
-  const { effectiveRole, profile } = useAuth();
+  const { effectiveRole, profile, hasCapability } = useAuth();
   const resolvedOrganizationId = useActiveOrganizationId();
   const isTherapistViewer = effectiveRole === 'midtier';
+  const canManageAuthorizations = hasCapability('manageAuthorizations');
 
   const { data: authorizations = [], isLoading } = useQuery({
     queryKey: ['authorizations'],
@@ -299,22 +300,39 @@ export function Authorizations() {
   });
 
   const handleCreateAuthorization = () => {
+    if (!canManageAuthorizations) {
+      showError('You have read-only access to authorizations');
+      return;
+    }
     setSelectedAuthorization(undefined);
     setIsModalOpen(true);
   };
 
   const handleEditAuthorization = (authorization: Authorization) => {
+    if (!canManageAuthorizations) {
+      showError('You have read-only access to authorizations');
+      return;
+    }
     setSelectedAuthorization(authorization);
     setIsModalOpen(true);
   };
 
   const handleDeleteAuthorization = async (id: string) => {
+    if (!canManageAuthorizations) {
+      showError('You have read-only access to authorizations');
+      return;
+    }
     if (window.confirm('Are you sure you want to delete this authorization?')) {
       await deleteAuthorizationMutation.mutateAsync(id);
     }
   };
 
   const handleSubmit = async (data: Partial<Authorization> & { services: Partial<AuthorizationService>[] }) => {
+    if (!canManageAuthorizations) {
+      showError('You have read-only access to authorizations');
+      return;
+    }
+
     try {
       logger.debug('Submitting authorization form', {
         metadata: { serviceCount: data.services?.length ?? 0 }
@@ -384,13 +402,17 @@ export function Authorizations() {
     <div className="h-full">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Authorizations</h1>
-        <button
-          onClick={handleCreateAuthorization}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          <Plus className="w-5 h-5 mr-2 inline-block" />
-          New Authorization
-        </button>
+        {canManageAuthorizations ? (
+          <button
+            onClick={handleCreateAuthorization}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <Plus className="w-5 h-5 mr-2 inline-block" />
+            New Authorization
+          </button>
+        ) : (
+          <span className="text-sm text-gray-500 dark:text-gray-400">Read-only access</span>
+        )}
       </div>
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
@@ -519,22 +541,26 @@ export function Authorizations() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center space-x-3">
-                        <button
-                          onClick={() => handleEditAuthorization(auth)}
-                          className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
-                          title="Edit authorization"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteAuthorization(auth.id)}
-                          className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
-                          title="Delete authorization"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      {canManageAuthorizations ? (
+                        <div className="flex items-center space-x-3">
+                          <button
+                            onClick={() => handleEditAuthorization(auth)}
+                            className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
+                            title="Edit authorization"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAuthorization(auth.id)}
+                            className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
+                            title="Delete authorization"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">View only</span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -544,7 +570,7 @@ export function Authorizations() {
         </div>
       </div>
 
-      {isModalOpen && (
+      {isModalOpen && canManageAuthorizations && (
         <AuthorizationModal
           isOpen={isModalOpen}
           onClose={() => {

@@ -48,7 +48,9 @@ begin
     '00000000-0000-4000-8000-000000000401',
     '00000000-0000-4000-8000-000000000402',
     '00000000-0000-4000-8000-000000000403',
-    '00000000-0000-4000-8000-000000000404'
+    '00000000-0000-4000-8000-000000000404',
+    '00000000-0000-4000-8000-000000000405',
+    '00000000-0000-4000-8000-000000000406'
   );
 
   delete from public.goals
@@ -184,7 +186,8 @@ begin
       ('00000000-0000-4000-8000-000000000011'::uuid, 'admin_schedule'),
       ('00000000-0000-4000-8000-000000000012'::uuid, 'midtier'),
       ('00000000-0000-4000-8000-000000000013'::uuid, 'bt'),
-      ('00000000-0000-4000-8000-000000000014'::uuid, 'bcba')
+      ('00000000-0000-4000-8000-000000000014'::uuid, 'bcba'),
+      ('00000000-0000-4000-8000-000000000014'::uuid, 'admin_schedule')
   ) as v(user_id, role_name)
   join public.roles r on r.name = v.role_name;
 
@@ -220,7 +223,11 @@ begin
   insert into public.authorizations (id, authorization_number, client_id, provider_id, diagnosis_code, start_date, end_date, status, organization_id, created_by)
   values
     ('00000000-0000-4000-8000-000000000401', 'CODEX-SMOKE-AUTH-ASSIGNED', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000021', 'F84.0', current_date, current_date + 30, 'approved', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011'),
-    ('00000000-0000-4000-8000-000000000402', 'CODEX-SMOKE-AUTH-UNASSIGNED', '00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000021', 'F84.0', current_date, current_date + 30, 'approved', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011');
+    ('00000000-0000-4000-8000-000000000402', 'CODEX-SMOKE-AUTH-UNASSIGNED', '00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000021', 'F84.0', current_date, current_date + 30, 'approved', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011'),
+    ('00000000-0000-4000-8000-000000000405', 'CODEX-SMOKE-AUTH-BCBA-OWNED', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000014', 'F84.0', current_date, current_date + 30, 'approved', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011');
+
+  insert into public.authorization_services (id, authorization_id, service_code, service_description, from_date, to_date, requested_units, approved_units, unit_type, decision_status, organization_id, created_by)
+  values ('00000000-0000-4000-8000-000000000451', '00000000-0000-4000-8000-000000000405', '97153', 'Codex BCBA-owned service', current_date, current_date + 30, 120, 120, 'Units', 'approved', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011');
 
   insert into role_smoke_results
   values ('seed_synthetic_assignments', true, 'seeded synthetic role assignments and fixtures', current_user);
@@ -406,16 +413,21 @@ $bt$;
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000014', true);
 do $bcba$
+declare
+  affected_rows integer;
+  visible_authorizations integer;
 begin
   insert into role_smoke_results
   values (
     'bcba_exact_capability_helpers',
     not app.current_user_is_super_admin()
       and app.current_user_can_manage_staff_clients('00000000-0000-4000-8000-000000000001')
+      and not app.current_user_can_manage_authorizations('00000000-0000-4000-8000-000000000001')
       and app.current_user_can_manage_schedule('00000000-0000-4000-8000-000000000001')
       and app.current_user_can_manage_programs_goals('00000000-0000-4000-8000-000000000001'),
     'super=' || app.current_user_is_super_admin()
       || ', staff=' || app.current_user_can_manage_staff_clients('00000000-0000-4000-8000-000000000001')
+      || ', authz=' || app.current_user_can_manage_authorizations('00000000-0000-4000-8000-000000000001')
       || ', schedule=' || app.current_user_can_manage_schedule('00000000-0000-4000-8000-000000000001')
       || ', programs=' || app.current_user_can_manage_programs_goals('00000000-0000-4000-8000-000000000001'),
     current_user
@@ -427,6 +439,64 @@ begin
     insert into role_smoke_results values ('bcba_client_write_allowed', true, 'insert clients succeeded', current_user);
   exception when others then
     insert into role_smoke_results values ('bcba_client_write_allowed', false, sqlstate || ': ' || sqlerrm, current_user);
+  end;
+
+  begin
+    insert into public.authorizations (id, authorization_number, client_id, provider_id, diagnosis_code, start_date, end_date, status, organization_id, created_by)
+    values ('00000000-0000-4000-8000-000000000406', 'CODEX-SMOKE-BCBA-DENIED', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000014', 'F84.0', current_date, current_date + 30, 'pending', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000014');
+    insert into role_smoke_results values ('bcba_authorization_write_denied', false, 'unexpected insert authorizations succeeded', current_user);
+  exception when others then
+    insert into role_smoke_results values ('bcba_authorization_write_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
+  end;
+
+  select count(*)
+    into visible_authorizations
+  from public.authorizations
+  where id = '00000000-0000-4000-8000-000000000401';
+  insert into role_smoke_results
+  values (
+    'bcba_authorization_read_allowed',
+    visible_authorizations = 1,
+    'visible_rows=' || visible_authorizations,
+    current_user
+  );
+
+  begin
+    update public.authorizations
+    set authorization_number = 'CODEX-SMOKE-BCBA-UNEXPECTED-UPDATE'
+    where id = '00000000-0000-4000-8000-000000000405';
+    get diagnostics affected_rows = row_count;
+    insert into role_smoke_results values ('bcba_authorization_update_denied', false, 'unexpected updated_rows=' || affected_rows, current_user);
+  exception when others then
+    insert into role_smoke_results values ('bcba_authorization_update_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
+  end;
+
+  begin
+    delete from public.authorizations
+    where id = '00000000-0000-4000-8000-000000000405';
+    get diagnostics affected_rows = row_count;
+    insert into role_smoke_results values ('bcba_authorization_delete_denied', false, 'unexpected deleted_rows=' || affected_rows, current_user);
+  exception when others then
+    insert into role_smoke_results values ('bcba_authorization_delete_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
+  end;
+
+  begin
+    update public.authorization_services
+    set approved_units = 121
+    where id = '00000000-0000-4000-8000-000000000451';
+    get diagnostics affected_rows = row_count;
+    insert into role_smoke_results values ('bcba_authorization_service_update_denied', false, 'unexpected updated_rows=' || affected_rows, current_user);
+  exception when others then
+    insert into role_smoke_results values ('bcba_authorization_service_update_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
+  end;
+
+  begin
+    delete from public.authorization_services
+    where id = '00000000-0000-4000-8000-000000000451';
+    get diagnostics affected_rows = row_count;
+    insert into role_smoke_results values ('bcba_authorization_service_delete_denied', false, 'unexpected deleted_rows=' || affected_rows, current_user);
+  exception when others then
+    insert into role_smoke_results values ('bcba_authorization_service_delete_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
   end;
 end
 $bcba$;
@@ -544,7 +614,7 @@ from (
   union all select id from public.programs where id in ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000204')
   union all select id from public.goals where id in ('00000000-0000-4000-8000-000000000301', '00000000-0000-4000-8000-000000000302', '00000000-0000-4000-8000-000000000303', '00000000-0000-4000-8000-000000000304')
   union all select id from public.sessions where id in ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000503', '00000000-0000-4000-8000-000000000504', '00000000-0000-4000-8000-000000000505')
-  union all select id from public.authorizations where id in ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000404')
+  union all select id from public.authorizations where id in ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000404', '00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000406')
   union all select id from public.goal_data_points where id in ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000602')
 ) residue;
 

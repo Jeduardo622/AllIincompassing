@@ -173,7 +173,6 @@ export const ROLE_CAPABILITIES: Record<AppRole, readonly AppCapability[]> = {
     'dataTaking',
     'deleteGoalTargets',
     'lockSessionNotes',
-    'manageAuthorizations',
     'manageClients',
     'manageProgramsGoals',
     'manageStaff',

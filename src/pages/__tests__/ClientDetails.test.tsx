@@ -222,6 +222,17 @@ describe('ClientDetails page', () => {
     expect(screen.getByText('PreAuthTabContent')).toBeInTheDocument();
   });
 
+  it('renders the Pre-Authorizations tab for BCBA viewers', async () => {
+    renderWithProviders(<ClientDetails />, {
+      auth: { role: 'bcba', userId: 'bcba-user-id' },
+    });
+
+    await waitFor(() => expect(screen.getByText('ProfileTabContent')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /Pre-Authorizations/i }));
+    expect(screen.getByText('PreAuthTabContent')).toBeInTheDocument();
+  });
+
   it('shows a report-upcoming banner when client authorization ends within 30 days', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date('2026-07-07T12:00:00Z'));

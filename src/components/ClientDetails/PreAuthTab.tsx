@@ -173,8 +173,9 @@ const isAuthorizationDocumentPath = (args: {
 };
 
 export function PreAuthTab({ client }: PreAuthTabProps) {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, hasCapability } = useAuth();
   const organizationId = useActiveOrganizationId();
+  const canManageAuthorizations = hasCapability('manageAuthorizations');
   const queryClient = useQueryClient();
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [selectedAuthorizationForView, setSelectedAuthorizationForView] = useState<Authorization | null>(null);
@@ -562,6 +563,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   };
 
   const openNewAuthorizationWizard = () => {
+    if (!canManageAuthorizations) {
+      showError('You have read-only access to authorizations.');
+      return;
+    }
     resetWizardForNewAuthorization();
     setIsWizardOpen(true);
   };
@@ -663,6 +668,11 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   };
   
   const handleWizardSubmit = async () => {
+    if (!canManageAuthorizations) {
+      showError('You have read-only access to authorizations.');
+      return;
+    }
+
     if (!organizationId || !user?.id) {
       showError('You must be signed in with an organization selected to submit.');
       return;
@@ -787,6 +797,10 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
   };
   
   const handleRenewAuthorization = (auth: Authorization) => {
+    if (!canManageAuthorizations) {
+      showError('You have read-only access to authorizations.');
+      return;
+    }
     resetPdfPrefillState();
     setWizardData({
       ...createEmptyWizardData(),
@@ -930,13 +944,17 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
           <h3 className="text-lg font-medium text-gray-900 dark:text-white">
             Authorization Tracker
           </h3>
-          <button
-            onClick={openNewAuthorizationWizard}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            New Authorization
-          </button>
+          {canManageAuthorizations ? (
+            <button
+              onClick={openNewAuthorizationWizard}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              New Authorization
+            </button>
+          ) : (
+            <span className="text-sm text-gray-500 dark:text-gray-400">Read-only access</span>
+          )}
         </div>
         
         {isLoading ? (
@@ -1089,12 +1107,14 @@ export function PreAuthTab({ client }: PreAuthTabProps) {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleRenewAuthorization(auth)}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                          >
-                            Renew
-                          </button>
+                          {canManageAuthorizations ? (
+                            <button
+                              onClick={() => handleRenewAuthorization(auth)}
+                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            >
+                              Renew
+                            </button>
+                          ) : null}
                           <button
                             className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
                             onClick={() => setSelectedAuthorizationForView(auth)}

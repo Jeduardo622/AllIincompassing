@@ -13,10 +13,20 @@ describe('role capability matrix', () => {
   it('defines BCBA as clinical and operational admin without super-admin bypass', () => {
     expect(roleHasCapability('bcba', 'manageProgramsGoals')).toBe(true);
     expect(roleHasCapability('bcba', 'manageStaff')).toBe(true);
-    expect(roleHasCapability('bcba', 'manageAuthorizations')).toBe(true);
+    expect(roleHasCapability('bcba', 'manageAuthorizations')).toBe(false);
+    expect(roleHasCapability('bcba', 'viewAuthorizations')).toBe(true);
     expect(roleHasCapability('bcba', 'dataTaking')).toBe(true);
     expect(roleHasCapability('bcba', 'viewMonitoring')).toBe(false);
     expect(roleHasCapability('bcba', 'viewSettings')).toBe(false);
+  });
+
+  it('keeps authorization management with operational managers while BCBA remains read-only', () => {
+    expect(rolesForCapability('manageAuthorizations')).toEqual([
+      'midtier',
+      'admin_schedule',
+      'admin',
+      'super_admin',
+    ]);
   });
 
   it('reserves hard-delete of goal targets for BCBA and super-admin', () => {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  currentUserHasScheduleStaffRoleForOrg,
   currentUserCanCaptureTrialEvent,
   currentUserCanManageLockedTrialEvent,
   currentUserCanManageProgramsGoals,
@@ -106,6 +107,28 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       target_organization_id: "org-1",
     });
     expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("checks exact schedule-staff authority through admin_schedule, midtier, then bcba role RPCs", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(true));
+
+    await expect(currentUserHasScheduleStaffRoleForOrg(accessToken, "org-1")).resolves.toEqual({
+      allowed: true,
+      upstreamError: false,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/rest/v1/rpc/user_has_role_for_org");
+    expect(JSON.parse(String((fetchSpy.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+      role_name: "admin_schedule",
+      target_organization_id: "org-1",
+    });
+    expect(JSON.parse(String((fetchSpy.mock.calls[1]?.[1] as RequestInit).body))).toEqual({
+      role_name: "midtier",
+      target_organization_id: "org-1",
+    });
   });
 
   it("checks trial-event capture and lock helpers through exposed public RPC wrappers", async () => {

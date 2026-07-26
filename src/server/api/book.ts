@@ -3,7 +3,7 @@ import { bookSession, deriveBookSessionOccurrences } from "../bookSession";
 import {
   consumeRateLimit,
   corsHeadersForRequest,
-  currentUserIsBcbaForOrg,
+  currentUserHasScheduleStaffRoleForOrg,
   errorResponse,
   fetchAuthenticatedUserIdWithStatus,
   fetchJson,
@@ -135,25 +135,25 @@ async function assertBookRequestScope(
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
-  let isBcba = false;
-  const requiresBcbaAuthority =
+  let hasScheduleStaffAuthority = false;
+  const requiresScheduleStaffAuthority =
     !isAdmin &&
     !isSuperAdmin &&
     ((!isTherapist && !isOrgMember) ||
       (isTherapist && body.session.therapist_id !== currentUserId));
-  if (requiresBcbaAuthority) {
-    const bcbaAuthority = await currentUserIsBcbaForOrg(accessToken, organizationId);
-    if (bcbaAuthority.upstreamError) {
-      return errorResponse(request, "upstream_error", "Unable to validate BCBA booking access", { status: 502 });
+  if (requiresScheduleStaffAuthority) {
+    const scheduleStaffAuthority = await currentUserHasScheduleStaffRoleForOrg(accessToken, organizationId);
+    if (scheduleStaffAuthority.upstreamError) {
+      return errorResponse(request, "upstream_error", "Unable to validate scheduling staff booking access", { status: 502 });
     }
-    isBcba = bcbaAuthority.allowed;
+    hasScheduleStaffAuthority = scheduleStaffAuthority.allowed;
   }
 
-  if (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember && !isBcba) {
+  if (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember && !hasScheduleStaffAuthority) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
-  if (isTherapist && !isAdmin && !isSuperAdmin && !isBcba && body.session.therapist_id !== currentUserId) {
+  if (isTherapist && !isAdmin && !isSuperAdmin && !hasScheduleStaffAuthority && body.session.therapist_id !== currentUserId) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 

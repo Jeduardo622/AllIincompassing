@@ -284,6 +284,35 @@ export async function currentUserIsBcbaForOrg(
   };
 }
 
+export async function currentUserHasScheduleStaffRoleForOrg(
+  accessToken: string,
+  organizationId: string,
+): Promise<{ allowed: boolean; upstreamError: boolean }> {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+
+  for (const roleName of ["admin_schedule", "midtier", "bcba"] as const) {
+    const result = await fetchJson<boolean>(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, {
+      method: "POST",
+      headers: {
+        ...JSON_HEADERS,
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ role_name: roleName, target_organization_id: organizationId }),
+    });
+
+    if (!result.ok && (result.status >= 500 || result.status === 0)) {
+      return { allowed: false, upstreamError: true };
+    }
+
+    if (result.ok && result.data === true) {
+      return { allowed: true, upstreamError: false };
+    }
+  }
+
+  return { allowed: false, upstreamError: false };
+}
+
 export async function currentUserCanDeleteGoalTargets(
   accessToken: string,
   organizationId: string,

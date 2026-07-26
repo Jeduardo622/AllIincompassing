@@ -68,6 +68,67 @@ Deno.test("fill-docs protected route answers OPTIONS before authentication", asy
   );
 });
 
+Deno.test("fill-docs main module starts the edge runtime and serves preflight", async () => {
+  const endpoint = "http://127.0.0.1:8000/functions/v1/fill-docs";
+  const child = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--no-lock",
+      "--allow-env",
+      "--allow-net",
+      "--allow-read",
+      new URL("./index.ts", import.meta.url).pathname,
+    ],
+    clearEnv: true,
+    env: {
+      ...(Deno.build.os === "windows"
+        ? {
+          SystemRoot: Deno.env.get("SystemRoot") ?? "C:\\Windows",
+          WINDIR: Deno.env.get("WINDIR") ?? "C:\\Windows",
+        }
+        : {}),
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+      SUPABASE_ANON_KEY: "anon-key",
+      SUPABASE_PUBLISHABLE_KEY: "anon-key",
+    },
+    stdout: "null",
+    stderr: "inherit",
+  }).spawn();
+
+  try {
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        response = await fetch(endpoint, {
+          method: "OPTIONS",
+          signal: AbortSignal.timeout(100),
+          headers: {
+            Origin: "https://app.allincompassing.ai",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+          },
+        });
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    }
+
+    expect(response?.status).toBe(204);
+    expect(response?.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://app.allincompassing.ai",
+    );
+  } finally {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // The child exits on its own when no runtime entrypoint is registered.
+    }
+    await child.status;
+  }
+});
+
 Deno.test("fillDocsHandler returns backward-compatible base64 JSON without persistence metadata", async () => {
   const handler = createFillDocsHandler({
     readTemplateBytes: () => Promise.resolve(new Uint8Array([1, 2, 3])),

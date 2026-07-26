@@ -226,8 +226,14 @@ export function createFillDocsHandler(deps: FillDocsDeps = {}) {
 
 const fillDocsHandler = createFillDocsHandler();
 
-export default createProtectedRoute(
+export const fillDocsRoute = createProtectedRoute(
   async (req: Request, userContext: UserContext) =>
     fillDocsHandler(req, userContext),
   RouteOptions.therapist,
 );
+
+if (import.meta.main) {
+  Deno.serve(fillDocsRoute);
+}
+
+export default fillDocsRoute;

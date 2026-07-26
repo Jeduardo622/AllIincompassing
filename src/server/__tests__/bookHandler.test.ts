@@ -538,6 +538,58 @@ describe("bookHandler", () => {
     expect(bookSessionMock).toHaveBeenCalledTimes(1);
   });
 
+  it("allows exact midtier scheduling staff to book another in-org therapist row", async () => {
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/user_has_role_for_org`, async ({ request }) => {
+        const body = await request.json() as { role_name?: string };
+        return HttpResponse.json(body.role_name === "midtier");
+      }),
+      http.get(`${TEST_SUPABASE_URL}/auth/v1/user`, () => HttpResponse.json({ id: "midtier-user" })),
+    );
+    bookSessionMock.mockResolvedValueOnce(createSuccessfulBookResult({
+      sessionId: "session-midtier",
+      createdBy: "midtier-user",
+    }));
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest({
+      ...validPayload,
+      session: {
+        ...validPayload.session,
+        therapist_id: "therapist-2",
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when exact scheduling staff authority cannot be verified", async () => {
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/user_has_role_for_org`, async ({ request }) => {
+        const body = await request.json() as { role_name?: string };
+        if (body.role_name === "midtier") {
+          return new HttpResponse(null, { status: 503 });
+        }
+        return HttpResponse.json(false);
+      }),
+      http.get(`${TEST_SUPABASE_URL}/auth/v1/user`, () => HttpResponse.json({ id: "midtier-user" })),
+    );
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest({
+      ...validPayload,
+      session: {
+        ...validPayload.session,
+        therapist_id: "therapist-2",
+      },
+    }));
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ code: "upstream_error" });
+    expect(bookSessionMock).not.toHaveBeenCalled();
+  });
+
   it("does not depend on BCBA authority when a therapist books their own row", async () => {
     let bcbaRoleChecks = 0;
     server.use(

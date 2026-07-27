@@ -146,6 +146,16 @@ const mockGoals = [
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
+  {
+    id: 'goal-2',
+    organization_id: 'org-a',
+    client_id: 'client-1',
+    program_id: 'program-1',
+    title: 'Request a break',
+    status: 'active',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
 ];
 
 const baseFrom = supabase.from;
@@ -160,6 +170,9 @@ const buildProgramGoalQuery = (data: unknown[]) => {
   };
   return chain;
 };
+
+const getSessionGoalCheckboxes = (name: RegExp) =>
+  screen.getAllByRole('checkbox', { name }) as HTMLInputElement[];
 
 describe('Scheduling Flow - Client with Therapist', () => {
   beforeEach(() => {
@@ -396,12 +409,18 @@ describe('Scheduling Flow - Client with Therapist', () => {
 
       const clientSelect = screen.getByRole('combobox', { name: /client/i });
       await userEvent.selectOptions(clientSelect, 'client-2');
+      const programButton = await screen.findByRole('button', { name: /Behavior Plan/i });
+      await userEvent.click(programButton);
 
-      const programSelect = screen.getByRole('combobox', { name: /program/i });
-      await userEvent.selectOptions(programSelect, 'program-1');
-
-      const goalSelect = screen.getByRole('combobox', { name: /primary goal/i });
-      await userEvent.selectOptions(goalSelect, 'goal-1');
+      const goalCheckboxes = await screen.findAllByRole('checkbox', { name: /Increase communication/i });
+      expect(goalCheckboxes).not.toHaveLength(0);
+      goalCheckboxes.forEach((checkbox) => expect(checkbox).toBeChecked());
+      const additionalGoalCheckboxes = screen.getAllByRole('checkbox', { name: /Request a break/i });
+      additionalGoalCheckboxes.forEach((checkbox) => expect(checkbox).not.toBeChecked());
+      await userEvent.click(additionalGoalCheckboxes[0]);
+      await waitFor(() => {
+        getSessionGoalCheckboxes(/Request a break/i).forEach((checkbox) => expect(checkbox).toBeChecked());
+      });
 
       const notesInput = screen.getByRole('textbox', { name: /notes/i });
       await userEvent.type(notesInput, 'Test session');
@@ -584,17 +603,13 @@ describe('Scheduling Flow - Client with Therapist', () => {
 
       expect(screen.getByText('Edit Session')).toBeInTheDocument();
       expect(screen.getByDisplayValue('Regular session')).toBeInTheDocument();
+      expect(await screen.findByText(/Tracking: Behavior Plan/i)).toBeInTheDocument();
+      getSessionGoalCheckboxes(/Increase communication/i).forEach((checkbox) => expect(checkbox).toBeChecked());
 
       // Update notes
       const notesInput = screen.getByRole('textbox', { name: /notes/i });
       await userEvent.clear(notesInput);
       await userEvent.type(notesInput, 'Updated session notes');
-
-      const programSelect = screen.getByRole('combobox', { name: /program/i });
-      await userEvent.selectOptions(programSelect, 'program-1');
-
-      const goalSelect = screen.getByRole('combobox', { name: /primary goal/i });
-      await userEvent.selectOptions(goalSelect, 'goal-1');
 
       // Submit form
       const submitButton = screen.getByRole('button', { name: /update session/i });

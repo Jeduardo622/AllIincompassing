@@ -63,16 +63,28 @@ const mockProgram = {
   updated_at: '2024-01-01T00:00:00Z',
 };
 
-const mockGoal = {
-  id: 'goal-1',
-  organization_id: 'org-a',
-  client_id: 'client-1',
-  program_id: 'program-1',
-  title: 'Increase communication',
-  status: 'active',
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-};
+const mockGoals = [
+  {
+    id: 'goal-1',
+    organization_id: 'org-a',
+    client_id: 'client-1',
+    program_id: 'program-1',
+    title: 'Increase communication',
+    status: 'active',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'goal-2',
+    organization_id: 'org-a',
+    client_id: 'client-1',
+    program_id: 'program-1',
+    title: 'Request a break',
+    status: 'active',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+];
 
 const baseFrom = supabase.from;
 const mockRpc = vi.mocked(supabase.rpc);
@@ -85,6 +97,9 @@ const buildProgramGoalQuery = (data: unknown[]) => {
   };
   return chain;
 };
+
+const getScheduleGoalCheckboxes = (name: RegExp) =>
+  screen.getAllByRole('checkbox', { name }) as HTMLInputElement[];
 
 describe('Scheduling Integration - End-to-End Flow', () => {
   beforeEach(() => {
@@ -99,7 +114,7 @@ describe('Scheduling Integration - End-to-End Flow', () => {
         return buildProgramGoalQuery([mockProgram]) as ReturnType<typeof baseFrom>;
       }
       if (table === 'goals') {
-        return buildProgramGoalQuery([mockGoal]) as ReturnType<typeof baseFrom>;
+        return buildProgramGoalQuery(mockGoals) as ReturnType<typeof baseFrom>;
       }
       return baseFrom(table);
     });
@@ -142,7 +157,7 @@ describe('Scheduling Integration - End-to-End Flow', () => {
         return HttpResponse.json([mockProgram]);
       }),
       http.get('*/rest/v1/goals*', () => {
-        return HttpResponse.json([mockGoal]);
+        return HttpResponse.json(mockGoals);
       }),
       http.post('*/api/book', async ({ request }) => {
         sessionCreated = true;
@@ -213,12 +228,18 @@ describe('Scheduling Integration - End-to-End Flow', () => {
 
     const clientSelect = document.getElementById('client-select') as HTMLSelectElement;
     await userEvent.selectOptions(clientSelect, 'client-1');
+    const programButton = await screen.findByRole('button', { name: /Behavior Plan/i });
+    await userEvent.click(programButton);
 
-    const programSelect = document.getElementById('program-select') as HTMLSelectElement;
-    await userEvent.selectOptions(programSelect, 'program-1');
-
-    const goalSelect = document.getElementById('goal-select') as HTMLSelectElement;
-    await userEvent.selectOptions(goalSelect, 'goal-1');
+    const goalCheckboxes = await screen.findAllByRole('checkbox', { name: /Increase communication/i });
+    expect(goalCheckboxes).not.toHaveLength(0);
+    goalCheckboxes.forEach((checkbox) => expect(checkbox).toBeChecked());
+    const additionalGoalCheckboxes = screen.getAllByRole('checkbox', { name: /Request a break/i });
+    additionalGoalCheckboxes.forEach((checkbox) => expect(checkbox).not.toBeChecked());
+    await userEvent.click(additionalGoalCheckboxes[0]);
+    await waitFor(() => {
+      getScheduleGoalCheckboxes(/Request a break/i).forEach((checkbox) => expect(checkbox).toBeChecked());
+    });
 
     // Add session notes
     const notesInput = screen.getByRole('textbox', { name: /notes/i });

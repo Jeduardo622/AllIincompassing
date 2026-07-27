@@ -632,6 +632,26 @@ describe("Schedule orchestration integration hardening", () => {
     });
   });
 
+  it("falls back to staff cancellation attribution when the modal does not provide one", async () => {
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    fireEvent.click(screen.getByLabelText("submit-cancel"));
+
+    await waitFor(() => {
+      expect(cancelSessionsMock).toHaveBeenCalledWith({
+        sessionIds: ["session-1"],
+        reason: "cancel reason",
+        cancellationAttribution: "staff",
+      });
+    });
+  });
+
   it("manual edit update success path stays distinct from create", async () => {
     renderWithProviders(<Schedule />);
     await screen.findByRole("heading", { name: /Schedule/i });

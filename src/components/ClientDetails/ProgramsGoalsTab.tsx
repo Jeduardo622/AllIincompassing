@@ -1364,26 +1364,28 @@ function GoalCard({
             <Pencil className="h-4 w-4" aria-hidden="true" />
           </button>
         )}
-        <button
-          type="button"
-          aria-label={`Remove ${goal.title}`}
-          title="Remove from active care plan"
-          onClick={() => {
-            if (typeof window !== "undefined") {
-              const confirmed = window.confirm(
-                `Remove goal "${goal.title}" from the active care plan?`,
-              );
-              if (!confirmed) {
-                return;
+        {canManageGoalEdit && (
+          <button
+            type="button"
+            aria-label={`Remove ${goal.title}`}
+            title="Remove from active care plan"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                const confirmed = window.confirm(
+                  `Remove goal "${goal.title}" from the active care plan?`,
+                );
+                if (!confirmed) {
+                  return;
+                }
               }
-            }
-            archiveGoal.mutate(goal);
-          }}
-          disabled={archivingGoalId === goal.id && archiveGoal.isLoading}
-          className="shrink-0 rounded-md border border-transparent p-1.5 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
-        >
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-        </button>
+              archiveGoal.mutate(goal);
+            }}
+            disabled={archivingGoalId === goal.id && archiveGoal.isLoading}
+            className="shrink-0 rounded-md border border-transparent p-1.5 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
       <GoalFieldList domainsById={domainsById} goal={goal} />
       {isEditingGoal && (

@@ -1468,8 +1468,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     }
   });
 
-  it.each(["admin", "super_admin"] as const)(
-    "shows the live goal edit affordance for %s",
+  it.each(["bcba", "midtier", "admin", "super_admin"] as const)(
+    "shows the live goal mutation affordances for %s",
     async (role) => {
       const program = buildLiveProgram("program-1", "Communication Program", "Live program");
       installProgramsGoalsTabApiMocks({
@@ -1486,6 +1486,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       });
 
       expect(await screen.findByRole("button", { name: "Edit goal Increase communication" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Remove Increase communication" })).toBeInTheDocument();
     },
   );
 
@@ -1693,6 +1694,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       expect(screen.queryByRole("button", { name: /Review and publish drafts/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Delete reviewable-caloptima\.docx/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Remove Communication Program/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Remove Increase communication/i })).not.toBeInTheDocument();
     },
   );
 

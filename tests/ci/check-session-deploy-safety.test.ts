@@ -54,6 +54,8 @@ const ciWorkflow = ({
     "build",
   ],
   deployRun = "npm run ci:deploy:session-edge-bundle",
+  fillDocsDeployRun = "npm run ci:deploy:fill-docs-function",
+  fillDocsBeforeSessionDeploy = false,
   deployAiAgentRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change_scope.outputs.ai_agent_changed == 'true'",
   deployAiAgentNeeds = ["deploy_session_edge", "change_scope"],
   deployAiAgentRun = "npm run ci:deploy:ai-agent-function",
@@ -171,9 +173,13 @@ ${deployNeeds.map((need) => `      - ${need}`).join("\n")}
     steps:
       - name: Validate session edge deploy prerequisites
         run: node scripts/ci/check-session-edge-deploy-prerequisites.mjs
-      - name: Deploy required session edge functions
+${fillDocsBeforeSessionDeploy ? `      - name: Deploy fill-docs with static templates
+        run: ${fillDocsDeployRun}
+` : ""}      - name: Deploy required session edge functions
         run: ${deployRun}
-
+${fillDocsBeforeSessionDeploy ? "" : `      - name: Deploy fill-docs with static templates
+        run: ${fillDocsDeployRun}
+`}
   deploy_ai_agent_edge:
     needs:
 ${deployAiAgentNeeds.map((need) => `      - ${need}`).join("\n")}
@@ -484,6 +490,44 @@ describe("check-session-deploy-safety", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("must contain exactly one session edge deploy command");
+  });
+
+  test("rejects a missing fill-docs deploy step", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        fillDocsDeployRun: "echo fill-docs deploy intentionally omitted",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("exactly one fill-docs deploy command");
+  });
+
+  test("rejects fill-docs deploy commands outside deploy_session_edge", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: "      - run: npm run ci:deploy:fill-docs-function",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("exactly one fill-docs deploy command");
+  });
+
+  test("rejects fill-docs deployment before the session edge bundle", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        fillDocsBeforeSessionDeploy: true,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_session_edge must validate deploy prerequisites before deploying",
+    );
   });
 
   test("rejects direct node deploy script invocations outside deploy_session_edge", () => {

@@ -333,6 +333,13 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: npm run ci:deploy:session-edge-bundle
 
+      - name: Deploy fill-docs with static templates
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: npm run ci:deploy:fill-docs-function
+
   deploy_ai_agent_edge:
     name: deploy-ai-agent-edge
     runs-on: ubuntu-latest

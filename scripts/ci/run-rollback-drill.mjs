@@ -19,7 +19,12 @@ const REQUIRED_CHECKS = [
   {
     name: "supabase branching runbook includes edge deployment contract",
     file: "docs/supabase_branching.md",
-    includes: ["npm run ci:deploy:session-edge-bundle", "verify_jwt=true"],
+    includes: [
+      "npm run ci:deploy:session-edge-bundle",
+      "npm run ci:deploy:fill-docs-function",
+      "static_files",
+      "verify_jwt=true",
+    ],
   },
 ];
 

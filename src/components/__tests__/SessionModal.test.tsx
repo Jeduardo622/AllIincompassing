@@ -1211,6 +1211,20 @@ describe('SessionModal', () => {
       await userEvent.click(checkbox);
     }
   };
+  const expandPlanGoals = async () => {
+    const disclosure = await screen.findByRole('button', { name: /plan & goals/i });
+    if (disclosure.getAttribute('aria-expanded') === 'false') {
+      await userEvent.click(disclosure);
+      await waitFor(() => expect(disclosure).toHaveAttribute('aria-expanded', 'true'));
+    }
+  };
+  const expandClinicalDetails = async () => {
+    const disclosure = screen.queryByRole('button', { name: /clinical capture and secondary details/i });
+    if (disclosure && disclosure.getAttribute('aria-expanded') === 'false') {
+      await userEvent.click(disclosure);
+      await waitFor(() => expect(disclosure).toHaveAttribute('aria-expanded', 'true'));
+    }
+  };
 
   const btInProgressSession = {
     id: 'session-bt-review', therapist_id: 'test-therapist-1', client_id: 'test-client-1',
@@ -1218,6 +1232,12 @@ describe('SessionModal', () => {
     start_time: '2026-03-01T10:00:00.000Z', end_time: '2026-03-01T11:00:00.000Z',
     status: 'in_progress', notes: '', created_at: '2026-03-01T09:00:00.000Z', created_by: null,
     updated_at: '2026-03-01T09:00:00.000Z', updated_by: null, started_at: '2026-03-01T10:00:00.000Z',
+  } satisfies Session;
+  const validScheduledSession = {
+    ...btInProgressSession,
+    id: 'session-plan-summary',
+    status: 'scheduled',
+    started_at: null,
   } satisfies Session;
 
   it('renders the modal when open', () => {
@@ -3038,6 +3058,9 @@ describe('SessionModal', () => {
         />
       );
 
+      await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+      await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+      await expandPlanGoals();
       await screen.findByRole('button', { name: /Default Program/i });
       await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
       await userEvent.click(screen.getByRole('button', { name: /Second Program/i }));
@@ -3260,7 +3283,7 @@ describe('SessionModal', () => {
     );
 
     expect(await screen.findByText(/No active goals found for this client/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Default Program$/i })).not.toBeInTheDocument();
     const unavailableGoalUpdateButton = screen.getByRole('button', { name: /Update Session/i });
     await waitFor(() => expect(unavailableGoalUpdateButton).not.toBeDisabled());
     await userEvent.click(unavailableGoalUpdateButton);
@@ -3378,7 +3401,7 @@ describe('SessionModal', () => {
     );
 
     expect(await screen.findByText(/No active goals found for this client/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Default Program$/i })).not.toBeInTheDocument();
     const legacyNoGoalUpdateButton = screen.getByRole('button', { name: /Update Session/i });
     await waitFor(() => expect(legacyNoGoalUpdateButton).not.toBeDisabled());
     await userEvent.click(legacyNoGoalUpdateButton);
@@ -4037,12 +4060,10 @@ describe('SessionModal', () => {
       expect(screen.getByLabelText(/Start Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
+      await expandPlanGoals();
       expect(await screen.findByRole('button', { name: /Default Program/i })).toBeDisabled();
-      expect(screen.getByRole('button', { name: /Second Program/i })).toBeDisabled();
-      expect(screen.getByRole('checkbox', { name: /Default Program/i })).toBeDisabled();
-      for (const goalCheckbox of screen.getAllByRole('checkbox', { name: /Default Goal/i })) {
-        expect(goalCheckbox).toBeDisabled();
-      }
+      expect(screen.queryByRole('button', { name: /Second Program/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /Default Goal/i })).not.toBeInTheDocument();
 
       const startButton = await screen.findByRole('button', { name: /Start Session/i });
       await waitFor(() => expect(startButton).not.toBeDisabled());
@@ -4278,6 +4299,7 @@ describe('SessionModal', () => {
     fireEvent.change(notes, { target: { value: 'Do not discard this entry' } });
     await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
     expect(notes).toHaveValue('Do not discard this entry');
+    await expandClinicalDetails();
     expect(await screen.findByRole('alert')).toHaveTextContent('Replacement Target');
     expect(screen.getByRole('alert')).toHaveTextContent('Baseline');
     expect(screen.getByRole('alert')).toHaveTextContent('completed session is preserved');
@@ -4389,6 +4411,7 @@ describe('SessionModal', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await expandPlanGoals();
     await screen.findByRole('button', { name: /Default Program/i });
     await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
     await selectGoalFromLowerControls(/Default Goal/i);
@@ -4457,6 +4480,7 @@ describe('SessionModal', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await expandPlanGoals();
     await screen.findByRole('button', { name: /Default Program/i });
     await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
     await selectGoalFromLowerControls(/Default Goal/i);
@@ -4473,7 +4497,6 @@ describe('SessionModal', () => {
     });
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-      session_note_goal_notes: { 'goal-1': 'Previously saved note' },
       session_note_persist_requested: false,
     }));
     confirmSpy.mockRestore();
@@ -4508,6 +4531,79 @@ describe('SessionModal', () => {
     expect(screen.queryByRole('button', { name: /Start Session/i })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /^Skill$/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /^BX$/i })).toBeInTheDocument();
+  });
+
+  it('keeps plan and goals expanded in create mode until valid selections exist', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    const disclosure = screen.getByRole('button', { name: /plan & goals/i });
+
+    expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Programs in this session')).toBeVisible();
+  });
+
+  it('defaults a valid edited plan to a compact summary and preserves values across expansion', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} session={validScheduledSession} />);
+
+    const disclosure = await screen.findByRole('button', { name: /plan & goals/i });
+
+    await waitFor(() => expect(disclosure).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.getByText(/Default Program.*Default Goal/i)).toBeVisible();
+
+    await userEvent.click(disclosure);
+    expect(screen.getByText('Programs in this session')).toBeVisible();
+
+    await userEvent.click(disclosure);
+    await userEvent.click(disclosure);
+
+    expect(screen.getAllByRole('button', { name: /Default Goal is primary goal/i })[0]).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('preserves create-mode plan selections across collapse and re-expansion after a valid plan exists', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+
+    const defaultProgramButton = await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(defaultProgramButton);
+    await userEvent.click(screen.getByRole('button', { name: /Second Program/i }));
+    const setPrimaryButton = screen.queryAllByRole('button', { name: /Set Default Goal as primary goal/i })[0];
+    if (setPrimaryButton) {
+      await userEvent.click(setPrimaryButton);
+    }
+    await selectGoalFromLowerControls(/Second Goal/);
+
+    const disclosure = screen.getByRole('button', { name: /plan & goals/i });
+    await userEvent.click(disclosure);
+    expect(screen.queryByText('Programs in this session')).not.toBeVisible();
+
+    await userEvent.click(disclosure);
+
+    expect(screen.getByRole('button', { name: /Default Program/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('button', { name: /Default Goal is primary goal/i })[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(getGoalCheckbox(/Second Goal/)).toBeChecked();
+  });
+
+  it('keeps BT clinical capture expanded when it is the primary task', () => {
+    renderWithProviders(
+      <SessionModal {...defaultProps} session={btInProgressSession} dataCollectionOnly />,
+    );
+
+    expect(screen.getByTestId('session-modal-capture-section')).toBeVisible();
+  });
+
+  it('defaults secondary clinical details collapsed for a scheduled editable session', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} session={validScheduledSession} />);
+
+    const disclosure = await screen.findByRole('button', { name: /clinical capture and secondary details/i });
+
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('session-modal-capture-section')).not.toBeVisible();
+
+    await userEvent.click(disclosure);
+
+    expect(screen.getByTestId('session-modal-capture-section')).toBeVisible();
   });
 
   it('hides goal planning and session capture fields when schedule goal capture is suppressed', async () => {
@@ -5584,6 +5680,7 @@ describe('SessionModal', () => {
         />,
       );
 
+      await expandClinicalDetails();
       await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
 
       const correctOutcome = screen.getByRole('radio', {
@@ -5615,9 +5712,11 @@ describe('SessionModal', () => {
           {...defaultProps}
           onSubmit={onSubmit}
           existingSessions={[]}
+          dataCollectionOnly
           session={session}
         />,
       );
+      await expandClinicalDetails();
       expect(await screen.findByRole('radio', {
         name: /^Correct for target 1:/i,
       })).toBeChecked();

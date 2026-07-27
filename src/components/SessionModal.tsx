@@ -808,9 +808,12 @@ export function SessionModal({
   hideGoalCaptureFields = false,
   onBtAbaSessionFinalized,
 }: SessionModalProps) {
-  const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
+  const [isPlanSectionExpanded, setIsPlanSectionExpanded] = useState(() => !session?.id);
   const [selectedProgramIds, setSelectedProgramIds] = useState<string[]>(() =>
     session?.program_id ? [session.program_id] : [],
+  );
+  const [isClinicalSectionExpanded, setIsClinicalSectionExpanded] = useState(
+    () => Boolean(dataCollectionOnly && session?.id && (session.status === 'scheduled' || session.status === 'in_progress')),
   );
   const [mobileProgramsExpanded, setMobileProgramsExpanded] = useState(false);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -828,6 +831,9 @@ export function SessionModal({
   const [, setBtAbaNoteId] = useState<string | null>(null);
   const [btAbaFinalized, setBtAbaFinalized] = useState(false);
   const btAbaTransitionRef = useRef<'idle' | 'finalizing' | 'finalized'>('idle');
+  const planDisclosureSessionKeyRef = useRef<string | null>(null);
+  const planDisclosureInitializedRef = useRef(false);
+  const planDisclosureTouchedRef = useRef(false);
   const closeoutCaptureRef = useRef<{
     notePayload: BtAbaSessionNotePayload;
     trialEvents: SessionCaptureTrialEventInput[];
@@ -1316,6 +1322,14 @@ export function SessionModal({
     () => selectedGoalsForSession.map((goal) => goal.title).join(', '),
     [selectedGoalsForSession],
   );
+  const hasResolvedValidPlan = Boolean(
+    programId &&
+    goalId &&
+    programsById.has(programId) &&
+    goalsById.has(goalId),
+  );
+  const planSummaryProgramName = programsById.get(programId ?? '')?.name ?? 'Program needed';
+  const planSummaryGoalName = selectedPrimaryGoal?.title ?? 'Goal needed';
   const canonicalStartGoalIds = useMemo(
     () => resolveSessionCloseRequiredGoalIds({
       sessionGoalIds: sessionGoalRows.map((row) => row.goal_id),
@@ -2576,6 +2590,8 @@ export function SessionModal({
     }
     return isInProgressSession ? 'live' : 'edit';
   }, [session, isInProgressSession]);
+  const isPrimaryClinicalCaptureMode = isDataCollectionOnly || isBtClinicalCaptureSession || isInProgressSession;
+  const planDisclosureSessionKey = session?.id ?? '__new__';
   const modalTitle = useMemo(() => {
     if (!session) {
       return 'New Session';
@@ -3252,16 +3268,49 @@ export function SessionModal({
 
   useEffect(() => {
     if (!isOpen) {
-      setIsPlanSummaryExpanded(false);
+      planDisclosureSessionKeyRef.current = null;
+      planDisclosureInitializedRef.current = false;
+      planDisclosureTouchedRef.current = false;
+      setIsPlanSectionExpanded(!session?.id);
+      setIsClinicalSectionExpanded(isPrimaryClinicalCaptureMode);
     }
-  }, [isOpen]);
+  }, [isOpen, isPrimaryClinicalCaptureMode, session?.id]);
 
   useEffect(() => {
-    if (!isOpen || !isInProgressSession) {
+    if (!isOpen) {
       return;
     }
-    setIsPlanSummaryExpanded(false);
-  }, [isOpen, isInProgressSession, session?.id]);
+    if (planDisclosureSessionKeyRef.current !== planDisclosureSessionKey) {
+      planDisclosureSessionKeyRef.current = planDisclosureSessionKey;
+      planDisclosureInitializedRef.current = false;
+      planDisclosureTouchedRef.current = false;
+    }
+    if (!session?.id) {
+      if (!planDisclosureInitializedRef.current) {
+        setIsPlanSectionExpanded(true);
+        planDisclosureInitializedRef.current = true;
+      }
+      setIsClinicalSectionExpanded(isPrimaryClinicalCaptureMode);
+      return;
+    }
+    if (!planDisclosureInitializedRef.current && hasResolvedValidPlan) {
+      if (!planDisclosureTouchedRef.current) {
+        setIsPlanSectionExpanded(false);
+      }
+      planDisclosureInitializedRef.current = true;
+    }
+    if (!planDisclosureInitializedRef.current && !hasResolvedValidPlan && !planDisclosureTouchedRef.current) {
+      setIsPlanSectionExpanded(true);
+    }
+    setIsClinicalSectionExpanded(isPrimaryClinicalCaptureMode);
+  }, [hasResolvedValidPlan, isOpen, isPrimaryClinicalCaptureMode, planDisclosureSessionKey, session?.id]);
+
+  useEffect(() => {
+    if (!isOpen || (!progressionConflict && progressionNotices.length === 0)) {
+      return;
+    }
+    setIsClinicalSectionExpanded(true);
+  }, [isOpen, progressionConflict, progressionNotices]);
 
   useEffect(() => {
     if (!isOpen || !isInProgressSession) {
@@ -3333,7 +3382,7 @@ export function SessionModal({
     >
       <div
         ref={dialogRef}
-        className="flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl dark:bg-dark-lighter sm:h-auto sm:max-h-[90vh] sm:rounded-xl"
+        className="flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl dark:bg-dark-lighter sm:h-auto sm:max-h-[86vh] sm:rounded-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby={dialogTitleId}
@@ -3343,7 +3392,7 @@ export function SessionModal({
         tabIndex={-1}
       >
         {/* Header */}
-        <div className="border-b bg-white px-4 py-3 dark:border-gray-700 dark:bg-dark-lighter sm:px-5 sm:py-4">
+        <div className="border-b bg-white px-4 py-2.5 dark:border-gray-700 dark:bg-dark-lighter sm:px-5 sm:py-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
@@ -3375,7 +3424,7 @@ export function SessionModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 sm:p-5 sm:pb-6 max-sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
+        <div className="flex-1 overflow-y-auto px-4 py-3 pb-24 sm:p-4 sm:pb-5 max-sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
           <p id={dialogDescriptionId} className="sr-only">
             Use this form to create or update a therapy session.
           </p>
@@ -3571,15 +3620,22 @@ export function SessionModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsPlanSummaryExpanded((current) => !current)}
-                  aria-expanded={isPlanSummaryExpanded}
-                  className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-white dark:border-gray-700 dark:text-gray-300 dark:hover:bg-dark"
+                  aria-expanded={isPlanSectionExpanded}
+                  aria-controls="session-modal-plan-goals"
+                  onClick={() => {
+                    planDisclosureTouchedRef.current = true;
+                    setIsPlanSectionExpanded((current) => !current);
+                  }}
+                  className="flex min-w-0 items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-left text-xs font-medium text-gray-600 hover:bg-white dark:border-gray-700 dark:text-gray-300 dark:hover:bg-dark"
                 >
-                  {isPlanSummaryExpanded ? 'Hide summary' : 'Show summary'}
+                  <span>Plan &amp; goals</span>
+                  <span aria-hidden="true" className="truncate text-[11px] text-gray-500 dark:text-gray-400">
+                    {planSummaryProgramName} · {planSummaryGoalName}
+                  </span>
                 </button>
               </div>
 
-              {isPlanSummaryExpanded && (selectedTherapist || selectedClient || selectedPrimaryGoal) && (
+              {(selectedTherapist || selectedClient || selectedPrimaryGoal) && (
                 <div className="grid gap-2 rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-300 sm:grid-cols-3">
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-900 dark:text-white">Therapist</p>
@@ -3650,6 +3706,7 @@ export function SessionModal({
               </div>
             </div>
 
+            <div id="session-modal-plan-goals" hidden={!isPlanSectionExpanded} className="space-y-4">
             {!shouldHideGoalCaptureFields && selectedPrimaryGoal && (
               <>
                 <details className="rounded-lg border border-blue-200 bg-blue-50 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100 sm:hidden">
@@ -3794,7 +3851,6 @@ export function SessionModal({
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.goal_id.message}</p>
               )}
 
-            {availableProgramGroups.length > 0 && (
               <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -3807,6 +3863,8 @@ export function SessionModal({
                     {selectedProgramIds.length} selected
                   </span>
                 </div>
+                {availableProgramGroups.length > 0 ? (
+                  <>
                 <div className="hidden flex-wrap gap-2 sm:flex">
                   {availableProgramGroups.map(({ program, goals: groupedGoals }) => {
                     const isSelected = selectedProgramSet.has(program.id);
@@ -3874,8 +3932,13 @@ export function SessionModal({
                     Tracking: {selectedPrograms.map((program) => program.name).join(', ')}
                   </p>
                 )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Select a client to load active programs and goals.
+                  </p>
+                )}
               </div>
-            )}
             </div>
 
             {selectedProgramGoals.length > 0 && (
@@ -4047,6 +4110,7 @@ export function SessionModal({
                 <input type="hidden" {...register('goal_id')} />
               </>
             )}
+            </div>
             </section>
 
             <section className="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
@@ -4191,8 +4255,27 @@ export function SessionModal({
             </section>
 
             {session?.id && !shouldHideGoalCaptureFields && (
+              <>
+                {!isPrimaryClinicalCaptureMode ? (
+                  <button
+                    type="button"
+                    aria-expanded={isClinicalSectionExpanded}
+                    aria-controls="session-modal-clinical-details"
+                    onClick={() => setIsClinicalSectionExpanded((current) => !current)}
+                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-left dark:border-indigo-900/40 dark:bg-indigo-900/10"
+                  >
+                    <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                      Clinical capture and secondary details
+                    </span>
+                    <span className="text-xs text-indigo-700 dark:text-indigo-300">
+                      {isClinicalSectionExpanded ? 'Expanded' : 'Collapsed'}
+                    </span>
+                  </button>
+                ) : null}
               <section
+                id="session-modal-clinical-details"
                 ref={sessionCaptureSectionRef}
+                hidden={!isClinicalSectionExpanded}
                 className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-4 dark:border-indigo-900/40 dark:bg-indigo-900/10"
                 data-testid="session-modal-capture-section"
               >
@@ -5140,6 +5223,7 @@ export function SessionModal({
                   </>
                 )}
               </section>
+              </>
             )}
           </form>
           )}
@@ -5147,7 +5231,7 @@ export function SessionModal({
 
         {/* Footer */}
         {modalStep === 'capture' && !isCompletedBtAbaSession ? (
-        <div className="sticky bottom-0 z-10 border-t border-gray-200/80 bg-white/90 px-4 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md dark:border-gray-700 dark:bg-dark-lighter/90 sm:px-5 sm:py-4 sm:pb-4">
+        <div className="sticky bottom-0 z-10 border-t border-gray-200/80 bg-white/90 px-4 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md dark:border-gray-700 dark:bg-dark-lighter/90 sm:px-5 sm:py-3 sm:pb-3">
           <div className="flex flex-col gap-3">
             <div
               role="group"

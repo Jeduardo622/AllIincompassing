@@ -2508,7 +2508,12 @@ export function SessionModal({
   };
 
   useEffect(() => {
-    if (sessionStatus !== 'cancelled' || !sessionDetails) {
+    if (
+      sessionStatus !== 'cancelled' ||
+      !sessionDetails ||
+      dirtyFields.status ||
+      dirtyFields.cancellation_attribution
+    ) {
       return;
     }
 
@@ -2523,7 +2528,14 @@ export function SessionModal({
         shouldTouch: false,
       });
     }
-  }, [cancellationAttribution, sessionDetails, sessionStatus, setValue]);
+  }, [
+    cancellationAttribution,
+    dirtyFields.cancellation_attribution,
+    dirtyFields.status,
+    sessionDetails,
+    sessionStatus,
+    setValue,
+  ]);
 
   const hasStartedSession = Boolean(sessionDetails?.started_at ?? session?.started_at);
   const hasTerminalSessionStatus =

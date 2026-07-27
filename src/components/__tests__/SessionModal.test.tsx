@@ -1,6 +1,6 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
-import { fireEvent } from '@testing-library/react';
+import { act, fireEvent } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import {
   buildCloseoutDataPoints,
@@ -3576,6 +3576,129 @@ describe('SessionModal', () => {
       const statusSelect = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
       await waitFor(() => expect(statusSelect.value).toBe('cancelled:unknown'));
       expect(statusSelect.selectedOptions[0]?.textContent).toBe('Cancelled — attribution unavailable');
+    });
+
+    it('does not reapply persisted cancellation attribution after the user changes it', async () => {
+      const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      };
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'sessions') {
+          return buildChain([], {
+            program_id: 'program-1',
+            goal_id: 'goal-1',
+            started_at: null,
+            location_type: null,
+            cancellation_attribution: null,
+          });
+        }
+        if (table === 'programs') return buildChain(mockPrograms);
+        if (table === 'goals') return buildChain(mockGoals);
+        return buildChain([]);
+      });
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          onSubmit={onSubmit}
+          session={{ ...editSession, status: 'cancelled', cancellation_attribution: undefined }}
+        />,
+      );
+
+      const statusSelect = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
+      await waitFor(() => expect(statusSelect.value).toBe('cancelled:unknown'));
+      await userEvent.selectOptions(statusSelect, 'Client cancellation');
+      await waitFor(() => expect(statusSelect.value).toBe('cancelled:client'));
+      await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+          status: 'cancelled',
+          cancellation_attribution: 'client',
+        }));
+      });
+    });
+
+    it('does not overwrite a new cancellation choice when stale session details arrive later', async () => {
+      type SessionDetailsResponse = {
+        data: {
+          program_id: string;
+          goal_id: string;
+          started_at: null;
+          location_type: null;
+          cancellation_attribution: null;
+        };
+        error: null;
+      };
+      let resolveSessionDetails: ((value: SessionDetailsResponse) => void) | undefined;
+      const sessionDetailsPromise = new Promise<SessionDetailsResponse>((resolve) => {
+        resolveSessionDetails = resolve;
+      });
+      const buildChain = (rows: unknown[]) => {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      };
+      const sessionChain = buildChain([]);
+      sessionChain.maybeSingle = vi.fn(() => sessionDetailsPromise);
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'sessions') return sessionChain;
+        if (table === 'programs') return buildChain(mockPrograms);
+        if (table === 'goals') return buildChain(mockGoals);
+        return buildChain([]);
+      });
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          onSubmit={onSubmit}
+          session={editSession}
+        />,
+      );
+
+      const statusSelect = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
+      await waitFor(() => expect(sessionChain.maybeSingle).toHaveBeenCalled());
+      await userEvent.selectOptions(statusSelect, 'Client cancellation');
+      expect(statusSelect.value).toBe('cancelled:client');
+
+      await act(async () => {
+        resolveSessionDetails?.({
+          data: {
+            program_id: 'program-1',
+            goal_id: 'goal-1',
+            started_at: null,
+            location_type: null,
+            cancellation_attribution: null,
+          },
+          error: null,
+        });
+        await sessionDetailsPromise;
+      });
+
+      await waitFor(() => expect(statusSelect.value).toBe('cancelled:client'));
+      await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+          status: 'cancelled',
+          cancellation_attribution: 'client',
+        }));
+      });
     });
 
     it.each([

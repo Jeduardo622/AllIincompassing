@@ -48,6 +48,8 @@ Result: 3 tests failed for the expected missing behaviors:
 - persisted client attribution displayed as staff
 - unknown persisted attribution displayed as staff
 
+After PR review identified a stale hydration overwrite, a focused regression was added and failed before the follow-up fix because a user-selected client cancellation reverted to unknown. The hydration effect now skips server reconciliation after either cancellation field becomes dirty. The correction and delayed-response regressions both pass.
+
 ## Verification Card
 
 - classification: `low-risk autonomous`
@@ -65,7 +67,8 @@ Result: 3 tests failed for the expected missing behaviors:
 - executed checks:
   - focused red run: 3 expected failures before implementation
   - focused green run: 3 passed
-  - SessionModal and scheduling regression run: 196 passed
+  - cancellation review follow-up: 2 passed
+  - SessionModal and scheduling regression run: 198 passed
   - `npm run ci:check-focused`: passed; secret-backed database checks and CI-only branch-protection checks skipped by the command as expected
   - `npm run lint`: passed
   - `npm run typecheck`: passed
@@ -83,4 +86,4 @@ Result: 3 tests failed for the expected missing behaviors:
 - Linear: WIN-259
 - branch: `codex/win-258-review-followups`
 - PR: https://github.com/Jeduardo622/AllIincompassing/pull/869
-- reviewer: approved with no required changes
+- reviewer: approved both the original slice and the dirty-field hydration guard with no required changes

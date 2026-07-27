@@ -433,7 +433,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     return json({ error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
   }
 
-  const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
+  const { organizationId } = await resolveOrgAndRole(accessToken);
   if (!organizationId) {
     return json({ error: "Forbidden" }, 403);
   }

@@ -1376,8 +1376,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   const { effectiveRole, hasCapability, session } = useAuth();
-  const canManageProgramsGoals = hasCapability("manageProgramsGoals")
-    || ["admin", "midtier", "bcba", "super_admin"].includes(effectiveRole ?? "");
+  const canManageProgramsGoals = hasCapability("manageProgramsGoals");
   const canManageProgression = canRoleManageGoalTargetProgression(effectiveRole);
   const canDeleteGoalTargets = hasCapability("deleteGoalTargets");
   const publishSectionRef = useRef<HTMLDivElement | null>(null);
@@ -3026,27 +3025,29 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                             </div>
                           )}
                         </button>
-                        <div className="px-2 pb-2 pt-1 flex justify-end">
-                          <button
-                            type="button"
-                            aria-label={`Delete ${doc.file_name}`}
-                            title={`Delete ${doc.file_name}`}
-                            onClick={() => {
-                              if (typeof window !== "undefined") {
-                                const confirmed = window.confirm(`Delete ${doc.file_name}? This cannot be undone.`);
-                                if (!confirmed) {
-                                  return;
+                        {canManageProgramsGoals && (
+                          <div className="px-2 pb-2 pt-1 flex justify-end">
+                            <button
+                              type="button"
+                              aria-label={`Delete ${doc.file_name}`}
+                              title={`Delete ${doc.file_name}`}
+                              onClick={() => {
+                                if (typeof window !== "undefined") {
+                                  const confirmed = window.confirm(`Delete ${doc.file_name}? This cannot be undone.`);
+                                  if (!confirmed) {
+                                    return;
+                                  }
                                 }
-                              }
-                              deleteAssessmentDocument.mutate(doc);
-                            }}
-                            disabled={deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
+                                deleteAssessmentDocument.mutate(doc);
+                              }}
+                              disabled={deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -3244,7 +3245,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         </div>
 
         <div className="lg:col-span-2 space-y-4">
-          {ENABLE_CHECKLIST_MAPPING_UI && canManageProgramsGoals && (
+          {ENABLE_CHECKLIST_MAPPING_UI && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
                 {selectedAssessmentTemplateLabel} Checklist Review
@@ -3297,24 +3298,26 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           <p className="text-xs text-amber-700 dark:text-amber-200">{iehpPublishDisabledReason}</p>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (typeof window !== "undefined") {
-                            const confirmed = window.confirm(
-                              "Publish this reviewed IEHP assessment and complete the workflow?",
-                            );
-                            if (!confirmed) {
-                              return;
+                      {canManageProgramsGoals && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== "undefined") {
+                              const confirmed = window.confirm(
+                                "Publish this reviewed IEHP assessment and complete the workflow?",
+                              );
+                              if (!confirmed) {
+                                return;
+                              }
                             }
-                          }
-                          promoteAssessment.mutate();
-                        }}
-                        disabled={Boolean(iehpPublishDisabledReason) || promoteAssessment.isLoading}
-                        className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {promoteAssessment.isLoading ? "Publishing..." : "Publish Reviewed Assessment"}
-                      </button>
+                            promoteAssessment.mutate();
+                          }}
+                          disabled={Boolean(iehpPublishDisabledReason) || promoteAssessment.isLoading}
+                          className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {promoteAssessment.isLoading ? "Publishing..." : "Publish Reviewed Assessment"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3345,7 +3348,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                 <select
                                   value={edit.status}
-                                  disabled={isApprovedStatusLocked}
+                                  disabled={!canManageProgramsGoals || isApprovedStatusLocked}
                                   onChange={(event) =>
                                     setChecklistEdits((current) => ({
                                       ...current,
@@ -3364,6 +3367,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 </select>
                                 <input
                                   value={edit.reviewNotes}
+                                  disabled={!canManageProgramsGoals}
                                   onChange={(event) =>
                                     setChecklistEdits((current) => ({
                                       ...current,
@@ -3378,6 +3382,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 />
                                 <input
                                   value={edit.valueText}
+                                  disabled={!canManageProgramsGoals}
                                   onChange={(event) =>
                                     setChecklistEdits((current) => ({
                                       ...current,
@@ -3391,14 +3396,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                   className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
                                 />
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => updateChecklistItem.mutate(row.id)}
-                                disabled={updateChecklistItem.isLoading}
-                                className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-                              >
-                                Save Checklist Row
-                              </button>
+                              {canManageProgramsGoals && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateChecklistItem.mutate(row.id)}
+                                  disabled={updateChecklistItem.isLoading}
+                                  className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  Save Checklist Row
+                                </button>
+                              )}
                               {isApprovedStatusLocked && (
                                 <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
                                   Approved checklist rows stay approved; update notes or field value without lowering status.
@@ -3456,7 +3463,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                   <div className="grid grid-cols-1 gap-2">
                                     <select
                                       value={edit.status}
-                                      disabled={isApprovedStatusLocked}
+                                      disabled={!canManageProgramsGoals || isApprovedStatusLocked}
                                       onChange={(event) =>
                                         setStructuredSectionEdits((current) => ({
                                           ...current,
@@ -3476,7 +3483,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                     </select>
                                     <input
                                       value={edit.reviewNotes}
-                                      disabled={isApprovedStatusLocked}
+                                      disabled={!canManageProgramsGoals || isApprovedStatusLocked}
                                       onChange={(event) =>
                                         setStructuredSectionEdits((current) => ({
                                           ...current,
@@ -3492,7 +3499,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                     <textarea
                                       value={edit.payload}
                                       rows={8}
-                                      disabled={isApprovedStatusLocked}
+                                      disabled={!canManageProgramsGoals || isApprovedStatusLocked}
                                       onChange={(event) =>
                                         setStructuredSectionEdits((current) => ({
                                           ...current,
@@ -3505,14 +3512,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                       className="font-mono rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-xs"
                                     />
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateStructuredSection.mutate(row.id)}
-                                    disabled={updateStructuredSection.isLoading || isApprovedStatusLocked}
-                                    className="mt-2 px-3 py-1 text-xs font-medium text-white bg-cyan-700 rounded hover:bg-cyan-800 disabled:opacity-50"
-                                  >
-                                    Save Structured Section
-                                  </button>
+                                  {canManageProgramsGoals && (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateStructuredSection.mutate(row.id)}
+                                      disabled={updateStructuredSection.isLoading || isApprovedStatusLocked}
+                                      className="mt-2 px-3 py-1 text-xs font-medium text-white bg-cyan-700 rounded hover:bg-cyan-800 disabled:opacity-50"
+                                    >
+                                      Save Structured Section
+                                    </button>
+                                  )}
                                   {isApprovedStatusLocked && (
                                     <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
                                       Approved structured sections are locked to preserve reviewed document data for export.
@@ -3531,7 +3540,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             </div>
           )}
 
-          {canManageProgramsGoals && showDraftReviewPanel && (
+          {showDraftReviewPanel && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
               Draft Review (Approve / Reject / Edit)
@@ -3565,6 +3574,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       <div className="grid grid-cols-1 gap-2">
                         <input
                           value={edit.name}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftProgramEdits((current) => ({
                               ...current,
@@ -3578,6 +3588,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.description}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftProgramEdits((current) => ({
                               ...current,
@@ -3593,6 +3604,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <select
                             value={edit.acceptState}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftProgramEdits((current) => ({
                                 ...current,
@@ -3611,6 +3623,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           </select>
                           <input
                             value={edit.reviewNotes}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftProgramEdits((current) => ({
                                 ...current,
@@ -3625,14 +3638,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           />
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => updateDraftProgram.mutate(program.id)}
-                        disabled={updateDraftProgram.isLoading}
-                        className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        Save Program Draft
-                      </button>
+                      {canManageProgramsGoals && (
+                        <button
+                          type="button"
+                          onClick={() => updateDraftProgram.mutate(program.id)}
+                          disabled={updateDraftProgram.isLoading}
+                          className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          Save Program Draft
+                        </button>
+                      )}
                       <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
                         {draftSaveHelperText}
                       </p>
@@ -3665,6 +3680,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       <div className="grid grid-cols-1 gap-2">
                         <input
                           value={edit.title}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3678,6 +3694,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.description}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3692,6 +3709,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.originalText}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3706,6 +3724,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <select
                           value={edit.goalType}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3722,6 +3741,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         </select>
                         <input
                           value={edit.measurementType}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3736,6 +3756,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.baselineData}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3753,6 +3774,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           <textarea
                             key={`${goal.id}-${key}`}
                             value={edit[key]}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftGoalEdits((current) => ({
                                 ...current,
@@ -3769,6 +3791,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         ))}
                         <textarea
                           value={edit.masteryCriteria}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3784,6 +3807,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.maintenanceCriteria}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3799,6 +3823,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.generalizationCriteria}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3814,6 +3839,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.objectiveDataPoints}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3830,6 +3856,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <select
                             value={edit.acceptState}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftGoalEdits((current) => ({
                                 ...current,
@@ -3848,6 +3875,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           </select>
                           <input
                             value={edit.reviewNotes}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftGoalEdits((current) => ({
                                 ...current,
@@ -3862,14 +3890,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           />
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => updateDraftGoal.mutate(goal.id)}
-                        disabled={updateDraftGoal.isLoading}
-                        className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        Save Goal Draft
-                      </button>
+                      {canManageProgramsGoals && (
+                        <button
+                          type="button"
+                          onClick={() => updateDraftGoal.mutate(goal.id)}
+                          disabled={updateDraftGoal.isLoading}
+                          className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          Save Goal Draft
+                        </button>
+                      )}
                       <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
                         {draftSaveHelperText}
                       </p>
@@ -3893,24 +3923,26 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           <p className="text-xs text-amber-700 dark:text-amber-200">{promoteDisabledReason}</p>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (typeof window !== "undefined") {
-                            const confirmed = window.confirm(
-                              "Publish accepted assessment drafts to this client's live Programs & Goals?",
-                            );
-                            if (!confirmed) {
-                              return;
+                      {canManageProgramsGoals && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== "undefined") {
+                              const confirmed = window.confirm(
+                                "Publish accepted assessment drafts to this client's live Programs & Goals?",
+                              );
+                              if (!confirmed) {
+                                return;
+                              }
                             }
-                          }
-                          promoteAssessment.mutate();
-                        }}
-                        disabled={Boolean(promoteDisabledReason) || promoteAssessment.isLoading}
-                        className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {promoteAssessment.isLoading ? "Publishing..." : "Publish to Live Programs + Goals"}
-                      </button>
+                            promoteAssessment.mutate();
+                          }}
+                          disabled={Boolean(promoteDisabledReason) || promoteAssessment.isLoading}
+                          className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {promoteAssessment.isLoading ? "Publishing..." : "Publish to Live Programs + Goals"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

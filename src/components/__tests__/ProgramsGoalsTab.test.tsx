@@ -23,9 +23,18 @@ const { storageUploadMock, storageRemoveMock } = vi.hoisted(() => ({
 }));
 type ProgramsGoalsTabClient = React.ComponentProps<typeof ProgramsGoalsTab>["client"];
 
-const seedStubAuthState = () => {
+const seedStubAuthState = (overrides?: {
+  userRole?: string;
+  sessionRole?: string;
+  profileRole?: string;
+  organizationId?: string;
+}) => {
   const now = new Date();
   const nowIso = now.toISOString();
+  const userRole = overrides?.userRole ?? "therapist";
+  const sessionRole = overrides?.sessionRole ?? userRole;
+  const profileRole = overrides?.profileRole ?? "midtier";
+  const organizationId = overrides?.organizationId ?? ORG_ID;
 
   window.localStorage.setItem(
     STUB_AUTH_STORAGE_KEY,
@@ -33,20 +42,20 @@ const seedStubAuthState = () => {
       user: {
         id: "therapist-user-id",
         email: "therapist@example.com",
-        role: "therapist",
+        role: userRole,
         full_name: "Test User",
         first_name: "Test",
         last_name: "User",
       },
-      role: "therapist",
+      role: sessionRole,
       accessToken: "test-access-token",
       refreshToken: "test-refresh-token",
       expiresAt: now.getTime() + 60 * 60 * 1000,
       profile: {
         id: "therapist-user-id",
         email: "therapist@example.com",
-        role: "midtier",
-        organization_id: ORG_ID,
+        role: profileRole,
+        organization_id: organizationId,
         full_name: "Test User",
         is_active: true,
         created_at: nowIso,
@@ -1018,6 +1027,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     const manualProgram = buildLiveProgram("program-manual", "Manual Communication Program", "Original manual description");
     const promotedProgram = buildLiveProgram("program-promoted", "Promoted Behavior Program", "Original promoted description");
     let currentPrograms = [manualProgram, promotedProgram];
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
     installProgramsGoalsTabApiMocks({
       programs: [manualProgram, promotedProgram],
     });
@@ -1075,13 +1090,22 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
     });
 
-    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
-      auth: {
-        role: "admin",
-        organizationId: ORG_ID,
-        accessToken: "test-access-token",
-      },
+    const activeOrganizationSpy = vi.spyOn(organizationModule, "useActiveOrganizationId").mockReturnValue(ORG_ID);
+    seedStubAuthState({
+      userRole: "midtier",
+      sessionRole: "midtier",
+      profileRole: "midtier",
     });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <AuthProvider>
+            <ProgramsGoalsTab client={buildClient()} />
+          </AuthProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
 
     expect(await screen.findByText("Manual Communication Program")).toBeInTheDocument();
 
@@ -1122,9 +1146,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       );
     });
     expect(await screen.findByText("Updated Promoted Program")).toBeInTheDocument();
+    activeOrganizationSpy.mockRestore();
   });
 
-  it.each(["bcba", "admin", "super_admin"] as const)(
+  it.each(["bcba", "midtier", "admin", "super_admin"] as const)(
     "shows the live program edit affordance for %s",
     async (role) => {
       installProgramsGoalsTabApiMocks({
@@ -1168,13 +1193,13 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
             id: ASSESSMENT_ID,
             organization_id: ORG_ID,
             client_id: "client-1",
-            template_type: "iehp_fba",
-            file_name: "reviewable-iehp.docx",
+            template_type: "caloptima_fba",
+            file_name: "reviewable-caloptima.docx",
             mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             file_size: 1000,
             bucket_id: "client-documents",
-            object_path: "clients/client-1/assessments/reviewable-iehp.docx",
-            status: "extracted",
+            object_path: "clients/client-1/assessments/reviewable-caloptima.docx",
+            status: "drafted",
             created_at: "2026-02-11T00:00:00.000Z",
           },
         ],
@@ -1234,6 +1259,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       });
 
       expect(await screen.findByText("Communication Program")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /Checklist Review/i })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Edit program Communication Program" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Create Program/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Create Goal/i })).not.toBeInTheDocument();
@@ -1243,6 +1269,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       expect(screen.queryByRole("button", { name: /Save Goal Draft/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Publish Reviewed Assessment/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Review and publish drafts/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Delete reviewable-caloptima\.docx/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Remove Communication Program/i })).not.toBeInTheDocument();
     },
   );
@@ -6323,7 +6350,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },

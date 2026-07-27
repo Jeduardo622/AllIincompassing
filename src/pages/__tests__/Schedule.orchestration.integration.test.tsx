@@ -134,6 +134,7 @@ vi.mock("../../components/SessionModal", () => ({
     retryHint,
     dataCollectionOnly,
     allowStartSession,
+    canCreateSchedules,
     hideGoalCaptureFields,
     onBtAbaSessionFinalized,
   }: {
@@ -144,6 +145,7 @@ vi.mock("../../components/SessionModal", () => ({
     retryHint?: string | null;
     dataCollectionOnly?: boolean;
     allowStartSession?: boolean;
+    canCreateSchedules?: boolean;
     hideGoalCaptureFields?: boolean;
     onBtAbaSessionFinalized?: (result: { sessionId: string; noteId: string; status: 'completed'; progressionResults: [] }) => Promise<void>;
   }) =>
@@ -153,6 +155,7 @@ vi.mock("../../components/SessionModal", () => ({
         <div data-testid="retry-hint">{retryHint ?? ""}</div>
         <div data-testid="data-collection-only">{dataCollectionOnly ? "true" : "false"}</div>
         <div data-testid="allow-start-session">{allowStartSession ? "true" : "false"}</div>
+        <div data-testid="can-create-schedules">{canCreateSchedules ? "true" : "false"}</div>
         <div data-testid="hide-goal-capture-fields">{hideGoalCaptureFields ? "true" : "false"}</div>
         <button
           aria-label="submit-complete-with-stale-trial"
@@ -373,6 +376,21 @@ vi.mock("../../components/SessionModal", () => ({
         >
           submit-cancel
         </button>
+        <button
+          aria-label="submit-cancel-client"
+          onClick={() => {
+            const result = onSubmit({
+              id: session?.id,
+              status: "cancelled",
+              cancellation_attribution: "client",
+            });
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          submit-cancel-client
+        </button>
         <button aria-label="close-modal" onClick={onClose}>
           close-modal
         </button>
@@ -572,6 +590,46 @@ describe("Schedule orchestration integration hardening", () => {
       }));
     });
     expect(showSuccessMock).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["midtier", "midtier", "true"],
+    ["admin schedule", "admin_schedule", "true"],
+    ["admin", "admin", "true"],
+    ["bcba", "bcba", "true"],
+    ["super admin", "super_admin", "true"],
+    ["bt", "bt", "false"],
+    ["therapist", "therapist", "false"],
+  ] as const)("wires create schedules permission for %s", async (_label, role, expectedCanCreate) => {
+    renderWithProviders(<Schedule />, {
+      auth: { role, organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("can-create-schedules")).toHaveTextContent(expectedCanCreate);
+  });
+
+  it("forwards cancellation attribution through the schedule modal boundary", async () => {
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    fireEvent.click(screen.getByLabelText("submit-cancel-client"));
+
+    await waitFor(() => {
+      expect(cancelSessionsMock).toHaveBeenCalledWith({
+        sessionIds: ["session-1"],
+        reason: undefined,
+        cancellationAttribution: "client",
+      });
+    });
   });
 
   it("manual edit update success path stays distinct from create", async () => {

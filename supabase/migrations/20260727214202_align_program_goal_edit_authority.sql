@@ -33,7 +33,9 @@ AS $$
     );
 $$;
 
+REVOKE EXECUTE ON FUNCTION app.current_user_can_manage_programs_goals(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION app.current_user_can_manage_programs_goals(uuid) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION app.current_user_can_read_client_programs(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION app.current_user_can_read_client_programs(uuid, uuid) TO authenticated, service_role;
 REVOKE EXECUTE ON FUNCTION public.current_user_can_manage_programs_goals(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.current_user_can_manage_programs_goals(uuid) TO authenticated, service_role;

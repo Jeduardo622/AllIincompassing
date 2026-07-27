@@ -316,6 +316,26 @@ describe('employee role capability matrix migration', () => {
     expect(alignedReadHelper).not.toContain("'admin_schedule'");
   });
 
+  it('removes public and anonymous execution from the protected program-goal helpers before granting intended roles', () => {
+    const revokeManage =
+      'REVOKE EXECUTE ON FUNCTION app.current_user_can_manage_programs_goals(uuid) FROM PUBLIC, anon;';
+    const grantManage =
+      'GRANT EXECUTE ON FUNCTION app.current_user_can_manage_programs_goals(uuid) TO authenticated, service_role;';
+    const revokeRead =
+      'REVOKE EXECUTE ON FUNCTION app.current_user_can_read_client_programs(uuid, uuid) FROM PUBLIC, anon;';
+    const grantRead =
+      'GRANT EXECUTE ON FUNCTION app.current_user_can_read_client_programs(uuid, uuid) TO authenticated, service_role;';
+
+    expect(alignProgramGoalEditAuthoritySql).toContain(revokeManage);
+    expect(alignProgramGoalEditAuthoritySql).toContain(revokeRead);
+    expect(alignProgramGoalEditAuthoritySql.indexOf(revokeManage)).toBeLessThan(
+      alignProgramGoalEditAuthoritySql.indexOf(grantManage),
+    );
+    expect(alignProgramGoalEditAuthoritySql.indexOf(revokeRead)).toBeLessThan(
+      alignProgramGoalEditAuthoritySql.indexOf(grantRead),
+    );
+  });
+
   it('recreates program_notes manage policies around the shared program-goal authority helper', () => {
     expect(alignProgramGoalEditAuthoritySql).toContain('DROP POLICY IF EXISTS program_notes_org_manage ON public.program_notes;');
     expect(alignProgramGoalEditAuthoritySql).toContain('CREATE POLICY program_notes_org_manage');

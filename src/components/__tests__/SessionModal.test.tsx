@@ -1210,17 +1210,6 @@ describe('SessionModal', () => {
     }));
   };
 
-  const bridgeWindowTimersToFakeClock = () => {
-    const originalSetTimeout = window.setTimeout;
-    const originalClearTimeout = window.clearTimeout;
-    window.setTimeout = globalThis.setTimeout;
-    window.clearTimeout = globalThis.clearTimeout;
-    return () => {
-      window.setTimeout = originalSetTimeout;
-      window.clearTimeout = originalClearTimeout;
-    };
-  };
-
   const expectVisiblePlanSelectorsRemoved = () => {
     expect(screen.queryByRole('combobox', { name: /^Program$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: /^Primary Goal$/i })).not.toBeInTheDocument();

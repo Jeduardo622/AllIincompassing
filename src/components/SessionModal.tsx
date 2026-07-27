@@ -779,6 +779,7 @@ interface SessionModalProps {
   onSessionStarted?: () => void | Promise<void>;
   dataCollectionOnly?: boolean;
   allowStartSession?: boolean;
+  canCreateSchedules?: boolean;
   hideGoalCaptureFields?: boolean;
   onBtAbaSessionFinalized?: (result: BtAbaFinalizeResult & { sessionId: string }) => void | Promise<void>;
 }
@@ -803,6 +804,7 @@ export function SessionModal({
   onSessionStarted,
   dataCollectionOnly = false,
   allowStartSession = false,
+  canCreateSchedules = true,
   hideGoalCaptureFields = false,
   onBtAbaSessionFinalized,
 }: SessionModalProps) {
@@ -892,6 +894,14 @@ export function SessionModal({
     return '';
   };
 
+  const getInitialCancellationAttribution = (): Session['cancellation_attribution'] | '' => {
+    if (session?.status !== 'cancelled') {
+      return '';
+    }
+
+    return session.cancellation_attribution === 'client' ? 'client' : 'staff';
+  };
+
   type SessionModalFormValues = Partial<Session> & SessionModalClinicalNotesPayload;
   
   const {
@@ -918,6 +928,7 @@ export function SessionModal({
             : ''),
       notes: session?.notes || '',
       status: session?.status || 'scheduled',
+      cancellation_attribution: getInitialCancellationAttribution(),
       session_note_narrative: '',
       session_note_goal_notes: {},
       session_note_goal_measurements: {},
@@ -935,6 +946,8 @@ export function SessionModal({
   const programId = watch('program_id');
   const goalId = watch('goal_id');
   const goalIds = watch('goal_ids') as string[] | undefined;
+  const sessionStatus = watch('status');
+  const cancellationAttribution = watch('cancellation_attribution');
   const sessionNoteGoalNotes = watch('session_note_goal_notes') as Record<string, string> | undefined;
   const sessionNoteStoredGoalIds = watch('session_note_goal_ids') as string[] | undefined;
   const sessionNoteGoalsAddressed = watch('session_note_goals_addressed') as string[] | undefined;
@@ -2428,6 +2441,41 @@ export function SessionModal({
     setValue('end_time', toLocalInput(newEndTime));
   };
 
+  useEffect(() => {
+    if (sessionStatus === 'cancelled') {
+      if (cancellationAttribution !== 'staff' && cancellationAttribution !== 'client') {
+        setValue('cancellation_attribution', 'staff', { shouldDirty: false, shouldTouch: false });
+      }
+      return;
+    }
+
+    if (cancellationAttribution) {
+      setValue('cancellation_attribution', '', { shouldDirty: false, shouldTouch: false });
+    }
+  }, [cancellationAttribution, sessionStatus, setValue]);
+
+  const resolvedCancellationAttribution =
+    cancellationAttribution === 'client' ? 'client' : 'staff';
+  const statusSelectValue =
+    sessionStatus === 'cancelled'
+      ? (canCreateSchedules ? `cancelled:${resolvedCancellationAttribution}` : 'cancelled')
+      : (sessionStatus ?? 'scheduled');
+
+  const handleStatusChange = (value: string) => {
+    if (value === 'cancelled:staff' || value === 'cancelled:client') {
+      setValue('status', 'cancelled', { shouldDirty: true, shouldTouch: true });
+      setValue(
+        'cancellation_attribution',
+        value === 'cancelled:client' ? 'client' : 'staff',
+        { shouldDirty: true, shouldTouch: true },
+      );
+      return;
+    }
+
+    setValue('status', value as Session['status'], { shouldDirty: true, shouldTouch: true });
+    setValue('cancellation_attribution', '', { shouldDirty: true, shouldTouch: true });
+  };
+
   const hasStartedSession = Boolean(sessionDetails?.started_at ?? session?.started_at);
   const hasTerminalSessionStatus =
     session?.status === 'completed' ||
@@ -3624,7 +3672,45 @@ export function SessionModal({
               </div>
             )}
 
-            {!shouldHideGoalCaptureFields && (programs.length === 0 || activePrograms.length === 0 || availableProgramGroups.length === 0) && (
+            {!shouldHideGoalCaptureFields && (isProgramsError || isGoalsError) && (
+              <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-200 sm:p-4">
+                {isProgramsError && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Could not load programs.</span>
+                    <button
+                      type="button"
+                      aria-label="Retry programs"
+                      onClick={() => {
+                        void refetchPrograms();
+                      }}
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {isGoalsError && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Could not load goals.</span>
+                    <button
+                      type="button"
+                      aria-label="Retry goals"
+                      onClick={() => {
+                        void refetchGoals();
+                      }}
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!shouldHideGoalCaptureFields &&
+              !isProgramsError &&
+              !isGoalsError &&
+              (programs.length === 0 || activePrograms.length === 0 || availableProgramGroups.length === 0) && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200 sm:p-4">
                 {programs.length === 0 || activePrograms.length === 0
                   ? 'No active programs found for this client. Create or activate a program before starting a session.'
@@ -3638,113 +3724,14 @@ export function SessionModal({
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 sm:sr-only">
                 Program &amp; goals
               </p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4">
-              <div>
-                <label
-                  htmlFor="program-select"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Program
-                </label>
-                <select
-                  id="program-select"
-                  {...register('program_id')}
-                  disabled={isDataCollectionOnly || isProgramsFetching || !clientId}
-                  onChange={(event) => {
-                    if (isDataCollectionOnly) {
-                      return;
-                    }
-                    const nextProgramId = event.target.value;
-                    setValue('program_id', nextProgramId, { shouldDirty: true, shouldTouch: true });
-                    if (!nextProgramId) {
-                      updateProgramSelection([]);
-                      return;
-                    }
-                    updateProgramSelection([nextProgramId, ...selectedProgramIds.filter((id) => id !== nextProgramId)]);
-                  }}
-                  className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                >
-                  <option value="">Select a program</option>
-                  {session?.id && programId && !hasProgramOptionForValue && (
-                    <option value={programId}>
-                      Current program (unavailable in active list)
-                    </option>
-                  )}
-                  {activePrograms.map((program) => (
-                    <option key={program.id} value={program.id}>
-                      {program.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.program_id && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.program_id.message}</p>
-                )}
-                {isProgramsFetching && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Loading programs...</p>
-                )}
-                {isProgramsError && (
-                  <div className="mt-1 flex items-center gap-2 text-xs text-red-600 dark:text-red-300">
-                    <span>Could not load programs.</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void refetchPrograms();
-                      }}
-                      className="font-semibold underline underline-offset-2"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="goal-select"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Primary Goal
-                </label>
-                <select
-                  id="goal-select"
-                  {...register('goal_id')}
-                  disabled={isDataCollectionOnly || isGoalsFetching || selectedProgramGoals.length === 0}
-                  className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                >
-                  <option value="">Select a goal</option>
-                  {session?.id && goalId && !hasGoalOptionForValue && (
-                    <option value={goalId}>
-                      Current goal (unavailable in active list)
-                    </option>
-                  )}
-                  {selectedProgramGoals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {goal.title}
-                    </option>
-                  ))}
-                </select>
-                {errors.goal_id && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.goal_id.message}</p>
-                )}
-                {isGoalsFetching && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Loading goals...</p>
-                )}
-                {isGoalsError && (
-                  <div className="mt-1 flex items-center gap-2 text-xs text-red-600 dark:text-red-300">
-                    <span>Could not load goals.</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void refetchGoals();
-                      }}
-                      className="font-semibold underline underline-offset-2"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+              <input type="hidden" {...register('program_id')} />
+              <input type="hidden" {...register('goal_id')} />
+              {errors.program_id && (
+                <p className="text-sm text-red-600 dark:text-red-400">{errors.program_id.message}</p>
+              )}
+              {errors.goal_id && (
+                <p className="text-sm text-red-600 dark:text-red-400">{errors.goal_id.message}</p>
+              )}
 
             {availableProgramGroups.length > 0 && (
               <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
@@ -3766,6 +3753,8 @@ export function SessionModal({
                       <button
                         key={program.id}
                         type="button"
+                        data-program-id={program.id}
+                        aria-pressed={isSelected}
                         onClick={() => toggleProgramSelection(program.id)}
                         disabled={isDataCollectionOnly}
                         className={`rounded-full border px-3 py-2 text-sm font-medium transition ${
@@ -3804,6 +3793,7 @@ export function SessionModal({
                         >
                         <input
                           type="checkbox"
+                          data-program-id={program.id}
                           checked={selectedProgramSet.has(program.id)}
                           onChange={() => toggleProgramSelection(program.id)}
                           disabled={isDataCollectionOnly}
@@ -3857,6 +3847,7 @@ export function SessionModal({
                               >
                                 <input
                                   type="checkbox"
+                                  data-goal-id={goal.id}
                                   checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
                                   onChange={() => toggleGoalSelection(goal.id)}
                                   disabled={isDataCollectionOnly}
@@ -3907,6 +3898,7 @@ export function SessionModal({
                               <label key={goal.id} className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                                 <input
                                   type="checkbox"
+                                  data-goal-id={goal.id}
                                   checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
                                   onChange={() => toggleGoalSelection(goal.id)}
                                   disabled={isDataCollectionOnly}
@@ -4023,16 +4015,31 @@ export function SessionModal({
               >
                 Status
               </label>
+              <input type="hidden" {...register('status')} value={sessionStatus ?? ''} readOnly />
+              <input
+                type="hidden"
+                {...register('cancellation_attribution')}
+                value={cancellationAttribution ?? ''}
+                readOnly
+              />
               <select
                 id="status-select"
-                {...register('status')}
+                value={statusSelectValue}
+                onChange={(event) => handleStatusChange(event.target.value)}
                 disabled={isDataCollectionOnly}
                 className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
               >
                 <option value="scheduled">Scheduled</option>
                 <option value="in_progress" disabled>In Progress</option>
                 <option value="completed" disabled={!session}>Completed</option>
-                <option value="cancelled">Cancelled</option>
+                {canCreateSchedules ? (
+                  <>
+                    <option value="cancelled:staff">Staff cancellation</option>
+                    <option value="cancelled:client">Client cancellation</option>
+                  </>
+                ) : sessionStatus === 'cancelled' ? (
+                  <option value="cancelled" disabled>Cancelled</option>
+                ) : null}
                 <option value="no-show" disabled={!session}>No Show</option>
               </select>
             </div>

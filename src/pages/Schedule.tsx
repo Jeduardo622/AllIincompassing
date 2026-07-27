@@ -1227,13 +1227,16 @@ export const Schedule = React.memo(() => {
     mutationFn: async ({
       sessionId,
       reason,
+      cancellationAttribution,
     }: {
       sessionId: string;
       reason?: string | null;
+      cancellationAttribution?: "staff" | "client";
     }) => {
       const result = await cancelSessions({
         sessionIds: [sessionId],
         reason,
+        cancellationAttribution,
       });
 
       return result;
@@ -1648,9 +1651,11 @@ export const Schedule = React.memo(() => {
 
       switch (decision.kind) {
         case "edit-cancel": {
+          const cancellationAttribution = data.cancellation_attribution === "client" ? "client" : "staff";
           const result = await cancelSessionMutation.mutateAsync({
             sessionId: decision.selectedSessionId,
             reason: decision.cancellationReason,
+            cancellationAttribution,
           });
 
           showSuccess(
@@ -1995,6 +2000,7 @@ export const Schedule = React.memo(() => {
           selectedSession?.status === "scheduled" &&
           !selectedSession.started_at
         }
+        canCreateSchedules={!therapistScopedView}
         hideGoalCaptureFields={effectiveRole === "admin" || effectiveRole === "admin_schedule"}
         defaultTherapistId={selectedTherapist}
         defaultClientId={selectedClient}

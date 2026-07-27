@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTargetsByGoalId, parseGoalTimelineCriteria } from "./ProgramsGoalsTab.helpers";
+import { buildTargetsByGoalId, parseGoalTimelineCriteria, parseObjectiveDataPointsInput } from "./ProgramsGoalsTab.helpers";
 import type { GoalTarget } from "../../types";
 
 describe("parseGoalTimelineCriteria", () => {
@@ -60,5 +60,33 @@ describe("buildTargetsByGoalId", () => {
       ],
       "goal-2": [expect.objectContaining({ id: "target-c", measurement_type: "correctIncorrect" })],
     });
+  });
+});
+
+describe("parseObjectiveDataPointsInput", () => {
+  it("preserves valid object rows", () => {
+    expect(
+      parseObjectiveDataPointsInput('[{"objective":"Request help","data_settings":"Prompt level","active":true,"count":2,"note":null}]'),
+    ).toEqual([
+      {
+        objective: "Request help",
+        data_settings: "Prompt level",
+        active: true,
+        count: 2,
+        note: null,
+      },
+    ]);
+  });
+
+  it("fails closed when any array member is not an objective-point object", () => {
+    expect(() => parseObjectiveDataPointsInput('[{"objective":"Valid row"}, 1, "bad"]')).toThrow(
+      "Each objective data point must be an object.",
+    );
+  });
+
+  it("fails closed when an objective-point field value is not a primitive or null", () => {
+    expect(() => parseObjectiveDataPointsInput('[{"objective":"Valid row","meta":{"nested":true}}]')).toThrow(
+      "Objective data point fields must use string, number, boolean, or null values.",
+    );
   });
 });

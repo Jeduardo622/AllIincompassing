@@ -1302,6 +1302,64 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(await screen.findByRole("button", { name: "Edit goal Functional communication expansion" })).toBeInTheDocument();
   });
 
+  it("prefers canonical baseline_data when live baseline fields diverge and mirrors it back on a no-op save", async () => {
+    const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+    const divergentGoal = buildLiveGoal("goal-baseline", program.id, {
+      title: "Divergent baseline goal",
+      baseline_data: "Canonical baseline from baseline_data",
+      baseline: "Legacy baseline fallback",
+    });
+    let currentGoals = [divergentGoal];
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: currentGoals,
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([program]), { status: 200 });
+      if (method === "GET" && path.startsWith("goals?")) return new Response(JSON.stringify(currentGoals), { status: 200 });
+      if (method === "PATCH" && path === "goals?goal_id=goal-baseline") {
+        const payload = JSON.parse(String(init?.body));
+        currentGoals = [{ ...divergentGoal, ...payload, updated_at: "2026-07-27T20:20:00.000Z" }];
+        return new Response(JSON.stringify(currentGoals[0]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("goal-targets?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Edit goal Divergent baseline goal" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal Divergent baseline goal" });
+    expect(within(editRegion).getByLabelText("Baseline data")).toHaveValue("Canonical baseline from baseline_data");
+
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(callEdgeFunctionHttp).mock.calls.some(
+          ([path, init]) => path === "goals?goal_id=goal-baseline" && init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+    const patchCall = vi.mocked(callEdgeFunctionHttp).mock.calls.find(
+      ([path, init]) => path === "goals?goal_id=goal-baseline" && init?.method === "PATCH",
+    );
+    const patchPayload = JSON.parse(String(patchCall?.[1]?.body));
+    expect(patchPayload).toMatchObject({
+      baseline_data: "Canonical baseline from baseline_data",
+      baseline: "Canonical baseline from baseline_data",
+    });
+  });
+
   it("lets bcba edit a promoted behavior goal and re-groups the saved card between skill and behavior sections", async () => {
     const program = buildLiveProgram("program-1", "Behavior Program", "Live program");
     const skillGoal = buildLiveGoal("goal-skill", program.id, {
@@ -1431,7 +1489,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     },
   );
 
-  it("keeps goal save disabled and avoids PATCH when objective data points JSON is invalid", async () => {
+  it("keeps goal save disabled and avoids PATCH when any objective data point row is invalid", async () => {
     const program = buildLiveProgram("program-1", "Communication Program", "Live program");
     installProgramsGoalsTabApiMocks({
       programs: [program],
@@ -1450,10 +1508,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     await user.click(screen.getByRole("button", { name: "Edit goal Increase communication" }));
     const editRegion = screen.getByRole("region", { name: "Edit goal Increase communication" });
     fireEvent.change(within(editRegion).getByLabelText("Objective data points"), {
-      target: { value: '{"objective":"bad"}' },
+      target: { value: '[{"objective":"Valid row"},1,"bad"]' },
     });
 
-    expect(within(editRegion).getByText("Objective data points must be a JSON array.")).toBeInTheDocument();
+    expect(within(editRegion).getByText("Each objective data point must be an object.")).toBeInTheDocument();
     expect(within(editRegion).getByRole("button", { name: "Save goal changes" })).toBeDisabled();
 
     await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
@@ -1462,6 +1520,55 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         ([path, init]) => path === "goals?goal_id=goal-1" && init?.method === "PATCH",
       ),
     ).toBe(false);
+  });
+
+  it("keeps the editor open with entered values when the goal PATCH fails", async () => {
+    const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+    const goal = buildLiveGoal("goal-fail", program.id, {
+      title: "PATCH failure goal",
+    });
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: [goal],
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([program]), { status: 200 });
+      if (method === "GET" && path.startsWith("goals?")) return new Response(JSON.stringify([goal]), { status: 200 });
+      if (method === "PATCH" && path === "goals?goal_id=goal-fail") {
+        return new Response(JSON.stringify({ error: "Goal patch failed" }), { status: 500 });
+      }
+      if (method === "GET" && path.startsWith("goal-targets?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Edit goal PATCH failure goal" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal PATCH failure goal" });
+    fireEvent.change(within(editRegion).getByLabelText("Goal title"), { target: { value: "PATCH failure updated title" } });
+    fireEvent.change(within(editRegion).getByLabelText("Baseline data"), { target: { value: "Updated failure baseline" } });
+
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+
+    await waitFor(() => {
+      expect(showError).toHaveBeenCalled();
+    });
+    expect(vi.mocked(showError).mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({ message: "Goal patch failed" }),
+    );
+    expect(screen.getByRole("region", { name: "Edit goal PATCH failure goal" })).toBeInTheDocument();
+    const reopenedRegion = screen.getByRole("region", { name: "Edit goal PATCH failure goal" });
+    expect(within(reopenedRegion).getByLabelText("Goal title")).toHaveValue("PATCH failure updated title");
+    expect(within(reopenedRegion).getByLabelText("Baseline data")).toHaveValue("Updated failure baseline");
   });
 
   it.each(["bcba", "midtier", "admin", "super_admin"] as const)(

@@ -3137,7 +3137,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       measurementType: goal.measurement_type ?? "",
       clinicalGoalType: goal.clinical_goal_type ?? "",
       domainId: goal.domain_id ?? "",
-      baselineData: goal.baseline ?? goal.baseline_data ?? "",
+      baselineData: goal.baseline_data ?? goal.baseline ?? "",
       teachingStrategies: goal.teaching_strategies ?? "",
       operationalDefinition: goal.operational_definition ?? "",
       shortTermGoal: parsedTimeline.shortTermGoal,

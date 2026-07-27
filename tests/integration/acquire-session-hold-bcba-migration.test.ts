@@ -4,15 +4,21 @@ import { describe, expect, it } from "vitest";
 
 const migrationPath = resolve(
   process.cwd(),
-  "supabase/migrations/20260713183443_acquire_session_hold_active_status.sql",
+  "supabase/migrations/20260727004500_acquire_session_hold_schedule_staff_authorization.sql",
 );
 
-describe("acquire_session_hold BCBA authorization migration", () => {
+describe("acquire_session_hold scheduling authorization migration", () => {
   const sql = readFileSync(migrationPath, "utf8").toLowerCase();
 
-  it("adds exact persisted BCBA authorization for the target therapist organization", () => {
+  it("adds exact persisted schedule-staff authorization for the target therapist organization", () => {
     expect(sql).toContain(
       "app.user_has_role_for_org('bcba', null, p_therapist_id, null, p_session_id)",
+    );
+    expect(sql).toContain(
+      "app.user_has_role_for_org('midtier', null, p_therapist_id, null, p_session_id)",
+    );
+    expect(sql).toContain(
+      "app.user_has_role_for_org('admin_schedule', null, p_therapist_id, null, p_session_id)",
     );
   });
 

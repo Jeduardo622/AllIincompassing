@@ -28,7 +28,7 @@ export async function programNotesHandler(request: Request): Promise<Response> {
     return json({ error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
   }
 
-  const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
+  const { organizationId } = await resolveOrgAndRole(accessToken);
   if (!organizationId) {
     return json({ error: "Forbidden" }, 403);
   }
@@ -40,17 +40,16 @@ export async function programNotesHandler(request: Request): Promise<Response> {
     Authorization: `Bearer ${accessToken}`,
   };
   const actorId = getAccessTokenSubject(accessToken);
-  const programExistsInOrg = async (programId: string): Promise<boolean> => {
-    const programLookupUrl = `${supabaseUrl}/rest/v1/programs?select=id&id=eq.${programId}&organization_id=eq.${organizationId}&limit=1`;
+  const loadVisibleProgram = async (programId: string): Promise<{ id: string; client_id: string | null } | null> => {
+    const programLookupUrl = `${supabaseUrl}/rest/v1/programs?select=id,client_id&id=eq.${programId}&organization_id=eq.${organizationId}&limit=1`;
     const lookupResult = await fetchJson<Array<{ id: string }>>(programLookupUrl, { method: "GET", headers });
-    return lookupResult.ok && Array.isArray(lookupResult.data) && lookupResult.data.length > 0;
+    if (!lookupResult.ok) {
+      throw new Error("program_lookup_failed");
+    }
+    return Array.isArray(lookupResult.data) ? lookupResult.data[0] ?? null : null;
   };
 
   if (request.method === "GET") {
-    if (!isTherapist && !isAdmin && !isSuperAdmin) {
-      return json({ error: "Forbidden" }, 403);
-    }
-
     const url = new URL(request.url);
     const programId = url.searchParams.get("program_id");
     if (!programId) {
@@ -60,7 +59,17 @@ export async function programNotesHandler(request: Request): Promise<Response> {
       return json({ error: "program_id must be a valid UUID" }, 400);
     }
 
-    const notesUrl = `${supabaseUrl}/rest/v1/program_notes?select=id,organization_id,program_id,author_id,note_type,content,created_at,updated_at&organization_id=eq.${organizationId}&program_id=eq.${programId}&order=created_at.desc`;
+    let visibleProgram: { id: string; client_id: string | null } | null;
+    try {
+      visibleProgram = await loadVisibleProgram(programId);
+    } catch {
+      return json({ error: "Failed to validate program scope" }, 500);
+    }
+    if (!visibleProgram) {
+      return json({ error: "program_id is not in scope for this organization" }, 403);
+    }
+
+    const notesUrl = `${supabaseUrl}/rest/v1/program_notes?select=id,organization_id,program_id,author_id,note_type,content,created_at,updated_at&program_id=eq.${programId}&order=created_at.desc`;
     const result = await fetchJson(notesUrl, { method: "GET", headers });
     if (!result.ok) {
       return json({ error: "Failed to load program notes" }, result.status || 500);
@@ -88,8 +97,13 @@ export async function programNotesHandler(request: Request): Promise<Response> {
     if (!parsed.success) {
       return json({ error: "Invalid request body" }, 400);
     }
-    const programExists = await programExistsInOrg(parsed.data.program_id);
-    if (!programExists) {
+    let visibleProgram: { id: string; client_id: string | null } | null;
+    try {
+      visibleProgram = await loadVisibleProgram(parsed.data.program_id);
+    } catch {
+      return json({ error: "Failed to validate program scope" }, 500);
+    }
+    if (!visibleProgram) {
       return json({ error: "program_id is not in scope for this organization" }, 403);
     }
 

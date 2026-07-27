@@ -40,6 +40,113 @@ describe("programNotesHandler", () => {
     expect(response.status).toBe(401);
   });
 
+  it("allows therapist GET reads for same-org visible programs", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "program-1", client_id: "client-1" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "note-1" }],
+      });
+
+    const response = await programNotesHandler(
+      new Request("http://localhost/api/program-notes?program_id=11111111-1111-1111-1111-111111111111", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${createAuthToken("therapist-1")}` },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual([{ id: "note-1" }]);
+    expect(fetchJson).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("/rest/v1/programs?select=id,client_id"),
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("allows same-org program note GET when the caller is a visible midtier/bcba viewer without legacy manager booleans", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("viewer-1"));
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "program-1", client_id: "client-1" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "note-1" }],
+      });
+
+    const response = await programNotesHandler(
+      new Request("http://localhost/api/program-notes?program_id=11111111-1111-1111-1111-111111111111", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${createAuthToken("viewer-1")}` },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual([{ id: "note-1" }]);
+  });
+
+  it("returns 403 for program note GET when a viewer cannot see the requested program", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("bt-1"));
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [],
+    });
+
+    const response = await programNotesHandler(
+      new Request("http://localhost/api/program-notes?program_id=11111111-1111-1111-1111-111111111111", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${createAuthToken("bt-1")}` },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "program_id is not in scope for this organization",
+    });
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+  });
+
   it("returns 403 when posting notes for a program outside org scope", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("actor-1"));
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -179,6 +286,36 @@ describe("programNotesHandler", () => {
       new Request("http://localhost/api/program-notes", {
         method: "POST",
         headers: { Authorization: `Bearer ${createAuthToken("actor-1")}` },
+        body: JSON.stringify({
+          program_id: "11111111-1111-1111-1111-111111111111",
+          note_type: "plan_update",
+          content: { text: "note" },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 for therapist program note POST when canonical manage access is denied", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: false, upstreamError: false });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const response = await programNotesHandler(
+      new Request("http://localhost/api/program-notes", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("therapist-1")}` },
         body: JSON.stringify({
           program_id: "11111111-1111-1111-1111-111111111111",
           note_type: "plan_update",

@@ -301,6 +301,21 @@ describe('employee role capability matrix migration', () => {
     expect(alignedHelper).not.toContain("'admin_schedule'");
   });
 
+  it('preserves therapist and assigned BT program-note reads while keeping admin_schedule out of the read helper', () => {
+    const alignedReadHelper = extractFunctionFrom(
+      alignProgramGoalEditAuthoritySql,
+      'app.current_user_can_read_client_programs',
+    );
+
+    expect(alignedReadHelper).toContain('app.current_user_can_manage_programs_goals(target_organization_id)');
+    expect(alignedReadHelper).toContain("app.current_user_has_exact_role_for_org(target_organization_id, ARRAY['therapist']::text[])");
+    expect(alignedReadHelper).toContain("app.current_user_has_exact_role_for_org(target_organization_id, ARRAY['bt']::text[])");
+    expect(alignedReadHelper).toContain(
+      'app.current_user_has_assigned_client(target_organization_id, target_client_id)',
+    );
+    expect(alignedReadHelper).not.toContain("'admin_schedule'");
+  });
+
   it('recreates program_notes manage policies around the shared program-goal authority helper', () => {
     expect(alignProgramGoalEditAuthoritySql).toContain('DROP POLICY IF EXISTS program_notes_org_manage ON public.program_notes;');
     expect(alignProgramGoalEditAuthoritySql).toContain('CREATE POLICY program_notes_org_manage');
@@ -309,9 +324,28 @@ describe('employee role capability matrix migration', () => {
     expect(alignProgramGoalEditAuthoritySql).toContain('app.current_user_can_manage_programs_goals(organization_id)');
   });
 
+  it('adds a separate program_notes read policy that follows visible program/client scope through the read helper', () => {
+    expect(alignProgramGoalEditAuthoritySql).toContain('DROP POLICY IF EXISTS program_notes_org_read ON public.program_notes;');
+    expect(alignProgramGoalEditAuthoritySql).toContain('CREATE POLICY program_notes_org_read');
+    expect(alignProgramGoalEditAuthoritySql).toContain('FOR SELECT');
+    expect(alignProgramGoalEditAuthoritySql).toContain('FROM public.programs p');
+    expect(alignProgramGoalEditAuthoritySql).toContain('p.id = program_notes.program_id');
+    expect(alignProgramGoalEditAuthoritySql).toContain('app.current_user_can_read_client_programs(p.organization_id, p.client_id)');
+  });
+
   it('extends the hosted smoke to prove therapist program-goal mutations stay denied', () => {
     expect(smokeSql).toContain('therapist_helpers');
     expect(smokeSql).toContain('therapist_program_write_denied');
     expect(smokeSql).toContain('not app.current_user_can_manage_programs_goals');
+  });
+
+  it('extends the hosted smoke to prove program-note read visibility survives for therapist, midtier, and assigned BT while write remains manager-only', () => {
+    expect(smokeSql).toContain('therapist_program_note_read_allowed');
+    expect(smokeSql).toContain('midtier_program_note_read_allowed');
+    expect(smokeSql).toContain('bcba_program_note_read_allowed');
+    expect(smokeSql).toContain('bt_program_note_assigned_read_allowed');
+    expect(smokeSql).toContain('bt_program_note_unassigned_read_denied');
+    expect(smokeSql).toContain('bt_program_note_cross_org_read_denied');
+    expect(smokeSql).toContain('therapist_program_note_write_denied');
   });
 });

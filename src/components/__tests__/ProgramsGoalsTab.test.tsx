@@ -93,6 +93,37 @@ const buildLiveProgram = (id: string, name: string, description: string | null) 
   updated_at: "2026-02-11T00:00:00.000Z",
 });
 
+const buildLiveGoal = (
+  id: string,
+  programId: string,
+  overrides: Partial<Record<string, unknown>> = {},
+) => ({
+  id,
+  organization_id: ORG_ID,
+  client_id: "client-1",
+  program_id: programId,
+  domain_id: "communication-domain",
+  title: "Increase communication",
+  description: "Client uses functional communication across routines.",
+  original_text: "Original clinical wording",
+  measurement_type: "percent opportunities",
+  clinical_goal_type: "skill",
+  baseline_data: "2 requests per session",
+  baseline: "2 requests per session",
+  target_criteria: "Short-term: Request preferred items in 4/5 opportunities",
+  mastery_criteria: "80% across three sessions",
+  maintenance_criteria: "70% after four weeks",
+  generalization_criteria: "Two settings and two adults",
+  teaching_strategies: "DTT, NET, prompt fading",
+  operational_definition: "Independent request within 5 seconds",
+  objective_data_points: [{ objective: "Request break", data_settings: "Prompt level" }],
+  source: "manual",
+  status: "active",
+  created_at: "2026-02-11T00:00:00.000Z",
+  updated_at: "2026-02-11T00:00:00.000Z",
+  ...overrides,
+});
+
 const installProgramsGoalsTabApiMocks = ({
   programs = [],
   goals = [],
@@ -1147,6 +1178,290 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
     expect(await screen.findByText("Updated Promoted Program")).toBeInTheDocument();
     activeOrganizationSpy.mockRestore();
+  });
+
+  it("lets midtier edit a live manual skill goal and sends the managed PATCH payload without provenance or identity fields", async () => {
+    const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+    const manualGoal = buildLiveGoal("goal-manual", program.id);
+    let currentGoals = [manualGoal];
+    vi.mocked(supabase.from).mockImplementation((tableName: string) => {
+      if (tableName === "goal_domains") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockResolvedValue({
+            data: [
+              { id: "communication-domain", organization_id: ORG_ID, name: "Communication", description: null, status: "active", created_at: "2026-02-11T00:00:00.000Z", updated_at: "2026-02-11T00:00:00.000Z" },
+            ],
+            error: null,
+          }),
+        } as never;
+      }
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+        insert: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      } as never;
+    });
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: [manualGoal],
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) {
+        return new Response(JSON.stringify([program]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("goals?")) {
+        return new Response(JSON.stringify(currentGoals), { status: 200 });
+      }
+      if (method === "PATCH" && path === "goals?goal_id=goal-manual") {
+        const payload = JSON.parse(String(init?.body));
+        currentGoals = [
+          {
+            ...manualGoal,
+            ...payload,
+            source: manualGoal.source,
+            original_text: manualGoal.original_text,
+            baseline: payload.baseline,
+            updated_at: "2026-07-27T20:00:00.000Z",
+          },
+        ];
+        return new Response(JSON.stringify(currentGoals[0]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("goal-targets?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: "Edit goal Increase communication" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit goal Increase communication" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal Increase communication" });
+    fireEvent.change(within(editRegion).getByLabelText("Goal title"), { target: { value: "  Functional communication expansion  " } });
+    fireEvent.change(within(editRegion).getByLabelText("Goal description"), { target: { value: "Updated communication goal description." } });
+    fireEvent.change(within(editRegion).getByLabelText("Measurement type"), { target: { value: "frequency" } });
+    fireEvent.change(within(editRegion).getByLabelText("Clinical type"), { target: { value: "skill" } });
+    fireEvent.change(within(editRegion).getByLabelText("Domain"), { target: { value: "communication-domain" } });
+    fireEvent.change(within(editRegion).getByLabelText("Baseline data"), { target: { value: "3 independent requests per session" } });
+    fireEvent.change(within(editRegion).getByLabelText("Teaching strategies"), { target: { value: "NET with least-to-most prompting" } });
+    fireEvent.change(within(editRegion).getByLabelText("Operational definition"), { target: { value: "Requests help within 3 seconds" } });
+    fireEvent.change(within(editRegion).getByLabelText("Short-term goal"), { target: { value: "Ask for help in 4/5 trials" } });
+    fireEvent.change(within(editRegion).getByLabelText("Intermediate goal"), { target: { value: "Generalize requests across two adults" } });
+    fireEvent.change(within(editRegion).getByLabelText("Long-term goal"), { target: { value: "Initiate independently across routines" } });
+    fireEvent.change(within(editRegion).getByLabelText("Mastery criteria"), { target: { value: "90% across three sessions" } });
+    fireEvent.change(within(editRegion).getByLabelText("Maintenance criteria"), { target: { value: "80% after six weeks" } });
+    fireEvent.change(within(editRegion).getByLabelText("Generalization criteria"), { target: { value: "Three settings and two adults" } });
+    fireEvent.change(within(editRegion).getByLabelText("Objective data points"), {
+      target: { value: '[{"objective":"Request help","data_settings":"Independent/ prompted"}]' },
+    });
+
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(callEdgeFunctionHttp).mock.calls.some(
+          ([path, init]) => path === "goals?goal_id=goal-manual" && init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+    const lastPatchCall = vi.mocked(callEdgeFunctionHttp).mock.calls.find(
+      ([path, init]) => path === "goals?goal_id=goal-manual" && init?.method === "PATCH",
+    );
+    const patchPayload = JSON.parse(String(lastPatchCall?.[1]?.body));
+    expect(patchPayload).toMatchObject({
+      title: "Functional communication expansion",
+      description: "Updated communication goal description.",
+      measurement_type: "frequency",
+      clinical_goal_type: "skill",
+      baseline_data: "3 independent requests per session",
+      baseline: "3 independent requests per session",
+      teaching_strategies: "NET with least-to-most prompting",
+      operational_definition: "Requests help within 3 seconds",
+      target_criteria: "Short-term: Ask for help in 4/5 trials\nIntermediate: Generalize requests across two adults\nLong-term: Initiate independently across routines",
+      mastery_criteria: "90% across three sessions",
+      maintenance_criteria: "80% after six weeks",
+      generalization_criteria: "Three settings and two adults",
+      objective_data_points: [{ objective: "Request help", data_settings: "Independent/ prompted" }],
+    });
+    expect(patchPayload).not.toHaveProperty("source");
+    expect(patchPayload).not.toHaveProperty("original_text");
+    expect(patchPayload).not.toHaveProperty("organization_id");
+    expect(patchPayload).not.toHaveProperty("client_id");
+    expect(await screen.findByRole("button", { name: "Edit goal Functional communication expansion" })).toBeInTheDocument();
+  });
+
+  it("lets bcba edit a promoted behavior goal and re-groups the saved card between skill and behavior sections", async () => {
+    const program = buildLiveProgram("program-1", "Behavior Program", "Live program");
+    const skillGoal = buildLiveGoal("goal-skill", program.id, {
+      title: "Build coping skills",
+      domain_id: "skill-domain",
+      source: "manual",
+    });
+    const behaviorGoal = buildLiveGoal("goal-behavior", program.id, {
+      title: "Reduce aggression",
+      description: "Track aggression during transitions.",
+      original_text: "Reduce aggression during transitions.",
+      domain_id: "behavior-domain",
+      clinical_goal_type: "behavior",
+      measurement_type: "frequency",
+      baseline_data: "5 incidents weekly",
+      baseline: "5 incidents weekly",
+      target_criteria: "Short-term: 3 or fewer incidents weekly",
+      source: "fba_extraction",
+    });
+    let currentGoals = [skillGoal, behaviorGoal];
+    vi.mocked(supabase.from).mockImplementation((tableName: string) => {
+      if (tableName === "goal_domains") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockResolvedValue({
+            data: [
+              { id: "skill-domain", organization_id: ORG_ID, name: "Skill Building", description: null, status: "active", created_at: "2026-02-11T00:00:00.000Z", updated_at: "2026-02-11T00:00:00.000Z" },
+              { id: "behavior-domain", organization_id: ORG_ID, name: "Behavior Reduction", description: null, status: "active", created_at: "2026-02-11T00:00:00.000Z", updated_at: "2026-02-11T00:00:00.000Z" },
+            ],
+            error: null,
+          }),
+        } as never;
+      }
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+        insert: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      } as never;
+    });
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: currentGoals,
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([program]), { status: 200 });
+      if (method === "GET" && path.startsWith("goals?")) return new Response(JSON.stringify(currentGoals), { status: 200 });
+      if (method === "PATCH" && path === "goals?goal_id=goal-behavior") {
+        const payload = JSON.parse(String(init?.body));
+        currentGoals = currentGoals.map((goal) =>
+          goal.id === behaviorGoal.id
+            ? {
+                ...goal,
+                ...payload,
+                source: behaviorGoal.source,
+                original_text: behaviorGoal.original_text,
+                updated_at: "2026-07-27T20:05:00.000Z",
+              }
+            : goal,
+        );
+        const updated = currentGoals.find((goal) => goal.id === behaviorGoal.id);
+        return new Response(JSON.stringify(updated), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("goal-targets?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "bcba",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: "Edit goal Reduce aggression" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit goal Reduce aggression" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal Reduce aggression" });
+    fireEvent.change(within(editRegion).getByLabelText("Clinical type"), { target: { value: "skill" } });
+    fireEvent.change(within(editRegion).getByLabelText("Domain"), { target: { value: "skill-domain" } });
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goals?goal_id=goal-behavior",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining('"clinical_goal_type":"skill"'),
+        }),
+      );
+    });
+
+    const skillSection = screen.getByRole("heading", { name: "Skill Acquisition" }).closest("section");
+    const behaviorHeading = screen.queryByRole("heading", { name: "Behavior Reduction" });
+    const behaviorSection = behaviorHeading?.closest("section") ?? null;
+    expect(skillSection).toBeTruthy();
+    expect(within(skillSection as HTMLElement).getByText("Reduce aggression")).toBeInTheDocument();
+    if (behaviorSection) {
+      expect(within(behaviorSection).queryByText("Reduce aggression")).not.toBeInTheDocument();
+    }
+  });
+
+  it.each(["admin", "super_admin"] as const)(
+    "shows the live goal edit affordance for %s",
+    async (role) => {
+      const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+      installProgramsGoalsTabApiMocks({
+        programs: [program],
+        goals: [buildLiveGoal("goal-1", program.id)],
+      });
+
+      renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+        auth: {
+          role,
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      });
+
+      expect(await screen.findByRole("button", { name: "Edit goal Increase communication" })).toBeInTheDocument();
+    },
+  );
+
+  it("keeps goal save disabled and avoids PATCH when objective data points JSON is invalid", async () => {
+    const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: [buildLiveGoal("goal-1", program.id)],
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: "Edit goal Increase communication" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit goal Increase communication" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal Increase communication" });
+    fireEvent.change(within(editRegion).getByLabelText("Objective data points"), {
+      target: { value: '{"objective":"bad"}' },
+    });
+
+    expect(within(editRegion).getByText("Objective data points must be a JSON array.")).toBeInTheDocument();
+    expect(within(editRegion).getByRole("button", { name: "Save goal changes" })).toBeDisabled();
+
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+    expect(
+      vi.mocked(callEdgeFunctionHttp).mock.calls.some(
+        ([path, init]) => path === "goals?goal_id=goal-1" && init?.method === "PATCH",
+      ),
+    ).toBe(false);
   });
 
   it.each(["bcba", "midtier", "admin", "super_admin"] as const)(

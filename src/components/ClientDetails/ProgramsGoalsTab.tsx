@@ -498,6 +498,24 @@ const GOAL_TIMELINE_INPUTS: ReadonlyArray<{
   { key: "longTermGoal", placeholder: "Long-term goal" },
 ];
 
+type GoalEditState = {
+  title: string;
+  description: string;
+  measurementType: string;
+  clinicalGoalType: Goal["clinical_goal_type"] | "";
+  domainId: string;
+  baselineData: string;
+  teachingStrategies: string;
+  operationalDefinition: string;
+  shortTermGoal: string;
+  intermediateGoal: string;
+  longTermGoal: string;
+  masteryCriteria: string;
+  maintenanceCriteria: string;
+  generalizationCriteria: string;
+  objectiveDataPoints: string;
+};
+
 const buildProgramGoalsQueryKey = (programId: string | null, organizationId?: string | null) =>
   ["program-goals", programId, organizationId ?? "MISSING_ORG"] as const;
 
@@ -1198,8 +1216,16 @@ function GoalTargetCard({
 function GoalCard({
   archivingGoalId,
   archiveGoal,
+  beginGoalEdit,
   canDeleteGoalTargets,
+  canManageGoalEdit,
   clientId,
+  editingGoalError,
+  editingGoalId,
+  editingGoalState,
+  goalDomainsLoading,
+  goalDomainsQueryError,
+  goalDomainOptions,
   deleteGoalTarget,
   deletingTargetId,
   domainsById,
@@ -1209,8 +1235,12 @@ function GoalCard({
   lifecycleTargetId,
   organizationId,
   progressionCanManage,
+  cancelGoalEdit,
+  setEditingGoalState,
   setGoalTargetArchiveState,
+  updateGoal,
   updateGoalTarget,
+  updatingGoalId,
   updatingTargetId,
 }: {
   archivingGoalId: string | null;
@@ -1218,8 +1248,16 @@ function GoalCard({
     isLoading: boolean;
     mutate: (goal: Goal) => void;
   };
+  beginGoalEdit: (goal: Goal) => void;
   canDeleteGoalTargets: boolean;
+  canManageGoalEdit: boolean;
   clientId: string;
+  editingGoalError: string | null;
+  editingGoalId: string | null;
+  editingGoalState: GoalEditState | null;
+  goalDomainsLoading: boolean;
+  goalDomainsQueryError: Error | null;
+  goalDomainOptions: GoalDomain[];
   deleteGoalTarget: {
     isLoading: boolean;
     mutate: (target: GoalTarget) => void;
@@ -1232,10 +1270,16 @@ function GoalCard({
   lifecycleTargetId: string | null;
   organizationId: string | null;
   progressionCanManage: boolean;
+  cancelGoalEdit: () => void;
+  setEditingGoalState: React.Dispatch<React.SetStateAction<GoalEditState | null>>;
   setGoalTargetArchiveState: {
     isLoading: boolean;
     mutate: (input: { target: GoalTarget; status: "active" | "archived" }) => void;
   } | null;
+  updateGoal: {
+    isLoading: boolean;
+    mutate: (goal: Goal) => void;
+  };
   updateGoalTarget: {
     isLoading: boolean;
     mutate: (input: {
@@ -1246,11 +1290,13 @@ function GoalCard({
       graph_config?: Record<string, unknown>;
     }) => void;
   } | null;
+  updatingGoalId: string | null;
   updatingTargetId: string | null;
 }) {
   const queryClient = useQueryClient();
   const [showArchivedTargets, setShowArchivedTargets] = useState(false);
   const [reorderError, setReorderError] = useState<string | null>(null);
+  const isEditingGoal = editingGoalId === goal.id && editingGoalState !== null;
   const activeTargets = goalTargetsForGoal.filter((target) => target.status !== "archived");
   const archivedTargets = goalTargetsForGoal.filter((target) => target.status === "archived");
   const reorderTargets = useMutation({
@@ -1306,6 +1352,18 @@ function GoalCard({
             </p>
           )}
         </div>
+        {canManageGoalEdit && (
+          <button
+            type="button"
+            aria-label={`Edit goal ${goal.title}`}
+            title="Edit live goal"
+            onClick={() => beginGoalEdit(goal)}
+            disabled={updatingGoalId === goal.id && updateGoal.isLoading}
+            className="shrink-0 rounded-md border border-transparent p-1.5 text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-900/30 disabled:opacity-50"
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
         <button
           type="button"
           aria-label={`Remove ${goal.title}`}
@@ -1328,6 +1386,173 @@ function GoalCard({
         </button>
       </div>
       <GoalFieldList domainsById={domainsById} goal={goal} />
+      {isEditingGoal && (
+        <div
+          role="region"
+          aria-label={`Edit goal ${goal.title}`}
+          className="mt-3 space-y-3 rounded-md border border-blue-100 bg-blue-50/60 p-3 dark:border-blue-900/60 dark:bg-blue-950/20"
+        >
+          <label htmlFor={`goal-edit-title-${goal.id}`} className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Goal title
+          </label>
+          <input
+            id={`goal-edit-title-${goal.id}`}
+            type="text"
+            value={editingGoalState.title}
+            onChange={(event) => setEditingGoalState((current) => current ? { ...current, title: event.target.value } : current)}
+            className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+          />
+          <label htmlFor={`goal-edit-description-${goal.id}`} className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Goal description
+          </label>
+          <textarea
+            id={`goal-edit-description-${goal.id}`}
+            value={editingGoalState.description}
+            onChange={(event) => setEditingGoalState((current) => current ? { ...current, description: event.target.value } : current)}
+            rows={3}
+            className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+          />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+              Measurement type
+              <input
+                type="text"
+                value={editingGoalState.measurementType}
+                onChange={(event) => setEditingGoalState((current) => current ? { ...current, measurementType: event.target.value } : current)}
+                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+            </label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+              Clinical type
+              <select
+                value={editingGoalState.clinicalGoalType}
+                onChange={(event) => setEditingGoalState((current) => current ? { ...current, clinicalGoalType: event.target.value as Goal["clinical_goal_type"] | "" } : current)}
+                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              >
+                <option value="">Unspecified</option>
+                <option value="skill">Skill</option>
+                <option value="behavior">Behavior</option>
+              </select>
+            </label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+              Domain
+              <select
+                value={editingGoalState.domainId}
+                onChange={(event) => setEditingGoalState((current) => current ? { ...current, domainId: event.target.value } : current)}
+                disabled={goalDomainsLoading}
+                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              >
+                <option value="">{goalDomainsLoading ? "Loading domains..." : "No domain assigned"}</option>
+                {goalDomainOptions.map((domain) => (
+                  <option key={domain.id} value={domain.id}>
+                    {domain.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Baseline data
+            <textarea
+              value={editingGoalState.baselineData}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, baselineData: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Teaching strategies
+            <textarea
+              value={editingGoalState.teachingStrategies}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, teachingStrategies: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Operational definition
+            <textarea
+              value={editingGoalState.operationalDefinition}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, operationalDefinition: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          {GOAL_TIMELINE_INPUTS.map(({ key, placeholder }) => (
+            <label key={key} className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+              {placeholder}
+              <textarea
+                value={editingGoalState[key]}
+                onChange={(event) => setEditingGoalState((current) => current ? { ...current, [key]: event.target.value } : current)}
+                rows={2}
+                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+            </label>
+          ))}
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Mastery criteria
+            <textarea
+              value={editingGoalState.masteryCriteria}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, masteryCriteria: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Maintenance criteria
+            <textarea
+              value={editingGoalState.maintenanceCriteria}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, maintenanceCriteria: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Generalization criteria
+            <textarea
+              value={editingGoalState.generalizationCriteria}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, generalizationCriteria: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Objective data points
+            <textarea
+              value={editingGoalState.objectiveDataPoints}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, objectiveDataPoints: event.target.value } : current)}
+              rows={3}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm font-mono"
+            />
+          </label>
+          {editingGoalError && (
+            <p className="text-xs text-rose-700 dark:text-rose-300">{editingGoalError}</p>
+          )}
+          {goalDomainsQueryError instanceof Error && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Could not load goal domains: {goalDomainsQueryError.message}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => updateGoal.mutate(goal)}
+              disabled={Boolean(editingGoalError) || !editingGoalState.title.trim() || !editingGoalState.description.trim() || (updatingGoalId === goal.id && updateGoal.isLoading)}
+              className="rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {updatingGoalId === goal.id && updateGoal.isLoading ? "Saving..." : "Save goal changes"}
+            </button>
+            <button
+              type="button"
+              onClick={cancelGoalEdit}
+              disabled={updatingGoalId === goal.id && updateGoal.isLoading}
+              className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/30">
         <div className="mb-2 flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -1451,6 +1676,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [editingProgramDescription, setEditingProgramDescription] = useState("");
   const [updatingProgramId, setUpdatingProgramId] = useState<string | null>(null);
   const [archivingGoalId, setArchivingGoalId] = useState<string | null>(null);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editingGoalState, setEditingGoalState] = useState<GoalEditState | null>(null);
+  const [updatingGoalId, setUpdatingGoalId] = useState<string | null>(null);
   const [updatingTargetId, setUpdatingTargetId] = useState<string | null>(null);
   const [lifecycleTargetId, setLifecycleTargetId] = useState<string | null>(null);
   const [deletingTargetId, setDeletingTargetId] = useState<string | null>(null);
@@ -1544,6 +1772,20 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const goalOriginalTextValue = goalOriginalText.trim();
   const newGoalDomainNameValue = newGoalDomainName.trim();
   const editingProgramNameValue = editingProgramName.trim();
+  const editingGoalTitleValue = editingGoalState?.title.trim() ?? "";
+  const editingGoalDescriptionValue = editingGoalState?.description.trim() ?? "";
+  const editingGoalObjectiveDataPointsError = useMemo(() => {
+    if (!editingGoalState) {
+      return null;
+    }
+    try {
+      parseObjectiveDataPointsInput(editingGoalState.objectiveDataPoints);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : "Objective data points must be a JSON array.";
+    }
+  }, [editingGoalState]);
+  const editingGoalError = editingGoalObjectiveDataPointsError;
   const hasResolvedProgram = Boolean(resolvedProgramId);
   const noProgramHelperText = programsLoading
     ? "Programs are still loading. You can create one now, or wait for an existing program before adding goals or notes."
@@ -2449,6 +2691,104 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
   });
 
+  const updateGoal = useMutation({
+    mutationFn: async (goal: Goal) => {
+      if (!editingGoalState) {
+        throw new Error("Goal editor is not open.");
+      }
+      if (!editingGoalTitleValue) {
+        throw new Error("Goal title is required.");
+      }
+      if (!editingGoalDescriptionValue) {
+        throw new Error("Goal description is required.");
+      }
+      const objectiveDataPoints = parseObjectiveDataPointsInput(editingGoalState.objectiveDataPoints);
+      const targetCriteria = formatGoalTimelineCriteria({
+        shortTermGoal: editingGoalState.shortTermGoal,
+        intermediateGoal: editingGoalState.intermediateGoal,
+        longTermGoal: editingGoalState.longTermGoal,
+      });
+      const payload = JSON.stringify({
+        title: editingGoalTitleValue,
+        description: editingGoalDescriptionValue,
+        measurement_type: editingGoalState.measurementType.trim() || undefined,
+        clinical_goal_type: editingGoalState.clinicalGoalType || undefined,
+        domain_id: editingGoalState.domainId.trim() || undefined,
+        baseline_data: editingGoalState.baselineData.trim() || undefined,
+        baseline: editingGoalState.baselineData.trim() || undefined,
+        teaching_strategies: editingGoalState.teachingStrategies.trim() || undefined,
+        operational_definition: editingGoalState.operationalDefinition.trim() || undefined,
+        target_criteria: targetCriteria || undefined,
+        mastery_criteria: editingGoalState.masteryCriteria.trim() || undefined,
+        maintenance_criteria: editingGoalState.maintenanceCriteria.trim() || undefined,
+        generalization_criteria: editingGoalState.generalizationCriteria.trim() || undefined,
+        objective_data_points: objectiveDataPoints,
+      });
+      const response = await callEdgeWithSupabaseFallback({
+        edgePath: `${GOALS_EDGE_PATH}?goal_id=${encodeURIComponent(goal.id)}`,
+        fallback: async () => {
+          if (!organizationId) {
+            return jsonResponse({ error: "Organization context is required." }, 400);
+          }
+          const { data, error } = await supabase
+            .from("goals")
+            .update({
+              title: editingGoalTitleValue,
+              description: editingGoalDescriptionValue,
+              measurement_type: editingGoalState.measurementType.trim() || null,
+              clinical_goal_type: editingGoalState.clinicalGoalType || null,
+              domain_id: editingGoalState.domainId.trim() || null,
+              baseline_data: editingGoalState.baselineData.trim() || null,
+              baseline: editingGoalState.baselineData.trim() || null,
+              teaching_strategies: editingGoalState.teachingStrategies.trim() || null,
+              operational_definition: editingGoalState.operationalDefinition.trim() || null,
+              target_criteria: targetCriteria || null,
+              mastery_criteria: editingGoalState.masteryCriteria.trim() || null,
+              maintenance_criteria: editingGoalState.maintenanceCriteria.trim() || null,
+              generalization_criteria: editingGoalState.generalizationCriteria.trim() || null,
+              objective_data_points: objectiveDataPoints,
+            })
+            .eq("id", goal.id)
+            .eq("organization_id", organizationId)
+            .select(
+              "id,organization_id,client_id,program_id,domain_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_goal_type,clinical_context,baseline_data,baseline,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,teaching_strategies,operational_definition,objective_data_points,source,status,created_at,updated_at",
+            )
+            .single();
+          if (error) {
+            return jsonResponse({ error: error.message }, 500);
+          }
+          return jsonResponse(data);
+        },
+        init: {
+          method: "PATCH",
+          body: payload,
+        },
+        timeoutMs: GOAL_CREATE_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Update goal request timed out. Please retry.",
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to update goal."));
+      }
+      return parseJson<Goal>(response);
+    },
+    onMutate: (goal) => {
+      setUpdatingGoalId(goal.id);
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Goal[]>(buildProgramGoalsQueryKey(updated.program_id, organizationId), (current) =>
+        mapById(current, updated.id, () => updated),
+      );
+      queryClient.invalidateQueries({ queryKey: buildProgramGoalsQueryKey(updated.program_id, organizationId) });
+      setEditingGoalId(null);
+      setEditingGoalState(null);
+      showSuccess("Goal updated");
+    },
+    onError: showError,
+    onSettled: () => {
+      setUpdatingGoalId(null);
+    },
+  });
+
   const createGoalDomain = useMutation({
     mutationFn: async () => {
       if (!organizationId) {
@@ -2786,6 +3126,33 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     setEditingProgramId(null);
     setEditingProgramName("");
     setEditingProgramDescription("");
+  };
+
+  const beginGoalEdit = (goal: Goal) => {
+    const parsedTimeline = parseGoalTimelineCriteria(goal.target_criteria);
+    setEditingGoalId(goal.id);
+    setEditingGoalState({
+      title: goal.title,
+      description: goal.description,
+      measurementType: goal.measurement_type ?? "",
+      clinicalGoalType: goal.clinical_goal_type ?? "",
+      domainId: goal.domain_id ?? "",
+      baselineData: goal.baseline ?? goal.baseline_data ?? "",
+      teachingStrategies: goal.teaching_strategies ?? "",
+      operationalDefinition: goal.operational_definition ?? "",
+      shortTermGoal: parsedTimeline.shortTermGoal,
+      intermediateGoal: parsedTimeline.intermediateGoal,
+      longTermGoal: parsedTimeline.longTermGoal,
+      masteryCriteria: goal.mastery_criteria ?? "",
+      maintenanceCriteria: goal.maintenance_criteria ?? "",
+      generalizationCriteria: goal.generalization_criteria ?? "",
+      objectiveDataPoints: JSON.stringify(goal.objective_data_points ?? [], null, 2),
+    });
+  };
+
+  const cancelGoalEdit = () => {
+    setEditingGoalId(null);
+    setEditingGoalState(null);
   };
 
   const archiveGoal = useMutation({
@@ -4010,8 +4377,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 key={goal.id}
                                 archiveGoal={archiveGoal}
                                 archivingGoalId={archivingGoalId}
+                                beginGoalEdit={beginGoalEdit}
                                 canDeleteGoalTargets={canDeleteGoalTargets}
+                                canManageGoalEdit={canManageProgramsGoals}
                                 clientId={client.id}
+                                editingGoalError={editingGoalError}
+                                editingGoalId={editingGoalId}
+                                editingGoalState={editingGoalState}
+                                goalDomainsLoading={goalDomainsLoading}
+                                goalDomainsQueryError={goalDomainsQueryError instanceof Error ? goalDomainsQueryError : null}
+                                goalDomainOptions={activeGoalDomains}
                                 deleteGoalTarget={deleteGoalTarget}
                                 deletingTargetId={deletingTargetId}
                                 domainsById={goalDomainsById}
@@ -4021,8 +4396,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 lifecycleTargetId={lifecycleTargetId}
                                 organizationId={organizationId}
                                 progressionCanManage={canManageProgression}
+                                cancelGoalEdit={cancelGoalEdit}
+                                setEditingGoalState={setEditingGoalState}
                                 setGoalTargetArchiveState={canManageProgramsGoals ? setGoalTargetArchiveState : null}
+                                updateGoal={updateGoal}
                                 updateGoalTarget={canManageProgramsGoals ? updateGoalTarget : null}
+                                updatingGoalId={updatingGoalId}
                                 updatingTargetId={updatingTargetId}
                               />
                             ))}

@@ -1665,10 +1665,9 @@ describe('SessionModal', () => {
     opener.focus();
 
     const onClose = vi.fn();
-    let rerenderModal: ReturnType<typeof renderWithProviders>['rerender'];
     const handleClose = () => {
       onClose();
-      rerenderModal(
+      rendered.rerender(
         <SessionModal
           {...defaultProps}
           isOpen={false}
@@ -1683,7 +1682,6 @@ describe('SessionModal', () => {
         onClose={handleClose}
       />
     );
-    rerenderModal = rendered.rerender;
 
     const closeButton = screen.getByRole('button', { name: /close session modal/i }) as HTMLButtonElement;
     expect(closeButton).toHaveFocus();

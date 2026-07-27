@@ -1008,8 +1008,6 @@ export function SessionModal({
     data: programs = [],
     isFetched: isProgramsFetched,
     isFetching: isProgramsFetching,
-    isError: isProgramsError,
-    refetch: refetchPrograms,
   } = useQuery({
     queryKey: ['client-programs', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
@@ -1034,8 +1032,6 @@ export function SessionModal({
     data: goals = [],
     isFetched: isGoalsFetched,
     isFetching: isGoalsFetching,
-    isError: isGoalsError,
-    refetch: refetchGoals,
   } = useQuery({
     queryKey: ['client-goals', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
@@ -3686,113 +3682,8 @@ export function SessionModal({
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 sm:sr-only">
                 Program &amp; goals
               </p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4">
-              <div>
-                <label
-                  htmlFor="program-select"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Program
-                </label>
-                <select
-                  id="program-select"
-                  {...register('program_id')}
-                  disabled={isDataCollectionOnly || isProgramsFetching || !clientId}
-                  onChange={(event) => {
-                    if (isDataCollectionOnly) {
-                      return;
-                    }
-                    const nextProgramId = event.target.value;
-                    setValue('program_id', nextProgramId, { shouldDirty: true, shouldTouch: true });
-                    if (!nextProgramId) {
-                      updateProgramSelection([]);
-                      return;
-                    }
-                    updateProgramSelection([nextProgramId, ...selectedProgramIds.filter((id) => id !== nextProgramId)]);
-                  }}
-                  className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                >
-                  <option value="">Select a program</option>
-                  {session?.id && programId && !hasProgramOptionForValue && (
-                    <option value={programId}>
-                      Current program (unavailable in active list)
-                    </option>
-                  )}
-                  {activePrograms.map((program) => (
-                    <option key={program.id} value={program.id}>
-                      {program.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.program_id && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.program_id.message}</p>
-                )}
-                {isProgramsFetching && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Loading programs...</p>
-                )}
-                {isProgramsError && (
-                  <div className="mt-1 flex items-center gap-2 text-xs text-red-600 dark:text-red-300">
-                    <span>Could not load programs.</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void refetchPrograms();
-                      }}
-                      className="font-semibold underline underline-offset-2"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="goal-select"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Primary Goal
-                </label>
-                <select
-                  id="goal-select"
-                  {...register('goal_id')}
-                  disabled={isDataCollectionOnly || isGoalsFetching || selectedProgramGoals.length === 0}
-                  className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                >
-                  <option value="">Select a goal</option>
-                  {session?.id && goalId && !hasGoalOptionForValue && (
-                    <option value={goalId}>
-                      Current goal (unavailable in active list)
-                    </option>
-                  )}
-                  {selectedProgramGoals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {goal.title}
-                    </option>
-                  ))}
-                </select>
-                {errors.goal_id && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.goal_id.message}</p>
-                )}
-                {isGoalsFetching && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Loading goals...</p>
-                )}
-                {isGoalsError && (
-                  <div className="mt-1 flex items-center gap-2 text-xs text-red-600 dark:text-red-300">
-                    <span>Could not load goals.</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void refetchGoals();
-                      }}
-                      className="font-semibold underline underline-offset-2"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+              <input type="hidden" {...register('program_id')} />
+              <input type="hidden" {...register('goal_id')} />
 
             {availableProgramGroups.length > 0 && (
               <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">

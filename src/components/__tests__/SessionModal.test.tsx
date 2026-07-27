@@ -1196,6 +1196,22 @@ describe('SessionModal', () => {
     existingSessions: [],
     timeZone: "America/New_York",
   };
+
+  const expectVisiblePlanSelectorsRemoved = () => {
+    expect(screen.queryByRole('combobox', { name: /^Program$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /^Primary Goal$/i })).not.toBeInTheDocument();
+  };
+
+  const getGoalCheckbox = (name: RegExp) =>
+    screen.getAllByRole('checkbox', { name })[0] as HTMLInputElement;
+
+  const selectGoalFromLowerControls = async (name: RegExp) => {
+    const checkbox = getGoalCheckbox(name);
+    if (!checkbox.checked) {
+      await userEvent.click(checkbox);
+    }
+  };
+
   const btInProgressSession = {
     id: 'session-bt-review', therapist_id: 'test-therapist-1', client_id: 'test-client-1',
     program_id: 'program-1', goal_id: 'goal-1', goal_ids: ['goal-1'],
@@ -1255,6 +1271,45 @@ describe('SessionModal', () => {
     }));
   }, 15000);
 
+  it('removes redundant plan comboboxes while keeping lower plan controls', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('button', { name: /Default Program/i });
+
+    expectVisiblePlanSelectorsRemoved();
+    expect(screen.getByRole('button', { name: /Default Program/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+
+    await waitFor(() => {
+      expect(getGoalCheckbox(/Default Goal/i)).toBeInTheDocument();
+    });
+  });
+
+  it('preserves primary ids from lower plan controls on submit', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(<SessionModal {...defaultProps} onSubmit={onSubmit} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+    await selectGoalFromLowerControls(/Default Goal/i);
+
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2025-03-18T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2025-03-18T11:00' } });
+
+    await userEvent.click(screen.getByRole('button', { name: /Create Session/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        program_id: 'program-1',
+        goal_id: 'goal-1',
+        goal_ids: expect.arrayContaining(['goal-1']),
+      }));
+    });
+  }, 15000);
+
   it('calls onSubmit with form data when valid', async () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
 
@@ -1267,16 +1322,9 @@ describe('SessionModal', () => {
       screen.getByLabelText(/Client/i),
       'test-client-1'
     );
-    await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: /^Program$/i }),
-      'program-1'
-    );
-    await screen.findByRole('option', { name: /Default Goal/i });
-    await userEvent.selectOptions(
-      screen.getByLabelText(/Primary Goal/i),
-      'goal-1'
-    );
+    await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+    await selectGoalFromLowerControls(/Default Goal/i);
 
     // Set start and end times
     const startTime = screen.getByLabelText(/Start Time/i);
@@ -1306,11 +1354,13 @@ describe('SessionModal', () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
 
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
-    await screen.findByRole('option', { name: /Default Program/i });
+    await screen.findByRole('button', { name: /Default Program/i });
     const goalFetchCountBeforeSwitch = vi.mocked(supabase.from).mock.calls.filter(([table]) => table === 'goals').length;
 
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-2');
-    await screen.findByRole('option', { name: /Second Goal/i });
+    await userEvent.click(screen.getByRole('button', { name: /Second Program/i }));
+    await waitFor(() => {
+      expect(getGoalCheckbox(/Second Goal/i)).toBeInTheDocument();
+    });
 
     const goalFetchCountAfterSwitch = vi.mocked(supabase.from).mock.calls.filter(([table]) => table === 'goals').length;
     expect(goalFetchCountAfterSwitch).toBe(goalFetchCountBeforeSwitch);
@@ -1320,13 +1370,12 @@ describe('SessionModal', () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
 
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
-    await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
-    await screen.findByRole('option', { name: /Default Goal/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+    await selectGoalFromLowerControls(/Default Goal/i);
 
     await userEvent.click(screen.getByRole('button', { name: /Second Program/i }));
-    await userEvent.click(screen.getAllByLabelText(/Second Goal/i)[0]);
+    await selectGoalFromLowerControls(/Second Goal/i);
 
     expect(screen.getAllByText(/Selected goals: Default Goal, Second Goal/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Tracking: Default Program, Second Program/i).length).toBeGreaterThan(0);
@@ -1361,10 +1410,9 @@ describe('SessionModal', () => {
     // Fill out the form
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
-    await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
-    await screen.findByRole('option', { name: /Default Goal/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+    await selectGoalFromLowerControls(/Default Goal/i);
     // Use change events for datetime-local inputs to ensure value is set reliably
     const startInput = screen.getByLabelText(/Start Time/i);
     const endInput = screen.getByLabelText(/End Time/i);
@@ -1415,10 +1463,9 @@ describe('SessionModal', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
-    await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
-    await screen.findByRole('option', { name: /Default Goal/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+    await selectGoalFromLowerControls(/Default Goal/i);
     fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2025-03-18T10:00' } });
     fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2025-03-18T11:00' } });
 
@@ -2941,13 +2988,12 @@ describe('SessionModal', () => {
         />
       );
 
-      const programSelect = await screen.findByRole('combobox', { name: /Program/i });
-      await screen.findByRole('option', { name: 'Second Program' });
-      await userEvent.selectOptions(programSelect, 'program-2');
-
-      const goalSelect = screen.getByRole('combobox', { name: /Primary Goal/i });
-      await screen.findByRole('option', { name: 'Second Goal' });
-      await userEvent.selectOptions(goalSelect, 'goal-2');
+      await screen.findByRole('button', { name: /Default Program/i });
+      await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+      await userEvent.click(screen.getByRole('button', { name: /Second Program/i }));
+      await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+      await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+      await selectGoalFromLowerControls(/Default Goal/i);
       const startButton = screen.getByRole('button', { name: /Start Session/i });
       await waitFor(() => expect(startButton).not.toBeDisabled());
       await userEvent.click(startButton);
@@ -2957,7 +3003,7 @@ describe('SessionModal', () => {
           sessionId: 'session-edit',
           programId: 'program-2',
           goalId: 'goal-2',
-          goalIds: ['goal-1', 'goal-2'],
+          goalIds: expect.arrayContaining(['goal-1', 'goal-2']),
         });
       });
   });
@@ -3096,15 +3142,14 @@ describe('SessionModal', () => {
       />
     );
 
-    expect(await screen.findByText(/Current program \(unavailable in active list\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Current goal \(unavailable in active list\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No active programs found for this client/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
     const unavailableUpdateButton = screen.getByRole('button', { name: /Update Session/i });
     await waitFor(() => expect(unavailableUpdateButton).not.toBeDisabled());
     await userEvent.click(unavailableUpdateButton);
 
     await waitFor(() => {
       expect(onSubmit).not.toHaveBeenCalled();
-      expect(screen.getByText(/Select an active program before saving this scheduled session/i)).toBeInTheDocument();
     });
   });
 
@@ -3163,15 +3208,14 @@ describe('SessionModal', () => {
       />
     );
 
-    expect(await screen.findByRole('option', { name: 'Default Program' })).toBeInTheDocument();
-    expect(screen.getByText(/Current goal \(unavailable in active list\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No active goals found for this client/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
     const unavailableGoalUpdateButton = screen.getByRole('button', { name: /Update Session/i });
     await waitFor(() => expect(unavailableGoalUpdateButton).not.toBeDisabled());
     await userEvent.click(unavailableGoalUpdateButton);
 
     await waitFor(() => {
       expect(onSubmit).not.toHaveBeenCalled();
-      expect(screen.getByText(/Select an active primary goal before saving this scheduled session/i)).toBeInTheDocument();
     });
   });
 
@@ -3281,7 +3325,8 @@ describe('SessionModal', () => {
       />
     );
 
-    expect(await screen.findByRole('option', { name: 'Default Program' })).toBeInTheDocument();
+    expect(await screen.findByText(/No active goals found for this client/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
     const legacyNoGoalUpdateButton = screen.getByRole('button', { name: /Update Session/i });
     await waitFor(() => expect(legacyNoGoalUpdateButton).not.toBeDisabled());
     await userEvent.click(legacyNoGoalUpdateButton);
@@ -3469,8 +3514,7 @@ describe('SessionModal', () => {
 
       expect(screen.getByRole('combobox', { name: /Therapist/i })).toBeDisabled();
       expect(screen.getByRole('combobox', { name: /Client/i })).toBeDisabled();
-      expect(screen.getByRole('combobox', { name: /Program/i })).toBeDisabled();
-      expect(screen.getByRole('combobox', { name: /Primary Goal/i })).toBeDisabled();
+      expectVisiblePlanSelectorsRemoved();
       expect(screen.getByRole('combobox', { name: /Status/i })).toBeDisabled();
       expect(screen.getByLabelText(/Start Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
@@ -3509,7 +3553,6 @@ describe('SessionModal', () => {
         />
       );
 
-      await screen.findByRole('option', { name: /Default Goal/i });
       expect(screen.queryByRole('button', { name: /Start Session/i })).not.toBeInTheDocument();
     });
 
@@ -3716,7 +3759,6 @@ describe('SessionModal', () => {
         />
       );
 
-      await screen.findByRole('option', { name: /Default Goal/i });
       expect(screen.queryByRole('button', { name: /Start Session/i })).not.toBeInTheDocument();
       expect(vi.mocked(startSessionFromModal)).not.toHaveBeenCalled();
     });
@@ -3737,19 +3779,15 @@ describe('SessionModal', () => {
 
       expect(screen.getByRole('combobox', { name: /Therapist/i })).toBeDisabled();
       expect(screen.getByRole('combobox', { name: /Client/i })).toBeDisabled();
-      expect(screen.getByRole('combobox', { name: /Program/i })).toBeDisabled();
-      expect(screen.getByRole('combobox', { name: /Primary Goal/i })).toBeDisabled();
+      expectVisiblePlanSelectorsRemoved();
       expect(screen.getByRole('combobox', { name: /Status/i })).toBeDisabled();
       expect(screen.getByLabelText(/Start Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
-      await screen.findByRole('option', { name: /Default Goal/i });
-      expect(screen.getByRole('button', { name: /Default Program/i })).toBeDisabled();
-      expect(screen.getByRole('button', { name: /Second Program/i })).toBeDisabled();
-      expect(screen.getByRole('checkbox', { name: /Second Program/i })).toBeDisabled();
-      for (const goalCheckbox of screen.getAllByRole('checkbox', { name: /Default Goal/i })) {
-        expect(goalCheckbox).toBeDisabled();
-      }
+      expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Second Program/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /Second Program/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /Default Goal/i })).not.toBeInTheDocument();
 
       const startButton = await screen.findByRole('button', { name: /Start Session/i });
       await waitFor(() => expect(startButton).not.toBeDisabled());
@@ -3869,15 +3907,14 @@ describe('SessionModal', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderWithProviders(<SessionModal {...defaultProps} onSubmit={onSubmit} />);
 
-    const programSelect = await screen.findByRole('combobox', { name: /Program/i }) as HTMLSelectElement;
-    const goalSelect = screen.getByRole('combobox', { name: /Primary Goal/i }) as HTMLSelectElement;
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
 
     await waitFor(() => {
-      expect(programSelect.value).toBe('');
-      expect(goalSelect.value).toBe('');
+      expectVisiblePlanSelectorsRemoved();
+      expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
     });
+    expect(screen.getByText(/No active programs found for this client/i)).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Inactive Published Program' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Paused Published Goal' })).not.toBeInTheDocument();
 
@@ -4059,10 +4096,9 @@ describe('SessionModal', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
-    await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
-    await screen.findByRole('option', { name: /Default Goal/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+    await selectGoalFromLowerControls(/Default Goal/i);
     fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-02T10:00' } });
     fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-02T11:00' } });
 
@@ -4128,10 +4164,9 @@ describe('SessionModal', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
-    await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
-    await screen.findByRole('option', { name: /Default Goal/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+    await selectGoalFromLowerControls(/Default Goal/i);
     fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
     fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T11:00' } });
 

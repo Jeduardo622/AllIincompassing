@@ -3684,6 +3684,12 @@ export function SessionModal({
               </p>
               <input type="hidden" {...register('program_id')} />
               <input type="hidden" {...register('goal_id')} />
+              {errors.program_id && (
+                <p className="text-sm text-red-600 dark:text-red-400">{errors.program_id.message}</p>
+              )}
+              {errors.goal_id && (
+                <p className="text-sm text-red-600 dark:text-red-400">{errors.goal_id.message}</p>
+              )}
 
             {availableProgramGroups.length > 0 && (
               <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">

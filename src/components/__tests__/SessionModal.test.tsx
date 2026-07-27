@@ -3150,6 +3150,7 @@ describe('SessionModal', () => {
 
     await waitFor(() => {
       expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText(/Select an active program before saving this scheduled session\./i)).toBeInTheDocument();
     });
   });
 
@@ -3216,6 +3217,7 @@ describe('SessionModal', () => {
 
     await waitFor(() => {
       expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText(/Select an active primary goal before saving this scheduled session\./i)).toBeInTheDocument();
     });
   });
 
@@ -3784,10 +3786,12 @@ describe('SessionModal', () => {
       expect(screen.getByLabelText(/Start Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
-      expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Second Program/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('checkbox', { name: /Second Program/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('checkbox', { name: /Default Goal/i })).not.toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /Default Program/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Second Program/i })).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: /Default Program/i })).toBeDisabled();
+      for (const goalCheckbox of screen.getAllByRole('checkbox', { name: /Default Goal/i })) {
+        expect(goalCheckbox).toBeDisabled();
+      }
 
       const startButton = await screen.findByRole('button', { name: /Start Session/i });
       await waitFor(() => expect(startButton).not.toBeDisabled());

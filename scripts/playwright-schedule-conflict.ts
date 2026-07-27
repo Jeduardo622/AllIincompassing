@@ -11,6 +11,12 @@ import {
   loginAndAssertSession,
   waitForSelectOptions,
 } from "./lib/playwright-smoke";
+import {
+  readSelectedSessionPlanIds,
+  selectSessionPlanControls,
+  selectSessionProgramControl,
+  waitForSessionPlanControlIds,
+} from "./lib/playwright-session-plan-controls";
 
 type ConflictMode = "mock" | "real";
 
@@ -129,8 +135,9 @@ async function chooseSessionTargets(page: Page): Promise<ConflictTargets> {
   if (preferred.therapistId && preferred.clientId && preferred.programId && preferred.goalId) {
     await selectValueOrThrow(page, "#therapist-select", preferred.therapistId, "Therapist");
     await selectValueOrThrow(page, "#client-select", preferred.clientId, "Client");
-    await selectValueOrThrow(page, "#program-select", preferred.programId, "Program");
-    await selectValueOrThrow(page, "#goal-select", preferred.goalId, "Goal");
+    if (!(await selectSessionPlanControls(page, preferred.programId, preferred.goalId))) {
+      throw new Error("Preferred program/goal is not currently selectable in the lower plan controls.");
+    }
     return {
       therapistId: preferred.therapistId,
       clientId: preferred.clientId,
@@ -157,16 +164,20 @@ async function chooseSessionTargets(page: Page): Promise<ConflictTargets> {
         break;
       }
       await page.selectOption("#client-select", clientId);
-      const programValues = await waitForSelectOptions(page, "#program-select", { timeoutMs: 1_500 }).catch(() => []);
+      const programValues = await waitForSessionPlanControlIds(page, "program", 1_500).catch(() => []);
       if (programValues.length === 0) {
         continue;
       }
-      await page.selectOption("#program-select", programValues[0]);
-      const goalValues = await waitForSelectOptions(page, "#goal-select", { timeoutMs: 1_500 }).catch(() => []);
+      if (!(await selectSessionProgramControl(page, programValues[0], 1_500))) {
+        continue;
+      }
+      const goalValues = await waitForSessionPlanControlIds(page, "goal", 1_500).catch(() => []);
       if (goalValues.length === 0) {
         continue;
       }
-      await page.selectOption("#goal-select", goalValues[0]);
+      if (!(await selectSessionPlanControls(page, programValues[0], goalValues[0], 1_500))) {
+        continue;
+      }
       return {
         therapistId,
         clientId,
@@ -188,15 +199,19 @@ async function chooseSessionTargets(page: Page): Promise<ConflictTargets> {
     await page.selectOption("#therapist-select", fallbackTherapistId);
     await page.selectOption("#client-select", fallbackClientId);
     await page.waitForTimeout(500);
-    await selectValueOrThrow(page, "#program-select", seeded.programId, "Seeded program");
-    const availableGoals = await waitForSelectOptions(page, "#goal-select", { timeoutMs: 12_000 }).catch(() => []);
+    if (!(await selectSessionProgramControl(page, seeded.programId, 12_000))) {
+      throw new Error("Seeded program is not available in the lower plan controls.");
+    }
+    const availableGoals = await waitForSessionPlanControlIds(page, "goal", 12_000).catch(() => []);
     const selectedGoalId = availableGoals.includes(seeded.goalId)
       ? seeded.goalId
       : availableGoals[0];
     if (!selectedGoalId) {
       throw new Error("No goals available after auto-seeding program/goal fixture.");
     }
-    await page.selectOption("#goal-select", selectedGoalId);
+    if (!(await selectSessionPlanControls(page, seeded.programId, selectedGoalId, 12_000))) {
+      throw new Error("Seeded goal is not available in the lower plan controls.");
+    }
     return {
       therapistId: fallbackTherapistId,
       clientId: fallbackClientId,
@@ -564,8 +579,9 @@ async function run() {
 
     const therapistValue = await page.locator("#therapist-select").inputValue();
     const clientValue = await page.locator("#client-select").inputValue();
-    const programValue = await page.locator("#program-select").inputValue();
-    const goalValue = await page.locator("#goal-select").inputValue();
+    const selectedPlan = await readSelectedSessionPlanIds(page);
+    const programValue = selectedPlan.programIds[0] ?? "";
+    const goalValue = selectedPlan.goalIds[0] ?? "";
     const currentStartValue = await startTimeInput.inputValue();
     const currentEndValue = await endTimeInput.inputValue();
 

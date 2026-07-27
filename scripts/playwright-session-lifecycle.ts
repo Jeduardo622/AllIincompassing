@@ -22,6 +22,12 @@ import {
   classifyScheduleReadinessFailure,
   openScheduleSessionModalFromCalendar,
 } from "./lib/playwright-schedule-session-modal";
+import {
+  buildSessionPlanControlSelectors,
+  selectSessionPlanControls,
+} from "./lib/playwright-session-plan-controls";
+
+export { buildSessionPlanControlSelectors } from "./lib/playwright-session-plan-controls";
 
 /** Canonical /schedule + SessionModal regression: book → Start Session → terminal close (no-show/completed). */
 
@@ -902,13 +908,8 @@ async function chooseSessionTargetsExcluding(
       await cleanupCreatedProgramGoal(seeded);
       continue;
     }
-    const selectedProgram = await selectOptionWhenAvailable(page, "#program-select", seeded.programId);
-    if (!selectedProgram) {
-      await cleanupCreatedProgramGoal(seeded);
-      continue;
-    }
-    const selectedGoal = await selectOptionWhenAvailable(page, "#goal-select", seeded.goalId);
-    if (!selectedGoal) {
+    const selectedPlan = await selectSessionPlanControls(page, seeded.programId, seeded.goalId);
+    if (!selectedPlan) {
       await cleanupCreatedProgramGoal(seeded);
       continue;
     }

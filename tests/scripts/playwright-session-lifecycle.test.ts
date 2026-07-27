@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   buildBookingCandidateStarts,
   buildBookingConflictWindowFilters,
+  buildSessionPlanControlSelectors,
   cleanupBeforeNoResponseFailure,
   filterNonOverlappingBookingStarts,
   hasReachedLifecyclePairAttemptLimit,
@@ -51,6 +52,13 @@ describe("playwright session lifecycle booking starts", () => {
     expect(isCreateSessionButtonReady({ disabled: "", ariaDisabled: null, textContent: "Create Session" })).toBe(false);
     expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: "true", textContent: "Create Session" })).toBe(false);
     expect(isCreateSessionButtonReady({ disabled: null, ariaDisabled: null, textContent: "Saving..." })).toBe(false);
+  });
+
+  it("targets the surviving clickable program and goal controls", () => {
+    expect(buildSessionPlanControlSelectors("program-1", "goal-1")).toEqual({
+      programSelector: '[data-program-id="program-1"]:visible',
+      goalSelector: '[data-goal-id="goal-1"]:visible',
+    });
   });
 
   it("accepts only the explicit hosted ALREADY_STARTED recovery contract", () => {

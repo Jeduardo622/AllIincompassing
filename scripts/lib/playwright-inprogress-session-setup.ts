@@ -15,6 +15,7 @@ import {
   type LifecycleTargetPair,
 } from "../../src/scripts/playwrightSessionLifecycleTargets";
 import { waitForSelectOptions } from "./playwright-smoke";
+import { selectSessionPlanControls } from "./playwright-session-plan-controls";
 
 export interface LifecycleIds {
   sessionId: string;
@@ -709,13 +710,8 @@ async function chooseSessionTargets(
     await page.selectOption("#client-select", "");
     const seeded = await ensureProgramAndGoalForPair(therapistId, clientId);
     await page.selectOption("#client-select", clientId);
-    const selectedProgram = await selectOptionWhenAvailable(page, "#program-select", seeded.programId);
-    if (!selectedProgram) {
-      await archiveCreatedProgramGoalFixtures(seeded);
-      continue;
-    }
-    const selectedGoal = await selectOptionWhenAvailable(page, "#goal-select", seeded.goalId);
-    if (selectedGoal) {
+    const selectedPlan = await selectSessionPlanControls(page, seeded.programId, seeded.goalId);
+    if (selectedPlan) {
       return {
         therapistId,
         clientId,

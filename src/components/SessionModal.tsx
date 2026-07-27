@@ -3753,6 +3753,8 @@ export function SessionModal({
                       <button
                         key={program.id}
                         type="button"
+                        data-program-id={program.id}
+                        aria-pressed={isSelected}
                         onClick={() => toggleProgramSelection(program.id)}
                         disabled={isDataCollectionOnly}
                         className={`rounded-full border px-3 py-2 text-sm font-medium transition ${
@@ -3791,6 +3793,7 @@ export function SessionModal({
                         >
                         <input
                           type="checkbox"
+                          data-program-id={program.id}
                           checked={selectedProgramSet.has(program.id)}
                           onChange={() => toggleProgramSelection(program.id)}
                           disabled={isDataCollectionOnly}
@@ -3844,6 +3847,7 @@ export function SessionModal({
                               >
                                 <input
                                   type="checkbox"
+                                  data-goal-id={goal.id}
                                   checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
                                   onChange={() => toggleGoalSelection(goal.id)}
                                   disabled={isDataCollectionOnly}
@@ -3894,6 +3898,7 @@ export function SessionModal({
                               <label key={goal.id} className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                                 <input
                                   type="checkbox"
+                                  data-goal-id={goal.id}
                                   checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
                                   onChange={() => toggleGoalSelection(goal.id)}
                                   disabled={isDataCollectionOnly}

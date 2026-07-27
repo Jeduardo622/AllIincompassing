@@ -4559,6 +4559,62 @@ describe('SessionModal', () => {
     expect(screen.getAllByRole('button', { name: /Default Goal is primary goal/i })[0]).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('keeps an unavailable stored plan expanded so paused selections stay visible', async () => {
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain([
+          {
+            ...mockPrograms[0],
+            id: 'inactive-program-1',
+            name: 'Inactive Published Program',
+            status: 'inactive',
+          },
+        ]);
+      }
+      if (table === 'goals') {
+        return buildChain([
+          {
+            ...mockGoals[0],
+            id: 'paused-goal-1',
+            program_id: 'inactive-program-1',
+            title: 'Paused Published Goal',
+            status: 'paused',
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={{
+          ...validScheduledSession,
+          id: 'session-unavailable-plan-summary',
+          program_id: 'inactive-program-1',
+          goal_id: 'paused-goal-1',
+        }}
+      />,
+    );
+
+    const disclosure = await screen.findByRole('button', { name: /plan & goals/i });
+    await waitFor(() => expect(disclosure).toHaveAttribute('aria-expanded', 'true'));
+    expect(screen.getByText(/No active programs found for this client/i)).toBeVisible();
+    expect(screen.getByText('Programs in this session')).toBeVisible();
+  });
+
   it('preserves create-mode plan selections across collapse and re-expansion after a valid plan exists', async () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
 
@@ -4603,6 +4659,67 @@ describe('SessionModal', () => {
 
     await userEvent.click(disclosure);
 
+    expect(screen.getByTestId('session-modal-capture-section')).toBeVisible();
+  });
+
+  it('preserves user-expanded secondary clinical details after deferred plan hydration resolves', async () => {
+    let resolvePrograms: ((value: { data: unknown[]; error: null }) => void) | null = null;
+    let resolveGoals: ((value: { data: unknown[]; error: null }) => void) | null = null;
+    const programsPromise = new Promise<{ data: unknown[]; error: null }>((resolve) => {
+      resolvePrograms = resolve;
+    });
+    const goalsPromise = new Promise<{ data: unknown[]; error: null }>((resolve) => {
+      resolveGoals = resolve;
+    });
+    const buildDeferredChain = (orderPromise: Promise<{ data: unknown[]; error: null }>) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(() => orderPromise),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildDeferredChain(programsPromise);
+      }
+      if (table === 'goals') {
+        return buildDeferredChain(goalsPromise);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(<SessionModal {...defaultProps} session={validScheduledSession} />);
+
+    const disclosure = await screen.findByRole('button', { name: /clinical capture and secondary details/i });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+    await expandClinicalDetails();
+    expect(screen.getByTestId('session-modal-capture-section')).toBeVisible();
+
+    await act(async () => {
+      resolvePrograms?.({ data: mockPrograms, error: null });
+      resolveGoals?.({ data: mockGoals, error: null });
+      await Promise.all([programsPromise, goalsPromise]);
+    });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /plan & goals/i })).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.getByRole('button', { name: /clinical capture and secondary details/i })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('session-modal-capture-section')).toBeVisible();
   });
 

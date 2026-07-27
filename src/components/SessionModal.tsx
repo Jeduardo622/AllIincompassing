@@ -834,6 +834,7 @@ export function SessionModal({
   const planDisclosureSessionKeyRef = useRef<string | null>(null);
   const planDisclosureInitializedRef = useRef(false);
   const planDisclosureTouchedRef = useRef(false);
+  const clinicalDisclosureSessionKeyRef = useRef<string | null>(null);
   const closeoutCaptureRef = useRef<{
     notePayload: BtAbaSessionNotePayload;
     trialEvents: SessionCaptureTrialEventInput[];
@@ -1322,12 +1323,6 @@ export function SessionModal({
     () => selectedGoalsForSession.map((goal) => goal.title).join(', '),
     [selectedGoalsForSession],
   );
-  const hasResolvedValidPlan = Boolean(
-    programId &&
-    goalId &&
-    programsById.has(programId) &&
-    goalsById.has(goalId),
-  );
   const planSummaryProgramName = programsById.get(programId ?? '')?.name ?? 'Program needed';
   const planSummaryGoalName = selectedPrimaryGoal?.title ?? 'Goal needed';
   const canonicalStartGoalIds = useMemo(
@@ -1358,6 +1353,7 @@ export function SessionModal({
   const hasGoalOptionForValue = hasGoalValue
     ? selectedProgramGoals.some((goal) => goal.id === goalId)
     : false;
+  const hasResolvedValidPlan = hasProgramOptionForValue && hasGoalOptionForValue;
   const hasDirtySessionCaptureFields = useMemo(
     () =>
       hasNestedDirtyEntries(dirtyFields.session_note_narrative) ||
@@ -3271,6 +3267,7 @@ export function SessionModal({
       planDisclosureSessionKeyRef.current = null;
       planDisclosureInitializedRef.current = false;
       planDisclosureTouchedRef.current = false;
+      clinicalDisclosureSessionKeyRef.current = null;
       setIsPlanSectionExpanded(!session?.id);
       setIsClinicalSectionExpanded(isPrimaryClinicalCaptureMode);
     }
@@ -3290,7 +3287,6 @@ export function SessionModal({
         setIsPlanSectionExpanded(true);
         planDisclosureInitializedRef.current = true;
       }
-      setIsClinicalSectionExpanded(isPrimaryClinicalCaptureMode);
       return;
     }
     if (!planDisclosureInitializedRef.current && hasResolvedValidPlan) {
@@ -3302,8 +3298,19 @@ export function SessionModal({
     if (!planDisclosureInitializedRef.current && !hasResolvedValidPlan && !planDisclosureTouchedRef.current) {
       setIsPlanSectionExpanded(true);
     }
-    setIsClinicalSectionExpanded(isPrimaryClinicalCaptureMode);
   }, [hasResolvedValidPlan, isOpen, isPrimaryClinicalCaptureMode, planDisclosureSessionKey, session?.id]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const clinicalDisclosureSessionKey =
+      `${planDisclosureSessionKey}:${isPrimaryClinicalCaptureMode ? 'primary' : 'secondary'}`;
+    if (clinicalDisclosureSessionKeyRef.current !== clinicalDisclosureSessionKey) {
+      clinicalDisclosureSessionKeyRef.current = clinicalDisclosureSessionKey;
+      setIsClinicalSectionExpanded(isPrimaryClinicalCaptureMode);
+    }
+  }, [isOpen, isPrimaryClinicalCaptureMode, planDisclosureSessionKey]);
 
   useEffect(() => {
     if (!isOpen || (!progressionConflict && progressionNotices.length === 0)) {

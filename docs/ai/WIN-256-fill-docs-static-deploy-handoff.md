@@ -9,9 +9,13 @@ Date: Sunday, July 26, 2026
 - Lane: `critical`
 - Triggering paths:
   - `scripts/ci/deploy-fill-docs-function.mjs`
+  - `scripts/ci/deploy-session-edge-bundle.mjs`
+  - `scripts/ci/check-edge-deploy-prerequisites.mjs`
   - `scripts/ci/check-session-deploy-safety.mjs`
   - `scripts/ci/run-rollback-drill.mjs`
   - `tests/ci/deploy-fill-docs-function.test.ts`
+  - `tests/ci/deploy-session-edge-bundle.test.ts`
+  - `tests/ci/check-edge-deploy-prerequisites.test.ts`
   - `tests/ci/check-session-deploy-safety.test.ts`
   - `.github/workflows/ci.yml`
   - `package.json`
@@ -66,6 +70,7 @@ Date: Sunday, July 26, 2026
 ## Implementation Summary
 
 - Added `scripts/ci/deploy-fill-docs-function.mjs` as a single-purpose `fill-docs` deploy helper.
+- Added `scripts/ci/check-edge-deploy-prerequisites.mjs` as an import-safe shared fail-closed target validator for the protected session, fill-docs, and AI deploy paths.
 - Added targeted Vitest coverage for:
   - package script wiring
   - success path with no `--use-api`
@@ -80,13 +85,14 @@ Date: Sunday, July 26, 2026
   - restricted to reviewed pushes on `main`
   - gated by policy, tenant safety, runtime parity, runtime contract, lint/typecheck, unit tests, and build
   - runs on every reviewed `main` push, so function-local and `_shared` dependency changes cannot leave production stale
+- Tightened the CI deploy-safety matcher so env/interpreter-wrapped `npm run` deploy commands, including `-s`, `--silent`, and `--prefix` forms, for session edge, fill-docs, and ai-agent are treated as real deploy invocations, while inert `echo`/`printf` text remains ignored.
 - Extended deploy-policy tests and the rollback runbook to require this exact guarded command.
 - Rejected an earlier standalone-workflow design during independent review because it allowed manual non-main deployment and bypassed the existing protected CI fan-in.
 
 ## Required Checks
 
 - Focused test:
-  - `npx vitest run tests/ci/deploy-fill-docs-function.test.ts tests/ci/check-session-deploy-safety.test.ts`
+  - `npx vitest run tests/ci/check-edge-deploy-prerequisites.test.ts tests/ci/check-session-deploy-safety.test.ts tests/ci/deploy-session-edge-bundle.test.ts tests/ci/deploy-fill-docs-function.test.ts`
 - Direct script validation:
   - `node scripts/ci/deploy-fill-docs-function.mjs` with fake or controlled Supabase CLI
 - Critical-lane repo checks still required before merge:
@@ -104,7 +110,7 @@ Date: Sunday, July 26, 2026
 - Change type: `CI/workflow/policy` and `edge deployment integration`
 - Required checks:
   - `npm ci`
-  - `npx vitest run tests/ci/deploy-fill-docs-function.test.ts tests/ci/check-session-deploy-safety.test.ts`
+  - `npx vitest run tests/ci/check-edge-deploy-prerequisites.test.ts tests/ci/check-session-deploy-safety.test.ts tests/ci/deploy-session-edge-bundle.test.ts tests/ci/deploy-fill-docs-function.test.ts`
   - `npm run ci:check-focused`
   - `npm run ci:rollback-drill`
   - `npm run lint`
@@ -114,15 +120,16 @@ Date: Sunday, July 26, 2026
   - `npm run verify:local`
 - Executed checks:
   - `npm ci` -> pass
-  - focused Vitest command -> pass (`114/114`)
+  - focused Vitest command -> pass (`150/150`)
+  - `node scripts/ci/check-session-deploy-safety.mjs` -> pass
   - `npm run ci:check-focused` -> pass
   - `npm run ci:rollback-drill` -> pass
   - `npm run lint` -> pass
   - `npm run typecheck` -> pass
   - `npm run build` -> pass
-  - `npm run test:ci` -> local Windows fail in existing, unrelated LF-sensitive assertions; the same `origin/main` SHA passed GitHub CI run `30217501194`
+  - `npm run test:ci` -> timed out after 180 seconds after reporting 5 failures outside the touched files, including existing Windows/LF-sensitive workflow and migration assertions plus a `Blob.text()` environment mismatch
 - Blocked checks:
-  - `npm run verify:local` -> blocked locally because it invokes the same `test:ci` step that fails on CRLF checkouts before reaching coverage and tier-0; GitHub CI is the authoritative Linux gate for this branch.
+  - `npm run verify:local` -> blocked locally because it invokes the same failing `test:ci` step; GitHub CI is the authoritative Linux gate for this branch.
 - Result: `pass-with-blocked-checks`
 - Residual risk:
   - The protected main-push job and production credentials can only be proven in GitHub Actions.
@@ -169,3 +176,10 @@ Date: Sunday, July 26, 2026
 
 - Local tests prove deploy governance only; they do not prove hosted Docker availability or production credentials.
 - The existing protected deployment graph is changed and still requires human review before merge.
+
+## PR 866 Review Follow-Up
+
+- Shared target validation now fails closed before any deploy in both `ci:deploy:session-edge-bundle` and `ci:deploy:fill-docs-function`.
+- Added regression coverage for wrapped fill-docs deploy spellings in `tests/ci/check-session-deploy-safety.test.ts`.
+- Added a fail-fast mismatch test for `tests/ci/deploy-session-edge-bundle.test.ts` so target drift cannot start a deploy before aborting.
+- Local npm/vitest verification is blocked in this shell because `node` is not on `PATH`; the commands need a Node-enabled environment to execute.

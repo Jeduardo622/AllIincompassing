@@ -1,31 +1,9 @@
 import { spawnSync } from "node:child_process";
+import { validateEdgeDeployPrerequisites } from "./check-edge-deploy-prerequisites.mjs";
 
 const FUNCTION_SLUG = "fill-docs";
 const STATIC_FILE_DEPLOY_FAILURE_PATTERN =
   /(static[_ -]?files?|management api|--use-api|docker|toomanyrequests|rate exceeded|edge-runtime)/i;
-
-const parseProjectRef = (value) => {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^[a-z0-9]{20}$/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  try {
-    const host = new URL(trimmed).hostname;
-    const [ref] = host.split(".");
-    return ref?.trim() || null;
-  } catch {
-    return null;
-  }
-};
 
 const runSupabase = (args) =>
   spawnSync("supabase", args, {
@@ -45,27 +23,17 @@ const writeResultOutput = (result) => {
   }
 };
 
-const configuredProjectRef = parseProjectRef(process.env.SUPABASE_PROJECT_REF);
-const urlProjectRef = parseProjectRef(process.env.SUPABASE_URL);
+const prereqResult = validateEdgeDeployPrerequisites({
+  env: process.env,
+  deployTargetLabel: FUNCTION_SLUG,
+});
 
-if (configuredProjectRef && urlProjectRef && configuredProjectRef !== urlProjectRef) {
-  console.error(
-    "❌ SUPABASE_PROJECT_REF and SUPABASE_URL resolve to different projects.",
-  );
+if (!prereqResult.ok) {
+  console.error(prereqResult.message);
   process.exit(1);
 }
 
-const projectRef = configuredProjectRef || urlProjectRef;
-
-if (!projectRef) {
-  console.error("❌ Missing project ref. Set SUPABASE_PROJECT_REF or SUPABASE_URL.");
-  process.exit(1);
-}
-
-if (!process.env.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN.trim().length === 0) {
-  console.error("❌ Missing SUPABASE_ACCESS_TOKEN.");
-  process.exit(1);
-}
+const { projectRef } = prereqResult;
 
 console.log(`Deploying ${FUNCTION_SLUG} to project ${projectRef}...`);
 const deployResult = runSupabase(["functions", "deploy", FUNCTION_SLUG, "--project-ref", projectRef]);

@@ -114,4 +114,35 @@ describe("deploy-session-edge-bundle", () => {
     expect(state.deployed).toContain("utilization-report");
     expect(state.deployed.length).toBeGreaterThan(10);
   });
+
+  test("fails fast before any deploy when the Supabase target inputs disagree", () => {
+    const { root, statePath } = makeFakeSupabase();
+
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${root}${path.delimiter}${process.env.PATH ?? ""}`,
+        FAKE_SUPABASE_STATE_PATH: statePath,
+        SUPABASE_PROJECT_REF: "wnnjeqheqxxyrgsjmygy",
+        SUPABASE_URL: "https://aaaaaaaaaaaaaaaaaaaa.supabase.co",
+        SUPABASE_ACCESS_TOKEN: "test-token",
+      },
+      timeout: 120_000,
+    });
+
+    const state = JSON.parse(readFileSync(statePath, "utf8")) as {
+      calls: string[][];
+      deployed: string[];
+      failedOnce: boolean;
+    };
+    const combinedOutput = `${result.stdout}\n${result.stderr}`;
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(combinedOutput).toContain("resolve to different projects");
+    expect(state.calls).toEqual([]);
+    expect(state.deployed).toEqual([]);
+  });
 });

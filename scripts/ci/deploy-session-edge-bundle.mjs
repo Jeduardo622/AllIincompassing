@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { validateEdgeDeployPrerequisites } from "./check-edge-deploy-prerequisites.mjs";
 
 /** Session lifecycle, care-plan, and assessment edge routes deployed before policy checks in CI. Keep in sync with docs/supabase_branching.md and README. */
 const REQUIRED_FUNCTIONS = [
@@ -23,29 +24,6 @@ const REQUIRED_FUNCTIONS = [
 
 const EXPECT_VERIFY_JWT = String(process.env.CI_EXPECT_VERIFY_JWT ?? "true").toLowerCase() !== "false";
 const DOCKER_RATE_LIMIT_PATTERN = /(toomanyrequests|rate exceeded|public\.ecr\.aws\/supabase\/edge-runtime)/i;
-
-const parseProjectRef = (value) => {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^[a-z0-9]{20}$/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  try {
-    const host = new URL(trimmed).hostname;
-    const [ref] = host.split(".");
-    return ref?.trim() || null;
-  } catch {
-    return null;
-  }
-};
 
 const runSupabase = (args) => {
   return spawnSync("supabase", args, {
@@ -81,18 +59,17 @@ const looksLikeDockerRateLimit = (result) => {
   return DOCKER_RATE_LIMIT_PATTERN.test(output);
 };
 
-const projectRef = parseProjectRef(process.env.SUPABASE_PROJECT_REF) ||
-  parseProjectRef(process.env.SUPABASE_URL);
+const prereqResult = validateEdgeDeployPrerequisites({
+  env: process.env,
+  deployTargetLabel: "session edge",
+});
 
-if (!projectRef) {
-  console.error("❌ Missing project ref. Set SUPABASE_PROJECT_REF or SUPABASE_URL.");
+if (!prereqResult.ok) {
+  console.error(prereqResult.message);
   process.exit(1);
 }
 
-if (!process.env.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN.trim().length === 0) {
-  console.error("❌ Missing SUPABASE_ACCESS_TOKEN.");
-  process.exit(1);
-}
+const { projectRef } = prereqResult;
 
 console.log(`Deploying required edge function bundle to project ${projectRef}...`);
 for (const fn of REQUIRED_FUNCTIONS) {

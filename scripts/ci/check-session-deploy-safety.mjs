@@ -5,6 +5,10 @@ import { pathToFileURL } from "node:url";
 const DEPLOY_COMMAND = "npm run ci:deploy:session-edge-bundle";
 const FILL_DOCS_DEPLOY_COMMAND = "npm run ci:deploy:fill-docs-function";
 const AI_DEPLOY_COMMAND = "npm run ci:deploy:ai-agent-function";
+const SESSION_DEPLOY_PREREQ_COMMAND =
+  "node scripts/ci/check-edge-deploy-prerequisites.mjs session-edge";
+const AI_DEPLOY_PREREQ_COMMAND =
+  "node scripts/ci/check-edge-deploy-prerequisites.mjs ai-agent-optimized";
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
 const AI_DEPLOY_IF =
   "github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change_scope.outputs.ai_agent_changed == 'true'";
@@ -291,6 +295,31 @@ const splitExecutable = (line) => {
     argumentsText: match[4] ?? "",
   };
 };
+const normalizeScriptCommand = (line) => {
+  const command = splitExecutable(stripCommandEnvironment(unwrapInterpreterCommands(line)));
+  if (!command) {
+    return null;
+  }
+  const executableName = command.executable.replaceAll("\\", "/").split("/").at(-1);
+  if (!/^(?:npm|npm\.cmd|npm\.exe)$/i.test(executableName ?? "")) {
+    return null;
+  }
+  let argumentsText = command.argumentsText.trim();
+  for (let depth = 0; depth < 8; depth += 1) {
+    const next = argumentsText
+      .replace(/^--silent(?:=true)?\s+/i, "")
+      .replace(/^-s\s+/i, "")
+      .replace(/^--prefix(?:=\S+|\s+\S+)\s+/i, "");
+    if (next === argumentsText) {
+      break;
+    }
+    argumentsText = next;
+  }
+  const match = argumentsText.match(
+    /^run(?:-script)?\s+(?:--\s+)?([A-Za-z0-9:_-]+)(?:\s+[\s\S]*)?$/i,
+  );
+  return match ? `npm run ${match[1]}` : null;
+};
 const unwrapQuotedCommand = (value) => {
   const trimmed = value.trim();
   if (
@@ -363,12 +392,15 @@ const isDirectNodeDeployScript = (line, scriptPath) => {
 };
 const isRawSessionDeployInvocation = (line) =>
   isDirectNodeDeployScript(line, "scripts/ci/deploy-session-edge-bundle.mjs") ||
+  normalizeScriptCommand(line) === DEPLOY_COMMAND ||
   (isSupabaseDeployInvocation(line) && !/\bai-agent-optimized\b/i.test(line));
 const isRawAiDeployInvocation = (line) =>
   isDirectNodeDeployScript(line, "scripts/ci/deploy-ai-agent-function.mjs") ||
+  normalizeScriptCommand(line) === AI_DEPLOY_COMMAND ||
   (isSupabaseDeployInvocation(line) && /\bai-agent-optimized\b/i.test(line));
 const isRawFillDocsDeployInvocation = (line) =>
-  isDirectNodeDeployScript(line, "scripts/ci/deploy-fill-docs-function.mjs");
+  isDirectNodeDeployScript(line, "scripts/ci/deploy-fill-docs-function.mjs") ||
+  normalizeScriptCommand(line) === FILL_DOCS_DEPLOY_COMMAND;
 const sameSet = (actual, expected) => {
   const sortedActual = [...actual].sort();
   const sortedExpected = [...expected].sort();
@@ -552,6 +584,12 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     ) {
       violations.push("deploy_session_edge must validate deploy prerequisites before deploying");
     }
+    const prereqStep = deploy.steps[prereqIndex];
+    if (!prereqStep || !stepIsExactCommand(prereqStep, SESSION_DEPLOY_PREREQ_COMMAND)) {
+      violations.push(
+        "deploy_session_edge must run the shared edge deploy prerequisite helper",
+      );
+    }
   }
 
   if (deployAiAgent) {
@@ -565,6 +603,12 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     const deployIndex = deployAiAgent.steps.findIndex((step) => stepIsExactCommand(step, AI_DEPLOY_COMMAND));
     if (prereqIndex === -1 || deployIndex === -1 || prereqIndex > deployIndex) {
       violations.push("deploy_ai_agent_edge must validate deploy prerequisites before deploying");
+    }
+    const prereqStep = deployAiAgent.steps[prereqIndex];
+    if (!prereqStep || !stepIsExactCommand(prereqStep, AI_DEPLOY_PREREQ_COMMAND)) {
+      violations.push(
+        "deploy_ai_agent_edge must run the shared edge deploy prerequisite helper",
+      );
     }
   }
 

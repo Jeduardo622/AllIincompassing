@@ -543,6 +543,7 @@ describe("ScheduleWeekView drag and drop", () => {
         end_time: "2025-07-07T10:15:00",
         client: { id: "client-gamma", full_name: "Gamma Client" },
       });
+      const onCreateSession = vi.fn();
       const onEditSession = vi.fn();
 
       render(
@@ -552,7 +553,7 @@ describe("ScheduleWeekView drag and drop", () => {
           sessionSlotIndex={new Map()}
           scheduleSessions={[gamma, beta, alpha]}
           useImprovedAppointmentLayout
-          onCreateSession={vi.fn()}
+          onCreateSession={onCreateSession}
           onEditSession={onEditSession}
         />,
       );
@@ -560,6 +561,7 @@ describe("ScheduleWeekView drag and drop", () => {
       const trigger = screen.getByRole("button", { name: /3 appointments/i });
       expect(within(trigger).getByTestId("schedule-overlap-count")).toHaveTextContent("3");
       fireEvent.click(trigger);
+      expect(onCreateSession).not.toHaveBeenCalled();
       expect(onEditSession).not.toHaveBeenCalled();
 
       const dialog = screen.getByRole("dialog", { name: /3 overlapping appointments/i });

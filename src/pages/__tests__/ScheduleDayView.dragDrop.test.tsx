@@ -491,6 +491,7 @@ describe("ScheduleDayView drag and drop", () => {
           therapist: { id: "therapist-alpha", full_name: "Dr. Alpha" },
         }),
       ];
+      const onCreateSession = vi.fn();
       const onEditSession = vi.fn();
 
       render(
@@ -500,7 +501,7 @@ describe("ScheduleDayView drag and drop", () => {
           sessionSlotIndex={new Map()}
           scheduleSessions={sessions}
           useImprovedAppointmentLayout
-          onCreateSession={vi.fn()}
+          onCreateSession={onCreateSession}
           onEditSession={onEditSession}
         />,
       );
@@ -511,6 +512,7 @@ describe("ScheduleDayView drag and drop", () => {
       expect(trigger.getAttribute("aria-expanded")).toBe("false");
 
       fireEvent.click(trigger);
+      expect(onCreateSession).not.toHaveBeenCalled();
       expect(onEditSession).not.toHaveBeenCalled();
 
       expect(trigger.getAttribute("aria-expanded")).toBe("true");

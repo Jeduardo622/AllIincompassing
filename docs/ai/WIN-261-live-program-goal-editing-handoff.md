@@ -3,7 +3,7 @@
 ## Scope
 
 - Issue: WIN-261
-- Branch: `codex/editingofgoalblocks`
+- Branch: `codex/win-261-live-program-goal-editing`
 - Classification: high-risk human-reviewed
 - Lane: critical
 - Live records only: manual and assessment-promoted programs/goals use the same editors.
@@ -30,7 +30,7 @@
 ## Verification Card
 
 - Lane: critical
-- Result: review-ready with external baseline blockers; hosted migration not applied.
+- Result: draft-review ready with external baseline blockers; not PR-ready for merge and hosted migration not applied.
 - Passed:
   - `npm run ci:check-focused`
   - `npm run lint`
@@ -42,10 +42,13 @@
   - `npm run test:routes:tier0` (220/220)
   - per-slice component/helper verification after final fixes: 118/118, then 115/115
 - Blocked or failing outside WIN-261 scope:
-  - `npm run test:ci` and `npm run verify:local` stop on three reproducible failures in unchanged files:
+  - `npm run test:ci` stops on five reproducible failures in unchanged files (3,506 passed, 5 failed):
+    - `tests/authorizations/authorization-bcba-readonly.test.ts`: BCBA authorization read-only migration contract mismatch
     - `src/lib/__tests__/supabase.edge.test.ts`: `blob.text is not a function`
     - `tests/ci/check-e2e-reliability-gates.test.ts`: missing expected synthetic-BCBA workflow publishable-key contract
+    - `tests/scripts/playwright-iehp-assessment-import-smoke.test.ts`: generated super-admin/unconditional-cleanup path contract mismatch
     - `tests/workflows/bt-aba-disposable-browser-proof.test.ts`: missing expected `codex/return-bt-correction` workflow branch
+  - `npm run verify:local` was not rerun because its required `test:ci` sub-gate has the same decisive failures.
   - `npm run ci:playwright` was not run because local credentials/base URL are unavailable (`SUPABASE_SERVICE_ROLE_KEY`, test email/password, and test base URL absent).
   - DB-backed policy checks were skipped locally because `SUPABASE_DB_URL`/`DATABASE_URL` is absent.
 
@@ -67,4 +70,4 @@
 ## Residual Risk And Next Action
 
 - Human review is mandatory for the migration and protected server changes.
-- Required next action: resolve or explicitly disposition the three baseline `test:ci` failures, then apply the reviewed migration and run hosted synthetic role/RLS proof before merge.
+- Required next action: resolve or explicitly disposition the five baseline `test:ci` failures, then apply the reviewed migration and run hosted synthetic role/RLS proof before merge.

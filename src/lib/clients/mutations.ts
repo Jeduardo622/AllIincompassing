@@ -11,7 +11,92 @@ type RpcResponse = { data: ClientsTable | null; error: unknown } | { data: Clien
 
 type ClientSupabase = SupabaseClient<Database>;
 
+type ClientCreateConflict = 'client_id' | 'duplicate';
+
+interface MaybePostgrestConflictError {
+  code?: unknown;
+  status?: unknown;
+  message?: unknown;
+  details?: unknown;
+  hint?: unknown;
+}
+
+export class ClientCreateConflictError extends Error {
+  readonly conflict: ClientCreateConflict;
+  override readonly cause: unknown;
+
+  constructor(conflict: ClientCreateConflict, message: string, cause: unknown) {
+    super(message);
+    this.name = 'ClientCreateConflictError';
+    this.conflict = conflict;
+    this.cause = cause;
+  }
+}
+
 const sanitizeEmailPattern = (email: string): string => email.replace(/[%_]/g, (char) => `\\${char}`);
+
+const toSearchableText = (value: unknown): string => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
+const getPostgrestConflictError = (error: unknown): MaybePostgrestConflictError => (
+  error && typeof error === 'object'
+    ? (error as MaybePostgrestConflictError)
+    : {}
+);
+
+const isUniqueConflictError = (error: unknown): boolean => {
+  const postgrestError = getPostgrestConflictError(error);
+  const code = toSearchableText(postgrestError.code);
+  if (code) {
+    return code === '23505';
+  }
+
+  const status = typeof postgrestError.status === 'number' ? postgrestError.status : null;
+  if (status !== 409) {
+    return false;
+  }
+
+  const combined = [
+    postgrestError.message,
+    postgrestError.details,
+    postgrestError.hint,
+  ]
+    .map(toSearchableText)
+    .join(' ');
+
+  return combined.includes('duplicate key value violates unique constraint');
+};
+
+const toClientCreateConflictError = (error: unknown): ClientCreateConflictError | null => {
+  if (!isUniqueConflictError(error)) {
+    return null;
+  }
+
+  const postgrestError = getPostgrestConflictError(error);
+  const combined = [
+    postgrestError.message,
+    postgrestError.details,
+    postgrestError.hint,
+  ]
+    .map(toSearchableText)
+    .join(' ');
+
+  if (
+    combined.includes('clients_org_client_id_idx')
+    || combined.includes('(organization_id, client_id)')
+  ) {
+    return new ClientCreateConflictError(
+      'client_id',
+      'This client ID is already in use for this organization. Enter a different client ID.',
+      error,
+    );
+  }
+
+  return new ClientCreateConflictError(
+    'duplicate',
+    'A duplicate client record already exists. Review the client details and try again.',
+    error,
+  );
+};
 
 const fetchClientByEmail = async (
   supabase: ClientSupabase,
@@ -103,6 +188,7 @@ export const createClient = async (
   payload: Partial<ClientInsert>,
 ): Promise<ClientsTable> => {
   const rpcResult = await createClientViaRpc(supabase, payload);
+  const mappedRpcConflictError = toClientCreateConflictError(rpcResult.error);
 
   if (!rpcResult.error) {
     if (rpcResult.data) {
@@ -120,11 +206,14 @@ export const createClient = async (
 
   if (!isMissingRpcFunctionError(rpcResult.error, 'create_client')) {
     logger.error('create_client RPC failed', {
-      error: toError(rpcResult.error, describePostgrestError(rpcResult.error)),
+      error: toError(
+        mappedRpcConflictError ?? rpcResult.error,
+        describePostgrestError(rpcResult.error),
+      ),
       metadata: { providedFields: Object.keys(payload) },
       track: false,
     });
-    throw rpcResult.error;
+    throw mappedRpcConflictError ?? rpcResult.error;
   }
 
   logger.warn('create_client RPC missing; attempting direct insert fallback', {
@@ -135,12 +224,13 @@ export const createClient = async (
   try {
     return await insertClientDirectly(supabase, payload);
   } catch (fallbackError) {
+    const mappedConflictError = toClientCreateConflictError(fallbackError);
     logger.error('Client insert fallback failed', {
-      error: toError(fallbackError, 'Client insert fallback failed'),
+      error: toError(mappedConflictError ?? fallbackError, 'Client insert fallback failed'),
       metadata: { providedFields: Object.keys(payload) },
       track: false,
     });
-    throw fallbackError;
+    throw mappedConflictError ?? fallbackError;
   }
 };
 

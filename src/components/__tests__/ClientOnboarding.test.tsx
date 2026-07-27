@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
 import { ClientOnboarding } from '../ClientOnboarding';
+import { ClientCreateConflictError } from '../../lib/clients/mutations';
 import { showError } from '../../lib/toast';
 
 const mockNavigate = vi.fn();
@@ -33,8 +34,24 @@ vi.mock('../../lib/organization', () => ({
 
 vi.mock('../../lib/supabase', () => {
   const uploadMock = vi.fn().mockResolvedValue({ error: null });
+  const orderMock = vi.fn().mockResolvedValue({
+    data: [
+      { code: 'H0031', short_description: 'Direct treatment' },
+      { code: 'S5110', short_description: 'Parent consultation' },
+    ],
+    error: null,
+  });
+  const eqMock = vi.fn(() => ({
+    order: orderMock,
+  }));
+  const selectMock = vi.fn(() => ({
+    eq: eqMock,
+  }));
   return {
     supabase: {
+      from: vi.fn(() => ({
+        select: selectMock,
+      })),
       storage: {
         from: vi.fn(() => ({
           upload: uploadMock,
@@ -48,10 +65,16 @@ const checkClientEmailExistsMock = vi.fn();
 const createClientMock = vi.fn();
 const callEdgeFunctionHttpMock = vi.fn();
 
-vi.mock('../../lib/clients/mutations', () => ({
-  checkClientEmailExists: (...args: unknown[]) => checkClientEmailExistsMock(...args),
-  createClient: (...args: unknown[]) => createClientMock(...args),
-}));
+vi.mock('../../lib/clients/mutations', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/clients/mutations')>(
+    '../../lib/clients/mutations',
+  );
+  return {
+    ...actual,
+    checkClientEmailExists: (...args: unknown[]) => checkClientEmailExistsMock(...args),
+    createClient: (...args: unknown[]) => createClientMock(...args),
+  };
+});
 
 vi.mock('../../lib/api', () => ({
   callEdgeFunctionHttp: (...args: unknown[]) => callEdgeFunctionHttpMock(...args),
@@ -96,10 +119,16 @@ describe('ClientOnboarding step progression', () => {
     return { user, onComplete };
   };
 
-  const advanceToServiceStep = async (user: ReturnType<typeof userEvent.setup>) => {
+  const fillBasicInfo = async (
+    user: ReturnType<typeof userEvent.setup>,
+    overrides: { clientId?: string } = {},
+  ) => {
     await user.type(screen.getByLabelText('First Name'), 'Ada');
     await user.type(screen.getByLabelText('Last Name'), 'Lovelace');
     await user.type(screen.getByLabelText('Date of Birth'), '2010-01-01');
+    if (overrides.clientId) {
+      await user.type(screen.getByLabelText('Client ID'), overrides.clientId);
+    }
     const emailInput = screen.getByLabelText('Email');
     await user.type(emailInput, 'ada@example.com');
     await user.tab();
@@ -107,6 +136,13 @@ describe('ClientOnboarding step progression', () => {
     await waitFor(() => {
       expect(checkClientEmailExistsMock).toHaveBeenCalled();
     });
+  };
+
+  const advanceToServiceStep = async (
+    user: ReturnType<typeof userEvent.setup>,
+    overrides: { clientId?: string } = {},
+  ) => {
+    await fillBasicInfo(user, overrides);
 
     const nextButton = () => screen.getByRole('button', { name: 'Next' });
 
@@ -118,6 +154,21 @@ describe('ClientOnboarding step progression', () => {
 
     await user.click(nextButton());
     await screen.findByText('Service Information');
+  };
+
+  const advanceToDocumentsStep = async (
+    user: ReturnType<typeof userEvent.setup>,
+    overrides: { clientId?: string } = {},
+  ) => {
+    await advanceToServiceStep(user, overrides);
+
+    await user.click(screen.getByRole('button', { name: 'Add Insurance' }));
+    await user.clear(screen.getByLabelText('Contract Units'));
+    await user.type(screen.getByLabelText('Contract Units'), '8');
+    await user.selectOptions(screen.getByLabelText('Select Codes'), ['H0031']);
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    await screen.findByText('Documents & Consent');
   };
 
   it('blocks advancing from service step when insurance contracts are missing', async () => {
@@ -288,5 +339,34 @@ describe('ClientOnboarding step progression', () => {
     expect(screen.getByLabelText('First Name')).toHaveValue('');
     expect(screen.getByLabelText('Email')).toHaveValue('');
   });
+
+  it('returns to Basic Info with a client ID field error when submit hits a duplicate client ID conflict', async () => {
+    createClientMock.mockRejectedValueOnce(
+      new ClientCreateConflictError(
+        'client_id',
+        'This client ID is already in use for this organization. Enter a different client ID.',
+        { code: '23505', status: 409 },
+      ),
+    );
+
+    const { user, onComplete } = setup();
+
+    await advanceToDocumentsStep(user, { clientId: 'CLIENT-42' });
+    await user.click(screen.getByLabelText('I consent to the collection and processing of this information'));
+    await user.click(screen.getByRole('button', { name: 'Complete Onboarding' }));
+
+    await screen.findByText('Basic Information');
+    expect(screen.getByLabelText('Client ID')).toHaveValue('CLIENT-42');
+    expect(
+      screen.getByText(
+        'This client ID is already in use for this organization. Enter a different client ID.',
+      ),
+    ).toBeInTheDocument();
+    expect(vi.mocked(showError)).toHaveBeenCalledWith(
+      'This client ID is already in use for this organization. Enter a different client ID.',
+    );
+    expect(createClientMock).toHaveBeenCalledTimes(1);
+    expect(onComplete).not.toHaveBeenCalled();
+  }, 20000);
 });
 

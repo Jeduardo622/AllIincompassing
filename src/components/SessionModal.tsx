@@ -2256,7 +2256,7 @@ export function SessionModal({
   };
 
   const handleAttemptClose = useCallback(() => {
-    if (isSubmitting || btAbaBusy || btAbaFinalized || isClosing) {
+    if (isSubmitting || btAbaBusy || btAbaFinalized || closeRequestedRef.current) {
       return;
     }
     const beginVisualClose = () => {
@@ -2286,7 +2286,7 @@ export function SessionModal({
     if (shouldDiscard) {
       beginVisualClose();
     }
-  }, [btAbaBusy, btAbaFinalized, hasUnsavedSessionChanges, isClosing, isSubmitting, onClose]);
+  }, [btAbaBusy, btAbaFinalized, hasUnsavedSessionChanges, isSubmitting, onClose]);
 
   const handleStartSession = async () => {
     if (

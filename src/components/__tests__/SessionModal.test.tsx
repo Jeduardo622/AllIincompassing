@@ -1198,7 +1198,7 @@ describe('SessionModal', () => {
   };
 
   const setReducedMotionPreference = (matches: boolean) => {
-    vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
       matches: query === '(prefers-reduced-motion: reduce)' ? matches : false,
       media: query,
       onchange: null,
@@ -1207,7 +1207,18 @@ describe('SessionModal', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
-    })));
+    }));
+  };
+
+  const bridgeWindowTimersToFakeClock = () => {
+    const originalSetTimeout = window.setTimeout;
+    const originalClearTimeout = window.clearTimeout;
+    window.setTimeout = globalThis.setTimeout;
+    window.clearTimeout = globalThis.clearTimeout;
+    return () => {
+      window.setTimeout = originalSetTimeout;
+      window.clearTimeout = originalClearTimeout;
+    };
   };
 
   const expectVisiblePlanSelectorsRemoved = () => {
@@ -1590,17 +1601,16 @@ describe('SessionModal', () => {
     vi.unstubAllGlobals();
   });
 
-  it('makes the modal inert during a 160 ms exit and calls onClose exactly once', async () => {
-    vi.useFakeTimers();
+  it('makes the modal inert during a 160 ms exit and defers onClose until the scheduled callback runs', async () => {
     setReducedMotionPreference(false);
     const onClose = vi.fn();
-    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout').mockImplementation(((
+      _handler: TimerHandler,
+      _timeout?: number,
+      ..._args: unknown[]
+    ) => 1) as typeof window.setTimeout);
 
     renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /close session modal/i }));
@@ -1610,23 +1620,10 @@ describe('SessionModal', () => {
     expect(dialog).toHaveAttribute('data-transition-state', 'closing');
     expect(dialog.closest('[role="presentation"]')).toHaveAttribute('inert');
     const closeTimerCalls = setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 160);
-    expect(closeTimerCalls.length).toBeGreaterThan(0);
+    expect(closeTimerCalls).toHaveLength(1);
     expect(onClose).not.toHaveBeenCalled();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(159);
-    });
-    expect(onClose).not.toHaveBeenCalled();
-
-    const closeCallback = closeTimerCalls.at(-1)?.[0];
-    expect(closeCallback).toBeTypeOf('function');
-    await act(async () => {
-      (closeCallback as () => void)();
-    });
-    expect(onClose).toHaveBeenCalledTimes(1);
 
     setTimeoutSpy.mockRestore();
-    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -1644,38 +1641,115 @@ describe('SessionModal', () => {
     vi.unstubAllGlobals();
   });
 
-  it('schedules the close callback exactly once even when close is retriggered during the exit transition', async () => {
-    vi.useFakeTimers();
+  it('schedules the close callback exactly once during the exit transition even after duplicate close input', async () => {
     setReducedMotionPreference(false);
     const onClose = vi.fn();
-    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout').mockImplementation(((
+      _handler: TimerHandler,
+      _timeout?: number,
+      ..._args: unknown[]
+    ) => 1) as typeof window.setTimeout);
 
     renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-
-    await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /close session modal/i }));
       fireEvent.keyDown(document, { key: 'Escape' });
+      fireEvent.keyDown(document, { key: 'Tab' });
       fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
     });
 
     expect(screen.getByRole('dialog')).toHaveAttribute('data-transition-state', 'closing');
-
     const closeTimerCalls = setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 160);
     expect(closeTimerCalls).toHaveLength(1);
-
-    const closeCallback = closeTimerCalls[0]?.[0];
-    expect(closeCallback).toBeTypeOf('function');
-    await act(async () => {
-      (closeCallback as () => void)();
-    });
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
 
     setTimeoutSpy.mockRestore();
-    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps focus stable during the inert close window, ignores duplicate close input, and restores the opener only after unmount', async () => {
+    setReducedMotionPreference(false);
+    const opener = document.createElement('button');
+    opener.textContent = 'Outside opener';
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const onClose = vi.fn();
+    let rerenderModal: ReturnType<typeof renderWithProviders>['rerender'];
+    const handleClose = () => {
+      onClose();
+      rerenderModal(
+        <SessionModal
+          {...defaultProps}
+          isOpen={false}
+          onClose={handleClose}
+        />
+      );
+    };
+
+    const rendered = renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onClose={handleClose}
+      />
+    );
+    rerenderModal = rendered.rerender;
+
+    const closeButton = screen.getByRole('button', { name: /close session modal/i }) as HTMLButtonElement;
+    expect(closeButton).toHaveFocus();
+
+    const openerFocusSpy = vi.spyOn(opener, 'focus');
+    const closeButtonFocusSpy = vi.spyOn(closeButton, 'focus');
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout').mockImplementation(((
+      _handler: TimerHandler,
+      _timeout?: number,
+      ..._args: unknown[]
+    ) => 1) as typeof window.setTimeout);
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout').mockImplementation(((_id?: number) => {}) as typeof window.clearTimeout);
+    await act(async () => {
+      fireEvent.click(closeButton);
+    });
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('data-transition-state', 'closing');
+    expect(dialog.closest('[role="presentation"]')).toHaveAttribute('inert');
+    const closeTimerCalls = setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 160);
+    expect(closeTimerCalls).toHaveLength(1);
+    expect(openerFocusSpy).not.toHaveBeenCalled();
+    expect(closeButtonFocusSpy).not.toHaveBeenCalled();
+    expect(opener).not.toHaveFocus();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+      fireEvent.keyDown(document, { key: 'Tab' });
+      fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(openerFocusSpy).not.toHaveBeenCalled();
+    expect(closeButtonFocusSpy).not.toHaveBeenCalled();
+    expect(opener).not.toHaveFocus();
+
+    await act(async () => {
+      const closeCallback = closeTimerCalls[0]?.[0];
+      expect(closeCallback).toBeTypeOf('function');
+      (closeCallback as () => void)();
+    });
+
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(opener).toHaveFocus();
+    });
+    expect(openerFocusSpy).toHaveBeenCalledTimes(1);
+    expect(closeButtonFocusSpy).not.toHaveBeenCalled();
+
+    openerFocusSpy.mockRestore();
+    closeButtonFocusSpy.mockRestore();
+    opener.remove();
     vi.unstubAllGlobals();
   });
 

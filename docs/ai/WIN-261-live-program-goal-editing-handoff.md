@@ -25,12 +25,13 @@
   - therapist and assigned-BT reads preserved;
   - program-note reads separated from manager-only writes;
   - same-organization and referenced-program/client scope retained;
+  - `PUBLIC` and `anon` execution removed from the protected `app` helpers;
   - service-role access retained.
 
 ## Verification Card
 
 - Lane: critical
-- Result: draft-review ready with external baseline blockers; not PR-ready for merge and hosted migration not applied.
+- Result: hosted implementation applied and role/RLS behavior proven; draft remains blocked from merge by external test/check disposition and required human review.
 - Passed:
   - `npm run ci:check-focused`
   - `npm run lint`
@@ -41,6 +42,9 @@
   - `npm run build`
   - `npm run test:routes:tier0` (220/220)
   - per-slice component/helper verification after final fixes: 118/118, then 115/115
+  - ACL hardening TDD: expected failure before the migration correction, then 20/20 migration-contract tests passed
+  - live CI runtime migration parity
+  - hosted synthetic manager/viewer/denial role proof with zero residual rows
 - Blocked or failing outside WIN-261 scope:
   - `npm run test:ci` stops on five reproducible failures in unchanged files (3,506 passed, 5 failed):
     - `tests/authorizations/authorization-bcba-readonly.test.ts`: BCBA authorization read-only migration contract mismatch
@@ -55,19 +59,25 @@
 ## Review
 
 - Code review: approved after goal-archive gating correction.
-- Security review: approved; no remaining mutation or tenant-boundary blocker.
-- Supabase review: safe to apply after program-note read/write policy correction.
+- Security review: approved after adding explicit `PUBLIC`/`anon` revokes to both protected helpers.
+- Supabase review: safe to apply after program-note read/write policy and live helper-ACL corrections.
 - Test review: no feature blocker; low-severity gaps remain for independent admin/super-admin goal-save paths, explicit cache invalidation spies, and program-save failure retention.
 
 ## Hosted State
 
 - Connected project: `wnnjeqheqxxyrgsjmygy`.
-- The migration list was inspected after local verification.
-- Migration `20260727214202_align_program_goal_edit_authority` is not applied.
-- Hosted apply and synthetic role/RLS proof were intentionally held because the required `test:ci` gate is failing outside this slice.
+- Migration history contains logical migration `align_program_goal_edit_authority` at hosted version `20260727234007`.
+- Hosted function definitions match the requested authority contract.
+- `anon` cannot execute either protected `app` helper; `authenticated` and `service_role` retain execution.
+- Hosted authenticated-JWT probes proved:
+  - `admin`, `midtier`, `bcba`, and `super_admin` can manage and write same-org program notes, with cross-org rows hidden;
+  - `therapist` can read same-org program notes but cannot manage or write;
+  - assigned `bt` can read only assigned-client program notes and cannot write;
+  - `admin_schedule` cannot manage, read, or write program notes.
+- Synthetic proof cleanup returned `synthetic_residue = 0`.
 - No Edge Function source changed, so Edge Function deployment is not applicable.
 
 ## Residual Risk And Next Action
 
 - Human review is mandatory for the migration and protected server changes.
-- Required next action: resolve or explicitly disposition the five baseline `test:ci` failures, then apply the reviewed migration and run hosted synthetic role/RLS proof before merge.
+- Required next action: resolve or explicitly disposition the remaining unrelated test/check failures, obtain required human review, and merge only when live branch protection allows it.

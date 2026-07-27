@@ -1310,6 +1310,56 @@ describe('SessionModal', () => {
     });
   }, 15000);
 
+  it('lets the lower goal controls replace the automatically selected primary goal', async () => {
+    const alternateGoal = {
+      ...mockGoals[0],
+      id: 'goal-alternate',
+      title: 'Alternate Goal',
+      created_at: '2024-01-03T00:00:00Z',
+      updated_at: '2024-01-03T00:00:00Z',
+    };
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain(mockPrograms);
+      if (table === 'goals') return buildChain([...mockGoals, alternateGoal]);
+      return buildChain([]);
+    });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(<SessionModal {...defaultProps} onSubmit={onSubmit} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
+    await selectGoalFromLowerControls(/Alternate Goal/i);
+    await userEvent.click(
+      screen.getAllByRole('button', { name: /Set Alternate Goal as primary goal/i })[0],
+    );
+
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2025-03-18T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2025-03-18T11:00' } });
+    await userEvent.click(screen.getByRole('button', { name: /Create Session/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        program_id: 'program-1',
+        goal_id: 'goal-alternate',
+        goal_ids: expect.arrayContaining(['goal-1', 'goal-alternate']),
+      }));
+    });
+  }, 15000);
+
   it('calls onSubmit with form data when valid', async () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
 
@@ -3448,6 +3498,84 @@ describe('SessionModal', () => {
 
       const option = screen.getByRole('option', { name: /^Cancelled$/i }) as HTMLOptionElement;
       expect(option.disabled).toBe(true);
+    });
+
+    it('hydrates a persisted client cancellation before displaying its attribution', async () => {
+      const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      };
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'sessions') {
+          return buildChain([], {
+            program_id: 'program-1',
+            goal_id: 'goal-1',
+            started_at: null,
+            location_type: null,
+            cancellation_attribution: 'client',
+          });
+        }
+        if (table === 'programs') return buildChain(mockPrograms);
+        if (table === 'goals') return buildChain(mockGoals);
+        return buildChain([]);
+      });
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={{ ...editSession, status: 'cancelled', cancellation_attribution: undefined }}
+        />,
+      );
+
+      const statusSelect = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
+      await waitFor(() => expect(statusSelect.value).toBe('cancelled:client'));
+      expect(statusSelect.selectedOptions[0]?.textContent).toBe('Client cancellation');
+    });
+
+    it('preserves an unknown persisted cancellation attribution instead of defaulting it to staff', async () => {
+      const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          neq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: rows, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      };
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'sessions') {
+          return buildChain([], {
+            program_id: 'program-1',
+            goal_id: 'goal-1',
+            started_at: null,
+            location_type: null,
+            cancellation_attribution: null,
+          });
+        }
+        if (table === 'programs') return buildChain(mockPrograms);
+        if (table === 'goals') return buildChain(mockGoals);
+        return buildChain([]);
+      });
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={{ ...editSession, status: 'cancelled', cancellation_attribution: undefined }}
+        />,
+      );
+
+      const statusSelect = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
+      await waitFor(() => expect(statusSelect.value).toBe('cancelled:unknown'));
+      expect(statusSelect.selectedOptions[0]?.textContent).toBe('Cancelled — attribution unavailable');
     });
 
     it.each([

@@ -82,5 +82,5 @@ Result: 3 tests failed for the expected missing behaviors:
 
 - Linear: WIN-259
 - branch: `codex/win-258-review-followups`
-- PR: pending
+- PR: https://github.com/Jeduardo622/AllIincompassing/pull/869
 - reviewer: approved with no required changes

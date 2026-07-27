@@ -3,7 +3,12 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const DEPLOY_COMMAND = "npm run ci:deploy:session-edge-bundle";
+const FILL_DOCS_DEPLOY_COMMAND = "npm run ci:deploy:fill-docs-function";
 const AI_DEPLOY_COMMAND = "npm run ci:deploy:ai-agent-function";
+const SESSION_DEPLOY_PREREQ_COMMAND =
+  "node scripts/ci/check-edge-deploy-prerequisites.mjs session-edge";
+const AI_DEPLOY_PREREQ_COMMAND =
+  "node scripts/ci/check-edge-deploy-prerequisites.mjs ai-agent-optimized";
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
 const AI_DEPLOY_IF =
   "github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change_scope.outputs.ai_agent_changed == 'true'";
@@ -290,6 +295,31 @@ const splitExecutable = (line) => {
     argumentsText: match[4] ?? "",
   };
 };
+const normalizeScriptCommand = (line) => {
+  const command = splitExecutable(stripCommandEnvironment(unwrapInterpreterCommands(line)));
+  if (!command) {
+    return null;
+  }
+  const executableName = command.executable.replaceAll("\\", "/").split("/").at(-1);
+  if (!/^(?:npm|npm\.cmd|npm\.exe)$/i.test(executableName ?? "")) {
+    return null;
+  }
+  let argumentsText = command.argumentsText.trim();
+  for (let depth = 0; depth < 8; depth += 1) {
+    const next = argumentsText
+      .replace(/^--silent(?:=true)?\s+/i, "")
+      .replace(/^-s\s+/i, "")
+      .replace(/^--prefix(?:=\S+|\s+\S+)\s+/i, "");
+    if (next === argumentsText) {
+      break;
+    }
+    argumentsText = next;
+  }
+  const match = argumentsText.match(
+    /^run(?:-script)?\s+(?:--\s+)?([A-Za-z0-9:_-]+)(?:\s+[\s\S]*)?$/i,
+  );
+  return match ? `npm run ${match[1]}` : null;
+};
 const unwrapQuotedCommand = (value) => {
   const trimmed = value.trim();
   if (
@@ -362,10 +392,15 @@ const isDirectNodeDeployScript = (line, scriptPath) => {
 };
 const isRawSessionDeployInvocation = (line) =>
   isDirectNodeDeployScript(line, "scripts/ci/deploy-session-edge-bundle.mjs") ||
+  normalizeScriptCommand(line) === DEPLOY_COMMAND ||
   (isSupabaseDeployInvocation(line) && !/\bai-agent-optimized\b/i.test(line));
 const isRawAiDeployInvocation = (line) =>
   isDirectNodeDeployScript(line, "scripts/ci/deploy-ai-agent-function.mjs") ||
+  normalizeScriptCommand(line) === AI_DEPLOY_COMMAND ||
   (isSupabaseDeployInvocation(line) && /\bai-agent-optimized\b/i.test(line));
+const isRawFillDocsDeployInvocation = (line) =>
+  isDirectNodeDeployScript(line, "scripts/ci/deploy-fill-docs-function.mjs") ||
+  normalizeScriptCommand(line) === FILL_DOCS_DEPLOY_COMMAND;
 const sameSet = (actual, expected) => {
   const sortedActual = [...actual].sort();
   const sortedExpected = [...expected].sort();
@@ -445,6 +480,9 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   const aiDeploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
     job.steps.filter((step) => stepIsExactCommand(step, AI_DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
   );
+  const fillDocsDeploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
+    job.steps.filter((step) => stepIsExactCommand(step, FILL_DOCS_DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
+  );
   const deployInvocations = Object.entries(jobs).flatMap(([jobName, job]) =>
     job.steps.flatMap((step) =>
       executableLines(step.run)
@@ -459,6 +497,13 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
         .map((line) => ({ jobName, line })),
     ),
   );
+  const fillDocsDeployInvocations = Object.entries(jobs).flatMap(([jobName, job]) =>
+    job.steps.flatMap((step) =>
+      executableLines(step.run)
+        .filter((line) => line === FILL_DOCS_DEPLOY_COMMAND || isRawFillDocsDeployInvocation(line))
+        .map((line) => ({ jobName, line })),
+    ),
+  );
   if (deploySteps.length !== 1 || deploySteps[0]?.jobName !== "deploy_session_edge") {
     violations.push("CI workflow must contain exactly one session edge deploy command");
     violations.push("CI workflow must contain exactly one real session edge deploy run step in deploy_session_edge");
@@ -469,6 +514,16 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     )
   ) {
     violations.push("CI workflow must contain exactly one session edge deploy command");
+  }
+  if (fillDocsDeploySteps.length !== 1 || fillDocsDeploySteps[0]?.jobName !== "deploy_session_edge") {
+    violations.push("CI workflow must contain exactly one fill-docs deploy command in deploy_session_edge");
+  }
+  if (
+    fillDocsDeployInvocations.some(
+      ({ jobName, line }) => jobName !== "deploy_session_edge" || line !== FILL_DOCS_DEPLOY_COMMAND,
+    )
+  ) {
+    violations.push("CI workflow must contain exactly one fill-docs deploy command");
   }
   if (aiDeploySteps.length !== 1 || aiDeploySteps[0]?.jobName !== "deploy_ai_agent_edge") {
     violations.push("CI workflow must contain exactly one ai-agent deploy command");
@@ -484,7 +539,7 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
 
   if (policy) {
     const policyRuns = runText(policy);
-    for (const forbidden of [DEPLOY_COMMAND, AI_DEPLOY_COMMAND, "npm run validate:tenant", "check-runtime-migration-parity.mjs", "check-session-runtime-contract.mjs"]) {
+    for (const forbidden of [DEPLOY_COMMAND, FILL_DOCS_DEPLOY_COMMAND, AI_DEPLOY_COMMAND, "npm run validate:tenant", "check-runtime-migration-parity.mjs", "check-session-runtime-contract.mjs"]) {
       if (policyRuns.includes(forbidden)) {
         violations.push("policy job must stay read-only and may not run `" + forbidden + "`");
       }
@@ -519,8 +574,21 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     }
     const prereqIndex = deploy.steps.findIndex((step) => step.name === "Validate session edge deploy prerequisites");
     const deployIndex = deploy.steps.findIndex((step) => stepIsExactCommand(step, DEPLOY_COMMAND));
-    if (prereqIndex === -1 || deployIndex === -1 || prereqIndex > deployIndex) {
+    const fillDocsDeployIndex = deploy.steps.findIndex((step) => stepIsExactCommand(step, FILL_DOCS_DEPLOY_COMMAND));
+    if (
+      prereqIndex === -1 ||
+      deployIndex === -1 ||
+      fillDocsDeployIndex === -1 ||
+      prereqIndex > deployIndex ||
+      deployIndex > fillDocsDeployIndex
+    ) {
       violations.push("deploy_session_edge must validate deploy prerequisites before deploying");
+    }
+    const prereqStep = deploy.steps[prereqIndex];
+    if (!prereqStep || !stepIsExactCommand(prereqStep, SESSION_DEPLOY_PREREQ_COMMAND)) {
+      violations.push(
+        "deploy_session_edge must run the shared edge deploy prerequisite helper",
+      );
     }
   }
 
@@ -535,6 +603,12 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     const deployIndex = deployAiAgent.steps.findIndex((step) => stepIsExactCommand(step, AI_DEPLOY_COMMAND));
     if (prereqIndex === -1 || deployIndex === -1 || prereqIndex > deployIndex) {
       violations.push("deploy_ai_agent_edge must validate deploy prerequisites before deploying");
+    }
+    const prereqStep = deployAiAgent.steps[prereqIndex];
+    if (!prereqStep || !stepIsExactCommand(prereqStep, AI_DEPLOY_PREREQ_COMMAND)) {
+      violations.push(
+        "deploy_ai_agent_edge must run the shared edge deploy prerequisite helper",
+      );
     }
   }
 

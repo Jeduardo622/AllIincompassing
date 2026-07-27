@@ -53,9 +53,13 @@ const ciWorkflow = ({
     "unit_tests",
     "build",
   ],
+  deployPrereqRun = "node scripts/ci/check-edge-deploy-prerequisites.mjs session-edge",
   deployRun = "npm run ci:deploy:session-edge-bundle",
+  fillDocsDeployRun = "npm run ci:deploy:fill-docs-function",
+  fillDocsBeforeSessionDeploy = false,
   deployAiAgentRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change_scope.outputs.ai_agent_changed == 'true'",
   deployAiAgentNeeds = ["deploy_session_edge", "change_scope"],
+  deployAiAgentPrereqRun = "node scripts/ci/check-edge-deploy-prerequisites.mjs ai-agent-optimized",
   deployAiAgentRun = "npm run ci:deploy:ai-agent-function",
   authNeeds = ["policy", "change_scope", "deploy_session_edge"],
   authIf = "always() && needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')",
@@ -170,17 +174,21 @@ ${deployNeeds.map((need) => `      - ${need}`).join("\n")}
     if: ${deployRestriction}
     steps:
       - name: Validate session edge deploy prerequisites
-        run: node scripts/ci/check-session-edge-deploy-prerequisites.mjs
-      - name: Deploy required session edge functions
+        run: ${deployPrereqRun}
+${fillDocsBeforeSessionDeploy ? `      - name: Deploy fill-docs with static templates
+        run: ${fillDocsDeployRun}
+` : ""}      - name: Deploy required session edge functions
         run: ${deployRun}
-
+${fillDocsBeforeSessionDeploy ? "" : `      - name: Deploy fill-docs with static templates
+        run: ${fillDocsDeployRun}
+`}
   deploy_ai_agent_edge:
     needs:
 ${deployAiAgentNeeds.map((need) => `      - ${need}`).join("\n")}
     if: ${deployAiAgentRestriction}
     steps:
       - name: Validate AI agent edge deploy prerequisites
-        run: node scripts/ci/check-ai-agent-deploy-prerequisites.mjs
+        run: ${deployAiAgentPrereqRun}
       - name: Deploy ai-agent-optimized edge function
         run: ${deployAiAgentRun}
 
@@ -486,6 +494,58 @@ describe("check-session-deploy-safety", () => {
     expect(result.stderr).toContain("must contain exactly one session edge deploy command");
   });
 
+  test("rejects a missing fill-docs deploy step", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        fillDocsDeployRun: "echo fill-docs deploy intentionally omitted",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("exactly one fill-docs deploy command");
+  });
+
+  test("rejects fill-docs deploy commands outside deploy_session_edge", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: "      - run: npm run ci:deploy:fill-docs-function",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("exactly one fill-docs deploy command");
+  });
+
+  test("rejects fill-docs deployment before the session edge bundle", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        fillDocsBeforeSessionDeploy: true,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_session_edge must validate deploy prerequisites before deploying",
+    );
+  });
+
+  test("rejects deploy_session_edge when the prereq helper is not the shared fail-closed target validator", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPrereqRun: "echo checked env vars only",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_session_edge must run the shared edge deploy prerequisite helper",
+    );
+  });
+
   test("rejects direct node deploy script invocations outside deploy_session_edge", () => {
     const fixtureRoot = makeFixture({
       ci: {
@@ -511,6 +571,11 @@ describe("check-session-deploy-safety", () => {
   });
 
   test.each([
+    "SUPABASE_ACCESS_TOKEN=fake npm run ci:deploy:session-edge-bundle",
+    "env SUPABASE_ACCESS_TOKEN=fake npm run ci:deploy:session-edge-bundle",
+    "npm --silent run ci:deploy:session-edge-bundle",
+    "npm -s run ci:deploy:session-edge-bundle",
+    "npm --prefix . run ci:deploy:session-edge-bundle",
     "SUPABASE_ACCESS_TOKEN=fake supabase functions deploy sessions-book",
     "env SUPABASE_ACCESS_TOKEN=fake supabase functions deploy sessions-book",
     "npx supabase functions deploy sessions-book",
@@ -533,6 +598,7 @@ describe("check-session-deploy-safety", () => {
   });
 
   test.each([
+    "bash -lc 'npm run ci:deploy:session-edge-bundle'",
     "bash -lc 'supabase functions deploy sessions-book'",
     "/bin/sh -c 'npx supabase functions deploy sessions-book'",
     "dash -ec 'pnpm exec supabase functions deploy sessions-book'",
@@ -568,6 +634,20 @@ describe("check-session-deploy-safety", () => {
     expect(result.stderr).toContain("deploy_ai_agent_edge must be restricted to push on refs/heads/main with ai_agent_changed == 'true'");
   });
 
+  test("rejects deploy_ai_agent_edge when the prereq helper is not the shared fail-closed target validator", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployAiAgentPrereqRun: "echo checked env vars only",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_ai_agent_edge must run the shared edge deploy prerequisite helper",
+    );
+  });
+
   test("rejects raw ai-agent deploy commands outside deploy_ai_agent_edge", () => {
     const fixtureRoot = makeFixture({
       ci: {
@@ -581,6 +661,11 @@ describe("check-session-deploy-safety", () => {
   });
 
   test.each([
+    "SUPABASE_ACCESS_TOKEN=fake npm run ci:deploy:ai-agent-function",
+    "env SUPABASE_ACCESS_TOKEN=fake npm run ci:deploy:ai-agent-function",
+    "npm --silent run ci:deploy:ai-agent-function",
+    "npm -s run ci:deploy:ai-agent-function",
+    "npm --prefix . run ci:deploy:ai-agent-function",
     "SUPABASE_ACCESS_TOKEN=fake supabase functions deploy ai-agent-optimized",
     "env SUPABASE_ACCESS_TOKEN=fake supabase functions deploy ai-agent-optimized",
     "npx supabase functions deploy ai-agent-optimized",
@@ -603,6 +688,7 @@ describe("check-session-deploy-safety", () => {
   });
 
   test.each([
+    "bash -lc 'npm run ci:deploy:ai-agent-function'",
     "bash -lc 'supabase functions deploy ai-agent-optimized'",
     "/bin/sh -c 'npx supabase functions deploy ai-agent-optimized'",
     "dash -ec 'pnpm exec supabase functions deploy ai-agent-optimized'",
@@ -644,6 +730,45 @@ describe("check-session-deploy-safety", () => {
     const result = runCheck(fixtureRoot);
 
     expect(result.status, result.stderr).toBe(0);
+  });
+
+  test.each([
+    "SUPABASE_ACCESS_TOKEN=fake npm run ci:deploy:fill-docs-function",
+    "env SUPABASE_ACCESS_TOKEN=fake npm run ci:deploy:fill-docs-function",
+    "bash -lc 'npm run ci:deploy:fill-docs-function'",
+    "npm --silent run ci:deploy:fill-docs-function",
+    "npm -s run ci:deploy:fill-docs-function",
+    "npm --prefix . run ci:deploy:fill-docs-function",
+    "bash -lc 'npm --silent run ci:deploy:fill-docs-function'",
+    "bash -lc 'npm -s run ci:deploy:fill-docs-function'",
+  ])("rejects raw fill-docs deploy spelling: %s", (deployCommand) => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: `      - run: ${deployCommand}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("exactly one fill-docs deploy command");
+  });
+
+  test.each([
+    "bash -lc 'SUPABASE_ACCESS_TOKEN=fake npm run ci:deploy:fill-docs-function'",
+    "env CI=true npm run ci:deploy:fill-docs-function",
+    "bash -lc 'node scripts/ci/deploy-fill-docs-function.mjs'",
+    "pwsh -Command 'npm run ci:deploy:fill-docs-function'",
+    "cmd.exe /c \"node scripts/ci/deploy-fill-docs-function.mjs\"",
+  ])("rejects wrapped fill-docs deploy spelling: %s", (deployCommand) => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        authExtra: `      - run: ${deployCommand}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("exactly one fill-docs deploy command");
   });
 
   test("rejects ci_gate when ai-agent deploy success is not conditionally enforced on main", () => {

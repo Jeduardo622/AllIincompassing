@@ -67,6 +67,7 @@ We currently run all environments (preview, staging, production) against the sam
    npm run ci:deploy:session-edge-bundle
    ```
    That script deploys session lifecycle functions, care-plan routes (`programs`, `goals`, `goal-targets`, `program-notes`), the optional `emails` proxy, assessment extraction/generation functions, and tenant-scoped reporting functions such as `utilization-report`; see `scripts/ci/deploy-session-edge-bundle.mjs` for the authoritative list.
+   The guarded `deploy-session-edge` CI job then runs `npm run ci:deploy:fill-docs-function` as a separate Docker-backed deployment. Keep `fill-docs` separate because its configured DOCX `static_files` must never fall back to the Management API / `--use-api` path.
    Alternatively deploy each function manually with `supabase functions deploy <name> --project-ref <ref>`.
    For session lifecycle routes, ensure gateway JWT verification remains enabled (`verify_jwt=true`) for `sessions-book`, `sessions-hold`, `sessions-confirm`, `sessions-start`, `sessions-cancel`, `generate-session-notes-pdf`, `session-notes-pdf-status`, and `session-notes-pdf-download`.
 5. Monitor the Supabase dashboard deployment logs. If a migration fails, follow the rollback/forward-fix plan documented in the PR.

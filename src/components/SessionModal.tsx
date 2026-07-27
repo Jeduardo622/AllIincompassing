@@ -899,7 +899,11 @@ export function SessionModal({
       return '';
     }
 
-    return session.cancellation_attribution === 'client' ? 'client' : 'staff';
+    if (session.cancellation_attribution === 'client' || session.cancellation_attribution === 'staff') {
+      return session.cancellation_attribution;
+    }
+
+    return 'unknown';
   };
 
   type SessionModalFormValues = Partial<Session> & SessionModalClinicalNotesPayload;
@@ -968,7 +972,7 @@ export function SessionModal({
       }
       const { data, error } = await supabase
         .from('sessions')
-        .select('program_id, goal_id, started_at, location_type')
+        .select('program_id, goal_id, started_at, location_type, cancellation_attribution')
         .eq('id', session.id)
         .eq('organization_id', activeOrganizationId)
         .maybeSingle();
@@ -1674,6 +1678,29 @@ export function SessionModal({
     }
     setValue('goal_ids', [...nextGoalIds, targetId]);
   };
+
+  const setPrimaryGoal = useCallback((targetId: string) => {
+    if (isDataCollectionOnly) {
+      return;
+    }
+
+    const nextGoalIds = Array.isArray(goalIds) ? [...goalIds] : [];
+    if (!nextGoalIds.includes(targetId)) {
+      setValue('goal_ids', [...nextGoalIds, targetId]);
+    }
+
+    setValue('goal_id', targetId);
+
+    const nextProgramId = goalsById.get(targetId)?.program_id;
+    if (nextProgramId) {
+      if (programId !== nextProgramId) {
+        setValue('program_id', nextProgramId);
+      }
+      setSelectedProgramIds((current) => (
+        current.includes(nextProgramId) ? current : [nextProgramId, ...current]
+      ));
+    }
+  }, [goalIds, goalsById, isDataCollectionOnly, programId, setValue]);
 
   const previousFormValues = useRef({
     startTime,
@@ -2443,7 +2470,7 @@ export function SessionModal({
 
   useEffect(() => {
     if (sessionStatus === 'cancelled') {
-      if (cancellationAttribution !== 'staff' && cancellationAttribution !== 'client') {
+      if (!cancellationAttribution) {
         setValue('cancellation_attribution', 'staff', { shouldDirty: false, shouldTouch: false });
       }
       return;
@@ -2455,7 +2482,11 @@ export function SessionModal({
   }, [cancellationAttribution, sessionStatus, setValue]);
 
   const resolvedCancellationAttribution =
-    cancellationAttribution === 'client' ? 'client' : 'staff';
+    cancellationAttribution === 'client'
+      ? 'client'
+      : cancellationAttribution === 'staff'
+        ? 'staff'
+        : 'unknown';
   const statusSelectValue =
     sessionStatus === 'cancelled'
       ? (canCreateSchedules ? `cancelled:${resolvedCancellationAttribution}` : 'cancelled')
@@ -2475,6 +2506,36 @@ export function SessionModal({
     setValue('status', value as Session['status'], { shouldDirty: true, shouldTouch: true });
     setValue('cancellation_attribution', '', { shouldDirty: true, shouldTouch: true });
   };
+
+  useEffect(() => {
+    if (
+      sessionStatus !== 'cancelled' ||
+      !sessionDetails ||
+      dirtyFields.status ||
+      dirtyFields.cancellation_attribution
+    ) {
+      return;
+    }
+
+    const nextCancellationAttribution =
+      sessionDetails.cancellation_attribution === 'client' || sessionDetails.cancellation_attribution === 'staff'
+        ? sessionDetails.cancellation_attribution
+        : 'unknown';
+
+    if (cancellationAttribution !== nextCancellationAttribution) {
+      setValue('cancellation_attribution', nextCancellationAttribution, {
+        shouldDirty: false,
+        shouldTouch: false,
+      });
+    }
+  }, [
+    cancellationAttribution,
+    dirtyFields.cancellation_attribution,
+    dirtyFields.status,
+    sessionDetails,
+    sessionStatus,
+    setValue,
+  ]);
 
   const hasStartedSession = Boolean(sessionDetails?.started_at ?? session?.started_at);
   const hasTerminalSessionStatus =
@@ -3840,25 +3901,48 @@ export function SessionModal({
                             {program.name}
                           </p>
                           <div className="grid grid-cols-1 gap-2">
-                            {groupedGoals.map((goal) => (
-                              <label
-                                key={`m-${goal.id}`}
-                                className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300"
-                              >
-                                <input
-                                  type="checkbox"
-                                  data-goal-id={goal.id}
-                                  checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
-                                  onChange={() => toggleGoalSelection(goal.id)}
-                                  disabled={isDataCollectionOnly}
-                                  className="h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <span className="min-w-0 flex-1 truncate">{goal.title}</span>
-                                <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
-                                  {Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} pts
-                                </span>
-                              </label>
-                            ))}
+                            {groupedGoals.map((goal) => {
+                              const isPrimaryGoal = goalId === goal.id;
+                              return (
+                                <div
+                                  key={`m-${goal.id}`}
+                                  className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300"
+                                >
+                                  <label className="flex min-w-0 flex-1 items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      data-goal-id={goal.id}
+                                      checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
+                                      onChange={() => toggleGoalSelection(goal.id)}
+                                      disabled={isDataCollectionOnly}
+                                      className="h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="min-w-0 flex-1 truncate">{goal.title}</span>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    aria-pressed={isPrimaryGoal}
+                                    aria-label={
+                                      isPrimaryGoal
+                                        ? `${goal.title} is primary goal`
+                                        : `Set ${goal.title} as primary goal`
+                                    }
+                                    onClick={() => setPrimaryGoal(goal.id)}
+                                    disabled={isDataCollectionOnly}
+                                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                                      isPrimaryGoal
+                                        ? 'bg-blue-600 text-white'
+                                        : 'border border-blue-200 bg-white text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:bg-dark dark:text-blue-200'
+                                    }`}
+                                  >
+                                    {isPrimaryGoal ? 'Primary goal' : 'Set as primary'}
+                                  </button>
+                                  <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
+                                    {Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} pts
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -3894,22 +3978,45 @@ export function SessionModal({
                             {program.name}
                           </p>
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            {groupedGoals.map((goal) => (
-                              <label key={goal.id} className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                                <input
-                                  type="checkbox"
-                                  data-goal-id={goal.id}
-                                  checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
-                                  onChange={() => toggleGoalSelection(goal.id)}
-                                  disabled={isDataCollectionOnly}
-                                  className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <span className="truncate">{goal.title}</span>
-                                <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                                  ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
-                                </span>
-                              </label>
-                            ))}
+                            {groupedGoals.map((goal) => {
+                              const isPrimaryGoal = goalId === goal.id;
+                              return (
+                                <div key={goal.id} className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                  <label className="flex min-w-0 flex-1 items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      data-goal-id={goal.id}
+                                      checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
+                                      onChange={() => toggleGoalSelection(goal.id)}
+                                      disabled={isDataCollectionOnly}
+                                      className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="truncate">{goal.title}</span>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    aria-pressed={isPrimaryGoal}
+                                    aria-label={
+                                      isPrimaryGoal
+                                        ? `${goal.title} is primary goal`
+                                        : `Set ${goal.title} as primary goal`
+                                    }
+                                    onClick={() => setPrimaryGoal(goal.id)}
+                                    disabled={isDataCollectionOnly}
+                                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                                      isPrimaryGoal
+                                        ? 'bg-blue-600 text-white'
+                                        : 'border border-blue-200 bg-white text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:bg-dark dark:text-blue-200'
+                                    }`}
+                                  >
+                                    {isPrimaryGoal ? 'Primary goal' : 'Set as primary'}
+                                  </button>
+                                  <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                    ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -4034,6 +4141,9 @@ export function SessionModal({
                 <option value="completed" disabled={!session}>Completed</option>
                 {canCreateSchedules ? (
                   <>
+                    {resolvedCancellationAttribution === 'unknown' ? (
+                      <option value="cancelled:unknown" disabled>Cancelled — attribution unavailable</option>
+                    ) : null}
                     <option value="cancelled:staff">Staff cancellation</option>
                     <option value="cancelled:client">Client cancellation</option>
                   </>

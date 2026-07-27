@@ -1376,7 +1376,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   const { effectiveRole, hasCapability, session } = useAuth();
-  const canManageProgramsGoals = hasCapability("manageProgramsGoals");
+  const canManageProgramsGoals = hasCapability("manageProgramsGoals")
+    || ["admin", "midtier", "bcba", "super_admin"].includes(effectiveRole ?? "");
   const canManageProgression = canRoleManageGoalTargetProgression(effectiveRole);
   const canDeleteGoalTargets = hasCapability("deleteGoalTargets");
   const publishSectionRef = useRef<HTMLDivElement | null>(null);
@@ -1446,6 +1447,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [noteContent, setNoteContent] = useState("");
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
   const [archivingProgramId, setArchivingProgramId] = useState<string | null>(null);
+  const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
+  const [editingProgramName, setEditingProgramName] = useState("");
+  const [editingProgramDescription, setEditingProgramDescription] = useState("");
+  const [updatingProgramId, setUpdatingProgramId] = useState<string | null>(null);
   const [archivingGoalId, setArchivingGoalId] = useState<string | null>(null);
   const [updatingTargetId, setUpdatingTargetId] = useState<string | null>(null);
   const [lifecycleTargetId, setLifecycleTargetId] = useState<string | null>(null);
@@ -1539,6 +1544,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const goalDescriptionValue = goalDescription.trim();
   const goalOriginalTextValue = goalOriginalText.trim();
   const newGoalDomainNameValue = newGoalDomainName.trim();
+  const editingProgramNameValue = editingProgramName.trim();
   const hasResolvedProgram = Boolean(resolvedProgramId);
   const noProgramHelperText = programsLoading
     ? "Programs are still loading. You can create one now, or wait for an existing program before adding goals or notes."
@@ -2383,6 +2389,67 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
   });
 
+  const updateProgram = useMutation({
+    mutationFn: async (program: Program) => {
+      if (!editingProgramNameValue) {
+        throw new Error("Program name is required.");
+      }
+      const payload = JSON.stringify({
+        name: editingProgramNameValue,
+        description: editingProgramDescription.trim() || undefined,
+      });
+      const response = await callEdgeWithSupabaseFallback({
+        edgePath: `${PROGRAMS_EDGE_PATH}?program_id=${encodeURIComponent(program.id)}`,
+        fallback: async () => {
+          if (!organizationId) {
+            return jsonResponse({ error: "Organization context is required." }, 400);
+          }
+          const { data, error } = await supabase
+            .from("programs")
+            .update({
+              name: editingProgramNameValue,
+              description: editingProgramDescription.trim() || null,
+            })
+            .eq("id", program.id)
+            .eq("organization_id", organizationId)
+            .select("id,organization_id,client_id,name,description,status,start_date,end_date,created_at,updated_at")
+            .single();
+          if (error) {
+            return jsonResponse({ error: error.message }, 500);
+          }
+          return jsonResponse(data);
+        },
+        init: {
+          method: "PATCH",
+          body: payload,
+        },
+        timeoutMs: PROGRAM_CREATE_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Update program request timed out. Please retry.",
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to update program."));
+      }
+      return parseJson<Program>(response);
+    },
+    onMutate: (program) => {
+      setUpdatingProgramId(program.id);
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Program[]>(clientProgramsQueryKey, (current) =>
+        mapById(current, updated.id, () => updated),
+      );
+      queryClient.invalidateQueries({ queryKey: clientProgramsQueryKey });
+      setEditingProgramId(null);
+      setEditingProgramName("");
+      setEditingProgramDescription("");
+      showSuccess("Program updated");
+    },
+    onError: showError,
+    onSettled: () => {
+      setUpdatingProgramId(null);
+    },
+  });
+
   const createGoalDomain = useMutation({
     mutationFn: async () => {
       if (!organizationId) {
@@ -2709,6 +2776,19 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
   });
 
+  const beginProgramEdit = (program: Program) => {
+    setSelectedProgramId(program.id);
+    setEditingProgramId(program.id);
+    setEditingProgramName(program.name);
+    setEditingProgramDescription(program.description ?? "");
+  };
+
+  const cancelProgramEdit = () => {
+    setEditingProgramId(null);
+    setEditingProgramName("");
+    setEditingProgramDescription("");
+  };
+
   const archiveGoal = useMutation({
     mutationFn: async (goal: Goal) => {
       const response = await callEdgeWithSupabaseFallback({
@@ -2825,7 +2905,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             Live care plan: <span className="font-semibold">{livePrograms.length}</span> program(s) and{" "}
             <span className="font-semibold">{liveGoals.length}</span> active goal(s) in the selected program.
           </p>
-          {showDraftReviewPanel && hasDraftsButNoLivePrograms && (
+          {canManageProgramsGoals && showDraftReviewPanel && hasDraftsButNoLivePrograms && (
             <button
               type="button"
               onClick={() => publishSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
@@ -2835,7 +2915,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             </button>
           )}
         </div>
-        {showDraftReviewPanel && hasDraftsButNoLivePrograms && (
+        {canManageProgramsGoals && showDraftReviewPanel && hasDraftsButNoLivePrograms && (
           <p className="mt-2 text-xs text-sky-800/90 dark:text-sky-100/90">
             Uploaded assessments and draft proposals stay in review until you publish them to live Programs & Goals.
           </p>
@@ -3011,91 +3091,160 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 </p>
               )}
               {livePrograms.map((program) => (
-                <div key={program.id} className="flex items-stretch gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedProgramId(program.id)}
-                    className={`min-w-0 flex-1 text-left rounded-md px-3 py-2 text-sm border ${
-                      resolvedProgramId === program.id
-                        ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
-                        : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                    }`}
-                  >
-                    <div className="font-medium">{program.name}</div>
-                    {program.description && (
-                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">{program.description}</div>
+                <div key={program.id} className="rounded-md border border-transparent">
+                  <div className="flex items-stretch gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProgramId(program.id)}
+                      className={`min-w-0 flex-1 text-left rounded-md px-3 py-2 text-sm border ${
+                        resolvedProgramId === program.id
+                          ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
+                          : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                      }`}
+                    >
+                      <div className="font-medium">{program.name}</div>
+                      {program.description && (
+                        <div className="text-xs text-gray-500 mt-1 line-clamp-2">{program.description}</div>
+                      )}
+                    </button>
+                    {canManageProgramsGoals && (
+                      <button
+                        type="button"
+                        aria-label={`Edit program ${program.name}`}
+                        title="Edit live program"
+                        onClick={() => beginProgramEdit(program)}
+                        disabled={updatingProgramId === program.id && updateProgram.isLoading}
+                        className="shrink-0 rounded-md border border-transparent px-2 py-2 text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-900/30 disabled:opacity-50"
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
+                      </button>
                     )}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${program.name}`}
-                    title="Remove from active care plan"
-                    onClick={() => {
-                      if (typeof window !== "undefined") {
-                        const confirmed = window.confirm(
-                          `Remove "${program.name}" from the active care plan? You can add programs again later.`,
-                        );
-                        if (!confirmed) {
-                          return;
-                        }
-                      }
-                      archiveProgram.mutate(program);
-                    }}
-                    disabled={archivingProgramId === program.id && archiveProgram.isLoading}
-                    className="shrink-0 rounded-md border border-transparent px-2 py-2 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </button>
+                    {canManageProgramsGoals && (
+                      <button
+                        type="button"
+                        aria-label={`Remove ${program.name}`}
+                        title="Remove from active care plan"
+                        onClick={() => {
+                          if (typeof window !== "undefined") {
+                            const confirmed = window.confirm(
+                              `Remove "${program.name}" from the active care plan? You can add programs again later.`,
+                            );
+                            if (!confirmed) {
+                              return;
+                            }
+                          }
+                          archiveProgram.mutate(program);
+                        }}
+                        disabled={archivingProgramId === program.id && archiveProgram.isLoading}
+                        className="shrink-0 rounded-md border border-transparent px-2 py-2 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                  {canManageProgramsGoals && editingProgramId === program.id && (
+                    <div className="mt-2 space-y-3 rounded-md border border-blue-100 bg-blue-50/60 p-3 dark:border-blue-900/60 dark:bg-blue-950/20">
+                      <label
+                        htmlFor={`program-edit-name-${program.id}`}
+                        className="block text-xs font-medium text-gray-700 dark:text-gray-200"
+                      >
+                        Program name
+                      </label>
+                      <input
+                        id={`program-edit-name-${program.id}`}
+                        type="text"
+                        value={editingProgramName}
+                        onChange={(event) => setEditingProgramName(event.target.value)}
+                        className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                      />
+                      <label
+                        htmlFor={`program-edit-description-${program.id}`}
+                        className="block text-xs font-medium text-gray-700 dark:text-gray-200"
+                      >
+                        Program description
+                      </label>
+                      <textarea
+                        id={`program-edit-description-${program.id}`}
+                        value={editingProgramDescription}
+                        onChange={(event) => setEditingProgramDescription(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => updateProgram.mutate(program)}
+                          disabled={!editingProgramNameValue || (updatingProgramId === program.id && updateProgram.isLoading)}
+                          className="rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {updatingProgramId === program.id && updateProgram.isLoading ? "Saving..." : "Save program changes"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelProgramEdit}
+                          disabled={updatingProgramId === program.id && updateProgram.isLoading}
+                          className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {!editingProgramNameValue && (
+                        <p className="text-xs text-gray-500 dark:text-gray-300">Enter a program name to save changes.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Program
-            </h3>
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500 dark:text-gray-300">
-                Add a program first if this client does not have one yet. Goals and notes attach to the selected program.
-              </p>
-              <input
-                type="text"
-                value={programName}
-                onChange={(event) => setProgramName(event.target.value)}
-                placeholder="Program name"
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
-              <textarea
-                value={programDescription}
-                onChange={(event) => setProgramDescription(event.target.value)}
-                placeholder="Program description"
-                rows={3}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => createProgram.mutate()}
-                disabled={!programNameValue || createProgram.isLoading}
-                className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {createProgram.isLoading ? "Creating..." : "Create Program"}
-              </button>
-              {programsQueryError instanceof Error && (
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  Could not load programs yet: {programsQueryError.message}
+          {canManageProgramsGoals && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                Add Program
+              </h3>
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-300">
+                  Add a program first if this client does not have one yet. Goals and notes attach to the selected program.
                 </p>
-              )}
-              {!createProgram.isLoading && !programNameValue && (
-                <p className="text-xs text-gray-500 dark:text-gray-300">Enter a program name to create a program.</p>
-              )}
+                <input
+                  type="text"
+                  value={programName}
+                  onChange={(event) => setProgramName(event.target.value)}
+                  placeholder="Program name"
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                />
+                <textarea
+                  value={programDescription}
+                  onChange={(event) => setProgramDescription(event.target.value)}
+                  placeholder="Program description"
+                  rows={3}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => createProgram.mutate()}
+                  disabled={!programNameValue || createProgram.isLoading}
+                  className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {createProgram.isLoading ? "Creating..." : "Create Program"}
+                </button>
+                {programsQueryError instanceof Error && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    Could not load programs yet: {programsQueryError.message}
+                  </p>
+                )}
+                {!createProgram.isLoading && !programNameValue && (
+                  <p className="text-xs text-gray-500 dark:text-gray-300">Enter a program name to create a program.</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="lg:col-span-2 space-y-4">
-          {ENABLE_CHECKLIST_MAPPING_UI && (
+          {ENABLE_CHECKLIST_MAPPING_UI && canManageProgramsGoals && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
                 {selectedAssessmentTemplateLabel} Checklist Review
@@ -3382,7 +3531,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             </div>
           )}
 
-          {showDraftReviewPanel && (
+          {canManageProgramsGoals && showDraftReviewPanel && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
               Draft Review (Approve / Reject / Edit)
@@ -3860,98 +4009,101 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             )}
           </div>
 
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Target</h3>
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500 dark:text-gray-300">
-                Targets sit under a goal and define the measurement type and graph source used by trial-level data.
-              </p>
-              <label htmlFor="target-goal" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                Parent goal
-              </label>
-              <select
-                id="target-goal"
-                value={targetGoalId}
-                onChange={(event) => setTargetGoalId(event.target.value)}
-                disabled={liveGoals.length === 0}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              >
-                {liveGoals.length === 0 ? (
-                  <option value="">No goals available</option>
-                ) : (
-                  liveGoals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {goal.title}
-                    </option>
-                  ))
-                )}
-              </select>
-              <label htmlFor="target-name" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                Target name *
-              </label>
-              <input
-                id="target-name"
-                type="text"
-                value={targetName}
-                onChange={(event) => setTargetName(event.target.value)}
-                placeholder="Target name"
-                aria-required="true"
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                  Measurement type
-                  <select
-                    value={targetMeasurementType}
-                    onChange={(event) => setTargetMeasurementType(event.target.value as TargetMeasurementType)}
-                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-                  >
-                    {TARGET_MEASUREMENT_TYPES.map((measurementType) => (
-                      <option key={measurementType} value={measurementType}>
-                        {TARGET_MEASUREMENT_TYPE_LABELS[measurementType]}
+          {canManageProgramsGoals && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Target</h3>
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-300">
+                  Targets sit under a goal and define the measurement type and graph source used by trial-level data.
+                </p>
+                <label htmlFor="target-goal" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Parent goal
+                </label>
+                <select
+                  id="target-goal"
+                  value={targetGoalId}
+                  onChange={(event) => setTargetGoalId(event.target.value)}
+                  disabled={liveGoals.length === 0}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                >
+                  {liveGoals.length === 0 ? (
+                    <option value="">No goals available</option>
+                  ) : (
+                    liveGoals.map((goal) => (
+                      <option key={goal.id} value={goal.id}>
+                        {goal.title}
                       </option>
-                    ))}
-                  </select>
+                    ))
+                  )}
+                </select>
+                <label htmlFor="target-name" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Target name *
                 </label>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                  Target status
-                  <select
-                    value={targetStatus}
-                    onChange={(event) => setTargetStatus(event.target.value as GoalTarget["status"])}
-                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-                  >
-                    <option value="draft">Draft</option>
-                    <option value="active">Active</option>
-                    <option value="mastered">Mastered</option>
-                    <option value="archived">Archived</option>
-                  </select>
-                </label>
-              </div>
-              <button
-                type="button"
-                onClick={() => createGoalTarget.mutate()}
-                disabled={Boolean(createTargetDisabledReason) || createGoalTarget.isLoading}
-                className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {createGoalTarget.isLoading ? "Creating..." : "Create Target"}
-              </button>
-              {createTargetDisabledReason && !createGoalTarget.isLoading && (
-                <p className="text-xs text-gray-500 dark:text-gray-300">{createTargetDisabledReason}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Goal</h3>
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500 dark:text-gray-300">
-                Select a program before creating a goal. Required fields are marked with an asterisk.
-              </p>
-              {!hasResolvedProgram && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
-                  {noProgramHelperText}
+                <input
+                  id="target-name"
+                  type="text"
+                  value={targetName}
+                  onChange={(event) => setTargetName(event.target.value)}
+                  placeholder="Target name"
+                  aria-required="true"
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                    Measurement type
+                    <select
+                      value={targetMeasurementType}
+                      onChange={(event) => setTargetMeasurementType(event.target.value as TargetMeasurementType)}
+                      className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                    >
+                      {TARGET_MEASUREMENT_TYPES.map((measurementType) => (
+                        <option key={measurementType} value={measurementType}>
+                          {TARGET_MEASUREMENT_TYPE_LABELS[measurementType]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                    Target status
+                    <select
+                      value={targetStatus}
+                      onChange={(event) => setTargetStatus(event.target.value as GoalTarget["status"])}
+                      className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="active">Active</option>
+                      <option value="mastered">Mastered</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </label>
                 </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => createGoalTarget.mutate()}
+                  disabled={Boolean(createTargetDisabledReason) || createGoalTarget.isLoading}
+                  className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {createGoalTarget.isLoading ? "Creating..." : "Create Target"}
+                </button>
+                {createTargetDisabledReason && !createGoalTarget.isLoading && (
+                  <p className="text-xs text-gray-500 dark:text-gray-300">{createTargetDisabledReason}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {canManageProgramsGoals && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Goal</h3>
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-300">
+                  Select a program before creating a goal. Required fields are marked with an asterisk.
+                </p>
+                {!hasResolvedProgram && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
+                    {noProgramHelperText}
+                  </div>
+                )}
               <label htmlFor="goal-title" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
                 Goal title *
               </label>
@@ -4160,8 +4312,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               {createGoalDisabledReason && !createGoal.isLoading && (
                 <p className="text-xs text-gray-500 dark:text-gray-300">{createGoalDisabledReason}</p>
               )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Program Notes</h3>
@@ -4191,37 +4344,39 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               ))}
             </div>
 
-            <div className="mt-4 space-y-3">
-              <select
-                value={noteType}
-                onChange={(event) => setNoteType(event.target.value as ProgramNote["note_type"])}
-                disabled={!hasResolvedProgram}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              >
-                <option value="plan_update">Plan Update</option>
-                <option value="progress_summary">Progress Summary</option>
-                <option value="other">Other</option>
-              </select>
-              <textarea
-                value={noteContent}
-                onChange={(event) => setNoteContent(event.target.value)}
-                placeholder="Add a program note"
-                rows={3}
-                disabled={!hasResolvedProgram}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => createNote.mutate()}
-                disabled={Boolean(createNoteDisabledReason) || createNote.isLoading}
-                className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {createNote.isLoading ? "Saving..." : "Add Note"}
-              </button>
-              {createNoteDisabledReason && !createNote.isLoading && (
-                <p className="text-xs text-gray-500 dark:text-gray-300">{createNoteDisabledReason}</p>
-              )}
-            </div>
+            {canManageProgramsGoals && (
+              <div className="mt-4 space-y-3">
+                <select
+                  value={noteType}
+                  onChange={(event) => setNoteType(event.target.value as ProgramNote["note_type"])}
+                  disabled={!hasResolvedProgram}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                >
+                  <option value="plan_update">Plan Update</option>
+                  <option value="progress_summary">Progress Summary</option>
+                  <option value="other">Other</option>
+                </select>
+                <textarea
+                  value={noteContent}
+                  onChange={(event) => setNoteContent(event.target.value)}
+                  placeholder="Add a program note"
+                  rows={3}
+                  disabled={!hasResolvedProgram}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => createNote.mutate()}
+                  disabled={Boolean(createNoteDisabledReason) || createNote.isLoading}
+                  className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {createNote.isLoading ? "Saving..." : "Add Note"}
+                </button>
+                {createNoteDisabledReason && !createNote.isLoading && (
+                  <p className="text-xs text-gray-500 dark:text-gray-300">{createNoteDisabledReason}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

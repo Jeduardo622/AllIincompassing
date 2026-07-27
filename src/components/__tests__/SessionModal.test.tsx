@@ -4497,6 +4497,7 @@ describe('SessionModal', () => {
     });
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      session_note_goal_notes: { 'goal-1': 'Previously saved note' },
       session_note_persist_requested: false,
     }));
     confirmSpy.mockRestore();

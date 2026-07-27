@@ -5,6 +5,7 @@ vi.mock("../api/shared", async () => {
   const actual = await vi.importActual<typeof import("../api/shared")>("../api/shared");
   return {
     ...actual,
+    currentUserCanManageProgramsGoals: vi.fn(),
     getAccessToken: vi.fn(),
     resolveOrgAndRole: vi.fn(),
     getSupabaseConfig: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("../api/shared", async () => {
 });
 
 import {
+  currentUserCanManageProgramsGoals,
   fetchJson,
   getAccessToken,
   getAccessTokenSubject,
@@ -24,6 +26,7 @@ import {
 describe("assessmentChecklistHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
   });
 
@@ -778,6 +781,111 @@ describe("assessmentChecklistHandler", () => {
         body: expect.stringContaining("\"status\":\"approved\""),
       }),
     );
+  });
+
+  it("allows checklist PATCH when the manage-program-goals helper approves a same-org bcba-style caller", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "item-1",
+            assessment_document_id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "drafted",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [{ id: "item-1", status: "verified" }] })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null });
+
+    const response = await assessmentChecklistHandler(
+      new Request("http://localhost/api/assessment-checklist", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          item_id: "11111111-1111-1111-1111-111111111111",
+          status: "verified",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(currentUserCanManageProgramsGoals).toHaveBeenCalledWith("token", "org-1");
+  });
+
+  it("returns 403 for checklist PATCH when the manage-program-goals helper denies the caller", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: false, upstreamError: false });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const response = await assessmentChecklistHandler(
+      new Request("http://localhost/api/assessment-checklist", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          item_id: "11111111-1111-1111-1111-111111111111",
+          status: "verified",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 for checklist PATCH when the manage-program-goals helper cannot be validated", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: false, upstreamError: true });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const response = await assessmentChecklistHandler(
+      new Request("http://localhost/api/assessment-checklist", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          item_id: "11111111-1111-1111-1111-111111111111",
+          status: "verified",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ error: "Unable to validate program-goal access" });
+    expect(fetchJson).not.toHaveBeenCalled();
   });
 
   it("blocks payload edits on approved structured sections", async () => {

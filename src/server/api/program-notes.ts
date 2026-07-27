@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   CORS_HEADERS,
+  currentUserCanManageProgramsGoals,
   fetchJson,
   getAccessToken,
   getAccessTokenSubject,
@@ -28,7 +29,7 @@ export async function programNotesHandler(request: Request): Promise<Response> {
   }
 
   const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
-  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+  if (!organizationId) {
     return json({ error: "Forbidden" }, 403);
   }
 
@@ -46,6 +47,10 @@ export async function programNotesHandler(request: Request): Promise<Response> {
   };
 
   if (request.method === "GET") {
+    if (!isTherapist && !isAdmin && !isSuperAdmin) {
+      return json({ error: "Forbidden" }, 403);
+    }
+
     const url = new URL(request.url);
     const programId = url.searchParams.get("program_id");
     if (!programId) {
@@ -64,6 +69,14 @@ export async function programNotesHandler(request: Request): Promise<Response> {
   }
 
   if (request.method === "POST") {
+    const canManage = await currentUserCanManageProgramsGoals(accessToken, organizationId);
+    if (canManage.upstreamError) {
+      return json({ error: "Unable to validate program-goal access" }, 502);
+    }
+    if (!canManage.allowed) {
+      return json({ error: "Forbidden" }, 403);
+    }
+
     let payload: unknown;
     try {
       payload = await request.json();

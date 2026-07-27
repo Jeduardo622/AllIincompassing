@@ -39,6 +39,12 @@ const SUPER_ADMIN_PRECEDENCE_MIGRATION_PATH = path.join(
   'migrations',
   '20260707121500_super_admin_bcba_role_precedence.sql',
 );
+const ALIGN_PROGRAM_GOAL_EDIT_AUTHORITY_MIGRATION_PATH = path.join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260727214202_align_program_goal_edit_authority.sql',
+);
 const START_SESSION_AUTHZ_MIGRATION_PATH = path.join(
   process.cwd(),
   'supabase',
@@ -59,6 +65,7 @@ const employeeRoleListingSql = readFileSync(EMPLOYEE_ROLE_LISTING_MIGRATION_PATH
 const employeeRoleListingGrantsSql = readFileSync(EMPLOYEE_ROLE_LISTING_GRANTS_MIGRATION_PATH, 'utf8');
 const bcbaExactCapabilitySql = readFileSync(BCBA_EXACT_CAPABILITY_MIGRATION_PATH, 'utf8');
 const superAdminPrecedenceSql = readFileSync(SUPER_ADMIN_PRECEDENCE_MIGRATION_PATH, 'utf8');
+const alignProgramGoalEditAuthoritySql = readFileSync(ALIGN_PROGRAM_GOAL_EDIT_AUTHORITY_MIGRATION_PATH, 'utf8');
 const startSessionAuthzSql = readFileSync(START_SESSION_AUTHZ_MIGRATION_PATH, 'utf8');
 const startSessionLinkHardeningSql = readFileSync(START_SESSION_LINK_HARDENING_MIGRATION_PATH, 'utf8');
 const smokeSql = readFileSync(SMOKE_SQL_PATH, 'utf8');
@@ -279,5 +286,32 @@ describe('employee role capability matrix migration', () => {
     expect(startSessionLinkHardeningSql).not.toContain(
       'grant select, insert, update, delete, truncate on table public.user_therapist_links',
     );
+  });
+
+  it('narrows program-goal mutation authority to admin, midtier, and bcba while preserving super-admin precedence', () => {
+    const exactRoleFunction = extractFunction('app.current_user_has_exact_role_for_org');
+    const alignedHelper = extractFunctionFrom(
+      alignProgramGoalEditAuthoritySql,
+      'app.current_user_can_manage_programs_goals',
+    );
+
+    expect(exactRoleFunction).toContain('IF app.current_user_is_super_admin() THEN');
+    expect(alignedHelper).toContain("ARRAY['admin', 'midtier', 'bcba']::text[]");
+    expect(alignedHelper).not.toContain("'therapist'");
+    expect(alignedHelper).not.toContain("'admin_schedule'");
+  });
+
+  it('recreates program_notes manage policies around the shared program-goal authority helper', () => {
+    expect(alignProgramGoalEditAuthoritySql).toContain('DROP POLICY IF EXISTS program_notes_org_manage ON public.program_notes;');
+    expect(alignProgramGoalEditAuthoritySql).toContain('CREATE POLICY program_notes_org_manage');
+    expect(alignProgramGoalEditAuthoritySql).toContain('USING (');
+    expect(alignProgramGoalEditAuthoritySql).toContain('WITH CHECK (');
+    expect(alignProgramGoalEditAuthoritySql).toContain('app.current_user_can_manage_programs_goals(organization_id)');
+  });
+
+  it('extends the hosted smoke to prove therapist program-goal mutations stay denied', () => {
+    expect(smokeSql).toContain('therapist_helpers');
+    expect(smokeSql).toContain('therapist_program_write_denied');
+    expect(smokeSql).toContain('not app.current_user_can_manage_programs_goals');
   });
 });

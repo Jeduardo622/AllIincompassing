@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   CORS_HEADERS,
+  currentUserCanManageProgramsGoals,
   fetchJson,
   getAccessToken,
   getAccessTokenSubject,
@@ -433,7 +434,15 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   }
 
   const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
-  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+  if (!organizationId) {
+    return json({ error: "Forbidden" }, 403);
+  }
+
+  const canManage = await currentUserCanManageProgramsGoals(accessToken, organizationId);
+  if (canManage.upstreamError) {
+    return json({ error: "Unable to validate program-goal access" }, 502);
+  }
+  if (!canManage.allowed) {
     return json({ error: "Forbidden" }, 403);
   }
 

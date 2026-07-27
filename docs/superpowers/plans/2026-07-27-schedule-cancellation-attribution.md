@@ -42,7 +42,7 @@ expect(screen.getByRole('option', { name: 'Client cancellation' })).toBeInTheDoc
 expect(screen.queryByRole('option', { name: /^Cancelled$/ })).not.toBeInTheDocument();
 ```
 
-Then render with `canCreateSchedules={false}` and assert the two attribution choices are absent while the legacy generic cancelled choice remains available for backward-compatible non-creator editing.
+Then render a scheduled session with `canCreateSchedules={false}` and assert that neither attribution choice nor a generic selectable cancelled choice is present. For an already-cancelled session, a disabled `Cancelled` option may render only to represent the persisted terminal state.
 
 - [ ] **Step 2: Run the focused tests and verify RED**
 
@@ -93,7 +93,7 @@ In `SessionModal`:
    - `cancelled:client` sets `status="cancelled"` and `cancellation_attribution="client"`
    - any canonical status sets that status and clears stale cancellation attribution
 6. Register hidden `status` and `cancellation_attribution` inputs so react-hook-form submits canonical values.
-7. For creators, render only `Staff cancellation` and `Client cancellation`; for non-creators, retain the legacy `Cancelled` option and render neither new choice.
+7. For creators, render only `Staff cancellation` and `Client cancellation`. For non-creators, render no selectable cancellation option; when the loaded session is already cancelled, render a disabled `Cancelled` option only to represent its persisted terminal state.
 
 - [ ] **Step 6: Run the focused tests and verify GREEN**
 

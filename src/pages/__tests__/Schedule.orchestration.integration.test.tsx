@@ -400,6 +400,8 @@ vi.mock("../../components/SessionModal", () => ({
 
 import { Schedule } from "../Schedule";
 
+const addSessionButtonName = /^Add session on .+ at \d{1,2}:\d{2} [AP]M$/i;
+
 const waitForScheduleGridReady = () =>
   waitFor(() => {
     const activeView = screen.queryByTestId("week-view") ?? screen.queryByTestId("day-view");
@@ -519,7 +521,7 @@ describe("Schedule orchestration integration hardening", () => {
       expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     fireEvent.click(screen.getByLabelText("submit-create"));
 
@@ -548,7 +550,7 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     fireEvent.click(screen.getByLabelText("submit-create"));
 
@@ -845,7 +847,7 @@ describe("Schedule orchestration integration hardening", () => {
     });
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
 
     expect(await screen.findByTestId("modal-mode")).toHaveTextContent("create");
     expect(screen.getByTestId("allow-start-session")).toHaveTextContent("false");
@@ -995,7 +997,7 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
 
     expect(screen.getByTestId("hide-goal-capture-fields")).toHaveTextContent(expectedHidden);
@@ -1008,7 +1010,7 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     expect(screen.getByTestId("modal-mode")).toHaveTextContent("create");
     fireEvent.click(screen.getByLabelText("submit-capture-persist-by-id"));
@@ -1050,7 +1052,7 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     fireEvent.click(screen.getByLabelText("submit-capture-persist-by-id"));
 
@@ -1069,7 +1071,7 @@ describe("Schedule orchestration integration hardening", () => {
     renderWithProviders(<Schedule />);
     await screen.findByRole("heading", { name: /Schedule/i });
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     fireEvent.click(screen.getByLabelText("submit-create"));
 

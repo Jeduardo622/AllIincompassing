@@ -361,6 +361,37 @@ describe("ScheduleDayView drag and drop", () => {
       expect(onEditSession).not.toHaveBeenCalled();
     });
 
+    it("exposes create semantics only on truly empty slots and keeps occupied clicks in edit mode", () => {
+      const selectedDate = new Date(2025, 6, 7);
+      const session = buildSession(new Date(2025, 6, 7, 9, 0), {
+        id: "occupied-contract",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T10:00:00",
+      });
+      const onCreateSession = vi.fn();
+      const onEditSession = vi.fn();
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={["09:00", "09:15", "09:30", "09:45", "10:00"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[session]}
+          useImprovedAppointmentLayout
+          onCreateSession={onCreateSession}
+          onEditSession={onEditSession}
+        />,
+      );
+
+      expect(screen.queryByRole("button", { name: /add session.*9:15 am/i })).toBeNull();
+      const emptySlot = screen.getByRole("button", { name: /add session.*10:00 am/i });
+      expect(within(emptySlot).getByText("+ Add session")).toBeTruthy();
+      fireEvent.click(container.querySelector('[data-session-id="occupied-contract"]')!);
+      expect(onEditSession).toHaveBeenCalledWith(expect.objectContaining({ id: "occupied-contract" }));
+      expect(onCreateSession).not.toHaveBeenCalled();
+      fireEvent.click(emptySlot);
+      expect(onCreateSession).toHaveBeenCalledWith(expect.objectContaining({ time: "10:00" }));
+    });
+
     it("keeps a 15-minute appointment inside its visual duration", () => {
       const selectedDate = new Date(2025, 6, 7);
       const session = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
@@ -475,10 +506,12 @@ describe("ScheduleDayView drag and drop", () => {
       );
 
       const trigger = screen.getByRole("button", { name: /3 appointments/i });
+      expect(within(trigger).getByTestId("schedule-overlap-count")).toHaveTextContent("3");
       expect(trigger.getAttribute("aria-haspopup")).toBe("dialog");
       expect(trigger.getAttribute("aria-expanded")).toBe("false");
 
       fireEvent.click(trigger);
+      expect(onEditSession).not.toHaveBeenCalled();
 
       expect(trigger.getAttribute("aria-expanded")).toBe("true");
       const dialog = screen.getByRole("dialog", { name: /3 overlapping appointments/i });

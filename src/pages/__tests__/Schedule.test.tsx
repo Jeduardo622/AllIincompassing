@@ -161,6 +161,8 @@ vi.mock("../../components/SessionModal", () => ({
 
 import { Schedule } from "../Schedule";
 
+const addSessionButtonName = /^Add session on .+ at \d{1,2}:\d{2} [AP]M$/i;
+
 const defaultRpcImplementation = vi.mocked(supabase.rpc as any).getMockImplementation();
 
 const waitForScheduleGridReady = () =>
@@ -304,7 +306,7 @@ describe("Schedule", () => {
     await waitForScheduleGridReady();
     expect(sessionModalModuleLoads).toBe(0);
 
-    const addButtons = await screen.findAllByLabelText("Add session");
+    const addButtons = await screen.findAllByRole("button", { name: addSessionButtonName });
     fireEvent.click(addButtons[0]);
 
     await waitFor(() => {
@@ -341,7 +343,7 @@ describe("Schedule", () => {
     renderWithProviders(<Schedule />);
 
     await waitForScheduleGridReady();
-    const addButtons = await screen.findAllByLabelText("Add session");
+    const addButtons = await screen.findAllByRole("button", { name: addSessionButtonName });
     fireEvent.click(addButtons[0]);
     expect(await screen.findByTestId("session-modal-sessions")).toHaveTextContent("session-1");
     expect(screen.getByTestId("session-modal-sessions")).toHaveTextContent("session-2");
@@ -385,7 +387,7 @@ describe("Schedule", () => {
     expect(
       screen.queryByRole("checkbox", { name: /Apply this visible week forward/i }),
     ).not.toBeInTheDocument();
-    expect(screen.queryAllByLabelText("Add session")).toHaveLength(0);
+    expect(screen.queryAllByRole("button", { name: addSessionButtonName })).toHaveLength(0);
   });
 
   it("exposes week-forward admin controls when enabled in week view", async () => {

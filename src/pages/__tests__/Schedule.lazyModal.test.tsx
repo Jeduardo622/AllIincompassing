@@ -38,6 +38,8 @@ vi.mock("../../components/SessionModal", () => {
 
 import { Schedule } from "../Schedule";
 
+const addSessionButtonName = /^Add session on .+ at \d{1,2}:\d{2} [AP]M$/i;
+
 const waitForScheduleGridReady = () =>
   waitFor(() => {
     const activeView = screen.queryByTestId("week-view") ?? screen.queryByTestId("day-view");
@@ -114,7 +116,7 @@ describe("Schedule lazy session modal", () => {
     await waitForScheduleGridReady();
     expect(sessionModalLoadCount).toBe(0);
 
-    const addButtons = await screen.findAllByLabelText("Add session");
+    const addButtons = await screen.findAllByRole("button", { name: addSessionButtonName });
     await userEvent.click(addButtons[0]);
 
     expect(await screen.findByTestId("session-modal")).toHaveTextContent("Session modal for 08:00");

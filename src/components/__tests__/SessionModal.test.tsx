@@ -1197,6 +1197,19 @@ describe('SessionModal', () => {
     timeZone: "America/New_York",
   };
 
+  const setReducedMotionPreference = (matches: boolean) => {
+    vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)' ? matches : false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
+  };
+
   const expectVisiblePlanSelectorsRemoved = () => {
     expect(screen.queryByRole('combobox', { name: /^Program$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: /^Primary Goal$/i })).not.toBeInTheDocument();
@@ -1567,35 +1580,132 @@ describe('SessionModal', () => {
   });
 
   it('closes modal when cancel button is clicked', async () => {
+    setReducedMotionPreference(true);
     renderWithProviders(<SessionModal {...defaultProps} />);
     
     const cancelButton = screen.getByRole('button', { name: /Cancel/i });
     await userEvent.click(cancelButton);
 
     expect(defaultProps.onClose).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('makes the modal inert during a 160 ms exit and calls onClose exactly once', async () => {
+    vi.useFakeTimers();
+    setReducedMotionPreference(false);
+    const onClose = vi.fn();
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+
+    renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /close session modal/i }));
+    });
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('data-transition-state', 'closing');
+    expect(dialog.closest('[role="presentation"]')).toHaveAttribute('inert');
+    const closeTimerCalls = setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 160);
+    expect(closeTimerCalls.length).toBeGreaterThan(0);
+    expect(onClose).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(159);
+    });
+    expect(onClose).not.toHaveBeenCalled();
+
+    const closeCallback = closeTimerCalls.at(-1)?.[0];
+    expect(closeCallback).toBeTypeOf('function');
+    await act(async () => {
+      (closeCallback as () => void)();
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    setTimeoutSpy.mockRestore();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('closes immediately when reduced motion is preferred', async () => {
+    setReducedMotionPreference(true);
+    const onClose = vi.fn();
+
+    renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /close session modal/i }));
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('schedules the close callback exactly once even when close is retriggered during the exit transition', async () => {
+    vi.useFakeTimers();
+    setReducedMotionPreference(false);
+    const onClose = vi.fn();
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+
+    renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /close session modal/i }));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+    });
+
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-transition-state', 'closing');
+
+    const closeTimerCalls = setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 160);
+    expect(closeTimerCalls).toHaveLength(1);
+
+    const closeCallback = closeTimerCalls[0]?.[0];
+    expect(closeCallback).toBeTypeOf('function');
+    await act(async () => {
+      (closeCallback as () => void)();
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    setTimeoutSpy.mockRestore();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it('shows unsaved state and asks before closing dirty changes', async () => {
+    setReducedMotionPreference(true);
     const onClose = vi.fn();
     renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
 
-    const notesInput = screen.getByLabelText(/Schedule Notes/i);
-    await userEvent.type(notesInput, 'Therapist working note');
-
-    expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent('Unsaved changes.');
+    fireEvent.change(screen.getByLabelText(/Schedule Notes/i), {
+      target: { value: 'Therapist working note' },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent('Unsaved changes.');
+    });
 
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const closeCountBeforeCancel = onClose.mock.calls.length;
     await userEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
-    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalledTimes(closeCountBeforeCancel);
 
     confirmSpy.mockReturnValue(true);
     await userEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
-    expect(onClose.mock.calls.length).toBeGreaterThan(closeCountBeforeCancel);
+    await waitFor(() => expect(onClose.mock.calls.length).toBeGreaterThan(closeCountBeforeCancel));
+    confirmSpy.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it('uses an accessible close button label and closes on Escape', async () => {
+    setReducedMotionPreference(true);
     renderWithProviders(<SessionModal {...defaultProps} />);
 
     const closeButton = screen.getByRole('button', { name: /close session modal/i });
@@ -1605,6 +1715,7 @@ describe('SessionModal', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(defaultProps.onClose).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('traps focus within the modal when tabbing', async () => {

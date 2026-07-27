@@ -1086,4 +1086,23 @@ describe("Schedule orchestration integration hardening", () => {
     expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
   });
 
+  it("closing an edit modal resets parent state so the next empty-slot open is a fresh create modal", async () => {
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    expect(screen.getByTestId("modal-mode")).toHaveTextContent("edit");
+    expect(document.querySelectorAll('[data-testid="session-modal"]')).toHaveLength(1);
+
+    fireEvent.click(screen.getByLabelText("close-modal"));
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("modal-mode")).toHaveTextContent("create");
+    expect(screen.getByTestId("retry-hint")).toHaveTextContent("");
+    expect(document.querySelectorAll('[data-testid="session-modal"]')).toHaveLength(1);
+  });
+
 });

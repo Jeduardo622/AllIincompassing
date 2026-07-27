@@ -85,6 +85,7 @@ import {
 } from '../lib/sessionCaptureBillingGate';
 
 const ENABLE_ALTERNATIVE_TIME_SUGGESTIONS = false;
+const MODAL_TRANSITION_MS = 160;
 
 export interface SessionModalClinicalNotesPayload {
   session_note_narrative?: string;
@@ -847,6 +848,9 @@ export function SessionModal({
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const previousClientIdRef = useRef<string | null>(null);
   const conflictCheckRequestIdRef = useRef(0);
+  const closeTimerRef = useRef<number | null>(null);
+  const enterFrameRef = useRef<number | null>(null);
+  const closeRequestedRef = useRef(false);
   const activeOrganizationId = useActiveOrganizationId();
   const dialogTitleId = 'session-modal-title';
   const dialogDescriptionId = 'session-modal-description';
@@ -855,6 +859,8 @@ export function SessionModal({
   const conflictDescriptionId = 'session-modal-conflicts-description';
   const conflictHeadingId = 'session-modal-conflicts-heading';
   const queryClient = useQueryClient();
+  const [isEntered, setIsEntered] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
   const canUseStartSessionAction = !isDataCollectionOnly || allowStartSession;
   const isBtClinicalCaptureSession = Boolean(
@@ -2250,20 +2256,37 @@ export function SessionModal({
   };
 
   const handleAttemptClose = useCallback(() => {
-    if (isSubmitting || btAbaBusy || btAbaFinalized) {
+    if (isSubmitting || btAbaBusy || btAbaFinalized || isClosing) {
       return;
     }
+    const beginVisualClose = () => {
+      if (closeRequestedRef.current) {
+        return;
+      }
+      closeRequestedRef.current = true;
+      setIsClosing(true);
+      setIsEntered(false);
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+      if (reduceMotion) {
+        onClose();
+        return;
+      }
+      closeTimerRef.current = window.setTimeout(() => {
+        closeTimerRef.current = null;
+        onClose();
+      }, MODAL_TRANSITION_MS);
+    };
     if (!hasUnsavedSessionChanges) {
-      onClose();
+      beginVisualClose();
       return;
     }
     const shouldDiscard = window.confirm(
       'You have unsaved changes in this session. Close without saving?'
     );
     if (shouldDiscard) {
-      onClose();
+      beginVisualClose();
     }
-  }, [btAbaBusy, btAbaFinalized, hasUnsavedSessionChanges, isSubmitting, onClose]);
+  }, [btAbaBusy, btAbaFinalized, hasUnsavedSessionChanges, isClosing, isSubmitting, onClose]);
 
   const handleStartSession = async () => {
     if (
@@ -3084,6 +3107,50 @@ export function SessionModal({
     ...(retryHint ? [retryHintDescriptionId] : []),
     ...(conflicts.length > 0 ? [conflictDescriptionId] : []),
   ].join(' ');
+  const isCloseInteractionDisabled = isSubmitting || btAbaBusy || btAbaFinalized || isClosing;
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsEntered(false);
+      setIsClosing(false);
+      closeRequestedRef.current = false;
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      if (enterFrameRef.current !== null) {
+        window.cancelAnimationFrame(enterFrameRef.current);
+        enterFrameRef.current = null;
+      }
+      return;
+    }
+
+    setIsClosing(false);
+    setIsEntered(false);
+    closeRequestedRef.current = false;
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    if (enterFrameRef.current !== null) {
+      window.cancelAnimationFrame(enterFrameRef.current);
+    }
+    enterFrameRef.current = window.requestAnimationFrame(() => {
+      setIsEntered(true);
+      enterFrameRef.current = null;
+    });
+
+    return () => {
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      if (enterFrameRef.current !== null) {
+        window.cancelAnimationFrame(enterFrameRef.current);
+        enterFrameRef.current = null;
+      }
+    };
+  }, [isOpen, session?.id]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -3379,23 +3446,31 @@ export function SessionModal({
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black bg-opacity-50 sm:items-center p-0 sm:p-4"
+      className={`fixed inset-0 z-50 flex items-end justify-center p-0 transition-colors motion-reduce:transition-none sm:items-center sm:p-4 ${
+        isEntered && !isClosing ? 'bg-black/50' : 'bg-black/0'
+      }`}
       role="presentation"
+      {...(isClosing ? { inert: '' } : {})}
+      style={{ transitionDuration: `${MODAL_TRANSITION_MS}ms` }}
       onMouseDown={(event) => {
-        if (event.target === overlayRef.current) {
+        if (!isClosing && event.target === overlayRef.current) {
           handleAttemptClose();
         }
       }}
     >
       <div
         ref={dialogRef}
-        className="flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl dark:bg-dark-lighter sm:h-auto sm:max-h-[86vh] sm:rounded-xl"
+        className={`flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl transition-[opacity,transform] motion-reduce:transition-none dark:bg-dark-lighter sm:h-auto sm:max-h-[86vh] sm:rounded-xl ${
+          isEntered && !isClosing ? 'scale-100 opacity-100' : 'scale-[0.985] opacity-0'
+        }`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={dialogTitleId}
         aria-describedby={dialogDescriptionIds}
         data-session-status={session?.status ?? ""}
         data-session-modal-mode={sessionModalMode}
+        data-transition-state={isClosing ? 'closing' : isEntered ? 'open' : 'opening'}
+        style={{ transitionDuration: `${MODAL_TRANSITION_MS}ms` }}
         tabIndex={-1}
       >
         {/* Header */}
@@ -3420,7 +3495,7 @@ export function SessionModal({
             ref={closeButtonRef}
             type="button"
             onClick={handleAttemptClose}
-            disabled={isSubmitting || btAbaBusy || btAbaFinalized}
+            disabled={isCloseInteractionDisabled}
             aria-label="Close session modal"
             title="Close session modal"
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
@@ -5248,7 +5323,7 @@ export function SessionModal({
               <button
                 type="button"
                 onClick={handleAttemptClose}
-                disabled={isSubmitting}
+                disabled={isCloseInteractionDisabled}
                 className="min-h-11 shrink-0 rounded-full px-4 text-sm font-medium text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-gray-300 sm:bg-white sm:px-4 sm:text-gray-700 sm:shadow-sm sm:hover:bg-gray-50"
               >
                 Cancel
@@ -5257,7 +5332,7 @@ export function SessionModal({
                 <button
                   type="button"
                   onClick={handleStartSession}
-                  disabled={!canStartSession || isDependentDataLoading || isStartPlanDataLoading}
+                  disabled={isClosing || !canStartSession || isDependentDataLoading || isStartPlanDataLoading}
                   className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-emerald-200 sm:bg-emerald-50/90 sm:px-4 sm:font-medium sm:text-emerald-800 sm:shadow-sm sm:hover:bg-emerald-100"
                 >
                   Start Session
@@ -5267,7 +5342,7 @@ export function SessionModal({
                 <button
                   type="button"
                   onClick={handleCloseSession}
-                  disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives || isBtAbaNoteLoadError}
+                  disabled={isClosing || isSubmitting || isDependentDataLoading || isLoadingAlternatives || isBtAbaNoteLoadError}
                   className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-300 dark:hover:bg-violet-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-violet-200 sm:bg-violet-50/90 sm:px-4 sm:font-medium sm:text-violet-800 sm:shadow-sm sm:hover:bg-violet-100"
                 >
                   Close Session
@@ -5278,7 +5353,7 @@ export function SessionModal({
               <button
                 type="submit"
                 form="session-form"
-                disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
+                disabled={isClosing || isSubmitting || isDependentDataLoading || isLoadingAlternatives}
                 className="flex min-h-12 w-full items-center justify-center rounded-xl border border-transparent bg-blue-600 px-4 py-2.5 text-base font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-11 sm:w-auto sm:min-w-[12rem] sm:rounded-md sm:py-2 sm:text-sm sm:font-medium sm:shadow-sm sm:shadow-none"
               >
                 {isSubmitting ? (

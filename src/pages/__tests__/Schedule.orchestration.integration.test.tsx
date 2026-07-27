@@ -484,7 +484,7 @@ describe("Schedule orchestration integration hardening", () => {
     expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0]).not.toHaveProperty("trialEvents");
     expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0].goalNotes).toEqual({ "goal-1": "Keep this note" });
     await waitFor(() => expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed"));
-    fireEvent.click(screen.getByLabelText("close-modal"));
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
   });
 
   it("pending-schedule create forwards metadata and does not reuse it on next manual create", async () => {
@@ -1080,14 +1080,18 @@ describe("Schedule orchestration integration hardening", () => {
     });
 
     fireEvent.click(screen.getByLabelText("close-modal"));
-    await waitFor(() => {
-      expect(screen.getByTestId("retry-hint")).toHaveTextContent("");
-    });
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
     expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
+    expect(showSuccessMock).not.toHaveBeenCalled();
   });
 
   it("closing an edit modal resets parent state so the next empty-slot open is a fresh create modal", async () => {
-    renderWithProviders(<Schedule />);
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+    );
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
@@ -1095,8 +1099,13 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByTestId("session-modal");
     expect(screen.getByTestId("modal-mode")).toHaveTextContent("edit");
     expect(document.querySelectorAll('[data-testid="session-modal"]')).toHaveLength(1);
+    expect(screen.getByTestId("schedule-search")).toHaveTextContent("scheduleModal=edit");
 
     fireEvent.click(screen.getByLabelText("close-modal"));
+    await waitFor(() => {
+      expect(screen.getByTestId("schedule-search")).not.toHaveTextContent("scheduleModal");
+      expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument();
+    });
     fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
 

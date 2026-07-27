@@ -1445,17 +1445,18 @@ export const Schedule = React.memo(() => {
 
   const handleCloseSessionModal = useCallback(() => {
     setRetryActionLabel(null);
+    const params = clearScheduleModalSearchParams(searchParams);
+    setSearchParams(params, { replace: true });
     applyScheduleResetBranch(
       { kind: "close-modal" },
       scheduleResetSetters,
     );
-  }, [scheduleResetSetters]);
+  }, [scheduleResetSetters, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (wasModalOpenRef.current && !isModalOpen) {
       const params = clearScheduleModalSearchParams(searchParams);
       setSearchParams(params, { replace: true });
-      lastAppliedUrlModalKeyRef.current = null;
     }
     wasModalOpenRef.current = isModalOpen;
   }, [isModalOpen, searchParams, setSearchParams]);

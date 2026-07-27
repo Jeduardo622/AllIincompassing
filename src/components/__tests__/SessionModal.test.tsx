@@ -3936,6 +3936,44 @@ describe('SessionModal', () => {
     expect(screen.queryByText(/Primary goal is required/i)).not.toBeInTheDocument();
   });
 
+  it('keeps plan query failures distinct from empty data and offers focused retries', async () => {
+    const programOrder = vi.fn(async () => ({ data: null, error: new Error('program fetch failed') }));
+    const goalOrder = vi.fn(async () => ({ data: null, error: new Error('goal fetch failed') }));
+    const buildErrorChain = (order: SupabaseQueryChain['order']) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order,
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildErrorChain(programOrder);
+      }
+      if (table === 'goals') {
+        return buildErrorChain(goalOrder);
+      }
+      return buildErrorChain(vi.fn(async () => ({ data: [], error: null })));
+    });
+
+    renderWithProviders(<SessionModal {...defaultProps} />);
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+
+    expect(await screen.findByText('Could not load programs.')).toBeInTheDocument();
+    expect(await screen.findByText('Could not load goals.')).toBeInTheDocument();
+    expect(screen.queryByText(/No active programs found for this client/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry programs' }));
+    await waitFor(() => expect(programOrder).toHaveBeenCalledTimes(2));
+    await userEvent.click(screen.getByRole('button', { name: 'Retry goals' }));
+    await waitFor(() => expect(goalOrder).toHaveBeenCalledTimes(2));
+  });
+
   it('shows saved state after successful update for edit sessions', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderWithProviders(

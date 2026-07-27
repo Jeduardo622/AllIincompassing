@@ -1008,6 +1008,8 @@ export function SessionModal({
     data: programs = [],
     isFetched: isProgramsFetched,
     isFetching: isProgramsFetching,
+    isError: isProgramsError,
+    refetch: refetchPrograms,
   } = useQuery({
     queryKey: ['client-programs', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
@@ -1032,6 +1034,8 @@ export function SessionModal({
     data: goals = [],
     isFetched: isGoalsFetched,
     isFetching: isGoalsFetching,
+    isError: isGoalsError,
+    refetch: refetchGoals,
   } = useQuery({
     queryKey: ['client-goals', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
@@ -3668,7 +3672,45 @@ export function SessionModal({
               </div>
             )}
 
-            {!shouldHideGoalCaptureFields && (programs.length === 0 || activePrograms.length === 0 || availableProgramGroups.length === 0) && (
+            {!shouldHideGoalCaptureFields && (isProgramsError || isGoalsError) && (
+              <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-200 sm:p-4">
+                {isProgramsError && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Could not load programs.</span>
+                    <button
+                      type="button"
+                      aria-label="Retry programs"
+                      onClick={() => {
+                        void refetchPrograms();
+                      }}
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {isGoalsError && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Could not load goals.</span>
+                    <button
+                      type="button"
+                      aria-label="Retry goals"
+                      onClick={() => {
+                        void refetchGoals();
+                      }}
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!shouldHideGoalCaptureFields &&
+              !isProgramsError &&
+              !isGoalsError &&
+              (programs.length === 0 || activePrograms.length === 0 || availableProgramGroups.length === 0) && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200 sm:p-4">
                 {programs.length === 0 || activePrograms.length === 0
                   ? 'No active programs found for this client. Create or activate a program before starting a session.'

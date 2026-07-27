@@ -31,7 +31,7 @@
 ## Verification Card
 
 - Lane: critical
-- Result: hosted implementation applied and role/RLS behavior proven; draft remains blocked from merge by external test/check disposition and required human review.
+- Result: hosted implementation applied and role/RLS behavior proven; PR is review-ready with all required live checks green and remains intentionally unmerged pending human review.
 - Passed:
   - `npm run ci:check-focused`
   - `npm run lint`
@@ -45,7 +45,9 @@
   - ACL hardening TDD: expected failure before the migration correction, then 20/20 migration-contract tests passed
   - live CI runtime migration parity
   - hosted synthetic manager/viewer/denial role proof with zero residual rows
-- Blocked or failing outside WIN-261 scope:
+- Live PR run `30315242047`:
+  - `ci-gate`, unit tests and coverage, build, lint/typecheck, policy, runtime migration parity, both tenant-safety workflows, Tier-0 browser, auth browser smoke, IEHP assessment import smoke, Lighthouse, and the Netlify deploy preview passed.
+- Local-only Windows baseline failures outside WIN-261 scope:
   - `npm run test:ci` stops on five reproducible failures in unchanged files (3,506 passed, 5 failed):
     - `tests/authorizations/authorization-bcba-readonly.test.ts`: BCBA authorization read-only migration contract mismatch
     - `src/lib/__tests__/supabase.edge.test.ts`: `blob.text is not a function`
@@ -80,4 +82,5 @@
 ## Residual Risk And Next Action
 
 - Human review is mandatory for the migration and protected server changes.
-- Required next action: resolve or explicitly disposition the remaining unrelated test/check failures, obtain required human review, and merge only when live branch protection allows it.
+- Required next action: obtain human review and merge only when live branch protection allows it.
+- Follow-up, separate from WIN-261: make the unchanged workflow/config contract tests line-ending agnostic on Windows.

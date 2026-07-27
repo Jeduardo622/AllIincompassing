@@ -20,6 +20,7 @@ import { prepareFormData } from '../lib/validation';
 import { logger } from '../lib/logger/logger';
 import { clientSchema, type ClientFormData } from '../lib/validationSchemas';
 import {
+  ClientCreateConflictError,
   checkClientEmailExists,
   createClient as createClientRecord,
   updateClientDocuments,
@@ -374,7 +375,18 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
         context: { component: 'ClientOnboarding', operation: 'createClientMutation' },
         track: false
       });
-      showError(error);
+
+      if (error instanceof ClientCreateConflictError) {
+        if (error.conflict === 'client_id') {
+          setError('client_id', { type: 'manual', message: error.message });
+          setCurrentStep(1);
+        }
+
+        showError(error.message);
+      } else {
+        showError(error);
+      }
+
       setIsSubmitting(false);
     }
   });
@@ -715,6 +727,9 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Optional: Enter existing client ID if available
                 </p>
+                {errors.client_id && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.client_id.message}</p>
+                )}
               </div>
 
               <div>

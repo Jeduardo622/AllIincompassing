@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../generated/database.types';
-import { checkClientEmailExists, createClient, updateClientDocuments } from '../mutations';
+import {
+  checkClientEmailExists,
+  ClientCreateConflictError,
+  createClient,
+  updateClientDocuments,
+} from '../mutations';
 
 const buildSupabaseMock = () => {
   const selectMock = vi.fn();
@@ -98,6 +103,114 @@ describe('createClient', () => {
       'create_client RPC returned no data',
     );
     expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('maps client ID unique conflicts from the RPC into an actionable conflict error', async () => {
+    const { supabase, rpcMock } = buildSupabaseMock();
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: {
+        code: '23505',
+        status: 409,
+        message: 'duplicate key value violates unique constraint "clients_org_client_id_idx"',
+        details: 'Key (organization_id, client_id)=(org-1, CLIENT-42) already exists.',
+      },
+    });
+
+    await expect(createClient(supabase, { client_id: 'CLIENT-42' })).rejects.toMatchObject({
+      name: 'ClientCreateConflictError',
+      conflict: 'client_id',
+      message: 'This client ID is already in use for this organization. Enter a different client ID.',
+    });
+  });
+
+  it('does not disclose email existence when a global email unique conflict occurs', async () => {
+    const { supabase, rpcMock, insertMock } = buildSupabaseMock();
+    rpcMock.mockResolvedValue({ data: null, error: { code: 'PGRST301', message: 'not found' } });
+    insertMock.mockReturnValue({
+      select: () => ({
+        single: () =>
+          Promise.resolve({
+            data: null,
+            error: {
+              code: '23505',
+              status: 409,
+              message: 'duplicate key value violates unique constraint "clients_email_key"',
+              details: 'Key (email)=(ada@example.com) already exists.',
+            },
+          }),
+      }),
+    });
+
+    await expect(createClient(supabase, { email: 'ada@example.com' })).rejects.toMatchObject({
+      name: 'ClientCreateConflictError',
+      conflict: 'duplicate',
+      message: 'A duplicate client record already exists. Review the client details and try again.',
+    });
+  });
+
+  it('maps unknown unique conflicts into a generic duplicate-record error', async () => {
+    const { supabase, rpcMock } = buildSupabaseMock();
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: {
+        code: '23505',
+        status: 409,
+        message: 'duplicate key value violates unique constraint "clients_some_other_key"',
+        details: 'Key (some_field)=(value) already exists.',
+      },
+    });
+
+    await expect(createClient(supabase, { client_id: 'CLIENT-42' })).rejects.toMatchObject({
+      name: 'ClientCreateConflictError',
+      conflict: 'duplicate',
+      message: 'A duplicate client record already exists. Review the client details and try again.',
+    });
+  });
+
+  it('maps a code-less 409 only when it contains canonical unique-constraint text', async () => {
+    const { supabase, rpcMock } = buildSupabaseMock();
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: {
+        status: 409,
+        message: 'duplicate key value violates unique constraint "clients_org_client_id_idx"',
+        details: 'Key (organization_id, client_id)=(org-1, CLIENT-42) already exists.',
+      },
+    });
+
+    await expect(createClient(supabase, { client_id: 'CLIENT-42' })).rejects.toMatchObject({
+      name: 'ClientCreateConflictError',
+      conflict: 'client_id',
+    });
+  });
+
+  it('preserves non-unique 409 RPC errors even when they use a PostgREST conflict status', async () => {
+    const { supabase, rpcMock } = buildSupabaseMock();
+    const error = {
+      code: '23503',
+      status: 409,
+      message: 'insert or update on table "clients" violates foreign key constraint',
+      details: 'Key (organization_id)=(org-1) is not present in table "organizations".',
+    };
+    rpcMock.mockResolvedValue({
+      data: null,
+      error,
+    });
+
+    await expect(createClient(supabase, { client_id: 'CLIENT-42' })).rejects.toEqual(error);
+  });
+
+  it('exports a dedicated conflict error type for onboarding handling', () => {
+    const error = new ClientCreateConflictError(
+      'client_id',
+      'This client ID is already in use for this organization. Enter a different client ID.',
+      { code: '23505' },
+    );
+
+    expect(error.name).toBe('ClientCreateConflictError');
+    expect(error.conflict).toBe('client_id');
+    expect(error.cause).toEqual({ code: '23505' });
   });
 });
 

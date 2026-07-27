@@ -779,6 +779,7 @@ interface SessionModalProps {
   onSessionStarted?: () => void | Promise<void>;
   dataCollectionOnly?: boolean;
   allowStartSession?: boolean;
+  canCreateSchedules?: boolean;
   hideGoalCaptureFields?: boolean;
   onBtAbaSessionFinalized?: (result: BtAbaFinalizeResult & { sessionId: string }) => void | Promise<void>;
 }
@@ -803,6 +804,7 @@ export function SessionModal({
   onSessionStarted,
   dataCollectionOnly = false,
   allowStartSession = false,
+  canCreateSchedules = true,
   hideGoalCaptureFields = false,
   onBtAbaSessionFinalized,
 }: SessionModalProps) {
@@ -892,6 +894,14 @@ export function SessionModal({
     return '';
   };
 
+  const getInitialCancellationAttribution = (): Session['cancellation_attribution'] | '' => {
+    if (session?.status !== 'cancelled') {
+      return '';
+    }
+
+    return session.cancellation_attribution === 'client' ? 'client' : 'staff';
+  };
+
   type SessionModalFormValues = Partial<Session> & SessionModalClinicalNotesPayload;
   
   const {
@@ -918,6 +928,7 @@ export function SessionModal({
             : ''),
       notes: session?.notes || '',
       status: session?.status || 'scheduled',
+      cancellation_attribution: getInitialCancellationAttribution(),
       session_note_narrative: '',
       session_note_goal_notes: {},
       session_note_goal_measurements: {},
@@ -935,6 +946,8 @@ export function SessionModal({
   const programId = watch('program_id');
   const goalId = watch('goal_id');
   const goalIds = watch('goal_ids') as string[] | undefined;
+  const sessionStatus = watch('status');
+  const cancellationAttribution = watch('cancellation_attribution');
   const sessionNoteGoalNotes = watch('session_note_goal_notes') as Record<string, string> | undefined;
   const sessionNoteStoredGoalIds = watch('session_note_goal_ids') as string[] | undefined;
   const sessionNoteGoalsAddressed = watch('session_note_goals_addressed') as string[] | undefined;
@@ -2426,6 +2439,41 @@ export function SessionModal({
     const toLocalInput = (iso: string) => formatSessionLocalInput(iso, resolvedTimeZone);
     setValue('start_time', toLocalInput(newStartTime));
     setValue('end_time', toLocalInput(newEndTime));
+  };
+
+  useEffect(() => {
+    if (sessionStatus === 'cancelled') {
+      if (cancellationAttribution !== 'staff' && cancellationAttribution !== 'client') {
+        setValue('cancellation_attribution', 'staff', { shouldDirty: false, shouldTouch: false });
+      }
+      return;
+    }
+
+    if (cancellationAttribution) {
+      setValue('cancellation_attribution', '', { shouldDirty: false, shouldTouch: false });
+    }
+  }, [cancellationAttribution, sessionStatus, setValue]);
+
+  const resolvedCancellationAttribution =
+    cancellationAttribution === 'client' ? 'client' : 'staff';
+  const statusSelectValue =
+    sessionStatus === 'cancelled'
+      ? (canCreateSchedules ? `cancelled:${resolvedCancellationAttribution}` : 'cancelled')
+      : (sessionStatus ?? 'scheduled');
+
+  const handleStatusChange = (value: string) => {
+    if (value === 'cancelled:staff' || value === 'cancelled:client') {
+      setValue('status', 'cancelled', { shouldDirty: true, shouldTouch: true });
+      setValue(
+        'cancellation_attribution',
+        value === 'cancelled:client' ? 'client' : 'staff',
+        { shouldDirty: true, shouldTouch: true },
+      );
+      return;
+    }
+
+    setValue('status', value as Session['status'], { shouldDirty: true, shouldTouch: true });
+    setValue('cancellation_attribution', '', { shouldDirty: true, shouldTouch: true });
   };
 
   const hasStartedSession = Boolean(sessionDetails?.started_at ?? session?.started_at);
@@ -4023,16 +4071,31 @@ export function SessionModal({
               >
                 Status
               </label>
+              <input type="hidden" {...register('status')} value={sessionStatus ?? ''} readOnly />
+              <input
+                type="hidden"
+                {...register('cancellation_attribution')}
+                value={cancellationAttribution ?? ''}
+                readOnly
+              />
               <select
                 id="status-select"
-                {...register('status')}
+                value={statusSelectValue}
+                onChange={(event) => handleStatusChange(event.target.value)}
                 disabled={isDataCollectionOnly}
                 className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
               >
                 <option value="scheduled">Scheduled</option>
                 <option value="in_progress" disabled>In Progress</option>
                 <option value="completed" disabled={!session}>Completed</option>
-                <option value="cancelled">Cancelled</option>
+                {canCreateSchedules ? (
+                  <>
+                    <option value="cancelled:staff">Staff cancellation</option>
+                    <option value="cancelled:client">Client cancellation</option>
+                  </>
+                ) : sessionStatus === 'cancelled' ? (
+                  <option value="cancelled" disabled>Cancelled</option>
+                ) : null}
                 <option value="no-show" disabled={!session}>No Show</option>
               </select>
             </div>

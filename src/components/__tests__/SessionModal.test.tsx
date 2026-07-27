@@ -3321,10 +3321,11 @@ describe('SessionModal', () => {
       expect(option.disabled).toBe(false);
     });
 
-    it('keeps cancelled enabled in create mode', () => {
+    it('shows direct cancellation choices for creators in create mode', () => {
       renderWithProviders(<SessionModal {...defaultProps} />);
-      const option = screen.getByRole('option', { name: /^Cancelled$/i }) as HTMLOptionElement;
-      expect(option.disabled).toBe(false);
+      expect(screen.getByRole('option', { name: 'Staff cancellation' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Client cancellation' })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /^Cancelled$/ })).not.toBeInTheDocument();
     });
   });
 
@@ -3373,6 +3374,58 @@ describe('SessionModal', () => {
       );
       const select = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
       expect(select.value).toBe('in_progress');
+    });
+
+    it('hides selectable cancellation options for non-creators', () => {
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={editSession}
+          canCreateSchedules={false}
+        />
+      );
+
+      expect(screen.queryByRole('option', { name: 'Staff cancellation' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: 'Client cancellation' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /^Cancelled$/ })).not.toBeInTheDocument();
+    });
+
+    it('shows a disabled cancelled option only for persisted cancelled sessions without creator access', () => {
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={{ ...editSession, status: 'cancelled' }}
+          canCreateSchedules={false}
+        />
+      );
+
+      const option = screen.getByRole('option', { name: /^Cancelled$/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(true);
+    });
+
+    it.each([
+      ['Staff cancellation', 'staff'],
+      ['Client cancellation', 'client'],
+    ] as const)('submits %s with literal cancellation attribution', async (optionLabel, expectedAttribution) => {
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          onSubmit={onSubmit}
+          session={editSession}
+        />
+      );
+
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: /Status/i }), optionLabel);
+      await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+          status: 'cancelled',
+          cancellation_attribution: expectedAttribution,
+        }));
+      });
     });
 
     it('locks scheduled-session metadata while allowing BT clinical capture to be edited and saved', async () => {

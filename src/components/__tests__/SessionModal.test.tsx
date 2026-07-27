@@ -4478,6 +4478,10 @@ describe('SessionModal', () => {
       />
     );
 
+    await expandClinicalDetails();
+    const linkedPerGoalNote = await screen.findByLabelText(/^Per-goal note$/i);
+    await waitFor(() => expect(linkedPerGoalNote).toHaveValue('Previously saved note'));
+
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
     await expandPlanGoals();

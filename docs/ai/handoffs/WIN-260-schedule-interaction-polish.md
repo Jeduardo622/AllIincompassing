@@ -70,3 +70,37 @@
 - `.tmp/WIN-260-browser-proof/screenshots/win260_schedule_interaction_proof.cy.ts/01-day-occupied-cluster-empty-slot.png`
 - `.tmp/WIN-260-browser-proof/screenshots/win260_schedule_interaction_proof.cy.ts/02-edit-modal-compact-summary.png`
 - `.tmp/WIN-260-browser-proof/screenshots/win260_schedule_interaction_proof.cy.ts/03-create-modal-expanded-plan.png`
+
+## PR #871 CI Follow-up
+
+- classification: low-risk autonomous
+- lane: standard
+- issue: WIN-260
+- scope: make the lifecycle smoke choose future booking dates only when an approved authorization and one of its services cover the actual booking date
+- files touched:
+  - `scripts/playwright-session-lifecycle.ts`
+  - `src/scripts/playwrightSessionLifecycleTargets.ts`
+  - `src/scripts/__tests__/playwrightSessionLifecycleTargets.test.ts`
+- required agents: specification-engineer, implementation-engineer, code-review-engineer, test-engineer
+- required checks:
+  - `npm run ci:check-focused`
+  - `npm run lint`
+  - `npm run typecheck`
+  - focused lifecycle Vitest coverage
+  - `npm run test:ci`
+  - `npm run build`
+  - live `auth-browser-smoke` on PR #871
+- executed checks:
+  - focused lifecycle regression before implementation -> fail, reproducing the missing date-window guard
+  - `npm test -- --run src/scripts/__tests__/playwrightSessionLifecycleTargets.test.ts tests/scripts/playwright-session-lifecycle.test.ts` -> pass, 24/24
+  - `npm run ci:check-focused` -> pass; environment-dependent database checks reported their expected local skips
+  - `npm run lint` -> pass
+  - `npm run typecheck` -> pass
+  - `npm run build` -> pass
+  - `npm run test:ci` -> fail on seven out-of-scope baseline tests in authorization migration text, workflow policy fixtures, the local Blob implementation, and Programs/Goals UI coverage
+- blocked checks:
+  - live `auth-browser-smoke` -> pending the pushed commit and hosted GitHub Actions rerun
+- result: pass-with-blocked-checks
+- reviewer: completed; the initial unbounded-query finding was corrected and the final diff was approved
+- residual risk: the hosted smoke remains the decisive proof that current fixture data includes a date-covered authorization service in the candidate booking window
+- pr handoff: ready for commit and push; completion remains blocked until PR #871 live CI passes

@@ -3,7 +3,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { createClient } from "@supabase/supabase-js";
-import { buildLifecycleTargetPairs, type LifecycleTargetPair } from "../src/scripts/playwrightSessionLifecycleTargets";
+import {
+  buildLifecycleTargetPairs,
+  filterLifecyclePairCoveredBookingStarts,
+  type LifecycleTargetPair,
+} from "../src/scripts/playwrightSessionLifecycleTargets";
 import { assertLifecycleSessionArtifacts } from "../src/scripts/playwrightSessionLifecycleArtifacts";
 import { isAlreadyTerminalLifecycleFallbackResponse } from "../src/scripts/playwrightSessionLifecycleFallback";
 import { buildLifecycleSessionNoteSeedPayload } from "../src/scripts/playwrightSessionLifecycleNoteSeed";
@@ -344,7 +348,9 @@ const fetchOccupiedBookingRanges = async (params: {
   return [...(sessionRows ?? []), ...(holdRows ?? [])];
 };
 
-const fetchAuthorizedTherapistClientPairs = async (): Promise<LifecycleTargetPair[]> => {
+const fetchAuthorizedTherapistClientPairs = async (
+  candidateStarts: Date[],
+): Promise<LifecycleTargetPair[]> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -354,20 +360,58 @@ const fetchAuthorizedTherapistClientPairs = async (): Promise<LifecycleTargetPai
       detectSessionInUrl: false,
     },
   });
-  const today = new Date().toISOString().slice(0, 10);
+  const candidateDates = candidateStarts
+    .map((candidateStart) => candidateStart.toISOString().slice(0, 10))
+    .sort();
+  const firstCandidateDate = candidateDates[0];
+  const lastCandidateDate = candidateDates[candidateDates.length - 1];
+  if (!firstCandidateDate || !lastCandidateDate) {
+    return [];
+  }
   const { data, error } = await adminClient
     .from("authorizations")
-    .select("provider_id,client_id")
+    .select("provider_id,client_id,start_date,end_date,services:authorization_services(from_date,to_date)")
     .eq("status", "approved")
-    .lte("start_date", today)
-    .gte("end_date", today)
+    .lte("start_date", lastCandidateDate)
+    .gte("end_date", firstCandidateDate)
+    .order("start_date", { ascending: true })
     .limit(500);
   if (error) {
     return [];
   }
   return (
     (data ?? [])
-      .map((row) => ({ therapistId: row.provider_id, clientId: row.client_id }))
+      .map((row) => ({
+        therapistId: row.provider_id,
+        clientId: row.client_id,
+        authorizationWindows:
+          typeof row.start_date === "string" &&
+            row.start_date.length > 0 &&
+            typeof row.end_date === "string" &&
+            row.end_date.length > 0
+            ? [{
+                startDate: row.start_date,
+                endDate: row.end_date,
+                serviceDateWindows: Array.isArray(row.services)
+                  ? row.services
+                    .filter(
+                      (service): service is { from_date: string; to_date: string } =>
+                        Boolean(
+                          service &&
+                          typeof service.from_date === "string" &&
+                          service.from_date.length > 0 &&
+                          typeof service.to_date === "string" &&
+                          service.to_date.length > 0,
+                        ),
+                    )
+                    .map((service) => ({
+                      startDate: service.from_date,
+                      endDate: service.to_date,
+                    }))
+                  : [],
+              }]
+            : undefined,
+      }))
       .filter(
         (row): row is LifecycleTargetPair =>
           typeof row.therapistId === "string" &&
@@ -866,6 +910,7 @@ const lifecyclePairKey = (therapistId: string, clientId: string): string => `${t
 async function chooseSessionTargetsExcluding(
   page: Page,
   excludedPairKeys: Set<string>,
+  candidateStarts: Date[],
   allowedTherapistIds?: string[],
 ): Promise<{
   therapistId: string;
@@ -875,15 +920,17 @@ async function chooseSessionTargetsExcluding(
   createdProgramId?: string;
   createdGoalId?: string;
   pairKey: string;
+  coveredCandidateStarts: Date[];
 }> {
   const therapistValues = await waitForSelectOptions(page, "#therapist-select");
   const clientValues = await waitForSelectOptions(page, "#client-select");
-  const authorizedPairs = await fetchAuthorizedTherapistClientPairs();
+  const authorizedPairs = await fetchAuthorizedTherapistClientPairs(candidateStarts);
   const candidatePairs = buildLifecycleTargetPairs({
     therapistIds: therapistValues,
     clientIds: clientValues,
     authorizedPairs,
     allowedTherapistIds,
+    candidateStarts,
   });
 
   if (therapistValues.length === 0 || clientValues.length === 0) {
@@ -897,9 +944,18 @@ async function chooseSessionTargetsExcluding(
     candidatePairCount: candidatePairs.length,
   });
 
-  for (const { therapistId, clientId } of candidatePairs) {
+  for (const pair of candidatePairs) {
+    const { therapistId, clientId } = pair;
     const pairKey = lifecyclePairKey(therapistId, clientId);
     if (excludedPairKeys.has(pairKey)) {
+      continue;
+    }
+    const coveredCandidateStarts = filterLifecyclePairCoveredBookingStarts(
+      pair,
+      candidateStarts,
+    );
+    if (coveredCandidateStarts.length === 0) {
+      excludedPairKeys.add(pairKey);
       continue;
     }
     const seeded = await ensureProgramAndGoalForPair(therapistId, clientId);
@@ -925,6 +981,7 @@ async function chooseSessionTargetsExcluding(
       createdProgramId: seeded.createdProgramId,
       createdGoalId: seeded.createdGoalId,
       pairKey,
+      coveredCandidateStarts,
     };
   }
 
@@ -964,7 +1021,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean, actor
     await ensureSessionModalOpen(page);
     let selected: Awaited<ReturnType<typeof chooseSessionTargetsExcluding>>;
     try {
-      selected = await chooseSessionTargetsExcluding(page, excludedPairKeys, allowedTherapistIds);
+      selected = await chooseSessionTargetsExcluding(page, excludedPairKeys, candidateStarts, allowedTherapistIds);
     } catch (error) {
       if (lastFailure) {
         break;
@@ -984,7 +1041,7 @@ async function bookSession(page: Page, token: string, strictMode: boolean, actor
         })
       : [];
     const availableCandidateStarts = filterNonOverlappingBookingStarts(
-      candidateStarts,
+      selected.coveredCandidateStarts,
       bookingDurationMs,
       occupiedRanges,
     );

@@ -27,6 +27,7 @@ const sessionSmokeRunnerChildren = [
   "playwright:schedule-blocked-close",
   "playwright:session-note-measurement-roundtrip",
 ];
+const normalizeLf = (content: string) => content.replace(/\r\n/g, "\n");
 
 const write = (root: string, relativePath: string, content: string) => {
   const target = path.join(root, relativePath);
@@ -294,7 +295,7 @@ describe("check-e2e-reliability-gates", () => {
   });
 
   test("synthetic BCBA provisioning keeps authenticated preflight and unconditional cleanup contracts", () => {
-    const workflow = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
+    const workflow = normalizeLf(readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8"));
     const provisionStep = workflow.match(/- name: Provision synthetic BCBA smoke actor[\s\S]*?run: npx tsx scripts\/provision-ci-smoke-bcba\.ts\n/)?.[0] ?? "";
     const cleanupStart = workflow.indexOf("- name: Cleanup synthetic BCBA smoke actor");
     const cleanupEnd = workflow.indexOf("- name: Cleanup auth smoke admin", cleanupStart);

@@ -50,9 +50,10 @@ const workflowPath = path.join(
   '.github/workflows/bt-aba-disposable-browser-proof.yml',
 );
 const dispatcherPath = path.join(process.cwd(), '.github/workflows/supabase-preview.yml');
+const normalizeLf = (content: string) => content.replace(/\r\n/g, '\n');
 
 const loadWorkflow = (): { source: string; workflow: ProofWorkflow } => {
-  const source = readFileSync(workflowPath, 'utf8');
+  const source = normalizeLf(readFileSync(workflowPath, 'utf8'));
   return { source, workflow: parse(source) as ProofWorkflow };
 };
 

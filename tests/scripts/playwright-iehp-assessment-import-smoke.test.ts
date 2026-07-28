@@ -15,6 +15,8 @@ import {
 } from '../../scripts/playwright-iehp-assessment-import-smoke';
 import { assertIehpSkillsBehaviorsChecklistSection } from '../../scripts/lib/iehp-assessment-import-smoke';
 
+const normalizeLf = (content: string) => content.replace(/\r\n/g, '\n');
+
 const sliceWorkflowJob = (workflow: string, jobName: string): string => {
   const start = workflow.indexOf(`  ${jobName}:`);
   expect(start).toBeGreaterThanOrEqual(0);
@@ -420,7 +422,7 @@ describe('selectConfiguredSmokeClient', () => {
   it('keeps both CI IEHP proofs on the generated super-admin and unconditional cleanup path', () => {
     const root = process.cwd();
     const workflow = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
-    const supabaseConfig = readFileSync(path.join(root, 'supabase/config.toml'), 'utf8');
+    const supabaseConfig = normalizeLf(readFileSync(path.join(root, 'supabase/config.toml'), 'utf8'));
     const script = readFileSync(path.join(root, 'scripts/playwright-iehp-assessment-import-smoke.ts'), 'utf8');
     const iehpJob = sliceWorkflowJob(workflow, 'iehp_assessment_import_smoke');
     const cleanupStepStart = iehpJob.indexOf('- name: Cleanup IEHP smoke admin');

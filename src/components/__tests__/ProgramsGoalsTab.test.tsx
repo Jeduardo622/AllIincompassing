@@ -23,9 +23,18 @@ const { storageUploadMock, storageRemoveMock } = vi.hoisted(() => ({
 }));
 type ProgramsGoalsTabClient = React.ComponentProps<typeof ProgramsGoalsTab>["client"];
 
-const seedStubAuthState = () => {
+const seedStubAuthState = (overrides?: {
+  userRole?: string;
+  sessionRole?: string;
+  profileRole?: string;
+  organizationId?: string;
+}) => {
   const now = new Date();
   const nowIso = now.toISOString();
+  const userRole = overrides?.userRole ?? "therapist";
+  const sessionRole = overrides?.sessionRole ?? userRole;
+  const profileRole = overrides?.profileRole ?? "midtier";
+  const organizationId = overrides?.organizationId ?? ORG_ID;
 
   window.localStorage.setItem(
     STUB_AUTH_STORAGE_KEY,
@@ -33,20 +42,20 @@ const seedStubAuthState = () => {
       user: {
         id: "therapist-user-id",
         email: "therapist@example.com",
-        role: "therapist",
+        role: userRole,
         full_name: "Test User",
         first_name: "Test",
         last_name: "User",
       },
-      role: "therapist",
+      role: sessionRole,
       accessToken: "test-access-token",
       refreshToken: "test-refresh-token",
       expiresAt: now.getTime() + 60 * 60 * 1000,
       profile: {
         id: "therapist-user-id",
         email: "therapist@example.com",
-        role: "therapist",
-        organization_id: ORG_ID,
+        role: profileRole,
+        organization_id: organizationId,
         full_name: "Test User",
         is_active: true,
         created_at: nowIso,
@@ -72,6 +81,105 @@ const buildClient = (overrides: Partial<ProgramsGoalsTabClient> = {}): ProgramsG
   created_at: "2026-02-11T00:00:00.000Z",
   ...overrides,
 });
+
+const buildLiveProgram = (id: string, name: string, description: string | null) => ({
+  id,
+  organization_id: ORG_ID,
+  client_id: "client-1",
+  name,
+  description,
+  status: "active",
+  created_at: "2026-02-11T00:00:00.000Z",
+  updated_at: "2026-02-11T00:00:00.000Z",
+});
+
+const buildLiveGoal = (
+  id: string,
+  programId: string,
+  overrides: Partial<Record<string, unknown>> = {},
+) => ({
+  id,
+  organization_id: ORG_ID,
+  client_id: "client-1",
+  program_id: programId,
+  domain_id: "communication-domain",
+  title: "Increase communication",
+  description: "Client uses functional communication across routines.",
+  original_text: "Original clinical wording",
+  measurement_type: "percent opportunities",
+  clinical_goal_type: "skill",
+  baseline_data: "2 requests per session",
+  baseline: "2 requests per session",
+  target_criteria: "Short-term: Request preferred items in 4/5 opportunities",
+  mastery_criteria: "80% across three sessions",
+  maintenance_criteria: "70% after four weeks",
+  generalization_criteria: "Two settings and two adults",
+  teaching_strategies: "DTT, NET, prompt fading",
+  operational_definition: "Independent request within 5 seconds",
+  objective_data_points: [{ objective: "Request break", data_settings: "Prompt level" }],
+  source: "manual",
+  status: "active",
+  created_at: "2026-02-11T00:00:00.000Z",
+  updated_at: "2026-02-11T00:00:00.000Z",
+  ...overrides,
+});
+
+const installProgramsGoalsTabApiMocks = ({
+  programs = [],
+  goals = [],
+  notes = [],
+  assessmentDocuments = [],
+  assessmentChecklist = { items: [], structured_sections: [] },
+  assessmentDrafts = { programs: [], goals: [] },
+}: {
+  programs?: unknown[];
+  goals?: unknown[];
+  notes?: unknown[];
+  assessmentDocuments?: unknown[];
+  assessmentChecklist?: { items: unknown[]; structured_sections: unknown[] };
+  assessmentDrafts?: { programs: unknown[]; goals: unknown[] };
+} = {}) => {
+  vi.mocked(supabase.from).mockImplementation(() => ({
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    neq: vi.fn().mockReturnThis(),
+    order: vi.fn().mockResolvedValue({ data: [], error: null }),
+    insert: vi.fn().mockReturnThis(),
+    single: vi.fn().mockResolvedValue({ data: null, error: null }),
+  }) as never);
+  vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+      return new Response(JSON.stringify(assessmentDocuments), { status: 200 });
+    }
+    if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+      return new Response(JSON.stringify(assessmentChecklist), { status: 200 });
+    }
+    if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+      return new Response(JSON.stringify(assessmentDrafts), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: `Unhandled callApi request: ${method} ${path}` }), { status: 500 });
+  });
+  vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    if (method === "GET" && path.startsWith("programs?")) {
+      return new Response(JSON.stringify(programs), { status: 200 });
+    }
+    if (method === "GET" && path.startsWith("goals?")) {
+      return new Response(JSON.stringify(goals), { status: 200 });
+    }
+    if (method === "GET" && path.startsWith("goal-targets?")) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (method === "GET" && path.startsWith("trial-events?")) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (method === "GET" && path.startsWith("program-notes?")) {
+      return new Response(JSON.stringify(notes), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+  });
+};
 
 describe("ProgramsGoalsTab progression integration", { timeout: 15_000 }, () => {
   const integrationTargets: GoalTarget[] = [
@@ -801,7 +909,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -840,7 +948,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -868,7 +976,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -914,7 +1022,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -945,6 +1053,650 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       expect(screen.getByRole("button", { name: "Add Note" })).toBeEnabled();
     });
   });
+
+  it("lets an authorized manager edit live manual and promoted programs through the programs PATCH route", async () => {
+    const manualProgram = buildLiveProgram("program-manual", "Manual Communication Program", "Original manual description");
+    const promotedProgram = buildLiveProgram("program-promoted", "Promoted Behavior Program", "Original promoted description");
+    let currentPrograms = [manualProgram, promotedProgram];
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    installProgramsGoalsTabApiMocks({
+      programs: [manualProgram, promotedProgram],
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) {
+        return new Response(JSON.stringify(currentPrograms), { status: 200 });
+      }
+      if (method === "PATCH" && path === "programs?program_id=program-manual") {
+        currentPrograms = currentPrograms.map((program) =>
+          program.id === manualProgram.id
+            ? {
+                ...program,
+                name: "Updated Manual Program",
+                description: "Updated manual description",
+                updated_at: "2026-07-27T19:00:00.000Z",
+              }
+            : program,
+        );
+        return new Response(
+          JSON.stringify({
+            ...manualProgram,
+            name: "Updated Manual Program",
+            description: "Updated manual description",
+            updated_at: "2026-07-27T19:00:00.000Z",
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "PATCH" && path === "programs?program_id=program-promoted") {
+        currentPrograms = currentPrograms.map((program) =>
+          program.id === promotedProgram.id
+            ? {
+                ...program,
+                name: "Updated Promoted Program",
+                description: null,
+                updated_at: "2026-07-27T19:05:00.000Z",
+              }
+            : program,
+        );
+        return new Response(
+          JSON.stringify({
+            ...promotedProgram,
+            name: "Updated Promoted Program",
+            description: null,
+            updated_at: "2026-07-27T19:05:00.000Z",
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("goal-targets?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+    });
+
+    const activeOrganizationSpy = vi.spyOn(organizationModule, "useActiveOrganizationId").mockReturnValue(ORG_ID);
+    seedStubAuthState({
+      userRole: "midtier",
+      sessionRole: "midtier",
+      profileRole: "midtier",
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <AuthProvider>
+            <ProgramsGoalsTab client={buildClient()} />
+          </AuthProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Manual Communication Program")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Edit program Manual Communication Program" }));
+    fireEvent.change(screen.getByLabelText("Program name"), { target: { value: "  Updated Manual Program  " } });
+    fireEvent.change(screen.getByLabelText("Program description"), { target: { value: "Updated manual description" } });
+    await user.click(screen.getByRole("button", { name: "Save program changes" }));
+
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "programs?program_id=program-manual",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            name: "Updated Manual Program",
+            description: "Updated manual description",
+          }),
+        }),
+      );
+    });
+    expect(await screen.findByText("Updated Manual Program")).toBeInTheDocument();
+    expect(screen.getByText("Updated manual description")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Edit program Promoted Behavior Program" }));
+    fireEvent.change(screen.getByLabelText("Program name"), { target: { value: "Updated Promoted Program" } });
+    fireEvent.change(screen.getByLabelText("Program description"), { target: { value: "   " } });
+    await user.click(screen.getByRole("button", { name: "Save program changes" }));
+
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "programs?program_id=program-promoted",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            name: "Updated Promoted Program",
+          }),
+        }),
+      );
+    });
+    expect(await screen.findByText("Updated Promoted Program")).toBeInTheDocument();
+    activeOrganizationSpy.mockRestore();
+  });
+
+  it("lets midtier edit a live manual skill goal and sends the managed PATCH payload without provenance or identity fields", async () => {
+    const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+    const manualGoal = buildLiveGoal("goal-manual", program.id);
+    let currentGoals = [manualGoal];
+    vi.mocked(supabase.from).mockImplementation((tableName: string) => {
+      if (tableName === "goal_domains") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockResolvedValue({
+            data: [
+              { id: "communication-domain", organization_id: ORG_ID, name: "Communication", description: null, status: "active", created_at: "2026-02-11T00:00:00.000Z", updated_at: "2026-02-11T00:00:00.000Z" },
+            ],
+            error: null,
+          }),
+        } as never;
+      }
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+        insert: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      } as never;
+    });
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: [manualGoal],
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) {
+        return new Response(JSON.stringify([program]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("goals?")) {
+        return new Response(JSON.stringify(currentGoals), { status: 200 });
+      }
+      if (method === "PATCH" && path === "goals?goal_id=goal-manual") {
+        const payload = JSON.parse(String(init?.body));
+        currentGoals = [
+          {
+            ...manualGoal,
+            ...payload,
+            source: manualGoal.source,
+            original_text: manualGoal.original_text,
+            baseline: payload.baseline,
+            updated_at: "2026-07-27T20:00:00.000Z",
+          },
+        ];
+        return new Response(JSON.stringify(currentGoals[0]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("goal-targets?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: "Edit goal Increase communication" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit goal Increase communication" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal Increase communication" });
+    fireEvent.change(within(editRegion).getByLabelText("Goal title"), { target: { value: "  Functional communication expansion  " } });
+    fireEvent.change(within(editRegion).getByLabelText("Goal description"), { target: { value: "Updated communication goal description." } });
+    fireEvent.change(within(editRegion).getByLabelText("Measurement type"), { target: { value: "frequency" } });
+    fireEvent.change(within(editRegion).getByLabelText("Clinical type"), { target: { value: "skill" } });
+    fireEvent.change(within(editRegion).getByLabelText("Domain"), { target: { value: "communication-domain" } });
+    fireEvent.change(within(editRegion).getByLabelText("Baseline data"), { target: { value: "3 independent requests per session" } });
+    fireEvent.change(within(editRegion).getByLabelText("Teaching strategies"), { target: { value: "NET with least-to-most prompting" } });
+    fireEvent.change(within(editRegion).getByLabelText("Operational definition"), { target: { value: "Requests help within 3 seconds" } });
+    fireEvent.change(within(editRegion).getByLabelText("Short-term goal"), { target: { value: "Ask for help in 4/5 trials" } });
+    fireEvent.change(within(editRegion).getByLabelText("Intermediate goal"), { target: { value: "Generalize requests across two adults" } });
+    fireEvent.change(within(editRegion).getByLabelText("Long-term goal"), { target: { value: "Initiate independently across routines" } });
+    fireEvent.change(within(editRegion).getByLabelText("Mastery criteria"), { target: { value: "90% across three sessions" } });
+    fireEvent.change(within(editRegion).getByLabelText("Maintenance criteria"), { target: { value: "80% after six weeks" } });
+    fireEvent.change(within(editRegion).getByLabelText("Generalization criteria"), { target: { value: "Three settings and two adults" } });
+    fireEvent.change(within(editRegion).getByLabelText("Objective data points"), {
+      target: { value: '[{"objective":"Request help","data_settings":"Independent/ prompted"}]' },
+    });
+
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(callEdgeFunctionHttp).mock.calls.some(
+          ([path, init]) => path === "goals?goal_id=goal-manual" && init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+    const lastPatchCall = vi.mocked(callEdgeFunctionHttp).mock.calls.find(
+      ([path, init]) => path === "goals?goal_id=goal-manual" && init?.method === "PATCH",
+    );
+    const patchPayload = JSON.parse(String(lastPatchCall?.[1]?.body));
+    expect(patchPayload).toMatchObject({
+      title: "Functional communication expansion",
+      description: "Updated communication goal description.",
+      measurement_type: "frequency",
+      clinical_goal_type: "skill",
+      baseline_data: "3 independent requests per session",
+      baseline: "3 independent requests per session",
+      teaching_strategies: "NET with least-to-most prompting",
+      operational_definition: "Requests help within 3 seconds",
+      target_criteria: "Short-term: Ask for help in 4/5 trials\nIntermediate: Generalize requests across two adults\nLong-term: Initiate independently across routines",
+      mastery_criteria: "90% across three sessions",
+      maintenance_criteria: "80% after six weeks",
+      generalization_criteria: "Three settings and two adults",
+      objective_data_points: [{ objective: "Request help", data_settings: "Independent/ prompted" }],
+    });
+    expect(patchPayload).not.toHaveProperty("source");
+    expect(patchPayload).not.toHaveProperty("original_text");
+    expect(patchPayload).not.toHaveProperty("organization_id");
+    expect(patchPayload).not.toHaveProperty("client_id");
+    expect(await screen.findByRole("button", { name: "Edit goal Functional communication expansion" })).toBeInTheDocument();
+  });
+
+  it("prefers canonical baseline_data when live baseline fields diverge and mirrors it back on a no-op save", async () => {
+    const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+    const divergentGoal = buildLiveGoal("goal-baseline", program.id, {
+      title: "Divergent baseline goal",
+      baseline_data: "Canonical baseline from baseline_data",
+      baseline: "Legacy baseline fallback",
+    });
+    let currentGoals = [divergentGoal];
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: currentGoals,
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([program]), { status: 200 });
+      if (method === "GET" && path.startsWith("goals?")) return new Response(JSON.stringify(currentGoals), { status: 200 });
+      if (method === "PATCH" && path === "goals?goal_id=goal-baseline") {
+        const payload = JSON.parse(String(init?.body));
+        currentGoals = [{ ...divergentGoal, ...payload, updated_at: "2026-07-27T20:20:00.000Z" }];
+        return new Response(JSON.stringify(currentGoals[0]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("goal-targets?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Edit goal Divergent baseline goal" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal Divergent baseline goal" });
+    expect(within(editRegion).getByLabelText("Baseline data")).toHaveValue("Canonical baseline from baseline_data");
+
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(callEdgeFunctionHttp).mock.calls.some(
+          ([path, init]) => path === "goals?goal_id=goal-baseline" && init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+    const patchCall = vi.mocked(callEdgeFunctionHttp).mock.calls.find(
+      ([path, init]) => path === "goals?goal_id=goal-baseline" && init?.method === "PATCH",
+    );
+    const patchPayload = JSON.parse(String(patchCall?.[1]?.body));
+    expect(patchPayload).toMatchObject({
+      baseline_data: "Canonical baseline from baseline_data",
+      baseline: "Canonical baseline from baseline_data",
+    });
+  });
+
+  it("lets bcba edit a promoted behavior goal and re-groups the saved card between skill and behavior sections", async () => {
+    const program = buildLiveProgram("program-1", "Behavior Program", "Live program");
+    const skillGoal = buildLiveGoal("goal-skill", program.id, {
+      title: "Build coping skills",
+      domain_id: "skill-domain",
+      source: "manual",
+    });
+    const behaviorGoal = buildLiveGoal("goal-behavior", program.id, {
+      title: "Reduce aggression",
+      description: "Track aggression during transitions.",
+      original_text: "Reduce aggression during transitions.",
+      domain_id: "behavior-domain",
+      clinical_goal_type: "behavior",
+      measurement_type: "frequency",
+      baseline_data: "5 incidents weekly",
+      baseline: "5 incidents weekly",
+      target_criteria: "Short-term: 3 or fewer incidents weekly",
+      source: "fba_extraction",
+    });
+    let currentGoals = [skillGoal, behaviorGoal];
+    vi.mocked(supabase.from).mockImplementation((tableName: string) => {
+      if (tableName === "goal_domains") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockResolvedValue({
+            data: [
+              { id: "skill-domain", organization_id: ORG_ID, name: "Skill Building", description: null, status: "active", created_at: "2026-02-11T00:00:00.000Z", updated_at: "2026-02-11T00:00:00.000Z" },
+              { id: "behavior-domain", organization_id: ORG_ID, name: "Behavior Reduction", description: null, status: "active", created_at: "2026-02-11T00:00:00.000Z", updated_at: "2026-02-11T00:00:00.000Z" },
+            ],
+            error: null,
+          }),
+        } as never;
+      }
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+        insert: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      } as never;
+    });
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: currentGoals,
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([program]), { status: 200 });
+      if (method === "GET" && path.startsWith("goals?")) return new Response(JSON.stringify(currentGoals), { status: 200 });
+      if (method === "PATCH" && path === "goals?goal_id=goal-behavior") {
+        const payload = JSON.parse(String(init?.body));
+        currentGoals = currentGoals.map((goal) =>
+          goal.id === behaviorGoal.id
+            ? {
+                ...goal,
+                ...payload,
+                source: behaviorGoal.source,
+                original_text: behaviorGoal.original_text,
+                updated_at: "2026-07-27T20:05:00.000Z",
+              }
+            : goal,
+        );
+        const updated = currentGoals.find((goal) => goal.id === behaviorGoal.id);
+        return new Response(JSON.stringify(updated), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("goal-targets?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "bcba",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: "Edit goal Reduce aggression" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit goal Reduce aggression" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal Reduce aggression" });
+    fireEvent.change(within(editRegion).getByLabelText("Clinical type"), { target: { value: "skill" } });
+    fireEvent.change(within(editRegion).getByLabelText("Domain"), { target: { value: "skill-domain" } });
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goals?goal_id=goal-behavior",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining('"clinical_goal_type":"skill"'),
+        }),
+      );
+    });
+
+    const skillSection = screen.getByRole("heading", { name: "Skill Acquisition" }).closest("section");
+    const behaviorHeading = screen.queryByRole("heading", { name: "Behavior Reduction" });
+    const behaviorSection = behaviorHeading?.closest("section") ?? null;
+    expect(skillSection).toBeTruthy();
+    expect(within(skillSection as HTMLElement).getByText("Reduce aggression")).toBeInTheDocument();
+    if (behaviorSection) {
+      expect(within(behaviorSection).queryByText("Reduce aggression")).not.toBeInTheDocument();
+    }
+  });
+
+  it.each(["bcba", "midtier", "admin", "super_admin"] as const)(
+    "shows the live goal mutation affordances for %s",
+    async (role) => {
+      const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+      installProgramsGoalsTabApiMocks({
+        programs: [program],
+        goals: [buildLiveGoal("goal-1", program.id)],
+      });
+
+      renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+        auth: {
+          role,
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      });
+
+      expect(await screen.findByRole("button", { name: "Edit goal Increase communication" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Remove Increase communication" })).toBeInTheDocument();
+    },
+  );
+
+  it("keeps goal save disabled and avoids PATCH when any objective data point row is invalid", async () => {
+    const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: [buildLiveGoal("goal-1", program.id)],
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: "Edit goal Increase communication" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit goal Increase communication" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal Increase communication" });
+    fireEvent.change(within(editRegion).getByLabelText("Objective data points"), {
+      target: { value: '[{"objective":"Valid row"},1,"bad"]' },
+    });
+
+    expect(within(editRegion).getByText("Each objective data point must be an object.")).toBeInTheDocument();
+    expect(within(editRegion).getByRole("button", { name: "Save goal changes" })).toBeDisabled();
+
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+    expect(
+      vi.mocked(callEdgeFunctionHttp).mock.calls.some(
+        ([path, init]) => path === "goals?goal_id=goal-1" && init?.method === "PATCH",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps the editor open with entered values when the goal PATCH fails", async () => {
+    const program = buildLiveProgram("program-1", "Communication Program", "Live program");
+    const goal = buildLiveGoal("goal-fail", program.id, {
+      title: "PATCH failure goal",
+    });
+    installProgramsGoalsTabApiMocks({
+      programs: [program],
+      goals: [goal],
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([program]), { status: 200 });
+      if (method === "GET" && path.startsWith("goals?")) return new Response(JSON.stringify([goal]), { status: 200 });
+      if (method === "PATCH" && path === "goals?goal_id=goal-fail") {
+        return new Response(JSON.stringify({ error: "Goal patch failed" }), { status: 500 });
+      }
+      if (method === "GET" && path.startsWith("goal-targets?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("trial-events?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      return new Response(JSON.stringify({ error: `Unhandled edge request: ${method} ${path}` }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "midtier",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Edit goal PATCH failure goal" }));
+    const editRegion = screen.getByRole("region", { name: "Edit goal PATCH failure goal" });
+    fireEvent.change(within(editRegion).getByLabelText("Goal title"), { target: { value: "PATCH failure updated title" } });
+    fireEvent.change(within(editRegion).getByLabelText("Baseline data"), { target: { value: "Updated failure baseline" } });
+
+    await user.click(within(editRegion).getByRole("button", { name: "Save goal changes" }));
+
+    await waitFor(() => {
+      expect(showError).toHaveBeenCalled();
+    });
+    expect(vi.mocked(showError).mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({ message: "Goal patch failed" }),
+    );
+    expect(screen.getByRole("region", { name: "Edit goal PATCH failure goal" })).toBeInTheDocument();
+    const reopenedRegion = screen.getByRole("region", { name: "Edit goal PATCH failure goal" });
+    expect(within(reopenedRegion).getByLabelText("Goal title")).toHaveValue("PATCH failure updated title");
+    expect(within(reopenedRegion).getByLabelText("Baseline data")).toHaveValue("Updated failure baseline");
+  });
+
+  it.each(["bcba", "midtier", "admin", "super_admin"] as const)(
+    "shows the live program edit affordance for %s",
+    async (role) => {
+      installProgramsGoalsTabApiMocks({
+        programs: [buildLiveProgram("program-1", "Communication Program", "Live program")],
+      });
+
+      renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+        auth: {
+          role,
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      });
+
+      expect(await screen.findByText("Communication Program")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Edit program Communication Program" })).toBeInTheDocument();
+    },
+  );
+
+  it.each(["therapist", "bt", "admin_schedule"] as const)(
+    "hides program-goal mutation controls from read-only %s roles",
+    async (role) => {
+      installProgramsGoalsTabApiMocks({
+        programs: [buildLiveProgram("program-1", "Communication Program", "Live program")],
+        goals: [
+          {
+            id: "goal-1",
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            program_id: "program-1",
+            title: "Increase communication",
+            description: "Practice functional communication.",
+            original_text: "Original clinical wording",
+            status: "active",
+            created_at: "2026-02-11T00:00:00.000Z",
+            updated_at: "2026-02-11T00:00:00.000Z",
+          },
+        ],
+        assessmentDocuments: [
+          {
+            id: ASSESSMENT_ID,
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            template_type: "caloptima_fba",
+            file_name: "reviewable-caloptima.docx",
+            mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            file_size: 1000,
+            bucket_id: "client-documents",
+            object_path: "clients/client-1/assessments/reviewable-caloptima.docx",
+            status: "drafted",
+            created_at: "2026-02-11T00:00:00.000Z",
+          },
+        ],
+        assessmentChecklist: {
+          items: [
+            {
+              id: "required-row-1",
+              section_key: "recommendations",
+              label: "Recommendation",
+              placeholder_key: "IEHP_FBA_RECOMMENDATION",
+              required: true,
+              mode: "ASSISTED",
+              status: "approved",
+              review_notes: null,
+              value_text: "Synthetic recommendation",
+            },
+          ],
+          structured_sections: [],
+        },
+        assessmentDrafts: {
+          programs: [
+            {
+              id: "draft-program-1",
+              name: "Draft Program",
+              description: "Draft description",
+              accept_state: "accepted",
+              review_notes: null,
+            },
+          ],
+          goals: [
+            {
+              id: "draft-goal-1",
+              title: "Draft Goal",
+              description: "Draft goal description",
+              original_text: "Draft goal wording",
+              goal_type: "child",
+              accept_state: "accepted",
+              review_notes: null,
+              measurement_type: null,
+              baseline_data: null,
+              target_criteria: null,
+              mastery_criteria: null,
+              maintenance_criteria: null,
+              generalization_criteria: null,
+              objective_data_points: [],
+            },
+          ],
+        },
+      });
+
+      renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+        auth: {
+          role,
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      });
+
+      expect(await screen.findByText("Communication Program")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /Checklist Review/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Edit program Communication Program" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Create Program/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Create Goal/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Create Target/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Add Note/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Save Program Draft/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Save Goal Draft/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Publish Reviewed Assessment/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Review and publish drafts/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Delete reviewable-caloptima\.docx/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Remove Communication Program/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Remove Increase communication/i })).not.toBeInTheDocument();
+    },
+  );
 
   it("creates a program and then creates a goal for the selected program", async () => {
     let hasProgram = false;
@@ -1044,7 +1796,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -1361,7 +2113,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -1492,7 +2244,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -2289,7 +3041,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
   it("renders three goal fields and serializes them into target_criteria on create", async () => {
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -2403,7 +3155,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -2731,7 +3483,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -2790,7 +3542,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -2866,7 +3618,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -2917,7 +3669,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -2968,7 +3720,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -3025,7 +3777,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -3075,7 +3827,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -3123,7 +3875,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -3210,7 +3962,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -3274,7 +4026,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -3310,7 +4062,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -3439,7 +4191,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -3531,7 +4283,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -3551,7 +4303,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
   it("limits accepted upload types to pdf and docx", async () => {
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -3842,7 +4594,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -4015,7 +4767,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -4285,7 +5037,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -4362,7 +5114,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -4446,7 +5198,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -4506,7 +5258,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -4574,7 +5326,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient({ id: "client-a" })} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -4723,7 +5475,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -4784,7 +5536,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -4852,7 +5604,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -4924,7 +5676,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5077,7 +5829,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5160,7 +5912,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5222,7 +5974,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5277,7 +6029,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5379,7 +6131,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5461,7 +6213,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5550,7 +6302,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5633,7 +6385,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5715,7 +6467,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5788,7 +6540,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5861,7 +6613,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "therapist",
+        role: "midtier",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },
@@ -5944,7 +6696,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -5967,7 +6719,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
@@ -6022,7 +6774,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
-          role: "therapist",
+          role: "midtier",
           organizationId: ORG_ID,
           accessToken: "test-access-token",
         },

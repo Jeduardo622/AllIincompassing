@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   corsHeadersForRequest,
+  currentUserCanManageProgramsGoals,
   fetchJson,
   getAccessToken,
   getAccessTokenSubject,
@@ -1140,7 +1141,7 @@ export async function assessmentDocumentsHandler(
   }
 
   const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
-  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+  if (!organizationId) {
     return jsonForRequest(request, { error: "Forbidden" }, 403);
   }
 
@@ -1160,6 +1161,9 @@ export async function assessmentDocumentsHandler(
   };
 
   if (request.method === "GET") {
+    if (!isTherapist && !isAdmin && !isSuperAdmin) {
+      return jsonForRequest(request, { error: "Forbidden" }, 403);
+    }
     const url = new URL(request.url);
     const clientId = url.searchParams.get("client_id");
     const assessmentDocumentId = url.searchParams.get("assessment_document_id");
@@ -1205,6 +1209,9 @@ export async function assessmentDocumentsHandler(
   }
 
   if (request.method === "POST") {
+    if (!isTherapist && !isAdmin && !isSuperAdmin) {
+      return jsonForRequest(request, { error: "Forbidden" }, 403);
+    }
     let payload: unknown;
     try {
       payload = await request.json();
@@ -1447,6 +1454,14 @@ export async function assessmentDocumentsHandler(
     const document = Array.isArray(lookup.data) ? lookup.data[0] : null;
     if (!lookup.ok || !document) {
       return jsonForRequest(request, { error: "assessment_document_id is not in scope for this organization" }, 403);
+    }
+
+    const deleteCapability = await currentUserCanManageProgramsGoals(accessToken, organizationId);
+    if (deleteCapability.upstreamError) {
+      return jsonForRequest(request, { error: "Unable to validate program-goal access" }, 502);
+    }
+    if (!deleteCapability.allowed) {
+      return jsonForRequest(request, { error: "Forbidden" }, 403);
     }
 
     const dependentTables = [

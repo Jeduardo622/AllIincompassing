@@ -28,6 +28,13 @@ begin
   delete from public.client_session_notes
   where id in ('00000000-0000-4000-8000-000000000701');
 
+  delete from public.program_notes
+  where id in (
+    '00000000-0000-4000-8000-000000000801',
+    '00000000-0000-4000-8000-000000000802',
+    '00000000-0000-4000-8000-000000000803'
+  );
+
   delete from public.goal_data_points
   where id in ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000602');
 
@@ -97,7 +104,8 @@ begin
     '00000000-0000-4000-8000-000000000011',
     '00000000-0000-4000-8000-000000000012',
     '00000000-0000-4000-8000-000000000013',
-    '00000000-0000-4000-8000-000000000014'
+    '00000000-0000-4000-8000-000000000014',
+    '00000000-0000-4000-8000-000000000015'
   );
 
   delete from public.profiles
@@ -105,7 +113,8 @@ begin
     '00000000-0000-4000-8000-000000000011',
     '00000000-0000-4000-8000-000000000012',
     '00000000-0000-4000-8000-000000000013',
-    '00000000-0000-4000-8000-000000000014'
+    '00000000-0000-4000-8000-000000000014',
+    '00000000-0000-4000-8000-000000000015'
   );
 
   delete from auth.users
@@ -113,7 +122,8 @@ begin
     '00000000-0000-4000-8000-000000000011',
     '00000000-0000-4000-8000-000000000012',
     '00000000-0000-4000-8000-000000000013',
-    '00000000-0000-4000-8000-000000000014'
+    '00000000-0000-4000-8000-000000000014',
+    '00000000-0000-4000-8000-000000000015'
   );
 
   delete from public.organizations
@@ -158,7 +168,8 @@ begin
     ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-000000000011', 'authenticated', 'authenticated', 'codex-smoke-20260701-admin-schedule@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb),
     ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-000000000012', 'authenticated', 'authenticated', 'codex-smoke-20260701-midtier@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb),
     ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-000000000013', 'authenticated', 'authenticated', 'codex-smoke-20260701-bt@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb),
-    ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-000000000014', 'authenticated', 'authenticated', 'codex-smoke-20260701-bcba@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb);
+    ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-000000000014', 'authenticated', 'authenticated', 'codex-smoke-20260701-bcba@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb),
+    ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-000000000015', 'authenticated', 'authenticated', 'codex-smoke-20260727-therapist@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb);
 
   perform set_config('app.bypass_profile_role_guard', 'on', true);
 
@@ -173,7 +184,8 @@ begin
       ('00000000-0000-4000-8000-000000000011'::uuid, 'admin_schedule', 'Admin Schedule'),
       ('00000000-0000-4000-8000-000000000012'::uuid, 'midtier', 'Midtier'),
       ('00000000-0000-4000-8000-000000000013'::uuid, 'bt', 'BT'),
-      ('00000000-0000-4000-8000-000000000014'::uuid, 'bcba', 'BCBA')
+      ('00000000-0000-4000-8000-000000000014'::uuid, 'bcba', 'BCBA'),
+      ('00000000-0000-4000-8000-000000000015'::uuid, 'therapist', 'Therapist')
   ) as v(id, role, last_name)
   where p.id = v.id;
 
@@ -187,7 +199,8 @@ begin
       ('00000000-0000-4000-8000-000000000012'::uuid, 'midtier'),
       ('00000000-0000-4000-8000-000000000013'::uuid, 'bt'),
       ('00000000-0000-4000-8000-000000000014'::uuid, 'bcba'),
-      ('00000000-0000-4000-8000-000000000014'::uuid, 'admin_schedule')
+      ('00000000-0000-4000-8000-000000000014'::uuid, 'admin_schedule'),
+      ('00000000-0000-4000-8000-000000000015'::uuid, 'therapist')
   ) as v(user_id, role_name)
   join public.roles r on r.name = v.role_name;
 
@@ -208,7 +221,14 @@ begin
   insert into public.programs (id, organization_id, client_id, name, status, created_by, updated_by)
   values
     ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Codex Assigned Program', 'active', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000012'),
-    ('00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Codex Unassigned Program', 'active', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000012');
+    ('00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Codex Unassigned Program', 'active', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000012'),
+    ('00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000103', 'Codex Cross Org Program', 'active', null, null);
+
+  insert into public.program_notes (id, organization_id, program_id, author_id, note_type, content)
+  values
+    ('00000000-0000-4000-8000-000000000801', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000012', 'plan_update', '{"text":"assigned note"}'::jsonb),
+    ('00000000-0000-4000-8000-000000000802', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000012', 'plan_update', '{"text":"unassigned note"}'::jsonb),
+    ('00000000-0000-4000-8000-000000000803', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000012', 'plan_update', '{"text":"cross org note"}'::jsonb);
 
   insert into public.goals (id, organization_id, client_id, program_id, title, description, original_text, status, created_by, updated_by)
   values
@@ -311,6 +331,8 @@ $admin_schedule$;
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000012', true);
 do $midtier$
+declare
+  assigned_note_count int;
 begin
   insert into role_smoke_results
   values (
@@ -365,8 +387,78 @@ begin
   exception when others then
     insert into role_smoke_results values ('midtier_authorization_write_allowed', false, sqlstate || ': ' || sqlerrm, current_user);
   end;
+
+  select count(*) into assigned_note_count
+  from public.program_notes
+  where program_id = '00000000-0000-4000-8000-000000000201';
+  insert into role_smoke_results
+  values (
+    'midtier_program_note_read_allowed',
+    assigned_note_count = 1,
+    'assigned_program_notes=' || assigned_note_count,
+    current_user
+  );
 end
 $midtier$;
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000015', true);
+do $therapist$
+declare
+  assigned_note_count int;
+  unassigned_note_count int;
+  cross_org_note_count int;
+begin
+  insert into role_smoke_results
+  values (
+    'therapist_helpers',
+    app.current_user_can_manage_schedule('00000000-0000-4000-8000-000000000001')
+      and not app.current_user_can_manage_programs_goals('00000000-0000-4000-8000-000000000001'),
+    'schedule=' || app.current_user_can_manage_schedule('00000000-0000-4000-8000-000000000001')
+      || ', programs=' || app.current_user_can_manage_programs_goals('00000000-0000-4000-8000-000000000001'),
+    current_user
+  );
+
+  begin
+    insert into public.programs (id, organization_id, client_id, name, status, created_by, updated_by)
+    values ('00000000-0000-4000-8000-000000000205', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Codex Therapist Denied Program', 'active', '00000000-0000-4000-8000-000000000015', '00000000-0000-4000-8000-000000000015');
+    insert into role_smoke_results values ('therapist_program_write_denied', false, 'unexpected insert programs succeeded', current_user);
+  exception when others then
+    insert into role_smoke_results values ('therapist_program_write_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
+  end;
+
+  select count(*) into assigned_note_count
+  from public.program_notes
+  where program_id = '00000000-0000-4000-8000-000000000201';
+  select count(*) into unassigned_note_count
+  from public.program_notes
+  where program_id = '00000000-0000-4000-8000-000000000202';
+  select count(*) into cross_org_note_count
+  from public.program_notes
+  where program_id = '00000000-0000-4000-8000-000000000203';
+  insert into role_smoke_results
+  values (
+    'therapist_program_note_read_allowed',
+    assigned_note_count = 1 and unassigned_note_count = 1 and cross_org_note_count = 0,
+    'assigned=' || assigned_note_count || ', unassigned=' || unassigned_note_count || ', cross_org=' || cross_org_note_count,
+    current_user
+  );
+
+  begin
+    insert into public.program_notes (id, organization_id, program_id, author_id, note_type, content)
+    values (
+      '00000000-0000-4000-8000-000000000804',
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000201',
+      '00000000-0000-4000-8000-000000000015',
+      'plan_update',
+      '{"text":"denied therapist write"}'::jsonb
+    );
+    insert into role_smoke_results values ('therapist_program_note_write_denied', false, 'unexpected insert program_notes succeeded', current_user);
+  exception when others then
+    insert into role_smoke_results values ('therapist_program_note_write_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
+  end;
+end
+$therapist$;
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000013', true);
 do $bt$
@@ -393,6 +485,16 @@ begin
   insert into role_smoke_results
   values ('bt_assigned_client_read_only', assigned_count = 1 and unassigned_count = 0 and cross_org_count = 0, 'assigned=' || assigned_count || ', unassigned=' || unassigned_count || ', cross_org=' || cross_org_count, current_user);
 
+  select count(*) into assigned_count from public.program_notes where program_id = '00000000-0000-4000-8000-000000000201';
+  select count(*) into unassigned_count from public.program_notes where program_id = '00000000-0000-4000-8000-000000000202';
+  select count(*) into cross_org_count from public.program_notes where program_id = '00000000-0000-4000-8000-000000000203';
+  insert into role_smoke_results
+  values ('bt_program_note_assigned_read_allowed', assigned_count = 1, 'assigned_program_notes=' || assigned_count, current_user);
+  insert into role_smoke_results
+  values ('bt_program_note_unassigned_read_denied', unassigned_count = 0, 'unassigned_program_notes=' || unassigned_count, current_user);
+  insert into role_smoke_results
+  values ('bt_program_note_cross_org_read_denied', cross_org_count = 0, 'cross_org_program_notes=' || cross_org_count, current_user);
+
   begin
     insert into public.goal_data_points (id, organization_id, client_id, goal_id, session_id, source, metric_name, metric_value, created_by)
     values ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000301', '00000000-0000-4000-8000-000000000501', 'manual', 'codex_smoke', 1, '00000000-0000-4000-8000-000000000013');
@@ -416,6 +518,7 @@ do $bcba$
 declare
   affected_rows integer;
   visible_authorizations integer;
+  assigned_note_count int;
 begin
   insert into role_smoke_results
   values (
@@ -498,6 +601,17 @@ begin
   exception when others then
     insert into role_smoke_results values ('bcba_authorization_service_delete_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
   end;
+
+  select count(*) into assigned_note_count
+  from public.program_notes
+  where program_id = '00000000-0000-4000-8000-000000000201';
+  insert into role_smoke_results
+  values (
+    'bcba_program_note_read_allowed',
+    assigned_note_count = 1,
+    'assigned_program_notes=' || assigned_note_count,
+    current_user
+  );
 end
 $bcba$;
 
@@ -507,6 +621,14 @@ do $final_cleanup$
 begin
   delete from public.client_session_notes
   where id in ('00000000-0000-4000-8000-000000000701');
+
+  delete from public.program_notes
+  where id in (
+    '00000000-0000-4000-8000-000000000801',
+    '00000000-0000-4000-8000-000000000802',
+    '00000000-0000-4000-8000-000000000803',
+    '00000000-0000-4000-8000-000000000804'
+  );
 
   delete from public.goal_data_points
   where id in ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000602');
@@ -544,7 +666,8 @@ begin
     '00000000-0000-4000-8000-000000000201',
     '00000000-0000-4000-8000-000000000202',
     '00000000-0000-4000-8000-000000000203',
-    '00000000-0000-4000-8000-000000000204'
+    '00000000-0000-4000-8000-000000000204',
+    '00000000-0000-4000-8000-000000000205'
   );
 
   delete from public.client_therapist_links
@@ -575,7 +698,8 @@ begin
     '00000000-0000-4000-8000-000000000011',
     '00000000-0000-4000-8000-000000000012',
     '00000000-0000-4000-8000-000000000013',
-    '00000000-0000-4000-8000-000000000014'
+    '00000000-0000-4000-8000-000000000014',
+    '00000000-0000-4000-8000-000000000015'
   );
 
   delete from public.profiles
@@ -583,7 +707,8 @@ begin
     '00000000-0000-4000-8000-000000000011',
     '00000000-0000-4000-8000-000000000012',
     '00000000-0000-4000-8000-000000000013',
-    '00000000-0000-4000-8000-000000000014'
+    '00000000-0000-4000-8000-000000000014',
+    '00000000-0000-4000-8000-000000000015'
   );
 
   delete from auth.users
@@ -591,7 +716,8 @@ begin
     '00000000-0000-4000-8000-000000000011',
     '00000000-0000-4000-8000-000000000012',
     '00000000-0000-4000-8000-000000000013',
-    '00000000-0000-4000-8000-000000000014'
+    '00000000-0000-4000-8000-000000000014',
+    '00000000-0000-4000-8000-000000000015'
   );
 
   delete from public.organizations
@@ -606,12 +732,13 @@ insert into role_smoke_results (probe, passed, detail)
 select 'cleanup_no_synthetic_rows_remaining', count(*) = 0, 'remaining_rows=' || count(*)
 from (
   select id from public.organizations where id in ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002')
-  union all select id from auth.users where id in ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000014')
-  union all select id from public.profiles where id in ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000014')
-  union all select id from public.user_roles where user_id in ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000014')
+  union all select id from auth.users where id in ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000014', '00000000-0000-4000-8000-000000000015')
+  union all select id from public.profiles where id in ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000014', '00000000-0000-4000-8000-000000000015')
+  union all select id from public.user_roles where user_id in ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000014', '00000000-0000-4000-8000-000000000015')
   union all select id from public.clients where id in ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000105', '00000000-0000-4000-8000-000000000106')
   union all select id from public.therapists where id in ('00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000021', '00000000-0000-4000-8000-000000000023')
-  union all select id from public.programs where id in ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000204')
+  union all select id from public.programs where id in ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000204', '00000000-0000-4000-8000-000000000205')
+  union all select id from public.program_notes where id in ('00000000-0000-4000-8000-000000000801', '00000000-0000-4000-8000-000000000802', '00000000-0000-4000-8000-000000000803', '00000000-0000-4000-8000-000000000804')
   union all select id from public.goals where id in ('00000000-0000-4000-8000-000000000301', '00000000-0000-4000-8000-000000000302', '00000000-0000-4000-8000-000000000303', '00000000-0000-4000-8000-000000000304')
   union all select id from public.sessions where id in ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000503', '00000000-0000-4000-8000-000000000504', '00000000-0000-4000-8000-000000000505')
   union all select id from public.authorizations where id in ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000404', '00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000406')

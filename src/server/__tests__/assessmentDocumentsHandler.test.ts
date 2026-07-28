@@ -10,6 +10,7 @@ vi.mock("../api/shared", async () => {
     resolveOrgAndRole: vi.fn(),
     getSupabaseConfig: vi.fn(),
     getAccessTokenSubject: vi.fn(),
+    currentUserCanManageProgramsGoals: vi.fn(),
     fetchJson: vi.fn(),
   };
 });
@@ -19,6 +20,7 @@ vi.mock("../assessmentChecklistTemplate", () => ({
 }));
 
 import {
+  currentUserCanManageProgramsGoals,
   fetchJson,
   getAccessToken,
   getAccessTokenSubject,
@@ -33,6 +35,7 @@ const ORIGINAL_FETCH = globalThis.fetch;
 describe("assessmentDocumentsHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
   });
 
   afterEach(() => {
@@ -4906,7 +4909,7 @@ describe("assessmentDocumentsHandler", () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
-      isTherapist: true,
+      isTherapist: false,
       isAdmin: false,
       isSuperAdmin: false,
     });
@@ -4957,6 +4960,7 @@ describe("assessmentDocumentsHandler", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(currentUserCanManageProgramsGoals).toHaveBeenCalledWith("token", "org-1");
     expect(fetchJson).toHaveBeenCalledWith(
       expect.stringContaining("/rest/v1/assessment_draft_goals"),
       expect.objectContaining({ method: "DELETE" }),
@@ -4965,5 +4969,109 @@ describe("assessmentDocumentsHandler", () => {
       expect.stringContaining("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111"),
       expect.objectContaining({ method: "DELETE" }),
     );
+  });
+
+  it("returns 403 and skips deletes when delete capability is denied", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: false, upstreamError: false });
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,bucket_id,object_path")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "11111111-1111-4111-8111-111111111111",
+            organization_id: "org-1",
+            client_id: "client-1",
+            bucket_id: "client-documents",
+            object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+          }],
+        };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request(
+        "http://localhost/api/assessment-documents?assessment_document_id=11111111-1111-4111-8111-111111111111",
+        {
+          method: "DELETE",
+          headers: { Authorization: "Bearer token" },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Forbidden" });
+    expect(currentUserCanManageProgramsGoals).toHaveBeenCalledWith("token", "org-1");
+    const deleteCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([, init]) => (init?.method ?? "GET").toUpperCase() === "DELETE");
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it("returns 502 and skips deletes when delete capability lookup errors upstream", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: true,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: false, upstreamError: true });
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,bucket_id,object_path")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: "11111111-1111-4111-8111-111111111111",
+            organization_id: "org-1",
+            client_id: "client-1",
+            bucket_id: "client-documents",
+            object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+          }],
+        };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request(
+        "http://localhost/api/assessment-documents?assessment_document_id=11111111-1111-4111-8111-111111111111",
+        {
+          method: "DELETE",
+          headers: { Authorization: "Bearer token" },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: "Unable to validate program-goal access",
+    });
+    expect(currentUserCanManageProgramsGoals).toHaveBeenCalledWith("token", "org-1");
+    const deleteCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([, init]) => (init?.method ?? "GET").toUpperCase() === "DELETE");
+    expect(deleteCalls).toHaveLength(0);
   });
 });

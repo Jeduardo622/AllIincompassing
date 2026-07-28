@@ -5,6 +5,7 @@ vi.mock("../api/shared", async () => {
   const actual = await vi.importActual<typeof import("../api/shared")>("../api/shared");
   return {
     ...actual,
+    currentUserCanManageProgramsGoals: vi.fn(),
     getAccessToken: vi.fn(),
     resolveOrgAndRole: vi.fn(),
     getSupabaseConfig: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("../api/shared", async () => {
 });
 
 import {
+  currentUserCanManageProgramsGoals,
   fetchJson,
   getAccessToken,
   getAccessTokenSubject,
@@ -91,6 +93,7 @@ const buildStructuredGoalSections = (programName = "Communication Program") =>
 describe("assessmentDraftsHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
   });
 
   it("creates staged draft program and goals", async () => {
@@ -233,6 +236,138 @@ describe("assessmentDraftsHandler", () => {
     const programPayload = JSON.parse((programCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
     expect(programPayload[0]?.summary_rationale).toBe("Summary rationale");
     expect(programPayload[0]?.confidence).toBe("medium");
+  });
+
+  it("allows draft creation when the manage-program-goals helper approves a same-org midtier-style caller", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
+      })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: [{ id: "draft-program-1", name: "Communication Program" }] })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: null })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          programs: [
+            {
+              name: "Communication Program",
+              description: "Program description",
+              rationale: "Program rationale",
+              evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence snippet" }],
+              review_flags: [],
+            },
+          ],
+          summary_rationale: "Summary rationale",
+          confidence: "medium",
+          goals: buildTypedGoals({ childCount: 1, parentCount: 0 }),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(currentUserCanManageProgramsGoals).toHaveBeenCalledWith("token", "org-1");
+  });
+
+  it("returns 403 for draft creation when the manage-program-goals helper denies the caller", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: false, upstreamError: false });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          programs: [
+            {
+              name: "Communication Program",
+              description: "Program description",
+              rationale: "Program rationale",
+              evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence snippet" }],
+              review_flags: [],
+            },
+          ],
+          summary_rationale: "Summary rationale",
+          confidence: "medium",
+          goals: buildTypedGoals({ childCount: 1, parentCount: 0 }),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 for draft creation when the manage-program-goals helper cannot be validated", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: false, upstreamError: true });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          programs: [
+            {
+              name: "Communication Program",
+              description: "Program description",
+              rationale: "Program rationale",
+              evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence snippet" }],
+              review_flags: [],
+            },
+          ],
+          summary_rationale: "Summary rationale",
+          confidence: "medium",
+          goals: buildTypedGoals({ childCount: 1, parentCount: 0 }),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ error: "Unable to validate program-goal access" });
+    expect(fetchJson).not.toHaveBeenCalled();
   });
 
   it("accepts smaller manual draft goal sets without legacy minimum enforcement", async () => {

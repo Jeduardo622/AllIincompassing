@@ -498,6 +498,24 @@ const GOAL_TIMELINE_INPUTS: ReadonlyArray<{
   { key: "longTermGoal", placeholder: "Long-term goal" },
 ];
 
+type GoalEditState = {
+  title: string;
+  description: string;
+  measurementType: string;
+  clinicalGoalType: Goal["clinical_goal_type"] | "";
+  domainId: string;
+  baselineData: string;
+  teachingStrategies: string;
+  operationalDefinition: string;
+  shortTermGoal: string;
+  intermediateGoal: string;
+  longTermGoal: string;
+  masteryCriteria: string;
+  maintenanceCriteria: string;
+  generalizationCriteria: string;
+  objectiveDataPoints: string;
+};
+
 const buildProgramGoalsQueryKey = (programId: string | null, organizationId?: string | null) =>
   ["program-goals", programId, organizationId ?? "MISSING_ORG"] as const;
 
@@ -1198,8 +1216,16 @@ function GoalTargetCard({
 function GoalCard({
   archivingGoalId,
   archiveGoal,
+  beginGoalEdit,
   canDeleteGoalTargets,
+  canManageGoalEdit,
   clientId,
+  editingGoalError,
+  editingGoalId,
+  editingGoalState,
+  goalDomainsLoading,
+  goalDomainsQueryError,
+  goalDomainOptions,
   deleteGoalTarget,
   deletingTargetId,
   domainsById,
@@ -1209,8 +1235,12 @@ function GoalCard({
   lifecycleTargetId,
   organizationId,
   progressionCanManage,
+  cancelGoalEdit,
+  setEditingGoalState,
   setGoalTargetArchiveState,
+  updateGoal,
   updateGoalTarget,
+  updatingGoalId,
   updatingTargetId,
 }: {
   archivingGoalId: string | null;
@@ -1218,8 +1248,16 @@ function GoalCard({
     isLoading: boolean;
     mutate: (goal: Goal) => void;
   };
+  beginGoalEdit: (goal: Goal) => void;
   canDeleteGoalTargets: boolean;
+  canManageGoalEdit: boolean;
   clientId: string;
+  editingGoalError: string | null;
+  editingGoalId: string | null;
+  editingGoalState: GoalEditState | null;
+  goalDomainsLoading: boolean;
+  goalDomainsQueryError: Error | null;
+  goalDomainOptions: GoalDomain[];
   deleteGoalTarget: {
     isLoading: boolean;
     mutate: (target: GoalTarget) => void;
@@ -1232,10 +1270,16 @@ function GoalCard({
   lifecycleTargetId: string | null;
   organizationId: string | null;
   progressionCanManage: boolean;
+  cancelGoalEdit: () => void;
+  setEditingGoalState: React.Dispatch<React.SetStateAction<GoalEditState | null>>;
   setGoalTargetArchiveState: {
     isLoading: boolean;
     mutate: (input: { target: GoalTarget; status: "active" | "archived" }) => void;
   } | null;
+  updateGoal: {
+    isLoading: boolean;
+    mutate: (goal: Goal) => void;
+  };
   updateGoalTarget: {
     isLoading: boolean;
     mutate: (input: {
@@ -1246,11 +1290,13 @@ function GoalCard({
       graph_config?: Record<string, unknown>;
     }) => void;
   } | null;
+  updatingGoalId: string | null;
   updatingTargetId: string | null;
 }) {
   const queryClient = useQueryClient();
   const [showArchivedTargets, setShowArchivedTargets] = useState(false);
   const [reorderError, setReorderError] = useState<string | null>(null);
+  const isEditingGoal = editingGoalId === goal.id && editingGoalState !== null;
   const activeTargets = goalTargetsForGoal.filter((target) => target.status !== "archived");
   const archivedTargets = goalTargetsForGoal.filter((target) => target.status === "archived");
   const reorderTargets = useMutation({
@@ -1306,28 +1352,209 @@ function GoalCard({
             </p>
           )}
         </div>
-        <button
-          type="button"
-          aria-label={`Remove ${goal.title}`}
-          title="Remove from active care plan"
-          onClick={() => {
-            if (typeof window !== "undefined") {
-              const confirmed = window.confirm(
-                `Remove goal "${goal.title}" from the active care plan?`,
-              );
-              if (!confirmed) {
-                return;
+        {canManageGoalEdit && (
+          <button
+            type="button"
+            aria-label={`Edit goal ${goal.title}`}
+            title="Edit live goal"
+            onClick={() => beginGoalEdit(goal)}
+            disabled={updatingGoalId === goal.id && updateGoal.isLoading}
+            className="shrink-0 rounded-md border border-transparent p-1.5 text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-900/30 disabled:opacity-50"
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
+        {canManageGoalEdit && (
+          <button
+            type="button"
+            aria-label={`Remove ${goal.title}`}
+            title="Remove from active care plan"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                const confirmed = window.confirm(
+                  `Remove goal "${goal.title}" from the active care plan?`,
+                );
+                if (!confirmed) {
+                  return;
+                }
               }
-            }
-            archiveGoal.mutate(goal);
-          }}
-          disabled={archivingGoalId === goal.id && archiveGoal.isLoading}
-          className="shrink-0 rounded-md border border-transparent p-1.5 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
-        >
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-        </button>
+              archiveGoal.mutate(goal);
+            }}
+            disabled={archivingGoalId === goal.id && archiveGoal.isLoading}
+            className="shrink-0 rounded-md border border-transparent p-1.5 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
       <GoalFieldList domainsById={domainsById} goal={goal} />
+      {isEditingGoal && (
+        <div
+          role="region"
+          aria-label={`Edit goal ${goal.title}`}
+          className="mt-3 space-y-3 rounded-md border border-blue-100 bg-blue-50/60 p-3 dark:border-blue-900/60 dark:bg-blue-950/20"
+        >
+          <label htmlFor={`goal-edit-title-${goal.id}`} className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Goal title
+          </label>
+          <input
+            id={`goal-edit-title-${goal.id}`}
+            type="text"
+            value={editingGoalState.title}
+            onChange={(event) => setEditingGoalState((current) => current ? { ...current, title: event.target.value } : current)}
+            className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+          />
+          <label htmlFor={`goal-edit-description-${goal.id}`} className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Goal description
+          </label>
+          <textarea
+            id={`goal-edit-description-${goal.id}`}
+            value={editingGoalState.description}
+            onChange={(event) => setEditingGoalState((current) => current ? { ...current, description: event.target.value } : current)}
+            rows={3}
+            className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+          />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+              Measurement type
+              <input
+                type="text"
+                value={editingGoalState.measurementType}
+                onChange={(event) => setEditingGoalState((current) => current ? { ...current, measurementType: event.target.value } : current)}
+                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+            </label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+              Clinical type
+              <select
+                value={editingGoalState.clinicalGoalType}
+                onChange={(event) => setEditingGoalState((current) => current ? { ...current, clinicalGoalType: event.target.value as Goal["clinical_goal_type"] | "" } : current)}
+                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              >
+                <option value="">Unspecified</option>
+                <option value="skill">Skill</option>
+                <option value="behavior">Behavior</option>
+              </select>
+            </label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+              Domain
+              <select
+                value={editingGoalState.domainId}
+                onChange={(event) => setEditingGoalState((current) => current ? { ...current, domainId: event.target.value } : current)}
+                disabled={goalDomainsLoading}
+                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              >
+                <option value="">{goalDomainsLoading ? "Loading domains..." : "No domain assigned"}</option>
+                {goalDomainOptions.map((domain) => (
+                  <option key={domain.id} value={domain.id}>
+                    {domain.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Baseline data
+            <textarea
+              value={editingGoalState.baselineData}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, baselineData: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Teaching strategies
+            <textarea
+              value={editingGoalState.teachingStrategies}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, teachingStrategies: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Operational definition
+            <textarea
+              value={editingGoalState.operationalDefinition}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, operationalDefinition: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          {GOAL_TIMELINE_INPUTS.map(({ key, placeholder }) => (
+            <label key={key} className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+              {placeholder}
+              <textarea
+                value={editingGoalState[key]}
+                onChange={(event) => setEditingGoalState((current) => current ? { ...current, [key]: event.target.value } : current)}
+                rows={2}
+                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+            </label>
+          ))}
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Mastery criteria
+            <textarea
+              value={editingGoalState.masteryCriteria}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, masteryCriteria: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Maintenance criteria
+            <textarea
+              value={editingGoalState.maintenanceCriteria}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, maintenanceCriteria: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Generalization criteria
+            <textarea
+              value={editingGoalState.generalizationCriteria}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, generalizationCriteria: event.target.value } : current)}
+              rows={2}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+            Objective data points
+            <textarea
+              value={editingGoalState.objectiveDataPoints}
+              onChange={(event) => setEditingGoalState((current) => current ? { ...current, objectiveDataPoints: event.target.value } : current)}
+              rows={3}
+              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm font-mono"
+            />
+          </label>
+          {editingGoalError && (
+            <p className="text-xs text-rose-700 dark:text-rose-300">{editingGoalError}</p>
+          )}
+          {goalDomainsQueryError instanceof Error && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Could not load goal domains: {goalDomainsQueryError.message}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => updateGoal.mutate(goal)}
+              disabled={Boolean(editingGoalError) || !editingGoalState.title.trim() || !editingGoalState.description.trim() || (updatingGoalId === goal.id && updateGoal.isLoading)}
+              className="rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {updatingGoalId === goal.id && updateGoal.isLoading ? "Saving..." : "Save goal changes"}
+            </button>
+            <button
+              type="button"
+              onClick={cancelGoalEdit}
+              disabled={updatingGoalId === goal.id && updateGoal.isLoading}
+              className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/30">
         <div className="mb-2 flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -1446,7 +1673,14 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [noteContent, setNoteContent] = useState("");
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
   const [archivingProgramId, setArchivingProgramId] = useState<string | null>(null);
+  const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
+  const [editingProgramName, setEditingProgramName] = useState("");
+  const [editingProgramDescription, setEditingProgramDescription] = useState("");
+  const [updatingProgramId, setUpdatingProgramId] = useState<string | null>(null);
   const [archivingGoalId, setArchivingGoalId] = useState<string | null>(null);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editingGoalState, setEditingGoalState] = useState<GoalEditState | null>(null);
+  const [updatingGoalId, setUpdatingGoalId] = useState<string | null>(null);
   const [updatingTargetId, setUpdatingTargetId] = useState<string | null>(null);
   const [lifecycleTargetId, setLifecycleTargetId] = useState<string | null>(null);
   const [deletingTargetId, setDeletingTargetId] = useState<string | null>(null);
@@ -1539,6 +1773,21 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const goalDescriptionValue = goalDescription.trim();
   const goalOriginalTextValue = goalOriginalText.trim();
   const newGoalDomainNameValue = newGoalDomainName.trim();
+  const editingProgramNameValue = editingProgramName.trim();
+  const editingGoalTitleValue = editingGoalState?.title.trim() ?? "";
+  const editingGoalDescriptionValue = editingGoalState?.description.trim() ?? "";
+  const editingGoalObjectiveDataPointsError = useMemo(() => {
+    if (!editingGoalState) {
+      return null;
+    }
+    try {
+      parseObjectiveDataPointsInput(editingGoalState.objectiveDataPoints);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : "Objective data points must be a JSON array.";
+    }
+  }, [editingGoalState]);
+  const editingGoalError = editingGoalObjectiveDataPointsError;
   const hasResolvedProgram = Boolean(resolvedProgramId);
   const noProgramHelperText = programsLoading
     ? "Programs are still loading. You can create one now, or wait for an existing program before adding goals or notes."
@@ -2383,6 +2632,165 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
   });
 
+  const updateProgram = useMutation({
+    mutationFn: async (program: Program) => {
+      if (!editingProgramNameValue) {
+        throw new Error("Program name is required.");
+      }
+      const payload = JSON.stringify({
+        name: editingProgramNameValue,
+        description: editingProgramDescription.trim() || undefined,
+      });
+      const response = await callEdgeWithSupabaseFallback({
+        edgePath: `${PROGRAMS_EDGE_PATH}?program_id=${encodeURIComponent(program.id)}`,
+        fallback: async () => {
+          if (!organizationId) {
+            return jsonResponse({ error: "Organization context is required." }, 400);
+          }
+          const { data, error } = await supabase
+            .from("programs")
+            .update({
+              name: editingProgramNameValue,
+              description: editingProgramDescription.trim() || null,
+            })
+            .eq("id", program.id)
+            .eq("organization_id", organizationId)
+            .select("id,organization_id,client_id,name,description,status,start_date,end_date,created_at,updated_at")
+            .single();
+          if (error) {
+            return jsonResponse({ error: error.message }, 500);
+          }
+          return jsonResponse(data);
+        },
+        init: {
+          method: "PATCH",
+          body: payload,
+        },
+        timeoutMs: PROGRAM_CREATE_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Update program request timed out. Please retry.",
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to update program."));
+      }
+      return parseJson<Program>(response);
+    },
+    onMutate: (program) => {
+      setUpdatingProgramId(program.id);
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Program[]>(clientProgramsQueryKey, (current) =>
+        mapById(current, updated.id, () => updated),
+      );
+      queryClient.invalidateQueries({ queryKey: clientProgramsQueryKey });
+      setEditingProgramId(null);
+      setEditingProgramName("");
+      setEditingProgramDescription("");
+      showSuccess("Program updated");
+    },
+    onError: showError,
+    onSettled: () => {
+      setUpdatingProgramId(null);
+    },
+  });
+
+  const updateGoal = useMutation({
+    mutationFn: async (goal: Goal) => {
+      if (!editingGoalState) {
+        throw new Error("Goal editor is not open.");
+      }
+      if (!editingGoalTitleValue) {
+        throw new Error("Goal title is required.");
+      }
+      if (!editingGoalDescriptionValue) {
+        throw new Error("Goal description is required.");
+      }
+      const objectiveDataPoints = parseObjectiveDataPointsInput(editingGoalState.objectiveDataPoints);
+      const targetCriteria = formatGoalTimelineCriteria({
+        shortTermGoal: editingGoalState.shortTermGoal,
+        intermediateGoal: editingGoalState.intermediateGoal,
+        longTermGoal: editingGoalState.longTermGoal,
+      });
+      const payload = JSON.stringify({
+        title: editingGoalTitleValue,
+        description: editingGoalDescriptionValue,
+        measurement_type: editingGoalState.measurementType.trim() || undefined,
+        clinical_goal_type: editingGoalState.clinicalGoalType || undefined,
+        domain_id: editingGoalState.domainId.trim() || undefined,
+        baseline_data: editingGoalState.baselineData.trim() || undefined,
+        baseline: editingGoalState.baselineData.trim() || undefined,
+        teaching_strategies: editingGoalState.teachingStrategies.trim() || undefined,
+        operational_definition: editingGoalState.operationalDefinition.trim() || undefined,
+        target_criteria: targetCriteria || undefined,
+        mastery_criteria: editingGoalState.masteryCriteria.trim() || undefined,
+        maintenance_criteria: editingGoalState.maintenanceCriteria.trim() || undefined,
+        generalization_criteria: editingGoalState.generalizationCriteria.trim() || undefined,
+        objective_data_points: objectiveDataPoints,
+      });
+      const response = await callEdgeWithSupabaseFallback({
+        edgePath: `${GOALS_EDGE_PATH}?goal_id=${encodeURIComponent(goal.id)}`,
+        fallback: async () => {
+          if (!organizationId) {
+            return jsonResponse({ error: "Organization context is required." }, 400);
+          }
+          const { data, error } = await supabase
+            .from("goals")
+            .update({
+              title: editingGoalTitleValue,
+              description: editingGoalDescriptionValue,
+              measurement_type: editingGoalState.measurementType.trim() || null,
+              clinical_goal_type: editingGoalState.clinicalGoalType || null,
+              domain_id: editingGoalState.domainId.trim() || null,
+              baseline_data: editingGoalState.baselineData.trim() || null,
+              baseline: editingGoalState.baselineData.trim() || null,
+              teaching_strategies: editingGoalState.teachingStrategies.trim() || null,
+              operational_definition: editingGoalState.operationalDefinition.trim() || null,
+              target_criteria: targetCriteria || null,
+              mastery_criteria: editingGoalState.masteryCriteria.trim() || null,
+              maintenance_criteria: editingGoalState.maintenanceCriteria.trim() || null,
+              generalization_criteria: editingGoalState.generalizationCriteria.trim() || null,
+              objective_data_points: objectiveDataPoints,
+            })
+            .eq("id", goal.id)
+            .eq("organization_id", organizationId)
+            .select(
+              "id,organization_id,client_id,program_id,domain_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_goal_type,clinical_context,baseline_data,baseline,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,teaching_strategies,operational_definition,objective_data_points,source,status,created_at,updated_at",
+            )
+            .single();
+          if (error) {
+            return jsonResponse({ error: error.message }, 500);
+          }
+          return jsonResponse(data);
+        },
+        init: {
+          method: "PATCH",
+          body: payload,
+        },
+        timeoutMs: GOAL_CREATE_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Update goal request timed out. Please retry.",
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to update goal."));
+      }
+      return parseJson<Goal>(response);
+    },
+    onMutate: (goal) => {
+      setUpdatingGoalId(goal.id);
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Goal[]>(buildProgramGoalsQueryKey(updated.program_id, organizationId), (current) =>
+        mapById(current, updated.id, () => updated),
+      );
+      queryClient.invalidateQueries({ queryKey: buildProgramGoalsQueryKey(updated.program_id, organizationId) });
+      setEditingGoalId(null);
+      setEditingGoalState(null);
+      showSuccess("Goal updated");
+    },
+    onError: showError,
+    onSettled: () => {
+      setUpdatingGoalId(null);
+    },
+  });
+
   const createGoalDomain = useMutation({
     mutationFn: async () => {
       if (!organizationId) {
@@ -2709,6 +3117,46 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
   });
 
+  const beginProgramEdit = (program: Program) => {
+    setSelectedProgramId(program.id);
+    setEditingProgramId(program.id);
+    setEditingProgramName(program.name);
+    setEditingProgramDescription(program.description ?? "");
+  };
+
+  const cancelProgramEdit = () => {
+    setEditingProgramId(null);
+    setEditingProgramName("");
+    setEditingProgramDescription("");
+  };
+
+  const beginGoalEdit = (goal: Goal) => {
+    const parsedTimeline = parseGoalTimelineCriteria(goal.target_criteria);
+    setEditingGoalId(goal.id);
+    setEditingGoalState({
+      title: goal.title,
+      description: goal.description,
+      measurementType: goal.measurement_type ?? "",
+      clinicalGoalType: goal.clinical_goal_type ?? "",
+      domainId: goal.domain_id ?? "",
+      baselineData: goal.baseline_data ?? goal.baseline ?? "",
+      teachingStrategies: goal.teaching_strategies ?? "",
+      operationalDefinition: goal.operational_definition ?? "",
+      shortTermGoal: parsedTimeline.shortTermGoal,
+      intermediateGoal: parsedTimeline.intermediateGoal,
+      longTermGoal: parsedTimeline.longTermGoal,
+      masteryCriteria: goal.mastery_criteria ?? "",
+      maintenanceCriteria: goal.maintenance_criteria ?? "",
+      generalizationCriteria: goal.generalization_criteria ?? "",
+      objectiveDataPoints: JSON.stringify(goal.objective_data_points ?? [], null, 2),
+    });
+  };
+
+  const cancelGoalEdit = () => {
+    setEditingGoalId(null);
+    setEditingGoalState(null);
+  };
+
   const archiveGoal = useMutation({
     mutationFn: async (goal: Goal) => {
       const response = await callEdgeWithSupabaseFallback({
@@ -2825,7 +3273,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             Live care plan: <span className="font-semibold">{livePrograms.length}</span> program(s) and{" "}
             <span className="font-semibold">{liveGoals.length}</span> active goal(s) in the selected program.
           </p>
-          {showDraftReviewPanel && hasDraftsButNoLivePrograms && (
+          {canManageProgramsGoals && showDraftReviewPanel && hasDraftsButNoLivePrograms && (
             <button
               type="button"
               onClick={() => publishSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
@@ -2835,7 +3283,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             </button>
           )}
         </div>
-        {showDraftReviewPanel && hasDraftsButNoLivePrograms && (
+        {canManageProgramsGoals && showDraftReviewPanel && hasDraftsButNoLivePrograms && (
           <p className="mt-2 text-xs text-sky-800/90 dark:text-sky-100/90">
             Uploaded assessments and draft proposals stay in review until you publish them to live Programs & Goals.
           </p>
@@ -2946,27 +3394,29 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                             </div>
                           )}
                         </button>
-                        <div className="px-2 pb-2 pt-1 flex justify-end">
-                          <button
-                            type="button"
-                            aria-label={`Delete ${doc.file_name}`}
-                            title={`Delete ${doc.file_name}`}
-                            onClick={() => {
-                              if (typeof window !== "undefined") {
-                                const confirmed = window.confirm(`Delete ${doc.file_name}? This cannot be undone.`);
-                                if (!confirmed) {
-                                  return;
+                        {canManageProgramsGoals && (
+                          <div className="px-2 pb-2 pt-1 flex justify-end">
+                            <button
+                              type="button"
+                              aria-label={`Delete ${doc.file_name}`}
+                              title={`Delete ${doc.file_name}`}
+                              onClick={() => {
+                                if (typeof window !== "undefined") {
+                                  const confirmed = window.confirm(`Delete ${doc.file_name}? This cannot be undone.`);
+                                  if (!confirmed) {
+                                    return;
+                                  }
                                 }
-                              }
-                              deleteAssessmentDocument.mutate(doc);
-                            }}
-                            disabled={deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
+                                deleteAssessmentDocument.mutate(doc);
+                              }}
+                              disabled={deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -3011,87 +3461,156 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 </p>
               )}
               {livePrograms.map((program) => (
-                <div key={program.id} className="flex items-stretch gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedProgramId(program.id)}
-                    className={`min-w-0 flex-1 text-left rounded-md px-3 py-2 text-sm border ${
-                      resolvedProgramId === program.id
-                        ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
-                        : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                    }`}
-                  >
-                    <div className="font-medium">{program.name}</div>
-                    {program.description && (
-                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">{program.description}</div>
+                <div key={program.id} className="rounded-md border border-transparent">
+                  <div className="flex items-stretch gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProgramId(program.id)}
+                      className={`min-w-0 flex-1 text-left rounded-md px-3 py-2 text-sm border ${
+                        resolvedProgramId === program.id
+                          ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
+                          : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                      }`}
+                    >
+                      <div className="font-medium">{program.name}</div>
+                      {program.description && (
+                        <div className="text-xs text-gray-500 mt-1 line-clamp-2">{program.description}</div>
+                      )}
+                    </button>
+                    {canManageProgramsGoals && (
+                      <button
+                        type="button"
+                        aria-label={`Edit program ${program.name}`}
+                        title="Edit live program"
+                        onClick={() => beginProgramEdit(program)}
+                        disabled={updatingProgramId === program.id && updateProgram.isLoading}
+                        className="shrink-0 rounded-md border border-transparent px-2 py-2 text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-900/30 disabled:opacity-50"
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
+                      </button>
                     )}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${program.name}`}
-                    title="Remove from active care plan"
-                    onClick={() => {
-                      if (typeof window !== "undefined") {
-                        const confirmed = window.confirm(
-                          `Remove "${program.name}" from the active care plan? You can add programs again later.`,
-                        );
-                        if (!confirmed) {
-                          return;
-                        }
-                      }
-                      archiveProgram.mutate(program);
-                    }}
-                    disabled={archivingProgramId === program.id && archiveProgram.isLoading}
-                    className="shrink-0 rounded-md border border-transparent px-2 py-2 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </button>
+                    {canManageProgramsGoals && (
+                      <button
+                        type="button"
+                        aria-label={`Remove ${program.name}`}
+                        title="Remove from active care plan"
+                        onClick={() => {
+                          if (typeof window !== "undefined") {
+                            const confirmed = window.confirm(
+                              `Remove "${program.name}" from the active care plan? You can add programs again later.`,
+                            );
+                            if (!confirmed) {
+                              return;
+                            }
+                          }
+                          archiveProgram.mutate(program);
+                        }}
+                        disabled={archivingProgramId === program.id && archiveProgram.isLoading}
+                        className="shrink-0 rounded-md border border-transparent px-2 py-2 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                  {canManageProgramsGoals && editingProgramId === program.id && (
+                    <div className="mt-2 space-y-3 rounded-md border border-blue-100 bg-blue-50/60 p-3 dark:border-blue-900/60 dark:bg-blue-950/20">
+                      <label
+                        htmlFor={`program-edit-name-${program.id}`}
+                        className="block text-xs font-medium text-gray-700 dark:text-gray-200"
+                      >
+                        Program name
+                      </label>
+                      <input
+                        id={`program-edit-name-${program.id}`}
+                        type="text"
+                        value={editingProgramName}
+                        onChange={(event) => setEditingProgramName(event.target.value)}
+                        className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                      />
+                      <label
+                        htmlFor={`program-edit-description-${program.id}`}
+                        className="block text-xs font-medium text-gray-700 dark:text-gray-200"
+                      >
+                        Program description
+                      </label>
+                      <textarea
+                        id={`program-edit-description-${program.id}`}
+                        value={editingProgramDescription}
+                        onChange={(event) => setEditingProgramDescription(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => updateProgram.mutate(program)}
+                          disabled={!editingProgramNameValue || (updatingProgramId === program.id && updateProgram.isLoading)}
+                          className="rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {updatingProgramId === program.id && updateProgram.isLoading ? "Saving..." : "Save program changes"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelProgramEdit}
+                          disabled={updatingProgramId === program.id && updateProgram.isLoading}
+                          className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {!editingProgramNameValue && (
+                        <p className="text-xs text-gray-500 dark:text-gray-300">Enter a program name to save changes.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Program
-            </h3>
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500 dark:text-gray-300">
-                Add a program first if this client does not have one yet. Goals and notes attach to the selected program.
-              </p>
-              <input
-                type="text"
-                value={programName}
-                onChange={(event) => setProgramName(event.target.value)}
-                placeholder="Program name"
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
-              <textarea
-                value={programDescription}
-                onChange={(event) => setProgramDescription(event.target.value)}
-                placeholder="Program description"
-                rows={3}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => createProgram.mutate()}
-                disabled={!programNameValue || createProgram.isLoading}
-                className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {createProgram.isLoading ? "Creating..." : "Create Program"}
-              </button>
-              {programsQueryError instanceof Error && (
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  Could not load programs yet: {programsQueryError.message}
+          {canManageProgramsGoals && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                Add Program
+              </h3>
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-300">
+                  Add a program first if this client does not have one yet. Goals and notes attach to the selected program.
                 </p>
-              )}
-              {!createProgram.isLoading && !programNameValue && (
-                <p className="text-xs text-gray-500 dark:text-gray-300">Enter a program name to create a program.</p>
-              )}
+                <input
+                  type="text"
+                  value={programName}
+                  onChange={(event) => setProgramName(event.target.value)}
+                  placeholder="Program name"
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                />
+                <textarea
+                  value={programDescription}
+                  onChange={(event) => setProgramDescription(event.target.value)}
+                  placeholder="Program description"
+                  rows={3}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => createProgram.mutate()}
+                  disabled={!programNameValue || createProgram.isLoading}
+                  className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {createProgram.isLoading ? "Creating..." : "Create Program"}
+                </button>
+                {programsQueryError instanceof Error && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    Could not load programs yet: {programsQueryError.message}
+                  </p>
+                )}
+                {!createProgram.isLoading && !programNameValue && (
+                  <p className="text-xs text-gray-500 dark:text-gray-300">Enter a program name to create a program.</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="lg:col-span-2 space-y-4">
@@ -3148,24 +3667,26 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           <p className="text-xs text-amber-700 dark:text-amber-200">{iehpPublishDisabledReason}</p>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (typeof window !== "undefined") {
-                            const confirmed = window.confirm(
-                              "Publish this reviewed IEHP assessment and complete the workflow?",
-                            );
-                            if (!confirmed) {
-                              return;
+                      {canManageProgramsGoals && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== "undefined") {
+                              const confirmed = window.confirm(
+                                "Publish this reviewed IEHP assessment and complete the workflow?",
+                              );
+                              if (!confirmed) {
+                                return;
+                              }
                             }
-                          }
-                          promoteAssessment.mutate();
-                        }}
-                        disabled={Boolean(iehpPublishDisabledReason) || promoteAssessment.isLoading}
-                        className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {promoteAssessment.isLoading ? "Publishing..." : "Publish Reviewed Assessment"}
-                      </button>
+                            promoteAssessment.mutate();
+                          }}
+                          disabled={Boolean(iehpPublishDisabledReason) || promoteAssessment.isLoading}
+                          className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {promoteAssessment.isLoading ? "Publishing..." : "Publish Reviewed Assessment"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3196,7 +3717,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                 <select
                                   value={edit.status}
-                                  disabled={isApprovedStatusLocked}
+                                  disabled={!canManageProgramsGoals || isApprovedStatusLocked}
                                   onChange={(event) =>
                                     setChecklistEdits((current) => ({
                                       ...current,
@@ -3215,6 +3736,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 </select>
                                 <input
                                   value={edit.reviewNotes}
+                                  disabled={!canManageProgramsGoals}
                                   onChange={(event) =>
                                     setChecklistEdits((current) => ({
                                       ...current,
@@ -3229,6 +3751,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 />
                                 <input
                                   value={edit.valueText}
+                                  disabled={!canManageProgramsGoals}
                                   onChange={(event) =>
                                     setChecklistEdits((current) => ({
                                       ...current,
@@ -3242,14 +3765,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                   className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
                                 />
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => updateChecklistItem.mutate(row.id)}
-                                disabled={updateChecklistItem.isLoading}
-                                className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-                              >
-                                Save Checklist Row
-                              </button>
+                              {canManageProgramsGoals && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateChecklistItem.mutate(row.id)}
+                                  disabled={updateChecklistItem.isLoading}
+                                  className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  Save Checklist Row
+                                </button>
+                              )}
                               {isApprovedStatusLocked && (
                                 <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
                                   Approved checklist rows stay approved; update notes or field value without lowering status.
@@ -3307,7 +3832,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                   <div className="grid grid-cols-1 gap-2">
                                     <select
                                       value={edit.status}
-                                      disabled={isApprovedStatusLocked}
+                                      disabled={!canManageProgramsGoals || isApprovedStatusLocked}
                                       onChange={(event) =>
                                         setStructuredSectionEdits((current) => ({
                                           ...current,
@@ -3327,7 +3852,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                     </select>
                                     <input
                                       value={edit.reviewNotes}
-                                      disabled={isApprovedStatusLocked}
+                                      disabled={!canManageProgramsGoals || isApprovedStatusLocked}
                                       onChange={(event) =>
                                         setStructuredSectionEdits((current) => ({
                                           ...current,
@@ -3343,7 +3868,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                     <textarea
                                       value={edit.payload}
                                       rows={8}
-                                      disabled={isApprovedStatusLocked}
+                                      disabled={!canManageProgramsGoals || isApprovedStatusLocked}
                                       onChange={(event) =>
                                         setStructuredSectionEdits((current) => ({
                                           ...current,
@@ -3356,14 +3881,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                       className="font-mono rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-xs"
                                     />
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateStructuredSection.mutate(row.id)}
-                                    disabled={updateStructuredSection.isLoading || isApprovedStatusLocked}
-                                    className="mt-2 px-3 py-1 text-xs font-medium text-white bg-cyan-700 rounded hover:bg-cyan-800 disabled:opacity-50"
-                                  >
-                                    Save Structured Section
-                                  </button>
+                                  {canManageProgramsGoals && (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateStructuredSection.mutate(row.id)}
+                                      disabled={updateStructuredSection.isLoading || isApprovedStatusLocked}
+                                      className="mt-2 px-3 py-1 text-xs font-medium text-white bg-cyan-700 rounded hover:bg-cyan-800 disabled:opacity-50"
+                                    >
+                                      Save Structured Section
+                                    </button>
+                                  )}
                                   {isApprovedStatusLocked && (
                                     <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
                                       Approved structured sections are locked to preserve reviewed document data for export.
@@ -3416,6 +3943,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       <div className="grid grid-cols-1 gap-2">
                         <input
                           value={edit.name}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftProgramEdits((current) => ({
                               ...current,
@@ -3429,6 +3957,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.description}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftProgramEdits((current) => ({
                               ...current,
@@ -3444,6 +3973,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <select
                             value={edit.acceptState}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftProgramEdits((current) => ({
                                 ...current,
@@ -3462,6 +3992,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           </select>
                           <input
                             value={edit.reviewNotes}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftProgramEdits((current) => ({
                                 ...current,
@@ -3476,14 +4007,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           />
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => updateDraftProgram.mutate(program.id)}
-                        disabled={updateDraftProgram.isLoading}
-                        className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        Save Program Draft
-                      </button>
+                      {canManageProgramsGoals && (
+                        <button
+                          type="button"
+                          onClick={() => updateDraftProgram.mutate(program.id)}
+                          disabled={updateDraftProgram.isLoading}
+                          className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          Save Program Draft
+                        </button>
+                      )}
                       <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
                         {draftSaveHelperText}
                       </p>
@@ -3516,6 +4049,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       <div className="grid grid-cols-1 gap-2">
                         <input
                           value={edit.title}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3529,6 +4063,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.description}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3543,6 +4078,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.originalText}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3557,6 +4093,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <select
                           value={edit.goalType}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3573,6 +4110,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         </select>
                         <input
                           value={edit.measurementType}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3587,6 +4125,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.baselineData}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3604,6 +4143,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           <textarea
                             key={`${goal.id}-${key}`}
                             value={edit[key]}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftGoalEdits((current) => ({
                                 ...current,
@@ -3620,6 +4160,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         ))}
                         <textarea
                           value={edit.masteryCriteria}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3635,6 +4176,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.maintenanceCriteria}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3650,6 +4192,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.generalizationCriteria}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3665,6 +4208,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         />
                         <textarea
                           value={edit.objectiveDataPoints}
+                          disabled={!canManageProgramsGoals}
                           onChange={(event) =>
                             setDraftGoalEdits((current) => ({
                               ...current,
@@ -3681,6 +4225,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <select
                             value={edit.acceptState}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftGoalEdits((current) => ({
                                 ...current,
@@ -3699,6 +4244,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           </select>
                           <input
                             value={edit.reviewNotes}
+                            disabled={!canManageProgramsGoals}
                             onChange={(event) =>
                               setDraftGoalEdits((current) => ({
                                 ...current,
@@ -3713,14 +4259,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           />
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => updateDraftGoal.mutate(goal.id)}
-                        disabled={updateDraftGoal.isLoading}
-                        className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        Save Goal Draft
-                      </button>
+                      {canManageProgramsGoals && (
+                        <button
+                          type="button"
+                          onClick={() => updateDraftGoal.mutate(goal.id)}
+                          disabled={updateDraftGoal.isLoading}
+                          className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          Save Goal Draft
+                        </button>
+                      )}
                       <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
                         {draftSaveHelperText}
                       </p>
@@ -3744,24 +4292,26 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           <p className="text-xs text-amber-700 dark:text-amber-200">{promoteDisabledReason}</p>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (typeof window !== "undefined") {
-                            const confirmed = window.confirm(
-                              "Publish accepted assessment drafts to this client's live Programs & Goals?",
-                            );
-                            if (!confirmed) {
-                              return;
+                      {canManageProgramsGoals && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== "undefined") {
+                              const confirmed = window.confirm(
+                                "Publish accepted assessment drafts to this client's live Programs & Goals?",
+                              );
+                              if (!confirmed) {
+                                return;
+                              }
                             }
-                          }
-                          promoteAssessment.mutate();
-                        }}
-                        disabled={Boolean(promoteDisabledReason) || promoteAssessment.isLoading}
-                        className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {promoteAssessment.isLoading ? "Publishing..." : "Publish to Live Programs + Goals"}
-                      </button>
+                            promoteAssessment.mutate();
+                          }}
+                          disabled={Boolean(promoteDisabledReason) || promoteAssessment.isLoading}
+                          className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {promoteAssessment.isLoading ? "Publishing..." : "Publish to Live Programs + Goals"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -3829,8 +4379,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 key={goal.id}
                                 archiveGoal={archiveGoal}
                                 archivingGoalId={archivingGoalId}
+                                beginGoalEdit={beginGoalEdit}
                                 canDeleteGoalTargets={canDeleteGoalTargets}
+                                canManageGoalEdit={canManageProgramsGoals}
                                 clientId={client.id}
+                                editingGoalError={editingGoalError}
+                                editingGoalId={editingGoalId}
+                                editingGoalState={editingGoalState}
+                                goalDomainsLoading={goalDomainsLoading}
+                                goalDomainsQueryError={goalDomainsQueryError instanceof Error ? goalDomainsQueryError : null}
+                                goalDomainOptions={activeGoalDomains}
                                 deleteGoalTarget={deleteGoalTarget}
                                 deletingTargetId={deletingTargetId}
                                 domainsById={goalDomainsById}
@@ -3840,8 +4398,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 lifecycleTargetId={lifecycleTargetId}
                                 organizationId={organizationId}
                                 progressionCanManage={canManageProgression}
+                                cancelGoalEdit={cancelGoalEdit}
+                                setEditingGoalState={setEditingGoalState}
                                 setGoalTargetArchiveState={canManageProgramsGoals ? setGoalTargetArchiveState : null}
+                                updateGoal={updateGoal}
                                 updateGoalTarget={canManageProgramsGoals ? updateGoalTarget : null}
+                                updatingGoalId={updatingGoalId}
                                 updatingTargetId={updatingTargetId}
                               />
                             ))}
@@ -3860,98 +4422,101 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             )}
           </div>
 
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Target</h3>
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500 dark:text-gray-300">
-                Targets sit under a goal and define the measurement type and graph source used by trial-level data.
-              </p>
-              <label htmlFor="target-goal" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                Parent goal
-              </label>
-              <select
-                id="target-goal"
-                value={targetGoalId}
-                onChange={(event) => setTargetGoalId(event.target.value)}
-                disabled={liveGoals.length === 0}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              >
-                {liveGoals.length === 0 ? (
-                  <option value="">No goals available</option>
-                ) : (
-                  liveGoals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {goal.title}
-                    </option>
-                  ))
-                )}
-              </select>
-              <label htmlFor="target-name" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                Target name *
-              </label>
-              <input
-                id="target-name"
-                type="text"
-                value={targetName}
-                onChange={(event) => setTargetName(event.target.value)}
-                placeholder="Target name"
-                aria-required="true"
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                  Measurement type
-                  <select
-                    value={targetMeasurementType}
-                    onChange={(event) => setTargetMeasurementType(event.target.value as TargetMeasurementType)}
-                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-                  >
-                    {TARGET_MEASUREMENT_TYPES.map((measurementType) => (
-                      <option key={measurementType} value={measurementType}>
-                        {TARGET_MEASUREMENT_TYPE_LABELS[measurementType]}
+          {canManageProgramsGoals && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Target</h3>
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-300">
+                  Targets sit under a goal and define the measurement type and graph source used by trial-level data.
+                </p>
+                <label htmlFor="target-goal" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Parent goal
+                </label>
+                <select
+                  id="target-goal"
+                  value={targetGoalId}
+                  onChange={(event) => setTargetGoalId(event.target.value)}
+                  disabled={liveGoals.length === 0}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                >
+                  {liveGoals.length === 0 ? (
+                    <option value="">No goals available</option>
+                  ) : (
+                    liveGoals.map((goal) => (
+                      <option key={goal.id} value={goal.id}>
+                        {goal.title}
                       </option>
-                    ))}
-                  </select>
+                    ))
+                  )}
+                </select>
+                <label htmlFor="target-name" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                  Target name *
                 </label>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                  Target status
-                  <select
-                    value={targetStatus}
-                    onChange={(event) => setTargetStatus(event.target.value as GoalTarget["status"])}
-                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-                  >
-                    <option value="draft">Draft</option>
-                    <option value="active">Active</option>
-                    <option value="mastered">Mastered</option>
-                    <option value="archived">Archived</option>
-                  </select>
-                </label>
-              </div>
-              <button
-                type="button"
-                onClick={() => createGoalTarget.mutate()}
-                disabled={Boolean(createTargetDisabledReason) || createGoalTarget.isLoading}
-                className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {createGoalTarget.isLoading ? "Creating..." : "Create Target"}
-              </button>
-              {createTargetDisabledReason && !createGoalTarget.isLoading && (
-                <p className="text-xs text-gray-500 dark:text-gray-300">{createTargetDisabledReason}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Goal</h3>
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500 dark:text-gray-300">
-                Select a program before creating a goal. Required fields are marked with an asterisk.
-              </p>
-              {!hasResolvedProgram && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
-                  {noProgramHelperText}
+                <input
+                  id="target-name"
+                  type="text"
+                  value={targetName}
+                  onChange={(event) => setTargetName(event.target.value)}
+                  placeholder="Target name"
+                  aria-required="true"
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                    Measurement type
+                    <select
+                      value={targetMeasurementType}
+                      onChange={(event) => setTargetMeasurementType(event.target.value as TargetMeasurementType)}
+                      className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                    >
+                      {TARGET_MEASUREMENT_TYPES.map((measurementType) => (
+                        <option key={measurementType} value={measurementType}>
+                          {TARGET_MEASUREMENT_TYPE_LABELS[measurementType]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                    Target status
+                    <select
+                      value={targetStatus}
+                      onChange={(event) => setTargetStatus(event.target.value as GoalTarget["status"])}
+                      className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="active">Active</option>
+                      <option value="mastered">Mastered</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </label>
                 </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => createGoalTarget.mutate()}
+                  disabled={Boolean(createTargetDisabledReason) || createGoalTarget.isLoading}
+                  className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {createGoalTarget.isLoading ? "Creating..." : "Create Target"}
+                </button>
+                {createTargetDisabledReason && !createGoalTarget.isLoading && (
+                  <p className="text-xs text-gray-500 dark:text-gray-300">{createTargetDisabledReason}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {canManageProgramsGoals && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Goal</h3>
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-300">
+                  Select a program before creating a goal. Required fields are marked with an asterisk.
+                </p>
+                {!hasResolvedProgram && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
+                    {noProgramHelperText}
+                  </div>
+                )}
               <label htmlFor="goal-title" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
                 Goal title *
               </label>
@@ -4160,8 +4725,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               {createGoalDisabledReason && !createGoal.isLoading && (
                 <p className="text-xs text-gray-500 dark:text-gray-300">{createGoalDisabledReason}</p>
               )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Program Notes</h3>
@@ -4191,37 +4757,39 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               ))}
             </div>
 
-            <div className="mt-4 space-y-3">
-              <select
-                value={noteType}
-                onChange={(event) => setNoteType(event.target.value as ProgramNote["note_type"])}
-                disabled={!hasResolvedProgram}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              >
-                <option value="plan_update">Plan Update</option>
-                <option value="progress_summary">Progress Summary</option>
-                <option value="other">Other</option>
-              </select>
-              <textarea
-                value={noteContent}
-                onChange={(event) => setNoteContent(event.target.value)}
-                placeholder="Add a program note"
-                rows={3}
-                disabled={!hasResolvedProgram}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => createNote.mutate()}
-                disabled={Boolean(createNoteDisabledReason) || createNote.isLoading}
-                className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {createNote.isLoading ? "Saving..." : "Add Note"}
-              </button>
-              {createNoteDisabledReason && !createNote.isLoading && (
-                <p className="text-xs text-gray-500 dark:text-gray-300">{createNoteDisabledReason}</p>
-              )}
-            </div>
+            {canManageProgramsGoals && (
+              <div className="mt-4 space-y-3">
+                <select
+                  value={noteType}
+                  onChange={(event) => setNoteType(event.target.value as ProgramNote["note_type"])}
+                  disabled={!hasResolvedProgram}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                >
+                  <option value="plan_update">Plan Update</option>
+                  <option value="progress_summary">Progress Summary</option>
+                  <option value="other">Other</option>
+                </select>
+                <textarea
+                  value={noteContent}
+                  onChange={(event) => setNoteContent(event.target.value)}
+                  placeholder="Add a program note"
+                  rows={3}
+                  disabled={!hasResolvedProgram}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => createNote.mutate()}
+                  disabled={Boolean(createNoteDisabledReason) || createNote.isLoading}
+                  className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {createNote.isLoading ? "Saving..." : "Add Note"}
+                </button>
+                {createNoteDisabledReason && !createNote.isLoading && (
+                  <p className="text-xs text-gray-500 dark:text-gray-300">{createNoteDisabledReason}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

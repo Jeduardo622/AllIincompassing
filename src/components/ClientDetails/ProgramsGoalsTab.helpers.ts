@@ -197,7 +197,29 @@ export const parseObjectiveDataPointsInput = (
   if (!Array.isArray(parsed)) {
     throw new Error("Objective data points must be a JSON array.");
   }
-  return parsed.filter((item): item is Record<string, unknown> => !!item && typeof item === "object");
+  return parsed.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("Each objective data point must be an object.");
+    }
+    const entries = Object.entries(item);
+    if (entries.length === 0) {
+      throw new Error("Each objective data point must include at least one field.");
+    }
+    for (const [key, fieldValue] of entries) {
+      if (!key.trim()) {
+        throw new Error("Objective data point field names cannot be blank.");
+      }
+      if (
+        fieldValue !== null &&
+        typeof fieldValue !== "string" &&
+        typeof fieldValue !== "number" &&
+        typeof fieldValue !== "boolean"
+      ) {
+        throw new Error("Objective data point fields must use string, number, boolean, or null values.");
+      }
+    }
+    return item;
+  });
 };
 
 export interface GoalTimelineFields {

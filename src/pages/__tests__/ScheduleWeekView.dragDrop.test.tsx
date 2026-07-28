@@ -458,6 +458,40 @@ describe("ScheduleWeekView drag and drop", () => {
       expect(secondDaySlot?.querySelector('[data-session-id="week-fractional"]')).toBeNull();
     });
 
+    it("exposes create semantics only on truly empty week slots and keeps occupied clicks in edit mode", () => {
+      const sourceDay = new Date(2025, 6, 7);
+      const targetDay = new Date(2025, 6, 8);
+      const session = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "week-occupied-contract",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T10:00:00",
+      });
+      const onCreateSession = vi.fn();
+      const onEditSession = vi.fn();
+      const { container } = render(
+        <ScheduleWeekView
+          weekDays={[sourceDay, targetDay]}
+          timeSlots={["09:00", "09:15", "09:30", "09:45", "10:00"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[session]}
+          useImprovedAppointmentLayout
+          onCreateSession={onCreateSession}
+          onEditSession={onEditSession}
+        />,
+      );
+
+      expect(screen.queryByRole("button", { name: /add session on monday, july 7, 2025 at 9:15 am/i })).toBeNull();
+      const emptySlot = screen.getByRole("button", { name: /add session on tuesday, july 8, 2025 at 10:00 am/i });
+      expect(within(emptySlot).getByText("+ Add session")).toBeTruthy();
+      fireEvent.click(container.querySelector('[data-session-id="week-occupied-contract"]')!);
+      expect(onEditSession).toHaveBeenCalledWith(expect.objectContaining({ id: "week-occupied-contract" }));
+      expect(onCreateSession).not.toHaveBeenCalled();
+      fireEvent.click(emptySlot);
+      expect(onCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({ time: "10:00", date: expect.any(Date) }),
+      );
+    });
+
     it("keeps a 15-minute appointment compact within its week column", () => {
       const sourceDay = new Date(2025, 6, 7);
       const targetDay = new Date(2025, 6, 8);
@@ -509,6 +543,7 @@ describe("ScheduleWeekView drag and drop", () => {
         end_time: "2025-07-07T10:15:00",
         client: { id: "client-gamma", full_name: "Gamma Client" },
       });
+      const onCreateSession = vi.fn();
       const onEditSession = vi.fn();
 
       render(
@@ -518,13 +553,16 @@ describe("ScheduleWeekView drag and drop", () => {
           sessionSlotIndex={new Map()}
           scheduleSessions={[gamma, beta, alpha]}
           useImprovedAppointmentLayout
-          onCreateSession={vi.fn()}
+          onCreateSession={onCreateSession}
           onEditSession={onEditSession}
         />,
       );
 
       const trigger = screen.getByRole("button", { name: /3 appointments/i });
+      expect(within(trigger).getByTestId("schedule-overlap-count")).toHaveTextContent("3");
       fireEvent.click(trigger);
+      expect(onCreateSession).not.toHaveBeenCalled();
+      expect(onEditSession).not.toHaveBeenCalled();
 
       const dialog = screen.getByRole("dialog", { name: /3 overlapping appointments/i });
       const rows = within(dialog).getAllByRole("button");

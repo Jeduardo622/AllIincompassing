@@ -232,7 +232,9 @@ describe('Session Creation', () => {
     const cancelButton = screen.getByText('Cancel');
     await user.click(cancelButton);
 
-    // The modal should close
-    expect(modalClosed).toBe(true);
+    // The modal should close after its exit transition completes.
+    await waitFor(() => {
+      expect(modalClosed).toBe(true);
+    });
   });
-}); 
+});

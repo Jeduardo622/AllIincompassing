@@ -59,3 +59,19 @@ export function getSessionStatusClasses(
 ): { card: string; secondary: string; time: string } {
   return SESSION_STATUS_STYLES[normalizeScheduleSessionStatus(status)];
 }
+
+export function getOverlaySessionStatusClasses(
+  status: Session['status'] | string | null | undefined,
+): { card: string; secondary: string; time: string } {
+  const normalized = normalizeScheduleSessionStatus(status);
+  const base = SESSION_STATUS_STYLES[normalized];
+  const cardWithoutBackgroundHover = base.card
+    .split(' ')
+    .filter((className) => !className.includes('hover:bg-'))
+    .join(' ');
+
+  return {
+    ...base,
+    card: `${cardWithoutBackgroundHover} border border-current/10 hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500`,
+  };
+}

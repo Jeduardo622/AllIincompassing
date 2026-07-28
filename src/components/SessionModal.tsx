@@ -85,6 +85,7 @@ import {
 } from '../lib/sessionCaptureBillingGate';
 
 const ENABLE_ALTERNATIVE_TIME_SUGGESTIONS = false;
+const MODAL_TRANSITION_MS = 160;
 
 export interface SessionModalClinicalNotesPayload {
   session_note_narrative?: string;
@@ -808,9 +809,12 @@ export function SessionModal({
   hideGoalCaptureFields = false,
   onBtAbaSessionFinalized,
 }: SessionModalProps) {
-  const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
+  const [isPlanSectionExpanded, setIsPlanSectionExpanded] = useState(() => !session?.id);
   const [selectedProgramIds, setSelectedProgramIds] = useState<string[]>(() =>
     session?.program_id ? [session.program_id] : [],
+  );
+  const [isClinicalSectionExpanded, setIsClinicalSectionExpanded] = useState(
+    () => Boolean(dataCollectionOnly && session?.id && (session.status === 'scheduled' || session.status === 'in_progress')),
   );
   const [mobileProgramsExpanded, setMobileProgramsExpanded] = useState(false);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -828,6 +832,10 @@ export function SessionModal({
   const [, setBtAbaNoteId] = useState<string | null>(null);
   const [btAbaFinalized, setBtAbaFinalized] = useState(false);
   const btAbaTransitionRef = useRef<'idle' | 'finalizing' | 'finalized'>('idle');
+  const planDisclosureSessionKeyRef = useRef<string | null>(null);
+  const planDisclosureInitializedRef = useRef(false);
+  const planDisclosureTouchedRef = useRef(false);
+  const clinicalDisclosureSessionKeyRef = useRef<string | null>(null);
   const closeoutCaptureRef = useRef<{
     notePayload: BtAbaSessionNotePayload;
     trialEvents: SessionCaptureTrialEventInput[];
@@ -840,6 +848,9 @@ export function SessionModal({
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const previousClientIdRef = useRef<string | null>(null);
   const conflictCheckRequestIdRef = useRef(0);
+  const closeTimerRef = useRef<number | null>(null);
+  const enterFrameRef = useRef<number | null>(null);
+  const closeRequestedRef = useRef(false);
   const activeOrganizationId = useActiveOrganizationId();
   const dialogTitleId = 'session-modal-title';
   const dialogDescriptionId = 'session-modal-description';
@@ -848,6 +859,8 @@ export function SessionModal({
   const conflictDescriptionId = 'session-modal-conflicts-description';
   const conflictHeadingId = 'session-modal-conflicts-heading';
   const queryClient = useQueryClient();
+  const [isEntered, setIsEntered] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
   const canUseStartSessionAction = !isDataCollectionOnly || allowStartSession;
   const isBtClinicalCaptureSession = Boolean(
@@ -1316,6 +1329,8 @@ export function SessionModal({
     () => selectedGoalsForSession.map((goal) => goal.title).join(', '),
     [selectedGoalsForSession],
   );
+  const planSummaryProgramName = programsById.get(programId ?? '')?.name ?? 'Program needed';
+  const planSummaryGoalName = selectedPrimaryGoal?.title ?? 'Goal needed';
   const canonicalStartGoalIds = useMemo(
     () => resolveSessionCloseRequiredGoalIds({
       sessionGoalIds: sessionGoalRows.map((row) => row.goal_id),
@@ -1344,6 +1359,7 @@ export function SessionModal({
   const hasGoalOptionForValue = hasGoalValue
     ? selectedProgramGoals.some((goal) => goal.id === goalId)
     : false;
+  const hasResolvedValidPlan = hasProgramOptionForValue && hasGoalOptionForValue;
   const hasDirtySessionCaptureFields = useMemo(
     () =>
       hasNestedDirtyEntries(dirtyFields.session_note_narrative) ||
@@ -2240,18 +2256,35 @@ export function SessionModal({
   };
 
   const handleAttemptClose = useCallback(() => {
-    if (isSubmitting || btAbaBusy || btAbaFinalized) {
+    if (isSubmitting || btAbaBusy || btAbaFinalized || closeRequestedRef.current) {
       return;
     }
+    const beginVisualClose = () => {
+      if (closeRequestedRef.current) {
+        return;
+      }
+      closeRequestedRef.current = true;
+      setIsClosing(true);
+      setIsEntered(false);
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+      if (reduceMotion) {
+        onClose();
+        return;
+      }
+      closeTimerRef.current = window.setTimeout(() => {
+        closeTimerRef.current = null;
+        onClose();
+      }, MODAL_TRANSITION_MS);
+    };
     if (!hasUnsavedSessionChanges) {
-      onClose();
+      beginVisualClose();
       return;
     }
     const shouldDiscard = window.confirm(
       'You have unsaved changes in this session. Close without saving?'
     );
     if (shouldDiscard) {
-      onClose();
+      beginVisualClose();
     }
   }, [btAbaBusy, btAbaFinalized, hasUnsavedSessionChanges, isSubmitting, onClose]);
 
@@ -2576,6 +2609,8 @@ export function SessionModal({
     }
     return isInProgressSession ? 'live' : 'edit';
   }, [session, isInProgressSession]);
+  const isPrimaryClinicalCaptureMode = isDataCollectionOnly || isBtClinicalCaptureSession || isInProgressSession;
+  const planDisclosureSessionKey = session?.id ?? '__new__';
   const modalTitle = useMemo(() => {
     if (!session) {
       return 'New Session';
@@ -3072,6 +3107,50 @@ export function SessionModal({
     ...(retryHint ? [retryHintDescriptionId] : []),
     ...(conflicts.length > 0 ? [conflictDescriptionId] : []),
   ].join(' ');
+  const isCloseInteractionDisabled = isSubmitting || btAbaBusy || btAbaFinalized || isClosing;
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsEntered(false);
+      setIsClosing(false);
+      closeRequestedRef.current = false;
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      if (enterFrameRef.current !== null) {
+        window.cancelAnimationFrame(enterFrameRef.current);
+        enterFrameRef.current = null;
+      }
+      return;
+    }
+
+    setIsClosing(false);
+    setIsEntered(false);
+    closeRequestedRef.current = false;
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    if (enterFrameRef.current !== null) {
+      window.cancelAnimationFrame(enterFrameRef.current);
+    }
+    enterFrameRef.current = window.requestAnimationFrame(() => {
+      setIsEntered(true);
+      enterFrameRef.current = null;
+    });
+
+    return () => {
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      if (enterFrameRef.current !== null) {
+        window.cancelAnimationFrame(enterFrameRef.current);
+        enterFrameRef.current = null;
+      }
+    };
+  }, [isOpen, session?.id]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -3252,16 +3331,60 @@ export function SessionModal({
 
   useEffect(() => {
     if (!isOpen) {
-      setIsPlanSummaryExpanded(false);
+      planDisclosureSessionKeyRef.current = null;
+      planDisclosureInitializedRef.current = false;
+      planDisclosureTouchedRef.current = false;
+      clinicalDisclosureSessionKeyRef.current = null;
+      setIsPlanSectionExpanded(!session?.id);
+      setIsClinicalSectionExpanded(isPrimaryClinicalCaptureMode);
     }
-  }, [isOpen]);
+  }, [isOpen, isPrimaryClinicalCaptureMode, session?.id]);
 
   useEffect(() => {
-    if (!isOpen || !isInProgressSession) {
+    if (!isOpen) {
       return;
     }
-    setIsPlanSummaryExpanded(false);
-  }, [isOpen, isInProgressSession, session?.id]);
+    if (planDisclosureSessionKeyRef.current !== planDisclosureSessionKey) {
+      planDisclosureSessionKeyRef.current = planDisclosureSessionKey;
+      planDisclosureInitializedRef.current = false;
+      planDisclosureTouchedRef.current = false;
+    }
+    if (!session?.id) {
+      if (!planDisclosureInitializedRef.current) {
+        setIsPlanSectionExpanded(true);
+        planDisclosureInitializedRef.current = true;
+      }
+      return;
+    }
+    if (!planDisclosureInitializedRef.current && hasResolvedValidPlan) {
+      if (!planDisclosureTouchedRef.current) {
+        setIsPlanSectionExpanded(false);
+      }
+      planDisclosureInitializedRef.current = true;
+    }
+    if (!planDisclosureInitializedRef.current && !hasResolvedValidPlan && !planDisclosureTouchedRef.current) {
+      setIsPlanSectionExpanded(true);
+    }
+  }, [hasResolvedValidPlan, isOpen, isPrimaryClinicalCaptureMode, planDisclosureSessionKey, session?.id]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const clinicalDisclosureSessionKey =
+      `${planDisclosureSessionKey}:${isPrimaryClinicalCaptureMode ? 'primary' : 'secondary'}`;
+    if (clinicalDisclosureSessionKeyRef.current !== clinicalDisclosureSessionKey) {
+      clinicalDisclosureSessionKeyRef.current = clinicalDisclosureSessionKey;
+      setIsClinicalSectionExpanded(isPrimaryClinicalCaptureMode);
+    }
+  }, [isOpen, isPrimaryClinicalCaptureMode, planDisclosureSessionKey]);
+
+  useEffect(() => {
+    if (!isOpen || (!progressionConflict && progressionNotices.length === 0)) {
+      return;
+    }
+    setIsClinicalSectionExpanded(true);
+  }, [isOpen, progressionConflict, progressionNotices]);
 
   useEffect(() => {
     if (!isOpen || !isInProgressSession) {
@@ -3323,27 +3446,35 @@ export function SessionModal({
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black bg-opacity-50 sm:items-center p-0 sm:p-4"
+      className={`fixed inset-0 z-50 flex items-end justify-center p-0 transition-colors motion-reduce:transition-none sm:items-center sm:p-4 ${
+        isEntered && !isClosing ? 'bg-black/50' : 'bg-black/0'
+      }`}
       role="presentation"
+      {...(isClosing ? { inert: '' } : {})}
+      style={{ transitionDuration: `${MODAL_TRANSITION_MS}ms` }}
       onMouseDown={(event) => {
-        if (event.target === overlayRef.current) {
+        if (!isClosing && event.target === overlayRef.current) {
           handleAttemptClose();
         }
       }}
     >
       <div
         ref={dialogRef}
-        className="flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl dark:bg-dark-lighter sm:h-auto sm:max-h-[90vh] sm:rounded-xl"
+        className={`flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl transition-[opacity,transform] motion-reduce:transition-none dark:bg-dark-lighter sm:h-auto sm:max-h-[86vh] sm:rounded-xl ${
+          isEntered && !isClosing ? 'scale-100 opacity-100' : 'scale-[0.985] opacity-0'
+        }`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={dialogTitleId}
         aria-describedby={dialogDescriptionIds}
         data-session-status={session?.status ?? ""}
         data-session-modal-mode={sessionModalMode}
+        data-transition-state={isClosing ? 'closing' : isEntered ? 'open' : 'opening'}
+        style={{ transitionDuration: `${MODAL_TRANSITION_MS}ms` }}
         tabIndex={-1}
       >
         {/* Header */}
-        <div className="border-b bg-white px-4 py-3 dark:border-gray-700 dark:bg-dark-lighter sm:px-5 sm:py-4">
+        <div className="border-b bg-white px-4 py-2.5 dark:border-gray-700 dark:bg-dark-lighter sm:px-5 sm:py-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
@@ -3364,7 +3495,7 @@ export function SessionModal({
             ref={closeButtonRef}
             type="button"
             onClick={handleAttemptClose}
-            disabled={isSubmitting || btAbaBusy || btAbaFinalized}
+            disabled={isCloseInteractionDisabled}
             aria-label="Close session modal"
             title="Close session modal"
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
@@ -3375,7 +3506,7 @@ export function SessionModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 sm:p-5 sm:pb-6 max-sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
+        <div className="flex-1 overflow-y-auto px-4 py-3 pb-24 sm:p-4 sm:pb-5 max-sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
           <p id={dialogDescriptionId} className="sr-only">
             Use this form to create or update a therapy session.
           </p>
@@ -3571,15 +3702,22 @@ export function SessionModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsPlanSummaryExpanded((current) => !current)}
-                  aria-expanded={isPlanSummaryExpanded}
-                  className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-white dark:border-gray-700 dark:text-gray-300 dark:hover:bg-dark"
+                  aria-expanded={isPlanSectionExpanded}
+                  aria-controls="session-modal-plan-goals"
+                  onClick={() => {
+                    planDisclosureTouchedRef.current = true;
+                    setIsPlanSectionExpanded((current) => !current);
+                  }}
+                  className="flex min-w-0 items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-left text-xs font-medium text-gray-600 hover:bg-white dark:border-gray-700 dark:text-gray-300 dark:hover:bg-dark"
                 >
-                  {isPlanSummaryExpanded ? 'Hide summary' : 'Show summary'}
+                  <span>Plan &amp; goals</span>
+                  <span aria-hidden="true" className="truncate text-[11px] text-gray-500 dark:text-gray-400">
+                    {planSummaryProgramName} · {planSummaryGoalName}
+                  </span>
                 </button>
               </div>
 
-              {isPlanSummaryExpanded && (selectedTherapist || selectedClient || selectedPrimaryGoal) && (
+              {(selectedTherapist || selectedClient || selectedPrimaryGoal) && (
                 <div className="grid gap-2 rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-300 sm:grid-cols-3">
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-900 dark:text-white">Therapist</p>
@@ -3650,6 +3788,7 @@ export function SessionModal({
               </div>
             </div>
 
+            <div id="session-modal-plan-goals" hidden={!isPlanSectionExpanded} className="space-y-4">
             {!shouldHideGoalCaptureFields && selectedPrimaryGoal && (
               <>
                 <details className="rounded-lg border border-blue-200 bg-blue-50 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100 sm:hidden">
@@ -3794,7 +3933,6 @@ export function SessionModal({
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.goal_id.message}</p>
               )}
 
-            {availableProgramGroups.length > 0 && (
               <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -3807,6 +3945,8 @@ export function SessionModal({
                     {selectedProgramIds.length} selected
                   </span>
                 </div>
+                {availableProgramGroups.length > 0 ? (
+                  <>
                 <div className="hidden flex-wrap gap-2 sm:flex">
                   {availableProgramGroups.map(({ program, goals: groupedGoals }) => {
                     const isSelected = selectedProgramSet.has(program.id);
@@ -3874,8 +4014,13 @@ export function SessionModal({
                     Tracking: {selectedPrograms.map((program) => program.name).join(', ')}
                   </p>
                 )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Select a client to load active programs and goals.
+                  </p>
+                )}
               </div>
-            )}
             </div>
 
             {selectedProgramGoals.length > 0 && (
@@ -4047,6 +4192,7 @@ export function SessionModal({
                 <input type="hidden" {...register('goal_id')} />
               </>
             )}
+            </div>
             </section>
 
             <section className="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
@@ -4191,8 +4337,27 @@ export function SessionModal({
             </section>
 
             {session?.id && !shouldHideGoalCaptureFields && (
+              <>
+                {!isPrimaryClinicalCaptureMode ? (
+                  <button
+                    type="button"
+                    aria-expanded={isClinicalSectionExpanded}
+                    aria-controls="session-modal-clinical-details"
+                    onClick={() => setIsClinicalSectionExpanded((current) => !current)}
+                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-left dark:border-indigo-900/40 dark:bg-indigo-900/10"
+                  >
+                    <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                      Clinical capture and secondary details
+                    </span>
+                    <span className="text-xs text-indigo-700 dark:text-indigo-300">
+                      {isClinicalSectionExpanded ? 'Expanded' : 'Collapsed'}
+                    </span>
+                  </button>
+                ) : null}
               <section
+                id="session-modal-clinical-details"
                 ref={sessionCaptureSectionRef}
+                hidden={!isClinicalSectionExpanded}
                 className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-4 dark:border-indigo-900/40 dark:bg-indigo-900/10"
                 data-testid="session-modal-capture-section"
               >
@@ -5140,6 +5305,7 @@ export function SessionModal({
                   </>
                 )}
               </section>
+              </>
             )}
           </form>
           )}
@@ -5147,7 +5313,7 @@ export function SessionModal({
 
         {/* Footer */}
         {modalStep === 'capture' && !isCompletedBtAbaSession ? (
-        <div className="sticky bottom-0 z-10 border-t border-gray-200/80 bg-white/90 px-4 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md dark:border-gray-700 dark:bg-dark-lighter/90 sm:px-5 sm:py-4 sm:pb-4">
+        <div className="sticky bottom-0 z-10 border-t border-gray-200/80 bg-white/90 px-4 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md dark:border-gray-700 dark:bg-dark-lighter/90 sm:px-5 sm:py-3 sm:pb-3">
           <div className="flex flex-col gap-3">
             <div
               role="group"
@@ -5157,7 +5323,7 @@ export function SessionModal({
               <button
                 type="button"
                 onClick={handleAttemptClose}
-                disabled={isSubmitting}
+                disabled={isCloseInteractionDisabled}
                 className="min-h-11 shrink-0 rounded-full px-4 text-sm font-medium text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-gray-300 sm:bg-white sm:px-4 sm:text-gray-700 sm:shadow-sm sm:hover:bg-gray-50"
               >
                 Cancel
@@ -5166,7 +5332,7 @@ export function SessionModal({
                 <button
                   type="button"
                   onClick={handleStartSession}
-                  disabled={!canStartSession || isDependentDataLoading || isStartPlanDataLoading}
+                  disabled={isClosing || !canStartSession || isDependentDataLoading || isStartPlanDataLoading}
                   className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-emerald-200 sm:bg-emerald-50/90 sm:px-4 sm:font-medium sm:text-emerald-800 sm:shadow-sm sm:hover:bg-emerald-100"
                 >
                   Start Session
@@ -5176,7 +5342,7 @@ export function SessionModal({
                 <button
                   type="button"
                   onClick={handleCloseSession}
-                  disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives || isBtAbaNoteLoadError}
+                  disabled={isClosing || isSubmitting || isDependentDataLoading || isLoadingAlternatives || isBtAbaNoteLoadError}
                   className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-300 dark:hover:bg-violet-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-violet-200 sm:bg-violet-50/90 sm:px-4 sm:font-medium sm:text-violet-800 sm:shadow-sm sm:hover:bg-violet-100"
                 >
                   Close Session
@@ -5187,7 +5353,7 @@ export function SessionModal({
               <button
                 type="submit"
                 form="session-form"
-                disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
+                disabled={isClosing || isSubmitting || isDependentDataLoading || isLoadingAlternatives}
                 className="flex min-h-12 w-full items-center justify-center rounded-xl border border-transparent bg-blue-600 px-4 py-2.5 text-base font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-11 sm:w-auto sm:min-w-[12rem] sm:rounded-md sm:py-2 sm:text-sm sm:font-medium sm:shadow-sm sm:shadow-none"
               >
                 {isSubmitting ? (

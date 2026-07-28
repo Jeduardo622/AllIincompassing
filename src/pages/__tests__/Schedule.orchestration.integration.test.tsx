@@ -400,6 +400,8 @@ vi.mock("../../components/SessionModal", () => ({
 
 import { Schedule } from "../Schedule";
 
+const addSessionButtonName = /^Add session on .+ at \d{1,2}:\d{2} [AP]M$/i;
+
 const waitForScheduleGridReady = () =>
   waitFor(() => {
     const activeView = screen.queryByTestId("week-view") ?? screen.queryByTestId("day-view");
@@ -482,7 +484,7 @@ describe("Schedule orchestration integration hardening", () => {
     expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0]).not.toHaveProperty("trialEvents");
     expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0].goalNotes).toEqual({ "goal-1": "Keep this note" });
     await waitFor(() => expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed"));
-    fireEvent.click(screen.getByLabelText("close-modal"));
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
   });
 
   it("pending-schedule create forwards metadata and does not reuse it on next manual create", async () => {
@@ -519,7 +521,7 @@ describe("Schedule orchestration integration hardening", () => {
       expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     fireEvent.click(screen.getByLabelText("submit-create"));
 
@@ -548,7 +550,7 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     fireEvent.click(screen.getByLabelText("submit-create"));
 
@@ -845,7 +847,7 @@ describe("Schedule orchestration integration hardening", () => {
     });
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
 
     expect(await screen.findByTestId("modal-mode")).toHaveTextContent("create");
     expect(screen.getByTestId("allow-start-session")).toHaveTextContent("false");
@@ -995,7 +997,7 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
 
     expect(screen.getByTestId("hide-goal-capture-fields")).toHaveTextContent(expectedHidden);
@@ -1008,7 +1010,7 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     expect(screen.getByTestId("modal-mode")).toHaveTextContent("create");
     fireEvent.click(screen.getByLabelText("submit-capture-persist-by-id"));
@@ -1050,7 +1052,7 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     fireEvent.click(screen.getByLabelText("submit-capture-persist-by-id"));
 
@@ -1069,7 +1071,7 @@ describe("Schedule orchestration integration hardening", () => {
     renderWithProviders(<Schedule />);
     await screen.findByRole("heading", { name: /Schedule/i });
 
-    fireEvent.click(screen.getAllByLabelText("Add session")[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
     await screen.findByTestId("session-modal");
     fireEvent.click(screen.getByLabelText("submit-create"));
 
@@ -1078,10 +1080,38 @@ describe("Schedule orchestration integration hardening", () => {
     });
 
     fireEvent.click(screen.getByLabelText("close-modal"));
-    await waitFor(() => {
-      expect(screen.getByTestId("retry-hint")).toHaveTextContent("");
-    });
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
     expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
+    expect(showSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it("closing an edit modal resets parent state so the next empty-slot open is a fresh create modal", async () => {
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+    );
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    expect(screen.getByTestId("modal-mode")).toHaveTextContent("edit");
+    expect(document.querySelectorAll('[data-testid="session-modal"]')).toHaveLength(1);
+    expect(screen.getByTestId("schedule-search")).toHaveTextContent("scheduleModal=edit");
+
+    fireEvent.click(screen.getByLabelText("close-modal"));
+    await waitFor(() => {
+      expect(screen.getByTestId("schedule-search")).not.toHaveTextContent("scheduleModal");
+      expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument();
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: addSessionButtonName })[0]);
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("modal-mode")).toHaveTextContent("create");
+    expect(screen.getByTestId("retry-hint")).toHaveTextContent("");
+    expect(document.querySelectorAll('[data-testid="session-modal"]')).toHaveLength(1);
   });
 
 });

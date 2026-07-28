@@ -6,6 +6,7 @@ import type { Session } from '../types';
 import { buildScheduleDayLayout, type ScheduleLayoutItem } from './schedule-layout';
 import { createSessionSlotKey } from './schedule-utils';
 import {
+  getOverlaySessionStatusClasses,
   getSessionStatusClasses,
   isScheduleSessionDragEligible,
   normalizeScheduleSessionStatus,
@@ -230,6 +231,10 @@ export const TimeSlot = React.memo(
     const handleTimeSlotClick = useCallback(() => {
       onCreateSession({ date: day, time });
     }, [day, time, onCreateSession]);
+    const emptySlotLabel = `Add session on ${format(day, 'EEEE, MMMM d, yyyy')} at ${format(
+      parseSlotInstant(day, time) ?? day,
+      'h:mm a',
+    )}`;
 
     const handleSessionClick = useCallback(
       (event: React.MouseEvent, session: Session) => {
@@ -312,14 +317,14 @@ export const TimeSlot = React.memo(
         tabIndex={enableSlotCreateChrome || allowDragAndDrop ? 0 : undefined}
         aria-label={
           enableSlotCreateChrome
-            ? "Add session"
+            ? emptySlotLabel
             : allowDragAndDrop
               ? "Drop appointment here"
             : slotSessions.length === 0
               ? "Empty time slot"
               : undefined
         }
-        title={enableSlotCreateChrome ? "Add session" : undefined}
+        title={enableSlotCreateChrome ? emptySlotLabel : undefined}
         onDragEnter={
           allowDragAndDrop
             ? () => {
@@ -368,9 +373,12 @@ export const TimeSlot = React.memo(
         {enableSlotCreateChrome ? (
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute top-1 right-1 z-10 opacity-0 group-hover:opacity-100 p-1 rounded-full text-gray-500 transition-opacity dark:text-gray-400"
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
           >
-            <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-xs font-medium text-blue-700 shadow-sm dark:bg-gray-900/90 dark:text-blue-200">
+              <Plus className="h-3.5 w-3.5" />
+              + Add session
+            </span>
           </span>
         ) : null}
 
@@ -571,7 +579,7 @@ function OverlaySessionCard({
   const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
   const suppressSessionClickRef = useRef(false);
   const sourcePosition = useMemo(() => getSessionSourcePosition(session), [session]);
-  const statusStyles = getSessionStatusClasses(session.status);
+  const statusStyles = getOverlaySessionStatusClasses(session.status);
   const dragEligibleSession = isScheduleSessionDragEligible(session.status);
   const touchMovePickup = !hasFinePointer && allowDragAndDrop && dragEligibleSession && sourcePosition !== null;
   const canDragWithFinePointer = allowDragAndDrop && hasFinePointer && dragEligibleSession && sourcePosition !== null;
@@ -864,9 +872,18 @@ function ScheduleOverlayItem({
         aria-expanded={open}
         aria-controls={open ? `schedule-cluster-${item.sessions.map((session) => session.id).join('-')}` : undefined}
         onClick={() => setOpen((current) => !current)}
-        className={`h-full w-full overflow-hidden rounded px-2 py-1 text-left text-xs shadow-sm ${NEUTRAL_CARD_CLASSES}`}
+        className="h-full w-full overflow-hidden rounded border border-slate-300 bg-white px-2 py-1 text-left text-xs text-slate-900 shadow-sm transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
       >
-        <div className="font-medium">{item.sessions.length} appointments</div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-medium">{item.sessions.length} appointments</div>
+          <span
+            aria-hidden="true"
+            data-testid="schedule-overlap-count"
+            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-700 px-1.5 text-[11px] font-semibold text-white dark:bg-slate-200 dark:text-slate-900"
+          >
+            {item.sessions.length}
+          </span>
+        </div>
         <div className="truncate text-[11px]">{clusterLabel.replace(/^\d+ appointments, /i, '')}</div>
       </button>
 
@@ -997,28 +1014,34 @@ export const DayColumn = React.memo(
 
     return (
       <div className="relative">
-        {timeSlots.map((time) => (
-          <TimeSlot
-            key={time}
-            time={time}
-            day={day}
-            slotSessions={useImprovedAppointmentLayout ? [] : (sessionSlotIndex.get(createSessionSlotKey(dayKey, time)) ?? [])}
-            onCreateSession={onCreateSession}
-            onEditSession={onEditSession}
-            allowCreateInEmptySlot={allowCreateInEmptySlot}
-            allowDragAndDrop={allowDragAndDrop}
-            activeDragSessionId={activeDragSessionId}
-            activeDropSlotKey={activeDropSlotKey}
-            onStartSessionDrag={onStartSessionDrag}
-            onSessionDrop={onSessionDrop}
-            onHoverSlotDuringDrag={onHoverSlotDuringDrag}
-            onEndSessionDrag={onEndSessionDrag}
-            previewSession={previewSession}
-            previewSessionId={previewSessionId}
-            onHoverPreviewSessionChange={onHoverPreviewSessionChange}
-            onFocusPreviewSessionChange={onFocusPreviewSessionChange}
-          />
-        ))}
+        {timeSlots.map((time) => {
+          const slotIsOccupied =
+            useImprovedAppointmentLayout &&
+            scheduleSessions.some((session) => doesSessionOverlapSlot(session, day, time));
+
+          return (
+            <TimeSlot
+              key={time}
+              time={time}
+              day={day}
+              slotSessions={useImprovedAppointmentLayout ? [] : (sessionSlotIndex.get(createSessionSlotKey(dayKey, time)) ?? [])}
+              onCreateSession={onCreateSession}
+              onEditSession={onEditSession}
+              allowCreateInEmptySlot={allowCreateInEmptySlot && !slotIsOccupied}
+              allowDragAndDrop={allowDragAndDrop}
+              activeDragSessionId={activeDragSessionId}
+              activeDropSlotKey={activeDropSlotKey}
+              onStartSessionDrag={onStartSessionDrag}
+              onSessionDrop={onSessionDrop}
+              onHoverSlotDuringDrag={onHoverSlotDuringDrag}
+              onEndSessionDrag={onEndSessionDrag}
+              previewSession={previewSession}
+              previewSessionId={previewSessionId}
+              onHoverPreviewSessionChange={onHoverPreviewSessionChange}
+              onFocusPreviewSessionChange={onFocusPreviewSessionChange}
+            />
+          );
+        })}
         {useImprovedAppointmentLayout ? (
           <ScheduleOverlayColumn
             day={day}

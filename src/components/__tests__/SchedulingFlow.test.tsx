@@ -604,6 +604,7 @@ describe('Scheduling Flow - Client with Therapist', () => {
       expect(screen.getByText('Edit Session')).toBeInTheDocument();
       expect(screen.getByDisplayValue('Regular session')).toBeInTheDocument();
       expect(await screen.findByText(/Tracking: Behavior Plan/i)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /plan & goals/i }));
       getSessionGoalCheckboxes(/Increase communication/i).forEach((checkbox) => expect(checkbox).toBeChecked());
 
       // Update notes

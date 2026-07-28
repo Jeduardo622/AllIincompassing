@@ -1197,6 +1197,19 @@ describe('SessionModal', () => {
     timeZone: "America/New_York",
   };
 
+  const setReducedMotionPreference = (matches: boolean) => {
+    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)' ? matches : false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+  };
+
   const expectVisiblePlanSelectorsRemoved = () => {
     expect(screen.queryByRole('combobox', { name: /^Program$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: /^Primary Goal$/i })).not.toBeInTheDocument();
@@ -1211,6 +1224,20 @@ describe('SessionModal', () => {
       await userEvent.click(checkbox);
     }
   };
+  const expandPlanGoals = async () => {
+    const disclosure = await screen.findByRole('button', { name: /plan & goals/i });
+    if (disclosure.getAttribute('aria-expanded') === 'false') {
+      await userEvent.click(disclosure);
+      await waitFor(() => expect(disclosure).toHaveAttribute('aria-expanded', 'true'));
+    }
+  };
+  const expandClinicalDetails = async () => {
+    const disclosure = screen.queryByRole('button', { name: /clinical capture and secondary details/i });
+    if (disclosure && disclosure.getAttribute('aria-expanded') === 'false') {
+      await userEvent.click(disclosure);
+      await waitFor(() => expect(disclosure).toHaveAttribute('aria-expanded', 'true'));
+    }
+  };
 
   const btInProgressSession = {
     id: 'session-bt-review', therapist_id: 'test-therapist-1', client_id: 'test-client-1',
@@ -1218,6 +1245,12 @@ describe('SessionModal', () => {
     start_time: '2026-03-01T10:00:00.000Z', end_time: '2026-03-01T11:00:00.000Z',
     status: 'in_progress', notes: '', created_at: '2026-03-01T09:00:00.000Z', created_by: null,
     updated_at: '2026-03-01T09:00:00.000Z', updated_by: null, started_at: '2026-03-01T10:00:00.000Z',
+  } satisfies Session;
+  const validScheduledSession = {
+    ...btInProgressSession,
+    id: 'session-plan-summary',
+    status: 'scheduled',
+    started_at: null,
   } satisfies Session;
 
   it('renders the modal when open', () => {
@@ -1547,35 +1580,193 @@ describe('SessionModal', () => {
   });
 
   it('closes modal when cancel button is clicked', async () => {
+    setReducedMotionPreference(true);
     renderWithProviders(<SessionModal {...defaultProps} />);
     
     const cancelButton = screen.getByRole('button', { name: /Cancel/i });
     await userEvent.click(cancelButton);
 
     expect(defaultProps.onClose).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('makes the modal inert during a 160 ms exit and defers onClose until the scheduled callback runs', async () => {
+    setReducedMotionPreference(false);
+    const onClose = vi.fn();
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout').mockImplementation(((
+      _handler: TimerHandler,
+      _timeout?: number,
+      ..._args: unknown[]
+    ) => 1) as typeof window.setTimeout);
+
+    renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /close session modal/i }));
+    });
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('data-transition-state', 'closing');
+    expect(dialog.closest('[role="presentation"]')).toHaveAttribute('inert');
+    const closeTimerCalls = setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 160);
+    expect(closeTimerCalls).toHaveLength(1);
+    expect(onClose).not.toHaveBeenCalled();
+
+    setTimeoutSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('closes immediately when reduced motion is preferred', async () => {
+    setReducedMotionPreference(true);
+    const onClose = vi.fn();
+
+    renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /close session modal/i }));
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('schedules the close callback exactly once during the exit transition even after duplicate close input', async () => {
+    setReducedMotionPreference(false);
+    const onClose = vi.fn();
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout').mockImplementation(((
+      _handler: TimerHandler,
+      _timeout?: number,
+      ..._args: unknown[]
+    ) => 1) as typeof window.setTimeout);
+
+    renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /close session modal/i }));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      fireEvent.keyDown(document, { key: 'Tab' });
+      fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+    });
+
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-transition-state', 'closing');
+    const closeTimerCalls = setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 160);
+    expect(closeTimerCalls).toHaveLength(1);
+    expect(onClose).not.toHaveBeenCalled();
+
+    setTimeoutSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps focus stable during the inert close window, ignores duplicate close input, and restores the opener only after unmount', async () => {
+    setReducedMotionPreference(false);
+    const opener = document.createElement('button');
+    opener.textContent = 'Outside opener';
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const onClose = vi.fn();
+    const handleClose = () => {
+      onClose();
+      rendered.rerender(
+        <SessionModal
+          {...defaultProps}
+          isOpen={false}
+          onClose={handleClose}
+        />
+      );
+    };
+
+    const rendered = renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onClose={handleClose}
+      />
+    );
+
+    const closeButton = screen.getByRole('button', { name: /close session modal/i }) as HTMLButtonElement;
+    expect(closeButton).toHaveFocus();
+
+    const openerFocusSpy = vi.spyOn(opener, 'focus');
+    const closeButtonFocusSpy = vi.spyOn(closeButton, 'focus');
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout').mockImplementation(((
+      _handler: TimerHandler,
+      _timeout?: number,
+      ..._args: unknown[]
+    ) => 1) as typeof window.setTimeout);
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout').mockImplementation(((_id?: number) => {}) as typeof window.clearTimeout);
+    await act(async () => {
+      fireEvent.click(closeButton);
+    });
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('data-transition-state', 'closing');
+    expect(dialog.closest('[role="presentation"]')).toHaveAttribute('inert');
+    const closeTimerCalls = setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 160);
+    expect(closeTimerCalls).toHaveLength(1);
+    expect(openerFocusSpy).not.toHaveBeenCalled();
+    expect(closeButtonFocusSpy).not.toHaveBeenCalled();
+    expect(opener).not.toHaveFocus();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+      fireEvent.keyDown(document, { key: 'Tab' });
+      fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(openerFocusSpy).not.toHaveBeenCalled();
+    expect(closeButtonFocusSpy).not.toHaveBeenCalled();
+    expect(opener).not.toHaveFocus();
+
+    await act(async () => {
+      const closeCallback = closeTimerCalls[0]?.[0];
+      expect(closeCallback).toBeTypeOf('function');
+      (closeCallback as () => void)();
+    });
+
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(opener).toHaveFocus();
+    });
+    expect(openerFocusSpy).toHaveBeenCalledTimes(1);
+    expect(closeButtonFocusSpy).not.toHaveBeenCalled();
+
+    openerFocusSpy.mockRestore();
+    closeButtonFocusSpy.mockRestore();
+    opener.remove();
+    vi.unstubAllGlobals();
   });
 
   it('shows unsaved state and asks before closing dirty changes', async () => {
+    setReducedMotionPreference(true);
     const onClose = vi.fn();
     renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
 
-    const notesInput = screen.getByLabelText(/Schedule Notes/i);
-    await userEvent.type(notesInput, 'Therapist working note');
-
-    expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent('Unsaved changes.');
+    fireEvent.change(screen.getByLabelText(/Schedule Notes/i), {
+      target: { value: 'Therapist working note' },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent('Unsaved changes.');
+    });
 
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const closeCountBeforeCancel = onClose.mock.calls.length;
     await userEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
-    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalledTimes(closeCountBeforeCancel);
 
     confirmSpy.mockReturnValue(true);
     await userEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
-    expect(onClose.mock.calls.length).toBeGreaterThan(closeCountBeforeCancel);
+    await waitFor(() => expect(onClose.mock.calls.length).toBeGreaterThan(closeCountBeforeCancel));
+    confirmSpy.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it('uses an accessible close button label and closes on Escape', async () => {
+    setReducedMotionPreference(true);
     renderWithProviders(<SessionModal {...defaultProps} />);
 
     const closeButton = screen.getByRole('button', { name: /close session modal/i });
@@ -1585,6 +1776,7 @@ describe('SessionModal', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(defaultProps.onClose).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('traps focus within the modal when tabbing', async () => {
@@ -3038,6 +3230,9 @@ describe('SessionModal', () => {
         />
       );
 
+      await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+      await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+      await expandPlanGoals();
       await screen.findByRole('button', { name: /Default Program/i });
       await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
       await userEvent.click(screen.getByRole('button', { name: /Second Program/i }));
@@ -3260,7 +3455,7 @@ describe('SessionModal', () => {
     );
 
     expect(await screen.findByText(/No active goals found for this client/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Default Program$/i })).not.toBeInTheDocument();
     const unavailableGoalUpdateButton = screen.getByRole('button', { name: /Update Session/i });
     await waitFor(() => expect(unavailableGoalUpdateButton).not.toBeDisabled());
     await userEvent.click(unavailableGoalUpdateButton);
@@ -3378,7 +3573,7 @@ describe('SessionModal', () => {
     );
 
     expect(await screen.findByText(/No active goals found for this client/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Default Program$/i })).not.toBeInTheDocument();
     const legacyNoGoalUpdateButton = screen.getByRole('button', { name: /Update Session/i });
     await waitFor(() => expect(legacyNoGoalUpdateButton).not.toBeDisabled());
     await userEvent.click(legacyNoGoalUpdateButton);
@@ -4037,12 +4232,10 @@ describe('SessionModal', () => {
       expect(screen.getByLabelText(/Start Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/End Time/i)).toBeDisabled();
       expect(screen.getByLabelText(/Schedule Notes/i)).toBeDisabled();
+      await expandPlanGoals();
       expect(await screen.findByRole('button', { name: /Default Program/i })).toBeDisabled();
-      expect(screen.getByRole('button', { name: /Second Program/i })).toBeDisabled();
-      expect(screen.getByRole('checkbox', { name: /Default Program/i })).toBeDisabled();
-      for (const goalCheckbox of screen.getAllByRole('checkbox', { name: /Default Goal/i })) {
-        expect(goalCheckbox).toBeDisabled();
-      }
+      expect(screen.queryByRole('button', { name: /Second Program/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /Default Goal/i })).not.toBeInTheDocument();
 
       const startButton = await screen.findByRole('button', { name: /Start Session/i });
       await waitFor(() => expect(startButton).not.toBeDisabled());
@@ -4278,6 +4471,7 @@ describe('SessionModal', () => {
     fireEvent.change(notes, { target: { value: 'Do not discard this entry' } });
     await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
     expect(notes).toHaveValue('Do not discard this entry');
+    await expandClinicalDetails();
     expect(await screen.findByRole('alert')).toHaveTextContent('Replacement Target');
     expect(screen.getByRole('alert')).toHaveTextContent('Baseline');
     expect(screen.getByRole('alert')).toHaveTextContent('completed session is preserved');
@@ -4389,6 +4583,7 @@ describe('SessionModal', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await expandPlanGoals();
     await screen.findByRole('button', { name: /Default Program/i });
     await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
     await selectGoalFromLowerControls(/Default Goal/i);
@@ -4455,8 +4650,13 @@ describe('SessionModal', () => {
       />
     );
 
+    await expandClinicalDetails();
+    const linkedPerGoalNote = await screen.findByLabelText(/^Per-goal note$/i);
+    await waitFor(() => expect(linkedPerGoalNote).toHaveValue('Previously saved note'));
+
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await expandPlanGoals();
     await screen.findByRole('button', { name: /Default Program/i });
     await userEvent.click(screen.getByRole('button', { name: /Default Program/i }));
     await selectGoalFromLowerControls(/Default Goal/i);
@@ -4508,6 +4708,196 @@ describe('SessionModal', () => {
     expect(screen.queryByRole('button', { name: /Start Session/i })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /^Skill$/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /^BX$/i })).toBeInTheDocument();
+  });
+
+  it('keeps plan and goals expanded in create mode until valid selections exist', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    const disclosure = screen.getByRole('button', { name: /plan & goals/i });
+
+    expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Programs in this session')).toBeVisible();
+  });
+
+  it('defaults a valid edited plan to a compact summary and preserves values across expansion', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} session={validScheduledSession} />);
+
+    const disclosure = await screen.findByRole('button', { name: /plan & goals/i });
+
+    await waitFor(() => expect(disclosure).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.getByText(/Default Program.*Default Goal/i)).toBeVisible();
+
+    await userEvent.click(disclosure);
+    expect(screen.getByText('Programs in this session')).toBeVisible();
+
+    await userEvent.click(disclosure);
+    await userEvent.click(disclosure);
+
+    expect(screen.getAllByRole('button', { name: /Default Goal is primary goal/i })[0]).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps an unavailable stored plan expanded so paused selections stay visible', async () => {
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain([
+          {
+            ...mockPrograms[0],
+            id: 'inactive-program-1',
+            name: 'Inactive Published Program',
+            status: 'inactive',
+          },
+        ]);
+      }
+      if (table === 'goals') {
+        return buildChain([
+          {
+            ...mockGoals[0],
+            id: 'paused-goal-1',
+            program_id: 'inactive-program-1',
+            title: 'Paused Published Goal',
+            status: 'paused',
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={{
+          ...validScheduledSession,
+          id: 'session-unavailable-plan-summary',
+          program_id: 'inactive-program-1',
+          goal_id: 'paused-goal-1',
+        }}
+      />,
+    );
+
+    const disclosure = await screen.findByRole('button', { name: /plan & goals/i });
+    await waitFor(() => expect(disclosure).toHaveAttribute('aria-expanded', 'true'));
+    expect(screen.getByText(/No active programs found for this client/i)).toBeVisible();
+    expect(screen.getByText('Programs in this session')).toBeVisible();
+  });
+
+  it('preserves create-mode plan selections across collapse and re-expansion after a valid plan exists', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+
+    const defaultProgramButton = await screen.findByRole('button', { name: /Default Program/i });
+    await userEvent.click(defaultProgramButton);
+    await userEvent.click(screen.getByRole('button', { name: /Second Program/i }));
+    const setPrimaryButton = screen.queryAllByRole('button', { name: /Set Default Goal as primary goal/i })[0];
+    if (setPrimaryButton) {
+      await userEvent.click(setPrimaryButton);
+    }
+    await selectGoalFromLowerControls(/Second Goal/);
+
+    const disclosure = screen.getByRole('button', { name: /plan & goals/i });
+    await userEvent.click(disclosure);
+    expect(screen.queryByText('Programs in this session')).not.toBeVisible();
+
+    await userEvent.click(disclosure);
+
+    expect(screen.getByRole('button', { name: /Default Program/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('button', { name: /Default Goal is primary goal/i })[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(getGoalCheckbox(/Second Goal/)).toBeChecked();
+  });
+
+  it('keeps BT clinical capture expanded when it is the primary task', () => {
+    renderWithProviders(
+      <SessionModal {...defaultProps} session={btInProgressSession} dataCollectionOnly />,
+    );
+
+    expect(screen.getByTestId('session-modal-capture-section')).toBeVisible();
+  });
+
+  it('defaults secondary clinical details collapsed for a scheduled editable session', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} session={validScheduledSession} />);
+
+    const disclosure = await screen.findByRole('button', { name: /clinical capture and secondary details/i });
+
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('session-modal-capture-section')).not.toBeVisible();
+
+    await userEvent.click(disclosure);
+
+    expect(screen.getByTestId('session-modal-capture-section')).toBeVisible();
+  });
+
+  it('preserves user-expanded secondary clinical details after deferred plan hydration resolves', async () => {
+    let resolvePrograms: ((value: { data: unknown[]; error: null }) => void) | null = null;
+    let resolveGoals: ((value: { data: unknown[]; error: null }) => void) | null = null;
+    const programsPromise = new Promise<{ data: unknown[]; error: null }>((resolve) => {
+      resolvePrograms = resolve;
+    });
+    const goalsPromise = new Promise<{ data: unknown[]; error: null }>((resolve) => {
+      resolveGoals = resolve;
+    });
+    const buildDeferredChain = (orderPromise: Promise<{ data: unknown[]; error: null }>) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(() => orderPromise),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        neq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildDeferredChain(programsPromise);
+      }
+      if (table === 'goals') {
+        return buildDeferredChain(goalsPromise);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(<SessionModal {...defaultProps} session={validScheduledSession} />);
+
+    const disclosure = await screen.findByRole('button', { name: /clinical capture and secondary details/i });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+    await expandClinicalDetails();
+    expect(screen.getByTestId('session-modal-capture-section')).toBeVisible();
+
+    await act(async () => {
+      resolvePrograms?.({ data: mockPrograms, error: null });
+      resolveGoals?.({ data: mockGoals, error: null });
+      await Promise.all([programsPromise, goalsPromise]);
+    });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /plan & goals/i })).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.getByRole('button', { name: /clinical capture and secondary details/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('session-modal-capture-section')).toBeVisible();
   });
 
   it('hides goal planning and session capture fields when schedule goal capture is suppressed', async () => {
@@ -5584,6 +5974,7 @@ describe('SessionModal', () => {
         />,
       );
 
+      await expandClinicalDetails();
       await userEvent.click(await screen.findByRole('button', { name: /Use plan target/i }));
 
       const correctOutcome = screen.getByRole('radio', {
@@ -5615,9 +6006,11 @@ describe('SessionModal', () => {
           {...defaultProps}
           onSubmit={onSubmit}
           existingSessions={[]}
+          dataCollectionOnly
           session={session}
         />,
       );
+      await expandClinicalDetails();
       expect(await screen.findByRole('radio', {
         name: /^Correct for target 1:/i,
       })).toBeChecked();

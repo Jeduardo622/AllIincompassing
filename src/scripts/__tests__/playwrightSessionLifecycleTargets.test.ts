@@ -77,4 +77,90 @@ describe("buildLifecycleTargetPairs", () => {
       { therapistId: "therapist-b", clientId: "client-2" },
     ]);
   });
+
+  it("drops therapist-client pairs whose approved authorization and service windows do not cover any candidate booking date", () => {
+    const result = buildLifecycleTargetPairs({
+      therapistIds: ["therapist-a", "therapist-b"],
+      clientIds: ["client-1", "client-2"],
+      candidateStarts: [
+        new Date("2026-08-20T16:00:00.000Z"),
+        new Date("2026-08-21T16:00:00.000Z"),
+      ],
+      authorizedPairs: [
+        {
+          therapistId: "therapist-a",
+          clientId: "client-1",
+          authorizationWindows: [
+            {
+              startDate: "2026-08-01",
+              endDate: "2026-08-10",
+              serviceDateWindows: [
+                { startDate: "2026-08-01", endDate: "2026-08-10" },
+              ],
+            },
+          ],
+        },
+        {
+          therapistId: "therapist-b",
+          clientId: "client-2",
+          authorizationWindows: [
+            {
+              startDate: "2026-08-01",
+              endDate: "2026-08-31",
+              serviceDateWindows: [
+                { startDate: "2026-08-18", endDate: "2026-08-25" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result).toEqual([
+      {
+        therapistId: "therapist-b",
+        clientId: "client-2",
+        authorizationWindows: [
+          {
+            startDate: "2026-08-01",
+            endDate: "2026-08-31",
+            serviceDateWindows: [
+              { startDate: "2026-08-18", endDate: "2026-08-25" },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("fails closed when no authorization and service window covers a candidate booking date", () => {
+    const result = buildLifecycleTargetPairs({
+      therapistIds: ["therapist-a"],
+      clientIds: ["client-1"],
+      candidateStarts: [new Date("2026-08-20T16:00:00.000Z")],
+      authorizedPairs: [
+        {
+          therapistId: "therapist-a",
+          clientId: "client-1",
+          authorizationWindows: [
+            {
+              startDate: "2026-08-01",
+              endDate: "2026-08-31",
+              serviceDateWindows: [
+                { startDate: "2026-08-01", endDate: "2026-08-10" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result).toEqual([]);
+    expect(buildLifecycleTargetPairs({
+      therapistIds: ["therapist-a"],
+      clientIds: ["client-1"],
+      candidateStarts: [new Date("2026-08-20T16:00:00.000Z")],
+      authorizedPairs: [{ therapistId: "therapist-a", clientId: "client-1" }],
+    })).toEqual([]);
+  });
 });

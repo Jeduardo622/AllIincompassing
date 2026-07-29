@@ -59,8 +59,12 @@ No RLS policy, browser RPC grant, cancellation behavior, or ordinary booking aut
     - `src/lib/__tests__/supabase.edge.test.ts`: the local jsdom `Blob` lacks `text()`
 - Blocked:
   - `npm run ci:playwright`: missing `PW_SUPERADMIN_EMAIL`/`PW_SUPERADMIN_PASSWORD` or `PW_ADMIN_EMAIL`/`PW_ADMIN_PASSWORD`
-  - hosted privileged-grant, migration-drift, and function-auth parity checks: no local database URL and parity enforcement is CI-only
+  - hosted privileged-grant and migration-drift checks: no local database URL, so these remain CI-only
   - `npm run verify:local`: cannot be green locally while the two reproduced baseline tests remain
+- Live CI correction:
+  - The first PR run failed because pre-deploy production auth parity required `sessions-reactivate` before the main-only deploy job could run.
+  - The production parity scope remains limited to already-deployed functions.
+  - `sessions-reactivate` remains mandatory in `deploy-session-edge-bundle.mjs`, whose post-deploy list check fails if the function is absent or `verify_jwt` is not `true`.
 - Result: implementation checks are green; protected hosted checks and human review remain required.
 
 ## Specialist Review
@@ -70,6 +74,6 @@ Initial code, security, and Supabase reviews identified and blocked a split move
 ## Residual Risk And Manual Check
 
 - The migration and function have not been executed against production.
-- CI must prove hosted schema/grant/auth parity.
+- The Supabase PR branch applied the migration successfully. Production schema/grant verification and the guarded main-branch function deploy remain post-merge requirements.
 - The user will manually measure the modal/button experience on the reviewable preview.
 - Do not merge until required human review and live required checks allow it.

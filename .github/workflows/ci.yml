@@ -203,7 +203,7 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           CI_SUPABASE_AUTH_PARITY_REQUIRED: "true"
           CI_EDGE_ROUTE_PARITY_REQUIRED: "true"
-          SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,sessions-reactivate,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes"
+          SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes"
           CI_RLS_OVERLAP_REQUIRED: ${{ secrets.SUPABASE_DB_URL != '' && 'true' || 'false' }}
           CI_REQUIRED_CHECKS: "ci-gate"
           API_AUTHORITY_MODE: "edge"

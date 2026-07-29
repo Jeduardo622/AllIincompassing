@@ -67,6 +67,8 @@ No RLS policy, browser RPC grant, cancellation behavior, or ordinary booking aut
   - `sessions-reactivate` remains mandatory in `deploy-session-edge-bundle.mjs`, whose post-deploy list check fails if the function is absent or `verify_jwt` is not `true`.
   - The next run cleared policy, then both full-suite workflows exhausted Node's default heap and ended with `ERR_IPC_CHANNEL_CLOSED` after many passing files.
   - The two affected full-suite steps now set `NODE_OPTIONS=--max-old-space-size=6144`, protected by `tests/workflows/ci-test-memory.test.ts`.
+  - That run also exposed `runtime-migration-parity` comparing the unmerged migration against production on pull requests, despite the documented push-only promotion contract.
+  - Runtime migration parity and its `ci-gate` enforcement are now restricted to pushes on `main`; the production session Edge deployment still depends on a successful parity result. The invariant is protected by `check-session-deploy-safety`.
 - Result: implementation checks are green; protected hosted checks and human review remain required.
 
 ## Specialist Review

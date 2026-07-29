@@ -547,6 +547,11 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   }
 
   if (runtimeParity) {
+    if (runtimeParity.if !== MAIN_PUSH_IF) {
+      violations.push(
+        "runtime_migration_parity must be restricted to push on refs/heads/main",
+      );
+    }
     const parityStep = runtimeParity.steps.find((step) => stepHasExactCommand(step, "node scripts/ci/check-runtime-migration-parity.mjs"));
     if (
       !parityStep ||
@@ -654,13 +659,21 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     const gateLines = executableLines(gateStep?.run);
     const resultChecks = [
       ['[ "${TENANT_SAFETY_RESULT}" = "success" ] || failed+=("tenant-safety=${TENANT_SAFETY_RESULT}")', "ci_gate must enforce tenant_safety result failure"],
-      ['[ "${RUNTIME_PARITY_RESULT}" = "success" ] || failed+=("runtime-migration-parity=${RUNTIME_PARITY_RESULT}")', "ci_gate must enforce runtime_migration_parity result failure"],
       ['[ "${START_SESSION_RUNTIME_CONTRACT_RESULT}" = "success" ] || failed+=("start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}")', "ci_gate must enforce start_session_runtime_contract result failure"],
     ];
     for (const [line, message] of resultChecks) {
       if (!gateLines.includes(line)) {
         violations.push(message);
       }
+    }
+    if (!hasSequence(gateLines, [
+      'if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ] && [ "${RUNTIME_PARITY_RESULT}" != "success" ]; then',
+      'failed+=("runtime-migration-parity=${RUNTIME_PARITY_RESULT}")',
+      "fi",
+    ])) {
+      violations.push(
+        "ci_gate must enforce runtime_migration_parity success only on main pushes",
+      );
     }
     if (!hasSequence(gateLines, [
       'if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ] && [ "${DEPLOY_SESSION_EDGE_RESULT}" != "success" ]; then',

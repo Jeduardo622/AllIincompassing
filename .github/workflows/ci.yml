@@ -236,6 +236,7 @@ jobs:
     needs:
       - policy
       - change_scope
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -1100,7 +1101,9 @@ jobs:
           failed=()
           [ "${POLICY_RESULT}" = "success" ] || failed+=("policy=${POLICY_RESULT}")
           [ "${TENANT_SAFETY_RESULT}" = "success" ] || failed+=("tenant-safety=${TENANT_SAFETY_RESULT}")
-          [ "${RUNTIME_PARITY_RESULT}" = "success" ] || failed+=("runtime-migration-parity=${RUNTIME_PARITY_RESULT}")
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ] && [ "${RUNTIME_PARITY_RESULT}" != "success" ]; then
+            failed+=("runtime-migration-parity=${RUNTIME_PARITY_RESULT}")
+          fi
           [ "${START_SESSION_RUNTIME_CONTRACT_RESULT}" = "success" ] || failed+=("start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}")
           if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ] && [ "${DEPLOY_SESSION_EDGE_RESULT}" != "success" ]; then
             failed+=("deploy-session-edge=${DEPLOY_SESSION_EDGE_RESULT}")

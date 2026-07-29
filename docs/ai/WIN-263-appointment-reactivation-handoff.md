@@ -65,6 +65,8 @@ No RLS policy, browser RPC grant, cancellation behavior, or ordinary booking aut
   - The first PR run failed because pre-deploy production auth parity required `sessions-reactivate` before the main-only deploy job could run.
   - The production parity scope remains limited to already-deployed functions.
   - `sessions-reactivate` remains mandatory in `deploy-session-edge-bundle.mjs`, whose post-deploy list check fails if the function is absent or `verify_jwt` is not `true`.
+  - The next run cleared policy, then both full-suite workflows exhausted Node's default heap and ended with `ERR_IPC_CHANNEL_CLOSED` after many passing files.
+  - The two affected full-suite steps now set `NODE_OPTIONS=--max-old-space-size=6144`, protected by `tests/workflows/ci-test-memory.test.ts`.
 - Result: implementation checks are green; protected hosted checks and human review remain required.
 
 ## Specialist Review

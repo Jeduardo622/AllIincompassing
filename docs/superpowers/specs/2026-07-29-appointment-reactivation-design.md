@@ -9,11 +9,11 @@ Allow authorized scheduling staff to reactivate a cancelled appointment at its o
 - Linear issue: `WIN-263`
 - Classification: `high-risk human-reviewed`
 - Lane: `critical`
-- Protected surfaces: `supabase/migrations/**`, `supabase/functions/**`, tenant-scoped scheduling writes
+- Protected surfaces: `supabase/migrations/**`, `supabase/functions/**`, tenant-scoped scheduling writes, `scripts/ci/**`, `.github/workflows/**`
 - Exact UI and server roles: `admin`, `admin_schedule`, `midtier`, `bcba`, `super_admin`
 - Denied roles: `therapist`, `bt`
 
-The implementation may add one focused migration, one dedicated Edge Function, one browser client helper, and the minimum Schedule/SessionModal wiring and tests. It must not broaden schedule RLS, rewrite cancellation, change ordinary create/reschedule behavior, or alter session-capture billing rules.
+The implementation may add one focused migration, one dedicated Edge Function, one browser client helper, the minimum Schedule/SessionModal wiring and tests, and the existing deployment-bundle/parity entries required to ship that function. It must not broaden schedule RLS, rewrite cancellation, change ordinary create/reschedule behavior, or alter session-capture billing rules.
 
 ## Current-State Evidence
 
@@ -29,13 +29,13 @@ The hosted Supabase project `wnnjeqheqxxyrgsjmygy` is the runtime source of trut
 
 For an existing cancelled appointment, `SessionModal` shows a distinct **Reactivate appointment** button when `canCreateSchedules` is true. The normal submit button does not reactivate a cancelled session by changing the status dropdown.
 
-Selecting the action asks for confirmation using the original appointment date and time. While the request is pending, the reactivation action is disabled.
+Selecting the action asks for confirmation using the appointment date and time currently shown in the modal. While the request is pending, the reactivation action is disabled.
 
 Outcomes:
 
 1. Success: the same appointment row returns to `scheduled`, cancellation attribution is cleared, the modal closes, schedule queries refresh, and a success notice is shown.
 2. Already reactivated: the response is treated as an idempotent success and the schedule refreshes.
-3. Therapist or client conflict: the appointment remains cancelled. The modal closes and the existing reschedule selection state is activated for that same appointment so the user can choose another empty slot.
+3. Therapist, client, or active-hold conflict: the appointment remains cancelled and the modal stays open with a retry hint. Staff can edit the appointment time in the same modal and select **Reactivate appointment** again. The protected endpoint validates and applies the edited window together with reactivation in one transaction; there is no intermediate booking write.
 4. Invalid linked authorization: the appointment remains cancelled and the modal shows a clear error. Rescheduling is not opened because a time change may not repair authorization coverage.
 5. Forbidden, missing, or other lifecycle state: the appointment remains unchanged and a clear error is shown.
 
@@ -45,7 +45,9 @@ Add an authenticated `sessions-reactivate` Edge Function accepting:
 
 ```json
 {
-  "session_id": "uuid"
+  "session_id": "uuid",
+  "start_time": "optional ISO-8601 timestamp",
+  "end_time": "optional ISO-8601 timestamp"
 }
 ```
 
@@ -59,11 +61,11 @@ The request also accepts the existing `Idempotency-Key` and trace headers. The f
 6. maps structured RPC outcomes to stable HTTP responses;
 7. persists and replays responses by scoped idempotency key.
 
-The Edge Function never accepts an organization, therapist, client, date, or status from the browser. Those values come from the stored session row.
+The Edge Function never accepts an organization, therapist, client, or status from the browser. It accepts the modal's start/end window only as an optional complete pair; organization, therapist, and client always come from the stored session row.
 
 ## Transactional Database Operation
 
-Add `public.reactivate_cancelled_session(p_session_id uuid, p_actor_id uuid)` as `SECURITY DEFINER` with an empty search path. Revoke execute from `public`, `anon`, and `authenticated`; grant execute only to `service_role`.
+Add `public.reactivate_cancelled_session(p_session_id uuid, p_actor_id uuid, p_start_time timestamptz default null, p_end_time timestamptz default null)` as `SECURITY DEFINER` with an empty search path. Revoke execute from `public`, `anon`, and `authenticated`; grant execute only to `service_role`.
 
 Within one transaction the RPC:
 
@@ -72,13 +74,14 @@ Within one transaction the RPC:
 3. returns idempotent success when status is already `scheduled`;
 4. returns `INVALID_STATUS` for any state other than `cancelled`;
 5. validates any linked authorization row remains in the same organization and client scope, is approved, and covers the stored session date;
-6. checks therapist and client overlap against other non-cancelled sessions using half-open `[start_time, end_time)` ranges;
-7. checks unexpired therapist and client session holds using the same half-open range semantics;
-8. updates only `status = 'scheduled'`, `cancellation_attribution = null`, `updated_at`, and `updated_by`;
-9. writes one `session_reactivated` audit row in the same transaction, preserving the prior cancellation attribution without copying notes or PHI;
-10. returns the stored session identifiers and original time window.
+6. validates an optional start/end pair and otherwise uses the stored window;
+7. acquires a temporary `session_holds` row for the target therapist, client, and window so reactivation serializes with ordinary booking and concurrent reactivation;
+8. checks therapist and client overlap against other non-cancelled sessions using half-open `[start_time, end_time)` ranges;
+9. updates `status = 'scheduled'`, `cancellation_attribution = null`, the validated target window, `updated_at`, and `updated_by`;
+10. removes the temporary hold and writes one `session_reactivated` audit row in the same transaction, preserving prior cancellation attribution and before/after window metadata without copying notes or PHI;
+11. returns the stored session identifiers and final time window.
 
-The status transition trigger is changed only enough to permit `cancelled -> scheduled`. Completed, no-show, and in-progress lifecycle rules stay unchanged. The RPC preserves `notes`, clinical links, plan links, times, therapist, client, and session ID.
+The status transition trigger is changed only enough to permit `cancelled -> scheduled` when a transaction-local authorization flag is set by the protected RPC immediately before its update. Generic browser/RLS writes cannot use the reverse transition. Completed, no-show, and in-progress lifecycle rules stay unchanged. The RPC preserves `notes`, clinical links, plan links, times, therapist, client, and session ID.
 
 When `authorization_id` is null, reactivation follows current booking behavior and does not invent a new requirement that ordinary booking does not enforce. When a linked authorization exists, stale or cross-scope linkage is rejected instead of being silently ignored.
 
@@ -93,7 +96,7 @@ When `authorization_id` is null, reactivation follows current booking behavior a
 
 ## Audit And Idempotency
 
-The idempotency key is scoped to the authenticated actor and `sessions-reactivate`. Reusing a key with a different session payload returns a conflict. Replaying the same request returns the stored response.
+The idempotency key is scoped to the authenticated actor and `sessions-reactivate`. Reusing a key with a different session or requested window returns a conflict. Concurrent identical requests replay the first stored response rather than returning a false conflict.
 
 A successful transition writes a `session_reactivated` audit event atomically with the status update. It contains only operational identifiers, prior cancellation attribution, and status/time metadata; it must not copy schedule notes or PHI into the audit payload. An already-scheduled replay does not add another lifecycle audit event.
 
@@ -105,7 +108,8 @@ Test-first coverage must prove:
 - Edge Function authentication, exact role matrix, organization scoping, response mapping, audit requirement, and idempotency;
 - browser helper headers and response normalization;
 - modal action visibility and disabled/pending behavior;
-- Schedule success refresh and conflict-to-reschedule wiring.
+- Schedule success refresh and conflict-to-edit-and-retry wiring;
+- deployment bundle inclusion and `verify_jwt` parity configuration for `sessions-reactivate`.
 
 Required commands are:
 
@@ -130,4 +134,4 @@ Stop and re-route if implementation requires:
 - changing cancellation behavior;
 - adding new tables or a broad audit redesign;
 - replacing the existing reschedule interaction;
-- touching authentication, runtime configuration, CI, or deployment configuration.
+- broadening authentication, runtime configuration, CI, or deployment behavior beyond the explicit new-function bundle and parity entries.

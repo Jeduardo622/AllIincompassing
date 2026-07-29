@@ -4,7 +4,7 @@
 
 **Goal:** Let exact schedule-creation roles safely reactivate a cancelled appointment at its original time or enter the existing reschedule flow when that time conflicts.
 
-**Architecture:** A dedicated authenticated Edge Function resolves the caller and tenant, requires an exact scheduling role, and calls one service-role-only transactional RPC. The RPC locks and validates the existing session before changing only its lifecycle fields. `Schedule` owns mutation outcomes and reschedule state; `SessionModal` owns the explicit button and confirmation UI.
+**Architecture:** A dedicated authenticated Edge Function resolves the caller and tenant, requires an exact scheduling role, and calls one service-role-only transactional RPC. The RPC locks the existing session, acquires the booking hold boundary, and atomically applies the validated target window and lifecycle transition. `Schedule` owns mutation outcomes; `SessionModal` owns the explicit button, editable window, and confirmation UI.
 
 **Tech Stack:** React, TypeScript, TanStack Query, Vitest, Supabase Edge Functions, PostgreSQL PL/pgSQL
 
@@ -17,8 +17,9 @@
 - Preserve the same session ID, original times, notes, plan links, and clinical links.
 - Clear `cancellation_attribution` only after successful reactivation.
 - Do not broaden RLS or browser RPC grants.
-- A conflict keeps the row cancelled and enters the existing reschedule interaction.
+- A conflict keeps the row cancelled and the modal open so staff can edit the time and retry through the same protected atomic endpoint.
 - A linked authorization failure keeps the row cancelled and shows an error.
+- Deployment integration is limited to the existing session Edge bundle, JWT parity scope, and focused bundle test.
 - No production migration or function deployment before human review.
 
 ---
@@ -31,7 +32,7 @@
 
 **Interfaces:**
 - Consumes: `public.sessions`, `public.authorizations`, `public.enforce_session_status_transition()`
-- Produces: `public.reactivate_cancelled_session(p_session_id uuid, p_actor_id uuid) returns jsonb`, executable only by `service_role`
+- Produces: `public.reactivate_cancelled_session(p_session_id uuid, p_actor_id uuid, p_start_time timestamptz default null, p_end_time timestamptz default null) returns jsonb`, executable only by `service_role`
 
 - [ ] **Step 1: Write the failing migration contract test**
 
@@ -370,7 +371,7 @@ await Promise.all([
 
 For `reactivated` and `already_reactivated`, close using the existing modal reset branch and show the success notice.
 
-For conflict, close the modal, preserve the cancelled `selectedSession` as the reschedule source, and enter the same selection state used by long-press/drag rescheduling. Do not optimistically change its status.
+For conflict, keep the modal open, preserve the cancelled `selectedSession`, and show the existing retry hint. If staff edits the time and retries, send the edited UTC window directly to the protected reactivation endpoint. Do not call the generic booking/move path or optimistically change status.
 
 Pass `onReactivate` only when `!therapistScopedView`; pass the mutation pending state to `isReactivating`.
 
@@ -394,7 +395,20 @@ npm test -- tests/session-reactivation-migration.test.ts tests/edge/sessions-rea
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Add the protected deployment contract**
+
+Add `verify_jwt = true` in `supabase/functions/sessions-reactivate/function.toml`, include `sessions-reactivate` in `scripts/ci/deploy-session-edge-bundle.mjs` and `SUPABASE_FUNCTION_PARITY_SCOPE`, and add an explicit deployment assertion in `tests/ci/deploy-session-edge-bundle.test.ts`.
+
+Run:
+
+```powershell
+npm test -- tests/ci/deploy-session-edge-bundle.test.ts
+npm run ci:check-focused
+```
+
+Expected: the focused deploy contract and policy checks pass; hosted parity may remain credential-gated locally.
+
+- [ ] **Step 6: Commit**
 
 ```powershell
 git add src/pages/Schedule.tsx src/pages/__tests__/Schedule.orchestration.integration.test.tsx src/pages/__tests__/Schedule.reschedule.integration.test.tsx

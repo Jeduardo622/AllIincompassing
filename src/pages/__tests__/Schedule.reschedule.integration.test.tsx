@@ -7,6 +7,7 @@ import type { Client, Session, Therapist } from "../../types";
 import { createSessionSlotKey } from "../schedule-utils";
 
 const bookSessionViaApiMock = vi.fn();
+const reactivateSessionMock = vi.fn();
 const showErrorMock = vi.fn();
 const showSuccessMock = vi.fn();
 let latestRescheduleHandler:
@@ -70,6 +71,10 @@ vi.mock("../../lib/optimizedQueries", () => ({
 vi.mock("../../features/scheduling/domain/booking", async () => ({
   ...(await vi.importActual("../../features/scheduling/domain/booking")),
   bookSessionViaApi: (...args: unknown[]) => bookSessionViaApiMock(...args),
+}));
+
+vi.mock("../../lib/sessionReactivation", () => ({
+  reactivateSession: (...args: unknown[]) => reactivateSessionMock(...args),
 }));
 
 vi.mock("../../lib/toast", () => ({
@@ -190,6 +195,7 @@ const getSlotSessionIds = (container: HTMLElement, slotKey: string) => {
 describe("Schedule reschedule integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    reactivateSessionMock.mockReset();
     scheduleStore = buildScheduleStore();
     latestRescheduleHandler = null;
     latestAllowDragAndDrop = undefined;

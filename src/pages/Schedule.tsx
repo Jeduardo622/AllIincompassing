@@ -35,6 +35,7 @@ import {
   useSmartPrefetch,
 } from "../lib/optimizedQueries";
 import { cancelSessions } from "../lib/sessionCancellation";
+import { reactivateSession } from "../lib/sessionReactivation";
 import { showError, showSuccess } from "../lib/toast";
 import { logger } from "../lib/logger/logger";
 import { toError } from "../lib/logger/normalizeError";
@@ -125,6 +126,8 @@ import { weekForwardPreviewResultSchema } from "../lib/contracts/scheduling";
 
 const MISSING_NOTES_RETRY_HINT =
   "Before closing this in-progress session, persist per-goal note text for each worked goal on a linked session note. Save session capture from Schedule (Session capture), or add notes in Client Details > Session Notes. Narrative and signatures are completed in Client Details.";
+const REACTIVATION_CONFLICT_RETRY_HINT =
+  "Original appointment time is no longer available. Choose a new time to reschedule this appointment.";
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 const _scheduleBoundedConcurrencyMarker = AUTO_SCHEDULE_CONCURRENCY;
 const isWeekForwardRecurrenceSourceSession = (
@@ -1335,6 +1338,39 @@ export const Schedule = React.memo(() => {
     },
   });
 
+  const reactivateSessionMutation = useMutation({
+    mutationFn: async ({
+      sessionId,
+      start_time,
+      end_time,
+    }: {
+      sessionId: string;
+      start_time?: string;
+      end_time?: string;
+    }) => reactivateSession({
+      sessionId,
+      ...(start_time ? { startTime: start_time } : {}),
+      ...(end_time ? { endTime: end_time } : {}),
+    }),
+    onSuccess: async (result) => {
+      if (result.outcome === "conflict") {
+        setRetryActionLabel(null);
+        setRetryHint(REACTIVATION_CONFLICT_RETRY_HINT);
+        return;
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["sessions-batch"] }),
+      ]);
+      showSuccess("Appointment reactivated");
+      applyScheduleResetBranch({ kind: "update-success" }, scheduleResetSetters);
+    },
+    onError: (error) => {
+      showError(toError(error, "Unable to reactivate appointment.").message);
+    },
+  });
+
   // Memoized callbacks
   const handleCreateSession = useCallback(
     (
@@ -1565,6 +1601,22 @@ export const Schedule = React.memo(() => {
     }
     navigate(`/clients/${selectedSession.client_id}?tab=session-notes`);
   }, [navigate, selectedSession?.client_id]);
+
+  const handleReactivateSession = useCallback(async ({
+    session,
+    start_time,
+    end_time,
+  }: {
+    session: Session;
+    start_time: string;
+    end_time: string;
+  }) => {
+    await reactivateSessionMutation.mutateAsync({
+      sessionId: session.id,
+      start_time,
+      end_time,
+    });
+  }, [reactivateSessionMutation]);
 
   const _handleDeleteSession = useCallback(
     async (sessionId: string) => {
@@ -2002,6 +2054,8 @@ export const Schedule = React.memo(() => {
           !selectedSession.started_at
         }
         canCreateSchedules={!therapistScopedView}
+        onReactivate={!therapistScopedView ? handleReactivateSession : undefined}
+        isReactivating={reactivateSessionMutation.isPending}
         hideGoalCaptureFields={effectiveRole === "admin" || effectiveRole === "admin_schedule"}
         defaultTherapistId={selectedTherapist}
         defaultClientId={selectedClient}

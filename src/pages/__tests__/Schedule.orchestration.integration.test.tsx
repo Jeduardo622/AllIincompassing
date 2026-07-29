@@ -6,6 +6,7 @@ import { renderWithProviders, screen, waitFor } from "../../test/utils";
 
 const bookSessionViaApiMock = vi.fn();
 const cancelSessionsMock = vi.fn();
+const reactivateSessionMock = vi.fn();
 const showErrorMock = vi.fn();
 const showSuccessMock = vi.fn();
 const buildBookSessionApiPayloadMock = vi.fn((session: unknown) => session);
@@ -26,6 +27,14 @@ currentSessionEnd.setHours(11, 0, 0, 0);
 const originalSessionWindow = {
   start_time: currentSessionStart.toISOString(),
   end_time: currentSessionEnd.toISOString(),
+};
+const shiftedSessionStart = new Date(originalSessionWindow.start_time);
+shiftedSessionStart.setHours(11, 15, 0, 0);
+const shiftedSessionEnd = new Date(originalSessionWindow.end_time);
+shiftedSessionEnd.setHours(12, 15, 0, 0);
+const shiftedSessionWindow = {
+  start_time: shiftedSessionStart.toISOString(),
+  end_time: shiftedSessionEnd.toISOString(),
 };
 
 const futureSessionNoteWindow = {
@@ -95,6 +104,10 @@ vi.mock("../../lib/sessionCancellation", () => ({
   cancelSessions: (...args: unknown[]) => cancelSessionsMock(...args),
 }));
 
+vi.mock("../../lib/sessionReactivation", () => ({
+  reactivateSession: (...args: unknown[]) => reactivateSessionMock(...args),
+}));
+
 vi.mock("../../lib/toast", () => ({
   showError: (...args: unknown[]) => showErrorMock(...args),
   showSuccess: (...args: unknown[]) => showSuccessMock(...args),
@@ -130,22 +143,26 @@ vi.mock("../../components/SessionModal", () => ({
     isOpen,
     onClose,
     onSubmit,
+    onReactivate,
     session,
     retryHint,
     dataCollectionOnly,
     allowStartSession,
     canCreateSchedules,
+    isReactivating,
     hideGoalCaptureFields,
     onBtAbaSessionFinalized,
   }: {
     isOpen: boolean;
     onClose: () => void;
     onSubmit: (data: Record<string, unknown>) => unknown;
+    onReactivate?: (input: { session: { id: string }; start_time: string; end_time: string }) => unknown;
     session?: { id: string };
     retryHint?: string | null;
     dataCollectionOnly?: boolean;
     allowStartSession?: boolean;
     canCreateSchedules?: boolean;
+    isReactivating?: boolean;
     hideGoalCaptureFields?: boolean;
     onBtAbaSessionFinalized?: (result: { sessionId: string; noteId: string; status: 'completed'; progressionResults: [] }) => Promise<void>;
   }) =>
@@ -156,6 +173,8 @@ vi.mock("../../components/SessionModal", () => ({
         <div data-testid="data-collection-only">{dataCollectionOnly ? "true" : "false"}</div>
         <div data-testid="allow-start-session">{allowStartSession ? "true" : "false"}</div>
         <div data-testid="can-create-schedules">{canCreateSchedules ? "true" : "false"}</div>
+        <div data-testid="reactivate-available">{session && onReactivate ? "true" : "false"}</div>
+        <div data-testid="reactivating">{isReactivating ? "true" : "false"}</div>
         <div data-testid="hide-goal-capture-fields">{hideGoalCaptureFields ? "true" : "false"}</div>
         <button
           aria-label="submit-complete-with-stale-trial"
@@ -391,6 +410,46 @@ vi.mock("../../components/SessionModal", () => ({
         >
           submit-cancel-client
         </button>
+        <button
+          aria-label="reactivate-session"
+          disabled={!session || !onReactivate || isReactivating}
+          onClick={() => {
+            const result = session && onReactivate
+              ? onReactivate({
+                  session,
+                  start_time: originalSessionWindow.start_time,
+                  end_time: originalSessionWindow.end_time,
+                })
+              : undefined;
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          reactivate-session
+        </button>
+        <button
+          aria-label="reactivate-session-shifted"
+          disabled={!session || !onReactivate || isReactivating}
+          onClick={() => {
+            const shiftedStart = new Date(originalSessionWindow.start_time);
+            shiftedStart.setHours(11, 15, 0, 0);
+            const shiftedEnd = new Date(originalSessionWindow.end_time);
+            shiftedEnd.setHours(12, 15, 0, 0);
+            const result = session && onReactivate
+              ? onReactivate({
+                  session,
+                  start_time: shiftedStart.toISOString(),
+                  end_time: shiftedEnd.toISOString(),
+                })
+              : undefined;
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          reactivate-session-shifted
+        </button>
         <button aria-label="close-modal" onClick={onClose}>
           close-modal
         </button>
@@ -453,6 +512,7 @@ describe("Schedule orchestration integration hardening", () => {
       id: "linked-note-1",
     });
     completeSessionFromModalMock.mockResolvedValue(undefined);
+    reactivateSessionMock.mockReset();
     bookSessionViaApiMock.mockResolvedValue({
       session: {
         id: "created-session",
@@ -612,6 +672,252 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByTestId("session-modal");
 
     expect(screen.getByTestId("can-create-schedules")).toHaveTextContent(expectedCanCreate);
+  });
+
+  it.each([
+    ["admin", "admin", "true"],
+    ["admin schedule", "admin_schedule", "true"],
+    ["bcba", "bcba", "true"],
+    ["midtier", "midtier", "true"],
+    ["super admin", "super_admin", "true"],
+    ["therapist", "therapist", "false"],
+    ["BT", "bt", "false"],
+  ] as const)("wires appointment reactivation availability for %s", async (_label, role, expectedAvailable) => {
+    scheduleFixtures.sessions[0].status = "cancelled";
+
+    renderWithProviders(<Schedule />, {
+      auth: { role, organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("reactivate-available")).toHaveTextContent(expectedAvailable);
+  });
+
+  it.each(["reactivated", "already_reactivated"] as const)(
+    "handles the %s outcome, refreshes caches, and closes the modal",
+    async (outcome) => {
+    scheduleFixtures.sessions[0].status = "cancelled";
+    reactivateSessionMock.mockResolvedValueOnce({
+      outcome,
+      sessionId: "session-1",
+    });
+    const invalidateQueriesSpy = vi
+      .spyOn(QueryClient.prototype, "invalidateQueries")
+      .mockResolvedValue(undefined as never);
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("reactivate-session"));
+
+    await waitFor(() => {
+      expect(reactivateSessionMock).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        startTime: originalSessionWindow.start_time,
+        endTime: originalSessionWindow.end_time,
+      });
+    });
+    await waitFor(() => {
+      expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ["sessions"] });
+      expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ["sessions-batch"] });
+    });
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
+    expect(showSuccessMock).toHaveBeenCalledWith("Appointment reactivated");
+
+    invalidateQueriesSpy.mockRestore();
+    },
+  );
+
+  it("keeps the modal open with a retry hint when reactivation hits a conflict", async () => {
+    scheduleFixtures.sessions[0].status = "cancelled";
+    reactivateSessionMock.mockResolvedValueOnce({
+      outcome: "conflict",
+      code: "THERAPIST_CONFLICT",
+    });
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("reactivate-session"));
+
+    await waitFor(() => {
+      expect(reactivateSessionMock).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        startTime: originalSessionWindow.start_time,
+        endTime: originalSessionWindow.end_time,
+      });
+    });
+    expect(screen.getByTestId("session-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("retry-hint")).toHaveTextContent(
+      "Original appointment time is no longer available. Choose a new time to reschedule this appointment.",
+    );
+    expect(showSuccessMock).not.toHaveBeenCalledWith("Appointment reactivated");
+  });
+
+  it("keeps the modal open when reactivation fails with a terminal error", async () => {
+    scheduleFixtures.sessions[0].status = "cancelled";
+    reactivateSessionMock.mockRejectedValueOnce(
+      new Error("Authorization no longer covers the original appointment time."),
+    );
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("reactivate-session"));
+
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Authorization no longer covers the original appointment time.",
+      );
+    });
+    expect(screen.getByTestId("session-modal")).toBeInTheDocument();
+  });
+
+  it("sends the edited window directly to reactivation without a move call", async () => {
+    scheduleFixtures.sessions[0].status = "cancelled";
+    reactivateSessionMock
+      .mockResolvedValueOnce({
+        outcome: "conflict",
+        code: "THERAPIST_CONFLICT",
+      })
+      .mockResolvedValueOnce({
+        outcome: "reactivated",
+        sessionId: "session-1",
+      });
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("reactivate-session"));
+    await waitFor(() => {
+      expect(screen.getByTestId("retry-hint")).toHaveTextContent(
+        "Original appointment time is no longer available. Choose a new time to reschedule this appointment.",
+      );
+    });
+
+    fireEvent.click(screen.getByLabelText("reactivate-session-shifted"));
+
+    await waitFor(() => {
+      expect(reactivateSessionMock).toHaveBeenLastCalledWith({
+        sessionId: "session-1",
+        startTime: shiftedSessionWindow.start_time,
+        endTime: shiftedSessionWindow.end_time,
+      });
+    });
+    expect(bookSessionViaApiMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
+    expect(showSuccessMock).toHaveBeenCalledWith("Appointment reactivated");
+  });
+
+  it("keeps the modal open on edited-window reactivation errors and does not call book/move", async () => {
+    scheduleFixtures.sessions[0].status = "cancelled";
+    reactivateSessionMock.mockResolvedValueOnce({
+      outcome: "conflict",
+      code: "THERAPIST_CONFLICT",
+    });
+    reactivateSessionMock.mockRejectedValueOnce(
+      new Error("Authorization no longer covers the original appointment time."),
+    );
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("reactivate-session"));
+    await waitFor(() => {
+      expect(screen.getByTestId("retry-hint")).toHaveTextContent(
+        "Original appointment time is no longer available. Choose a new time to reschedule this appointment.",
+      );
+    });
+
+    fireEvent.click(screen.getByLabelText("reactivate-session-shifted"));
+
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Authorization no longer covers the original appointment time.",
+      );
+    });
+    expect(reactivateSessionMock).toHaveBeenCalledTimes(2);
+    expect(bookSessionViaApiMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("session-modal")).toBeInTheDocument();
+  });
+
+  it("retries edited-window reactivation without any book/move call after a terminal error", async () => {
+    scheduleFixtures.sessions[0].status = "cancelled";
+    reactivateSessionMock
+      .mockResolvedValueOnce({
+        outcome: "conflict",
+        code: "THERAPIST_CONFLICT",
+      })
+      .mockRejectedValueOnce(
+        new Error("Authorization no longer covers the original appointment time."),
+      )
+      .mockRejectedValueOnce(
+        new Error("Authorization no longer covers the original appointment time."),
+      );
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("reactivate-session"));
+    await waitFor(() => {
+      expect(screen.getByTestId("retry-hint")).toHaveTextContent(
+        "Original appointment time is no longer available. Choose a new time to reschedule this appointment.",
+      );
+    });
+
+    fireEvent.click(screen.getByLabelText("reactivate-session-shifted"));
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Authorization no longer covers the original appointment time.",
+      );
+    });
+    expect(bookSessionViaApiMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("session-modal")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("reactivate-session-shifted"));
+
+    await waitFor(() => {
+      expect(reactivateSessionMock).toHaveBeenCalledTimes(3);
+    });
+    expect(reactivateSessionMock).toHaveBeenLastCalledWith({
+      sessionId: "session-1",
+      startTime: shiftedSessionWindow.start_time,
+      endTime: shiftedSessionWindow.end_time,
+    });
+    expect(bookSessionViaApiMock).not.toHaveBeenCalled();
   });
 
   it("forwards cancellation attribution through the schedule modal boundary", async () => {

@@ -43,6 +43,7 @@ const ciWorkflow = ({
           done <<< "\${changed_files}"
           echo "ai_agent_changed=\${ai_agent_changed}" >> "\${GITHUB_OUTPUT}"`,
   policyExtra = "",
+  runtimeParityRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main'",
   deployRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main'",
   deployNeeds = [
     "policy",
@@ -84,7 +85,9 @@ const ciWorkflow = ({
   ],
   ciGateChecks = [
     "[ \"${TENANT_SAFETY_RESULT}\" = \"success\" ] || failed+=(\"tenant-safety=${TENANT_SAFETY_RESULT}\")",
-    "[ \"${RUNTIME_PARITY_RESULT}\" = \"success\" ] || failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+    "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${RUNTIME_PARITY_RESULT}\" != \"success\" ]; then",
+    "failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+    "fi",
     "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
     "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${DEPLOY_SESSION_EDGE_RESULT}\" != \"success\" ]; then",
     "failed+=(\"deploy-session-edge=${DEPLOY_SESSION_EDGE_RESULT}\")",
@@ -154,6 +157,8 @@ ${policyExtra}
     needs:
       - policy
       - change_scope
+${runtimeParityRestriction ? `    if: ${runtimeParityRestriction}
+` : ""}\
     steps:
       - env:
           MIGRATION_PARITY_BASE_SHA: \${{ needs.change_scope.outputs.base_sha }}
@@ -543,6 +548,44 @@ describe("check-session-deploy-safety", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       "deploy_session_edge must run the shared edge deploy prerequisite helper",
+    );
+  });
+
+  test("rejects runtime migration parity outside main pushes", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        runtimeParityRestriction: "",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "runtime_migration_parity must be restricted to push on refs/heads/main",
+    );
+  });
+
+  test("rejects unconditional runtime migration parity enforcement in ci_gate", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        ciGateChecks: [
+          "[ \"${TENANT_SAFETY_RESULT}\" = \"success\" ] || failed+=(\"tenant-safety=${TENANT_SAFETY_RESULT}\")",
+          "[ \"${RUNTIME_PARITY_RESULT}\" = \"success\" ] || failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+          "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${DEPLOY_SESSION_EDGE_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-session-edge=${DEPLOY_SESSION_EDGE_RESULT}\")",
+          "fi",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${AI_AGENT_CHANGED}\" = \"true\" ] && [ \"${DEPLOY_AI_AGENT_EDGE_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-ai-agent-edge=${DEPLOY_AI_AGENT_EDGE_RESULT}\")",
+          "fi",
+        ],
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "ci_gate must enforce runtime_migration_parity success only on main pushes",
     );
   });
 

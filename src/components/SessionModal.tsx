@@ -764,6 +764,7 @@ interface SessionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: SessionModalSubmitData) => Promise<void | SessionNoteUpsertResult>;
+  onReactivate?: (input: { session: Session; start_time: string; end_time: string }) => Promise<void>;
   session?: Session;
   selectedDate?: Date;
   selectedTime?: string;
@@ -781,6 +782,7 @@ interface SessionModalProps {
   dataCollectionOnly?: boolean;
   allowStartSession?: boolean;
   canCreateSchedules?: boolean;
+  isReactivating?: boolean;
   hideGoalCaptureFields?: boolean;
   onBtAbaSessionFinalized?: (result: BtAbaFinalizeResult & { sessionId: string }) => void | Promise<void>;
 }
@@ -789,6 +791,7 @@ export function SessionModal({
   isOpen,
   onClose,
   onSubmit,
+  onReactivate,
   session,
   selectedDate,
   selectedTime,
@@ -806,6 +809,7 @@ export function SessionModal({
   dataCollectionOnly = false,
   allowStartSession = false,
   canCreateSchedules = true,
+  isReactivating = false,
   hideGoalCaptureFields = false,
   onBtAbaSessionFinalized,
 }: SessionModalProps) {
@@ -863,6 +867,12 @@ export function SessionModal({
   const [isClosing, setIsClosing] = useState(false);
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
   const canUseStartSessionAction = !isDataCollectionOnly || allowStartSession;
+  const canReactivateSession = Boolean(
+    session?.id &&
+    session.status === 'cancelled' &&
+    canCreateSchedules &&
+    onReactivate,
+  );
   const isBtClinicalCaptureSession = Boolean(
     isDataCollectionOnly && (session?.status === 'scheduled' || session?.status === 'in_progress'),
   );
@@ -3108,6 +3118,35 @@ export function SessionModal({
     ...(conflicts.length > 0 ? [conflictDescriptionId] : []),
   ].join(' ');
   const isCloseInteractionDisabled = isSubmitting || btAbaBusy || btAbaFinalized || isClosing;
+  const isReactivateDisabled =
+    isCloseInteractionDisabled || isDependentDataLoading || isLoadingAlternatives || isReactivating;
+
+  const handleReactivateSession = useCallback(async () => {
+    if (!session || !onReactivate) {
+      return;
+    }
+
+    const currentStartTime = getValues("start_time");
+    const currentEndTime = getValues("end_time");
+    if (!currentStartTime || !currentEndTime) {
+      return;
+    }
+
+    const currentDate = format(parseISO(currentStartTime), 'PPP');
+    const currentTime = `${format(parseISO(currentStartTime), 'p')} - ${format(parseISO(currentEndTime), 'p')}`;
+    const confirmed = window.confirm(
+      `Reactivate this cancelled appointment for ${currentDate} at ${currentTime}?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await onReactivate({
+      session,
+      start_time: timeZone ? toUtcSessionIsoString(currentStartTime, resolvedTimeZone) : currentStartTime,
+      end_time: timeZone ? toUtcSessionIsoString(currentEndTime, resolvedTimeZone) : currentEndTime,
+    });
+  }, [getValues, onReactivate, resolvedTimeZone, session, timeZone]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -4282,7 +4321,7 @@ export function SessionModal({
                 disabled={isDataCollectionOnly}
                 className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
               >
-                <option value="scheduled">Scheduled</option>
+                <option value="scheduled" disabled={session?.status === 'cancelled'}>Scheduled</option>
                 <option value="in_progress" disabled>In Progress</option>
                 <option value="completed" disabled={!session}>Completed</option>
                 {canCreateSchedules ? (
@@ -5346,6 +5385,16 @@ export function SessionModal({
                   className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-300 dark:hover:bg-violet-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-violet-200 sm:bg-violet-50/90 sm:px-4 sm:font-medium sm:text-violet-800 sm:shadow-sm sm:hover:bg-violet-100"
                 >
                   Close Session
+                </button>
+              ) : null}
+              {canReactivateSession ? (
+                <button
+                  type="button"
+                  onClick={() => void handleReactivateSession()}
+                  disabled={isReactivateDisabled}
+                  className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-amber-700 hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-amber-300 dark:hover:bg-amber-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-amber-200 sm:bg-amber-50/90 sm:px-4 sm:font-medium sm:text-amber-800 sm:shadow-sm sm:hover:bg-amber-100"
+                >
+                  {isReactivating ? 'Reactivating...' : 'Reactivate appointment'}
                 </button>
               ) : null}
             </div>

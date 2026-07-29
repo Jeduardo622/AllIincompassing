@@ -1252,6 +1252,11 @@ describe('SessionModal', () => {
     status: 'scheduled',
     started_at: null,
   } satisfies Session;
+  const cancelledScheduledSession = {
+    ...validScheduledSession,
+    id: 'session-cancelled-reactivation',
+    status: 'cancelled',
+  } satisfies Session;
 
   it('renders the modal when open', () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
@@ -3657,6 +3662,19 @@ describe('SessionModal', () => {
       expect(option.disabled).toBe(true);
     });
 
+    it('disables the generic scheduled option for persisted cancelled sessions', () => {
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={{ ...editSession, status: 'cancelled' }}
+          onReactivate={vi.fn()}
+        />,
+      );
+
+      const option = screen.getByRole('option', { name: /^Scheduled$/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(true);
+    });
+
     it('shows in_progress as current value when session status is in_progress', () => {
       renderWithProviders(
         <SessionModal
@@ -3693,6 +3711,132 @@ describe('SessionModal', () => {
 
       const option = screen.getByRole('option', { name: /^Cancelled$/i }) as HTMLOptionElement;
       expect(option.disabled).toBe(true);
+    });
+
+    it('shows a reactivate action only for cancelled persisted sessions with scheduling access', () => {
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={cancelledScheduledSession}
+          onReactivate={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: /Reactivate appointment/i })).toBeInTheDocument();
+    });
+
+    it('hides the reactivate action for create mode, non-cancelled sessions, and non-creators', () => {
+      const { rerender } = renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          onReactivate={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByRole('button', { name: /Reactivate appointment/i })).not.toBeInTheDocument();
+
+      rerender(
+        <SessionModal
+          {...defaultProps}
+          session={validScheduledSession}
+          onReactivate={vi.fn()}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: /Reactivate appointment/i })).not.toBeInTheDocument();
+
+      rerender(
+        <SessionModal
+          {...defaultProps}
+          session={cancelledScheduledSession}
+          canCreateSchedules={false}
+          onReactivate={vi.fn()}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: /Reactivate appointment/i })).not.toBeInTheDocument();
+    });
+
+    it('confirms before reactivating and calls the handler exactly once', async () => {
+      const onReactivate = vi.fn().mockResolvedValue(undefined);
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={cancelledScheduledSession}
+          onReactivate={onReactivate}
+        />,
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: /Reactivate appointment/i }));
+
+      expect(confirmSpy).toHaveBeenCalledOnce();
+      expect(onReactivate).toHaveBeenCalledTimes(1);
+      expect(onReactivate).toHaveBeenCalledWith(expect.objectContaining({
+        session: expect.objectContaining({ id: cancelledScheduledSession.id }),
+        start_time: cancelledScheduledSession.start_time,
+        end_time: cancelledScheduledSession.end_time,
+      }));
+
+      confirmSpy.mockRestore();
+    });
+
+    it('forwards edited modal times to the reactivation handler as UTC timestamps', async () => {
+      const onReactivate = vi.fn().mockResolvedValue(undefined);
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={cancelledScheduledSession}
+          onReactivate={onReactivate}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2025-03-18T10:15' } });
+      fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2025-03-18T11:15' } });
+      await userEvent.click(screen.getByRole('button', { name: /Reactivate appointment/i }));
+
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('10:15'));
+      expect(onReactivate).toHaveBeenCalledWith(expect.objectContaining({
+        session: expect.objectContaining({ id: cancelledScheduledSession.id }),
+        start_time: '2025-03-18T14:15:00.000Z',
+        end_time: '2025-03-18T15:15:00.000Z',
+      }));
+
+      confirmSpy.mockRestore();
+    });
+
+    it('does not reactivate when confirmation is cancelled', async () => {
+      const onReactivate = vi.fn().mockResolvedValue(undefined);
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={cancelledScheduledSession}
+          onReactivate={onReactivate}
+        />,
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: /Reactivate appointment/i }));
+
+      expect(confirmSpy).toHaveBeenCalledOnce();
+      expect(onReactivate).not.toHaveBeenCalled();
+
+      confirmSpy.mockRestore();
+    });
+
+    it('disables the reactivate action and shows pending copy while reactivation is in flight', () => {
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={cancelledScheduledSession}
+          onReactivate={vi.fn()}
+          isReactivating
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: /Reactivating\.\.\./i })).toBeDisabled();
     });
 
     it('hydrates a persisted client cancellation before displaying its attribution', async () => {

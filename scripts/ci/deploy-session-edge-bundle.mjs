@@ -8,6 +8,7 @@ const REQUIRED_FUNCTIONS = [
   "sessions-confirm",
   "sessions-start",
   "sessions-cancel",
+  "sessions-reactivate",
   "sessions-complete",
   "generate-session-notes-pdf",
   "session-notes-pdf-status",

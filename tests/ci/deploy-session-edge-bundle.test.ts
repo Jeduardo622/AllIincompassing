@@ -111,6 +111,7 @@ describe("deploy-session-edge-bundle", () => {
       "--use-api",
     ]);
     expect(state.calls.at(-1)).toEqual(["functions", "list", "--project-ref", "wnnjeqheqxxyrgsjmygy", "--output", "json"]);
+    expect(state.deployed).toContain("sessions-reactivate");
     expect(state.deployed).toContain("utilization-report");
     expect(state.deployed.length).toBeGreaterThan(10);
   });

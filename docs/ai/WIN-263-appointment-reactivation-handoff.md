@@ -19,7 +19,7 @@ No RLS policy, browser RPC grant, cancellation behavior, or ordinary booking aut
 ## Changed Surfaces
 
 - UI and client: `src/components/SessionModal.tsx`, `src/pages/Schedule.tsx`, `src/lib/sessionReactivation.ts`
-- Supabase: `supabase/functions/sessions-reactivate/**`, `supabase/migrations/20260729120000_reactivate_cancelled_session.sql`
+- Supabase: `supabase/functions/sessions-reactivate/**`, `supabase/migrations/20260729120000_reactivate_cancelled_session.sql`, `supabase/migrations/20260729194500_harden_reactivate_cancelled_session.sql`
 - Deployment contract: `scripts/ci/deploy-session-edge-bundle.mjs`, `.github/workflows/ci.yml`
 - Focused tests for the UI, client, Edge Function, migration, and deployment bundle
 - Design and implementation plan under `docs/superpowers/**`
@@ -70,11 +70,13 @@ No RLS policy, browser RPC grant, cancellation behavior, or ordinary booking aut
   - That run also exposed `runtime-migration-parity` comparing the unmerged migration against production on pull requests, despite the documented push-only promotion contract.
   - Runtime migration parity and its `ci-gate` enforcement are now restricted to pushes on `main`; the production session Edge deployment still depends on a successful parity result. The invariant is protected by `check-session-deploy-safety`.
   - The first 6 GB tenant-safety run completed without an OOM and exposed five UTC-only failures in the new schedule orchestration assertions. Those assertions now derive original and edited timestamps from the fixture window instead of hard-coding Pacific UTC offsets; the full file passes with `TZ=UTC` (`53` tests).
+  - Codex review then identified two ordinary-booking invariants missing from the reactivation RPC. The follow-up migration now rejects inactive, deleted, or cross-organization participants; clears expired holds before inserting the temporary hold; and maps exact-start unique collisions to `HOLD_CONFLICT`.
+  - The hardened migration contract test passes (`4` tests), including the complete RPC signature, grants, authorization scope/date guard, self-hold exclusion, preserved session fields, audit payload, participant eligibility, and expired-hold cleanup.
 - Result: implementation checks are green; protected hosted checks and human review remain required.
 
 ## Specialist Review
 
-Initial code, security, and Supabase reviews identified and blocked a split move/reactivate write, missing concurrency serialization, and a caller payload mismatch. The implementation was changed to one protected atomic RPC with temporary-hold serialization and window-aware idempotency, and the client contract was aligned end to end. Final code, security, Supabase, and test reviews approve the corrected boundaries with no remaining actionable finding.
+Initial code, security, and Supabase reviews identified and blocked a split move/reactivate write, missing concurrency serialization, and a caller payload mismatch. The implementation was changed to one protected atomic RPC with temporary-hold serialization and window-aware idempotency, and the client contract was aligned end to end. Later PR review findings for participant eligibility and stale holds were resolved in the follow-up hardening migration. Final code, security, Supabase, and test reviews approve the corrected boundaries with no remaining actionable finding.
 
 ## Residual Risk And Manual Check
 

@@ -28,6 +28,14 @@ const originalSessionWindow = {
   start_time: currentSessionStart.toISOString(),
   end_time: currentSessionEnd.toISOString(),
 };
+const shiftedSessionStart = new Date(originalSessionWindow.start_time);
+shiftedSessionStart.setHours(11, 15, 0, 0);
+const shiftedSessionEnd = new Date(originalSessionWindow.end_time);
+shiftedSessionEnd.setHours(12, 15, 0, 0);
+const shiftedSessionWindow = {
+  start_time: shiftedSessionStart.toISOString(),
+  end_time: shiftedSessionEnd.toISOString(),
+};
 
 const futureSessionNoteWindow = {
   start_time: "2026-07-23T21:00:00.000Z",
@@ -713,8 +721,8 @@ describe("Schedule orchestration integration hardening", () => {
     await waitFor(() => {
       expect(reactivateSessionMock).toHaveBeenCalledWith({
         sessionId: "session-1",
-        startTime: "2025-06-30T17:00:00.000Z",
-        endTime: "2025-06-30T18:00:00.000Z",
+        startTime: originalSessionWindow.start_time,
+        endTime: originalSessionWindow.end_time,
       });
     });
     await waitFor(() => {
@@ -748,8 +756,8 @@ describe("Schedule orchestration integration hardening", () => {
     await waitFor(() => {
       expect(reactivateSessionMock).toHaveBeenCalledWith({
         sessionId: "session-1",
-        startTime: "2025-06-30T17:00:00.000Z",
-        endTime: "2025-06-30T18:00:00.000Z",
+        startTime: originalSessionWindow.start_time,
+        endTime: originalSessionWindow.end_time,
       });
     });
     expect(screen.getByTestId("session-modal")).toBeInTheDocument();
@@ -815,8 +823,8 @@ describe("Schedule orchestration integration hardening", () => {
     await waitFor(() => {
       expect(reactivateSessionMock).toHaveBeenLastCalledWith({
         sessionId: "session-1",
-        startTime: "2025-06-30T18:15:00.000Z",
-        endTime: "2025-06-30T19:15:00.000Z",
+        startTime: shiftedSessionWindow.start_time,
+        endTime: shiftedSessionWindow.end_time,
       });
     });
     expect(bookSessionViaApiMock).not.toHaveBeenCalled();
@@ -906,8 +914,8 @@ describe("Schedule orchestration integration hardening", () => {
     });
     expect(reactivateSessionMock).toHaveBeenLastCalledWith({
       sessionId: "session-1",
-      startTime: "2025-06-30T18:15:00.000Z",
-      endTime: "2025-06-30T19:15:00.000Z",
+      startTime: shiftedSessionWindow.start_time,
+      endTime: shiftedSessionWindow.end_time,
     });
     expect(bookSessionViaApiMock).not.toHaveBeenCalled();
   });

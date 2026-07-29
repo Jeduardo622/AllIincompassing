@@ -69,6 +69,7 @@ No RLS policy, browser RPC grant, cancellation behavior, or ordinary booking aut
   - The two affected full-suite steps now set `NODE_OPTIONS=--max-old-space-size=6144`, protected by `tests/workflows/ci-test-memory.test.ts`.
   - That run also exposed `runtime-migration-parity` comparing the unmerged migration against production on pull requests, despite the documented push-only promotion contract.
   - Runtime migration parity and its `ci-gate` enforcement are now restricted to pushes on `main`; the production session Edge deployment still depends on a successful parity result. The invariant is protected by `check-session-deploy-safety`.
+  - The first 6 GB tenant-safety run completed without an OOM and exposed five UTC-only failures in the new schedule orchestration assertions. Those assertions now derive original and edited timestamps from the fixture window instead of hard-coding Pacific UTC offsets; the full file passes with `TZ=UTC` (`53` tests).
 - Result: implementation checks are green; protected hosted checks and human review remain required.
 
 ## Specialist Review

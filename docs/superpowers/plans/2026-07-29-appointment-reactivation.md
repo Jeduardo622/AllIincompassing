@@ -42,7 +42,9 @@ expect(sql).toMatch(/old\.status = 'cancelled' and new\.status = 'scheduled'/i);
 expect(sql).toMatch(/for update/i);
 expect(sql).toMatch(/s\.id <> v_session\.id/i);
 expect(sql).toMatch(/s\.status <> 'cancelled'/i);
+expect(sql).toMatch(/session_holds/i);
 expect(sql).toMatch(/cancellation_attribution = null/i);
+expect(sql).toMatch(/session_reactivated/i);
 expect(sql).toMatch(/revoke execute on function public\.reactivate_cancelled_session\(uuid, uuid\) from public, anon, authenticated/i);
 expect(sql).toMatch(/grant execute on function public\.reactivate_cancelled_session\(uuid, uuid\) to service_role/i);
 ```
@@ -80,6 +82,7 @@ Return these stable outcomes:
 {"success": false, "error_code": "AUTHORIZATION_INVALID"}
 {"success": false, "error_code": "THERAPIST_CONFLICT"}
 {"success": false, "error_code": "CLIENT_CONFLICT"}
+{"success": false, "error_code": "HOLD_CONFLICT"}
 {"success": true, "already_reactivated": false, "session_id": "..."}
 ```
 
@@ -89,6 +92,8 @@ Validate a non-null linked authorization by organization, client, approved statu
 tstzrange(s.start_time, s.end_time, '[)') &&
 tstzrange(v_session.start_time, v_session.end_time, '[)')
 ```
+
+Apply the same overlap rule to unexpired `public.session_holds` for the therapist or client, excluding a hold already linked to the same session. After the update, insert `session_reactivated` through the existing audit RPC or audit table inside the same transaction, preserving the previous cancellation attribution in a PHI-free payload.
 
 Update only:
 
@@ -160,7 +165,7 @@ Tests must prove:
 - exact allow list succeeds and therapist/BT role-only callers return `403`;
 - the session lookup is filtered by the resolved organization;
 - RPC outcomes map to `200`, `403`, `404`, or `409`;
-- successful mutation calls required audit with `session_reactivated`;
+- successful mutation returns only after the RPC has atomically written `session_reactivated`;
 - idempotent replay emits `Idempotent-Replay: true`;
 - a reused key with different payload returns `409`.
 
@@ -205,7 +210,7 @@ Map `THERAPIST_CONFLICT` and `CLIENT_CONFLICT` to:
 }
 ```
 
-Call `recordSessionAuditEvent` with `required: true` only when `already_reactivated` is false. The audit payload contains previous/new status and original timestamps, not names or notes.
+Do not perform a second Edge-level audit insert. The transactional RPC owns the single `session_reactivated` event, including previous/new status and original timestamps but no names or notes.
 
 - [ ] **Step 3: Run the Edge tests and verify GREEN**
 

@@ -57,8 +57,7 @@ The request also accepts the existing `Idempotency-Key` and trace headers. The f
 4. requires one exact role from `admin`, `admin_schedule`, `midtier`, `bcba`, or `super_admin`;
 5. invokes a service-role-only transactional RPC;
 6. maps structured RPC outcomes to stable HTTP responses;
-7. records a required `session_reactivated` audit event after a successful transition;
-8. persists and replays responses by scoped idempotency key.
+7. persists and replays responses by scoped idempotency key.
 
 The Edge Function never accepts an organization, therapist, client, date, or status from the browser. Those values come from the stored session row.
 
@@ -74,8 +73,10 @@ Within one transaction the RPC:
 4. returns `INVALID_STATUS` for any state other than `cancelled`;
 5. validates any linked authorization row remains in the same organization and client scope, is approved, and covers the stored session date;
 6. checks therapist and client overlap against other non-cancelled sessions using half-open `[start_time, end_time)` ranges;
-7. updates only `status = 'scheduled'`, `cancellation_attribution = null`, `updated_at`, and `updated_by`;
-8. returns the stored session identifiers and original time window.
+7. checks unexpired therapist and client session holds using the same half-open range semantics;
+8. updates only `status = 'scheduled'`, `cancellation_attribution = null`, `updated_at`, and `updated_by`;
+9. writes one `session_reactivated` audit row in the same transaction, preserving the prior cancellation attribution without copying notes or PHI;
+10. returns the stored session identifiers and original time window.
 
 The status transition trigger is changed only enough to permit `cancelled -> scheduled`. Completed, no-show, and in-progress lifecycle rules stay unchanged. The RPC preserves `notes`, clinical links, plan links, times, therapist, client, and session ID.
 
@@ -94,7 +95,7 @@ When `authorization_id` is null, reactivation follows current booking behavior a
 
 The idempotency key is scoped to the authenticated actor and `sessions-reactivate`. Reusing a key with a different session payload returns a conflict. Replaying the same request returns the stored response.
 
-A successful transition requires a `session_reactivated` audit event containing only operational identifiers and status/time metadata; it must not copy schedule notes or PHI into the audit payload. An already-scheduled replay does not add another lifecycle audit event.
+A successful transition writes a `session_reactivated` audit event atomically with the status update. It contains only operational identifiers, prior cancellation attribution, and status/time metadata; it must not copy schedule notes or PHI into the audit payload. An already-scheduled replay does not add another lifecycle audit event.
 
 ## Verification
 

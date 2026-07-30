@@ -14,5 +14,10 @@
   - Renamed rollback-fixture wording from delete semantics to revoke/update semantics for clarity.
 - Verification update:
   - `vitest`: `tests/admins/invite_flow.spec.ts` passed with 19/19 tests after the review fix.
+- Review fix 2 evidence:
+  - Extended the targeted non-`bt` rejection test to assert the `supabaseAdmin.from("therapists")` lookup path was not touched, proving the guard exits before therapist lookup, RPC issuance, email delivery, or audit insertion.
+  - Command: `$env:PATH = 'C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;' + $env:PATH; & 'C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' '.\node_modules\vitest\vitest.mjs' run 'tests/admins/invite_flow.spec.ts'`
+  - Output: `PASS tests/admins/invite_flow.spec.ts (19 tests)`
+  - Follow-up commit: `WIN-265 task2 skip therapist lookup proof`
 - Residual risk:
   - Validation relies on the edge function and the database RPC staying aligned on target-therapist invariants; broader cross-suite verification remains for the parent flow.

@@ -70,6 +70,7 @@ const inviteTokens: StoredInviteToken[] = [];
 const therapists: TherapistRecord[] = [];
 const adminActionRows: Array<Record<string, unknown>> = [];
 let rollbackUpdateError: { message: string } | null = null;
+const therapistLookupSpy = vi.fn();
 
 const fromTable = (table: string) => {
   if (table === 'admin_actions') {
@@ -106,6 +107,7 @@ const fromTable = (table: string) => {
   if (table === 'therapists') {
     return {
       select: vi.fn(() => {
+        therapistLookupSpy();
         const filters: Record<string, unknown> = {};
         return {
           eq: vi.fn((column: string, value: unknown) => {
@@ -256,6 +258,7 @@ describe('admin invite edge function', () => {
     createRequestClient.mockClear();
     createAdminRpc.mockClear();
     resolveOrgId.mockClear();
+    therapistLookupSpy.mockClear();
   });
 
   it('creates a scoped invite token, sends email, and logs the admin action', async () => {
@@ -636,6 +639,7 @@ describe('admin invite edge function', () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ error: 'target_therapist_role_forbidden' });
+    expect(therapistLookupSpy).not.toHaveBeenCalled();
     expect(createAdminRpc).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(adminActionRows).toHaveLength(0);

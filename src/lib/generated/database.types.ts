@@ -78,7 +78,7 @@ export type Database = {
           accepted_at: string | null
           accepted_by_user_id: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           email: string
           expires_at: string
           id: string
@@ -92,7 +92,7 @@ export type Database = {
           accepted_at?: string | null
           accepted_by_user_id?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           email: string
           expires_at: string
           id?: string
@@ -106,7 +106,7 @@ export type Database = {
           accepted_at?: string | null
           accepted_by_user_id?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           email?: string
           expires_at?: string
           id?: string

@@ -7,7 +7,7 @@ type StoredInviteToken = {
   organization_id: string;
   token_hash: string;
   expires_at: string;
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   role: string;
   target_therapist_id: string | null;
@@ -372,6 +372,71 @@ describe('accept staff invite edge function', () => {
     expect(inviteTokens[0]).toMatchObject({
       accepted_by_user_id: 'new-user-1',
     });
+  }, 20_000);
+
+  it('accepts invites whose inviter account was deleted while preserving nullable audit fields', async () => {
+    therapists.push({
+      id: 'therapist-null-inviter',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    inviteTokens.push(
+      await buildInvite({
+        id: 'invite-null-inviter',
+        created_by: null,
+        target_therapist_id: 'therapist-null-inviter',
+      }),
+    );
+
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          token: rawToken,
+          password: 'StrongPass123!',
+          first_name: 'Null',
+          last_name: 'Inviter',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      email: 'bt.staff@example.com',
+      role: 'bt',
+    });
+
+    expect(createdUsers).toHaveLength(1);
+    expect(createdUsers[0]).toMatchObject({
+      user_metadata: expect.objectContaining({
+        invited_by: null,
+        accepted_invite_id: 'invite-null-inviter',
+      }),
+    });
+    expect(upsertedUserRoles).toEqual([
+      expect.objectContaining({
+        user_id: 'new-user-1',
+        role_id: 'role-bt',
+        granted_by: null,
+        is_active: true,
+      }),
+    ]);
+    expect(adminActionRows).toEqual([
+      expect.objectContaining({
+        admin_user_id: null,
+        target_user_id: 'new-user-1',
+        organization_id: 'org-123',
+        action_type: 'staff_invite_accepted',
+      }),
+    ]);
+    expect(consumedInvites).toEqual([
+      expect.objectContaining({ id: 'invite-null-inviter', accepted_by_user_id: 'new-user-1' }),
+    ]);
   }, 20_000);
 
   it('rejects replay after a successful invite acceptance', async () => {

@@ -25,7 +25,7 @@ type InviteTokenRecord = {
   organization_id: string;
   token_hash: string;
   expires_at: string;
-  created_by: string;
+  created_by: string | null;
   role: string;
   target_therapist_id: string | null;
   accepted_at: string | null;
@@ -83,7 +83,7 @@ const deleteInviteToken = async (tokenHash: string) => {
   }
 };
 
-const createUserRole = async (userId: string, role: StaffRole, grantedBy: string) => {
+const createUserRole = async (userId: string, role: StaffRole, grantedBy: string | null) => {
   const { data: roleRow, error: roleError } = await supabaseAdmin
     .from("roles")
     .select("id,name")
@@ -141,6 +141,7 @@ async function handleAcceptStaffInvite(req: Request) {
   }
 
   const inviteRecord = invite as InviteTokenRecord;
+  const inviterUserId = inviteRecord.created_by ?? null;
   if (inviteRecord.accepted_at || inviteRecord.revoked_at) {
     return jsonResponse(req, 404, { error: "invite_not_found" });
   }
@@ -198,7 +199,7 @@ async function handleAcceptStaffInvite(req: Request) {
       organization_id: inviteRecord.organization_id,
       organizationId: inviteRecord.organization_id,
       role: roleResult.data,
-      invited_by: inviteRecord.created_by,
+      invited_by: inviterUserId,
       accepted_invite_id: inviteRecord.id,
     },
   });
@@ -217,7 +218,7 @@ async function handleAcceptStaffInvite(req: Request) {
     }
   };
 
-  const roleAssignment = await createUserRole(userId, roleResult.data, inviteRecord.created_by);
+  const roleAssignment = await createUserRole(userId, roleResult.data, inviterUserId);
   if (roleAssignment.error) {
     await cleanupCreatedUser();
     return jsonResponse(req, 500, { error: roleAssignment.error });
@@ -281,7 +282,7 @@ async function handleAcceptStaffInvite(req: Request) {
   }
 
   const { error: actionError } = await supabaseAdmin.from("admin_actions").insert({
-    admin_user_id: inviteRecord.created_by,
+    admin_user_id: inviterUserId,
     target_user_id: userId,
     organization_id: inviteRecord.organization_id,
     action_type: "staff_invite_accepted",

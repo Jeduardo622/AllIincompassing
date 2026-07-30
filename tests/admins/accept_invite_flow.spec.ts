@@ -36,6 +36,7 @@ const therapists: TherapistRow[] = [];
 const roleRows = [
   { id: 'role-bt', name: 'bt' },
   { id: 'role-admin', name: 'admin' },
+  { id: 'role-bcba', name: 'bcba' },
 ];
 const createdUsers: Array<Record<string, unknown>> = [];
 const upsertedUserRoles: Array<Record<string, unknown>> = [];
@@ -622,6 +623,67 @@ describe('accept staff invite edge function', () => {
 
     expect(response.status).toBe(404);
     expect(createdUsers).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects already accepted invites before account creation', async () => {
+    inviteTokens.push(
+      await buildInvite({
+        id: 'invite-accepted',
+        accepted_at: new Date().toISOString(),
+        accepted_by_user_id: 'existing-user-1',
+      }),
+    );
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_not_found' });
+    expect(createdUsers).toHaveLength(0);
+    expect(insertedTherapistLinks).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects targeted invites when the stored role is not bt without side effects', async () => {
+    therapists.push({
+      id: 'therapist-role-forbidden',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    inviteTokens.push(
+      await buildInvite({
+        id: 'invite-role-forbidden',
+        role: 'bcba',
+        target_therapist_id: 'therapist-role-forbidden',
+      }),
+    );
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_target_role_forbidden' });
+    expect(createdUsers).toHaveLength(0);
+    expect(upsertedUserRoles).toHaveLength(0);
+    expect(upsertedProfiles).toHaveLength(0);
+    expect(insertedTherapistLinks).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+    expect(deletedAuthUserIds).toHaveLength(0);
+    expect(adminActionRows).toHaveLength(0);
   }, 20_000);
 
   it('deletes the partially created auth user when therapist link creation fails', async () => {

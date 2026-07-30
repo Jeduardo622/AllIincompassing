@@ -148,6 +148,10 @@ async function handleAcceptStaffInvite(req: Request) {
   }
 
   if (inviteRecord.target_therapist_id) {
+    if (roleResult.data !== "bt") {
+      return jsonResponse(req, 409, { error: "invite_target_role_forbidden" });
+    }
+
     const { data: therapist, error: therapistError } = await supabaseAdmin
       .from("therapists")
       .select("id,email,organization_id,status,deleted_at")

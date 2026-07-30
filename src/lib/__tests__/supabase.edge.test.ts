@@ -155,7 +155,12 @@ describe("session notes pdf async edge helpers", () => {
     );
 
     const blob = await downloadSessionNotesPdfExport("export-3");
-    const text = await blob.text();
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener("load", () => resolve(String(reader.result)));
+      reader.addEventListener("error", () => reject(reader.error ?? new Error("Failed to read blob")));
+      reader.readAsText(blob);
+    });
     expect(text).toBe("pdf-binary");
   });
 });

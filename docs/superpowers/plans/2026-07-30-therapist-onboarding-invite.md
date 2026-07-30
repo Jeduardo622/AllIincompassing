@@ -303,7 +303,7 @@ Require `code-review-engineer`, `test-engineer`, `security-engineer`, and `supab
 
 Record route, scope, files, migration behavior, connector evidence, executed and blocked checks, residual risk, and reviewer verdicts. Run `verify-change` and `pr-hygiene`.
 
-- [ ] **Step 5: Commit, push, and open a human-review PR**
+- [x] **Step 5: Commit, push, and open a human-review PR**
 
 ```powershell
 git add docs src supabase tests

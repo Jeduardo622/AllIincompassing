@@ -83,6 +83,7 @@
 
 - pr-ready: yes, for human review
 - merge-ready: no
+- pull request: #878
 - branch: `codex/therapist-onboarding-invite`
 - linear-ready: yes, WIN-265
 - single-purpose: yes

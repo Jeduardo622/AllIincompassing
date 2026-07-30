@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubDenoEnv } from '../utils/stubDeno';
 
-type TestRole = 'client' | 'bt' | 'therapist' | 'admin' | 'bcba' | 'super_admin';
+type TestRole = 'client' | 'bt' | 'therapist' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
 
 type TestUser = {
   id: string;
@@ -27,6 +27,16 @@ interface StoredInviteToken {
   created_by: string;
   created_at: string;
   role: string;
+  target_therapist_id: string | null;
+  revoked_at: string | null;
+}
+
+interface TherapistRecord {
+  id: string;
+  email: string;
+  organization_id: string;
+  status: string | null;
+  deleted_at: string | null;
 }
 
 const envValues = new Map<string, string>([
@@ -41,6 +51,8 @@ stubDenoEnv((key) => envValues.get(key) ?? '');
 const logApiAccess = vi.fn();
 const getUserRoles = vi.fn(async () => [currentUserContext.profile.role]);
 const createRequestClient = vi.fn();
+let currentResolvedOrgId: string | null = 'org-123';
+const resolveOrgId = vi.fn(async () => currentResolvedOrgId);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -55,10 +67,16 @@ let currentUserContext: TestUserContext = {
 };
 
 let currentUserMetadata: Record<string, unknown> = { organization_id: 'org-123' };
+const wrapperAllowedRolesByName = {
+  admin: ['admin', 'bcba', 'super_admin'],
+  staffAdmin: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
+} as const;
 
 const inviteTokens: StoredInviteToken[] = [];
+const therapists: TherapistRecord[] = [];
 const adminActionRows: Array<Record<string, unknown>> = [];
-let rollbackDeleteError: { message: string } | null = null;
+let rollbackUpdateError: { message: string } | null = null;
+const therapistLookupSpy = vi.fn();
 
 const fromTable = (table: string) => {
   if (table === 'admin_actions') {
@@ -71,24 +89,45 @@ const fromTable = (table: string) => {
   }
   if (table === 'admin_invite_tokens') {
     return {
-      delete: vi.fn(() => {
+      update: vi.fn((payload: { revoked_at?: string | null }) => {
         const filters: Record<string, unknown> = {};
         const builder = {
           eq: vi.fn((column: string, value: unknown) => {
             filters[column] = value;
-            if (filters.id && filters.organization_id && !rollbackDeleteError) {
-              const index = inviteTokens.findIndex(token =>
+            if (filters.id && filters.organization_id && !rollbackUpdateError) {
+              const inviteToken = inviteTokens.find(token =>
                 token.id === filters.id && token.organization_id === filters.organization_id,
               );
-              if (index >= 0) {
-                inviteTokens.splice(index, 1);
+              if (inviteToken) {
+                inviteToken.revoked_at = payload.revoked_at ?? null;
               }
             }
             return builder;
           }),
-          then: (resolve: (value: { error: { message: string } | null }) => void) => resolve({ error: rollbackDeleteError }),
+          then: (resolve: (value: { error: { message: string } | null }) => void) => resolve({ error: rollbackUpdateError }),
         };
         return builder;
+      }),
+    };
+  }
+  if (table === 'therapists') {
+    return {
+      select: vi.fn(() => {
+        therapistLookupSpy();
+        const filters: Record<string, unknown> = {};
+        return {
+          eq: vi.fn((column: string, value: unknown) => {
+            filters[column] = value;
+            return {
+              maybeSingle: vi.fn(async () => ({
+                data:
+                  therapists.find(therapist => Object.entries(filters).every(([key, filterValue]) => therapist[key as keyof TherapistRecord] === filterValue))
+                  ?? null,
+                error: null,
+              })),
+            };
+          }),
+        };
       }),
     };
   }
@@ -118,6 +157,7 @@ const createAdminRpc = vi.fn(async (functionName: string, params: Record<string,
     .filter(token =>
       token.email === email
       && token.organization_id === organizationId
+      && token.revoked_at === null
       && new Date(token.expires_at).getTime() > now
     )
     .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
@@ -134,6 +174,7 @@ const createAdminRpc = vi.fn(async (functionName: string, params: Record<string,
     if (
       token.email === email
       && token.organization_id === organizationId
+      && token.revoked_at === null
       && new Date(token.expires_at).getTime() <= now
     ) {
       inviteTokens.splice(index, 1);
@@ -158,6 +199,8 @@ const createAdminRpc = vi.fn(async (functionName: string, params: Record<string,
     created_by: createdBy,
     created_at: new Date().toISOString(),
     role: String(params.p_role ?? 'admin'),
+    target_therapist_id: (params.p_target_therapist_id as string | null | undefined) ?? null,
+    revoked_at: null,
   };
   inviteTokens.push(stored);
 
@@ -171,10 +214,28 @@ createRequestClient.mockImplementation(() => createMockClient());
 
 vi.mock('../../supabase/functions/_shared/auth-middleware.ts', () => ({
   corsHeaders,
-  RouteOptions: { admin: {} },
+  RouteOptions: {
+    admin: { requireAuth: true, allowedRoles: [...wrapperAllowedRolesByName.admin] },
+    staffAdmin: { requireAuth: true, allowedRoles: [...wrapperAllowedRolesByName.staffAdmin] },
+  },
   logApiAccess,
-  createProtectedRoute: (handler: (req: Request, context: TestUserContext) => Promise<Response>) => {
-    return (req: Request) => handler(req, currentUserContext);
+  createProtectedRoute: (
+    handler: (req: Request, context: TestUserContext) => Promise<Response>,
+    options: { allowedRoles?: readonly TestRole[] } = {},
+  ) => {
+    return (req: Request) => {
+      const allowedRoles = options.allowedRoles ?? [];
+      if (allowedRoles.length > 0 && !allowedRoles.includes(currentUserContext.profile.role)) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: 'forbidden', message: 'Insufficient permissions' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+
+      return handler(req, currentUserContext);
+    };
   },
 }));
 
@@ -190,6 +251,10 @@ vi.mock('../../supabase/functions/_shared/auth.ts', () => ({
   getUserRoles,
 }));
 
+vi.mock('../../supabase/functions/_shared/org.ts', () => ({
+  resolveOrgId,
+}));
+
 describe('admin invite edge function', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -201,13 +266,15 @@ describe('admin invite edge function', () => {
   beforeEach(async () => {
     vi.resetModules();
     inviteTokens.splice(0, inviteTokens.length);
+    therapists.splice(0, therapists.length);
     adminActionRows.splice(0, adminActionRows.length);
-    rollbackDeleteError = null;
+    rollbackUpdateError = null;
     currentUserContext = {
       user: { id: 'admin-1', email: 'admin@example.com' },
       profile: { id: 'profile-1', email: 'admin@example.com', role: 'admin', is_active: true },
     };
     currentUserMetadata = { organization_id: 'org-123' };
+    currentResolvedOrgId = 'org-123';
     envValues.set('ADMIN_INVITE_EMAIL_URL', 'https://mailer.example.com');
     envValues.set('ADMIN_PORTAL_URL', 'https://admin.example.com');
     fetchMock = vi.fn(async () => ({ ok: true, status: 202 }));
@@ -216,6 +283,8 @@ describe('admin invite edge function', () => {
     getUserRoles.mockClear();
     createRequestClient.mockClear();
     createAdminRpc.mockClear();
+    resolveOrgId.mockClear();
+    therapistLookupSpy.mockClear();
   });
 
   it('creates a scoped invite token, sends email, and logs the admin action', async () => {
@@ -302,7 +371,7 @@ describe('admin invite edge function', () => {
     expect(adminActionRows).toHaveLength(0);
   }, 20_000);
 
-  it('deletes the invite token when email delivery fails', async () => {
+  it('revokes the invite token when email delivery fails', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
     const handler = await loadHandler();
 
@@ -317,7 +386,8 @@ describe('admin invite edge function', () => {
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({ error: 'email_delivery_failed' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(inviteTokens).toHaveLength(0);
+    expect(inviteTokens).toHaveLength(1);
+    expect(inviteTokens[0]?.revoked_at).toEqual(expect.any(String));
     expect(adminActionRows).toHaveLength(1);
     expect(adminActionRows[0]?.action_details).toMatchObject({
       email: 'mailer-failure@example.com',
@@ -327,8 +397,8 @@ describe('admin invite edge function', () => {
     });
   }, 20_000);
 
-  it('surfaces rollback failure when email delivery fails and token cleanup cannot complete', async () => {
-    rollbackDeleteError = { message: 'delete denied' };
+  it('surfaces rollback failure when email delivery fails and invite revocation cannot complete', async () => {
+    rollbackUpdateError = { message: 'revoke update denied' };
     fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
     const handler = await loadHandler();
 
@@ -365,6 +435,8 @@ describe('admin invite edge function', () => {
       created_by: 'admin-1',
       created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       role: 'admin',
+      target_therapist_id: null,
+      revoked_at: null,
     };
     inviteTokens.push(expiredToken);
 
@@ -404,6 +476,8 @@ describe('admin invite edge function', () => {
       created_by: 'admin-1',
       created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
       role: 'admin',
+      target_therapist_id: null,
+      revoked_at: null,
     });
 
     const handler = await loadHandler();
@@ -435,6 +509,8 @@ describe('admin invite edge function', () => {
         created_by: 'admin-1',
         created_at: new Date(now - index * 60 * 1000).toISOString(),
         role: 'admin',
+        target_therapist_id: null,
+        revoked_at: null,
       });
     }
 
@@ -517,6 +593,7 @@ describe('admin invite edge function', () => {
       email: 'bt.staff@example.com',
       organization_id: 'org-123',
       role: 'bt',
+      target_therapist_id: null,
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -533,6 +610,294 @@ describe('admin invite edge function', () => {
       role: 'bt',
       email_delivery_status: 'sent',
     });
+  }, 20_000);
+
+  it('issues targeted BT invites against the canonical organization scope', async () => {
+    therapists.push({
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '11111111-1111-4111-8111-111111111111',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(resolveOrgId).toHaveBeenCalledWith(expect.anything());
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({ p_target_therapist_id: '11111111-1111-4111-8111-111111111111' }),
+    );
+    expect(adminActionRows[0]?.action_details).toMatchObject({
+      target_therapist_id: '11111111-1111-4111-8111-111111111111',
+    });
+  }, 20_000);
+
+  it('uses the canonical resolved org for super-admin invites when no explicit organization override is provided', async () => {
+    currentUserContext = {
+      user: { id: 'super-1', email: 'super@example.com' },
+      profile: { id: 'profile-super-1', email: 'super@example.com', role: 'super_admin', is_active: true },
+    };
+    currentUserMetadata = { organization_id: 'org-stale' };
+    currentResolvedOrgId = 'org-canonical';
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'super-target@example.com',
+          role: 'bcba',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(resolveOrgId).toHaveBeenCalledWith(expect.anything());
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({ p_organization_id: 'org-canonical' }),
+    );
+    expect(inviteTokens[0]).toMatchObject({ organization_id: 'org-canonical' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
+  it('rejects a targeted invite when a generic active invite already exists for the same org and email', async () => {
+    inviteTokens.push({
+      id: 'invite-generic-active',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      token_hash: 'generic-active-hash',
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      created_by: 'admin-1',
+      created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      role: 'bt',
+      target_therapist_id: null,
+      revoked_at: null,
+    });
+    therapists.push({
+      id: '77777777-7777-4777-8777-777777777777',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '77777777-7777-4777-8777-777777777777',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'active_invite_exists' });
+    expect(therapistLookupSpy).toHaveBeenCalledTimes(1);
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({ p_target_therapist_id: '77777777-7777-4777-8777-777777777777' }),
+    );
+    expect(inviteTokens).toHaveLength(1);
+    expect(inviteTokens[0]).toMatchObject({ target_therapist_id: null });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects a generic invite when a targeted active invite already exists for the same org and email', async () => {
+    inviteTokens.push({
+      id: 'invite-targeted-active',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      token_hash: 'targeted-active-hash',
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      created_by: 'admin-1',
+      created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      role: 'bt',
+      target_therapist_id: '88888888-8888-4888-8888-888888888888',
+      revoked_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'active_invite_exists' });
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({ p_target_therapist_id: null }),
+    );
+    expect(therapistLookupSpy).not.toHaveBeenCalled();
+    expect(inviteTokens).toHaveLength(1);
+    expect(inviteTokens[0]).toMatchObject({ target_therapist_id: '88888888-8888-4888-8888-888888888888' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects targeted invites when the requested role is not bt', async () => {
+    therapists.push({
+      id: '66666666-6666-4666-8666-666666666666',
+      email: 'therapist.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'therapist.staff@example.com',
+          role: 'therapist',
+          targetTherapistId: '66666666-6666-4666-8666-666666666666',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: 'target_therapist_role_forbidden' });
+    expect(therapistLookupSpy).not.toHaveBeenCalled();
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+    expect(inviteTokens).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist belongs to another organization', async () => {
+    therapists.push({
+      id: '22222222-2222-4222-8222-222222222222',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-999',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '22222222-2222-4222-8222-222222222222',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist email does not match', async () => {
+    therapists.push({
+      id: '33333333-3333-4333-8333-333333333333',
+      email: 'other.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '33333333-3333-4333-8333-333333333333',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist is inactive', async () => {
+    therapists.push({
+      id: '44444444-4444-4444-8444-444444444444',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'inactive',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '44444444-4444-4444-8444-444444444444',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist is soft deleted', async () => {
+    therapists.push({
+      id: '55555555-5555-4555-8555-555555555555',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: new Date().toISOString(),
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '55555555-5555-4555-8555-555555555555',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   }, 20_000);
 
   it('fails closed for BCBA callers before invite side effects begin', async () => {
@@ -554,6 +919,111 @@ describe('admin invite edge function', () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ error: 'insufficient_role' });
     expect(getUserRoles).toHaveBeenCalledTimes(1);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+    expect(inviteTokens).toHaveLength(0);
+  }, 20_000);
+
+  it('allows admin_schedule callers to send targeted BT invites only', async () => {
+    currentUserContext = {
+      user: { id: 'admin-schedule-1', email: 'admin_schedule@example.com' },
+      profile: { id: 'profile-admin-schedule-1', email: 'admin_schedule@example.com', role: 'admin_schedule', is_active: true },
+    };
+    therapists.push({
+      id: '99999999-9999-4999-8999-999999999999',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '99999999-9999-4999-8999-999999999999',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({
+        p_role: 'bt',
+        p_target_therapist_id: '99999999-9999-4999-8999-999999999999',
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(adminActionRows[0]?.action_details).toMatchObject({
+      role: 'bt',
+      target_therapist_id: '99999999-9999-4999-8999-999999999999',
+    });
+  }, 20_000);
+
+  it('allows BCBA callers to send targeted BT invites only', async () => {
+    currentUserContext = {
+      user: { id: 'bcba-1', email: 'bcba@example.com' },
+      profile: { id: 'profile-bcba-1', email: 'bcba@example.com', role: 'bcba', is_active: true },
+    };
+    therapists.push({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({
+        p_role: 'bt',
+        p_target_therapist_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(adminActionRows[0]?.action_details).toMatchObject({
+      role: 'bt',
+      target_therapist_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    });
+  }, 20_000);
+
+  it('keeps generic invites blocked for admin_schedule callers', async () => {
+    currentUserContext = {
+      user: { id: 'admin-schedule-1', email: 'admin_schedule@example.com' },
+      profile: { id: 'profile-admin-schedule-1', email: 'admin_schedule@example.com', role: 'admin_schedule', is_active: true },
+    };
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'bt.staff@example.com', role: 'bt' }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: 'insufficient_role' });
     expect(createAdminRpc).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(adminActionRows).toHaveLength(0);

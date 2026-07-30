@@ -7,9 +7,21 @@ type StoredInviteToken = {
   organization_id: string;
   token_hash: string;
   expires_at: string;
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   role: string;
+  target_therapist_id: string | null;
+  accepted_at: string | null;
+  accepted_by_user_id: string | null;
+  revoked_at: string | null;
+};
+
+type TherapistRow = {
+  id: string;
+  email: string;
+  organization_id: string;
+  status: string | null;
+  deleted_at: string | null;
 };
 
 const envValues = new Map<string, string>([
@@ -20,19 +32,25 @@ const envValues = new Map<string, string>([
 stubDenoEnv((key) => envValues.get(key) ?? '');
 
 const inviteTokens: StoredInviteToken[] = [];
+const therapists: TherapistRow[] = [];
 const roleRows = [
   { id: 'role-bt', name: 'bt' },
   { id: 'role-admin', name: 'admin' },
+  { id: 'role-bcba', name: 'bcba' },
 ];
 const createdUsers: Array<Record<string, unknown>> = [];
 const upsertedUserRoles: Array<Record<string, unknown>> = [];
 const upsertedProfiles: Array<Record<string, unknown>> = [];
+const insertedTherapistLinks: Array<Record<string, unknown>> = [];
+const consumedInvites: Array<Record<string, unknown>> = [];
 const adminActionRows: Array<Record<string, unknown>> = [];
 const deletedInviteTokenHashes: string[] = [];
 const deletedAuthUserIds: string[] = [];
 let failCreateUser = false;
 let failUserRoleUpsert = false;
 let failProfileUpsert = false;
+let failTherapistLinkUpsert = false;
+let failInviteConsumeUpdate = false;
 
 const toHex = (bytes: ArrayBuffer) =>
   Array.from(new Uint8Array(bytes))
@@ -48,6 +66,11 @@ const makeSingleQuery = (table: string, filters: Record<string, unknown>) => ({
   single: vi.fn(async () => {
     if (table === 'admin_invite_tokens') {
       const match = inviteTokens.find((token) => token.token_hash === filters.token_hash) ?? null;
+      return match ? { data: match, error: null } : { data: null, error: { code: 'PGRST116', message: 'No rows' } };
+    }
+
+    if (table === 'therapists') {
+      const match = therapists.find((therapist) => therapist.id === filters.id) ?? null;
       return match ? { data: match, error: null } : { data: null, error: { code: 'PGRST116', message: 'No rows' } };
     }
 
@@ -84,8 +107,55 @@ const makeTableClient = (table: string) => ({
       return { error: null };
     }
 
+    if (table === 'user_therapist_links') {
+      if (failTherapistLinkUpsert) {
+        return { error: { message: 'therapist link upsert failed' } };
+      }
+      insertedTherapistLinks.push(payload);
+      return { error: null };
+    }
+
     throw new Error(`Unexpected upsert for ${table}`);
   }),
+  update: vi.fn((payload: Record<string, unknown>) => ({
+    eq: vi.fn((column: string, value: unknown) => ({
+      is: vi.fn((firstNullColumn: string, firstNullValue: unknown) => ({
+        is: vi.fn((secondNullColumn: string, secondNullValue: unknown) => ({
+          select: vi.fn((_columns?: string) => ({
+            single: vi.fn(async () => {
+              if (table !== 'admin_invite_tokens') {
+                throw new Error(`Unexpected update for ${table}`);
+              }
+
+              if (column !== 'id' || firstNullValue !== null || secondNullValue !== null) {
+                throw new Error(`Unexpected compare-and-set for ${table}`);
+              }
+
+              const match = inviteTokens.find(
+                (token) =>
+                  token.id === value &&
+                  token[firstNullColumn as keyof StoredInviteToken] === null &&
+                  token[secondNullColumn as keyof StoredInviteToken] === null,
+              );
+
+              if (!match || failInviteConsumeUpdate) {
+                return { data: null, error: { code: 'PGRST116', message: 'No rows' } };
+              }
+
+              match.accepted_at = String(payload.accepted_at ?? new Date().toISOString());
+              match.accepted_by_user_id = String(payload.accepted_by_user_id ?? '');
+              consumedInvites.push({
+                id: match.id,
+                accepted_at: match.accepted_at,
+                accepted_by_user_id: match.accepted_by_user_id,
+              });
+              return { data: match, error: null };
+            }),
+          })),
+        })),
+      })),
+    })),
+  })),
   insert: vi.fn(async (payload: Record<string, unknown>) => {
     if (table === 'admin_actions') {
       adminActionRows.push(payload);
@@ -179,9 +249,12 @@ describe('accept staff invite edge function', () => {
   beforeEach(async () => {
     vi.resetModules();
     inviteTokens.splice(0, inviteTokens.length);
+    therapists.splice(0, therapists.length);
     createdUsers.splice(0, createdUsers.length);
     upsertedUserRoles.splice(0, upsertedUserRoles.length);
     upsertedProfiles.splice(0, upsertedProfiles.length);
+    insertedTherapistLinks.splice(0, insertedTherapistLinks.length);
+    consumedInvites.splice(0, consumedInvites.length);
     adminActionRows.splice(0, adminActionRows.length);
     deletedInviteTokenHashes.splice(0, deletedInviteTokenHashes.length);
     deletedAuthUserIds.splice(0, deletedAuthUserIds.length);
@@ -191,20 +264,36 @@ describe('accept staff invite edge function', () => {
     failCreateUser = false;
     failUserRoleUpsert = false;
     failProfileUpsert = false;
+    failTherapistLinkUpsert = false;
+    failInviteConsumeUpdate = false;
+  });
+
+  const buildInvite = async (overrides: Partial<StoredInviteToken> = {}) => ({
+    id: 'invite-1',
+    email: 'bt.staff@example.com',
+    organization_id: 'org-123',
+    token_hash: await hashToken(rawToken),
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    created_by: 'admin-1',
+    created_at: new Date().toISOString(),
+    role: 'bt',
+    target_therapist_id: null,
+    accepted_at: null,
+    accepted_by_user_id: null,
+    revoked_at: null,
+    ...overrides,
   });
 
   it('creates the invited BT account, assigns role, updates profile, logs acceptance, and consumes the token', async () => {
-    const tokenHash = await hashToken(rawToken);
-    inviteTokens.push({
-      id: 'invite-1',
+    therapists.push({
+      id: 'therapist-1',
       email: 'bt.staff@example.com',
       organization_id: 'org-123',
-      token_hash: tokenHash,
-      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      created_by: 'admin-1',
-      created_at: new Date().toISOString(),
-      role: 'bt',
+      status: 'active',
+      deleted_at: null,
     });
+    const invite = await buildInvite({ target_therapist_id: 'therapist-1' });
+    inviteTokens.push(invite);
 
     const handler = await loadHandler();
 
@@ -259,6 +348,12 @@ describe('accept staff invite edge function', () => {
         is_active: true,
       }),
     ]);
+    expect(insertedTherapistLinks).toEqual([
+      { user_id: 'new-user-1', therapist_id: 'therapist-1' },
+    ]);
+    expect(consumedInvites).toEqual([
+      expect.objectContaining({ id: 'invite-1', accepted_by_user_id: 'new-user-1' }),
+    ]);
     expect(adminActionRows).toEqual([
       expect.objectContaining({
         admin_user_id: 'admin-1',
@@ -272,22 +367,64 @@ describe('accept staff invite edge function', () => {
         }),
       }),
     ]);
-    expect(deletedInviteTokenHashes).toEqual([tokenHash]);
-    expect(inviteTokens).toHaveLength(0);
+    expect(deletedInviteTokenHashes).toHaveLength(0);
+    expect(inviteTokens).toHaveLength(1);
+    expect(inviteTokens[0]).toMatchObject({
+      accepted_by_user_id: 'new-user-1',
+    });
+  }, 20_000);
+
+  it('fails closed when the inviter account was deleted before invite acceptance', async () => {
+    therapists.push({
+      id: 'therapist-null-inviter',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    inviteTokens.push(
+      await buildInvite({
+        id: 'invite-null-inviter',
+        created_by: null,
+        target_therapist_id: 'therapist-null-inviter',
+      }),
+    );
+
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          token: rawToken,
+          password: 'StrongPass123!',
+          first_name: 'Null',
+          last_name: 'Inviter',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_not_found' });
+    expect(createdUsers).toHaveLength(0);
+    expect(upsertedUserRoles).toHaveLength(0);
+    expect(upsertedProfiles).toHaveLength(0);
+    expect(insertedTherapistLinks).toHaveLength(0);
+    expect(adminActionRows).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+    expect(deletedAuthUserIds).toHaveLength(0);
   }, 20_000);
 
   it('rejects replay after a successful invite acceptance', async () => {
-    const tokenHash = await hashToken(rawToken);
-    inviteTokens.push({
-      id: 'invite-1',
+    therapists.push({
+      id: 'therapist-1',
       email: 'bt.staff@example.com',
       organization_id: 'org-123',
-      token_hash: tokenHash,
-      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      created_by: 'admin-1',
-      created_at: new Date().toISOString(),
-      role: 'bt',
+      status: 'active',
+      deleted_at: null,
     });
+    inviteTokens.push(await buildInvite({ target_therapist_id: 'therapist-1' }));
 
     const handler = await loadHandler();
     const requestBody = {
@@ -317,22 +454,12 @@ describe('accept staff invite edge function', () => {
     expect(replayResponse.status).toBe(404);
     await expect(replayResponse.json()).resolves.toMatchObject({ error: 'invite_not_found' });
     expect(createdUsers).toHaveLength(1);
-    expect(deletedInviteTokenHashes).toEqual([tokenHash]);
+    expect(consumedInvites).toHaveLength(1);
   }, 20_000);
 
   it('does not consume the token when account creation fails', async () => {
     failCreateUser = true;
-    const tokenHash = await hashToken(rawToken);
-    inviteTokens.push({
-      id: 'invite-create-fails',
-      email: 'bt.staff@example.com',
-      organization_id: 'org-123',
-      token_hash: tokenHash,
-      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      created_by: 'admin-1',
-      created_at: new Date().toISOString(),
-      role: 'bt',
-    });
+    inviteTokens.push(await buildInvite({ id: 'invite-create-fails' }));
 
     const handler = await loadHandler();
     const response = await handler(
@@ -351,17 +478,7 @@ describe('accept staff invite edge function', () => {
 
   it('deletes the partially created auth user when role assignment fails', async () => {
     failUserRoleUpsert = true;
-    const tokenHash = await hashToken(rawToken);
-    inviteTokens.push({
-      id: 'invite-role-fails',
-      email: 'bt.staff@example.com',
-      organization_id: 'org-123',
-      token_hash: tokenHash,
-      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      created_by: 'admin-1',
-      created_at: new Date().toISOString(),
-      role: 'bt',
-    });
+    inviteTokens.push(await buildInvite({ id: 'invite-role-fails' }));
 
     const handler = await loadHandler();
     const response = await handler(
@@ -380,17 +497,7 @@ describe('accept staff invite edge function', () => {
 
   it('deletes the partially created auth user when profile sync fails', async () => {
     failProfileUpsert = true;
-    const tokenHash = await hashToken(rawToken);
-    inviteTokens.push({
-      id: 'invite-profile-fails',
-      email: 'bt.staff@example.com',
-      organization_id: 'org-123',
-      token_hash: tokenHash,
-      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      created_by: 'admin-1',
-      created_at: new Date().toISOString(),
-      role: 'bt',
-    });
+    inviteTokens.push(await buildInvite({ id: 'invite-profile-fails' }));
 
     const handler = await loadHandler();
     const response = await handler(
@@ -424,17 +531,13 @@ describe('accept staff invite edge function', () => {
   }, 20_000);
 
   it('rejects missing or expired invite tokens without creating a user', async () => {
-    const tokenHash = await hashToken(rawToken);
-    inviteTokens.push({
+    const expiredInvite = await buildInvite({
       id: 'invite-expired',
       email: 'expired@example.com',
-      organization_id: 'org-123',
-      token_hash: tokenHash,
       expires_at: new Date(Date.now() - 60 * 1000).toISOString(),
-      created_by: 'admin-1',
       created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-      role: 'bt',
     });
+    inviteTokens.push(expiredInvite);
 
     const handler = await loadHandler();
 
@@ -449,6 +552,308 @@ describe('accept staff invite edge function', () => {
     expect(response.status).toBe(410);
     await expect(response.json()).resolves.toMatchObject({ error: 'invite_expired' });
     expect(createdUsers).toHaveLength(0);
-    expect(deletedInviteTokenHashes).toEqual([tokenHash]);
+    expect(deletedInviteTokenHashes).toEqual([expiredInvite.token_hash]);
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist belongs to another organization', async () => {
+    therapists.push({
+      id: 'therapist-org-mismatch',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-999',
+      status: 'active',
+      deleted_at: null,
+    });
+    inviteTokens.push(await buildInvite({ id: 'invite-org-mismatch', target_therapist_id: 'therapist-org-mismatch' }));
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createdUsers).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist email does not match', async () => {
+    therapists.push({
+      id: 'therapist-email-mismatch',
+      email: 'other.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    inviteTokens.push(await buildInvite({ id: 'invite-email-mismatch', target_therapist_id: 'therapist-email-mismatch' }));
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createdUsers).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist is inactive', async () => {
+    therapists.push({
+      id: 'therapist-inactive',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'inactive',
+      deleted_at: null,
+    });
+    inviteTokens.push(await buildInvite({ id: 'invite-inactive', target_therapist_id: 'therapist-inactive' }));
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createdUsers).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
+  it('accepts targeted invites when therapist status is null', async () => {
+    therapists.push({
+      id: 'therapist-null-status',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: null,
+      deleted_at: null,
+    });
+    inviteTokens.push(await buildInvite({ id: 'invite-null-status', target_therapist_id: 'therapist-null-status' }));
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ email: 'bt.staff@example.com', role: 'bt' });
+    expect(consumedInvites).toHaveLength(1);
+  }, 20_000);
+
+  it('accepts targeted invites when therapist status normalizes to active', async () => {
+    therapists.push({
+      id: 'therapist-normalized-status',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: ' Active ',
+      deleted_at: null,
+    });
+    inviteTokens.push(
+      await buildInvite({ id: 'invite-normalized-status', target_therapist_id: 'therapist-normalized-status' }),
+    );
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ email: 'bt.staff@example.com', role: 'bt' });
+    expect(consumedInvites).toHaveLength(1);
+  }, 20_000);
+
+  it('rejects targeted invites when therapist status is whitespace-only', async () => {
+    therapists.push({
+      id: 'therapist-whitespace-status',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: '   ',
+      deleted_at: null,
+    });
+    inviteTokens.push(
+      await buildInvite({ id: 'invite-whitespace-status', target_therapist_id: 'therapist-whitespace-status' }),
+    );
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_target_invalid' });
+    expect(createdUsers).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist is soft deleted', async () => {
+    therapists.push({
+      id: 'therapist-deleted',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: new Date().toISOString(),
+    });
+    inviteTokens.push(await buildInvite({ id: 'invite-deleted', target_therapist_id: 'therapist-deleted' }));
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createdUsers).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects revoked invites before account creation', async () => {
+    inviteTokens.push(await buildInvite({ id: 'invite-revoked', revoked_at: new Date().toISOString() }));
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(createdUsers).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects already accepted invites before account creation', async () => {
+    inviteTokens.push(
+      await buildInvite({
+        id: 'invite-accepted',
+        accepted_at: new Date().toISOString(),
+        accepted_by_user_id: 'existing-user-1',
+      }),
+    );
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_not_found' });
+    expect(createdUsers).toHaveLength(0);
+    expect(insertedTherapistLinks).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects targeted invites when the stored role is not bt without side effects', async () => {
+    therapists.push({
+      id: 'therapist-role-forbidden',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    inviteTokens.push(
+      await buildInvite({
+        id: 'invite-role-forbidden',
+        role: 'bcba',
+        target_therapist_id: 'therapist-role-forbidden',
+      }),
+    );
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_target_role_forbidden' });
+    expect(createdUsers).toHaveLength(0);
+    expect(upsertedUserRoles).toHaveLength(0);
+    expect(upsertedProfiles).toHaveLength(0);
+    expect(insertedTherapistLinks).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+    expect(deletedAuthUserIds).toHaveLength(0);
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('deletes the partially created auth user when therapist link creation fails', async () => {
+    failTherapistLinkUpsert = true;
+    therapists.push({
+      id: 'therapist-link-fail',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    inviteTokens.push(await buildInvite({ id: 'invite-link-fails', target_therapist_id: 'therapist-link-fail' }));
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ error: 'therapist_link_failed' });
+    expect(deletedAuthUserIds).toEqual(['new-user-1']);
+    expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
+  it('deletes the partially created auth user when invite consumption fails', async () => {
+    failInviteConsumeUpdate = true;
+    therapists.push({
+      id: 'therapist-consume-fail',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    inviteTokens.push(await buildInvite({ id: 'invite-consume-fails', target_therapist_id: 'therapist-consume-fail' }));
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_consumption_failed' });
+    expect(deletedAuthUserIds).toEqual(['new-user-1']);
+    expect(consumedInvites).toHaveLength(0);
   }, 20_000);
 });

@@ -27,7 +27,9 @@ const therapist = {
   phone: '555-0100',
 };
 
-const mockAuth = (role: 'client' | 'bt' | 'admin' | 'bcba' | 'super_admin' = 'admin') => {
+const mockAuth = (
+  role: 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin' = 'admin',
+) => {
   vi.mocked(useAuth).mockReturnValue({
     user: {
       id: `${role}-user-id`,
@@ -57,7 +59,12 @@ const mockAuth = (role: 'client' | 'bt' | 'admin' | 'bcba' | 'super_admin' = 'ad
       };
       return (ranks[role] ?? 0) >= (ranks[requiredRole] ?? 0);
     }),
-    hasCapability: vi.fn(),
+    hasCapability: vi.fn((capability: string) => {
+      if (capability !== 'manageStaff') {
+        return false;
+      }
+      return ['admin_schedule', 'admin', 'bcba', 'super_admin'].includes(role);
+    }),
     hasAnyCapability: vi.fn(),
     hasAnyRole: vi.fn(),
     isAdmin: vi.fn(() => role === 'admin' || role === 'bcba' || role === 'super_admin'),
@@ -114,6 +121,7 @@ describe('Therapist profile staff invite', () => {
             organizationId: '11111111-1111-1111-1111-111111111111',
             role: 'bt',
             reason: 'Invite Taylor for BT data collection.',
+            targetTherapistId: 'therapist-1',
           },
         }),
       );
@@ -121,19 +129,25 @@ describe('Therapist profile staff invite', () => {
     expect(showSuccess).toHaveBeenCalledWith('Staff invite sent successfully');
   }, 20000);
 
-  it('does not expose the invite action to BT viewers', () => {
-    mockAuth('bt');
+  it.each(['admin_schedule', 'bcba', 'super_admin'] as const)(
+    'exposes the invite action to %s viewers when they can manage staff',
+    (role) => {
+      mockAuth(role);
 
-    renderWithProviders(<ProfileTab therapist={therapist} />);
+      renderWithProviders(<ProfileTab therapist={therapist} />);
 
-    expect(screen.queryByRole('button', { name: /invite to app/i })).not.toBeInTheDocument();
-  });
+      expect(screen.getByRole('button', { name: /invite to app/i })).toBeInTheDocument();
+    },
+  );
 
-  it('does not expose the invite action to BCBA viewers', () => {
-    mockAuth('bcba');
+  it.each(['client', 'bt', 'therapist', 'midtier'] as const)(
+    'does not expose the invite action to %s viewers',
+    (role) => {
+      mockAuth(role);
 
-    renderWithProviders(<ProfileTab therapist={therapist} />);
+      renderWithProviders(<ProfileTab therapist={therapist} />);
 
-    expect(screen.queryByRole('button', { name: /invite to app/i })).not.toBeInTheDocument();
-  });
+      expect(screen.queryByRole('button', { name: /invite to app/i })).not.toBeInTheDocument();
+    },
+  );
 });

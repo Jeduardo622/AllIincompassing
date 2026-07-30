@@ -29,8 +29,13 @@ import {
 } from '../lib/constants/therapists';
 import { parseTherapistOnboardingPrefill } from '../lib/onboardingPrefill';
 
+export interface TherapistOnboardingResult {
+  therapist: Therapist;
+  inviteSent: boolean;
+}
+
 interface TherapistOnboardingProps {
-  onComplete?: () => void;
+  onComplete?: (result?: TherapistOnboardingResult) => void;
 }
 
 interface OnboardingFormData {
@@ -237,13 +242,47 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
         }
       }
 
-      return therapist;
+      let inviteSent = false;
+      try {
+        const { error: inviteError } = await supabase.functions.invoke('admin-invite', {
+          body: {
+            email: therapist.email,
+            organizationId: activeOrganizationId,
+            role: 'bt',
+            reason: `Invite ${therapist.full_name} to access their therapist profile.`,
+            targetTherapistId: therapist.id,
+          },
+        });
+
+        if (inviteError) {
+          throw inviteError;
+        }
+
+        inviteSent = true;
+      } catch (inviteError) {
+        logger.error('Therapist onboarding invite failed after therapist creation', {
+          error: inviteError,
+          context: { component: 'TherapistOnboarding', operation: 'sendInvite' },
+          metadata: {
+            therapistId: therapist.id,
+            organizationId: activeOrganizationId,
+          },
+        });
+      }
+
+      return { therapist, inviteSent } satisfies TherapistOnboardingResult;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      const { inviteSent } = result;
       queryClient.invalidateQueries({ queryKey: ['therapists'] });
-      showSuccess('Therapist created successfully');
+      if (inviteSent) {
+        showSuccess('Therapist created and invite sent');
+      } else {
+        showError(new Error('Therapist created, but the invite email was not sent. Open the therapist profile and retry Invite to app.'));
+      }
+      setIsSubmitting(false);
       if (onComplete) {
-        onComplete();
+        onComplete(result);
       } else {
         navigate('/therapists');
       }

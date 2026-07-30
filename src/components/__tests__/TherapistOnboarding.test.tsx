@@ -1,8 +1,8 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, waitFor, userEvent } from '../../test/utils';
 import { useActiveOrganizationId } from '../../lib/organization';
-import { showError } from '../../lib/toast';
+import { showError, showSuccess } from '../../lib/toast';
 
 vi.mock('../../lib/organization', () => ({
   useActiveOrganizationId: vi.fn(() => 'org-test'),
@@ -13,11 +13,56 @@ vi.mock('../../lib/toast', () => ({
   showError: vi.fn(),
 }));
 
+const {
+  fromMock,
+  insertMock,
+  insertSelectMock,
+  insertSingleMock,
+  invokeMock,
+} = vi.hoisted(() => {
+  const insertSingleMock = vi.fn();
+  const insertSelectMock = vi.fn(() => ({
+    single: insertSingleMock,
+  }));
+  const insertMock = vi.fn(() => ({
+    select: insertSelectMock,
+  }));
+  const fromMock = vi.fn(() => ({
+    insert: insertMock,
+  }));
+  const invokeMock = vi.fn();
+
+  return {
+    fromMock,
+    insertMock,
+    insertSelectMock,
+    insertSingleMock,
+    invokeMock,
+  };
+});
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: {
+    from: fromMock,
+    functions: {
+      invoke: invokeMock,
+    },
+  },
+}));
+
 const mockUseActiveOrganizationId = vi.mocked(useActiveOrganizationId);
 const mockShowError = vi.mocked(showError);
+const mockShowSuccess = vi.mocked(showSuccess);
 import { TherapistOnboarding } from '../TherapistOnboarding';
 
 describe('TherapistOnboarding validation', () => {
+  const createdTherapist = {
+    id: 'therapist-1',
+    email: 'avery@example.com',
+    organization_id: 'org-test',
+    full_name: 'Avery Blake',
+  };
+
   const renderOnboarding = () => {
     const handleComplete = vi.fn();
     renderWithProviders(<TherapistOnboarding onComplete={handleComplete} />);
@@ -27,7 +72,33 @@ describe('TherapistOnboarding validation', () => {
   beforeEach(() => {
     mockUseActiveOrganizationId.mockReturnValue('org-test');
     mockShowError.mockClear();
+    mockShowSuccess.mockClear();
+    fromMock.mockClear();
+    insertMock.mockClear();
+    insertSelectMock.mockClear();
+    insertSingleMock.mockReset();
+    insertSingleMock.mockResolvedValue({
+      data: createdTherapist,
+      error: null,
+    });
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue({ data: null, error: null });
   });
+
+  const advanceToFinalStep = async () => {
+    await userEvent.type(screen.getByLabelText(/first name/i), 'Avery');
+    await userEvent.type(screen.getByLabelText(/last name/i), 'Blake');
+    await userEvent.type(screen.getByLabelText(/email/i), 'avery@example.com');
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    await userEvent.type(screen.getByLabelText(/license number/i), 'LIC-12345');
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    expect(screen.getByText(/documents & certifications/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText(/i consent to the collection/i));
+  };
 
   it('validates basic information before advancing', async () => {
     renderOnboarding();
@@ -62,24 +133,54 @@ describe('TherapistOnboarding validation', () => {
   it('allows submission without any uploaded documents', async () => {
     const { handleComplete } = renderOnboarding();
 
-    await userEvent.type(screen.getByLabelText(/first name/i), 'Avery');
-    await userEvent.type(screen.getByLabelText(/last name/i), 'Blake');
-    await userEvent.type(screen.getByLabelText(/email/i), 'avery@example.com');
-    await userEvent.click(screen.getByRole('button', { name: /next/i }));
-
-    await userEvent.type(screen.getByLabelText(/license number/i), 'LIC-12345');
-    await userEvent.click(screen.getByRole('button', { name: /next/i }));
-    await userEvent.click(screen.getByRole('button', { name: /next/i }));
-    await userEvent.click(screen.getByRole('button', { name: /next/i }));
-
-    expect(screen.getByText(/documents & certifications/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByLabelText(/i consent to the collection/i));
+    await advanceToFinalStep();
 
     await userEvent.click(screen.getByRole('button', { name: /complete onboarding/i }));
 
     await waitFor(() => {
       expect(handleComplete).toHaveBeenCalledTimes(1);
     });
+
+    expect(handleComplete).toHaveBeenCalledWith({
+      therapist: createdTherapist,
+      inviteSent: true,
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith('admin-invite', {
+      body: expect.objectContaining({
+        email: 'avery@example.com',
+        organizationId: 'org-test',
+        role: 'bt',
+        targetTherapistId: 'therapist-1',
+      }),
+    });
+  }, 20000);
+
+  it('completes onboarding with a recoverable error when invite delivery fails', async () => {
+    const { handleComplete } = renderOnboarding();
+    invokeMock.mockResolvedValueOnce({
+      data: null,
+      error: new Error('Edge function failed'),
+    });
+
+    await advanceToFinalStep();
+    await userEvent.click(screen.getByRole('button', { name: /complete onboarding/i }));
+
+    await waitFor(() => {
+      expect(handleComplete).toHaveBeenCalledTimes(1);
+    });
+
+    expect(handleComplete).toHaveBeenCalledWith({
+      therapist: createdTherapist,
+      inviteSent: false,
+    });
+
+    expect(mockShowError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('invite'),
+      }),
+    );
+    expect(mockShowSuccess).not.toHaveBeenCalledWith('Therapist created successfully');
   }, 20000);
 
   it('shows an error when organization context is unavailable', async () => {

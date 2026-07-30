@@ -27,6 +27,7 @@ interface StoredInviteToken {
   created_by: string;
   created_at: string;
   role: string;
+  target_therapist_id: string | null;
   revoked_at: string | null;
 }
 
@@ -193,6 +194,7 @@ const createAdminRpc = vi.fn(async (functionName: string, params: Record<string,
     created_by: createdBy,
     created_at: new Date().toISOString(),
     role: String(params.p_role ?? 'admin'),
+    target_therapist_id: (params.p_target_therapist_id as string | null | undefined) ?? null,
     revoked_at: null,
   };
   inviteTokens.push(stored);
@@ -409,6 +411,7 @@ describe('admin invite edge function', () => {
       created_by: 'admin-1',
       created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       role: 'admin',
+      target_therapist_id: null,
       revoked_at: null,
     };
     inviteTokens.push(expiredToken);
@@ -449,6 +452,7 @@ describe('admin invite edge function', () => {
       created_by: 'admin-1',
       created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
       role: 'admin',
+      target_therapist_id: null,
       revoked_at: null,
     });
 
@@ -481,6 +485,7 @@ describe('admin invite edge function', () => {
         created_by: 'admin-1',
         created_at: new Date(now - index * 60 * 1000).toISOString(),
         role: 'admin',
+        target_therapist_id: null,
         revoked_at: null,
       });
     }
@@ -564,6 +569,7 @@ describe('admin invite edge function', () => {
       email: 'bt.staff@example.com',
       organization_id: 'org-123',
       role: 'bt',
+      target_therapist_id: null,
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -625,6 +631,7 @@ describe('admin invite edge function', () => {
       created_by: 'admin-1',
       created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
       role: 'bt',
+      target_therapist_id: null,
       revoked_at: null,
     });
     therapists.push({
@@ -656,6 +663,7 @@ describe('admin invite edge function', () => {
       expect.objectContaining({ p_target_therapist_id: '77777777-7777-4777-8777-777777777777' }),
     );
     expect(inviteTokens).toHaveLength(1);
+    expect(inviteTokens[0]).toMatchObject({ target_therapist_id: null });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(adminActionRows).toHaveLength(0);
   }, 20_000);
@@ -670,6 +678,7 @@ describe('admin invite edge function', () => {
       created_by: 'admin-1',
       created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
       role: 'bt',
+      target_therapist_id: '88888888-8888-4888-8888-888888888888',
       revoked_at: null,
     });
     const handler = await loadHandler();
@@ -693,6 +702,7 @@ describe('admin invite edge function', () => {
     );
     expect(therapistLookupSpy).not.toHaveBeenCalled();
     expect(inviteTokens).toHaveLength(1);
+    expect(inviteTokens[0]).toMatchObject({ target_therapist_id: '88888888-8888-4888-8888-888888888888' });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(adminActionRows).toHaveLength(0);
   }, 20_000);

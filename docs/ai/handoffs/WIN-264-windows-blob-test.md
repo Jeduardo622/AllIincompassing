@@ -25,7 +25,8 @@
 
 ## Implementation
 
-- Replaced the unsupported jsdom `Blob.text()` test call with `FileReader.readAsText`.
+- Read the payload with `Blob.text()` when the Linux CI response exposes the Node/undici Blob implementation.
+- Fall back to `FileReader.readAsText` for the Windows jsdom Blob implementation, where `Blob.text()` is unavailable.
 - Preserved the assertion that the downloaded payload equals `pdf-binary`.
 - Left `downloadSessionNotesPdfExport`, workflow sources, CI scripts, migrations, and program/goal editing code unchanged.
 
@@ -60,7 +61,7 @@
 
 - Specification: completed; scope remains test-only plus tracking artifacts.
 - Implementation: completed.
-- Code review: approved after the handoff-card request was addressed; no code-level defect or protected-path drift found.
+- Code review: approved after the handoff-card update; no code-level defect or protected-path drift found.
 - Test review: `pass-with-blocked-checks`; the focused scope and required static/build checks passed, while aggregate local verification remains blocked by the unchanged authorization CRLF assertion.
 - PR hygiene:
   - `pr-ready`: yes

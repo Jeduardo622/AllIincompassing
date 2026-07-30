@@ -8,6 +8,7 @@ import {
 } from "../_shared/auth-middleware.ts";
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getUserRoles } from "../_shared/auth.ts";
+import { resolveOrgId } from "../_shared/org.ts";
 
 const DEFAULT_EXPIRATION_HOURS = 72;
 const MIN_EXPIRATION_HOURS = 1;
@@ -26,6 +27,7 @@ const InviteRequestSchema = z.object({
     .optional(),
   role: z.enum(["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"]).optional(),
   reason: z.string().trim().min(10).max(1000).optional(),
+  targetTherapistId: z.string().uuid().optional(),
 });
 
 type InviteRequest = z.infer<typeof InviteRequestSchema>;
@@ -80,10 +82,13 @@ const buildInviteUrl = (baseUrl: string, token: string) => {
   return `${trimmed}/accept-invite?token=${token}`;
 };
 
+const isActiveTherapistStatus = (status: string | null | undefined) =>
+  (status ?? "active").trim().toLowerCase() === "active";
+
 const rollbackInviteToken = async (inviteId: string, organizationId: string) => {
   const { error } = await supabaseAdmin
     .from("admin_invite_tokens")
-    .delete()
+    .update({ revoked_at: new Date().toISOString() })
     .eq("id", inviteId)
     .eq("organization_id", organizationId);
 
@@ -167,7 +172,9 @@ async function handleInvite(req: Request, userContext: UserContext) {
       return jsonResponse(401, { error: "unauthorized" });
     }
 
-    const callerOrganizationId = extractOrganizationId(authResult.user.user_metadata as Record<string, unknown> | undefined);
+    const callerOrganizationId = callerIsSuperAdmin
+      ? extractOrganizationId(authResult.user.user_metadata as Record<string, unknown> | undefined)
+      : await resolveOrgId(adminClient);
     const normalizedEmail = normalizeEmail(payload.email);
     const targetOrganizationId = payload.organizationId ?? callerOrganizationId;
 
@@ -185,6 +192,52 @@ async function handleInvite(req: Request, userContext: UserContext) {
     if ((desiredRole === "super_admin" || desiredRole === "bcba") && !callerIsSuperAdmin) {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
       return jsonResponse(403, { error: "insufficient_role_for_target" });
+    }
+
+    if (payload.targetTherapistId) {
+      const { data: targetTherapist, error: targetTherapistError } = await supabaseAdmin
+        .from("therapists")
+        .select("id,email,organization_id,status,deleted_at")
+        .eq("id", payload.targetTherapistId)
+        .maybeSingle();
+
+      if (targetTherapistError) {
+        console.error("Failed to validate invite target therapist", { code: "target_therapist_lookup_failed" });
+        logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
+        return jsonResponse(500, { error: "invite_target_validation_failed" });
+      }
+
+      if (!targetTherapist) {
+        logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
+        return jsonResponse(409, { error: "target_therapist_not_available" });
+      }
+
+      const therapistRecord = targetTherapist as {
+        email?: string | null;
+        organization_id?: string | null;
+        status?: string | null;
+        deleted_at?: string | null;
+      };
+
+      if (therapistRecord.organization_id !== targetOrganizationId) {
+        logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
+        return jsonResponse(403, { error: "target_therapist_org_mismatch" });
+      }
+
+      if (normalizeEmail(therapistRecord.email ?? "") !== normalizedEmail) {
+        logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
+        return jsonResponse(409, { error: "target_therapist_email_mismatch" });
+      }
+
+      if (!isActiveTherapistStatus(therapistRecord.status)) {
+        logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
+        return jsonResponse(409, { error: "target_therapist_inactive" });
+      }
+
+      if (therapistRecord.deleted_at) {
+        logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
+        return jsonResponse(409, { error: "target_therapist_deleted" });
+      }
     }
 
     const { emailServiceUrl, portalBaseUrl } = ensureEmailServiceConfig();
@@ -213,6 +266,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
       p_expires_at: expiresAt.toISOString(),
       p_created_by: userContext.user.id,
       p_role: desiredRole,
+      p_target_therapist_id: payload.targetTherapistId ?? null,
     })) as InsertInviteResult;
 
     if (insertedInvite.error || !insertedInvite.data?.[0]) {
@@ -266,6 +320,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
         invite_id: inviteResult.id,
         role: desiredRole,
         email_delivery_status: emailResult.status,
+        ...(payload.targetTherapistId ? { target_therapist_id: payload.targetTherapistId } : {}),
         ...(payload.reason ? { reason: payload.reason } : {}),
         ...(emailResult.error ? { email_error: emailResult.error } : {}),
       },

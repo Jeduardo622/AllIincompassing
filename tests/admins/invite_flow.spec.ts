@@ -27,6 +27,15 @@ interface StoredInviteToken {
   created_by: string;
   created_at: string;
   role: string;
+  revoked_at: string | null;
+}
+
+interface TherapistRecord {
+  id: string;
+  email: string;
+  organization_id: string;
+  status: string | null;
+  deleted_at: string | null;
 }
 
 const envValues = new Map<string, string>([
@@ -41,6 +50,7 @@ stubDenoEnv((key) => envValues.get(key) ?? '');
 const logApiAccess = vi.fn();
 const getUserRoles = vi.fn(async () => [currentUserContext.profile.role]);
 const createRequestClient = vi.fn();
+const resolveOrgId = vi.fn(async () => currentUserMetadata.organization_id as string | null);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -57,8 +67,9 @@ let currentUserContext: TestUserContext = {
 let currentUserMetadata: Record<string, unknown> = { organization_id: 'org-123' };
 
 const inviteTokens: StoredInviteToken[] = [];
+const therapists: TherapistRecord[] = [];
 const adminActionRows: Array<Record<string, unknown>> = [];
-let rollbackDeleteError: { message: string } | null = null;
+let rollbackUpdateError: { message: string } | null = null;
 
 const fromTable = (table: string) => {
   if (table === 'admin_actions') {
@@ -71,24 +82,44 @@ const fromTable = (table: string) => {
   }
   if (table === 'admin_invite_tokens') {
     return {
-      delete: vi.fn(() => {
+      update: vi.fn((payload: { revoked_at?: string | null }) => {
         const filters: Record<string, unknown> = {};
         const builder = {
           eq: vi.fn((column: string, value: unknown) => {
             filters[column] = value;
-            if (filters.id && filters.organization_id && !rollbackDeleteError) {
-              const index = inviteTokens.findIndex(token =>
+            if (filters.id && filters.organization_id && !rollbackUpdateError) {
+              const inviteToken = inviteTokens.find(token =>
                 token.id === filters.id && token.organization_id === filters.organization_id,
               );
-              if (index >= 0) {
-                inviteTokens.splice(index, 1);
+              if (inviteToken) {
+                inviteToken.revoked_at = payload.revoked_at ?? null;
               }
             }
             return builder;
           }),
-          then: (resolve: (value: { error: { message: string } | null }) => void) => resolve({ error: rollbackDeleteError }),
+          then: (resolve: (value: { error: { message: string } | null }) => void) => resolve({ error: rollbackUpdateError }),
         };
         return builder;
+      }),
+    };
+  }
+  if (table === 'therapists') {
+    return {
+      select: vi.fn(() => {
+        const filters: Record<string, unknown> = {};
+        return {
+          eq: vi.fn((column: string, value: unknown) => {
+            filters[column] = value;
+            return {
+              maybeSingle: vi.fn(async () => ({
+                data:
+                  therapists.find(therapist => Object.entries(filters).every(([key, filterValue]) => therapist[key as keyof TherapistRecord] === filterValue))
+                  ?? null,
+                error: null,
+              })),
+            };
+          }),
+        };
       }),
     };
   }
@@ -118,6 +149,7 @@ const createAdminRpc = vi.fn(async (functionName: string, params: Record<string,
     .filter(token =>
       token.email === email
       && token.organization_id === organizationId
+      && token.revoked_at === null
       && new Date(token.expires_at).getTime() > now
     )
     .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
@@ -134,6 +166,7 @@ const createAdminRpc = vi.fn(async (functionName: string, params: Record<string,
     if (
       token.email === email
       && token.organization_id === organizationId
+      && token.revoked_at === null
       && new Date(token.expires_at).getTime() <= now
     ) {
       inviteTokens.splice(index, 1);
@@ -158,6 +191,7 @@ const createAdminRpc = vi.fn(async (functionName: string, params: Record<string,
     created_by: createdBy,
     created_at: new Date().toISOString(),
     role: String(params.p_role ?? 'admin'),
+    revoked_at: null,
   };
   inviteTokens.push(stored);
 
@@ -190,6 +224,10 @@ vi.mock('../../supabase/functions/_shared/auth.ts', () => ({
   getUserRoles,
 }));
 
+vi.mock('../../supabase/functions/_shared/org.ts', () => ({
+  resolveOrgId,
+}));
+
 describe('admin invite edge function', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -201,8 +239,9 @@ describe('admin invite edge function', () => {
   beforeEach(async () => {
     vi.resetModules();
     inviteTokens.splice(0, inviteTokens.length);
+    therapists.splice(0, therapists.length);
     adminActionRows.splice(0, adminActionRows.length);
-    rollbackDeleteError = null;
+    rollbackUpdateError = null;
     currentUserContext = {
       user: { id: 'admin-1', email: 'admin@example.com' },
       profile: { id: 'profile-1', email: 'admin@example.com', role: 'admin', is_active: true },
@@ -216,6 +255,7 @@ describe('admin invite edge function', () => {
     getUserRoles.mockClear();
     createRequestClient.mockClear();
     createAdminRpc.mockClear();
+    resolveOrgId.mockClear();
   });
 
   it('creates a scoped invite token, sends email, and logs the admin action', async () => {
@@ -302,7 +342,7 @@ describe('admin invite edge function', () => {
     expect(adminActionRows).toHaveLength(0);
   }, 20_000);
 
-  it('deletes the invite token when email delivery fails', async () => {
+  it('revokes the invite token when email delivery fails', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
     const handler = await loadHandler();
 
@@ -317,7 +357,8 @@ describe('admin invite edge function', () => {
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({ error: 'email_delivery_failed' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(inviteTokens).toHaveLength(0);
+    expect(inviteTokens).toHaveLength(1);
+    expect(inviteTokens[0]?.revoked_at).toEqual(expect.any(String));
     expect(adminActionRows).toHaveLength(1);
     expect(adminActionRows[0]?.action_details).toMatchObject({
       email: 'mailer-failure@example.com',
@@ -328,7 +369,7 @@ describe('admin invite edge function', () => {
   }, 20_000);
 
   it('surfaces rollback failure when email delivery fails and token cleanup cannot complete', async () => {
-    rollbackDeleteError = { message: 'delete denied' };
+    rollbackUpdateError = { message: 'delete denied' };
     fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
     const handler = await loadHandler();
 
@@ -365,6 +406,7 @@ describe('admin invite edge function', () => {
       created_by: 'admin-1',
       created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       role: 'admin',
+      revoked_at: null,
     };
     inviteTokens.push(expiredToken);
 
@@ -404,6 +446,7 @@ describe('admin invite edge function', () => {
       created_by: 'admin-1',
       created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
       role: 'admin',
+      revoked_at: null,
     });
 
     const handler = await loadHandler();
@@ -435,6 +478,7 @@ describe('admin invite edge function', () => {
         created_by: 'admin-1',
         created_at: new Date(now - index * 60 * 1000).toISOString(),
         role: 'admin',
+        revoked_at: null,
       });
     }
 
@@ -533,6 +577,147 @@ describe('admin invite edge function', () => {
       role: 'bt',
       email_delivery_status: 'sent',
     });
+  }, 20_000);
+
+  it('issues targeted BT invites against the canonical organization scope', async () => {
+    therapists.push({
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '11111111-1111-4111-8111-111111111111',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(resolveOrgId).toHaveBeenCalledWith(expect.anything());
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({ p_target_therapist_id: '11111111-1111-4111-8111-111111111111' }),
+    );
+    expect(adminActionRows[0]?.action_details).toMatchObject({
+      target_therapist_id: '11111111-1111-4111-8111-111111111111',
+    });
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist belongs to another organization', async () => {
+    therapists.push({
+      id: '22222222-2222-4222-8222-222222222222',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-999',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '22222222-2222-4222-8222-222222222222',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist email does not match', async () => {
+    therapists.push({
+      id: '33333333-3333-4333-8333-333333333333',
+      email: 'other.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '33333333-3333-4333-8333-333333333333',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist is inactive', async () => {
+    therapists.push({
+      id: '44444444-4444-4444-8444-444444444444',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'inactive',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '44444444-4444-4444-8444-444444444444',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it('rejects targeted invites when the therapist is soft deleted', async () => {
+    therapists.push({
+      id: '55555555-5555-4555-8555-555555555555',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: new Date().toISOString(),
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '55555555-5555-4555-8555-555555555555',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   }, 20_000);
 
   it('fails closed for BCBA callers before invite side effects begin', async () => {

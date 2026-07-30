@@ -77,7 +77,9 @@
 - Verification summary: present.
 - Reviewer: completed with no findings.
 - PR-ready: yes, with blocked checks disclosed.
-- Required follow-up: push, open the PR, and rerun hosted browser proof when valid credentials are available.
+- PR: [#875](https://github.com/Jeduardo622/AllIincompassing/pull/875)
+- Live status at open: mergeable, with policy, Lighthouse, and Netlify preview checks pending.
+- Required follow-up: complete human review and rerun hosted browser proof when valid credentials are available.
 
 ## Handoff Summary
 

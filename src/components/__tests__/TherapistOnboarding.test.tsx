@@ -56,6 +56,13 @@ const mockShowSuccess = vi.mocked(showSuccess);
 import { TherapistOnboarding } from '../TherapistOnboarding';
 
 describe('TherapistOnboarding validation', () => {
+  const createdTherapist = {
+    id: 'therapist-1',
+    email: 'avery@example.com',
+    organization_id: 'org-test',
+    full_name: 'Avery Blake',
+  };
+
   const renderOnboarding = () => {
     const handleComplete = vi.fn();
     renderWithProviders(<TherapistOnboarding onComplete={handleComplete} />);
@@ -71,12 +78,7 @@ describe('TherapistOnboarding validation', () => {
     insertSelectMock.mockClear();
     insertSingleMock.mockReset();
     insertSingleMock.mockResolvedValue({
-      data: {
-        id: 'therapist-1',
-        email: 'avery@example.com',
-        organization_id: 'org-test',
-        full_name: 'Avery Blake',
-      },
+      data: createdTherapist,
       error: null,
     });
     invokeMock.mockReset();
@@ -139,6 +141,11 @@ describe('TherapistOnboarding validation', () => {
       expect(handleComplete).toHaveBeenCalledTimes(1);
     });
 
+    expect(handleComplete).toHaveBeenCalledWith({
+      therapist: createdTherapist,
+      inviteSent: true,
+    });
+
     expect(invokeMock).toHaveBeenCalledWith('admin-invite', {
       body: expect.objectContaining({
         email: 'avery@example.com',
@@ -161,6 +168,11 @@ describe('TherapistOnboarding validation', () => {
 
     await waitFor(() => {
       expect(handleComplete).toHaveBeenCalledTimes(1);
+    });
+
+    expect(handleComplete).toHaveBeenCalledWith({
+      therapist: createdTherapist,
+      inviteSent: false,
     });
 
     expect(mockShowError).toHaveBeenCalledWith(

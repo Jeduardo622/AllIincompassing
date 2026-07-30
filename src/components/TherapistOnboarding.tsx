@@ -29,8 +29,13 @@ import {
 } from '../lib/constants/therapists';
 import { parseTherapistOnboardingPrefill } from '../lib/onboardingPrefill';
 
+export interface TherapistOnboardingResult {
+  therapist: Therapist;
+  inviteSent: boolean;
+}
+
 interface TherapistOnboardingProps {
-  onComplete?: () => void;
+  onComplete?: (result?: TherapistOnboardingResult) => void;
 }
 
 interface OnboardingFormData {
@@ -265,9 +270,10 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
         });
       }
 
-      return { therapist, inviteSent };
+      return { therapist, inviteSent } satisfies TherapistOnboardingResult;
     },
-    onSuccess: ({ inviteSent }) => {
+    onSuccess: (result) => {
+      const { inviteSent } = result;
       queryClient.invalidateQueries({ queryKey: ['therapists'] });
       if (inviteSent) {
         showSuccess('Therapist created and invite sent');
@@ -276,7 +282,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
       }
       setIsSubmitting(false);
       if (onComplete) {
-        onComplete();
+        onComplete(result);
       } else {
         navigate('/therapists');
       }

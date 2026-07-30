@@ -65,8 +65,11 @@ const normalizeOptionalName = (value: string | undefined) => {
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
 const normalizeTherapistStatus = (value: string | null) => {
-  const normalized = value?.trim().toLowerCase();
-  return normalized && normalized.length > 0 ? normalized : "active";
+  if (value === null) {
+    return "active";
+  }
+
+  return value.trim().toLowerCase();
 };
 
 const deleteInviteToken = async (tokenHash: string) => {

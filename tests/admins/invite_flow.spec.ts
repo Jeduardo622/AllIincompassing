@@ -615,6 +615,88 @@ describe('admin invite edge function', () => {
     });
   }, 20_000);
 
+  it('rejects a targeted invite when a generic active invite already exists for the same org and email', async () => {
+    inviteTokens.push({
+      id: 'invite-generic-active',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      token_hash: 'generic-active-hash',
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      created_by: 'admin-1',
+      created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      role: 'bt',
+      revoked_at: null,
+    });
+    therapists.push({
+      id: '77777777-7777-4777-8777-777777777777',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '77777777-7777-4777-8777-777777777777',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'active_invite_exists' });
+    expect(therapistLookupSpy).toHaveBeenCalledTimes(1);
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({ p_target_therapist_id: '77777777-7777-4777-8777-777777777777' }),
+    );
+    expect(inviteTokens).toHaveLength(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('rejects a generic invite when a targeted active invite already exists for the same org and email', async () => {
+    inviteTokens.push({
+      id: 'invite-targeted-active',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      token_hash: 'targeted-active-hash',
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      created_by: 'admin-1',
+      created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      role: 'bt',
+      revoked_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'active_invite_exists' });
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({ p_target_therapist_id: null }),
+    );
+    expect(therapistLookupSpy).not.toHaveBeenCalled();
+    expect(inviteTokens).toHaveLength(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
   it('rejects targeted invites when the requested role is not bt', async () => {
     therapists.push({
       id: '66666666-6666-4666-8666-666666666666',

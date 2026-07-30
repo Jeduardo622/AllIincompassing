@@ -635,6 +635,33 @@ describe('accept staff invite edge function', () => {
     expect(consumedInvites).toHaveLength(1);
   }, 20_000);
 
+  it('rejects targeted invites when therapist status is whitespace-only', async () => {
+    therapists.push({
+      id: 'therapist-whitespace-status',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: '   ',
+      deleted_at: null,
+    });
+    inviteTokens.push(
+      await buildInvite({ id: 'invite-whitespace-status', target_therapist_id: 'therapist-whitespace-status' }),
+    );
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_target_invalid' });
+    expect(createdUsers).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
   it('rejects targeted invites when the therapist is soft deleted', async () => {
     therapists.push({
       id: 'therapist-deleted',

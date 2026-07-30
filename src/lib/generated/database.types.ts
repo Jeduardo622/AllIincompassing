@@ -75,36 +75,62 @@ export type Database = {
       }
       admin_invite_tokens: {
         Row: {
+          accepted_at: string | null
+          accepted_by_user_id: string | null
           created_at: string
           created_by: string
           email: string
           expires_at: string
           id: string
           organization_id: string
+          revoked_at: string | null
           role: Database["public"]["Enums"]["role_type"]
+          target_therapist_id: string | null
           token_hash: string
         }
         Insert: {
+          accepted_at?: string | null
+          accepted_by_user_id?: string | null
           created_at?: string
           created_by: string
           email: string
           expires_at: string
           id?: string
           organization_id: string
+          revoked_at?: string | null
           role?: Database["public"]["Enums"]["role_type"]
+          target_therapist_id?: string | null
           token_hash: string
         }
         Update: {
+          accepted_at?: string | null
+          accepted_by_user_id?: string | null
           created_at?: string
           created_by?: string
           email?: string
           expires_at?: string
           id?: string
           organization_id?: string
+          revoked_at?: string | null
           role?: Database["public"]["Enums"]["role_type"]
+          target_therapist_id?: string | null
           token_hash?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "admin_invite_tokens_accepted_by_user_id_fkey"
+            columns: ["accepted_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_invite_tokens_accepted_by_user_id_fkey"
+            columns: ["accepted_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "admin_invite_tokens_created_by_fkey"
             columns: ["created_by"]
@@ -118,6 +144,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "admin_users"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "admin_invite_tokens_target_therapist_id_fkey"
+            columns: ["target_therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
           },
         ]
       }

@@ -147,6 +147,7 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
           organizationId: data.organization_id,
           role: 'bt',
           reason: trimmedReason,
+          targetTherapistId: therapist.id,
         },
       });
 
@@ -547,7 +548,7 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
           email: therapist.email ?? '',
           organization_id: inviteOrganizationId ?? null,
           role: 'bt',
-          reason: `Invite ${therapist.full_name} to access their BT profile.`,
+          reason: `Invite ${therapist.full_name} to access their therapist profile.`,
         }}
         roleOptions={['bt']}
         title="Invite BT to app"

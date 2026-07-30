@@ -114,6 +114,7 @@ describe('Therapist profile staff invite', () => {
             organizationId: '11111111-1111-1111-1111-111111111111',
             role: 'bt',
             reason: 'Invite Taylor for BT data collection.',
+            targetTherapistId: 'therapist-1',
           },
         }),
       );

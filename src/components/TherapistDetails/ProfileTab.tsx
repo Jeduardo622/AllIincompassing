@@ -36,7 +36,7 @@ interface Issue {
 }
 
 export function ProfileTab({ therapist }: ProfileTabProps) {
-  const { hasRole, profile, user, effectiveRole } = useAuth();
+  const { hasCapability, hasRole, profile, user, effectiveRole } = useAuth();
   const metadata = user?.user_metadata ?? {};
   const metadataOrganizationId =
     typeof metadata.organization_id === 'string'
@@ -46,7 +46,7 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
         : null;
   const inviteOrganizationId =
     therapist.organization_id ?? profile?.organization_id ?? metadataOrganizationId;
-  const canInviteStaff = effectiveRole === 'admin' || effectiveRole === 'super_admin';
+  const canInviteStaff = hasCapability('manageStaff');
   const isOwnProfile = Boolean(
     effectiveRole === 'therapist' &&
       (profile?.id === therapist.id ||

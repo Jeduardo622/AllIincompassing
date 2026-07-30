@@ -145,10 +145,6 @@ async function handleInvite(req: Request, userContext: UserContext) {
     const callerRoles = await getUserRoles(adminClient);
     const callerIsAdmin = callerRoles.includes("admin");
     const callerIsSuperAdmin = callerRoles.includes("super_admin");
-    if (!callerIsAdmin && !callerIsSuperAdmin) {
-      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
-      return jsonResponse(403, { error: "insufficient_role" });
-    }
 
     const payloadResult = InviteRequestSchema.safeParse(await req.json());
     if (!payloadResult.success) {
@@ -159,6 +155,17 @@ async function handleInvite(req: Request, userContext: UserContext) {
     }
 
     const payload: InviteRequest = payloadResult.data;
+    const desiredRole = payload.role ?? "admin";
+    const isTargetedBtInvite = Boolean(
+      payload.targetTherapistId
+      && desiredRole === "bt"
+      && (callerIsAdmin || callerIsSuperAdmin || callerRoles.includes("admin_schedule") || callerRoles.includes("bcba")),
+    );
+
+    if (!callerIsAdmin && !callerIsSuperAdmin && !isTargetedBtInvite) {
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
+      return jsonResponse(403, { error: "insufficient_role" });
+    }
 
     const { data: authResult, error: authError } = await adminClient.auth.getUser();
     if (authError || !authResult?.user) {
@@ -180,7 +187,6 @@ async function handleInvite(req: Request, userContext: UserContext) {
       return jsonResponse(403, { error: "cross_org_invite_forbidden" });
     }
 
-    const desiredRole = payload.role ?? "admin";
     if ((desiredRole === "super_admin" || desiredRole === "bcba") && !callerIsSuperAdmin) {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
       return jsonResponse(403, { error: "insufficient_role_for_target" });

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubDenoEnv } from '../utils/stubDeno';
 
-type TestRole = 'client' | 'bt' | 'therapist' | 'admin' | 'bcba' | 'super_admin';
+type TestRole = 'client' | 'bt' | 'therapist' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
 
 type TestUser = {
   id: string;
@@ -897,6 +897,111 @@ describe('admin invite edge function', () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ error: 'insufficient_role' });
     expect(getUserRoles).toHaveBeenCalledTimes(1);
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+    expect(inviteTokens).toHaveLength(0);
+  }, 20_000);
+
+  it('allows admin_schedule callers to send targeted BT invites only', async () => {
+    currentUserContext = {
+      user: { id: 'admin-schedule-1', email: 'admin_schedule@example.com' },
+      profile: { id: 'profile-admin-schedule-1', email: 'admin_schedule@example.com', role: 'admin_schedule', is_active: true },
+    };
+    therapists.push({
+      id: '99999999-9999-4999-8999-999999999999',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: '99999999-9999-4999-8999-999999999999',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({
+        p_role: 'bt',
+        p_target_therapist_id: '99999999-9999-4999-8999-999999999999',
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(adminActionRows[0]?.action_details).toMatchObject({
+      role: 'bt',
+      target_therapist_id: '99999999-9999-4999-8999-999999999999',
+    });
+  }, 20_000);
+
+  it('allows BCBA callers to send targeted BT invites only', async () => {
+    currentUserContext = {
+      user: { id: 'bcba-1', email: 'bcba@example.com' },
+      profile: { id: 'profile-bcba-1', email: 'bcba@example.com', role: 'bcba', is_active: true },
+    };
+    therapists.push({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'bt.staff@example.com',
+          role: 'bt',
+          targetTherapistId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({
+        p_role: 'bt',
+        p_target_therapist_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(adminActionRows[0]?.action_details).toMatchObject({
+      role: 'bt',
+      target_therapist_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    });
+  }, 20_000);
+
+  it('keeps generic invites blocked for admin_schedule callers', async () => {
+    currentUserContext = {
+      user: { id: 'admin-schedule-1', email: 'admin_schedule@example.com' },
+      profile: { id: 'profile-admin-schedule-1', email: 'admin_schedule@example.com', role: 'admin_schedule', is_active: true },
+    };
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'bt.staff@example.com', role: 'bt' }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: 'insufficient_role' });
     expect(createAdminRpc).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(adminActionRows).toHaveLength(0);

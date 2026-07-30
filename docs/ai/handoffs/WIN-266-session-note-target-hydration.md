@@ -27,7 +27,7 @@
 - Required sequence: `specification-engineer` -> `implementation-engineer` -> `code-review-engineer` -> `test-engineer`
 - Specification: completed.
 - Implementation: completed by the primary agent.
-- Code review: completed; no findings after the legacy target-trial compatibility regression was added.
+- Code review: completed; an automated P2 for partially populated indexed target metadata was fixed with a focused regression.
 - Test review: completed; implementation confidence high, with residual risk limited to blocked broad/browser verification.
 
 ## Verification Card
@@ -49,7 +49,7 @@
 - Executed checks:
   - TDD RED: the new preservation expectation failed because `Legacy freeform target` disappeared after hydration while the other 720 tests passed.
   - Focused target-preservation and blank-evidence regressions: pass (3 tests).
-  - Full `SessionModal` suite: pass (158 tests).
+  - Full `SessionModal` suite: pass (159 tests), including trial-only and partially populated indexed target metadata.
   - `npm run ci:check-focused`: pass; database URL, CI branch-protection, and disabled auth-parity checks reported their expected local skips.
   - `npm run lint`: pass.
   - `npm run typecheck`: pass.
@@ -75,7 +75,7 @@
 - Unrelated changes: none.
 - Generated artifact drift: none.
 - Verification summary: present.
-- Reviewer: completed with no findings.
+- Reviewer: completed; the one actionable P2 was addressed and verified.
 - PR-ready: yes, with blocked checks disclosed.
 - PR: [#875](https://github.com/Jeduardo622/AllIincompassing/pull/875)
 - Live status at open: mergeable, with policy, Lighthouse, and Netlify preview checks pending.

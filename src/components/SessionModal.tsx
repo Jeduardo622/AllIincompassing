@@ -666,7 +666,7 @@ export const buildCloseoutDataPoints = ({
   return [...rawDataPoints, ...aggregateDataPoints];
 };
 
-const reconcileGoalMeasurementTargets = (
+export const reconcileGoalMeasurementTargets = (
   entry: SessionGoalMeasurementEntry | null,
   goal: Goal | undefined,
   goalId: string,
@@ -679,10 +679,14 @@ const reconcileGoalMeasurementTargets = (
   const trialTargets = Array.isArray(entry.data.target_trials)
     ? entry.data.target_trials.map((trial) => trial.target?.trim() ?? '')
     : [];
-  const recoveredTargets =
-    sourceTargets.length > 0
-      ? sourceTargets
-      : (trialTargets.some((target) => target.length > 0) ? trialTargets : []);
+  const recoveredTargetCount =
+    sourceTargets.length > 0 || trialTargets.some((target) => target.length > 0)
+      ? Math.max(sourceTargets.length, trialTargets.length)
+      : 0;
+  const recoveredTargets = Array.from(
+    { length: recoveredTargetCount },
+    (_, index) => sourceTargets[index]?.trim() || trialTargets[index] || '',
+  );
   const planTarget = isAdhocSessionTargetId(goalId) ? '' : goal?.target_criteria?.trim() ?? '';
   const primaryTarget =
     (planTarget && recoveredTargets.some((target) => target.trim() === planTarget)

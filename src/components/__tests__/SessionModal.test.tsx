@@ -9,6 +9,7 @@ import {
   dedupeProgressionNotices,
   formatProgressionNotices,
   incrementLegacyPromptCount,
+  reconcileGoalMeasurementTargets,
   remapLegacyPromptCorrectnessAfterRemoval,
   sumLegacyPromptCounts,
   selectSessionCaptureTargets,
@@ -111,6 +112,36 @@ type SupabaseQueryChain = {
 };
 
 describe('SessionModal', () => {
+  it('fills missing indexed target labels from persisted trial rows', () => {
+    const currentTarget = 'Current plan target';
+    const retiredTarget = 'Retired target';
+
+    expect(reconcileGoalMeasurementTargets(
+      {
+        version: 1,
+        data: {
+          targets: [currentTarget],
+          target_trials: [
+            { target: currentTarget, metric_value: 2 },
+            { target: retiredTarget, metric_value: 4 },
+          ],
+        },
+      },
+      { target_criteria: currentTarget } as Goal,
+      'goal-1',
+    )).toEqual({
+      version: 1,
+      data: {
+        targets: [currentTarget, retiredTarget],
+        target: currentTarget,
+        target_trials: [
+          { target: currentTarget, metric_value: 2 },
+          { target: retiredTarget, metric_value: 4 },
+        ],
+      },
+    });
+  });
+
   it('selects only current active targets for new capture while retaining hydrated history', () => {
     const base = { organization_id: 'org-a', client_id: 'client-a', goal_id: 'goal-a', measurement_type: 'frequency', graph_config: {}, sort_order: 0, current_phase: 'baseline', evaluation_window_started_at: null, progression_version: 1, created_at: '', updated_at: '' } as const;
     const current = { ...base, id: 'current', name: 'Current', status: 'active', is_current: true };

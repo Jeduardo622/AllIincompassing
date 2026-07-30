@@ -355,6 +355,6 @@ async function handleInvite(req: Request, userContext: UserContext) {
   }
 }
 
-export const handler = createProtectedRoute(handleInvite, RouteOptions.admin);
+export const handler = createProtectedRoute(handleInvite, RouteOptions.staffAdmin);
 
 export default handler;

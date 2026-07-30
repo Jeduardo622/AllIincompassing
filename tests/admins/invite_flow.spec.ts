@@ -67,6 +67,10 @@ let currentUserContext: TestUserContext = {
 };
 
 let currentUserMetadata: Record<string, unknown> = { organization_id: 'org-123' };
+const wrapperAllowedRolesByName = {
+  admin: ['admin', 'bcba', 'super_admin'],
+  staffAdmin: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
+} as const;
 
 const inviteTokens: StoredInviteToken[] = [];
 const therapists: TherapistRecord[] = [];
@@ -210,10 +214,28 @@ createRequestClient.mockImplementation(() => createMockClient());
 
 vi.mock('../../supabase/functions/_shared/auth-middleware.ts', () => ({
   corsHeaders,
-  RouteOptions: { admin: {} },
+  RouteOptions: {
+    admin: { requireAuth: true, allowedRoles: [...wrapperAllowedRolesByName.admin] },
+    staffAdmin: { requireAuth: true, allowedRoles: [...wrapperAllowedRolesByName.staffAdmin] },
+  },
   logApiAccess,
-  createProtectedRoute: (handler: (req: Request, context: TestUserContext) => Promise<Response>) => {
-    return (req: Request) => handler(req, currentUserContext);
+  createProtectedRoute: (
+    handler: (req: Request, context: TestUserContext) => Promise<Response>,
+    options: { allowedRoles?: readonly TestRole[] } = {},
+  ) => {
+    return (req: Request) => {
+      const allowedRoles = options.allowedRoles ?? [];
+      if (allowedRoles.length > 0 && !allowedRoles.includes(currentUserContext.profile.role)) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: 'forbidden', message: 'Insufficient permissions' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+
+      return handler(req, currentUserContext);
+    };
   },
 }));
 

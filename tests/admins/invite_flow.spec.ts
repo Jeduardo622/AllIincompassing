@@ -368,8 +368,8 @@ describe('admin invite edge function', () => {
     });
   }, 20_000);
 
-  it('surfaces rollback failure when email delivery fails and token cleanup cannot complete', async () => {
-    rollbackUpdateError = { message: 'delete denied' };
+  it('surfaces rollback failure when email delivery fails and invite revocation cannot complete', async () => {
+    rollbackUpdateError = { message: 'revoke update denied' };
     fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
     const handler = await loadHandler();
 
@@ -610,6 +610,36 @@ describe('admin invite edge function', () => {
     expect(adminActionRows[0]?.action_details).toMatchObject({
       target_therapist_id: '11111111-1111-4111-8111-111111111111',
     });
+  }, 20_000);
+
+  it('rejects targeted invites when the requested role is not bt', async () => {
+    therapists.push({
+      id: '66666666-6666-4666-8666-666666666666',
+      email: 'therapist.staff@example.com',
+      organization_id: 'org-123',
+      status: 'active',
+      deleted_at: null,
+    });
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'therapist.staff@example.com',
+          role: 'therapist',
+          targetTherapistId: '66666666-6666-4666-8666-666666666666',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: 'target_therapist_role_forbidden' });
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+    expect(inviteTokens).toHaveLength(0);
   }, 20_000);
 
   it('rejects targeted invites when the therapist belongs to another organization', async () => {

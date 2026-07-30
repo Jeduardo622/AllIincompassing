@@ -194,6 +194,11 @@ async function handleInvite(req: Request, userContext: UserContext) {
       return jsonResponse(403, { error: "insufficient_role_for_target" });
     }
 
+    if (payload.targetTherapistId && desiredRole !== "bt") {
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
+      return jsonResponse(403, { error: "target_therapist_role_forbidden" });
+    }
+
     if (payload.targetTherapistId) {
       const { data: targetTherapist, error: targetTherapistError } = await supabaseAdmin
         .from("therapists")

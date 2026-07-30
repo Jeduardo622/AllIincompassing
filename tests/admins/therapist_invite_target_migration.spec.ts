@@ -36,6 +36,12 @@ describe('therapist invite target lifecycle migration', () => {
     expect(functionSql).toMatch(/lower\(trim\(t\.email\)\) = v_normalized_email/i);
   });
 
+  it('requires therapist-targeted invites to use the bt role', () => {
+    expect(functionSql).toMatch(/p_target_therapist_id is not null/i);
+    expect(functionSql).toMatch(/p_role is distinct from 'bt'::public\.role_type/i);
+    expect(functionSql).toMatch(/Target therapist invites must use the bt role/i);
+  });
+
   it('treats only unaccepted, unrevoked, unexpired invites as active duplicates', () => {
     expect(functionSql).toMatch(/and t\.accepted_at is null/i);
     expect(functionSql).toMatch(/and t\.revoked_at is null/i);

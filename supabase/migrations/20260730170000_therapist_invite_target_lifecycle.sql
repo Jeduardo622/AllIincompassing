@@ -80,6 +80,11 @@ begin
   end if;
 
   if p_target_therapist_id is not null
+    and p_role is distinct from 'bt'::public.role_type then
+    raise exception using errcode = '22023', message = 'Target therapist invites must use the bt role';
+  end if;
+
+  if p_target_therapist_id is not null
     and not exists (
       select 1
       from public.therapists t

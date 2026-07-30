@@ -89,7 +89,7 @@ jobs:
           NODE
 
       - name: Checkout validated commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ steps.approval.outputs.validated_sha }}
           persist-credentials: false
@@ -123,7 +123,7 @@ jobs:
       PW_BASE_URL: http://127.0.0.1:4173
     steps:
       - name: Checkout validated commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.validate.outputs.validated_sha }}
           persist-credentials: false
@@ -134,7 +134,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 20
           cache: npm
@@ -323,7 +323,7 @@ jobs:
 
       - name: Upload redacted browser evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: bt-aba-disposable-proof-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bt-aba-public-evidence/**
@@ -344,7 +344,7 @@ jobs:
       SUPABASE_BRANCH_PR_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}
     steps:
       - name: Checkout validated commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.validate.outputs.validated_sha }}
           persist-credentials: false
@@ -365,7 +365,7 @@ jobs:
           } > "$RUNNER_TEMP/bt-aba-cleanup/deletion-evidence.txt"
 
       - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 20
           cache: npm
@@ -395,7 +395,7 @@ jobs:
 
       - name: Upload deletion evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: bt-aba-disposable-cleanup-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bt-aba-cleanup/deletion-evidence.txt

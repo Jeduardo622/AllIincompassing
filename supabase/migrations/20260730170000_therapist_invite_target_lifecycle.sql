@@ -25,6 +25,16 @@ drop function if exists public.create_admin_invite_token_rate_limited(
   uuid,
   timestamptz,
   uuid,
+  public.role_type,
+  uuid
+);
+
+drop function if exists public.create_admin_invite_token_rate_limited(
+  text,
+  text,
+  uuid,
+  timestamptz,
+  uuid,
   public.role_type
 );
 
@@ -161,5 +171,33 @@ $$;
 
 revoke all on function public.create_admin_invite_token_rate_limited(text, text, uuid, timestamptz, uuid, public.role_type, uuid) from public, anon, authenticated;
 grant execute on function public.create_admin_invite_token_rate_limited(text, text, uuid, timestamptz, uuid, public.role_type, uuid) to service_role;
+
+create or replace function public.create_admin_invite_token_rate_limited(
+  p_email text,
+  p_token_hash text,
+  p_organization_id uuid,
+  p_expires_at timestamptz,
+  p_created_by uuid,
+  p_role public.role_type
+)
+returns table(id uuid, expires_at timestamptz, status text)
+language sql
+security definer
+set search_path = public, app, auth
+as $$
+  select *
+  from public.create_admin_invite_token_rate_limited(
+    p_email,
+    p_token_hash,
+    p_organization_id,
+    p_expires_at,
+    p_created_by,
+    p_role,
+    null
+  );
+$$;
+
+revoke all on function public.create_admin_invite_token_rate_limited(text, text, uuid, timestamptz, uuid, public.role_type) from public, anon, authenticated;
+grant execute on function public.create_admin_invite_token_rate_limited(text, text, uuid, timestamptz, uuid, public.role_type) to service_role;
 
 commit;

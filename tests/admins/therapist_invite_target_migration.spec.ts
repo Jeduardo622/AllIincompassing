@@ -13,6 +13,14 @@ const functionSql = migrationSql.match(
   /create or replace function public\.create_admin_invite_token_rate_limited[\s\S]+?\n\$\$;/i,
 )?.[0] ?? '';
 
+const createAdminInviteFunctions = Array.from(
+  migrationSql.matchAll(/create or replace function public\.create_admin_invite_token_rate_limited\([\s\S]+?\n\$\$;/gi),
+).map((match) => match[0]);
+
+const compatibilityWrapperSql = createAdminInviteFunctions.find(
+  (sql) => !/p_target_therapist_id uuid/i.test(sql),
+) ?? '';
+
 const activeDuplicateLookupSql = functionSql.match(
   /select t\.id, t\.expires_at[\s\S]+?limit 1;/i,
 )?.[0] ?? '';
@@ -34,6 +42,13 @@ describe('therapist invite target lifecycle migration', () => {
     expect(functionSql).toMatch(/p_target_therapist_id uuid/i);
     expect(functionSql).not.toMatch(/auth\.uid\(\)/i);
     expect(functionSql).toMatch(/service-role-only/i);
+  });
+
+  it('preserves the six-argument service-role-only signature as a null-target wrapper', () => {
+    expect(compatibilityWrapperSql).toMatch(/returns table\(id uuid, expires_at timestamptz, status text\)/i);
+    expect(compatibilityWrapperSql).toMatch(/select\s+\*\s+from public\.create_admin_invite_token_rate_limited\([\s\S]*p_role,[\s\S]*null\s*\)/i);
+    expect(migrationSql).toMatch(/revoke all on function public\.create_admin_invite_token_rate_limited\(text, text, uuid, timestamptz, uuid, public\.role_type\) from public, anon, authenticated;/i);
+    expect(migrationSql).toMatch(/grant execute on function public\.create_admin_invite_token_rate_limited\(text, text, uuid, timestamptz, uuid, public\.role_type\) to service_role;/i);
   });
 
   it('validates active target therapists against org, status, deletion, and normalized email', () => {

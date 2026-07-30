@@ -51,7 +51,8 @@ stubDenoEnv((key) => envValues.get(key) ?? '');
 const logApiAccess = vi.fn();
 const getUserRoles = vi.fn(async () => [currentUserContext.profile.role]);
 const createRequestClient = vi.fn();
-const resolveOrgId = vi.fn(async () => currentUserMetadata.organization_id as string | null);
+let currentResolvedOrgId: string | null = 'org-123';
+const resolveOrgId = vi.fn(async () => currentResolvedOrgId);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -251,6 +252,7 @@ describe('admin invite edge function', () => {
       profile: { id: 'profile-1', email: 'admin@example.com', role: 'admin', is_active: true },
     };
     currentUserMetadata = { organization_id: 'org-123' };
+    currentResolvedOrgId = 'org-123';
     envValues.set('ADMIN_INVITE_EMAIL_URL', 'https://mailer.example.com');
     envValues.set('ADMIN_PORTAL_URL', 'https://admin.example.com');
     fetchMock = vi.fn(async () => ({ ok: true, status: 202 }));
@@ -619,6 +621,36 @@ describe('admin invite edge function', () => {
     expect(adminActionRows[0]?.action_details).toMatchObject({
       target_therapist_id: '11111111-1111-4111-8111-111111111111',
     });
+  }, 20_000);
+
+  it('uses the canonical resolved org for super-admin invites when no explicit organization override is provided', async () => {
+    currentUserContext = {
+      user: { id: 'super-1', email: 'super@example.com' },
+      profile: { id: 'profile-super-1', email: 'super@example.com', role: 'super_admin', is_active: true },
+    };
+    currentUserMetadata = { organization_id: 'org-stale' };
+    currentResolvedOrgId = 'org-canonical';
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({
+          email: 'super-target@example.com',
+          role: 'bcba',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(resolveOrgId).toHaveBeenCalledWith(expect.anything());
+    expect(createAdminRpc).toHaveBeenCalledWith(
+      'create_admin_invite_token_rate_limited',
+      expect.objectContaining({ p_organization_id: 'org-canonical' }),
+    );
+    expect(inviteTokens[0]).toMatchObject({ organization_id: 'org-canonical' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   }, 20_000);
 
   it('rejects a targeted invite when a generic active invite already exists for the same org and email', async () => {

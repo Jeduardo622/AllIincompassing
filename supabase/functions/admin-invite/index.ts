@@ -49,12 +49,6 @@ const jsonResponse = (status: number, body: Record<string, unknown>, headers: Re
     headers: { ...corsHeaders, ...headers, "Content-Type": "application/json" },
   });
 
-const extractOrganizationId = (metadata: Record<string, unknown> | null | undefined): string | null => {
-  if (!metadata) return null;
-  const candidate = metadata.organization_id ?? metadata.organizationId;
-  return typeof candidate === "string" && candidate.length > 0 ? candidate : null;
-};
-
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 const toHex = (bytes: ArrayBuffer) =>
@@ -172,9 +166,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
       return jsonResponse(401, { error: "unauthorized" });
     }
 
-    const callerOrganizationId = callerIsSuperAdmin
-      ? extractOrganizationId(authResult.user.user_metadata as Record<string, unknown> | undefined)
-      : await resolveOrgId(adminClient);
+    const callerOrganizationId = await resolveOrgId(adminClient);
     const normalizedEmail = normalizeEmail(payload.email);
     const targetOrganizationId = payload.organizationId ?? callerOrganizationId;
 

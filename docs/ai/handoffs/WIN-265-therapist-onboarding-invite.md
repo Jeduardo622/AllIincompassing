@@ -36,7 +36,7 @@
   - `npm run verify:local`
   - `npm run ci:playwright` when protected credentials are available
 - executed checks:
-  - `npx vitest run tests/admins/invite_flow.spec.ts tests/admins/accept_invite_flow.spec.ts tests/admins/therapist_invite_target_migration.spec.ts src/components/__tests__/TherapistOnboarding.test.tsx src/components/__tests__/TherapistProfileInvite.test.tsx` -> pass, 5 files / 58 tests
+  - `npx vitest run tests/admins/invite_flow.spec.ts tests/admins/accept_invite_flow.spec.ts tests/admins/therapist_invite_target_migration.spec.ts src/components/__tests__/TherapistOnboarding.test.tsx src/components/__tests__/TherapistProfileInvite.test.tsx` -> pass, 5 files / 60 tests after synchronizing `origin/main`
   - `npm run ci:check-focused` -> pass; database-backed grant/RLS checks skipped because `SUPABASE_DB_URL` was unavailable, and auth parity was disabled locally
   - `npm run lint` -> pass
   - `npm run typecheck` -> pass
@@ -69,6 +69,15 @@
 - The aggregate coverage suite did not complete because the local Node process exhausted its heap.
 - Credentialed hosted Playwright remains for CI/human-review follow-through.
 - Production still requires reviewed migration/function deployment and a new invite for the affected therapist; this branch does not mutate the live account.
+
+## Post-Sync Verification
+
+- merged `origin/main` at `b25b59b7`; the two incoming changes touched unrelated session-modal and test-harness paths
+- focused regressions -> pass, 5 files / 60 tests
+- `npm run ci:check-focused` -> pass with the same documented database/auth-parity skips
+- `npm run lint` -> pass
+- `npm run typecheck` -> pass
+- `npm run build` -> pass
 
 ## PR Hygiene
 

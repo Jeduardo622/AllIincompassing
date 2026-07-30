@@ -374,7 +374,7 @@ describe('accept staff invite edge function', () => {
     });
   }, 20_000);
 
-  it('accepts invites whose inviter account was deleted while preserving nullable audit fields', async () => {
+  it('fails closed when the inviter account was deleted before invite acceptance', async () => {
     therapists.push({
       id: 'therapist-null-inviter',
       email: 'bt.staff@example.com',
@@ -405,38 +405,15 @@ describe('accept staff invite edge function', () => {
       }),
     );
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      email: 'bt.staff@example.com',
-      role: 'bt',
-    });
-
-    expect(createdUsers).toHaveLength(1);
-    expect(createdUsers[0]).toMatchObject({
-      user_metadata: expect.objectContaining({
-        invited_by: null,
-        accepted_invite_id: 'invite-null-inviter',
-      }),
-    });
-    expect(upsertedUserRoles).toEqual([
-      expect.objectContaining({
-        user_id: 'new-user-1',
-        role_id: 'role-bt',
-        granted_by: null,
-        is_active: true,
-      }),
-    ]);
-    expect(adminActionRows).toEqual([
-      expect.objectContaining({
-        admin_user_id: null,
-        target_user_id: 'new-user-1',
-        organization_id: 'org-123',
-        action_type: 'staff_invite_accepted',
-      }),
-    ]);
-    expect(consumedInvites).toEqual([
-      expect.objectContaining({ id: 'invite-null-inviter', accepted_by_user_id: 'new-user-1' }),
-    ]);
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: 'invite_not_found' });
+    expect(createdUsers).toHaveLength(0);
+    expect(upsertedUserRoles).toHaveLength(0);
+    expect(upsertedProfiles).toHaveLength(0);
+    expect(insertedTherapistLinks).toHaveLength(0);
+    expect(adminActionRows).toHaveLength(0);
+    expect(consumedInvites).toHaveLength(0);
+    expect(deletedAuthUserIds).toHaveLength(0);
   }, 20_000);
 
   it('rejects replay after a successful invite acceptance', async () => {

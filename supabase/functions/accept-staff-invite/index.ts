@@ -146,6 +146,10 @@ async function handleAcceptStaffInvite(req: Request) {
     return jsonResponse(req, 404, { error: "invite_not_found" });
   }
 
+  if (inviterUserId === null) {
+    return jsonResponse(req, 404, { error: "invite_not_found" });
+  }
+
   if (new Date(inviteRecord.expires_at).getTime() <= Date.now()) {
     await deleteInviteToken(tokenHash);
     return jsonResponse(req, 410, { error: "invite_expired" });

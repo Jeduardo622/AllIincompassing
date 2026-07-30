@@ -206,7 +206,7 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
     expect(cleanupRun?.run).toContain('npm run bt-aba:disposable-branch -- --verify-managed-preview');
     expect(cleanupRun?.run).not.toContain('--cleanup');
     expect(cleanupUpload?.if).toBe('always()');
-    expect(cleanupUpload?.uses).toContain('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02');
+    expect(cleanupUpload?.uses).toContain('actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f');
     expect(cleanupUpload?.with?.path).toContain('deletion-evidence.txt');
     expect(source.match(/secrets\.SUPABASE_ACCESS_TOKEN/g)).toHaveLength(2);
     expect(source).not.toContain('BT_ABA_MANAGED_BRANCH_ID');
@@ -218,8 +218,8 @@ describe('manual disposable BT/ABA browser proof workflow', () => {
   it('pins actions and preserves exact migration, preview, browser, and artifact boundaries', () => {
     const { source } = loadWorkflow();
 
-    expect(source).toContain('actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5');
-    expect(source).toContain('actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020');
+    expect(source).toContain('actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09');
+    expect(source).toContain('actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444');
     expect(source).toContain('supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51');
     expect(source).not.toContain('supabase link');
     expect(source).not.toContain('supabase db query');

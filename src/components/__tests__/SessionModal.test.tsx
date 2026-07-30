@@ -2187,10 +2187,10 @@ describe('SessionModal', () => {
     expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(await screen.findByText('Draft client status: Engaged')).toBeInTheDocument();
-    expect(await screen.findByText('Linked count: 1')).toBeInTheDocument();
-    expect(screen.getByText('All count: 1')).toBeInTheDocument();
+    expect(await screen.findByText('Linked count: 2')).toBeInTheDocument();
+    expect(screen.getByText('All count: 2')).toBeInTheDocument();
     expect(screen.getByText('Match peer greeting in 4/5 trials: 2')).toBeInTheDocument();
-    expect(screen.queryByText(/Retired target/)).not.toBeInTheDocument();
+    expect(screen.getByText('Retired target: 9')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save ABA Draft' }));
     await waitFor(() => expect(saveBtAbaSessionNoteDraft).toHaveBeenCalledWith(expect.objectContaining({
@@ -7023,7 +7023,7 @@ describe('SessionModal', () => {
     });
   }, 10000);
 
-  it('filters saved plan-goal targets and persists prompt buttons for legacy capture', async () => {
+  it('preserves all saved plan-goal targets through hydration and submit', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const planTarget = 'Match peer greeting in 4/5 trials';
     const legacyFreeformTarget = 'Legacy freeform target';
@@ -7042,8 +7042,6 @@ describe('SessionModal', () => {
             measurement_type: 'frequency',
             metric_label: 'Count',
             metric_unit: 'responses',
-            targets: [legacyFreeformTarget, planTarget],
-            target: planTarget,
             target_trials: [
               {
                 target: legacyFreeformTarget,
@@ -7091,6 +7089,11 @@ describe('SessionModal', () => {
       updated_at: '2026-03-01T09:00:00.000Z',
     });
 
+    let resolveGoals: ((value: { data: unknown[]; error: null }) => void) | null = null;
+    const goalsPromise = new Promise<{ data: unknown[]; error: null }>((resolve) => {
+      resolveGoals = resolve;
+    });
+
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'programs') {
         const chain: SupabaseQueryChain = {
@@ -7108,7 +7111,7 @@ describe('SessionModal', () => {
           select: vi.fn(() => chain),
           eq: vi.fn(() => chain),
         neq: vi.fn(() => chain),
-          order: vi.fn(async () => ({ data: mockGoals, error: null })),
+          order: vi.fn(() => goalsPromise),
           maybeSingle: vi.fn(async () => ({ data: null, error: null })),
           limit: vi.fn(async () => ({ data: [], error: null })),
         };
@@ -7166,37 +7169,50 @@ describe('SessionModal', () => {
       expect(screen.getByDisplayValue('Observed mixed saved targets')).toBeInTheDocument();
     });
 
+    expect(await screen.findByText(legacyFreeformTarget)).toBeInTheDocument();
+    expect(screen.getByText(planTarget)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveGoals?.({ data: mockGoals, error: null });
+      await goalsPromise;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(legacyFreeformTarget)).toBeInTheDocument();
+      expect(screen.getByText(planTarget)).toBeInTheDocument();
+    });
+
     expect(screen.queryByRole('button', { name: /Use plan target/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Plan target selected/i })).not.toBeInTheDocument();
     expect(screen.getAllByText(planTarget)).toHaveLength(1);
-    expect(screen.queryByText(legacyFreeformTarget)).not.toBeInTheDocument();
+    expect(screen.getByText(legacyFreeformTarget)).toBeInTheDocument();
 
     const noResponseOutcome = screen.getByRole('radio', {
-      name: /^No response for target 1:/i,
+      name: /^No response for target 2:/i,
     });
-    expect(screen.getByRole('radio', { name: /^Correct for target 1:/i })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /^Correct for target 2:/i })).toBeChecked();
     for (const label of ['full verbal', 'partial verbal', 'gesture', 'model', 'visual', 'full physical', 'partial physical']) {
       expect(screen.getByRole('button', {
-        name: new RegExp(`Record ${label} prompt for target 1`, 'i'),
+        name: new RegExp(`Record ${label} prompt for target 2`, 'i'),
       })).toBeInTheDocument();
     }
     await userEvent.click(screen.getByRole('button', {
-      name: /Record full verbal prompt for target 1/i,
+      name: /Record full verbal prompt for target 2/i,
     }));
     const subtractFiveCorrect = screen.getByRole('button', {
-      name: /Subtract 5 correct trials for target 1/i,
+      name: /Subtract 5 correct trials for target 2/i,
     });
     expect(subtractFiveCorrect).toBeEnabled();
     await userEvent.click(subtractFiveCorrect);
     await userEvent.click(screen.getByRole('button', {
-      name: /Record full verbal prompt for target 1/i,
+      name: /Record full verbal prompt for target 2/i,
     }));
     await userEvent.click(noResponseOutcome);
     await userEvent.click(screen.getByRole('button', {
-      name: /Record gesture prompt for target 1/i,
+      name: /Record gesture prompt for target 2/i,
     }));
-    await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 1/i }));
-    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 1/i), {
+    await userEvent.click(screen.getByRole('button', { name: /Increase correct trials for target 2/i }));
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions for target 2/i), {
       target: { value: 'Edited plan target prompt note' },
     });
 
@@ -7209,12 +7225,19 @@ describe('SessionModal', () => {
           'goal-1': {
             version: 1,
             data: expect.objectContaining({
-              metric_value: 2,
-              incorrect_trials: 2,
-              opportunities: 6,
-              targets: [planTarget],
+              metric_value: 7,
+              incorrect_trials: 6,
+              opportunities: 15,
+              targets: [legacyFreeformTarget, planTarget],
               target: planTarget,
               target_trials: [
+                expect.objectContaining({
+                  target: legacyFreeformTarget,
+                  metric_value: 5,
+                  incorrect_trials: 4,
+                  opportunities: 9,
+                  trial_prompt_note: 'Legacy target prompt note',
+                }),
                 expect.objectContaining({
                   target: planTarget,
                   metric_value: 2,
@@ -7227,7 +7250,7 @@ describe('SessionModal', () => {
                   ],
                 }),
               ],
-              trial_prompt_note: 'Edited plan target prompt note',
+              trial_prompt_note: 'Legacy target prompt note; Edited plan target prompt note',
             }),
           },
         },

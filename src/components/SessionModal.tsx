@@ -666,98 +666,42 @@ export const buildCloseoutDataPoints = ({
   return [...rawDataPoints, ...aggregateDataPoints];
 };
 
-const sumPlanTargetTrials = (
-  trials: NonNullable<SessionGoalMeasurementEntry['data']['target_trials']>,
-  field: 'metric_value' | 'incorrect_trials' | 'opportunities',
-): number | null => {
-  let sum = 0;
-  let hasValue = false;
-
-  for (const trial of trials) {
-    const value = trial[field];
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      sum += value;
-      hasValue = true;
-    }
-  }
-
-  return hasValue ? sum : null;
-};
-
-const summarizePlanTargetTrialNotes = (
-  trials: NonNullable<SessionGoalMeasurementEntry['data']['target_trials']>,
-): string | null => {
-  const notes = trials
-    .map((trial) => trial.trial_prompt_note?.trim() ?? '')
-    .filter((note) => note.length > 0);
-  return notes.length > 0 ? notes.join('; ') : null;
-};
-
-const filterPlanGoalMeasurementToTargetCriteria = (
+const reconcileGoalMeasurementTargets = (
   entry: SessionGoalMeasurementEntry | null,
   goal: Goal | undefined,
   goalId: string,
 ): SessionGoalMeasurementEntry | null => {
-  if (!entry || isAdhocSessionTargetId(goalId)) {
-    return entry;
-  }
-  if (!goal) {
+  if (!entry) {
     return entry;
   }
 
-  const planTarget = goal?.target_criteria?.trim() ?? '';
-  if (!planTarget) {
-    return entry;
-  }
   const sourceTargets = Array.isArray(entry.data.targets) ? entry.data.targets : [];
-  const sourceTrials = Array.isArray(entry.data.target_trials) ? entry.data.target_trials : [];
-  const hasSavedTargetData =
-    sourceTargets.length > 0 ||
-    Boolean(entry.data.target?.trim()) ||
-    sourceTrials.some((trial) => Boolean(trial.target?.trim()));
-  if (!hasSavedTargetData) {
+  const trialTargets = Array.isArray(entry.data.target_trials)
+    ? entry.data.target_trials.map((trial) => trial.target?.trim() ?? '')
+    : [];
+  const recoveredTargets =
+    sourceTargets.length > 0
+      ? sourceTargets
+      : (trialTargets.some((target) => target.length > 0) ? trialTargets : []);
+  const planTarget = isAdhocSessionTargetId(goalId) ? '' : goal?.target_criteria?.trim() ?? '';
+  const primaryTarget =
+    (planTarget && recoveredTargets.some((target) => target.trim() === planTarget)
+      ? planTarget
+      : entry.data.target?.trim()) ||
+    recoveredTargets.find((target) => target.trim().length > 0) ||
+    null;
+  if (recoveredTargets.length === 0 && primaryTarget === entry.data.target) {
     return entry;
   }
-  const targetIndex = sourceTargets.findIndex((target) => target.trim() === planTarget);
-  const hasPlanTarget =
-    planTarget.length > 0 &&
-    (targetIndex >= 0 || entry.data.target?.trim() === planTarget);
-  const filteredTrials = planTarget
-    ? sourceTrials
-        .filter((trial, index) => {
-          const trialTarget = trimString(trial.target) ?? trimString(sourceTargets[index]);
-          return trialTarget === planTarget || index === targetIndex;
-        })
-        .map((trial) => ({
-          ...trial,
-          target: planTarget,
-        }))
-    : [];
-  const shouldKeepPlanTarget = hasPlanTarget || filteredTrials.length > 0;
-  const nextTrials = filteredTrials.length > 0 ? filteredTrials : null;
-  const nextEntry: SessionGoalMeasurementEntry = {
-    version: entry.version,
+
+  return {
+    ...entry,
     data: {
       ...entry.data,
-      metric_value: nextTrials
-        ? sumPlanTargetTrials(nextTrials, 'metric_value')
-        : (shouldKeepPlanTarget ? entry.data.metric_value : null),
-      incorrect_trials: nextTrials
-        ? sumPlanTargetTrials(nextTrials, 'incorrect_trials')
-        : (shouldKeepPlanTarget ? entry.data.incorrect_trials : null),
-      opportunities: nextTrials
-        ? sumPlanTargetTrials(nextTrials, 'opportunities')
-        : (shouldKeepPlanTarget ? entry.data.opportunities : null),
-      targets: shouldKeepPlanTarget ? [planTarget] : null,
-      target: shouldKeepPlanTarget ? planTarget : null,
-      target_trials: nextTrials,
-      trial_prompt_note: nextTrials
-        ? summarizePlanTargetTrialNotes(nextTrials)
-        : (shouldKeepPlanTarget ? entry.data.trial_prompt_note : null),
+      targets: recoveredTargets.length > 0 ? recoveredTargets : entry.data.targets,
+      target: primaryTarget,
     },
   };
-
-  return hasMeaningfulGoalMeasurementEntry(nextEntry) ? nextEntry : null;
 };
 
 interface SessionModalProps {
@@ -1998,7 +1942,7 @@ export function SessionModal({
         mergedGoalIds
           .map((goalEntryId) => {
             const goal = goalsById.get(goalEntryId);
-            const entry = filterPlanGoalMeasurementToTargetCriteria(
+            const entry = reconcileGoalMeasurementTargets(
               normalizeGoalMeasurementEntry(
                 working.session_note_goal_measurements?.[goalEntryId],
                 goal,
@@ -2060,7 +2004,7 @@ export function SessionModal({
             }
             const rawValue = working.session_note_goal_measurements?.[goalKey];
             return hasMeaningfulGoalMeasurementEntry(
-              filterPlanGoalMeasurementToTargetCriteria(
+              reconcileGoalMeasurementTargets(
                 normalizeGoalMeasurementEntry(rawValue, goalsById.get(goalKey)),
                 goalsById.get(goalKey),
                 goalKey,
@@ -2072,7 +2016,7 @@ export function SessionModal({
           ) ||
           Object.entries(working.session_note_goal_measurements ?? {}).some(([goalKey, rawValue]) =>
             hasMeaningfulGoalMeasurementEntry(
-              filterPlanGoalMeasurementToTargetCriteria(
+              reconcileGoalMeasurementTargets(
                 normalizeGoalMeasurementEntry(rawValue, goalsById.get(goalKey)),
                 goalsById.get(goalKey),
                 goalKey,
@@ -3303,7 +3247,7 @@ export function SessionModal({
       Object.entries(linkedMeasurements)
         .map(([goalEntryId, rawValue]) => {
           const goal = goalsById.get(goalEntryId);
-          const normalized = filterPlanGoalMeasurementToTargetCriteria(
+          const normalized = reconcileGoalMeasurementTargets(
             normalizeGoalMeasurementEntry(rawValue, goal),
             goal,
             goalEntryId,
@@ -4560,7 +4504,7 @@ export function SessionModal({
                             sessionNoteGoalMeasurements?.[selectedGoalId],
                             selectedGoal,
                           );
-                          const filteredMeasurementEntry = filterPlanGoalMeasurementToTargetCriteria(
+                          const reconciledMeasurementEntry = reconcileGoalMeasurementTargets(
                             existingMeasurementEntry,
                             selectedGoal,
                             selectedGoalId,
@@ -4598,12 +4542,12 @@ export function SessionModal({
                                 return normalizedWatchedTargets;
                               }
                             }
-                            const normalizedExistingTargets = getGoalMeasurementTargets(filteredMeasurementEntry?.data);
+                            const normalizedExistingTargets = getGoalMeasurementTargets(reconciledMeasurementEntry?.data);
                             return normalizedExistingTargets.length > 0 ? normalizedExistingTargets : [''];
                           })();
                           const rawTargetTrialRows = Array.isArray(watchedTargetTrials)
                             ? watchedTargetTrials
-                            : filteredMeasurementEntry?.data.target_trials ?? [];
+                            : reconciledMeasurementEntry?.data.target_trials ?? [];
                           const getTargetTrialNullableValue = (
                             targetIndex: number,
                             field: 'metric_value' | 'incorrect_trials' | 'opportunities',
@@ -4645,26 +4589,25 @@ export function SessionModal({
                               ? [{ targetValue: trimmed, sourceIndex }]
                               : [];
                           });
-                          const persistedBlankPlanTargetItems = sessionTargets.flatMap((targetValue, sourceIndex) => {
-                            if (targetValue.trim().length > 0) {
-                              return [];
-                            }
-                            const hasPersistedEvidence =
-                              getTargetTrialNullableValue(sourceIndex, 'metric_value') !== null ||
-                              getTargetTrialNullableValue(sourceIndex, 'incorrect_trials') !== null ||
-                              getTargetTrialNullableValue(sourceIndex, 'opportunities') !== null ||
-                              getTargetTrialNote(sourceIndex).trim().length > 0;
-                            return hasPersistedEvidence ? [{ targetValue, sourceIndex }] : [];
-                          });
                           const hasSelectedPlanTarget = Boolean(
                             planTargetText && selectedPlanTargets.length > 0,
                           );
                           const unconfiguredTargetItems = sessionTargets.length > 0
                             ? sessionTargets.map((targetValue, sourceIndex) => ({ targetValue, sourceIndex }))
                             : [{ targetValue: '', sourceIndex: 0 }];
-                          const visibleSessionTargetItems = isAdhocTarget || planGoalHasNoConfiguredTarget || !planTargetText
-                            ? unconfiguredTargetItems
-                            : (selectedPlanTargets.length > 0 ? selectedPlanTargets : persistedBlankPlanTargetItems);
+                          const persistedTargetItems = sessionTargets.flatMap((targetValue, sourceIndex) => {
+                            const hasPersistedEvidence =
+                              targetValue.trim().length > 0 ||
+                              getTargetTrialNullableValue(sourceIndex, 'metric_value') !== null ||
+                              getTargetTrialNullableValue(sourceIndex, 'incorrect_trials') !== null ||
+                              getTargetTrialNullableValue(sourceIndex, 'opportunities') !== null ||
+                              getTargetTrialNote(sourceIndex).trim().length > 0;
+                            return hasPersistedEvidence ? [{ targetValue, sourceIndex }] : [];
+                          });
+                          const visibleSessionTargetItems =
+                            isAdhocTarget || planGoalHasNoConfiguredTarget || !planTargetText
+                              ? unconfiguredTargetItems
+                              : persistedTargetItems;
                           const getDisplayedTargetTrialValue = (
                             item: { targetValue: string; sourceIndex: number },
                             field: 'metric_value' | 'incorrect_trials',
@@ -4825,7 +4768,18 @@ export function SessionModal({
                                     {planTargetText && !hasSelectedPlanTarget ? (
                                       <button
                                         type="button"
-                                        onClick={() => updateGoalTargets(selectedGoalId, [planTargetText])}
+                                        onClick={() => {
+                                          const blankTargetIndex = sessionTargets.findIndex(
+                                            (target) => target.trim().length === 0,
+                                          );
+                                          if (blankTargetIndex >= 0) {
+                                            const nextTargets = sessionTargets.slice();
+                                            nextTargets[blankTargetIndex] = planTargetText;
+                                            updateGoalTargets(selectedGoalId, nextTargets);
+                                            return;
+                                          }
+                                          updateGoalTargets(selectedGoalId, [...sessionTargets, planTargetText]);
+                                        }}
                                         className="w-full rounded-md border border-indigo-200 bg-white px-3 py-2 text-left text-sm font-medium text-indigo-900 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark dark:text-indigo-100 dark:hover:bg-indigo-950/40"
                                       >
                                         <span className="block text-[11px] font-semibold uppercase tracking-wide">

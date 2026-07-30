@@ -32,7 +32,7 @@
 - Consumes: `create_admin_invite_token_rate_limited(text, text, uuid, timestamptz, uuid, role_type, uuid)`.
 - Produces: `admin_invite_tokens.target_therapist_id`, `accepted_at`, `accepted_by_user_id`, and `revoked_at`.
 
-- [ ] **Step 1: Write the failing migration contract test**
+- [x] **Step 1: Write the failing migration contract test**
 
 ```ts
 expect(migrationSql).toMatch(/add column if not exists target_therapist_id uuid/i);
@@ -45,13 +45,13 @@ expect(functionSql).not.toMatch(/auth\.uid\(\)/i);
 expect(migrationSql).toMatch(/grant execute[\s\S]+to service_role/i);
 ```
 
-- [ ] **Step 2: Run the migration test and confirm it fails because the forward migration does not exist**
+- [x] **Step 2: Run the migration test and confirm it fails because the forward migration does not exist**
 
 Run: `npx vitest run tests/admins/therapist_invite_target_migration.spec.ts`
 
 Expected: FAIL reading the missing migration.
 
-- [ ] **Step 3: Add the forward migration**
+- [x] **Step 3: Add the forward migration**
 
 Add nullable lifecycle columns with foreign keys, indexes for active target lookup, and a seven-argument service-role-only RPC. The RPC must validate normalized email, organization, expiration, inviter, role, and, when present, this target predicate:
 
@@ -75,11 +75,11 @@ and t.revoked_at is null
 and t.expires_at > v_now
 ```
 
-- [ ] **Step 4: Update generated database types**
+- [x] **Step 4: Update generated database types**
 
 Add nullable row/update fields, nullable insert fields, and the `target_therapist_id` relationship to `src/lib/generated/database.types.ts`.
 
-- [ ] **Step 5: Run the migration contract tests**
+- [x] **Step 5: Run the migration contract tests**
 
 Run: `npx vitest run tests/admins/therapist_invite_target_migration.spec.ts tests/admins/invite_rate_limit_service_role_migration.spec.ts tests/security/public-security-definer-rpc-grants.security.spec.ts`
 
@@ -95,7 +95,7 @@ Expected: PASS.
 - Consumes: optional request field `targetTherapistId: string`.
 - Produces: an invite whose service-owned record is bound to the validated therapist ID.
 
-- [ ] **Step 1: Add failing issuance tests**
+- [x] **Step 1: Add failing issuance tests**
 
 Add cases proving:
 
@@ -109,13 +109,13 @@ expect(resolveOrgId).toHaveBeenCalledWith(expect.anything());
 
 Also cover mismatched organization, email, inactive status, and soft deletion returning 409/403 without invoking the RPC or email provider.
 
-- [ ] **Step 2: Run the focused invite tests and confirm the new cases fail**
+- [x] **Step 2: Run the focused invite tests and confirm the new cases fail**
 
 Run: `npx vitest run tests/admins/invite_flow.spec.ts`
 
 Expected: FAIL because `targetTherapistId` and canonical organization resolution are not implemented.
 
-- [ ] **Step 3: Implement canonical scope and target validation**
+- [x] **Step 3: Implement canonical scope and target validation**
 
 Extend the Zod schema with:
 
@@ -131,11 +131,11 @@ p_target_therapist_id: payload.targetTherapistId ?? null,
 
 Include the target ID in the audit details without including the raw token.
 
-- [ ] **Step 4: Revoke failed-delivery invites**
+- [x] **Step 4: Revoke failed-delivery invites**
 
 Replace hard deletion on email failure with an update that sets `revoked_at` for the exact invite ID and organization. Return `invite_rollback_failed` when revocation cannot be persisted.
 
-- [ ] **Step 5: Run the focused invite tests**
+- [x] **Step 5: Run the focused invite tests**
 
 Run: `npx vitest run tests/admins/invite_flow.spec.ts`
 
@@ -151,7 +151,7 @@ Expected: PASS.
 - Consumes: an unaccepted, unrevoked invite with optional `target_therapist_id`.
 - Produces: Auth user, authoritative role, mirrored profile, exact `user_therapist_links` row, and durable invite acceptance.
 
-- [ ] **Step 1: Add failing acceptance tests**
+- [x] **Step 1: Add failing acceptance tests**
 
 Extend the fixture with therapist rows, inserted therapist links, token lifecycle updates, and failure toggles. Assert:
 
@@ -166,17 +166,17 @@ expect(consumedInvites).toEqual([
 
 Add cross-org, email-mismatch, inactive, deleted, replay, link-failure, and consumption-failure cases.
 
-- [ ] **Step 2: Run the focused acceptance tests and confirm the new cases fail**
+- [x] **Step 2: Run the focused acceptance tests and confirm the new cases fail**
 
 Run: `npx vitest run tests/admins/accept_invite_flow.spec.ts`
 
 Expected: FAIL because target validation, therapist linking, and durable consumption are absent.
 
-- [ ] **Step 3: Validate the target before account creation**
+- [x] **Step 3: Validate the target before account creation**
 
 Select lifecycle and target fields with the token. Reject accepted or revoked tokens. When targeted, load the therapist and require exact organization, normalized email, active status, and no `deleted_at`.
 
-- [ ] **Step 4: Insert the link and consume the invite**
+- [x] **Step 4: Insert the link and consume the invite**
 
 After role and profile writes, insert:
 
@@ -189,7 +189,7 @@ await supabaseAdmin.from("user_therapist_links").upsert(
 
 Then compare-and-set `accepted_at` and `accepted_by_user_id` where `accepted_at` and `revoked_at` are null. Any failure invokes the existing Auth-user cleanup and returns a fail-closed error.
 
-- [ ] **Step 5: Run the focused acceptance tests**
+- [x] **Step 5: Run the focused acceptance tests**
 
 Run: `npx vitest run tests/admins/accept_invite_flow.spec.ts`
 
@@ -207,7 +207,7 @@ Expected: PASS.
 - Consumes: the created therapist row `{ id, email, organization_id }`.
 - Produces: `admin-invite` calls containing `targetTherapistId` and accurate success/failure UI.
 
-- [ ] **Step 1: Add failing component tests**
+- [x] **Step 1: Add failing component tests**
 
 Mock `supabase.functions.invoke` and assert onboarding sends:
 
@@ -224,13 +224,13 @@ expect(invoke).toHaveBeenCalledWith('admin-invite', {
 
 Add a failure case asserting the completion callback still receives the valid therapist creation result while the UI reports that the invite was not sent. Update the profile retry assertion with the exact therapist ID.
 
-- [ ] **Step 2: Run the component tests and confirm the new assertions fail**
+- [x] **Step 2: Run the component tests and confirm the new assertions fail**
 
 Run: `npx vitest run src/components/__tests__/TherapistOnboarding.test.tsx src/components/__tests__/TherapistProfileInvite.test.tsx`
 
 Expected: FAIL because onboarding does not invoke the Edge Function and profile retry omits the target.
 
-- [ ] **Step 3: Implement targeted invite issuance**
+- [x] **Step 3: Implement targeted invite issuance**
 
 After the therapist insert and document attempts, invoke:
 
@@ -248,11 +248,11 @@ await supabase.functions.invoke('admin-invite', {
 
 Return `{ therapist, inviteSent }` from the mutation. Show `Therapist created and invite sent` only when both operations succeed; otherwise show a specific recoverable invite error and navigate to the created therapist record or list.
 
-- [ ] **Step 4: Add the target to profile retry**
+- [x] **Step 4: Add the target to profile retry**
 
 Include `targetTherapistId: therapist.id` in `ProfileTab`'s existing `admin-invite` request.
 
-- [ ] **Step 5: Run the focused component tests**
+- [x] **Step 5: Run the focused component tests**
 
 Run: `npx vitest run src/components/__tests__/TherapistOnboarding.test.tsx src/components/__tests__/TherapistProfileInvite.test.tsx`
 
@@ -268,7 +268,7 @@ Expected: PASS.
 - Consumes: test output, hosted read-only evidence, specialist reviews, and live PR state.
 - Produces: verification card, PR-hygiene verdict, and human-review-ready PR.
 
-- [ ] **Step 1: Run focused regression tests**
+- [x] **Step 1: Run focused regression tests**
 
 Run:
 
@@ -295,11 +295,11 @@ npm run verify:local
 
 Run `npm run ci:playwright` only where its required protected credentials are available; otherwise record the exact blocker.
 
-- [ ] **Step 3: Obtain independent reviews**
+- [x] **Step 3: Obtain independent reviews**
 
 Require `code-review-engineer`, `test-engineer`, `security-engineer`, and `supabase-reviewer` verdicts with file/command evidence. Resolve all in-scope findings and rerun affected checks.
 
-- [ ] **Step 4: Write the handoff and run workflow skills**
+- [x] **Step 4: Write the handoff and run workflow skills**
 
 Record route, scope, files, migration behavior, connector evidence, executed and blocked checks, residual risk, and reviewer verdicts. Run `verify-change` and `pr-hygiene`.
 

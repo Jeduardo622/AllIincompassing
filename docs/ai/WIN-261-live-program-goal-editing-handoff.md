@@ -84,3 +84,9 @@
 - Human review is mandatory for the migration and protected server changes.
 - Required next action: obtain human review and merge only when live branch protection allows it.
 - Follow-up, separate from WIN-261: make the unchanged workflow/config contract tests line-ending agnostic on Windows.
+
+## CI Baseline Follow-Up
+
+- WIN-262 / PR #872 made the synthetic-BCBA publishable-key contract, the IEHP smoke contract, and the BT/ABA `codex/return-bt-correction` contract line-ending agnostic on Windows.
+- WIN-264 covers the `src/lib/__tests__/supabase.edge.test.ts` Blob-read failure by reading the returned Blob through the jsdom-supported `FileReader` API in the test only; the separate `tests/authorizations/authorization-bcba-readonly.test.ts` Windows CRLF baseline remains out of scope. See `docs/ai/handoffs/WIN-264-windows-blob-test.md`.
+- No migration, hosted Supabase, workflow, CI-script, or program/goal editing implementation changes are part of WIN-264.

@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 const migrationsDir = join(process.cwd(), 'supabase', 'migrations');
 const migrationFile = '20260725000810_forward_fix_bcba_authorization_readonly.sql';
-const migrationSql = readFileSync(join(migrationsDir, migrationFile), 'utf8');
+const migrationSql = readFileSync(join(migrationsDir, migrationFile), 'utf8').replace(
+  /\r\n/g,
+  '\n',
+);
 
 describe('BCBA authorization read-only migration', () => {
   it('tracks a single forward migration for the BCBA authorization boundary', () => {

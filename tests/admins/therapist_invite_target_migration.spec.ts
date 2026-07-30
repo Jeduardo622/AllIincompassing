@@ -13,6 +13,14 @@ const functionSql = migrationSql.match(
   /create or replace function public\.create_admin_invite_token_rate_limited[\s\S]+?\n\$\$;/i,
 )?.[0] ?? '';
 
+const activeDuplicateLookupSql = functionSql.match(
+  /select t\.id, t\.expires_at[\s\S]+?limit 1;/i,
+)?.[0] ?? '';
+
+const expiredInviteCleanupSql = functionSql.match(
+  /delete from public\.admin_invite_tokens t[\s\S]+?and t\.expires_at <= v_now;/i,
+)?.[0] ?? '';
+
 describe('therapist invite target lifecycle migration', () => {
   it('adds invite target and lifecycle columns to admin_invite_tokens', () => {
     expect(migrationSql).toMatch(/add column if not exists target_therapist_id uuid/i);
@@ -32,7 +40,7 @@ describe('therapist invite target lifecycle migration', () => {
     expect(functionSql).toMatch(/where t\.id = p_target_therapist_id/i);
     expect(functionSql).toMatch(/t\.organization_id = p_organization_id/i);
     expect(functionSql).toMatch(/t\.deleted_at is null/i);
-    expect(functionSql).toMatch(/lower\(coalesce\(t\.status, 'active'\)\) = 'active'/i);
+    expect(functionSql).toMatch(/lower\(trim\(coalesce\(t\.status, 'active'\)\)\) = 'active'/i);
     expect(functionSql).toMatch(/lower\(trim\(t\.email\)\) = v_normalized_email/i);
   });
 
@@ -46,6 +54,25 @@ describe('therapist invite target lifecycle migration', () => {
     expect(functionSql).toMatch(/and t\.accepted_at is null/i);
     expect(functionSql).toMatch(/and t\.revoked_at is null/i);
     expect(functionSql).toMatch(/and t\.expires_at > v_now/i);
+  });
+
+  it('blocks targeted invites when a generic active invite already exists for the same org and email', () => {
+    expect(activeDuplicateLookupSql).toMatch(/where t\.email = v_normalized_email/i);
+    expect(activeDuplicateLookupSql).toMatch(/and t\.organization_id = p_organization_id/i);
+    expect(activeDuplicateLookupSql).not.toMatch(/t\.target_therapist_id/i);
+  });
+
+  it('blocks generic invites when a targeted active invite already exists for the same org and email', () => {
+    expect(functionSql).toMatch(/return query select v_existing_id, v_existing_expires_at, 'active_invite_exists'::text;/i);
+    expect(activeDuplicateLookupSql).not.toMatch(/p_target_therapist_id is null/i);
+    expect(activeDuplicateLookupSql).not.toMatch(/p_target_therapist_id/i);
+  });
+
+  it('prunes expired invites by org and email without preserving generic or targeted coexistence semantics', () => {
+    expect(expiredInviteCleanupSql).toMatch(/where t\.email = v_normalized_email/i);
+    expect(expiredInviteCleanupSql).toMatch(/and t\.organization_id = p_organization_id/i);
+    expect(expiredInviteCleanupSql).not.toMatch(/t\.target_therapist_id/i);
+    expect(expiredInviteCleanupSql).not.toMatch(/p_target_therapist_id/i);
   });
 
   it('keeps the function restricted to service_role execution', () => {

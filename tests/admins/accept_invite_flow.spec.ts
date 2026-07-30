@@ -20,7 +20,7 @@ type TherapistRow = {
   id: string;
   email: string;
   organization_id: string;
-  status: string;
+  status: string | null;
   deleted_at: string | null;
 };
 
@@ -583,6 +583,56 @@ describe('accept staff invite edge function', () => {
     expect(response.status).toBe(409);
     expect(createdUsers).toHaveLength(0);
     expect(consumedInvites).toHaveLength(0);
+  }, 20_000);
+
+  it('accepts targeted invites when therapist status is null', async () => {
+    therapists.push({
+      id: 'therapist-null-status',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: null,
+      deleted_at: null,
+    });
+    inviteTokens.push(await buildInvite({ id: 'invite-null-status', target_therapist_id: 'therapist-null-status' }));
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ email: 'bt.staff@example.com', role: 'bt' });
+    expect(consumedInvites).toHaveLength(1);
+  }, 20_000);
+
+  it('accepts targeted invites when therapist status normalizes to active', async () => {
+    therapists.push({
+      id: 'therapist-normalized-status',
+      email: 'bt.staff@example.com',
+      organization_id: 'org-123',
+      status: ' Active ',
+      deleted_at: null,
+    });
+    inviteTokens.push(
+      await buildInvite({ id: 'invite-normalized-status', target_therapist_id: 'therapist-normalized-status' }),
+    );
+
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/accept-staff-invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: rawToken, password: 'StrongPass123!' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ email: 'bt.staff@example.com', role: 'bt' });
+    expect(consumedInvites).toHaveLength(1);
   }, 20_000);
 
   it('rejects targeted invites when the therapist is soft deleted', async () => {

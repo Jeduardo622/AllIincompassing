@@ -91,7 +91,7 @@ begin
       where t.id = p_target_therapist_id
         and t.organization_id = p_organization_id
         and t.deleted_at is null
-        and lower(coalesce(t.status, 'active')) = 'active'
+        and lower(trim(coalesce(t.status, 'active'))) = 'active'
         and lower(trim(t.email)) = v_normalized_email
     ) then
     raise exception using errcode = '23503', message = 'Target therapist must be active in the organization and match the invite email';
@@ -105,10 +105,6 @@ begin
   from public.admin_invite_tokens t
   where t.email = v_normalized_email
     and t.organization_id = p_organization_id
-    and (
-      (p_target_therapist_id is null and t.target_therapist_id is null)
-      or t.target_therapist_id = p_target_therapist_id
-    )
     and t.accepted_at is null
     and t.revoked_at is null
     and t.expires_at > v_now
@@ -123,10 +119,6 @@ begin
   delete from public.admin_invite_tokens t
   where t.email = v_normalized_email
     and t.organization_id = p_organization_id
-    and (
-      (p_target_therapist_id is null and t.target_therapist_id is null)
-      or t.target_therapist_id = p_target_therapist_id
-    )
     and t.accepted_at is null
     and t.revoked_at is null
     and t.expires_at <= v_now;

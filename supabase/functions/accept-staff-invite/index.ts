@@ -37,7 +37,7 @@ type TherapistRecord = {
   id: string;
   email: string;
   organization_id: string;
-  status: string;
+  status: string | null;
   deleted_at: string | null;
 };
 
@@ -63,6 +63,11 @@ const normalizeOptionalName = (value: string | undefined) => {
 };
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
+const normalizeTherapistStatus = (value: string | null) => {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && normalized.length > 0 ? normalized : "active";
+};
 
 const deleteInviteToken = async (tokenHash: string) => {
   const { error } = await supabaseAdmin
@@ -171,7 +176,7 @@ async function handleAcceptStaffInvite(req: Request) {
       return jsonResponse(req, 409, { error: "invite_target_invalid" });
     }
 
-    if (therapistRecord.status !== "active" || therapistRecord.deleted_at) {
+    if (normalizeTherapistStatus(therapistRecord.status) !== "active" || therapistRecord.deleted_at) {
       return jsonResponse(req, 409, { error: "invite_target_invalid" });
     }
   }

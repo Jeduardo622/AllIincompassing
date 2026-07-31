@@ -75,14 +75,15 @@
 - `test-engineer`: confirmed the parser contract is the minimum red-green boundary and selected the critical-lane verification envelope.
 - `software-architect`: approved the isolated action-ref and parser-contract design.
 - `implementation-engineer`: approved implementation conformance with no required fixes.
-- `code-review-engineer`: found no implementation defect; required removal of a test-generated report timestamp and review against the committed clean diff.
+- `code-review-engineer`: approved committed clean diff `82ec3a30` after the test-generated report timestamp was removed.
 - `security-engineer`: approved; confirmed no permission, trigger, secret, token, artifact-scope, tenant, auth, or deploy drift.
 
 ## PR Hygiene
 
 - Branch: `codex/win-268-download-artifact-node24`
+- PR: `#883`
 - Single purpose: yes
 - Unrelated changes: none
 - Protected-path drift: intended one-line immutable action pin replacement only
 - Human review: mandatory before merge
-- PR-ready: pending clean committed-diff re-review and hosted checks
+- PR-ready: yes; merge remains blocked on hosted proof and mandatory non-author human review

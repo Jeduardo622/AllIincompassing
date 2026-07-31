@@ -28,6 +28,7 @@ const expectedWorkflowFiles = [
 
 const expectedPins = {
   'actions/checkout': 'fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09',
+  'actions/download-artifact': '37930b1c2abaa49bbe596cd826c3c89aef350131',
   'actions/setup-node': 'a0853c24544627f65ddf259abe73b1d18a591444',
   'actions/upload-artifact': 'b7c566a772e6b6bfb58ed0dc250532a479d7789f',
 } as const;
@@ -65,7 +66,7 @@ const collectActionSteps = (value: unknown, file: string, results: ActionStep[] 
 };
 
 describe('GitHub Actions runtime pins', () => {
-  it('pins checkout, setup-node, and upload-artifact to the verified SHAs and keeps Node 20', () => {
+  it('pins GitHub-authored actions to the verified SHAs and keeps the app toolchain on Node 20', () => {
     const workflowFiles = readdirSync(workflowDir).filter((entry) => entry.endsWith('.yml')).sort();
     const actionSteps = workflowFiles.flatMap((file) => {
       const source = readFileSync(path.join(workflowDir, file), 'utf8');

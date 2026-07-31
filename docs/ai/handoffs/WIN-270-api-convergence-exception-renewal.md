@@ -34,7 +34,7 @@
 - `docs/api/endpoint-convergence-status.json` lists the same `9` non-retired legacy shim entries, including `/api/assessment-template-layout` with `wave: A`, `status: legacy_shim`, and `owner: Backend Platform`.
 - `docs/api/critical-endpoint-authority.json` matches the same active shim inventory; no authority/status/owner drift was introduced in this slice.
 - `docs/supabase_branching.md` states that preview databases are ephemeral PR branches, while preview, staging, and production promotion all operate against the same hosted Supabase project `wnnjeqheqxxyrgsjmygy`; there is no distinct staging database.
-- `.github/workflows/ci.yml` is cited here as repository topology evidence: it shows docs-only runs go through `docs-guard`, and it documents that `main` release topology includes `deploy-session-edge`, separate `ci:deploy:fill-docs-function`, and conditional `deploy-ai-agent-edge` when `ai_agent_changed == 'true'`. Those jobs are evidence for the architecture pack wording, not a claim that this docs-only diff itself traverses those paths.
+- `.github/workflows/ci.yml` is cited here as repository topology evidence: it shows Markdown-only runs go through `docs-guard`, and it documents that `main` release topology includes `deploy-session-edge`, separate `ci:deploy:fill-docs-function`, and conditional `deploy-ai-agent-edge` when `ai_agent_changed == 'true'`. Because this branch changes JSON governance registries, it is not eligible for that Markdown-only shortcut. Those jobs are evidence for the architecture pack wording, not a claim that this documentation/governance diff itself traverses the deploy paths.
 - `reports/api-cutover-status.md` has no content diff in this slice and was intentionally left untouched.
 
 ## Verification

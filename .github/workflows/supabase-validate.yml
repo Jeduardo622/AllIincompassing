@@ -75,6 +75,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run unit tests
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: >-
           npm test -- --run --reporter=verbose
           --exclude=src/lib/__tests__/DatabaseIntegration.test.ts

@@ -36,6 +36,26 @@ The Netlify Function runtime also requires these values, scoped to Functions and
 | `ADMIN_INVITE_SMTP_PASSWORD` | SMTP account password or provider-generated credential. |
 | `ADMIN_INVITE_SMTP_FROM` | Verified sender mailbox or formatted sender identity. |
 
+## Production continuation checklist
+
+The delivery adapter and Supabase invite function are deployed, but production email delivery remains fail-closed until the protected SMTP configuration is supplied. To resume the WIN-265 rollout:
+
+1. In Netlify, add all six `ADMIN_INVITE_SMTP_*` variables from the table above as protected production values. Do not put their values in this repository, a pull request, Linear, chat, screenshots, or command output.
+2. For Gmail SMTP, use `smtp.gmail.com`, port `587`, and `ADMIN_INVITE_SMTP_SECURE=false`. Use the full sender mailbox as the username and a Google-generated app password as the SMTP password. Do not reuse an application login password or a Supabase Auth password.
+3. Confirm `ADMIN_INVITE_SMTP_FROM` is a sender identity the SMTP account is permitted to use.
+4. Provide an inbox-controlled, non-customer test address for the synthetic invite. Do not use PHI or a real client/staff onboarding record.
+5. Tell the operator or Codex only that **SMTP variables are set** and provide the test address. Never copy the credential values back out of Netlify.
+
+After that confirmation, the remaining rollout work is to generate and configure one shared `ADMIN_INVITE_DELIVERY_SECRET` in Netlify and Supabase, confirm the production adapter and portal URLs, redeploy only if the configuration change requires it, and run the synthetic checks below:
+
+- send an invite and confirm delivery without exposing the invite URL or token in logs;
+- accept the invite with a user-chosen password;
+- verify the expected Auth user, profile, organization role, and therapist link;
+- deliberately exercise a delivery failure with synthetic data and confirm the newly created invite token is rolled back;
+- record only redacted pass/fail evidence.
+
+Do not use the affected user's account password as an SMTP credential. Account-password creation and email transport authentication are separate concerns.
+
 ## Token Storage
 - **Table:** `admin_invite_tokens`
 - **Columns referenced:** `id`, `email`, `organization_id`, `token_hash`, `role`, `expires_at`, `created_by`.

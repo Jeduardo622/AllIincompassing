@@ -16,6 +16,7 @@
     "sessions-start.ts"
   ],
   "boundaryExceptions": [
+    "admin-invite-email.ts",
     "assessment-documents-extract-background.ts",
     "sessions-complete.ts",
     "sessions-week-forward.ts",

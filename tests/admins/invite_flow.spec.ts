@@ -44,6 +44,7 @@ const envValues = new Map<string, string>([
   ['SUPABASE_URL', 'http://localhost'],
   ['SUPABASE_ANON_KEY', 'anon'],
   ['ADMIN_INVITE_EMAIL_URL', 'https://mailer.example.com'],
+  ['ADMIN_INVITE_DELIVERY_SECRET', 'invite-delivery-secret'],
   ['ADMIN_PORTAL_URL', 'https://admin.example.com'],
 ]);
 
@@ -72,6 +73,27 @@ const wrapperAllowedRolesByName = {
   admin: ['admin', 'bcba', 'super_admin'],
   staffAdmin: ['admin_schedule', 'admin', 'bcba', 'super_admin'],
 } as const;
+
+const toHex = (bytes: ArrayBuffer) =>
+  Array.from(new Uint8Array(bytes))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
+
+const signInviteDeliveryPayload = async (secret: string, timestamp: string, body: string) => {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(`${timestamp}.${body}`),
+  );
+  return toHex(signature);
+};
 
 const inviteTokens: StoredInviteToken[] = [];
 const therapists: TherapistRecord[] = [];
@@ -278,6 +300,7 @@ describe('admin invite edge function', () => {
     currentUserMetadata = { organization_id: 'org-123' };
     currentResolvedOrgId = 'org-123';
     envValues.set('ADMIN_INVITE_EMAIL_URL', 'https://mailer.example.com');
+    envValues.set('ADMIN_INVITE_DELIVERY_SECRET', 'invite-delivery-secret');
     envValues.set('ADMIN_PORTAL_URL', 'https://admin.example.com');
     fetchMock = vi.fn(async () => ({ ok: true, status: 202 }));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -311,12 +334,20 @@ describe('admin invite edge function', () => {
     expect(storedToken.organization_id).toBe('org-123');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, requestInit] = fetchMock.mock.calls[0];
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0];
+    expect(requestUrl).toBe('https://mailer.example.com');
     expect(requestInit?.method).toBe('POST');
-    const emailPayload = JSON.parse(requestInit?.body as string);
+    const rawEmailPayload = String(requestInit?.body ?? '');
+    const emailPayload = JSON.parse(rawEmailPayload);
     expect(emailPayload.template).toBe('admin-invite');
     expect(emailPayload.to).toBe('newadmin@example.com');
     expect(emailPayload.variables.invite_url).toContain('?token=');
+    const requestHeaders = new Headers(requestInit?.headers as HeadersInit);
+    const timestamp = requestHeaders.get('X-Invite-Timestamp');
+    const signature = requestHeaders.get('X-Invite-Signature');
+    expect(timestamp).toEqual(expect.any(String));
+    expect(signature).toEqual(expect.any(String));
+    await expect(signInviteDeliveryPayload('invite-delivery-secret', timestamp ?? '', rawEmailPayload)).resolves.toBe(signature);
 
     expect(adminActionRows).toHaveLength(1);
     expect(adminActionRows[0]).toMatchObject({
@@ -384,6 +415,46 @@ describe('admin invite edge function', () => {
     await expect(response.json()).resolves.toMatchObject({ error: 'email_service_unconfigured' });
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.allincompassing.ai');
     expect(response.headers.get('Vary')).toBe('Origin');
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(inviteTokens).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('does not persist an invite token when the delivery secret is missing', async () => {
+    envValues.set('ADMIN_INVITE_DELIVERY_SECRET', '');
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'missing-secret@example.com', reason: 'Coverage for missing delivery secret.' }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ error: 'email_delivery_secret_unconfigured' });
+    expect(createAdminRpc).not.toHaveBeenCalled();
+    expect(inviteTokens).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(adminActionRows).toHaveLength(0);
+  }, 20_000);
+
+  it('does not persist an invite token when the email service URL is not https', async () => {
+    envValues.set('ADMIN_INVITE_EMAIL_URL', 'http://mailer.example.com');
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        body: JSON.stringify({ email: 'insecure-mailer@example.com', reason: 'Coverage for insecure email URL.' }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ error: 'email_service_url_invalid' });
     expect(createAdminRpc).not.toHaveBeenCalled();
     expect(inviteTokens).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();

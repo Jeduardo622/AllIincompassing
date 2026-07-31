@@ -67,11 +67,37 @@ const hashToken = async (token: string) => {
   return toHex(digest);
 };
 
+const signInviteDeliveryPayload = async (secret: string, timestamp: string, body: string) => {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`${timestamp}.${body}`),
+  );
+  return toHex(signature);
+};
+
+const isHttpsUrl = (value: string) => {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const ensureEmailServiceConfig = () => {
   const emailServiceUrl = Deno.env.get("ADMIN_INVITE_EMAIL_URL") ?? "";
+  const deliverySecret = Deno.env.get("ADMIN_INVITE_DELIVERY_SECRET") ?? "";
   const portalBaseUrl = Deno.env.get("ADMIN_PORTAL_URL") ?? "";
   return {
     emailServiceUrl: emailServiceUrl.trim(),
+    deliverySecret: deliverySecret.trim(),
     portalBaseUrl: portalBaseUrl.trim(),
   };
 };
@@ -100,6 +126,7 @@ const rollbackInviteToken = async (inviteId: string, organizationId: string) => 
 
 async function sendInviteEmail(
   url: string,
+  deliverySecret: string,
   payload: {
     to: string;
     inviteUrl: string;
@@ -109,19 +136,26 @@ async function sendInviteEmail(
   },
 ): Promise<{ status: "sent" | "failed"; error?: string }> {
   try {
+    const body = JSON.stringify({
+      template: "admin-invite",
+      to: payload.to,
+      variables: {
+        invite_url: payload.inviteUrl,
+        expires_at: payload.expiresAt,
+        organization_id: payload.organizationId,
+        role: payload.role,
+      },
+    });
+    const timestamp = new Date().toISOString();
+    const signature = await signInviteDeliveryPayload(deliverySecret, timestamp, body);
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        template: "admin-invite",
-        to: payload.to,
-        variables: {
-          invite_url: payload.inviteUrl,
-          expires_at: payload.expiresAt,
-          organization_id: payload.organizationId,
-          role: payload.role,
-        },
-      }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Invite-Timestamp": timestamp,
+        "X-Invite-Signature": signature,
+      },
+      body,
     });
 
     if (!response.ok) {
@@ -132,10 +166,10 @@ async function sendInviteEmail(
     }
 
     return { status: "sent" };
-  } catch (error) {
+  } catch {
     return {
       status: "failed",
-      error: error instanceof Error ? error.message : "Unknown email delivery error",
+      error: "Email delivery request failed",
     };
   }
 }
@@ -248,11 +282,23 @@ async function handleInvite(req: Request, userContext: UserContext) {
       }
     }
 
-    const { emailServiceUrl, portalBaseUrl } = ensureEmailServiceConfig();
+    const { emailServiceUrl, deliverySecret, portalBaseUrl } = ensureEmailServiceConfig();
     if (!emailServiceUrl) {
       console.error("ADMIN_INVITE_EMAIL_URL is not configured", { code: 'invite_email_url_missing' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
       return jsonResponse(req, 500, { error: "email_service_unconfigured" });
+    }
+
+    if (!isHttpsUrl(emailServiceUrl)) {
+      console.error("ADMIN_INVITE_EMAIL_URL must use HTTPS", { code: "invite_email_url_invalid" });
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
+      return jsonResponse(req, 500, { error: "email_service_url_invalid" });
+    }
+
+    if (deliverySecret.length < 16) {
+      console.error("ADMIN_INVITE_DELIVERY_SECRET is not configured", { code: "invite_delivery_secret_missing" });
+      logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
+      return jsonResponse(req, 500, { error: "email_delivery_secret_unconfigured" });
     }
 
     if (!portalBaseUrl) {
@@ -310,7 +356,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
 
     const inviteUrl = buildInviteUrl(portalBaseUrl, rawToken);
 
-    const emailResult = await sendInviteEmail(emailServiceUrl, {
+    const emailResult = await sendInviteEmail(emailServiceUrl, deliverySecret, {
       to: normalizedEmail,
       inviteUrl,
       expiresAt: expiresAt.toISOString(),

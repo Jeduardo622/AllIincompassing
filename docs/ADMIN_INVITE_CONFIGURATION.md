@@ -1,5 +1,11 @@
 # Admin Invite Configuration Guide
 
+## Delivery Architecture
+
+`admin-invite` remains the only token authority. It creates and stores the hashed invite token, then sends the exact JSON delivery payload to the Netlify adapter at `/.netlify/functions/admin-invite-email`.
+
+The Edge Function signs `timestamp + "." + raw_body` with HMAC-SHA256. The adapter rejects missing or invalid signatures and timestamps outside a five-minute window before contacting SMTP. The adapter is delivery-only: it has no Supabase service-role credential and cannot create, modify, or accept an invite.
+
 ## Email Templates
 - **Template name:** `admin-invite`
 - **Location:** Managed by the notification service addressed by `ADMIN_INVITE_EMAIL_URL`.
@@ -12,15 +18,28 @@
 ## Environment Variables
 | Variable | Description |
 | --- | --- |
-| `ADMIN_INVITE_EMAIL_URL` | HTTPS endpoint for the transactional email service handling invite messages. |
-| `ADMIN_PORTAL_URL` | Base URL for the admin application where invites are redeemed (e.g., `https://admin.example.com`). |
+| `ADMIN_INVITE_EMAIL_URL` | Supabase secret. Set to the HTTPS adapter endpoint, for example `https://app.allincompassing.ai/.netlify/functions/admin-invite-email`. |
+| `ADMIN_PORTAL_URL` | Supabase secret. Base URL where invites are redeemed, for example `https://app.allincompassing.ai`. |
+| `ADMIN_INVITE_DELIVERY_SECRET` | Shared Supabase and Netlify secret used only to authenticate delivery requests. Use at least 32 random bytes. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Required by the Edge function runtime and Supabase CLI for privileged operations. Already provided in platform secrets; **never** log or expose it. |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Used by the Edge function to scope the caller via `createRequestClient`. |
+
+The Netlify Function runtime also requires these values, scoped to Functions and Runtime for the intended deploy context:
+
+| Variable | Description |
+| --- | --- |
+| `ADMIN_INVITE_DELIVERY_SECRET` | The same shared signing secret configured in Supabase. |
+| `ADMIN_INVITE_SMTP_HOST` | SMTP server hostname. |
+| `ADMIN_INVITE_SMTP_PORT` | SMTP server port. |
+| `ADMIN_INVITE_SMTP_SECURE` | `true` for implicit TLS, normally on port 465; otherwise `false`. |
+| `ADMIN_INVITE_SMTP_USERNAME` | SMTP account username. |
+| `ADMIN_INVITE_SMTP_PASSWORD` | SMTP account password or provider-generated credential. |
+| `ADMIN_INVITE_SMTP_FROM` | Verified sender mailbox or formatted sender identity. |
 
 ## Token Storage
 - **Table:** `admin_invite_tokens`
 - **Columns referenced:** `id`, `email`, `organization_id`, `token_hash`, `role`, `expires_at`, `created_by`.
-- Tokens are stored hashed with SHA-256; plaintext tokens only appear in the email payload and response redirect URL.
+- Tokens are stored hashed with SHA-256; plaintext tokens appear only in the signed delivery payload, invite link, and recipient browser. They are never returned in the invite API response.
 - Prior to inserting a new invite, the function prunes any expired record for the same email + organization and aborts with `409` if an active invite already exists.
 
 ## Auditing
@@ -32,6 +51,10 @@
 - Default expiration is 72 hours and can be overridden per request within 1–168 hours.
 - Super admins may invite admins into any organization; standard admins are restricted to their own organization context.
 - Expired invites are automatically replaced on subsequent requests; active invites must be explicitly revoked in the database if re-sending is required before expiration.
+- Deploy and configure the Netlify adapter before setting `ADMIN_INVITE_EMAIL_URL` and deploying `admin-invite`. Use separate SMTP credentials for non-production contexts.
+- Validate a synthetic invite after deployment. Confirm that an adapter failure rolls the new token back, then confirm a successful delivery and acceptance round trip.
+- Never log or persist the raw request body, invite URL/token, HMAC signature, signing secret, or SMTP credential. Redact these values from operational evidence.
+- The five-minute freshness check limits replay. An intercepted valid request could resend the identical email during that window, but cannot mint a new token or change its target or role. Durable nonce storage is intentionally out of scope for this delivery-only adapter.
 
 ## Organization provisioning status
 

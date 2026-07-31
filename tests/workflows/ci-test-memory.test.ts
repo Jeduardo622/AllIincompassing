@@ -27,6 +27,7 @@ const expectStepHeap = (workflow: Workflow, jobName: string, stepName: string) =
 describe("CI test memory contract", () => {
   it("gives both full-suite test jobs enough heap for the schedule suite", () => {
     expectStepHeap(loadWorkflow("ci.yml"), "unit_tests", "Unit tests + coverage");
+    expectStepHeap(loadWorkflow("supabase-validate.yml"), "test-main", "Run unit tests");
     expectStepHeap(loadWorkflow("tenant-safety.yml"), "tenant-safety", "Run tests");
   });
 });

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   createProtectedRoute,
-  corsHeaders,
+  corsHeadersForRequest,
   logApiAccess,
   RouteOptions,
   type UserContext,
@@ -43,10 +43,15 @@ type InsertInviteResult = {
   error: { message?: string } | null;
 };
 
-const jsonResponse = (status: number, body: Record<string, unknown>, headers: Record<string, string> = {}) =>
+const jsonResponse = (
+  req: Request,
+  status: number,
+  body: Record<string, unknown>,
+  headers: Record<string, string> = {},
+) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, ...headers, "Content-Type": "application/json" },
+    headers: { ...corsHeadersForRequest(req), ...headers, "Content-Type": "application/json" },
   });
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -137,7 +142,7 @@ async function sendInviteEmail(
 
 async function handleInvite(req: Request, userContext: UserContext) {
   if (req.method !== "POST") {
-    return jsonResponse(405, { error: "method_not_allowed" });
+    return jsonResponse(req, 405, { error: "method_not_allowed" });
   }
 
   try {
@@ -148,7 +153,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
 
     const payloadResult = InviteRequestSchema.safeParse(await req.json());
     if (!payloadResult.success) {
-      return jsonResponse(400, {
+      return jsonResponse(req, 400, {
         error: "invalid_payload",
         details: payloadResult.error.flatten(),
       });
@@ -164,13 +169,13 @@ async function handleInvite(req: Request, userContext: UserContext) {
 
     if (!callerIsAdmin && !callerIsSuperAdmin && !isTargetedBtInvite) {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
-      return jsonResponse(403, { error: "insufficient_role" });
+      return jsonResponse(req, 403, { error: "insufficient_role" });
     }
 
     const { data: authResult, error: authError } = await adminClient.auth.getUser();
     if (authError || !authResult?.user) {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 401);
-      return jsonResponse(401, { error: "unauthorized" });
+      return jsonResponse(req, 401, { error: "unauthorized" });
     }
 
     const callerOrganizationId = await resolveOrgId(adminClient);
@@ -179,22 +184,22 @@ async function handleInvite(req: Request, userContext: UserContext) {
 
     if (!targetOrganizationId) {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
-      return jsonResponse(403, { error: "organization_context_required" });
+      return jsonResponse(req, 403, { error: "organization_context_required" });
     }
 
     if (!callerIsSuperAdmin && targetOrganizationId !== callerOrganizationId) {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
-      return jsonResponse(403, { error: "cross_org_invite_forbidden" });
+      return jsonResponse(req, 403, { error: "cross_org_invite_forbidden" });
     }
 
     if ((desiredRole === "super_admin" || desiredRole === "bcba") && !callerIsSuperAdmin) {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
-      return jsonResponse(403, { error: "insufficient_role_for_target" });
+      return jsonResponse(req, 403, { error: "insufficient_role_for_target" });
     }
 
     if (payload.targetTherapistId && desiredRole !== "bt") {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
-      return jsonResponse(403, { error: "target_therapist_role_forbidden" });
+      return jsonResponse(req, 403, { error: "target_therapist_role_forbidden" });
     }
 
     if (payload.targetTherapistId) {
@@ -207,12 +212,12 @@ async function handleInvite(req: Request, userContext: UserContext) {
       if (targetTherapistError) {
         console.error("Failed to validate invite target therapist", { code: "target_therapist_lookup_failed" });
         logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-        return jsonResponse(500, { error: "invite_target_validation_failed" });
+        return jsonResponse(req, 500, { error: "invite_target_validation_failed" });
       }
 
       if (!targetTherapist) {
         logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
-        return jsonResponse(409, { error: "target_therapist_not_available" });
+        return jsonResponse(req, 409, { error: "target_therapist_not_available" });
       }
 
       const therapistRecord = targetTherapist as {
@@ -224,22 +229,22 @@ async function handleInvite(req: Request, userContext: UserContext) {
 
       if (therapistRecord.organization_id !== targetOrganizationId) {
         logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 403);
-        return jsonResponse(403, { error: "target_therapist_org_mismatch" });
+        return jsonResponse(req, 403, { error: "target_therapist_org_mismatch" });
       }
 
       if (normalizeEmail(therapistRecord.email ?? "") !== normalizedEmail) {
         logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
-        return jsonResponse(409, { error: "target_therapist_email_mismatch" });
+        return jsonResponse(req, 409, { error: "target_therapist_email_mismatch" });
       }
 
       if (!isActiveTherapistStatus(therapistRecord.status)) {
         logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
-        return jsonResponse(409, { error: "target_therapist_inactive" });
+        return jsonResponse(req, 409, { error: "target_therapist_inactive" });
       }
 
       if (therapistRecord.deleted_at) {
         logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
-        return jsonResponse(409, { error: "target_therapist_deleted" });
+        return jsonResponse(req, 409, { error: "target_therapist_deleted" });
       }
     }
 
@@ -247,13 +252,13 @@ async function handleInvite(req: Request, userContext: UserContext) {
     if (!emailServiceUrl) {
       console.error("ADMIN_INVITE_EMAIL_URL is not configured", { code: 'invite_email_url_missing' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-      return jsonResponse(500, { error: "email_service_unconfigured" });
+      return jsonResponse(req, 500, { error: "email_service_unconfigured" });
     }
 
     if (!portalBaseUrl) {
       console.error("ADMIN_PORTAL_URL is not configured", { code: 'portal_url_missing' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-      return jsonResponse(500, { error: "portal_url_unconfigured" });
+      return jsonResponse(req, 500, { error: "portal_url_unconfigured" });
     }
 
     const now = new Date();
@@ -275,18 +280,19 @@ async function handleInvite(req: Request, userContext: UserContext) {
     if (insertedInvite.error || !insertedInvite.data?.[0]) {
       console.error("Failed to insert invite token", { code: 'invite_insert_failed' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-      return jsonResponse(500, { error: "invite_creation_failed" });
+      return jsonResponse(req, 500, { error: "invite_creation_failed" });
     }
 
     const inviteResult = insertedInvite.data[0];
     if (inviteResult.status === "active_invite_exists") {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 409);
-      return jsonResponse(409, { error: "active_invite_exists" });
+      return jsonResponse(req, 409, { error: "active_invite_exists" });
     }
 
     if (inviteResult.status === "rate_limited") {
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 429);
       return jsonResponse(
+        req,
         429,
         {
           error: "invite_rate_limit_exceeded",
@@ -299,7 +305,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
     if (inviteResult.status !== "created" || !inviteResult.id || !inviteResult.expires_at) {
       console.error("Unexpected invite RPC result", { code: 'invite_rpc_unexpected_status' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-      return jsonResponse(500, { error: "invite_creation_failed" });
+      return jsonResponse(req, 500, { error: "invite_creation_failed" });
     }
 
     const inviteUrl = buildInviteUrl(portalBaseUrl, rawToken);
@@ -337,21 +343,21 @@ async function handleInvite(req: Request, userContext: UserContext) {
       const rollbackResult = await rollbackInviteToken(inviteResult.id, targetOrganizationId);
       if (rollbackResult.error) {
         logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-        return jsonResponse(500, { error: "invite_rollback_failed" });
+        return jsonResponse(req, 500, { error: "invite_rollback_failed" });
       }
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 502);
-      return jsonResponse(502, { error: "email_delivery_failed" });
+      return jsonResponse(req, 502, { error: "email_delivery_failed" });
     }
 
     logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 201);
-    return jsonResponse(201, {
+    return jsonResponse(req, 201, {
       inviteId: inviteResult.id,
       expiresAt: inviteResult.expires_at,
     });
   } catch (error) {
     console.error("Unexpected admin invite error", { code: 'unexpected_invite_error' });
     logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
-    return jsonResponse(500, { error: "internal_server_error" });
+    return jsonResponse(req, 500, { error: "internal_server_error" });
   }
 }
 

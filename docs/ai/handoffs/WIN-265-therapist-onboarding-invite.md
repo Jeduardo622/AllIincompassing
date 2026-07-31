@@ -168,6 +168,7 @@
 - unrelated changes: none; the timestamp-only test reliability artifact was excluded
 - generated artifact drift: none
 - protected-path drift: none beyond the routed `supabase/functions/admin-invite/**` and `src/server/api/**` delivery boundary
-- reviewer status: code, security, Supabase, and Netlify rereviews approved; test-engineer verification assessment requested
-- pr-ready: yes for human review; PR creation pending
+- reviewer status: code, security, Supabase, Netlify, and test-engineer rereviews approved
+- pull request: #884
+- pr-ready: yes for human review
 - merge-ready: no; critical-lane human review, live CI, protected configuration, and hosted end-to-end proof remain

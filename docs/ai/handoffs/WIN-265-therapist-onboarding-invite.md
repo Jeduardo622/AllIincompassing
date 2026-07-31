@@ -160,7 +160,7 @@
 - result: pass-with-blocked-checks; review-ready, not merge-ready
 - residual risk: a captured valid delivery request can resend the identical invite within the five-minute signature window; it cannot mint, mutate, or retarget an invite. Production SMTP/shared-secret configuration, hosted log-redaction checks, end-to-end delivery, and critical-lane human review remain mandatory.
 
-### Current Adapter PR Hygiene
+### Adapter PR hygiene at review handoff
 
 - branch: `codex/win-265-invite-email-adapter`
 - linked issue: WIN-265
@@ -171,4 +171,13 @@
 - reviewer status: code, security, Supabase, Netlify, and test-engineer rereviews approved
 - pull request: #884
 - pr-ready: yes for human review
-- merge-ready: no; critical-lane human review, live CI, protected configuration, and hosted end-to-end proof remain
+- merge-ready at that handoff: no; critical-lane human review, live CI, protected configuration, and hosted end-to-end proof remained
+
+### Production continuation status (July 31, 2026)
+
+- PR #884 merged and the production Netlify adapter is reachable at `https://app.allincompassing.ai/.netlify/functions/admin-invite-email`; an unsigned request is rejected with `401 invalid_signature`.
+- Supabase project `wnnjeqheqxxyrgsjmygy` has `admin-invite` version 18 active with JWT verification, signed delivery, and delivery-failure rollback behavior.
+- Remaining external prerequisite: an operator must configure the protected Netlify `ADMIN_INVITE_SMTP_HOST`, `ADMIN_INVITE_SMTP_PORT`, `ADMIN_INVITE_SMTP_SECURE`, `ADMIN_INVITE_SMTP_USERNAME`, `ADMIN_INVITE_SMTP_PASSWORD`, and `ADMIN_INVITE_SMTP_FROM` values and provide an inbox-controlled synthetic test address.
+- Resume signal: state **SMTP variables are set** and provide only the test address; do not disclose SMTP credentials.
+- Once resumed: configure the shared delivery secret on both platforms, confirm the production adapter/portal URLs, redeploy if required, and verify synthetic delivery, acceptance, Auth/profile/org-role/therapist linking, and delivery-failure rollback.
+- Detailed operator instructions: `docs/ADMIN_INVITE_CONFIGURATION.md` under **Production continuation checklist**.

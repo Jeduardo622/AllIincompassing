@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubDenoEnv } from '../utils/stubDeno';
+import { corsHeadersForRequest as realCorsHeadersForRequest } from '../../supabase/functions/_shared/cors.ts';
 
 type TestRole = 'client' | 'bt' | 'therapist' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
 
@@ -214,6 +215,7 @@ createRequestClient.mockImplementation(() => createMockClient());
 
 vi.mock('../../supabase/functions/_shared/auth-middleware.ts', () => ({
   corsHeaders,
+  corsHeadersForRequest: realCorsHeadersForRequest,
   RouteOptions: {
     admin: { requireAuth: true, allowedRoles: [...wrapperAllowedRolesByName.admin] },
     staffAdmin: { requireAuth: true, allowedRoles: [...wrapperAllowedRolesByName.staffAdmin] },
@@ -331,6 +333,37 @@ describe('admin invite edge function', () => {
     expect(getUserRoles).toHaveBeenCalledTimes(1);
   }, 20_000);
 
+  it('uses request-aware CORS headers for handler-generated responses', async () => {
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'GET',
+        headers: { Origin: 'https://app.allincompassing.ai' },
+      }),
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.allincompassing.ai');
+    expect(response.headers.get('Vary')).toBe('Origin');
+  });
+
+  it('does not reflect an untrusted origin in handler-generated responses', async () => {
+    const handler = await loadHandler();
+
+    const response = await handler(
+      new Request('https://edge.example.com/admin/invite', {
+        method: 'GET',
+        headers: { Origin: 'https://attacker.example.com' },
+      }),
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.allincompassing.ai');
+    expect(response.headers.get('Access-Control-Allow-Origin')).not.toBe('https://attacker.example.com');
+    expect(response.headers.get('Vary')).toBe('Origin');
+  });
+
   it('does not persist an invite token when the email service URL is missing', async () => {
     envValues.set('ADMIN_INVITE_EMAIL_URL', '');
     const handler = await loadHandler();
@@ -338,13 +371,19 @@ describe('admin invite edge function', () => {
     const response = await handler(
       new Request('https://edge.example.com/admin/invite', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer valid',
+          Origin: 'https://app.allincompassing.ai',
+        },
         body: JSON.stringify({ email: 'missing-mailer@example.com', reason: 'Coverage for missing mailer.' }),
       }),
     );
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({ error: 'email_service_unconfigured' });
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.allincompassing.ai');
+    expect(response.headers.get('Vary')).toBe('Origin');
     expect(createAdminRpc).not.toHaveBeenCalled();
     expect(inviteTokens).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();

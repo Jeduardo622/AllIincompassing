@@ -81,6 +81,7 @@ describe('admin invite email adapter', () => {
       host: 'smtp.example.com',
       port: 587,
       secure: false,
+      requireTLS: true,
       connectionTimeout: 8_000,
       greetingTimeout: 8_000,
       socketTimeout: 15_000,

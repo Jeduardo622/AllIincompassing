@@ -39,6 +39,7 @@ interface SmtpTransportOptions {
   host: string;
   port: number;
   secure: boolean;
+  requireTLS: boolean;
   connectionTimeout: number;
   greetingTimeout: number;
   socketTimeout: number;
@@ -157,6 +158,7 @@ export const adminInviteEmailHandler = async (
       host: config.smtpHost,
       port: config.smtpPort,
       secure: config.smtpSecure,
+      requireTLS: !config.smtpSecure,
       connectionTimeout: 8_000,
       greetingTimeout: 8_000,
       socketTimeout: 15_000,

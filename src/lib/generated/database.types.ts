@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
-  }
   public: {
     Tables: {
       admin_actions: {
@@ -156,6 +151,7 @@ export type Database = {
       }
       agent_execution_traces: {
         Row: {
+          attempt_id: string | null
           conversation_id: string | null
           correlation_id: string
           created_at: string
@@ -165,11 +161,14 @@ export type Database = {
           replay_payload: Json | null
           request_id: string
           status: string
+          step_id: string | null
           step_index: number
           step_name: string
           user_id: string | null
+          work_item_id: string | null
         }
         Insert: {
+          attempt_id?: string | null
           conversation_id?: string | null
           correlation_id: string
           created_at?: string
@@ -179,11 +178,14 @@ export type Database = {
           replay_payload?: Json | null
           request_id: string
           status: string
+          step_id?: string | null
           step_index?: number
           step_name: string
           user_id?: string | null
+          work_item_id?: string | null
         }
         Update: {
+          attempt_id?: string | null
           conversation_id?: string | null
           correlation_id?: string
           created_at?: string
@@ -193,11 +195,35 @@ export type Database = {
           replay_payload?: Json | null
           request_id?: string
           status?: string
+          step_id?: string | null
           step_index?: number
           step_name?: string
           user_id?: string | null
+          work_item_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "agent_execution_traces_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_execution_traces_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_execution_traces_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       agent_prompt_tool_versions: {
         Row: {
@@ -265,38 +291,825 @@ export type Database = {
         }
         Relationships: []
       }
-      ai_cache: {
+      agent_work_approvals: {
         Row: {
-          created_at: string | null
+          client_id: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_reason_code: string | null
+          evidence_hash: string
           expires_at: string | null
-          function_name: string
-          hit_count: number | null
           id: string
           input_hash: string
-          last_accessed: string | null
-          response_data: Json
+          organization_id: string
+          requested_at: string
+          requested_by: string | null
+          required_role: string
+          status: Database["public"]["Enums"]["agent_work_approval_status"]
+          step_id: string | null
+          updated_at: string
+          work_item_id: string
         }
         Insert: {
-          created_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_reason_code?: string | null
+          evidence_hash: string
           expires_at?: string | null
-          function_name: string
-          hit_count?: number | null
           id?: string
           input_hash: string
-          last_accessed?: string | null
-          response_data: Json
+          organization_id: string
+          requested_at?: string
+          requested_by?: string | null
+          required_role: string
+          status?: Database["public"]["Enums"]["agent_work_approval_status"]
+          step_id?: string | null
+          updated_at?: string
+          work_item_id: string
         }
         Update: {
-          created_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_reason_code?: string | null
+          evidence_hash?: string
           expires_at?: string | null
-          function_name?: string
-          hit_count?: number | null
           id?: string
           input_hash?: string
-          last_accessed?: string | null
-          response_data?: Json
+          organization_id?: string
+          requested_at?: string
+          requested_by?: string | null
+          required_role?: string
+          status?: Database["public"]["Enums"]["agent_work_approval_status"]
+          step_id?: string | null
+          updated_at?: string
+          work_item_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_approvals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_approvals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_approvals_step_fk"
+            columns: ["step_id", "work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id", "work_item_id"]
+          },
+          {
+            foreignKeyName: "agent_work_approvals_work_item_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      agent_work_assessment_links: {
+        Row: {
+          assessment_document_id: string
+          client_id: string
+          created_at: string
+          id: string
+          organization_id: string
+          work_item_id: string
+          workflow_key: string
+          workflow_version: number
+        }
+        Insert: {
+          assessment_document_id: string
+          client_id: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          work_item_id: string
+          workflow_key: string
+          workflow_version: number
+        }
+        Update: {
+          assessment_document_id?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          work_item_id?: string
+          workflow_key?: string
+          workflow_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_assessment_links_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_assessment_links_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_assessment_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_assessment_links_work_item_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      agent_work_attempts: {
+        Row: {
+          attempt_number: number
+          client_id: string | null
+          computed_cost: number | null
+          correlation_id: string | null
+          created_at: string
+          error_class: string | null
+          error_code: string | null
+          finished_at: string | null
+          id: string
+          input_token_count: number | null
+          lease_acquired_at: string
+          lease_expires_at: string | null
+          model: string | null
+          organization_id: string
+          output_token_count: number | null
+          pricing_version: string | null
+          prompt_version: string | null
+          provider: string | null
+          request_id: string | null
+          status: Database["public"]["Enums"]["agent_work_attempt_status"]
+          step_id: string
+          tool_version: string | null
+          updated_at: string
+          work_item_id: string
+          worker_id: string
+          workflow_version: number | null
+        }
+        Insert: {
+          attempt_number: number
+          client_id?: string | null
+          computed_cost?: number | null
+          correlation_id?: string | null
+          created_at?: string
+          error_class?: string | null
+          error_code?: string | null
+          finished_at?: string | null
+          id?: string
+          input_token_count?: number | null
+          lease_acquired_at?: string
+          lease_expires_at?: string | null
+          model?: string | null
+          organization_id: string
+          output_token_count?: number | null
+          pricing_version?: string | null
+          prompt_version?: string | null
+          provider?: string | null
+          request_id?: string | null
+          status?: Database["public"]["Enums"]["agent_work_attempt_status"]
+          step_id: string
+          tool_version?: string | null
+          updated_at?: string
+          work_item_id: string
+          worker_id: string
+          workflow_version?: number | null
+        }
+        Update: {
+          attempt_number?: number
+          client_id?: string | null
+          computed_cost?: number | null
+          correlation_id?: string | null
+          created_at?: string
+          error_class?: string | null
+          error_code?: string | null
+          finished_at?: string | null
+          id?: string
+          input_token_count?: number | null
+          lease_acquired_at?: string
+          lease_expires_at?: string | null
+          model?: string | null
+          organization_id?: string
+          output_token_count?: number | null
+          pricing_version?: string | null
+          prompt_version?: string | null
+          provider?: string | null
+          request_id?: string | null
+          status?: Database["public"]["Enums"]["agent_work_attempt_status"]
+          step_id?: string
+          tool_version?: string | null
+          updated_at?: string
+          work_item_id?: string
+          worker_id?: string
+          workflow_version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_attempts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_attempts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_attempts_step_fk"
+            columns: ["step_id", "work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id", "work_item_id"]
+          },
+          {
+            foreignKeyName: "agent_work_attempts_work_item_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      agent_work_effects: {
+        Row: {
+          attempt_id: string | null
+          client_id: string | null
+          created_at: string
+          effect_kind: string
+          id: string
+          organization_id: string
+          payload_hash: string
+          status: Database["public"]["Enums"]["agent_work_effect_status"]
+          step_id: string
+          target_id: string | null
+          target_kind: string
+          unique_effect_key: string
+          updated_at: string
+          verified_at: string | null
+          work_item_id: string
+        }
+        Insert: {
+          attempt_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          effect_kind: string
+          id?: string
+          organization_id: string
+          payload_hash: string
+          status?: Database["public"]["Enums"]["agent_work_effect_status"]
+          step_id: string
+          target_id?: string | null
+          target_kind: string
+          unique_effect_key: string
+          updated_at?: string
+          verified_at?: string | null
+          work_item_id: string
+        }
+        Update: {
+          attempt_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          effect_kind?: string
+          id?: string
+          organization_id?: string
+          payload_hash?: string
+          status?: Database["public"]["Enums"]["agent_work_effect_status"]
+          step_id?: string
+          target_id?: string | null
+          target_kind?: string
+          unique_effect_key?: string
+          updated_at?: string
+          verified_at?: string | null
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_effects_attempt_fk"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_effects_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_effects_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_effects_step_fk"
+            columns: ["step_id", "work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id", "work_item_id"]
+          },
+          {
+            foreignKeyName: "agent_work_effects_work_item_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      agent_work_events: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          attempt_id: string | null
+          client_id: string | null
+          correlation_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          organization_id: string
+          request_id: string | null
+          sanitized_metadata: Json
+          step_id: string | null
+          work_item_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          attempt_id?: string | null
+          client_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          organization_id: string
+          request_id?: string | null
+          sanitized_metadata?: Json
+          step_id?: string | null
+          work_item_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          attempt_id?: string | null
+          client_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          organization_id?: string
+          request_id?: string | null
+          sanitized_metadata?: Json
+          step_id?: string | null
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_events_attempt_fk"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_events_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_events_step_fk"
+            columns: ["step_id", "work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id", "work_item_id"]
+          },
+          {
+            foreignKeyName: "agent_work_events_work_item_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      agent_work_evidence: {
+        Row: {
+          captured_at: string
+          client_id: string | null
+          created_at: string
+          id: string
+          locator: string | null
+          metadata: Json
+          organization_id: string
+          sha256: string
+          source_id: string
+          source_kind: Database["public"]["Enums"]["agent_work_evidence_source_kind"]
+          step_id: string | null
+          work_item_id: string
+        }
+        Insert: {
+          captured_at?: string
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          locator?: string | null
+          metadata?: Json
+          organization_id: string
+          sha256: string
+          source_id: string
+          source_kind: Database["public"]["Enums"]["agent_work_evidence_source_kind"]
+          step_id?: string | null
+          work_item_id: string
+        }
+        Update: {
+          captured_at?: string
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          locator?: string | null
+          metadata?: Json
+          organization_id?: string
+          sha256?: string
+          source_id?: string
+          source_kind?: Database["public"]["Enums"]["agent_work_evidence_source_kind"]
+          step_id?: string | null
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_evidence_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_evidence_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_evidence_step_fk"
+            columns: ["step_id", "work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id", "work_item_id"]
+          },
+          {
+            foreignKeyName: "agent_work_evidence_work_item_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      agent_work_item_dependencies: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          predecessor_work_item_id: string
+          successor_work_item_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          predecessor_work_item_id: string
+          successor_work_item_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          predecessor_work_item_id?: string
+          successor_work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_item_dependencies_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_item_dependencies_predecessor_fk"
+            columns: ["predecessor_work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "agent_work_item_dependencies_successor_fk"
+            columns: ["successor_work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      agent_work_items: {
+        Row: {
+          assigned_agent_key: string | null
+          cancelled_at: string | null
+          client_id: string | null
+          completed_at: string | null
+          completion_criteria: Json
+          created_at: string
+          current_step_id: string | null
+          dedupe_key: string
+          due_at: string | null
+          failure_reason_code: string | null
+          id: string
+          objective: string
+          organization_id: string
+          owner_user_id: string | null
+          parent_work_item_id: string | null
+          priority: number
+          prompt_tool_version_id: string | null
+          risk: Database["public"]["Enums"]["agent_work_risk"]
+          state_version: number
+          status: Database["public"]["Enums"]["agent_work_item_status"]
+          updated_at: string
+          workflow_key: string
+          workflow_version: number
+        }
+        Insert: {
+          assigned_agent_key?: string | null
+          cancelled_at?: string | null
+          client_id?: string | null
+          completed_at?: string | null
+          completion_criteria?: Json
+          created_at?: string
+          current_step_id?: string | null
+          dedupe_key: string
+          due_at?: string | null
+          failure_reason_code?: string | null
+          id?: string
+          objective: string
+          organization_id: string
+          owner_user_id?: string | null
+          parent_work_item_id?: string | null
+          priority?: number
+          prompt_tool_version_id?: string | null
+          risk?: Database["public"]["Enums"]["agent_work_risk"]
+          state_version?: number
+          status?: Database["public"]["Enums"]["agent_work_item_status"]
+          updated_at?: string
+          workflow_key: string
+          workflow_version: number
+        }
+        Update: {
+          assigned_agent_key?: string | null
+          cancelled_at?: string | null
+          client_id?: string | null
+          completed_at?: string | null
+          completion_criteria?: Json
+          created_at?: string
+          current_step_id?: string | null
+          dedupe_key?: string
+          due_at?: string | null
+          failure_reason_code?: string | null
+          id?: string
+          objective?: string
+          organization_id?: string
+          owner_user_id?: string | null
+          parent_work_item_id?: string | null
+          priority?: number
+          prompt_tool_version_id?: string | null
+          risk?: Database["public"]["Enums"]["agent_work_risk"]
+          state_version?: number
+          status?: Database["public"]["Enums"]["agent_work_item_status"]
+          updated_at?: string
+          workflow_key?: string
+          workflow_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_items_current_step_fk"
+            columns: ["current_step_id", "id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id", "work_item_id"]
+          },
+          {
+            foreignKeyName: "agent_work_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_items_parent_work_item_id_fkey"
+            columns: ["parent_work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_items_prompt_tool_version_id_fkey"
+            columns: ["prompt_tool_version_id"]
+            isOneToOne: false
+            referencedRelation: "agent_prompt_tool_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_work_step_dependencies: {
+        Row: {
+          created_at: string
+          id: string
+          predecessor_step_id: string
+          successor_step_id: string
+          work_item_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          predecessor_step_id: string
+          successor_step_id: string
+          work_item_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          predecessor_step_id?: string
+          successor_step_id?: string
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_step_dependencies_predecessor_fk"
+            columns: ["predecessor_step_id", "work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id", "work_item_id"]
+          },
+          {
+            foreignKeyName: "agent_work_step_dependencies_successor_fk"
+            columns: ["successor_step_id", "work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id", "work_item_id"]
+          },
+        ]
+      }
+      agent_work_steps: {
+        Row: {
+          approval_hash: string | null
+          attempt_count: number
+          client_id: string | null
+          completed_at: string | null
+          completion_criteria: Json
+          created_at: string
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id: string
+          input_hash: string | null
+          last_error_class: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          max_attempts: number
+          ordinal: number
+          organization_id: string
+          output_hash: string | null
+          required_role: string | null
+          risk: Database["public"]["Enums"]["agent_work_risk"]
+          state_version: number
+          status: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key: string
+          updated_at: string
+          wake_at: string | null
+          work_item_id: string
+        }
+        Insert: {
+          approval_hash?: string | null
+          attempt_count?: number
+          client_id?: string | null
+          completed_at?: string | null
+          completion_criteria?: Json
+          created_at?: string
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id?: string
+          input_hash?: string | null
+          last_error_class?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          max_attempts?: number
+          ordinal: number
+          organization_id: string
+          output_hash?: string | null
+          required_role?: string | null
+          risk?: Database["public"]["Enums"]["agent_work_risk"]
+          state_version?: number
+          status?: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key: string
+          updated_at?: string
+          wake_at?: string | null
+          work_item_id: string
+        }
+        Update: {
+          approval_hash?: string | null
+          attempt_count?: number
+          client_id?: string | null
+          completed_at?: string | null
+          completion_criteria?: Json
+          created_at?: string
+          execution_mode?: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id?: string
+          input_hash?: string | null
+          last_error_class?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          max_attempts?: number
+          ordinal?: number
+          organization_id?: string
+          output_hash?: string | null
+          required_role?: string | null
+          risk?: Database["public"]["Enums"]["agent_work_risk"]
+          state_version?: number
+          status?: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key?: string
+          updated_at?: string
+          wake_at?: string | null
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_steps_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_steps_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_steps_work_item_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
       }
       ai_guidance_documents: {
         Row: {
@@ -333,107 +1146,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
-      }
-      ai_performance_metrics: {
-        Row: {
-          cache_hit: boolean | null
-          conversation_id: string | null
-          cost_usd: number | null
-          created_at: string | null
-          error_occurred: boolean | null
-          function_called: string | null
-          function_name: string | null
-          id: string
-          organization_id: string | null
-          parameters: Json | null
-          response_time_ms: number
-          timestamp: string | null
-          token_count: number | null
-          token_usage: Json | null
-          user_id: string | null
-        }
-        Insert: {
-          cache_hit?: boolean | null
-          conversation_id?: string | null
-          cost_usd?: number | null
-          created_at?: string | null
-          error_occurred?: boolean | null
-          function_called?: string | null
-          function_name?: string | null
-          id?: string
-          organization_id?: string | null
-          parameters?: Json | null
-          response_time_ms: number
-          timestamp?: string | null
-          token_count?: number | null
-          token_usage?: Json | null
-          user_id?: string | null
-        }
-        Update: {
-          cache_hit?: boolean | null
-          conversation_id?: string | null
-          cost_usd?: number | null
-          created_at?: string | null
-          error_occurred?: boolean | null
-          function_called?: string | null
-          function_name?: string | null
-          id?: string
-          organization_id?: string | null
-          parameters?: Json | null
-          response_time_ms?: number
-          timestamp?: string | null
-          token_count?: number | null
-          token_usage?: Json | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      ai_processing_logs: {
-        Row: {
-          api_provider: string | null
-          confidence_score: number | null
-          created_at: string | null
-          error_message: string | null
-          id: string
-          input_data_size: number | null
-          model_version: string | null
-          processing_time_ms: number | null
-          processing_type: string
-          session_id: string
-        }
-        Insert: {
-          api_provider?: string | null
-          confidence_score?: number | null
-          created_at?: string | null
-          error_message?: string | null
-          id?: string
-          input_data_size?: number | null
-          model_version?: string | null
-          processing_time_ms?: number | null
-          processing_type: string
-          session_id: string
-        }
-        Update: {
-          api_provider?: string | null
-          confidence_score?: number | null
-          created_at?: string | null
-          error_message?: string | null
-          id?: string
-          input_data_size?: number | null
-          model_version?: string | null
-          processing_time_ms?: number | null
-          processing_type?: string
-          session_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ai_processing_logs_session_id_fkey"
-            columns: ["session_id"]
-            isOneToOne: false
-            referencedRelation: "sessions"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       ai_response_cache: {
         Row: {
@@ -621,7 +1333,7 @@ export type Database = {
           assessment_document_id: string
           client_id: string
           created_at?: string
-          extraction_method?: string
+          extraction_method: string
           extraction_owner?: string | null
           id?: string
           label: string
@@ -637,7 +1349,7 @@ export type Database = {
           source?: string
           status?: string
           updated_at?: string
-          validation_rule?: string
+          validation_rule: string
           value_json?: Json | null
           value_text?: string | null
         }
@@ -696,15 +1408,20 @@ export type Database = {
           client_id: string
           created_at: string
           extracted_at: string | null
+          extraction_completed_at: string | null
           extraction_error: string | null
+          extraction_started_at: string | null
           file_name: string
           file_size: number
           id: string
           mime_type: string
           object_path: string
           organization_id: string
+          rejected_at: string | null
+          rejection_reason: string | null
           status: string
           template_type: string
+          template_version_id: string | null
           updated_at: string
           uploaded_by: string | null
         }
@@ -714,15 +1431,20 @@ export type Database = {
           client_id: string
           created_at?: string
           extracted_at?: string | null
+          extraction_completed_at?: string | null
           extraction_error?: string | null
+          extraction_started_at?: string | null
           file_name: string
           file_size?: number
           id?: string
           mime_type: string
           object_path: string
           organization_id: string
+          rejected_at?: string | null
+          rejection_reason?: string | null
           status?: string
           template_type?: string
+          template_version_id?: string | null
           updated_at?: string
           uploaded_by?: string | null
         }
@@ -732,15 +1454,20 @@ export type Database = {
           client_id?: string
           created_at?: string
           extracted_at?: string | null
+          extraction_completed_at?: string | null
           extraction_error?: string | null
+          extraction_started_at?: string | null
           file_name?: string
           file_size?: number
           id?: string
           mime_type?: string
           object_path?: string
           organization_id?: string
+          rejected_at?: string | null
+          rejection_reason?: string | null
           status?: string
           template_type?: string
+          template_version_id?: string | null
           updated_at?: string
           uploaded_by?: string | null
         }
@@ -757,6 +1484,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_documents_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_template_versions"
             referencedColumns: ["id"]
           },
         ]
@@ -781,19 +1515,19 @@ export type Database = {
           mastery_criteria: string | null
           measurement_type: string | null
           objective_data_points: Json
+          operational_definition: string | null
           organization_id: string
           original_text: string
           program_name: string | null
           rationale: string | null
-          review_notes: string | null
           review_flags: string[]
+          review_notes: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           target_behavior: string | null
           target_criteria: string | null
           teaching_strategies: string | null
           title: string
-          operational_definition: string | null
           updated_at: string
         }
         Insert: {
@@ -815,19 +1549,19 @@ export type Database = {
           mastery_criteria?: string | null
           measurement_type?: string | null
           objective_data_points?: Json
+          operational_definition?: string | null
           organization_id: string
           original_text: string
           program_name?: string | null
           rationale?: string | null
-          review_notes?: string | null
           review_flags?: string[]
+          review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           target_behavior?: string | null
           target_criteria?: string | null
           teaching_strategies?: string | null
           title: string
-          operational_definition?: string | null
           updated_at?: string
         }
         Update: {
@@ -849,19 +1583,19 @@ export type Database = {
           mastery_criteria?: string | null
           measurement_type?: string | null
           objective_data_points?: Json
+          operational_definition?: string | null
           organization_id?: string
           original_text?: string
           program_name?: string | null
           rationale?: string | null
-          review_notes?: string | null
           review_flags?: string[]
+          review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           target_behavior?: string | null
           target_criteria?: string | null
           teaching_strategies?: string | null
           title?: string
-          operational_definition?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -915,8 +1649,8 @@ export type Database = {
           name: string
           organization_id: string
           rationale: string | null
-          review_notes: string | null
           review_flags: string[]
+          review_notes: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           summary_rationale: string | null
@@ -934,8 +1668,8 @@ export type Database = {
           name: string
           organization_id: string
           rationale?: string | null
-          review_notes?: string | null
           review_flags?: string[]
+          review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           summary_rationale?: string | null
@@ -953,8 +1687,8 @@ export type Database = {
           name?: string
           organization_id?: string
           rationale?: string | null
-          review_notes?: string | null
           review_flags?: string[]
+          review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           summary_rationale?: string | null
@@ -1138,6 +1872,218 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      assessment_structured_sections: {
+        Row: {
+          assessment_document_id: string
+          client_id: string
+          created_at: string
+          field_key: string
+          id: string
+          organization_id: string
+          payload: Json
+          required: boolean
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          section_index: number
+          section_key: string
+          source_span: Json | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          assessment_document_id: string
+          client_id: string
+          created_at?: string
+          field_key: string
+          id?: string
+          organization_id: string
+          payload?: Json
+          required?: boolean
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          section_index?: number
+          section_key: string
+          source_span?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          assessment_document_id?: string
+          client_id?: string
+          created_at?: string
+          field_key?: string
+          id?: string
+          organization_id?: string
+          payload?: Json
+          required?: boolean
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          section_index?: number
+          section_key?: string
+          source_span?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_structured_sections_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_structured_sections_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_structured_sections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_template_fields: {
+        Row: {
+          created_at: string
+          field_key: string
+          field_type: string
+          id: string
+          label: string
+          layout_json: Json
+          mode: string
+          page_number: number
+          repeat_group_key: string | null
+          required: boolean
+          section_key: string
+          source: string
+          template_version_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          field_key: string
+          field_type: string
+          id?: string
+          label: string
+          layout_json?: Json
+          mode: string
+          page_number: number
+          repeat_group_key?: string | null
+          required?: boolean
+          section_key: string
+          source?: string
+          template_version_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          field_key?: string
+          field_type?: string
+          id?: string
+          label?: string
+          layout_json?: Json
+          mode?: string
+          page_number?: number
+          repeat_group_key?: string | null
+          required?: boolean
+          section_key?: string
+          source?: string
+          template_version_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_template_fields_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_template_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_template_pages: {
+        Row: {
+          created_at: string
+          id: string
+          layout_json: Json
+          page_number: number
+          template_version_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          layout_json?: Json
+          page_number: number
+          template_version_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          layout_json?: Json
+          page_number?: number
+          template_version_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_template_pages_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_template_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_template_versions: {
+        Row: {
+          created_at: string
+          id: string
+          page_count: number
+          source_document_name: string
+          source_sha256: string | null
+          status: string
+          template_type: string
+          updated_at: string
+          version_key: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          page_count: number
+          source_document_name: string
+          source_sha256?: string | null
+          status?: string
+          template_type: string
+          updated_at?: string
+          version_key: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          page_count?: number
+          source_document_name?: string
+          source_sha256?: string | null
+          status?: string
+          template_type?: string
+          updated_at?: string
+          version_key?: string
+        }
+        Relationships: []
       }
       authorization_services: {
         Row: {
@@ -1382,15 +2328,8 @@ export type Database = {
             foreignKeyName: "behavioral_patterns_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
-            referencedRelation: "admin_users"
+            referencedRelation: "therapists"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "behavioral_patterns_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1399,7 +2338,7 @@ export type Database = {
           billing_note: string | null
           code: string
           created_at: string
-          description: string | null
+          description: string
           id: string
           is_active: boolean
           updated_at: string
@@ -1408,7 +2347,7 @@ export type Database = {
           billing_note?: string | null
           code: string
           created_at?: string
-          description?: string | null
+          description: string
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -1417,7 +2356,7 @@ export type Database = {
           billing_note?: string | null
           code?: string
           created_at?: string
-          description?: string | null
+          description?: string
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -1462,6 +2401,110 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sessions"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      bt_session_note_amendments: {
+        Row: {
+          bt_aba_responses: Json
+          bt_aba_template_snapshot: Json
+          correction_id: string
+          correction_round: number
+          created_at: string
+          id: string
+          organization_id: string
+          original_bt_note_id: string
+          request_id: string
+          signature_method: string
+          signature_value: string
+          signed_at: string
+          signer_user_id: string
+          version_number: number
+        }
+        Insert: {
+          bt_aba_responses?: Json
+          bt_aba_template_snapshot?: Json
+          correction_id: string
+          correction_round: number
+          created_at?: string
+          id?: string
+          organization_id: string
+          original_bt_note_id: string
+          request_id: string
+          signature_method: string
+          signature_value: string
+          signed_at?: string
+          signer_user_id: string
+          version_number: number
+        }
+        Update: {
+          bt_aba_responses?: Json
+          bt_aba_template_snapshot?: Json
+          correction_id?: string
+          correction_round?: number
+          created_at?: string
+          id?: string
+          organization_id?: string
+          original_bt_note_id?: string
+          request_id?: string
+          signature_method?: string
+          signature_value?: string
+          signed_at?: string
+          signer_user_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bt_session_note_amendments_correction_id_request_id_organi_fkey"
+            columns: [
+              "correction_id",
+              "request_id",
+              "organization_id",
+              "correction_round",
+            ]
+            isOneToOne: false
+            referencedRelation: "supervision_session_note_corrections"
+            referencedColumns: [
+              "id",
+              "request_id",
+              "organization_id",
+              "correction_round",
+            ]
+          },
+          {
+            foreignKeyName: "bt_session_note_amendments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bt_session_note_amendments_original_bt_note_id_organizatio_fkey"
+            columns: ["original_bt_note_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "client_session_notes"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "bt_session_note_amendments_request_id_organization_id_fkey"
+            columns: ["request_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "supervision_session_note_requests"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "bt_session_note_amendments_signer_user_id_fkey"
+            columns: ["signer_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bt_session_note_amendments_signer_user_id_fkey"
+            columns: ["signer_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1834,22 +2877,8 @@ export type Database = {
             foreignKeyName: "client_onboarding_prefills_consumed_by_user_id_fkey"
             columns: ["consumed_by_user_id"]
             isOneToOne: false
-            referencedRelation: "app_users_safe"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "client_onboarding_prefills_consumed_by_user_id_fkey"
-            columns: ["consumed_by_user_id"]
-            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_onboarding_prefills_created_by_user_id_fkey"
-            columns: ["created_by_user_id"]
-            isOneToOne: false
-            referencedRelation: "app_users_safe"
-            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "client_onboarding_prefills_created_by_user_id_fkey"
@@ -1870,13 +2899,17 @@ export type Database = {
       client_session_notes: {
         Row: {
           authorization_id: string
+          bt_aba_finalization_result: Json | null
+          bt_aba_responses: Json | null
+          bt_aba_template_id: string | null
+          bt_aba_template_snapshot: Json | null
           client_id: string
           created_at: string
           created_by: string
           end_time: string
           goal_ids: string[] | null
-          goal_measurements: Record<string, unknown> | null
-          goal_notes: Record<string, unknown> | null
+          goal_measurements: Json | null
+          goal_notes: Json | null
           goals_addressed: string[]
           id: string
           is_locked: boolean
@@ -1893,13 +2926,17 @@ export type Database = {
         }
         Insert: {
           authorization_id: string
+          bt_aba_finalization_result?: Json | null
+          bt_aba_responses?: Json | null
+          bt_aba_template_id?: string | null
+          bt_aba_template_snapshot?: Json | null
           client_id: string
           created_at?: string
           created_by: string
           end_time: string
           goal_ids?: string[] | null
-          goal_measurements?: Record<string, unknown> | null
-          goal_notes?: Record<string, unknown> | null
+          goal_measurements?: Json | null
+          goal_notes?: Json | null
           goals_addressed?: string[]
           id?: string
           is_locked?: boolean
@@ -1916,13 +2953,17 @@ export type Database = {
         }
         Update: {
           authorization_id?: string
+          bt_aba_finalization_result?: Json | null
+          bt_aba_responses?: Json | null
+          bt_aba_template_id?: string | null
+          bt_aba_template_snapshot?: Json | null
           client_id?: string
           created_at?: string
           created_by?: string
           end_time?: string
           goal_ids?: string[] | null
-          goal_measurements?: Record<string, unknown> | null
-          goal_notes?: Record<string, unknown> | null
+          goal_measurements?: Json | null
+          goal_notes?: Json | null
           goals_addressed?: string[]
           id?: string
           is_locked?: boolean
@@ -1943,6 +2984,13 @@ export type Database = {
             columns: ["authorization_id"]
             isOneToOne: false
             referencedRelation: "authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_bt_aba_template_id_fkey"
+            columns: ["bt_aba_template_id"]
+            isOneToOne: false
+            referencedRelation: "session_note_templates"
             referencedColumns: ["id"]
           },
           {
@@ -2387,166 +3435,6 @@ export type Database = {
         }
         Relationships: []
       }
-      message_thread_participants: {
-        Row: {
-          archived_at: string | null
-          joined_at: string
-          last_read_at: string | null
-          muted_at: string | null
-          organization_id: string
-          thread_id: string
-          user_id: string
-        }
-        Insert: {
-          archived_at?: string | null
-          joined_at?: string
-          last_read_at?: string | null
-          muted_at?: string | null
-          organization_id: string
-          thread_id: string
-          user_id: string
-        }
-        Update: {
-          archived_at?: string | null
-          joined_at?: string
-          last_read_at?: string | null
-          muted_at?: string | null
-          organization_id?: string
-          thread_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "message_thread_participants_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "message_thread_participants_thread_id_fkey"
-            columns: ["thread_id"]
-            isOneToOne: false
-            referencedRelation: "message_threads"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      message_threads: {
-        Row: {
-          created_at: string
-          created_by: string
-          id: string
-          organization_id: string
-          subject: string | null
-          thread_type: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          created_by: string
-          id?: string
-          organization_id: string
-          subject?: string | null
-          thread_type: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string
-          id?: string
-          organization_id?: string
-          subject?: string | null
-          thread_type?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "message_threads_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      messages: {
-        Row: {
-          body: string
-          created_at: string
-          id: string
-          sender_id: string
-          thread_id: string
-        }
-        Insert: {
-          body: string
-          created_at?: string
-          id?: string
-          sender_id: string
-          thread_id: string
-        }
-        Update: {
-          body?: string
-          created_at?: string
-          id?: string
-          sender_id?: string
-          thread_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "messages_thread_id_fkey"
-            columns: ["thread_id"]
-            isOneToOne: false
-            referencedRelation: "message_threads"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      conversations: {
-        Row: {
-          created_at: string | null
-          id: string
-          is_active: boolean | null
-          metadata: Json | null
-          title: string
-          updated_at: string | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          is_active?: boolean | null
-          metadata?: Json | null
-          title?: string
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          is_active?: boolean | null
-          metadata?: Json | null
-          title?: string
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "conversations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "conversations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
       cpt_codes: {
         Row: {
           code: string
@@ -2627,48 +3515,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      db_performance_metrics: {
-        Row: {
-          cache_hit: boolean | null
-          created_at: string | null
-          execution_time_ms: number
-          id: string
-          query_name: string | null
-          query_text: string | null
-          query_type: string
-          rows_affected: number | null
-          slow_query: boolean | null
-          table_name: string | null
-          timestamp: string | null
-        }
-        Insert: {
-          cache_hit?: boolean | null
-          created_at?: string | null
-          execution_time_ms: number
-          id?: string
-          query_name?: string | null
-          query_text?: string | null
-          query_type: string
-          rows_affected?: number | null
-          slow_query?: boolean | null
-          table_name?: string | null
-          timestamp?: string | null
-        }
-        Update: {
-          cache_hit?: boolean | null
-          created_at?: string | null
-          execution_time_ms?: number
-          id?: string
-          query_name?: string | null
-          query_text?: string | null
-          query_type?: string
-          rows_affected?: number | null
-          slow_query?: boolean | null
-          table_name?: string | null
-          timestamp?: string | null
-        }
-        Relationships: []
       }
       edi_claim_denials: {
         Row: {
@@ -2811,92 +3657,6 @@ export type Database = {
           transaction_set_control_number?: string
         }
         Relationships: []
-      }
-      error_logs: {
-        Row: {
-          context: Json | null
-          created_at: string | null
-          details: Json | null
-          error_type: string
-          id: string
-          message: string
-          resolved: boolean | null
-          resolved_at: string | null
-          resolved_by: string | null
-          session_id: string | null
-          severity: string | null
-          stack_trace: string | null
-          updated_at: string | null
-          url: string | null
-          user_agent: string | null
-          user_id: string | null
-        }
-        Insert: {
-          context?: Json | null
-          created_at?: string | null
-          details?: Json | null
-          error_type: string
-          id?: string
-          message: string
-          resolved?: boolean | null
-          resolved_at?: string | null
-          resolved_by?: string | null
-          session_id?: string | null
-          severity?: string | null
-          stack_trace?: string | null
-          updated_at?: string | null
-          url?: string | null
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          context?: Json | null
-          created_at?: string | null
-          details?: Json | null
-          error_type?: string
-          id?: string
-          message?: string
-          resolved?: boolean | null
-          resolved_at?: string | null
-          resolved_by?: string | null
-          session_id?: string | null
-          severity?: string | null
-          stack_trace?: string | null
-          updated_at?: string | null
-          url?: string | null
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "error_logs_resolved_by_fkey"
-            columns: ["resolved_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "error_logs_resolved_by_fkey"
-            columns: ["resolved_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "error_logs_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "error_logs_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
       }
       error_taxonomy: {
         Row: {
@@ -3257,91 +4017,92 @@ export type Database = {
           },
         ]
       }
-      goal_versions: {
+      goal_data_points: {
         Row: {
-          baseline_data: string | null
-          change_reason: string | null
-          changed_at: string
-          changed_by: string
+          assessment_document_id: string | null
           client_id: string
-          clinical_context: string | null
-          description: string
+          created_at: string
+          created_by: string | null
           goal_id: string
           id: string
-          measurement_type: string | null
+          metric_name: string
+          metric_payload: Json
+          metric_unit: string | null
+          metric_value: number | null
+          observed_at: string
           organization_id: string
-          original_text: string
-          program_id: string
-          status: string
-          target_behavior: string | null
-          target_criteria: string | null
-          title: string
+          session_id: string | null
+          source: string
+          updated_at: string
         }
         Insert: {
-          baseline_data?: string | null
-          change_reason?: string | null
-          changed_at?: string
-          changed_by: string
+          assessment_document_id?: string | null
           client_id: string
-          clinical_context?: string | null
-          description: string
+          created_at?: string
+          created_by?: string | null
           goal_id: string
           id?: string
-          measurement_type?: string | null
+          metric_name: string
+          metric_payload?: Json
+          metric_unit?: string | null
+          metric_value?: number | null
+          observed_at?: string
           organization_id: string
-          original_text: string
-          program_id: string
-          status: string
-          target_behavior?: string | null
-          target_criteria?: string | null
-          title: string
+          session_id?: string | null
+          source?: string
+          updated_at?: string
         }
         Update: {
-          baseline_data?: string | null
-          change_reason?: string | null
-          changed_at?: string
-          changed_by?: string
+          assessment_document_id?: string | null
           client_id?: string
-          clinical_context?: string | null
-          description?: string
+          created_at?: string
+          created_by?: string | null
           goal_id?: string
           id?: string
-          measurement_type?: string | null
+          metric_name?: string
+          metric_payload?: Json
+          metric_unit?: string | null
+          metric_value?: number | null
+          observed_at?: string
           organization_id?: string
-          original_text?: string
-          program_id?: string
-          status?: string
-          target_behavior?: string | null
-          target_criteria?: string | null
-          title?: string
+          session_id?: string | null
+          source?: string
+          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "goal_versions_client_id_fkey"
+            foreignKeyName: "goal_data_points_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_data_points_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "goal_versions_goal_id_fkey"
+            foreignKeyName: "goal_data_points_goal_id_fkey"
             columns: ["goal_id"]
             isOneToOne: false
             referencedRelation: "goals"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "goal_versions_organization_id_fkey"
+            foreignKeyName: "goal_data_points_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "goal_versions_program_id_fkey"
-            columns: ["program_id"]
+            foreignKeyName: "goal_data_points_session_id_fkey"
+            columns: ["session_id"]
             isOneToOne: false
-            referencedRelation: "programs"
+            referencedRelation: "sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -3390,13 +4151,530 @@ export type Database = {
           },
         ]
       }
+      goal_target_phase_criteria: {
+        Row: {
+          client_id: string
+          clinical_note: string | null
+          comparator: string | null
+          consecutive_sessions: number | null
+          created_at: string
+          created_by: string | null
+          goal_id: string
+          id: string
+          metric: string | null
+          min_observations: number | null
+          organization_id: string
+          phase: Database["public"]["Enums"]["goal_target_phase"]
+          target_id: string
+          threshold: number | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          clinical_note?: string | null
+          comparator?: string | null
+          consecutive_sessions?: number | null
+          created_at?: string
+          created_by?: string | null
+          goal_id: string
+          id?: string
+          metric?: string | null
+          min_observations?: number | null
+          organization_id: string
+          phase: Database["public"]["Enums"]["goal_target_phase"]
+          target_id: string
+          threshold?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          clinical_note?: string | null
+          comparator?: string | null
+          consecutive_sessions?: number | null
+          created_at?: string
+          created_by?: string | null
+          goal_id?: string
+          id?: string
+          metric?: string | null
+          min_observations?: number | null
+          organization_id?: string
+          phase?: Database["public"]["Enums"]["goal_target_phase"]
+          target_id?: string
+          threshold?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_target_phase_criteria_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_phase_criteria_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_phase_criteria_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_phase_criteria_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "goal_targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goal_target_phase_evaluations: {
+        Row: {
+          client_id: string
+          evaluated_at: string
+          evaluated_by: string | null
+          goal_id: string
+          goal_status: string
+          id: string
+          metric_value: number | null
+          note_id: string | null
+          observation_count: number | null
+          organization_id: string
+          phase: Database["public"]["Enums"]["goal_target_phase"]
+          progression_version: number
+          result: string
+          session_completed_at: string
+          session_id: string
+          target_id: string
+        }
+        Insert: {
+          client_id: string
+          evaluated_at?: string
+          evaluated_by?: string | null
+          goal_id: string
+          goal_status: string
+          id?: string
+          metric_value?: number | null
+          note_id?: string | null
+          observation_count?: number | null
+          organization_id: string
+          phase: Database["public"]["Enums"]["goal_target_phase"]
+          progression_version: number
+          result: string
+          session_completed_at: string
+          session_id: string
+          target_id: string
+        }
+        Update: {
+          client_id?: string
+          evaluated_at?: string
+          evaluated_by?: string | null
+          goal_id?: string
+          goal_status?: string
+          id?: string
+          metric_value?: number | null
+          note_id?: string | null
+          observation_count?: number | null
+          organization_id?: string
+          phase?: Database["public"]["Enums"]["goal_target_phase"]
+          progression_version?: number
+          result?: string
+          session_completed_at?: string
+          session_id?: string
+          target_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_target_phase_evaluations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_phase_evaluations_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_phase_evaluations_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "client_session_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_phase_evaluations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_phase_evaluations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_phase_evaluations_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "goal_targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goal_target_transitions: {
+        Row: {
+          actor_id: string | null
+          client_id: string
+          goal_id: string
+          id: string
+          metadata: Json
+          note_id: string | null
+          organization_id: string
+          previous_evaluation_window_started_at: string | null
+          previous_phase:
+            | Database["public"]["Enums"]["goal_target_phase"]
+            | null
+          previous_progression_version: number
+          previous_status: string | null
+          previous_target_id: string | null
+          reason: string | null
+          resulting_evaluation_window_started_at: string | null
+          resulting_phase:
+            | Database["public"]["Enums"]["goal_target_phase"]
+            | null
+          resulting_progression_version: number
+          resulting_status: string | null
+          resulting_target_id: string | null
+          session_id: string | null
+          source: string
+          target_id: string
+          transitioned_at: string
+        }
+        Insert: {
+          actor_id?: string | null
+          client_id: string
+          goal_id: string
+          id?: string
+          metadata?: Json
+          note_id?: string | null
+          organization_id: string
+          previous_evaluation_window_started_at?: string | null
+          previous_phase?:
+            | Database["public"]["Enums"]["goal_target_phase"]
+            | null
+          previous_progression_version: number
+          previous_status?: string | null
+          previous_target_id?: string | null
+          reason?: string | null
+          resulting_evaluation_window_started_at?: string | null
+          resulting_phase?:
+            | Database["public"]["Enums"]["goal_target_phase"]
+            | null
+          resulting_progression_version: number
+          resulting_status?: string | null
+          resulting_target_id?: string | null
+          session_id?: string | null
+          source: string
+          target_id: string
+          transitioned_at?: string
+        }
+        Update: {
+          actor_id?: string | null
+          client_id?: string
+          goal_id?: string
+          id?: string
+          metadata?: Json
+          note_id?: string | null
+          organization_id?: string
+          previous_evaluation_window_started_at?: string | null
+          previous_phase?:
+            | Database["public"]["Enums"]["goal_target_phase"]
+            | null
+          previous_progression_version?: number
+          previous_status?: string | null
+          previous_target_id?: string | null
+          reason?: string | null
+          resulting_evaluation_window_started_at?: string | null
+          resulting_phase?:
+            | Database["public"]["Enums"]["goal_target_phase"]
+            | null
+          resulting_progression_version?: number
+          resulting_status?: string | null
+          resulting_target_id?: string | null
+          session_id?: string | null
+          source?: string
+          target_id?: string
+          transitioned_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_target_transitions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_transitions_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_transitions_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "client_session_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_transitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_transitions_previous_target_id_fkey"
+            columns: ["previous_target_id"]
+            isOneToOne: false
+            referencedRelation: "goal_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_transitions_resulting_target_id_fkey"
+            columns: ["resulting_target_id"]
+            isOneToOne: false
+            referencedRelation: "goal_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_transitions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_target_transitions_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "goal_targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goal_targets: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          current_phase: Database["public"]["Enums"]["goal_target_phase"] | null
+          evaluation_window_started_at: string | null
+          goal_id: string
+          graph_config: Json
+          id: string
+          is_current: boolean
+          measurement_type: string
+          name: string
+          organization_id: string
+          progression_version: number
+          sort_order: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          current_phase?:
+            | Database["public"]["Enums"]["goal_target_phase"]
+            | null
+          evaluation_window_started_at?: string | null
+          goal_id: string
+          graph_config?: Json
+          id?: string
+          is_current?: boolean
+          measurement_type: string
+          name: string
+          organization_id: string
+          progression_version?: number
+          sort_order?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          current_phase?:
+            | Database["public"]["Enums"]["goal_target_phase"]
+            | null
+          evaluation_window_started_at?: string | null
+          goal_id?: string
+          graph_config?: Json
+          id?: string
+          is_current?: boolean
+          measurement_type?: string
+          name?: string
+          organization_id?: string
+          progression_version?: number
+          sort_order?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_targets_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_targets_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_targets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goal_versions: {
+        Row: {
+          baseline_data: string | null
+          change_reason: string | null
+          changed_at: string
+          changed_by: string
+          client_id: string
+          clinical_context: string | null
+          description: string
+          generalization_criteria: string | null
+          goal_id: string
+          id: string
+          maintenance_criteria: string | null
+          mastery_criteria: string | null
+          measurement_type: string | null
+          objective_data_points: Json
+          organization_id: string
+          original_text: string
+          program_id: string
+          status: string
+          target_behavior: string | null
+          target_criteria: string | null
+          title: string
+        }
+        Insert: {
+          baseline_data?: string | null
+          change_reason?: string | null
+          changed_at?: string
+          changed_by: string
+          client_id: string
+          clinical_context?: string | null
+          description: string
+          generalization_criteria?: string | null
+          goal_id: string
+          id?: string
+          maintenance_criteria?: string | null
+          mastery_criteria?: string | null
+          measurement_type?: string | null
+          objective_data_points?: Json
+          organization_id: string
+          original_text: string
+          program_id: string
+          status: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title: string
+        }
+        Update: {
+          baseline_data?: string | null
+          change_reason?: string | null
+          changed_at?: string
+          changed_by?: string
+          client_id?: string
+          clinical_context?: string | null
+          description?: string
+          generalization_criteria?: string | null
+          goal_id?: string
+          id?: string
+          maintenance_criteria?: string | null
+          mastery_criteria?: string | null
+          measurement_type?: string | null
+          objective_data_points?: Json
+          organization_id?: string
+          original_text?: string
+          program_id?: string
+          status?: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_versions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_versions_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_versions_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       goals: {
         Row: {
           baseline: string | null
           baseline_data: string | null
           client_id: string
-          clinical_goal_type: string | null
           clinical_context: string | null
+          clinical_goal_type: string | null
           created_at: string
           created_by: string | null
           description: string
@@ -3408,6 +4686,7 @@ export type Database = {
           mastery_criteria: string | null
           measurement_type: string | null
           objective_data_points: Json
+          operational_definition: string | null
           organization_id: string
           original_text: string
           program_id: string
@@ -3417,7 +4696,6 @@ export type Database = {
           target_criteria: string | null
           teaching_strategies: string | null
           title: string
-          operational_definition: string | null
           updated_at: string
           updated_by: string | null
         }
@@ -3425,8 +4703,8 @@ export type Database = {
           baseline?: string | null
           baseline_data?: string | null
           client_id: string
-          clinical_goal_type?: string | null
           clinical_context?: string | null
+          clinical_goal_type?: string | null
           created_at?: string
           created_by?: string | null
           description: string
@@ -3438,6 +4716,7 @@ export type Database = {
           mastery_criteria?: string | null
           measurement_type?: string | null
           objective_data_points?: Json
+          operational_definition?: string | null
           organization_id: string
           original_text: string
           program_id: string
@@ -3447,7 +4726,6 @@ export type Database = {
           target_criteria?: string | null
           teaching_strategies?: string | null
           title: string
-          operational_definition?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -3455,8 +4733,8 @@ export type Database = {
           baseline?: string | null
           baseline_data?: string | null
           client_id?: string
-          clinical_goal_type?: string | null
           clinical_context?: string | null
+          clinical_goal_type?: string | null
           created_at?: string
           created_by?: string | null
           description?: string
@@ -3468,6 +4746,7 @@ export type Database = {
           mastery_criteria?: string | null
           measurement_type?: string | null
           objective_data_points?: Json
+          operational_definition?: string | null
           organization_id?: string
           original_text?: string
           program_id?: string
@@ -3477,7 +4756,6 @@ export type Database = {
           target_criteria?: string | null
           teaching_strategies?: string | null
           title?: string
-          operational_definition?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -3508,175 +4786,6 @@ export type Database = {
             columns: ["program_id"]
             isOneToOne: false
             referencedRelation: "programs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      goal_targets: {
-        Row: {
-          client_id: string
-          created_at: string
-          created_by: string | null
-          goal_id: string
-          graph_config: Json
-          id: string
-          measurement_type: string
-          name: string
-          organization_id: string
-          sort_order: number
-          status: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          client_id?: string
-          created_at?: string
-          created_by?: string | null
-          goal_id: string
-          graph_config?: Json
-          id?: string
-          measurement_type: string
-          name: string
-          organization_id?: string
-          sort_order?: number
-          status?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          client_id?: string
-          created_at?: string
-          created_by?: string | null
-          goal_id?: string
-          graph_config?: Json
-          id?: string
-          measurement_type?: string
-          name?: string
-          organization_id?: string
-          sort_order?: number
-          status?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "goal_targets_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "goal_targets_goal_id_fkey"
-            columns: ["goal_id"]
-            isOneToOne: false
-            referencedRelation: "goals"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "goal_targets_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      trial_events: {
-        Row: {
-          client_id: string
-          created_at: string
-          created_by: string | null
-          event_timestamp: string
-          goal_id: string
-          id: string
-          metadata: Json
-          organization_id: string
-          prompt_level: string | null
-          prompt_type: string | null
-          response: string | null
-          session_id: string
-          target_id: string
-          therapist_id: string
-          trial_number: number
-          updated_at: string
-          updated_by: string | null
-          value: number | null
-        }
-        Insert: {
-          client_id?: string
-          created_at?: string
-          created_by?: string | null
-          event_timestamp?: string
-          goal_id?: string
-          id?: string
-          metadata?: Json
-          organization_id?: string
-          prompt_level?: string | null
-          prompt_type?: string | null
-          response?: string | null
-          session_id: string
-          target_id: string
-          therapist_id?: string
-          trial_number: number
-          updated_at?: string
-          updated_by?: string | null
-          value?: number | null
-        }
-        Update: {
-          client_id?: string
-          created_at?: string
-          created_by?: string | null
-          event_timestamp?: string
-          goal_id?: string
-          id?: string
-          metadata?: Json
-          organization_id?: string
-          prompt_level?: string | null
-          prompt_type?: string | null
-          response?: string | null
-          session_id?: string
-          target_id?: string
-          therapist_id?: string
-          trial_number?: number
-          updated_at?: string
-          updated_by?: string | null
-          value?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "trial_events_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trial_events_goal_id_fkey"
-            columns: ["goal_id"]
-            isOneToOne: false
-            referencedRelation: "goals"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trial_events_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trial_events_session_id_fkey"
-            columns: ["session_id"]
-            isOneToOne: false
-            referencedRelation: "sessions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trial_events_target_id_fkey"
-            columns: ["target_id"]
-            isOneToOne: false
-            referencedRelation: "goal_targets"
             referencedColumns: ["id"]
           },
         ]
@@ -4004,6 +5113,163 @@ export type Database = {
         }
         Relationships: []
       }
+      message_thread_participants: {
+        Row: {
+          archived_at: string | null
+          joined_at: string
+          last_read_at: string | null
+          muted_at: string | null
+          organization_id: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          joined_at?: string
+          last_read_at?: string | null
+          muted_at?: string | null
+          organization_id: string
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          joined_at?: string
+          last_read_at?: string | null
+          muted_at?: string | null
+          organization_id?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_thread_participants_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_thread_participants_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "message_threads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_thread_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_thread_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      message_threads: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          organization_id: string
+          subject: string | null
+          thread_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          organization_id: string
+          subject?: string | null
+          thread_type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          organization_id?: string
+          subject?: string | null
+          thread_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_threads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_threads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "message_threads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          sender_id: string
+          thread_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          sender_id: string
+          thread_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          sender_id?: string
+          thread_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "message_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_feature_flags: {
         Row: {
           created_at: string
@@ -4195,87 +5461,6 @@ export type Database = {
           },
         ]
       }
-      performance_alerts: {
-        Row: {
-          alert_type: string
-          created_at: string | null
-          current_value: number
-          escalated: boolean | null
-          id: string
-          message: string
-          metric_name: string
-          resolved: boolean | null
-          resolved_at: string | null
-          threshold_value: number
-        }
-        Insert: {
-          alert_type: string
-          created_at?: string | null
-          current_value: number
-          escalated?: boolean | null
-          id?: string
-          message: string
-          metric_name: string
-          resolved?: boolean | null
-          resolved_at?: string | null
-          threshold_value: number
-        }
-        Update: {
-          alert_type?: string
-          created_at?: string | null
-          current_value?: number
-          escalated?: boolean | null
-          id?: string
-          message?: string
-          metric_name?: string
-          resolved?: boolean | null
-          resolved_at?: string | null
-          threshold_value?: number
-        }
-        Relationships: []
-      }
-      performance_baselines: {
-        Row: {
-          baseline_value: number
-          confidence_level: number
-          created_at: string
-          critical_threshold: number
-          id: string
-          is_active: boolean | null
-          measured_at: string
-          metric_name: string
-          sample_size: number
-          updated_at: string
-          warning_threshold: number
-        }
-        Insert: {
-          baseline_value: number
-          confidence_level: number
-          created_at?: string
-          critical_threshold: number
-          id: string
-          is_active?: boolean | null
-          measured_at: string
-          metric_name: string
-          sample_size: number
-          updated_at?: string
-          warning_threshold: number
-        }
-        Update: {
-          baseline_value?: number
-          confidence_level?: number
-          created_at?: string
-          critical_threshold?: number
-          id?: string
-          is_active?: boolean | null
-          measured_at?: string
-          metric_name?: string
-          sample_size?: number
-          updated_at?: string
-          warning_threshold?: number
-        }
-        Relationships: []
-      }
       plans: {
         Row: {
           code: string
@@ -4306,7 +5491,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
-          created_at: string | null
+          created_at: string
           email: string
           first_name: string | null
           full_name: string | null
@@ -4317,14 +5502,14 @@ export type Database = {
           organization_id: string | null
           phone: string | null
           preferences: Json | null
-          role: Database["public"]["Enums"]["role_type"]
+          role: string
           time_zone: string | null
           title: string | null
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
           avatar_url?: string | null
-          created_at?: string | null
+          created_at?: string
           email: string
           first_name?: string | null
           full_name?: string | null
@@ -4335,14 +5520,14 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           preferences?: Json | null
-          role?: Database["public"]["Enums"]["role_type"]
+          role?: string
           time_zone?: string | null
           title?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
           avatar_url?: string | null
-          created_at?: string | null
+          created_at?: string
           email?: string
           first_name?: string | null
           full_name?: string | null
@@ -4353,10 +5538,10 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           preferences?: Json | null
-          role?: Database["public"]["Enums"]["role_type"]
+          role?: string
           time_zone?: string | null
           title?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -4624,28 +5809,19 @@ export type Database = {
           created_at: string | null
           description: string | null
           id: string
-          is_system_role: boolean | null
           name: string
-          permissions: Json | null
-          updated_at: string | null
         }
         Insert: {
           created_at?: string | null
           description?: string | null
           id?: string
-          is_system_role?: boolean | null
           name: string
-          permissions?: Json | null
-          updated_at?: string | null
         }
         Update: {
           created_at?: string | null
           description?: string | null
           id?: string
-          is_system_role?: boolean | null
           name?: string
-          permissions?: Json | null
-          updated_at?: string | null
         }
         Relationships: []
       }
@@ -5140,22 +6316,28 @@ export type Database = {
       }
       session_cpt_modifiers: {
         Row: {
-          id: number
+          created_at: string
+          id: string
           modifier_id: string
           position: number
           session_cpt_entry_id: string
+          updated_at: string
         }
         Insert: {
-          id?: never
+          created_at?: string
+          id?: string
           modifier_id: string
-          position: number
+          position?: number
           session_cpt_entry_id: string
+          updated_at?: string
         }
         Update: {
-          id?: never
+          created_at?: string
+          id?: string
           modifier_id?: string
           position?: number
           session_cpt_entry_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -5312,6 +6494,78 @@ export type Database = {
           },
         ]
       }
+      session_note_attestations: {
+        Row: {
+          attestation_role: string
+          id: string
+          note_id: string | null
+          organization_id: string
+          signature_method: string
+          signature_value: string
+          signed_at: string
+          signer_user_id: string
+          supervision_note_id: string | null
+        }
+        Insert: {
+          attestation_role: string
+          id?: string
+          note_id?: string | null
+          organization_id: string
+          signature_method: string
+          signature_value: string
+          signed_at?: string
+          signer_user_id: string
+          supervision_note_id?: string | null
+        }
+        Update: {
+          attestation_role?: string
+          id?: string
+          note_id?: string | null
+          organization_id?: string
+          signature_method?: string
+          signature_value?: string
+          signed_at?: string
+          signer_user_id?: string
+          supervision_note_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_note_attestations_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "client_session_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_note_attestations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_note_attestations_signer_user_id_fkey"
+            columns: ["signer_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_note_attestations_signer_user_id_fkey"
+            columns: ["signer_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "session_note_attestations_supervision_note_id_fkey"
+            columns: ["supervision_note_id"]
+            isOneToOne: false
+            referencedRelation: "supervision_session_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_note_pdf_exports: {
         Row: {
           client_id: string
@@ -5404,7 +6658,7 @@ export type Database = {
           is_california_compliant?: boolean | null
           organization_id?: string | null
           template_name: string
-          template_structure: Json
+          template_structure?: Json
           template_type: string
           updated_at?: string | null
         }
@@ -5426,15 +6680,8 @@ export type Database = {
             foreignKeyName: "session_note_templates_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
-            referencedRelation: "admin_users"
+            referencedRelation: "therapists"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "session_note_templates_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -5617,6 +6864,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sessions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "sessions_goal_id_fkey"
             columns: ["goal_id"]
             isOneToOne: false
@@ -5637,34 +6898,340 @@ export type Database = {
             referencedRelation: "therapists"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "sessions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
-      system_performance_metrics: {
+      supervision_session_note_corrections: {
         Row: {
+          correction_reason: string
+          correction_round: number
           id: string
-          metric_type: string
-          threshold_breached: boolean | null
-          timestamp: string | null
-          unit: string
-          value: number
+          organization_id: string
+          request_id: string
+          requested_at: string
+          resolved_at: string | null
+          resolving_bt_user_id: string | null
+          resulting_amendment_id: string | null
+          reviewer_user_id: string
         }
         Insert: {
+          correction_reason: string
+          correction_round: number
           id?: string
-          metric_type: string
-          threshold_breached?: boolean | null
-          timestamp?: string | null
-          unit: string
-          value: number
+          organization_id: string
+          request_id: string
+          requested_at?: string
+          resolved_at?: string | null
+          resolving_bt_user_id?: string | null
+          resulting_amendment_id?: string | null
+          reviewer_user_id: string
         }
         Update: {
+          correction_reason?: string
+          correction_round?: number
           id?: string
-          metric_type?: string
-          threshold_breached?: boolean | null
-          timestamp?: string | null
-          unit?: string
-          value?: number
+          organization_id?: string
+          request_id?: string
+          requested_at?: string
+          resolved_at?: string | null
+          resolving_bt_user_id?: string | null
+          resulting_amendment_id?: string | null
+          reviewer_user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "supervision_session_note_correc_request_id_organization_id_fkey"
+            columns: ["request_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "supervision_session_note_requests"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_corrections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_corrections_resolving_bt_user_id_fkey"
+            columns: ["resolving_bt_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_corrections_resolving_bt_user_id_fkey"
+            columns: ["resolving_bt_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_corrections_resulting_amendment_id_fke"
+            columns: ["resulting_amendment_id", "id"]
+            isOneToOne: false
+            referencedRelation: "bt_session_note_amendments"
+            referencedColumns: ["id", "correction_id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_corrections_reviewer_user_id_fkey"
+            columns: ["reviewer_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_corrections_reviewer_user_id_fkey"
+            columns: ["reviewer_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      supervision_session_note_requests: {
+        Row: {
+          assigned_admin_user_id: string | null
+          bt_therapist_id: string
+          cancellation_reason: string | null
+          cancellation_source: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          client_id: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          organization_id: string
+          reopen_source: string | null
+          reopened_at: string | null
+          reopened_by: string | null
+          requested_by: string | null
+          session_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_admin_user_id?: string | null
+          bt_therapist_id: string
+          cancellation_reason?: string | null
+          cancellation_source?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          client_id: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          organization_id: string
+          reopen_source?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          requested_by?: string | null
+          session_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_admin_user_id?: string | null
+          bt_therapist_id?: string
+          cancellation_reason?: string | null
+          cancellation_source?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          client_id?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          organization_id?: string
+          reopen_source?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          requested_by?: string | null
+          session_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supervision_session_note_requests_assigned_admin_user_id_fkey"
+            columns: ["assigned_admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_assigned_admin_user_id_fkey"
+            columns: ["assigned_admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_bt_therapist_id_fkey"
+            columns: ["bt_therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_reopened_by_fkey"
+            columns: ["reopened_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_reopened_by_fkey"
+            columns: ["reopened_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "supervision_session_note_requests_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supervision_session_notes: {
+        Row: {
+          completed_by: string
+          created_at: string
+          id: string
+          organization_id: string
+          request_id: string
+          responses: Json
+          session_id: string
+          signed_at: string | null
+          template_id: string
+          updated_at: string
+        }
+        Insert: {
+          completed_by: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          request_id: string
+          responses?: Json
+          session_id: string
+          signed_at?: string | null
+          template_id: string
+          updated_at?: string
+        }
+        Update: {
+          completed_by?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          request_id?: string
+          responses?: Json
+          session_id?: string
+          signed_at?: string | null
+          template_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supervision_session_notes_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_notes_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "supervision_session_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_notes_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "supervision_session_note_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_notes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supervision_session_notes_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "session_note_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       therapist_availability: {
         Row: {
@@ -5960,96 +7527,135 @@ export type Database = {
           },
         ]
       }
-      user_profiles: {
+      trial_events: {
         Row: {
-          avatar_url: string | null
-          created_at: string | null
-          email: string
-          first_name: string | null
-          full_name: string | null
+          client_id: string
+          created_at: string
+          created_by: string | null
+          event_timestamp: string
+          goal_id: string
           id: string
-          is_active: boolean | null
-          last_login_at: string | null
-          last_name: string | null
-          phone: string | null
-          preferences: Json | null
-          time_zone: string | null
-          updated_at: string | null
+          metadata: Json
+          organization_id: string
+          prompt_level: string | null
+          prompt_type: string | null
+          response: string | null
+          session_id: string
+          target_id: string
+          therapist_id: string
+          trial_number: number
+          updated_at: string
+          updated_by: string | null
+          value: number | null
         }
         Insert: {
-          avatar_url?: string | null
-          created_at?: string | null
-          email: string
-          first_name?: string | null
-          full_name?: string | null
-          id: string
-          is_active?: boolean | null
-          last_login_at?: string | null
-          last_name?: string | null
-          phone?: string | null
-          preferences?: Json | null
-          time_zone?: string | null
-          updated_at?: string | null
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          event_timestamp?: string
+          goal_id: string
+          id?: string
+          metadata?: Json
+          organization_id: string
+          prompt_level?: string | null
+          prompt_type?: string | null
+          response?: string | null
+          session_id: string
+          target_id: string
+          therapist_id: string
+          trial_number: number
+          updated_at?: string
+          updated_by?: string | null
+          value?: number | null
         }
         Update: {
-          avatar_url?: string | null
-          created_at?: string | null
-          email?: string
-          first_name?: string | null
-          full_name?: string | null
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          event_timestamp?: string
+          goal_id?: string
           id?: string
-          is_active?: boolean | null
-          last_login_at?: string | null
-          last_name?: string | null
-          phone?: string | null
-          preferences?: Json | null
-          time_zone?: string | null
-          updated_at?: string | null
+          metadata?: Json
+          organization_id?: string
+          prompt_level?: string | null
+          prompt_type?: string | null
+          response?: string | null
+          session_id?: string
+          target_id?: string
+          therapist_id?: string
+          trial_number?: number
+          updated_at?: string
+          updated_by?: string | null
+          value?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "user_profiles_id_fkey"
-            columns: ["id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
+            foreignKeyName: "trial_events_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "user_profiles_id_fkey"
-            columns: ["id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
+            foreignKeyName: "trial_events_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trial_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trial_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trial_events_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "goal_targets"
+            referencedColumns: ["id"]
           },
         ]
       }
       user_roles: {
         Row: {
+          created_at: string | null
           expires_at: string | null
           granted_at: string | null
           granted_by: string | null
           id: string
-          is_active: boolean | null
-          role_id: string
-          user_id: string
+          is_active: boolean
+          role_id: string | null
+          user_id: string | null
         }
         Insert: {
+          created_at?: string | null
           expires_at?: string | null
           granted_at?: string | null
           granted_by?: string | null
           id?: string
-          is_active?: boolean | null
-          role_id: string
-          user_id: string
+          is_active?: boolean
+          role_id?: string | null
+          user_id?: string | null
         }
         Update: {
+          created_at?: string | null
           expires_at?: string | null
           granted_at?: string | null
           granted_by?: string | null
           id?: string
-          is_active?: boolean | null
-          role_id?: string
-          user_id?: string
+          is_active?: boolean
+          role_id?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -6082,57 +7688,6 @@ export type Database = {
           },
           {
             foreignKeyName: "user_roles_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
-      user_sessions: {
-        Row: {
-          created_at: string | null
-          expires_at: string
-          id: string
-          ip_address: unknown
-          is_active: boolean | null
-          last_activity: string | null
-          session_token: string
-          user_agent: string | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          expires_at: string
-          id?: string
-          ip_address?: unknown
-          is_active?: boolean | null
-          last_activity?: string | null
-          session_token: string
-          user_agent?: string | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          expires_at?: string
-          id?: string
-          ip_address?: unknown
-          is_active?: boolean | null
-          last_activity?: string | null
-          session_token?: string
-          user_agent?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_sessions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_sessions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "admin_users"
@@ -6183,6 +7738,54 @@ export type Database = {
           },
         ]
       }
+      user_therapist_links_quarantine: {
+        Row: {
+          had_supported_active_role: boolean
+          id: string
+          link_created_at: string
+          link_id: string
+          quarantine_batch: string
+          quarantined_at: string
+          reason: string
+          therapist_deleted_at: string | null
+          therapist_id: string
+          therapist_organization_id: string | null
+          therapist_status: string | null
+          user_id: string
+          user_organization_id: string | null
+        }
+        Insert: {
+          had_supported_active_role: boolean
+          id?: string
+          link_created_at: string
+          link_id: string
+          quarantine_batch: string
+          quarantined_at?: string
+          reason: string
+          therapist_deleted_at?: string | null
+          therapist_id: string
+          therapist_organization_id?: string | null
+          therapist_status?: string | null
+          user_id: string
+          user_organization_id?: string | null
+        }
+        Update: {
+          had_supported_active_role?: boolean
+          id?: string
+          link_created_at?: string
+          link_id?: string
+          quarantine_batch?: string
+          quarantined_at?: string
+          reason?: string
+          therapist_deleted_at?: string | null
+          therapist_id?: string
+          therapist_organization_id?: string | null
+          therapist_status?: string | null
+          user_id?: string
+          user_organization_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       admin_users: {
@@ -6195,39 +7798,6 @@ export type Database = {
           user_role_id: string | null
         }
         Relationships: []
-      }
-      app_users_safe: {
-        Row: {
-          created_at: string | null
-          email: string | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          email?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          email?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "profiles_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
       }
       session_cpt_details_vw: {
         Row: {
@@ -6242,8 +7812,10 @@ export type Database = {
           line_number: number | null
           modifier_codes: string[] | null
           notes: string | null
+          organization_id: string | null
           rate: number | null
           session_id: string | null
+          session_organization_id: string | null
           short_description: string | null
           start_time: string | null
           therapist_id: string | null
@@ -6283,8 +7855,6 @@ export type Database = {
       }
     }
     Functions: {
-      _is_admin: { Args: { uid: string }; Returns: boolean }
-      _is_therapist: { Args: { uid: string }; Returns: boolean }
       acquire_session_hold:
         | {
             Args: {
@@ -6309,13 +7879,9 @@ export type Database = {
             }
             Returns: Json
           }
-      admin_reset_user_password: {
-        Args: {
-          create_if_not_exists?: boolean
-          new_password: string
-          user_email: string
-        }
-        Returns: Json
+      agent_work_recompute_item_status: {
+        Args: { p_work_item_id: string }
+        Returns: Database["public"]["Enums"]["agent_work_item_status"]
       }
       analyze_therapist_workload: {
         Args: { p_analysis_period?: number; p_therapist_id?: string }
@@ -6330,37 +7896,24 @@ export type Database = {
           workload_distribution: Json
         }[]
       }
+      apply_schedule_week_forward: {
+        Args: {
+          p_displayed_week_end: string
+          p_displayed_week_start: string
+          p_dry_run?: boolean
+          p_end_date: string
+          p_source_session_ids: string[]
+          p_time_zone: string
+        }
+        Returns: Json
+      }
       assign_admin_role: {
         Args: { organization_id: string; reason?: string; user_email: string }
         Returns: undefined
       }
-      create_staff_message_thread: {
-        Args: {
-          p_participant_user_ids: string[]
-          p_subject?: string
-          p_thread_type: string
-        }
-        Returns: string
-      }
-      list_staff_message_thread_participant_names: {
-        Args: { p_thread_id: string }
-        Returns: {
-          full_name: string
-          user_id: string
-        }[]
-      }
       assign_therapist_role:
-        | { Args: { p_email: string; p_user_id: string }; Returns: undefined }
         | { Args: { p_therapist_id: string }; Returns: undefined }
-      assign_user_role: {
-        Args: {
-          expires_at_param?: string
-          granted_by_uuid?: string
-          role_name: string
-          user_uuid: string
-        }
-        Returns: boolean
-      }
+        | { Args: { p_email: string; p_user_id: string }; Returns: undefined }
       cache_ai_response: {
         Args: {
           p_cache_key: string
@@ -6411,12 +7964,70 @@ export type Database = {
         Args: { p_current_value: number; p_metric_name: string }
         Returns: undefined
       }
+      claim_agent_work_step: {
+        Args: {
+          p_lease_seconds: number
+          p_work_item_id: string
+          p_worker_id: string
+        }
+        Returns: {
+          approval_hash: string | null
+          attempt_count: number
+          client_id: string | null
+          completed_at: string | null
+          completion_criteria: Json
+          created_at: string
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id: string
+          input_hash: string | null
+          last_error_class: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          max_attempts: number
+          ordinal: number
+          organization_id: string
+          output_hash: string | null
+          required_role: string | null
+          risk: Database["public"]["Enums"]["agent_work_risk"]
+          state_version: number
+          status: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key: string
+          updated_at: string
+          wake_at: string | null
+          work_item_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "agent_work_steps"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       cleanup_ai_cache: { Args: never; Returns: number }
-      cleanup_expired_ai_cache: { Args: never; Returns: number }
-      cleanup_performance_data: { Args: never; Returns: number }
       client_email_exists: { Args: { p_email: string }; Returns: boolean }
+      complete_goal_target_mastery: {
+        Args: {
+          expected_version: number
+          reason: string
+          target_goal_target_id: string
+        }
+        Returns: {
+          current_phase: Database["public"]["Enums"]["goal_target_phase"]
+          goal_id: string
+          goal_status: string
+          next_target_id: string
+          outcome: string
+          previous_phase: Database["public"]["Enums"]["goal_target_phase"]
+          target_id: string
+          warning: string
+        }[]
+      }
+      complete_supervision_session_note_request: {
+        Args: { p_request_id: string; p_responses: Json; p_template_id: string }
+        Returns: string
+      }
       confirm_session_hold:
-        | { Args: { p_hold_key: string; p_session: Json }; Returns: Json }
         | {
             Args: {
               p_actor_id: string
@@ -6425,7 +8036,18 @@ export type Database = {
             }
             Returns: string
           }
+        | { Args: { p_hold_key: string; p_session: Json }; Returns: Json }
       confirm_session_hold_with_enrichment: {
+        Args: {
+          p_actor_id?: string
+          p_cpt?: Json
+          p_goal_ids?: string[]
+          p_hold_key: string
+          p_session: Json
+        }
+        Returns: Json
+      }
+      confirm_session_hold_with_enrichment_before_goal_rebuild: {
         Args: {
           p_actor_id?: string
           p_cpt?: Json
@@ -6444,6 +8066,48 @@ export type Database = {
         Args: {
           p_email: string
           p_role: Database["public"]["Enums"]["role_type"]
+        }
+        Returns: string
+      }
+      create_admin_invite_token_rate_limited:
+        | {
+            Args: {
+              p_created_by: string
+              p_email: string
+              p_expires_at: string
+              p_organization_id: string
+              p_role: Database["public"]["Enums"]["role_type"]
+              p_target_therapist_id: string
+              p_token_hash: string
+            }
+            Returns: {
+              expires_at: string
+              id: string
+              status: string
+            }[]
+          }
+        | {
+            Args: {
+              p_created_by: string
+              p_email: string
+              p_expires_at: string
+              p_organization_id: string
+              p_role: Database["public"]["Enums"]["role_type"]
+              p_token_hash: string
+            }
+            Returns: {
+              expires_at: string
+              id: string
+              status: string
+            }[]
+          }
+      create_agent_assessment_work_item: {
+        Args: {
+          p_assessment_document_id: string
+          p_client_id: string
+          p_dedupe_key: string
+          p_organization_id: string
+          p_workflow_version: number
         }
         Returns: string
       }
@@ -6568,13 +8232,33 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_staff_message_thread: {
+        Args: {
+          p_participant_user_ids: string[]
+          p_subject?: string
+          p_thread_type: string
+        }
+        Returns: string
+      }
       create_super_admin: { Args: { user_email: string }; Returns: undefined }
+      create_supervision_session_note_request_for_completed_session: {
+        Args: { p_session_id: string }
+        Returns: string
+      }
       current_org_id: { Args: never; Returns: string }
       current_user_can_capture_trial_event: {
         Args: { target_client_id: string; target_organization_id: string }
         Returns: boolean
       }
+      current_user_can_delete_goal_targets: {
+        Args: { target_organization_id: string }
+        Returns: boolean
+      }
       current_user_can_manage_locked_trial_event: {
+        Args: { target_organization_id: string }
+        Returns: boolean
+      }
+      current_user_can_manage_programs_goals: {
         Args: { target_organization_id: string }
         Returns: boolean
       }
@@ -6584,6 +8268,14 @@ export type Database = {
       }
       current_user_is_super_admin: { Args: never; Returns: boolean }
       current_user_organization_id: { Args: never; Returns: string }
+      delete_admin_therapist_link: {
+        Args: {
+          p_organization_id: string
+          target_therapist_id: string
+          target_user_id: string
+        }
+        Returns: boolean
+      }
       detect_scheduling_conflicts: {
         Args: {
           p_end_date: string
@@ -6592,28 +8284,59 @@ export type Database = {
         }
         Returns: {
           affected_sessions: Json
+          auto_resolvable: boolean
           conflict_id: string
           conflict_type: string
           severity: number
           suggested_resolutions: Json
         }[]
       }
-      enqueue_impersonation_revocation:
-        | {
-            Args: { p_audit_id: string; p_token_jti: string }
-            Returns: undefined
-          }
-        | {
-            Args: { p_audit_id: string; p_token_jti: string }
-            Returns: undefined
-          }
-      ensure_admin_role:
-        | { Args: never; Returns: undefined }
-        | { Args: { user_email: string }; Returns: undefined }
-      ensure_all_users_admin: { Args: never; Returns: undefined }
-      ensure_user_has_admin_role:
-        | { Args: never; Returns: undefined }
-        | { Args: { p_user_id: string }; Returns: undefined }
+      enqueue_impersonation_revocation: {
+        Args: { p_audit_id: string; p_token_jti: string }
+        Returns: undefined
+      }
+      ensure_admin_role: { Args: { user_email: string }; Returns: undefined }
+      ensure_user_has_admin_role: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
+      finalize_bt_aba_session_note: {
+        Args: {
+          p_expected_target_versions?: Json
+          p_note_id: string
+          p_note_payload: Json
+          p_responses: Json
+          p_session_id: string
+          p_trial_events?: Json
+        }
+        Returns: Json
+      }
+      finalize_session_note_with_progression: {
+        Args: {
+          expected_target_versions?: Json
+          note_payload: Json
+          target_note_id: string
+          target_session_id: string
+          trial_events?: Json
+        }
+        Returns: {
+          note: Json
+          progression_results: Json
+        }[]
+      }
+      finalize_session_note_with_progression_v1: {
+        Args: {
+          expected_target_versions?: Json
+          note_payload: Json
+          target_note_id: string
+          target_session_id: string
+          trial_events?: Json
+        }
+        Returns: {
+          note: Json
+          progression_results: Json
+        }[]
+      }
       generate_semantic_cache_key: {
         Args: { p_context_hash?: string; p_query_text: string }
         Returns: string
@@ -6637,6 +8360,22 @@ export type Database = {
         }
         Returns: Json
       }
+      get_admin_linkable_therapists: {
+        Args: { p_organization_id: string }
+        Returns: {
+          email: string
+          full_name: string
+          id: string
+        }[]
+      }
+      get_admin_therapist_links: {
+        Args: { p_organization_id: string }
+        Returns: {
+          therapist_id: string
+          therapist_name: string
+          user_id: string
+        }[]
+      }
       get_admin_users: {
         Args: { organization_id?: string }
         Returns: {
@@ -6647,6 +8386,12 @@ export type Database = {
           user_id: string | null
           user_role_id: string | null
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "admin_users"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_admin_users_paged: {
         Args: { organization_id?: string; p_limit?: number; p_offset?: number }
@@ -6664,58 +8409,6 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
-      }
-      get_employee_users_paged: {
-        Args: { p_organization_id?: string; p_limit?: number; p_offset?: number }
-        Returns: {
-          created_at: string | null
-          email: string | null
-          first_name: string | null
-          full_name: string | null
-          id: string | null
-          is_active: boolean | null
-          last_login_at: string | null
-          last_name: string | null
-          organization_id: string | null
-          role: Database["public"]["Enums"]["role_type"] | null
-          title: string | null
-        }[]
-      }
-      get_admin_linkable_therapists: {
-        Args: { p_organization_id: string }
-        Returns: {
-          id: string
-          full_name: string | null
-          email: string | null
-        }[]
-      }
-      get_admin_therapist_links: {
-        Args: { p_organization_id: string }
-        Returns: {
-          user_id: string
-          therapist_id: string
-          therapist_name: string | null
-        }[]
-      }
-      set_admin_therapist_link: {
-        Args: {
-          target_user_id: string
-          target_therapist_id: string
-          p_organization_id: string
-        }
-        Returns: {
-          user_id: string
-          therapist_id: string
-          therapist_name: string | null
-        }[]
-      }
-      delete_admin_therapist_link: {
-        Args: {
-          target_user_id: string
-          target_therapist_id: string
-          p_organization_id: string
-        }
-        Returns: boolean
       }
       get_ai_cache_metrics: {
         Args: never
@@ -6742,19 +8435,6 @@ export type Database = {
         | {
             Args: { p_end_date: string; p_start_date: string }
             Returns: {
-              approved_authorizations: number
-              denied_authorizations: number
-              expired_authorizations: number
-              pending_authorizations: number
-              total_approved_units: number
-              total_authorizations: number
-              total_requested_units: number
-              units_by_service_code: Json
-            }[]
-          }
-        | {
-            Args: { p_end_date: string; p_start_date: string }
-            Returns: {
               approval_rate: number
               approval_ratio: number
               approved_authorizations: number
@@ -6766,18 +8446,20 @@ export type Database = {
               total_requested_units: number
             }[]
           }
-      get_billing_metrics:
         | {
             Args: { p_end_date: string; p_start_date: string }
             Returns: {
-              amount_by_client: Json
-              amount_by_status: Json
-              paid_amount: number
-              pending_amount: number
-              rejected_amount: number
-              total_billed: number
+              approved_authorizations: number
+              denied_authorizations: number
+              expired_authorizations: number
+              pending_authorizations: number
+              total_approved_units: number
+              total_authorizations: number
+              total_requested_units: number
+              units_by_service_code: Json
             }[]
           }
+      get_billing_metrics:
         | {
             Args: { p_end_date: string; p_start_date: string }
             Returns: {
@@ -6790,6 +8472,19 @@ export type Database = {
               total_billed: number
             }[]
           }
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              amount_by_client: Json
+              amount_by_status: Json
+              paid_amount: number
+              pending_amount: number
+              rejected_amount: number
+              total_billed: number
+            }[]
+          }
+      get_bt_aba_session_note: { Args: { p_session_id: string }; Returns: Json }
+      get_bt_supervision_correction_tasks: { Args: never; Returns: Json }
       get_cached_ai_response: {
         Args: { p_cache_key: string }
         Returns: {
@@ -6800,10 +8495,14 @@ export type Database = {
       get_client_documents: { Args: { p_client_id: string }; Returns: Json }
       get_client_metrics:
         | {
-            Args: never
+            Args: { p_end_date: string; p_start_date: string }
             Returns: {
               active_clients: number
-              new_clients_this_month: number
+              activity_rate: number
+              clients_by_age: Json
+              clients_by_gender: Json
+              clients_by_service_preference: Json
+              inactive_clients: number
               total_clients: number
             }[]
           }
@@ -6818,25 +8517,37 @@ export type Database = {
               total_clients: number
             }[]
           }
-        | {
-            Args: { p_end_date: string; p_start_date: string }
-            Returns: {
-              active_clients: number
-              activity_rate: number
-              clients_by_age: Json
-              clients_by_gender: Json
-              clients_by_service_preference: Json
-              inactive_clients: number
-              total_clients: number
-            }[]
-          }
       get_client_preference_factor: {
         Args: { p_client_id: string; p_slot_time: string }
         Returns: number
       }
       get_dashboard_data: { Args: never; Returns: Json }
+      get_dashboard_data_for_org: {
+        Args: { actor_user_id: string; target_organization_id: string }
+        Returns: Json
+      }
       get_db_version: { Args: never; Returns: string }
       get_dropdown_data: { Args: never; Returns: Json }
+      get_employee_users_paged: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_organization_id?: string
+        }
+        Returns: {
+          created_at: string
+          email: string
+          first_name: string
+          full_name: string
+          id: string
+          is_active: boolean
+          last_login_at: string
+          last_name: string
+          organization_id: string
+          role: Database["public"]["Enums"]["role_type"]
+          title: string
+        }[]
+      }
       get_guardian_client_portal: {
         Args: { p_client_id?: string }
         Returns: {
@@ -6873,6 +8584,42 @@ export type Database = {
       get_organization_id_from_metadata: {
         Args: { p_metadata: Json }
         Returns: string
+      }
+      get_pending_supervision_review_packets: {
+        Args: never
+        Returns: {
+          assigned_reviewer_user_id: string
+          bt_note_id: string
+          bt_responses: Json
+          bt_signature_method: string
+          bt_signed_at: string
+          bt_template_snapshot: Json
+          bt_therapist_id: string
+          bt_therapist_name: string
+          bt_therapist_title: string
+          can_complete: boolean
+          can_return: boolean
+          client_id: string
+          client_name: string
+          correction_id: string
+          correction_reason: string
+          correction_requested_at: string
+          correction_reviewer_user_id: string
+          correction_round: number
+          latest_version_number: number
+          organization_id: string
+          place_of_service: string
+          request_created_at: string
+          request_id: string
+          request_status: string
+          review_versions: Json
+          session_end_time: string
+          session_id: string
+          session_start_time: string
+          supervision_template_id: string
+          supervision_template_name: string
+          supervision_template_structure: Json
+        }[]
       }
       get_performance_metrics: {
         Args: { p_time_range?: string }
@@ -6923,24 +8670,27 @@ export type Database = {
         Args: { p_slot_time: string; p_therapist_id: string }
         Returns: number
       }
-      get_session_metrics:
-        {
-          Args: {
-            p_client_id?: string
-            p_end_date: string
-            p_start_date: string
-            p_therapist_id?: string
-          }
-          Returns: {
-            cancelled_sessions: number
-            completed_sessions: number
-            no_show_sessions: number
-            sessions_by_client: Json
-            sessions_by_day: Json
-            sessions_by_therapist: Json
-            total_sessions: number
-          }[]
+      get_session_capture_strict_billing_gate: {
+        Args: { target_organization_id: string }
+        Returns: boolean
+      }
+      get_session_metrics: {
+        Args: {
+          p_client_id?: string
+          p_end_date: string
+          p_start_date: string
+          p_therapist_id?: string
         }
+        Returns: {
+          cancelled_sessions: number
+          completed_sessions: number
+          no_show_sessions: number
+          sessions_by_client: Json
+          sessions_by_day: Json
+          sessions_by_therapist: Json
+          total_sessions: number
+        }[]
+      }
       get_session_notes_with_compliance: {
         Args: { p_client_id: string; p_limit?: number }
         Returns: {
@@ -6967,7 +8717,13 @@ export type Database = {
       }
       get_sessions_report:
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: {
+              p_client_id: string
+              p_end_date: string
+              p_start_date: string
+              p_status: string
+              p_therapist_id: string
+            }
             Returns: {
               client_name: string
               session_day: string
@@ -6978,13 +8734,7 @@ export type Database = {
             }[]
           }
         | {
-            Args: {
-              p_client_id: string
-              p_end_date: string
-              p_start_date: string
-              p_status: string
-              p_therapist_id: string
-            }
+            Args: { p_end_date: string; p_start_date: string }
             Returns: {
               client_name: string
               session_day: string
@@ -7019,18 +8769,9 @@ export type Database = {
         }
         Returns: Json
       }
-      get_system_alerts: {
-        Args: { p_limit?: number }
-        Returns: {
-          alert_type: string
-          created_at: string
-          current_value: number
-          id: string
-          message: string
-          metric_name: string
-          resolved: boolean
-          threshold_value: number
-        }[]
+      get_supervision_session_note_action_count: {
+        Args: never
+        Returns: number
       }
       get_therapist_availability: {
         Args: { p_end: string; p_start: string; p_therapist_id: string }
@@ -7067,7 +8808,12 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: Database["public"]["Enums"]["role_type"]
       }
-      get_user_roles: { Args: { p_user_id?: string }; Returns: Json }
+      get_user_roles: {
+        Args: never
+        Returns: {
+          roles: string[]
+        }[]
+      }
       get_user_therapist_id: { Args: never; Returns: string }
       guardian_contact_metadata: {
         Args: { p_guardian_id?: string }
@@ -7109,89 +8855,50 @@ export type Database = {
       is_super_admin: { Args: never; Returns: boolean }
       is_valid_email: { Args: { email: string }; Returns: boolean }
       is_valid_url: { Args: { url: string }; Returns: boolean }
-      log_ai_performance:
-        | {
-            Args: {
-              function_name: string
-              parameters: Json
-              response_time: string
-              token_count: number
-            }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              p_cache_hit?: boolean
-              p_conversation_id?: string
-              p_error_occurred?: boolean
-              p_function_called?: string
-              p_response_time_ms: number
-              p_token_usage?: Json
-              p_user_id?: string
-            }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              p_cache_hit?: boolean
-              p_conversation_id?: string
-              p_error_occurred?: boolean
-              p_function_called?: string
-              p_response_time_ms: number
-              p_token_usage?: Json
-              p_user_id?: string
-            }
-            Returns: undefined
-          }
-      log_db_performance:
-        | {
-            Args: {
-              p_cache_hit?: boolean
-              p_execution_time_ms: number
-              p_query_type: string
-              p_rows_affected?: number
-              p_table_name?: string
-            }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              execution_time: string
-              query_name: string
-              query_text: string
-            }
-            Returns: undefined
-          }
-      log_error_event:
-        | {
-            Args: {
-              p_context?: Json
-              p_details?: Json
-              p_error_type: string
-              p_message: string
-              p_severity?: string
-              p_stack_trace?: string
-              p_url?: string
-              p_user_agent?: string
-            }
-            Returns: undefined
-          }
-        | { Args: { payload: Json }; Returns: undefined }
+      list_eligible_staff_for_messaging: {
+        Args: { p_organization_id: string }
+        Returns: {
+          email: string
+          full_name: string
+          role: string
+          user_id: string
+        }[]
+      }
+      list_staff_message_thread_participant_names: {
+        Args: { p_thread_id: string }
+        Returns: {
+          full_name: string
+          user_id: string
+        }[]
+      }
+      log_error_event: {
+        Args: {
+          p_context?: Json
+          p_details?: Json
+          p_error_type: string
+          p_message: string
+          p_severity?: string
+          p_stack_trace?: string
+          p_url?: string
+          p_user_agent?: string
+        }
+        Returns: undefined
+      }
       log_function_performance:
-        | {
-            Args: {
-              p_duration_ms: number
-              p_function_name: string
-              p_result_size_kb?: number
-            }
-            Returns: undefined
-          }
         | {
             Args: {
               p_execution_time_ms: number
               p_function_name: string
               p_parameters?: Json
               p_result_size?: number
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_duration_ms: number
+              p_function_name: string
+              p_result_size_kb?: number
             }
             Returns: undefined
           }
@@ -7208,6 +8915,29 @@ export type Database = {
             }
             Returns: undefined
           }
+        | {
+            Args: { metadata: Json; operation: string; target_user_id: string }
+            Returns: undefined
+          }
+      override_goal_target_progression: {
+        Args: {
+          expected_version: number
+          reason: string
+          target_current_goal_target_id: string
+          target_goal_target_id: string
+          target_phase: Database["public"]["Enums"]["goal_target_phase"]
+        }
+        Returns: {
+          current_phase: Database["public"]["Enums"]["goal_target_phase"]
+          goal_id: string
+          goal_status: string
+          next_target_id: string
+          outcome: string
+          previous_phase: Database["public"]["Enums"]["goal_target_phase"]
+          target_id: string
+          warning: string
+        }[]
+      }
       process_client_document: {
         Args: {
           p_client_id: string
@@ -7218,6 +8948,14 @@ export type Database = {
           p_file_type: string
         }
         Returns: Json
+      }
+      provision_ci_rls_fixture_profile: {
+        Args: { p_organization_id: string; p_user_id: string }
+        Returns: string
+      }
+      provision_ci_smoke_bcba_profile: {
+        Args: { p_user_id: string }
+        Returns: string
       }
       prune_admin_actions: {
         Args: { retention_days?: number }
@@ -7231,6 +8969,19 @@ export type Database = {
           deleted_transcripts: number
         }[]
       }
+      reactivate_cancelled_session: {
+        Args: {
+          p_actor_id: string
+          p_end_time?: string
+          p_session_id: string
+          p_start_time?: string
+        }
+        Returns: Json
+      }
+      reconcile_supervision_session_note_requests: {
+        Args: { p_since?: string }
+        Returns: number
+      }
       record_session_audit: {
         Args: {
           p_actor_id?: string
@@ -7240,13 +8991,103 @@ export type Database = {
         }
         Returns: undefined
       }
-      remove_user_role: {
-        Args: { removed_by_uuid?: string; role_name: string; user_uuid: string }
+      reorder_goal_targets: {
+        Args: {
+          expected_versions: number[]
+          ordered_target_ids: string[]
+          target_goal_id: string
+        }
+        Returns: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          current_phase: Database["public"]["Enums"]["goal_target_phase"] | null
+          evaluation_window_started_at: string | null
+          goal_id: string
+          graph_config: Json
+          id: string
+          is_current: boolean
+          measurement_type: string
+          name: string
+          organization_id: string
+          progression_version: number
+          sort_order: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "goal_targets"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      reset_user_password: {
+        Args: { new_password: string; target_email: string }
+        Returns: undefined
+      }
+      resolve_assigned_bt_session_capture_billing: {
+        Args: { p_session_id: string }
+        Returns: {
+          authorization_id: string
+          service_code: string
+          session_client_id: string
+          session_therapist_id: string
+          strict_billing: boolean
+        }[]
+      }
+      resubmit_bt_supervision_correction: {
+        Args: {
+          p_request_id: string
+          p_responses: Json
+          p_signature_method: string
+          p_signature_value: string
+        }
+        Returns: string
+      }
+      return_supervision_session_note_request_to_bt: {
+        Args: { p_reason: string; p_request_id: string }
+        Returns: string
+      }
+      save_bt_aba_session_note_draft: {
+        Args: {
+          p_note_payload: Json
+          p_responses: Json
+          p_session_id: string
+          p_template_id: string
+        }
+        Returns: Json
+      }
+      session_has_locked_note: {
+        Args: { target_session_id: string }
         Returns: boolean
       }
-      resolve_performance_alert: {
-        Args: { p_alert_id: string; p_resolution_note?: string }
-        Returns: boolean
+      set_admin_therapist_link: {
+        Args: {
+          p_organization_id: string
+          target_therapist_id: string
+          target_user_id: string
+        }
+        Returns: {
+          therapist_id: string
+          therapist_name: string
+          user_id: string
+        }[]
+      }
+      set_goal_target_phase_criterion: {
+        Args: {
+          expected_version: number
+          target_clinical_note: string
+          target_comparator: string
+          target_consecutive_sessions: number
+          target_goal_target_id: string
+          target_metric: string
+          target_min_observations: number
+          target_phase: Database["public"]["Enums"]["goal_target_phase"]
+          target_threshold: number
+        }
+        Returns: Json
       }
       start_session_with_goals: {
         Args: {
@@ -7260,6 +9101,49 @@ export type Database = {
         Returns: Json
       }
       temp_validate_time: { Args: never; Returns: undefined }
+      transition_agent_work_step: {
+        Args: {
+          p_expected_state_version: number
+          p_output_hash: string
+          p_reason_code: string
+          p_sanitized_metadata: Json
+          p_step_id: string
+          p_to_status: Database["public"]["Enums"]["agent_work_step_status"]
+        }
+        Returns: {
+          approval_hash: string | null
+          attempt_count: number
+          client_id: string | null
+          completed_at: string | null
+          completion_criteria: Json
+          created_at: string
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id: string
+          input_hash: string | null
+          last_error_class: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          max_attempts: number
+          ordinal: number
+          organization_id: string
+          output_hash: string | null
+          required_role: string | null
+          risk: Database["public"]["Enums"]["agent_work_risk"]
+          state_version: number
+          status: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key: string
+          updated_at: string
+          wake_at: string | null
+          work_item_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_work_steps"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       update_authorization_documents: {
         Args: { p_authorization_id: string; p_documents: Json }
         Returns: {
@@ -7344,13 +9228,7 @@ export type Database = {
         Args: { p_client_id: string; p_documents: Json }
         Returns: undefined
       }
-      user_has_any_role: {
-        Args: { role_names: string[]; user_uuid?: string }
-        Returns: boolean
-      }
-      user_has_role:
-        | { Args: { role_name: string }; Returns: boolean }
-        | { Args: { role_name: string; user_uuid?: string }; Returns: boolean }
+      user_has_role: { Args: { role_name: string }; Returns: boolean }
       user_has_role_for_org: {
         Args: {
           role_name: string
@@ -7363,38 +9241,69 @@ export type Database = {
       }
       validate_feature_flag_metadata: { Args: { obj: Json }; Returns: boolean }
       validate_organization_metadata: { Args: { obj: Json }; Returns: boolean }
-      validate_performance_improvements: { Args: never; Returns: Json }
       validate_session_note_compliance: {
         Args: { p_note_id: string }
         Returns: Json
       }
-      session_has_locked_note: {
-        Args: { target_session_id: string }
-        Returns: boolean
-      }
+      validate_time_interval: { Args: { time_value: string }; Returns: boolean }
       validate_time_interval_new: { Args: { t: string }; Returns: boolean }
     }
     Enums: {
+      agent_work_approval_status:
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "expired"
+        | "revoked"
+      agent_work_attempt_status:
+        | "running"
+        | "completed"
+        | "failed"
+        | "cancelled"
+        | "expired"
+      agent_work_effect_status: "pending" | "verified" | "failed" | "cancelled"
+      agent_work_evidence_source_kind:
+        | "assessment_document"
+        | "assessment_checklist_item"
+        | "assessment_structured_section"
+        | "assessment_review_event"
+        | "work_item"
+        | "work_step"
+        | "approval"
+      agent_work_execution_mode: "deterministic" | "model_suggested" | "human"
+      agent_work_item_status:
+        | "queued"
+        | "running"
+        | "waiting"
+        | "needs_review"
+        | "blocked"
+        | "completed"
+        | "failed"
+        | "cancelled"
+      agent_work_risk: "low" | "moderate" | "high" | "clinical"
+      agent_work_step_status:
+        | "pending"
+        | "ready"
+        | "running"
+        | "waiting"
+        | "needs_approval"
+        | "completed"
+        | "failed"
+        | "skipped"
+        | "cancelled"
+      goal_target_phase: "baseline" | "teaching" | "generalization" | "mastery"
       role_type:
         | "client"
-        | "bt"
         | "therapist"
+        | "admin"
+        | "super_admin"
+        | "bt"
         | "midtier"
         | "admin_schedule"
-        | "staff"
-        | "supervisor"
-        | "admin"
         | "bcba"
-        | "super_admin"
     }
     CompositeTypes: {
-      admin_user_row: {
-        id: string | null
-        user_role_id: string | null
-        user_id: string | null
-        email: string | null
-        created_at: string | null
-      }
+      [_ in never]: never
     }
   }
 }
@@ -7519,18 +9428,65 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      agent_work_approval_status: [
+        "pending",
+        "approved",
+        "rejected",
+        "expired",
+        "revoked",
+      ],
+      agent_work_attempt_status: [
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "expired",
+      ],
+      agent_work_effect_status: ["pending", "verified", "failed", "cancelled"],
+      agent_work_evidence_source_kind: [
+        "assessment_document",
+        "assessment_checklist_item",
+        "assessment_structured_section",
+        "assessment_review_event",
+        "work_item",
+        "work_step",
+        "approval",
+      ],
+      agent_work_execution_mode: ["deterministic", "model_suggested", "human"],
+      agent_work_item_status: [
+        "queued",
+        "running",
+        "waiting",
+        "needs_review",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
+      agent_work_risk: ["low", "moderate", "high", "clinical"],
+      agent_work_step_status: [
+        "pending",
+        "ready",
+        "running",
+        "waiting",
+        "needs_approval",
+        "completed",
+        "failed",
+        "skipped",
+        "cancelled",
+      ],
+      goal_target_phase: ["baseline", "teaching", "generalization", "mastery"],
       role_type: [
         "client",
-        "bt",
         "therapist",
+        "admin",
+        "super_admin",
+        "bt",
         "midtier",
         "admin_schedule",
-        "staff",
-        "supervisor",
-        "admin",
         "bcba",
-        "super_admin",
       ],
     },
   },
 } as const
+

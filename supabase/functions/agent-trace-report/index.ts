@@ -2,6 +2,7 @@ import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { getLogger } from "../_shared/logging.ts";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
+import { assertUserHasOrgRole, resolveOrgId } from "../_shared/org.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": resolveAllowedOrigin(),
@@ -23,6 +24,9 @@ type TraceRow = {
   conversation_id: string | null;
   user_id: string | null;
   organization_id: string | null;
+  work_item_id?: string | null;
+  step_id?: string | null;
+  attempt_id?: string | null;
   step_name: string;
   step_index: number;
   status: "ok" | "blocked" | "error";
@@ -44,15 +48,6 @@ type OrchestrationRow = {
   created_at: string;
 };
 
-type IdempotencyRow = {
-  id: string;
-  endpoint: string;
-  idempotency_key: string;
-  status_code: number;
-  response_body: Record<string, unknown>;
-  created_at: string;
-};
-
 type SessionAuditRow = {
   id: string;
   session_id: string;
@@ -65,7 +60,10 @@ type SessionAuditRow = {
 };
 
 type TimelineEvent = {
-  source: "agent_execution_traces" | "scheduling_orchestration_runs" | "function_idempotency_keys" | "session_audit_logs";
+  source:
+    | "agent_execution_traces"
+    | "scheduling_orchestration_runs"
+    | "session_audit_logs";
   occurredAt: string;
   requestId: string | null;
   correlationId: string | null;
@@ -73,7 +71,44 @@ type TimelineEvent = {
   detail: Record<string, unknown>;
 };
 
-const ADMIN_ROLES = new Set(["admin", "super_admin", "monitoring"]);
+type SanitizedTraceRow = {
+  id: string;
+  requestId: string;
+  correlationId: string;
+  agentOperationId?: string | null;
+  workItemId: string | null;
+  stepId: string | null;
+  attemptId: string | null;
+  stepName: string;
+  stepIndex: number;
+  status: TraceRow["status"];
+  createdAt: string;
+  diagnostics: Record<string, unknown>;
+};
+
+type SanitizedOrchestrationRow = {
+  id: string;
+  requestId: string;
+  correlationId: string;
+  workflow: string;
+  status: string;
+  createdAt: string;
+  diagnostics: Record<string, unknown>;
+};
+
+type SanitizedSessionAuditRow = {
+  id: string;
+  sessionId: string;
+  eventType: string;
+  createdAt: string;
+  requestId: string | null;
+  correlationId: string | null;
+  agentOperationId: string | null;
+  diagnostics: Record<string, unknown>;
+};
+
+const SELECTOR_VALUE_PATTERN = /^[A-Za-z0-9._:/-]{1,200}$/;
+const TRACE_REPORT_ROLES = ["admin", "super_admin", "monitoring"] as const;
 
 const jsonResponse = (
   body: Record<string, unknown>,
@@ -95,72 +130,85 @@ const normalizeText = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const normalizeSelectorValue = (
+  value: unknown,
+  fieldName: string,
+): string | undefined => {
+  const normalized = normalizeText(value);
+  if (!normalized) return undefined;
+  if (!SELECTOR_VALUE_PATTERN.test(normalized)) {
+    throw new Response(`Invalid ${fieldName}`, { status: 400 });
+  }
+  return normalized;
+};
+
+const nonEmptyString = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const numericValue = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return null;
+};
+
+const sanitizeTokenUsage = (value: unknown): Record<string, number> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const source = value as Record<string, unknown>;
+  const sanitized: Record<string, number> = {};
+
+  for (const key of ["input", "output", "total", "cached", "reasoning"]) {
+    const candidate = numericValue(source[key]);
+    if (candidate !== null) {
+      sanitized[key] = candidate;
+    }
+  }
+
+  return Object.keys(sanitized).length > 0 ? sanitized : null;
+};
+
 const parseSelector = (req: Request, body: unknown): Selector => {
   const url = new URL(req.url);
-  const fromBody = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  const fromBody = typeof body === "object" && body !== null
+    ? body as Record<string, unknown>
+    : {};
 
-  const correlationId = normalizeText(fromBody.correlationId) ??
-    normalizeText(url.searchParams.get("correlationId"));
-  const requestId = normalizeText(fromBody.requestId) ??
-    normalizeText(url.searchParams.get("requestId"));
-  const agentOperationId = normalizeText(fromBody.agentOperationId) ??
-    normalizeText(url.searchParams.get("agentOperationId"));
+  const correlationId = normalizeSelectorValue(
+    fromBody.correlationId ?? url.searchParams.get("correlationId"),
+    "correlationId",
+  );
+  const requestId = normalizeSelectorValue(
+    fromBody.requestId ?? url.searchParams.get("requestId"),
+    "requestId",
+  );
+  const agentOperationId = normalizeSelectorValue(
+    fromBody.agentOperationId ?? url.searchParams.get("agentOperationId"),
+    "agentOperationId",
+  );
 
   if (!correlationId && !requestId && !agentOperationId) {
-    throw new Response("Provide correlationId, requestId, or agentOperationId", { status: 400 });
+    throw new Response(
+      "Provide correlationId, requestId, or agentOperationId",
+      { status: 400 },
+    );
   }
 
   return { correlationId, requestId, agentOperationId };
 };
 
-const parseRoleEntries = (data: unknown): string[] => {
-  if (!Array.isArray(data)) return [];
-
-  return data.flatMap((entry) => {
-    if (!entry || typeof entry !== "object") return [] as string[];
-    const rolesValue = (entry as { roles?: unknown }).roles;
-
-    if (Array.isArray(rolesValue)) {
-      return rolesValue
-        .filter((role): role is string => typeof role === "string")
-        .map((role) => role.trim().toLowerCase())
-        .filter(Boolean);
+const assertAllowedOperatorForOrg = async (
+  requestClient: ReturnType<typeof createRequestClient>,
+  organizationId: string,
+): Promise<void> => {
+  for (const role of TRACE_REPORT_ROLES) {
+    if (await assertUserHasOrgRole(requestClient, organizationId, role)) {
+      return;
     }
-
-    if (typeof rolesValue === "string") {
-      const trimmed = rolesValue.trim();
-      if (!trimmed) return [];
-
-      try {
-        const parsed = JSON.parse(trimmed) as unknown;
-        if (Array.isArray(parsed)) {
-          return parsed
-            .filter((role): role is string => typeof role === "string")
-            .map((role) => role.trim().toLowerCase())
-            .filter(Boolean);
-        }
-      } catch {
-        // fall through
-      }
-
-      return trimmed.split(",").map((role) => role.trim().toLowerCase()).filter(Boolean);
-    }
-
-    return [] as string[];
-  });
-};
-
-const assertAllowedOperator = async (requestClient: ReturnType<typeof createRequestClient>): Promise<void> => {
-  const { data, error } = await requestClient.rpc("get_user_roles");
-  if (error) {
-    throw new Response("Role check failed", { status: 500 });
   }
 
-  const roles = parseRoleEntries(data);
-  const allowed = roles.some((role) => ADMIN_ROLES.has(role));
-  if (!allowed) {
-    throw new Response("Forbidden", { status: 403 });
-  }
+  throw new Response("Forbidden", { status: 403 });
 };
 
 const mergeUniqueById = <T extends { id: string }>(...lists: T[][]): T[] => {
@@ -175,27 +223,47 @@ const mergeUniqueById = <T extends { id: string }>(...lists: T[][]): T[] => {
 
 const extractTraceAgentOperationId = (row: TraceRow): string | null => {
   const fromPayload = row.payload?.agentOperationId;
-  if (typeof fromPayload === "string" && fromPayload.length > 0) return fromPayload;
+  if (typeof fromPayload === "string" && fromPayload.length > 0) {
+    return fromPayload;
+  }
   const fromReplay = row.replay_payload?.agentOperationId;
-  if (typeof fromReplay === "string" && fromReplay.length > 0) return fromReplay;
+  if (typeof fromReplay === "string" && fromReplay.length > 0) {
+    return fromReplay;
+  }
   return null;
 };
 
-const extractOrchestrationAgentOperationId = (row: OrchestrationRow): string | null => {
+const extractOrchestrationAgentOperationId = (
+  row: OrchestrationRow,
+): string | null => {
   const candidate = row.inputs?.agentOperationId;
-  return typeof candidate === "string" && candidate.length > 0 ? candidate : null;
+  return typeof candidate === "string" && candidate.length > 0
+    ? candidate
+    : null;
 };
 
 const extractAuditTrace = (
   row: SessionAuditRow,
-): { requestId: string | null; correlationId: string | null; agentOperationId: string | null } => {
+): {
+  requestId: string | null;
+  correlationId: string | null;
+  agentOperationId: string | null;
+} => {
   const payload = row.event_payload ?? {};
   const trace = (payload.trace ?? {}) as Record<string, unknown>;
 
-  const requestId = typeof trace.requestId === "string" ? trace.requestId : null;
-  const correlationId = typeof trace.correlationId === "string" ? trace.correlationId : null;
-  const topLevelOp = typeof payload.agentOperationId === "string" ? payload.agentOperationId : null;
-  const traceOp = typeof trace.agentOperationId === "string" ? trace.agentOperationId : null;
+  const requestId = typeof trace.requestId === "string"
+    ? trace.requestId
+    : null;
+  const correlationId = typeof trace.correlationId === "string"
+    ? trace.correlationId
+    : null;
+  const topLevelOp = typeof payload.agentOperationId === "string"
+    ? payload.agentOperationId
+    : null;
+  const traceOp = typeof trace.agentOperationId === "string"
+    ? trace.agentOperationId
+    : null;
 
   return {
     requestId,
@@ -204,20 +272,125 @@ const extractAuditTrace = (
   };
 };
 
-const parseAgentOperationFromIdempotencyKey = (key: string): string | null => {
-  const parts = key.split(":").map((part) => part.trim()).filter(Boolean);
-  if (parts.length < 2) return null;
-  return parts[parts.length - 1] ?? null;
+const scopeRowsToOrganization = <T extends { organization_id: string | null }>(
+  rows: T[],
+  organizationId: string,
+): T[] => rows.filter((row) => row.organization_id === organizationId);
+
+const buildTraceDiagnostics = (
+  payload: Record<string, unknown> | null,
+): Record<string, unknown> => {
+  if (!payload) return {};
+
+  const diagnostics: Record<string, unknown> = {};
+  const latencyMs = numericValue(payload.latencyMs);
+  if (latencyMs !== null) {
+    diagnostics.latencyMs = latencyMs;
+  }
+
+  for (const key of ["computedCost", "attemptNumber", "retryCount"]) {
+    const candidate = numericValue(payload[key]);
+    if (candidate !== null) {
+      diagnostics[key] = candidate;
+    }
+  }
+
+  const tokenUsage = sanitizeTokenUsage(payload.tokenUsage);
+  if (tokenUsage) {
+    diagnostics.tokenUsage = tokenUsage;
+  }
+
+  for (
+    const key of [
+      "outcome",
+      "guardrailResult",
+      "errorClass",
+      "errorCode",
+      "provider",
+      "model",
+      "promptVersion",
+      "toolVersion",
+      "modelRequestSchemaVersion",
+      "pricingVersion",
+    ]
+  ) {
+    const candidate = nonEmptyString(payload[key]);
+    if (candidate) {
+      diagnostics[key] = candidate;
+    }
+  }
+
+  return diagnostics;
 };
 
-const loadTraceRows = async (selector: Selector): Promise<TraceRow[]> => {
+const sanitizeTraceRow = (row: TraceRow): SanitizedTraceRow => ({
+  id: row.id,
+  requestId: row.request_id,
+  correlationId: row.correlation_id,
+  ...(extractTraceAgentOperationId(row)
+    ? { agentOperationId: extractTraceAgentOperationId(row) }
+    : {}),
+  workItemId: nonEmptyString(row.work_item_id ?? null),
+  stepId: nonEmptyString(row.step_id ?? null),
+  attemptId: nonEmptyString(row.attempt_id ?? null),
+  stepName: row.step_name,
+  stepIndex: row.step_index,
+  status: row.status,
+  createdAt: row.created_at,
+  diagnostics: buildTraceDiagnostics(row.payload),
+});
+
+const sanitizeOrchestrationRow = (
+  row: OrchestrationRow,
+): SanitizedOrchestrationRow => ({
+  id: row.id,
+  requestId: row.request_id,
+  correlationId: row.correlation_id,
+  workflow: row.workflow,
+  status: row.status,
+  createdAt: row.created_at,
+  diagnostics: {
+    agentOperationId: extractOrchestrationAgentOperationId(row),
+    idempotencyKeyPresent: typeof row.inputs?.idempotencyKey === "string" &&
+      row.inputs.idempotencyKey.length > 0,
+    hasRollbackPlan: Boolean(
+      row.rollback_plan && Object.keys(row.rollback_plan).length > 0,
+    ),
+  },
+});
+
+const sanitizeSessionAuditRow = (
+  row: SessionAuditRow,
+): SanitizedSessionAuditRow => {
+  const trace = extractAuditTrace(row);
+
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    eventType: row.event_type,
+    createdAt: row.created_at,
+    requestId: trace.requestId,
+    correlationId: trace.correlationId,
+    agentOperationId: trace.agentOperationId,
+    diagnostics: {
+      hasActor: nonEmptyString(row.actor_id) !== null,
+      hasTherapist: nonEmptyString(row.therapist_id) !== null,
+    },
+  };
+};
+
+const loadTraceRows = async (
+  selector: Selector,
+  organizationId: string,
+): Promise<TraceRow[]> => {
   const columns =
-    "id,request_id,correlation_id,conversation_id,user_id,organization_id,step_name,step_index,status,payload,replay_payload,created_at";
+    "id,request_id,correlation_id,conversation_id,user_id,organization_id,work_item_id,step_id,attempt_id,step_name,step_index,status,payload,replay_payload,created_at";
 
   if (selector.correlationId || selector.requestId) {
     let query = supabaseAdmin
       .from("agent_execution_traces")
       .select(columns)
+      .eq("organization_id", organizationId)
       .order("created_at", { ascending: true })
       .limit(500);
 
@@ -228,8 +401,8 @@ const loadTraceRows = async (selector: Selector): Promise<TraceRow[]> => {
     }
 
     const { data, error } = await query;
-    if (error) throw new Error(`Failed to load agent traces: ${error.message}`);
-    return (data ?? []) as TraceRow[];
+    if (error) throw new Error("agent_trace_query_failed");
+    return scopeRowsToOrganization((data ?? []) as TraceRow[], organizationId);
   }
 
   const agentOperationId = selector.agentOperationId as string;
@@ -237,27 +410,39 @@ const loadTraceRows = async (selector: Selector): Promise<TraceRow[]> => {
     supabaseAdmin
       .from("agent_execution_traces")
       .select(columns)
+      .eq("organization_id", organizationId)
       .contains("payload", { agentOperationId })
       .order("created_at", { ascending: true })
       .limit(500),
     supabaseAdmin
       .from("agent_execution_traces")
       .select(columns)
+      .eq("organization_id", organizationId)
       .contains("replay_payload", { agentOperationId })
       .order("created_at", { ascending: true })
       .limit(500),
   ]);
 
-  if (payloadMatch.error) throw new Error(`Failed to load agent traces: ${payloadMatch.error.message}`);
-  if (replayMatch.error) throw new Error(`Failed to load replay traces: ${replayMatch.error.message}`);
+  if (payloadMatch.error || replayMatch.error) {
+    throw new Error("agent_trace_query_failed");
+  }
 
   return mergeUniqueById(
-    (payloadMatch.data ?? []) as TraceRow[],
-    (replayMatch.data ?? []) as TraceRow[],
+    scopeRowsToOrganization(
+      (payloadMatch.data ?? []) as TraceRow[],
+      organizationId,
+    ),
+    scopeRowsToOrganization(
+      (replayMatch.data ?? []) as TraceRow[],
+      organizationId,
+    ),
   ).sort((a, b) => a.created_at.localeCompare(b.created_at));
 };
 
-const loadOrchestrationRows = async (selector: Selector): Promise<OrchestrationRow[]> => {
+const loadOrchestrationRows = async (
+  selector: Selector,
+  organizationId: string,
+): Promise<OrchestrationRow[]> => {
   const columns =
     "id,organization_id,request_id,correlation_id,workflow,status,inputs,outputs,rollback_plan,created_at";
 
@@ -265,6 +450,7 @@ const loadOrchestrationRows = async (selector: Selector): Promise<OrchestrationR
     let query = supabaseAdmin
       .from("scheduling_orchestration_runs")
       .select(columns)
+      .eq("organization_id", organizationId)
       .order("created_at", { ascending: true })
       .limit(500);
 
@@ -275,68 +461,67 @@ const loadOrchestrationRows = async (selector: Selector): Promise<OrchestrationR
     }
 
     const { data, error } = await query;
-    if (error) throw new Error(`Failed to load orchestration runs: ${error.message}`);
-    return (data ?? []) as OrchestrationRow[];
+    if (error) throw new Error("orchestration_query_failed");
+    return scopeRowsToOrganization(
+      (data ?? []) as OrchestrationRow[],
+      organizationId,
+    );
   }
 
   const { data, error } = await supabaseAdmin
     .from("scheduling_orchestration_runs")
     .select(columns)
+    .eq("organization_id", organizationId)
     .contains("inputs", { agentOperationId: selector.agentOperationId })
     .order("created_at", { ascending: true })
     .limit(500);
 
-  if (error) throw new Error(`Failed to load orchestration runs: ${error.message}`);
-  return (data ?? []) as OrchestrationRow[];
+  if (error) throw new Error("orchestration_query_failed");
+  return scopeRowsToOrganization(
+    (data ?? []) as OrchestrationRow[],
+    organizationId,
+  );
 };
 
-const loadIdempotencyRows = async (selector: Selector, keyHints: string[]): Promise<IdempotencyRow[]> => {
-  const columns = "id,endpoint,idempotency_key,status_code,response_body,created_at";
-  let query = supabaseAdmin
-    .from("function_idempotency_keys")
-    .select(columns)
-    .order("created_at", { ascending: true })
-    .limit(500);
-
-  const dedupedKeys = Array.from(new Set(keyHints.filter((key) => key.length > 0)));
-  if (dedupedKeys.length > 0) {
-    query = query.in("idempotency_key", dedupedKeys);
-  } else if (selector.agentOperationId) {
-    query = query.ilike("idempotency_key", `%:${selector.agentOperationId}`);
-  } else {
-    return [];
-  }
-
-  const { data, error } = await query;
-  if (error) throw new Error(`Failed to load idempotency records: ${error.message}`);
-  return (data ?? []) as IdempotencyRow[];
-};
-
-const loadSessionAuditRows = async (selector: Selector): Promise<SessionAuditRow[]> => {
-  const columns = "id,session_id,event_type,event_payload,actor_id,organization_id,therapist_id,created_at";
+const loadSessionAuditRows = async (
+  selector: Selector,
+  organizationId: string,
+): Promise<SessionAuditRow[]> => {
+  const columns =
+    "id,session_id,event_type,event_payload,actor_id,organization_id,therapist_id,created_at";
 
   if (selector.correlationId) {
     const { data, error } = await supabaseAdmin
       .from("session_audit_logs")
       .select(columns)
-      .contains("event_payload", { trace: { correlationId: selector.correlationId } })
+      .eq("organization_id", organizationId)
+      .contains("event_payload", {
+        trace: { correlationId: selector.correlationId },
+      })
       .order("created_at", { ascending: true })
       .limit(500);
 
-    if (error) throw new Error(`Failed to load session audit logs: ${error.message}`);
-    return (data ?? []) as SessionAuditRow[];
+    if (error) throw new Error("session_audit_query_failed");
+    return scopeRowsToOrganization(
+      (data ?? []) as SessionAuditRow[],
+      organizationId,
+    );
   }
 
   if (selector.requestId) {
     const { data, error } = await supabaseAdmin
       .from("session_audit_logs")
       .select(columns)
+      .eq("organization_id", organizationId)
       .contains("event_payload", { trace: { requestId: selector.requestId } })
       .order("created_at", { ascending: true })
       .limit(500);
 
-    if (error) throw new Error(`Failed to load session audit logs: ${error.message}`);
-    return (data ?? []) as SessionAuditRow[];
+    if (error) throw new Error("session_audit_query_failed");
+    return scopeRowsToOrganization(
+      (data ?? []) as SessionAuditRow[],
+      organizationId,
+    );
   }
 
   const agentOperationId = selector.agentOperationId as string;
@@ -344,82 +529,79 @@ const loadSessionAuditRows = async (selector: Selector): Promise<SessionAuditRow
     supabaseAdmin
       .from("session_audit_logs")
       .select(columns)
+      .eq("organization_id", organizationId)
       .contains("event_payload", { agentOperationId })
       .order("created_at", { ascending: true })
       .limit(500),
     supabaseAdmin
       .from("session_audit_logs")
       .select(columns)
+      .eq("organization_id", organizationId)
       .contains("event_payload", { trace: { agentOperationId } })
       .order("created_at", { ascending: true })
       .limit(500),
   ]);
 
-  if (topLevelMatch.error) throw new Error(`Failed to load session audit logs: ${topLevelMatch.error.message}`);
-  if (nestedTraceMatch.error) throw new Error(`Failed to load session audit logs: ${nestedTraceMatch.error.message}`);
+  if (topLevelMatch.error || nestedTraceMatch.error) {
+    throw new Error("session_audit_query_failed");
+  }
 
   return mergeUniqueById(
-    (topLevelMatch.data ?? []) as SessionAuditRow[],
-    (nestedTraceMatch.data ?? []) as SessionAuditRow[],
+    scopeRowsToOrganization(
+      (topLevelMatch.data ?? []) as SessionAuditRow[],
+      organizationId,
+    ),
+    scopeRowsToOrganization(
+      (nestedTraceMatch.data ?? []) as SessionAuditRow[],
+      organizationId,
+    ),
   ).sort((a, b) => a.created_at.localeCompare(b.created_at));
 };
 
 const buildTimeline = (
-  traces: TraceRow[],
-  orchestrations: OrchestrationRow[],
-  idempotencyRows: IdempotencyRow[],
-  auditRows: SessionAuditRow[],
+  traces: SanitizedTraceRow[],
+  orchestrations: SanitizedOrchestrationRow[],
+  auditRows: SanitizedSessionAuditRow[],
 ): TimelineEvent[] => {
   const events: TimelineEvent[] = [
     ...traces.map((row) => ({
       source: "agent_execution_traces" as const,
-      occurredAt: row.created_at,
-      requestId: row.request_id,
-      correlationId: row.correlation_id,
-      agentOperationId: extractTraceAgentOperationId(row),
+      occurredAt: row.createdAt,
+      requestId: row.requestId,
+      correlationId: row.correlationId,
+      agentOperationId: row.agentOperationId ?? null,
       detail: {
-        stepName: row.step_name,
-        stepIndex: row.step_index,
+        stepName: row.stepName,
+        stepIndex: row.stepIndex,
         status: row.status,
+        diagnostics: row.diagnostics,
       },
     })),
     ...orchestrations.map((row) => ({
       source: "scheduling_orchestration_runs" as const,
-      occurredAt: row.created_at,
-      requestId: row.request_id,
-      correlationId: row.correlation_id,
-      agentOperationId: extractOrchestrationAgentOperationId(row),
+      occurredAt: row.createdAt,
+      requestId: row.requestId,
+      correlationId: row.correlationId,
+      agentOperationId: nonEmptyString(row.diagnostics.agentOperationId) ??
+        null,
       detail: {
         workflow: row.workflow,
         status: row.status,
+        diagnostics: row.diagnostics,
       },
     })),
-    ...idempotencyRows.map((row) => ({
-      source: "function_idempotency_keys" as const,
-      occurredAt: row.created_at,
-      requestId: null,
-      correlationId: null,
-      agentOperationId: parseAgentOperationFromIdempotencyKey(row.idempotency_key),
+    ...auditRows.map((row) => ({
+      source: "session_audit_logs" as const,
+      occurredAt: row.createdAt,
+      requestId: row.requestId,
+      correlationId: row.correlationId,
+      agentOperationId: row.agentOperationId,
       detail: {
-        endpoint: row.endpoint,
-        idempotencyKey: row.idempotency_key,
-        statusCode: row.status_code,
+        sessionId: row.sessionId,
+        eventType: row.eventType,
+        diagnostics: row.diagnostics,
       },
     })),
-    ...auditRows.map((row) => {
-      const trace = extractAuditTrace(row);
-      return {
-        source: "session_audit_logs" as const,
-        occurredAt: row.created_at,
-        requestId: trace.requestId,
-        correlationId: trace.correlationId,
-        agentOperationId: trace.agentOperationId,
-        detail: {
-          sessionId: row.session_id,
-          eventType: row.event_type,
-        },
-      };
-    }),
   ];
 
   return events.sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
@@ -427,7 +609,8 @@ const buildTimeline = (
 
 export const __TESTING__ = {
   parseSelector,
-  parseAgentOperationFromIdempotencyKey,
+  scopeRowsToOrganization,
+  sanitizeTraceRow,
   buildTimeline,
 };
 
@@ -445,73 +628,99 @@ Deno.serve(async (req) => {
   try {
     const requestClient = createRequestClient(req);
     const user = await getUserOrThrow(requestClient);
-    await assertAllowedOperator(requestClient);
+    const organizationId = await resolveOrgId(requestClient);
+    if (!organizationId) {
+      throw new Response("Forbidden", { status: 403 });
+    }
+    await assertAllowedOperatorForOrg(requestClient, organizationId);
 
-    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    const body = req.method === "POST"
+      ? await req.json().catch(() => ({}))
+      : {};
     const selector = parseSelector(req, body);
 
     logger.info("report.requested", {
       userId: user.id,
+      organizationId,
       selector,
     });
 
-    const traces = await loadTraceRows(selector);
-    const orchestrations = await loadOrchestrationRows(selector);
+    const traces = await loadTraceRows(selector, organizationId);
+    const orchestrations = await loadOrchestrationRows(
+      selector,
+      organizationId,
+    );
 
-    const idempotencyKeyHints = orchestrations
-      .map((run) => run.inputs?.idempotencyKey)
-      .filter((value): value is string => typeof value === "string" && value.length > 0);
-    const idempotencyRows = await loadIdempotencyRows(selector, idempotencyKeyHints);
-    const auditRows = await loadSessionAuditRows(selector);
+    const auditRows = await loadSessionAuditRows(selector, organizationId);
 
-    const timeline = buildTimeline(traces, orchestrations, idempotencyRows, auditRows);
+    const sanitizedTraces = traces.map(sanitizeTraceRow);
+    const sanitizedOrchestrations = orchestrations.map(
+      sanitizeOrchestrationRow,
+    );
+    const sanitizedAuditRows = auditRows.map(sanitizeSessionAuditRow);
+
+    const timeline = buildTimeline(
+      sanitizedTraces,
+      sanitizedOrchestrations,
+      sanitizedAuditRows,
+    );
 
     const summary = {
-      traces: traces.length,
-      orchestrationRuns: orchestrations.length,
-      idempotencyRows: idempotencyRows.length,
-      sessionAuditRows: auditRows.length,
+      traces: sanitizedTraces.length,
+      orchestrationRuns: sanitizedOrchestrations.length,
+      sessionAuditRows: sanitizedAuditRows.length,
       timelineEvents: timeline.length,
-      requestIds: Array.from(new Set([
-        ...traces.map((row) => row.request_id),
-        ...orchestrations.map((row) => row.request_id),
-        ...timeline.map((event) => event.requestId).filter((value): value is string => typeof value === "string"),
-      ])),
-      correlationIds: Array.from(new Set([
-        ...traces.map((row) => row.correlation_id),
-        ...orchestrations.map((row) => row.correlation_id),
-        ...timeline.map((event) => event.correlationId).filter((value): value is string => typeof value === "string"),
-      ])),
-      agentOperationIds: Array.from(new Set(
-        timeline
-          .map((event) => event.agentOperationId)
-          .filter((value): value is string => typeof value === "string"),
-      )),
+      requestIds: Array.from(
+        new Set([
+          ...sanitizedTraces.map((row) => row.requestId),
+          ...sanitizedOrchestrations.map((row) => row.requestId),
+          ...timeline.map((event) => event.requestId).filter((
+            value,
+          ): value is string => typeof value === "string"),
+        ]),
+      ),
+      correlationIds: Array.from(
+        new Set([
+          ...sanitizedTraces.map((row) => row.correlationId),
+          ...sanitizedOrchestrations.map((row) => row.correlationId),
+          ...timeline.map((event) => event.correlationId).filter((
+            value,
+          ): value is string => typeof value === "string"),
+        ]),
+      ),
+      agentOperationIds: Array.from(
+        new Set(
+          timeline
+            .map((event) => event.agentOperationId)
+            .filter((value): value is string => typeof value === "string"),
+        ),
+      ),
     };
 
     return jsonResponse({
       success: true,
       data: {
         selector,
+        organizationId,
         summary,
         timeline,
-        traces,
-        orchestrationRuns: orchestrations,
-        idempotency: idempotencyRows,
-        sessionAudit: auditRows,
+        traces: sanitizedTraces,
+        orchestrationRuns: sanitizedOrchestrations,
+        sessionAudit: sanitizedAuditRows,
       },
     });
   } catch (error) {
     if (error instanceof Response) {
-      return jsonResponse({ success: false, error: await error.text() }, error.status);
+      return jsonResponse(
+        { success: false, error: await error.text() },
+        error.status,
+      );
     }
 
-    logger.error("report.failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.error("report.failed", { errorCode: "trace_report_failed" });
 
     return jsonResponse(
-      { success: false, error: error instanceof Error ? error.message : "Internal server error" },
+      { success: false, error: "Internal server error" },
       500,
     );
   }

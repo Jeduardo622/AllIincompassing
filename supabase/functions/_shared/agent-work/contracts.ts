@@ -160,3 +160,51 @@ export type ModelStepSuggestion = {
   proposedToolAllowlist?: string[];
   proposedCompletionCriteria?: Record<string, unknown>;
 };
+
+export type AgentWorkModelCorrelation = {
+  organizationId: string;
+  clientId: string | null;
+  workItemId: string;
+  stepId: string;
+  attemptId: string;
+  workflowVersion: number;
+  correlationId: string;
+};
+
+export type AgentWorkModelAttemptAuthority = AgentWorkModelCorrelation & {
+  workflowKey: string;
+  stepKey: string;
+  attemptStatus: "running";
+  promptVersion: string | null;
+  toolVersion: string | null;
+  allowedTools: string[];
+  guardedTools: string[];
+  blockerCodes: string[];
+  suggestedActionCodes: string[];
+  evidenceSourceIds: string[];
+};
+
+export type AgentWorkModelAttemptSnapshot = {
+  provider: string;
+  model: string;
+  promptVersion: string;
+  toolVersion: string;
+  workflowVersion: number;
+  temperature: number;
+  modelRequestSchemaVersion: string;
+  pricingVersion: string;
+};
+
+export type AssessmentRemediationSuggestion = {
+  blockerCode: string;
+  suggestedActionCode: string;
+  evidenceSourceIds: string[];
+  confidence: number;
+  requiresHumanReview: true;
+};
+
+export type AssessmentRemediationAllowlist = {
+  blockerCodes: string[];
+  suggestedActionCodes: string[];
+  evidenceSourceIds: string[];
+};

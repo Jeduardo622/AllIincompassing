@@ -114,6 +114,16 @@ const FUNCTION_CONTRACTS = [
     execute: { public: false, anon: false, authenticated: false, service_role: true },
   },
   {
+    signature: "snapshot_agent_work_model_attempt(uuid,uuid,uuid,uuid,uuid,uuid,integer,text,text,text,text,text,text,numeric,text,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "record_agent_work_model_attempt_result(uuid,uuid,uuid,uuid,uuid,uuid,integer,integer,numeric,text,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
     signature: "claim_queued_agent_work_step(uuid,uuid,text,integer)",
     searchPath: "\"\"",
     execute: { public: false, anon: false, authenticated: false, service_role: true },
@@ -2112,6 +2122,175 @@ const assertClaimEligibility = async (client) => {
   assert(humanClaimCount === 0, `Human execution steps must be unclaimable, found ${humanClaimCount} claimed row(s)`);
 };
 
+const assertModelAttemptSnapshot = async (client) => {
+  const workItemId = randomUUID();
+  const stepId = randomUUID();
+  const attemptId = randomUUID();
+  const evidenceSourceId = randomUUID();
+  const outOfScopeEvidenceSourceId = randomUUID();
+
+  await withOwnerSetupAndActor(
+    client,
+    async () => {
+      await client.query(
+        `
+          insert into public.agent_work_items (
+            id, organization_id, client_id, workflow_key, workflow_version,
+            objective, status, dedupe_key
+          ) values (
+            $1::uuid, $2::uuid, $3::uuid,
+            'assessment.iehp.prepare_for_clinical_review', 1,
+            'Synthetic model-attempt contract fixture.', 'running', $4::text
+          )
+        `,
+        [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `model-attempt-${RUN_TOKEN}`],
+      );
+      await client.query(
+        `
+          insert into public.agent_work_steps (
+            id, work_item_id, organization_id, client_id, step_key, ordinal,
+            execution_mode, status, attempt_count, lease_owner
+          ) values (
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+            'validate_review_evidence', 10, 'model_suggested', 'running', 1,
+            'model-contract-worker'
+          )
+        `,
+        [stepId, workItemId, FIXTURES.orgA, FIXTURES.clientAssigned],
+      );
+      await client.query(
+        `
+          insert into public.agent_work_attempts (
+            id, work_item_id, step_id, organization_id, client_id,
+            attempt_number, worker_id, status
+          ) values (
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+            1, 'model-contract-worker', 'running'
+          )
+        `,
+        [attemptId, workItemId, stepId, FIXTURES.orgA, FIXTURES.clientAssigned],
+      );
+      await client.query(
+        `
+          insert into public.agent_work_evidence (
+            work_item_id, step_id, organization_id, client_id,
+            source_kind, source_id, sha256, metadata
+          ) values (
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+            'assessment_checklist_item', $5::uuid, $6::text, '{}'::jsonb
+          )
+        `,
+        [
+          workItemId,
+          stepId,
+          FIXTURES.orgA,
+          FIXTURES.clientAssigned,
+          evidenceSourceId,
+          HASH_A,
+        ],
+      );
+      await client.query(
+        `
+          insert into public.agent_work_evidence (
+            work_item_id, step_id, organization_id, client_id,
+            source_kind, source_id, sha256, metadata
+          ) values (
+            $1::uuid, null, $2::uuid, $3::uuid,
+            'assessment_checklist_item', $4::uuid, $5::text, '{}'::jsonb
+          )
+        `,
+        [
+          workItemId,
+          FIXTURES.orgA,
+          FIXTURES.clientAssigned,
+          outOfScopeEvidenceSourceId,
+          HASH_B,
+        ],
+      );
+    },
+    "service_role",
+    "service_role",
+    FIXTURES.adminA,
+    async () => {
+      const snapshotArgs = [
+        FIXTURES.adminA,
+        FIXTURES.orgA,
+        FIXTURES.clientAssigned,
+        workItemId,
+        stepId,
+        attemptId,
+        1,
+        `corr-${RUN_TOKEN}`,
+        `req-${RUN_TOKEN}`,
+        "openai",
+        "gpt-4o",
+        "v1",
+        "v1",
+        0.2,
+        "assessment-remediation-code-only-v1",
+        "gpt-4o-estimate-v1",
+      ];
+      const { rows: snapshotRows } = await client.query(
+        "select * from public.snapshot_agent_work_model_attempt($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::integer,$8::text,$9::text,$10::text,$11::text,$12::text,$13::text,$14::numeric,$15::text,$16::text)",
+        snapshotArgs,
+      );
+      assert(snapshotRows.length === 1, "Expected one authoritative model-attempt snapshot row");
+      assert(
+        snapshotRows[0].evidence_source_ids?.includes(evidenceSourceId),
+        "Snapshot must return the authoritative evidence source",
+      );
+      assert(
+        !snapshotRows[0].evidence_source_ids?.includes(outOfScopeEvidenceSourceId),
+        "Snapshot must exclude evidence outside the bound model-attempt step",
+      );
+
+      await expectFailureInTransaction(
+        client,
+        "duplicate model-attempt snapshot",
+        () =>
+          client.query(
+            "select * from public.snapshot_agent_work_model_attempt($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::integer,$8::text,$9::text,$10::text,$11::text,$12::text,$13::text,$14::numeric,$15::text,$16::text)",
+            snapshotArgs,
+          ),
+        /already snapshotted/i,
+      );
+
+      await client.query(
+        "select public.record_agent_work_model_attempt_result($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::integer,$8::integer,$9::numeric,$10::text,$11::text)",
+        [
+          FIXTURES.adminA,
+          FIXTURES.orgA,
+          FIXTURES.clientAssigned,
+          workItemId,
+          stepId,
+          attemptId,
+          12,
+          5,
+          0.00008,
+          null,
+          null,
+        ],
+      );
+
+      const { rows } = await client.query(
+        `
+          select attempt.provider, attempt.model, attempt.input_token_count,
+                 attempt.output_token_count, step.status as step_status
+          from public.agent_work_attempts attempt
+          join public.agent_work_steps step on step.id = attempt.step_id
+          where attempt.id = $1::uuid
+        `,
+        [attemptId],
+      );
+      assert(rows[0]?.provider === "openai", "Snapshot provider was not persisted");
+      assert(rows[0]?.model === "gpt-4o", "Snapshot model was not persisted");
+      assert(rows[0]?.input_token_count === 12, "Input token count was not recorded");
+      assert(rows[0]?.output_token_count === 5, "Output token count was not recorded");
+      assert(rows[0]?.step_status === "running", "Model result must not transition the workflow step");
+    },
+  );
+};
+
 const assertHumanTransitionDenials = async (client) => {
   const transitions = [
     ["pending", "ready"],
@@ -2862,6 +3041,7 @@ const main = async () => {
     await assertParentEndpointReadPolicy(client, assignedWorkItemId, unassignedWorkItemId);
     await assertApprovalRoleEnforcement(client, assignedWorkItemId);
     await assertClaimEligibility(client);
+    await assertModelAttemptSnapshot(client);
     await assertHumanTransitionDenials(client);
     await assertAttemptSettlement(client);
     await assertApprovalTransitionGate(client);

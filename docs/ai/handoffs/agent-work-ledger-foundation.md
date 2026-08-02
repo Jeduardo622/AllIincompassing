@@ -483,3 +483,74 @@ Stop and re-route if the work would:
 - protected-path drift: none outside the explicitly routed migration, runner, chaos, package-command, and operations-doc surfaces
 - verification summary: present above, including intentionally unrun checks and residual risks
 - required follow-up: commit Task 10 separately, reroute Task 11 fresh, and keep hosted/GitHub actions blocked pending explicit authorization
+
+## Task 11 Route
+
+- date: `2026-08-02`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- intent: correlate one advisory-only model attempt with an exact authoritative ledger scope, persist a reproducible pre-provider snapshot and post-provider usage result, and expose only tenant-scoped sanitized trace diagnostics
+- triggering paths:
+  - `supabase/migrations/20260801090000_agent_work_ledger_core.sql`
+  - `supabase/functions/_shared/agent-work/**`
+  - `supabase/functions/ai-agent-optimized/index.ts`
+  - `supabase/functions/agent-trace-report/index.ts`
+  - focused tests and the existing local security contract
+- allowed scope: the smallest coherent migration, shared-policy, guarded handler, sanitized trace-report, focused-test, security-contract, and handoff slice required by Task 11
+- non-goals: live model-step activation, queue/runner/workflow-graph changes, model authority, clinical mutation, hosted access, provider contact, push, PR, or deploy
+- stop conditions: any new clinical authority, non-advisory runtime mode, unscoped trace/evidence access, external credential/provider requirement, or scope outside the named Task 11 surfaces
+- required agents: specification, implementation, code review, test, security, architecture, Supabase, and documentation specialists
+- reviewer required: yes
+- verify-change required: yes
+- linear required: yes, already tracked under `WIN-271`
+
+## Task 11 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database/RLS/migration/tenant isolation; Supabase Edge integration; advisory model policy; tenant-scoped operational reporting; tests and handoff documentation
+- files touched: core ledger migration; shared agent-work contracts/policy/model-policy tests; `ai-agent-optimized`; `agent-trace-report`; focused migration/handler/trace tests; local security contract; this handoff
+- specialist dispositions:
+  - specification and architecture: approved the bounded advisory-only design and exact correlation authority
+  - code review: initial authority, replay, trace, and evidence-scope findings were repaired; final step-scope blocker was re-reviewed as merge-ready
+  - security: approved after manager-only attempt reads, no pre-snapshot ledger traces, strict ingress/output validation, and fail-closed result recording
+  - Supabase: approved service-role-only grants, hardened search paths, composite trace integrity, tenant RLS, and live local RPC proof
+  - test: required focused handler, malformed-output, denied-snapshot, recording-failure, and live database coverage; all implemented
+  - documentation: recorded the local-only route and verification evidence
+- passed evidence:
+  - final focused Vitest `21/21`
+  - Deno shared suite `51/51`
+  - fresh local database reset with both ledger migrations
+  - live security contract, including service-role-only RPC grants, authoritative step-scoped evidence, duplicate-snapshot denial, result persistence, and no step transition
+  - `npm run ci:check-focused`
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run validate:tenant`
+  - `npm run build`
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci` with `447` files / `3699` tests passed and `2` files / `5` environment-gated tests skipped
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`, including coverage, build, and `220/220` Cypress tier-0 route checks
+  - `git diff --check`
+- blocked evidence:
+  - direct `deno check` of the full `ai-agent-optimized` function remains blocked because the exact `zod@3.23.8` package is absent from local `node_modules`; no network install or `deno.lock` mutation was permitted
+- result: `pass-with-blocked-checks`
+- residual risk: the provider path is proven with a fake only, direct full-function Deno checking remains blocked as above, and hosted runtime behavior is intentionally untested. Human review remains mandatory before merge.
+
+## Task 11 Specialist Findings
+
+- caller-supplied blocker, action, and evidence allowlists were replaced with authoritative RPC-returned values; the final evidence allowlist is bound to the exact attempt step
+- ledger ingress rejects free-form message/context/completion claims, tools remain empty, model output is code/UUID-only and always requires human review
+- duplicate attempt snapshots are denied, and provider success/failure cannot return unless result recording succeeds
+- attempt metadata is manager-only, trace ledger IDs have composite tenant integrity, trace RLS is org-scoped, and the trace report no longer reads the tenantless idempotency store
+- traces remain replay-payload-free and expose only sanitized operational diagnostics
+
+## Task 11 PR Hygiene
+
+- pr-ready: `yes` for local human review; push and PR remain unauthorized
+- lane: `critical`
+- branch-ready: `yes` (`codex/agent-work-ledger-foundation`)
+- linear-ready: `yes` (`WIN-271`)
+- single-purpose: `yes`
+- unrelated changes: `deno.lock` and generated reports remain excluded
+- protected-path drift: intentional and contained to the routed core migration and Supabase functions
+- verification summary: recorded above
+- required follow-up: commit Task 11 separately, update `WIN-271`, reroute Task 12 fresh, and keep all GitHub/hosted actions blocked pending explicit authorization

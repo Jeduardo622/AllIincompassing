@@ -336,6 +336,8 @@ create table if not exists public.agent_work_attempts (
   prompt_version text,
   tool_version text,
   workflow_version integer,
+  temperature numeric(4,3),
+  model_request_schema_version text,
   input_token_count integer,
   output_token_count integer,
   pricing_version text,
@@ -346,6 +348,9 @@ create table if not exists public.agent_work_attempts (
   updated_at timestamptz not null default timezone('utc', now()),
   finished_at timestamptz,
   constraint agent_work_attempts_worker_id_not_blank check (length(trim(worker_id)) > 0),
+  constraint agent_work_attempts_temperature_range check (
+    temperature is null or (temperature >= 0 and temperature <= 2)
+  ),
   constraint agent_work_attempts_work_item_fk
     foreign key (work_item_id, organization_id)
     references public.agent_work_items(id, organization_id)
@@ -568,16 +573,49 @@ alter table public.agent_execution_traces
   add column if not exists step_id uuid,
   add column if not exists attempt_id uuid;
 
+create unique index if not exists agent_work_steps_id_work_org_uidx
+  on public.agent_work_steps (id, work_item_id, organization_id);
+
+create unique index if not exists agent_work_attempts_id_step_work_org_uidx
+  on public.agent_work_attempts (id, step_id, work_item_id, organization_id);
+
 alter table public.agent_execution_traces
+  drop constraint if exists agent_execution_traces_ledger_scope_chk,
+  add constraint agent_execution_traces_ledger_scope_chk check (
+    (work_item_id is null or organization_id is not null)
+    and (step_id is null or (work_item_id is not null and organization_id is not null))
+    and (attempt_id is null or (step_id is not null and work_item_id is not null and organization_id is not null))
+  ),
   drop constraint if exists agent_execution_traces_work_item_id_fkey,
   add constraint agent_execution_traces_work_item_id_fkey
-    foreign key (work_item_id) references public.agent_work_items(id) on delete set null,
+    foreign key (work_item_id, organization_id)
+    references public.agent_work_items(id, organization_id) on delete restrict,
   drop constraint if exists agent_execution_traces_step_id_fkey,
   add constraint agent_execution_traces_step_id_fkey
-    foreign key (step_id) references public.agent_work_steps(id) on delete set null,
+    foreign key (step_id, work_item_id, organization_id)
+    references public.agent_work_steps(id, work_item_id, organization_id) on delete restrict,
   drop constraint if exists agent_execution_traces_attempt_id_fkey,
   add constraint agent_execution_traces_attempt_id_fkey
-    foreign key (attempt_id) references public.agent_work_attempts(id) on delete set null;
+    foreign key (attempt_id, step_id, work_item_id, organization_id)
+    references public.agent_work_attempts(id, step_id, work_item_id, organization_id) on delete restrict;
+
+drop policy if exists agent_execution_traces_admin_read on public.agent_execution_traces;
+create policy agent_execution_traces_admin_read
+  on public.agent_execution_traces
+  for select
+  to authenticated
+  using (
+    public.current_user_is_super_admin()
+    or (
+      organization_id is not null
+      and organization_id = app.current_user_organization_id()
+      and app.user_has_role_for_org(
+        auth.uid(),
+        organization_id,
+        array['admin', 'org_admin', 'super_admin', 'org_super_admin', 'monitoring']
+      )
+    )
+  );
 
 create index if not exists agent_execution_traces_work_item_idx
   on public.agent_execution_traces (work_item_id)
@@ -1527,6 +1565,299 @@ begin
 end;
 $$;
 
+create or replace function public.snapshot_agent_work_model_attempt(
+  p_actor_user_id uuid,
+  p_organization_id uuid,
+  p_client_id uuid,
+  p_work_item_id uuid,
+  p_step_id uuid,
+  p_attempt_id uuid,
+  p_workflow_version integer,
+  p_correlation_id text,
+  p_request_id text,
+  p_provider text,
+  p_model text,
+  p_prompt_version text,
+  p_tool_version text,
+  p_temperature numeric,
+  p_model_request_schema_version text,
+  p_pricing_version text
+)
+returns table (
+  organization_id uuid,
+  client_id uuid,
+  work_item_id uuid,
+  step_id uuid,
+  attempt_id uuid,
+  workflow_key text,
+  workflow_version integer,
+  step_key text,
+  attempt_status public.agent_work_attempt_status,
+  prompt_version text,
+  tool_version text,
+  allowed_tools text[],
+  guarded_tools text[],
+  blocker_codes text[],
+  suggested_action_codes text[],
+  evidence_source_ids uuid[]
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_attempt record;
+  v_evidence_source_ids uuid[];
+  v_safe_identifier_pattern constant text := '^[A-Za-z0-9][A-Za-z0-9._:@/\\-]{0,127}$';
+begin
+  if p_actor_user_id is null
+    or p_organization_id is null
+    or p_work_item_id is null
+    or p_step_id is null
+    or p_attempt_id is null
+    or p_workflow_version is null
+    or p_workflow_version <= 0
+    or p_correlation_id is null
+    or btrim(p_correlation_id) !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+    or p_request_id is null
+    or btrim(p_request_id) !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+    or p_provider is null
+    or btrim(p_provider) !~ v_safe_identifier_pattern
+    or p_model is null
+    or btrim(p_model) !~ v_safe_identifier_pattern
+    or p_prompt_version is null
+    or btrim(p_prompt_version) !~ v_safe_identifier_pattern
+    or p_tool_version is null
+    or btrim(p_tool_version) !~ v_safe_identifier_pattern
+    or p_temperature is null
+    or p_temperature < 0
+    or p_temperature > 2
+    or p_model_request_schema_version is null
+    or btrim(p_model_request_schema_version) !~ v_safe_identifier_pattern
+    or p_pricing_version is null
+    or btrim(p_pricing_version) !~ v_safe_identifier_pattern then
+    raise exception 'Invalid model attempt snapshot';
+  end if;
+
+  if not app.actor_can_manage_agent_work_row(
+    p_actor_user_id,
+    p_organization_id,
+    p_client_id
+  ) then
+    raise exception 'Forbidden';
+  end if;
+
+  select
+    attempt.*,
+    item.workflow_key as bound_workflow_key,
+    item.workflow_version as bound_workflow_version,
+    step.step_key as bound_step_key
+  into v_attempt
+  from public.agent_work_attempts attempt
+  join public.agent_work_steps step
+    on step.id = attempt.step_id
+    and step.work_item_id = attempt.work_item_id
+  join public.agent_work_items item
+    on item.id = attempt.work_item_id
+    and item.organization_id = attempt.organization_id
+  where attempt.id = p_attempt_id
+    and attempt.organization_id = p_organization_id
+    and attempt.client_id is not distinct from p_client_id
+    and attempt.work_item_id = p_work_item_id
+    and attempt.step_id = p_step_id
+    and attempt.status = 'running'
+    and step.organization_id = p_organization_id
+    and step.client_id is not distinct from p_client_id
+    and step.status = 'running'
+    and step.step_key = 'validate_review_evidence'
+    and item.client_id is not distinct from p_client_id
+    and item.workflow_key = 'assessment.iehp.prepare_for_clinical_review'
+    and item.workflow_version = p_workflow_version
+  for update of attempt;
+
+  if not found then
+    raise exception 'Unknown or mismatched model attempt';
+  end if;
+
+  if not exists (
+    select 1
+    from public.agent_prompt_tool_versions version
+    where version.prompt_version = btrim(p_prompt_version)
+      and version.tool_version = btrim(p_tool_version)
+      and version.status = 'active'
+      and version.is_current = true
+  ) then
+    raise exception 'Prompt/tool version unavailable';
+  end if;
+
+  select array_agg(distinct evidence.source_id order by evidence.source_id)
+  into v_evidence_source_ids
+  from public.agent_work_evidence evidence
+  where evidence.work_item_id = p_work_item_id
+    and evidence.step_id = p_step_id
+    and evidence.organization_id = p_organization_id
+    and evidence.client_id is not distinct from p_client_id;
+
+  if coalesce(cardinality(v_evidence_source_ids), 0) = 0 then
+    raise exception 'No authoritative evidence sources';
+  end if;
+
+  if v_attempt.provider is not null
+    or v_attempt.model is not null
+    or v_attempt.prompt_version is not null
+    or v_attempt.tool_version is not null
+    or v_attempt.workflow_version is not null
+    or v_attempt.temperature is not null
+    or v_attempt.model_request_schema_version is not null
+    or v_attempt.pricing_version is not null then
+    if v_attempt.provider is distinct from btrim(p_provider)
+      or v_attempt.model is distinct from btrim(p_model)
+      or v_attempt.prompt_version is distinct from btrim(p_prompt_version)
+      or v_attempt.tool_version is distinct from btrim(p_tool_version)
+      or v_attempt.workflow_version is distinct from p_workflow_version
+      or v_attempt.temperature is distinct from p_temperature
+      or v_attempt.model_request_schema_version is distinct from btrim(p_model_request_schema_version)
+      or v_attempt.pricing_version is distinct from btrim(p_pricing_version)
+      or v_attempt.correlation_id is distinct from btrim(p_correlation_id)
+      or v_attempt.request_id is distinct from btrim(p_request_id) then
+      raise exception 'Attempt snapshot mismatch';
+    end if;
+
+    raise exception 'Attempt already snapshotted';
+  end if;
+
+  update public.agent_work_attempts attempt
+  set correlation_id = btrim(p_correlation_id),
+      request_id = btrim(p_request_id),
+      provider = btrim(p_provider),
+      model = btrim(p_model),
+      prompt_version = btrim(p_prompt_version),
+      tool_version = btrim(p_tool_version),
+      workflow_version = p_workflow_version,
+      temperature = p_temperature,
+      model_request_schema_version = btrim(p_model_request_schema_version),
+      pricing_version = btrim(p_pricing_version),
+      updated_at = timezone('utc', now())
+  where attempt.id = p_attempt_id;
+
+  return query
+  select
+    p_organization_id,
+    p_client_id,
+    p_work_item_id,
+    p_step_id,
+    p_attempt_id,
+    v_attempt.bound_workflow_key,
+    v_attempt.bound_workflow_version,
+    v_attempt.bound_step_key,
+    'running'::public.agent_work_attempt_status,
+    btrim(p_prompt_version),
+    btrim(p_tool_version),
+    array[]::text[],
+    array[]::text[],
+    array['missing_required_evidence', 'invalid_required_evidence']::text[],
+    array['request_missing_evidence', 'request_clinical_review']::text[],
+    v_evidence_source_ids;
+end;
+$$;
+
+create or replace function public.record_agent_work_model_attempt_result(
+  p_actor_user_id uuid,
+  p_organization_id uuid,
+  p_client_id uuid,
+  p_work_item_id uuid,
+  p_step_id uuid,
+  p_attempt_id uuid,
+  p_input_token_count integer,
+  p_output_token_count integer,
+  p_computed_cost numeric,
+  p_error_class text,
+  p_error_code text
+)
+returns public.agent_work_attempts
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_attempt public.agent_work_attempts%rowtype;
+begin
+  if p_actor_user_id is null
+    or p_organization_id is null
+    or p_work_item_id is null
+    or p_step_id is null
+    or p_attempt_id is null
+    or p_input_token_count is null
+    or p_input_token_count < 0
+    or p_output_token_count is null
+    or p_output_token_count < 0
+    or p_computed_cost is null
+    or p_computed_cost < 0
+    or (p_error_class is not null and btrim(p_error_class) !~ '^[a-z0-9][a-z0-9._:-]{0,127}$')
+    or (p_error_code is not null and btrim(p_error_code) !~ '^[a-z0-9][a-z0-9._:-]{0,127}$') then
+    raise exception 'Invalid model attempt result';
+  end if;
+
+  if not app.actor_can_manage_agent_work_row(
+    p_actor_user_id,
+    p_organization_id,
+    p_client_id
+  ) then
+    raise exception 'Forbidden';
+  end if;
+
+  select attempt.*
+  into v_attempt
+  from public.agent_work_attempts attempt
+  where attempt.id = p_attempt_id
+    and attempt.organization_id = p_organization_id
+    and attempt.client_id is not distinct from p_client_id
+    and attempt.work_item_id = p_work_item_id
+    and attempt.step_id = p_step_id
+    and attempt.status = 'running'
+  for update;
+
+  if not found
+    or v_attempt.provider is null
+    or v_attempt.model is null
+    or v_attempt.prompt_version is null
+    or v_attempt.tool_version is null
+    or v_attempt.workflow_version is null
+    or v_attempt.temperature is null
+    or v_attempt.model_request_schema_version is null
+    or v_attempt.pricing_version is null then
+    raise exception 'Unsnapshotted model attempt';
+  end if;
+
+  if v_attempt.input_token_count is not null
+    or v_attempt.output_token_count is not null
+    or v_attempt.computed_cost is not null
+    or v_attempt.error_class is not null
+    or v_attempt.error_code is not null then
+    if v_attempt.input_token_count is distinct from p_input_token_count
+      or v_attempt.output_token_count is distinct from p_output_token_count
+      or v_attempt.computed_cost is distinct from p_computed_cost
+      or v_attempt.error_class is distinct from nullif(btrim(p_error_class), '')
+      or v_attempt.error_code is distinct from nullif(btrim(p_error_code), '') then
+      raise exception 'Attempt result mismatch';
+    end if;
+    return v_attempt;
+  end if;
+
+  update public.agent_work_attempts attempt
+  set input_token_count = p_input_token_count,
+      output_token_count = p_output_token_count,
+      computed_cost = p_computed_cost,
+      error_class = nullif(btrim(p_error_class), ''),
+      error_code = nullif(btrim(p_error_code), ''),
+      updated_at = timezone('utc', now())
+  where attempt.id = p_attempt_id
+  returning attempt.* into v_attempt;
+
+  return v_attempt;
+end;
+$$;
+
 revoke all on function app.current_user_can_read_agent_work_row(uuid, uuid) from public, anon;
 revoke all on function app.current_user_can_manage_agent_work_row(uuid, uuid) from public, anon;
 revoke all on function app.actor_can_manage_agent_work_row(uuid, uuid, uuid) from public, anon, authenticated;
@@ -1536,6 +1867,8 @@ revoke all on function public.agent_work_recompute_item_status(uuid) from public
 revoke all on function public.create_agent_assessment_work_item(uuid, uuid, uuid, uuid, integer, text) from public, anon, authenticated;
 revoke all on function public.claim_agent_work_step(uuid, text, integer) from public, anon, authenticated;
 revoke all on function public.transition_agent_work_step(uuid, bigint, public.agent_work_step_status, text, text, jsonb) from public, anon, authenticated;
+revoke all on function public.snapshot_agent_work_model_attempt(uuid, uuid, uuid, uuid, uuid, uuid, integer, text, text, text, text, text, text, numeric, text, text) from public, anon, authenticated, service_role;
+revoke all on function public.record_agent_work_model_attempt_result(uuid, uuid, uuid, uuid, uuid, uuid, integer, integer, numeric, text, text) from public, anon, authenticated, service_role;
 
 grant execute on function app.current_user_can_read_agent_work_row(uuid, uuid) to authenticated, service_role;
 grant execute on function app.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
@@ -1545,6 +1878,8 @@ grant execute on function public.current_user_can_manage_agent_work_row(uuid, uu
 grant execute on function public.create_agent_assessment_work_item(uuid, uuid, uuid, uuid, integer, text) to service_role;
 grant execute on function public.claim_agent_work_step(uuid, text, integer) to service_role;
 grant execute on function public.transition_agent_work_step(uuid, bigint, public.agent_work_step_status, text, text, jsonb) to service_role;
+grant execute on function public.snapshot_agent_work_model_attempt(uuid, uuid, uuid, uuid, uuid, uuid, integer, text, text, text, text, text, text, numeric, text, text) to service_role;
+grant execute on function public.record_agent_work_model_attempt_result(uuid, uuid, uuid, uuid, uuid, uuid, integer, integer, numeric, text, text) to service_role;
 
 alter table public.agent_work_items enable row level security;
 alter table public.agent_work_items force row level security;
@@ -1709,7 +2044,7 @@ create policy agent_work_attempts_org_read
   on public.agent_work_attempts
   for select
   to authenticated
-  using (app.current_user_can_read_agent_work_row(organization_id, client_id));
+  using (app.current_user_can_manage_agent_work_row(organization_id, client_id));
 
 create policy agent_work_effects_org_read
   on public.agent_work_effects

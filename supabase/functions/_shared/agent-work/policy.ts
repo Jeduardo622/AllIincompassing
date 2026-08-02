@@ -104,6 +104,136 @@ const ACTOR_KINDS = new Set<AgentWorkActorKind>([
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const SAFE_CODE_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
+const SAFE_CORRELATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const REMEDIATION_SUGGESTION_KEYS = new Set([
+  "blockerCode",
+  "suggestedActionCode",
+  "evidenceSourceIds",
+  "confidence",
+  "requiresHumanReview",
+]);
+
+export type ModelPolicyDecision = {
+  allowed: boolean;
+  reasonCode: string;
+};
+
+export type RemediationSuggestionDecision = ModelPolicyDecision & {
+  suggestion?: AssessmentRemediationSuggestion;
+};
+
+export function validateModelAttemptScope(
+  correlation: AgentWorkModelCorrelation,
+  authority: AgentWorkModelAttemptAuthority | null,
+): ModelPolicyDecision {
+  if (!authority) return modelDeny("unknown_attempt");
+  if (!isValidModelCorrelation(correlation)) {
+    return modelDeny("scope_missing_or_invalid");
+  }
+
+  if (
+    authority.organizationId !== correlation.organizationId ||
+    authority.clientId !== correlation.clientId ||
+    authority.workItemId !== correlation.workItemId ||
+    authority.stepId !== correlation.stepId ||
+    authority.attemptId !== correlation.attemptId ||
+    authority.workflowVersion !== correlation.workflowVersion ||
+    authority.correlationId !== correlation.correlationId
+  ) {
+    return modelDeny("scope_mismatch");
+  }
+  if (
+    authority.attemptStatus !== "running" ||
+    !isSafeCode(authority.workflowKey) ||
+    !isSafeCode(authority.stepKey)
+  ) {
+    return modelDeny("attempt_not_runnable");
+  }
+  if (
+    !authority.promptVersion || !isSafeVersion(authority.promptVersion) ||
+    !authority.toolVersion || !isSafeVersion(authority.toolVersion)
+  ) {
+    return modelDeny("attempt_snapshot_incomplete");
+  }
+  if (
+    !isSafeToolList(authority.allowedTools) ||
+    !isSafeToolList(authority.guardedTools) ||
+    !isSafeCodeList(authority.blockerCodes, true) ||
+    !isSafeCodeList(authority.suggestedActionCodes, true) ||
+    !isUuidList(authority.evidenceSourceIds, true)
+  ) {
+    return modelDeny("attempt_policy_invalid");
+  }
+
+  return { allowed: true, reasonCode: "allowed" };
+}
+
+export function validateModelToolInvocation(
+  tool: string,
+  policy: Pick<AgentWorkModelAttemptAuthority, "allowedTools" | "guardedTools">,
+): ModelPolicyDecision {
+  if (!isSafeCode(tool) || !policy.allowedTools.includes(tool)) {
+    return modelDeny("forbidden_tool");
+  }
+  if (!policy.guardedTools.includes(tool)) {
+    return modelDeny("unguarded_tool");
+  }
+  return { allowed: true, reasonCode: "allowed" };
+}
+
+export function validateAssessmentRemediationSuggestion(
+  value: unknown,
+  allowlist: AssessmentRemediationAllowlist,
+): RemediationSuggestionDecision {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return modelDeny("model_output_invalid");
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).some((key) => !REMEDIATION_SUGGESTION_KEYS.has(key))
+  ) {
+    return modelDeny("model_output_key_forbidden");
+  }
+
+  const blockerCode = record.blockerCode;
+  const suggestedActionCode = record.suggestedActionCode;
+  const evidenceSourceIds = record.evidenceSourceIds;
+  const confidence = record.confidence;
+  if (
+    typeof blockerCode !== "string" ||
+    !isSafeCode(blockerCode) ||
+    !allowlist.blockerCodes.includes(blockerCode) ||
+    typeof suggestedActionCode !== "string" ||
+    !isSafeCode(suggestedActionCode) ||
+    !allowlist.suggestedActionCodes.includes(suggestedActionCode) ||
+    !Array.isArray(evidenceSourceIds) ||
+    evidenceSourceIds.length === 0 ||
+    evidenceSourceIds.some((id) =>
+      typeof id !== "string" ||
+      !UUID_PATTERN.test(id) ||
+      !allowlist.evidenceSourceIds.includes(id)
+    ) ||
+    typeof confidence !== "number" ||
+    !Number.isFinite(confidence) ||
+    confidence < 0 || confidence > 1 ||
+    record.requiresHumanReview !== true
+  ) {
+    return modelDeny("model_output_invalid");
+  }
+
+  return {
+    allowed: true,
+    reasonCode: "allowed",
+    suggestion: {
+      blockerCode,
+      suggestedActionCode,
+      evidenceSourceIds: [...new Set(evidenceSourceIds as string[])],
+      confidence,
+      requiresHumanReview: true,
+    },
+  };
+}
 
 export function authorizeWorkAction(
   input: PolicyAuthorizationInput,
@@ -302,3 +432,52 @@ function deny(
 ): PolicyDecision {
   return { allowed: false, reasonCode, runtimeMode, allowedTool: null };
 }
+
+function modelDeny(reasonCode: string): ModelPolicyDecision {
+  return { allowed: false, reasonCode };
+}
+
+function isValidModelCorrelation(
+  correlation: AgentWorkModelCorrelation,
+): boolean {
+  return UUID_PATTERN.test(correlation.organizationId) &&
+    (correlation.clientId === null ||
+      UUID_PATTERN.test(correlation.clientId)) &&
+    UUID_PATTERN.test(correlation.workItemId) &&
+    UUID_PATTERN.test(correlation.stepId) &&
+    UUID_PATTERN.test(correlation.attemptId) &&
+    Number.isInteger(correlation.workflowVersion) &&
+    correlation.workflowVersion > 0 &&
+    SAFE_CORRELATION_PATTERN.test(correlation.correlationId);
+}
+
+function isSafeVersion(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/.test(value);
+}
+
+function isSafeCode(value: string): boolean {
+  return SAFE_CODE_PATTERN.test(value);
+}
+
+function isSafeToolList(value: string[]): boolean {
+  return Array.isArray(value) && value.every((tool) => isSafeCode(tool)) &&
+    new Set(value).size === value.length;
+}
+
+function isSafeCodeList(value: string[], requireNonEmpty: boolean): boolean {
+  return Array.isArray(value) && (!requireNonEmpty || value.length > 0) &&
+    value.every((entry) => isSafeCode(entry)) &&
+    new Set(value).size === value.length;
+}
+
+function isUuidList(value: string[], requireNonEmpty: boolean): boolean {
+  return Array.isArray(value) && (!requireNonEmpty || value.length > 0) &&
+    value.every((entry) => UUID_PATTERN.test(entry)) &&
+    new Set(value).size === value.length;
+}
+import type {
+  AgentWorkModelAttemptAuthority,
+  AgentWorkModelCorrelation,
+  AssessmentRemediationAllowlist,
+  AssessmentRemediationSuggestion,
+} from "./contracts.ts";

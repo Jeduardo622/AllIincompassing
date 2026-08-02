@@ -11,6 +11,16 @@ import {
   resolveAgentRole,
   type AgentRole,
 } from "./roleResolution.ts";
+import type {
+  AgentWorkModelAttemptAuthority,
+  AgentWorkModelAttemptSnapshot,
+  AgentWorkModelCorrelation,
+  AssessmentRemediationSuggestion,
+} from "../_shared/agent-work/contracts.ts";
+import {
+  validateAssessmentRemediationSuggestion,
+  validateModelAttemptScope,
+} from "../_shared/agent-work/policy.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -36,6 +46,7 @@ interface OptimizedAIResponse {
     message: string;
     confidence: number;
   }>;
+  candidateEvidence?: AssessmentRemediationSuggestion;
 }
 
 class AgentUpstreamUnavailableError extends Error {
@@ -44,6 +55,16 @@ class AgentUpstreamUnavailableError extends Error {
   constructor() {
     super("AI service is temporarily unavailable");
     this.name = "AgentUpstreamUnavailableError";
+  }
+}
+
+class AgentLedgerPolicyError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status = 409,
+  ) {
+    super("Ledger-bound advisory request was denied");
+    this.name = "AgentLedgerPolicyError";
   }
 }
 
@@ -94,18 +115,31 @@ type TraceContext = {
   conversationId?: string;
   userId?: string | null;
   orgId?: string | null;
+  workItemId?: string | null;
+  stepId?: string | null;
+  attemptId?: string | null;
 };
 
 type TraceStep = {
   stepName: string;
   status: "ok" | "blocked" | "error";
   payload?: Record<string, unknown>;
-  replayPayload?: Record<string, unknown>;
 };
 
 const UuidSchema = z.string().uuid();
+const AgentWorkRequestSchema = z.object({
+  organizationId: UuidSchema,
+  clientId: UuidSchema.nullable(),
+  workItemId: UuidSchema,
+  stepId: UuidSchema,
+  attemptId: UuidSchema,
+  workflowVersion: z.number().int().positive(),
+  correlationId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/),
+}).strict();
+
 const AgentRequestSchema = z.object({
-  message: z.string().min(1).max(4000),
+  message: z.string().min(1).max(4000).optional(),
+  agentWork: AgentWorkRequestSchema.optional(),
   context: z
     .object({
       url: z.string().url().max(2048).optional(),
@@ -127,6 +161,28 @@ const AgentRequestSchema = z.object({
     })
     .passthrough()
     .optional(),
+}).strict().superRefine((value, ctx) => {
+  if (value.agentWork && value.message !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["message"],
+      message: "Ledger-bound requests accept code and identifier inputs only",
+    });
+  }
+  if (value.agentWork && value.context !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["context"],
+      message: "Ledger-bound requests do not accept free-form context",
+    });
+  }
+  if (!value.agentWork && value.message === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["message"],
+      message: "Message is required for non-ledger requests",
+    });
+  }
 });
 
 const SESSION_TOOL_REGISTRY: Record<
@@ -341,7 +397,7 @@ const resolveActorRole = async (
       return false;
     },
     (error) => {
-      console.warn("Failed to resolve organization-scoped role for agent request", error);
+      console.warn("agent_role_resolution_failed");
     },
   );
 };
@@ -376,8 +432,12 @@ const resolveKillSwitch = async (): Promise<Pick<ExecutionGate, "killSwitchEnabl
     .eq("config_key", "global")
     .maybeSingle();
   if (error) {
-    console.warn("Failed to load agent runtime config", error);
-    return { killSwitchEnabled: false };
+    console.warn("agent_runtime_config_unavailable");
+    return {
+      killSwitchEnabled: true,
+      killSwitchReason: "runtime_policy_unavailable",
+      killSwitchSource: "db",
+    };
   }
   if (data?.actions_disabled) {
     return {
@@ -399,7 +459,7 @@ const resolvePromptToolVersion = async (): Promise<{ version: PromptToolVersion 
       .limit(1)
       .maybeSingle();
     if (error) {
-      return { version: null, error: error.message };
+      return { version: null, error: "prompt_tool_version_query_failed" };
     }
     if (!data) {
       return { version: null };
@@ -417,7 +477,7 @@ const resolvePromptToolVersion = async (): Promise<{ version: PromptToolVersion 
       },
     };
   } catch (error) {
-    return { version: null, error: String(error) };
+    return { version: null, error: "prompt_tool_version_query_failed" };
   }
 };
 
@@ -433,14 +493,17 @@ const insertAgentTrace = async (
       conversation_id: ctx.conversationId ?? null,
       user_id: ctx.userId ?? null,
       organization_id: ctx.orgId ?? null,
+      work_item_id: ctx.workItemId ?? null,
+      step_id: ctx.stepId ?? null,
+      attempt_id: ctx.attemptId ?? null,
       step_name: step.stepName,
       step_index: stepIndex,
       status: step.status,
       payload: step.payload ?? null,
-      replay_payload: step.replayPayload ?? null,
+      replay_payload: null,
     });
   } catch (error) {
-    console.warn("Failed to insert agent trace", error);
+    console.warn("agent_trace_insert_failed");
   }
 };
 
@@ -603,13 +666,17 @@ async function getOptimizedChatHistory(conversationId?: string): Promise<ChatMes
 
   try {
     const db = createRequestClient((globalThis as any).currentRequest);
-    await getUserOrThrow(db);
-    const { data } = await db.rpc('get_recent_chat_history', {
-      p_conversation_id: conversationId,
-      p_limit: 5
-    } as any);
+    const user = await getUserOrThrow(db);
+    const { data, error } = await db
+      .from('chat_history')
+      .select('role, content, created_at')
+      .eq('user_id', user.id)
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    if (error) throw error;
 
-    return (data as any) || [];
+    return ((data as any) || []).reverse();
   } catch (error) {
     console.warn('Chat history fetch failed:', error);
     return [] as any;
@@ -661,6 +728,317 @@ async function generateProactiveSuggestions(context: { summary?: { userRole?: st
 // ============================================================================
 // OPTIMIZED AI PROCESSING
 // ============================================================================
+
+type LedgerAgentWorkInput = z.infer<typeof AgentWorkRequestSchema>;
+
+const LEDGER_MODEL_REQUEST_SCHEMA_VERSION = "assessment-remediation-code-only-v1";
+const LEDGER_PRICING_VERSION = "gpt-4o-estimate-v1";
+const LEDGER_PROVIDER = "openai";
+const configuredAgentWorkRuntimeMode = (): "disabled" | "shadow" | "advisory" => {
+  const value = (Deno.env.get("AGENT_WORK_LEDGER_RUNTIME_MODE") ?? "disabled")
+    .trim()
+    .toLowerCase();
+  return value === "shadow" || value === "advisory" ? value : "disabled";
+};
+
+const loadLedgerRuntimePolicy = async (): Promise<"advisory"> => {
+  const { data, error } = await supabaseAdmin.rpc(
+    "load_agent_work_runtime_policy",
+    { p_mode_input: configuredAgentWorkRuntimeMode() },
+  );
+  const row = Array.isArray(data)
+    ? data[0] as Record<string, unknown> | undefined
+    : undefined;
+  if (
+    error || !row || row.authoritative !== true ||
+    typeof row.runtimeMode !== "string" ||
+    typeof row.actionsDisabled !== "boolean" ||
+    typeof row.killSwitchEnabled !== "boolean"
+  ) {
+    throw new AgentLedgerPolicyError("runtime_policy_unavailable", 503);
+  }
+  if (
+    row.actionsDisabled || row.killSwitchEnabled ||
+    row.runtimeMode !== "advisory"
+  ) {
+    throw new AgentLedgerPolicyError("runtime_mode_not_advisory");
+  }
+  return "advisory";
+};
+
+const mapModelAttemptAuthority = (
+  row: Record<string, unknown>,
+  correlationId: string,
+): AgentWorkModelAttemptAuthority => ({
+  organizationId: String(row.organization_id ?? ""),
+  clientId: row.client_id === null ? null : String(row.client_id ?? ""),
+  workItemId: String(row.work_item_id ?? ""),
+  stepId: String(row.step_id ?? ""),
+  attemptId: String(row.attempt_id ?? ""),
+  workflowKey: String(row.workflow_key ?? ""),
+  workflowVersion: Number(row.workflow_version),
+  stepKey: String(row.step_key ?? ""),
+  attemptStatus: String(row.attempt_status ?? "") as "running",
+  promptVersion: typeof row.prompt_version === "string" ? row.prompt_version : null,
+  toolVersion: typeof row.tool_version === "string" ? row.tool_version : null,
+  allowedTools: Array.isArray(row.allowed_tools)
+    ? row.allowed_tools.filter((tool): tool is string => typeof tool === "string")
+    : [],
+  guardedTools: Array.isArray(row.guarded_tools)
+    ? row.guarded_tools.filter((tool): tool is string => typeof tool === "string")
+    : [],
+  blockerCodes: Array.isArray(row.blocker_codes)
+    ? row.blocker_codes.filter((code): code is string => typeof code === "string")
+    : [],
+  suggestedActionCodes: Array.isArray(row.suggested_action_codes)
+    ? row.suggested_action_codes.filter((code): code is string => typeof code === "string")
+    : [],
+  evidenceSourceIds: Array.isArray(row.evidence_source_ids)
+    ? row.evidence_source_ids.filter((id): id is string => typeof id === "string")
+    : [],
+  correlationId,
+});
+
+const estimateLedgerModelCost = (inputTokens: number, outputTokens: number): number =>
+  Number(((inputTokens * 2.5 + outputTokens * 10) / 1_000_000).toFixed(8));
+
+async function recordLedgerModelResult(
+  agentWork: LedgerAgentWorkInput,
+  actorUserId: string,
+  inputTokens: number,
+  outputTokens: number,
+  errorClass: string | null,
+  errorCode: string | null,
+): Promise<void> {
+  const { error } = await supabaseAdmin.rpc(
+    "record_agent_work_model_attempt_result",
+    {
+      p_actor_user_id: actorUserId,
+      p_organization_id: agentWork.organizationId,
+      p_client_id: agentWork.clientId,
+      p_work_item_id: agentWork.workItemId,
+      p_step_id: agentWork.stepId,
+      p_attempt_id: agentWork.attemptId,
+      p_input_token_count: inputTokens,
+      p_output_token_count: outputTokens,
+      p_computed_cost: estimateLedgerModelCost(inputTokens, outputTokens),
+      p_error_class: errorClass,
+      p_error_code: errorCode,
+    },
+  );
+  if (error) {
+    throw new AgentLedgerPolicyError("attempt_result_recording_failed", 503);
+  }
+}
+
+async function processLedgerRemediation(
+  agentWork: LedgerAgentWorkInput,
+  actorUserId: string,
+  requestId: string,
+  promptToolVersion: PromptToolVersion,
+  trace: (step: TraceStep) => Promise<void>,
+): Promise<OptimizedAIResponse> {
+  await loadLedgerRuntimePolicy();
+
+  if (
+    promptToolVersion.status !== "active" || !promptToolVersion.isCurrent
+  ) {
+    throw new AgentLedgerPolicyError("prompt_tool_version_unavailable", 503);
+  }
+
+  const snapshot: AgentWorkModelAttemptSnapshot = {
+    provider: LEDGER_PROVIDER,
+    model: OPTIMIZED_AI_CONFIG.model,
+    promptVersion: promptToolVersion.promptVersion,
+    toolVersion: promptToolVersion.toolVersion,
+    workflowVersion: agentWork.workflowVersion,
+    temperature: OPTIMIZED_AI_CONFIG.temperature,
+    modelRequestSchemaVersion: LEDGER_MODEL_REQUEST_SCHEMA_VERSION,
+    pricingVersion: LEDGER_PRICING_VERSION,
+  };
+  const correlation: AgentWorkModelCorrelation = {
+    organizationId: agentWork.organizationId,
+    clientId: agentWork.clientId,
+    workItemId: agentWork.workItemId,
+    stepId: agentWork.stepId,
+    attemptId: agentWork.attemptId,
+    workflowVersion: agentWork.workflowVersion,
+    correlationId: agentWork.correlationId,
+  };
+
+  const { data: snapshotRows, error: snapshotError } = await supabaseAdmin.rpc(
+    "snapshot_agent_work_model_attempt",
+    {
+      p_actor_user_id: actorUserId,
+      p_organization_id: agentWork.organizationId,
+      p_client_id: agentWork.clientId,
+      p_work_item_id: agentWork.workItemId,
+      p_step_id: agentWork.stepId,
+      p_attempt_id: agentWork.attemptId,
+      p_workflow_version: agentWork.workflowVersion,
+      p_correlation_id: agentWork.correlationId,
+      p_request_id: requestId,
+      p_provider: snapshot.provider,
+      p_model: snapshot.model,
+      p_prompt_version: snapshot.promptVersion,
+      p_tool_version: snapshot.toolVersion,
+      p_temperature: snapshot.temperature,
+      p_model_request_schema_version: snapshot.modelRequestSchemaVersion,
+      p_pricing_version: snapshot.pricingVersion,
+    },
+  );
+  const snapshotRow = Array.isArray(snapshotRows)
+    ? snapshotRows[0] as Record<string, unknown> | undefined
+    : undefined;
+  if (snapshotError || !snapshotRow) {
+    throw new AgentLedgerPolicyError("attempt_snapshot_denied");
+  }
+  const authority = mapModelAttemptAuthority(snapshotRow, agentWork.correlationId);
+  const scopeDecision = validateModelAttemptScope(correlation, authority);
+  if (!scopeDecision.allowed) {
+    throw new AgentLedgerPolicyError(scopeDecision.reasonCode);
+  }
+
+  await trace({
+    stepName: "request.received",
+    status: "ok",
+    payload: {
+      attemptId: agentWork.attemptId,
+      guardrailResult: "authoritative_scope_verified",
+      outcome: "ledger_scope_verified",
+    },
+  });
+  await trace({
+    stepName: "llm.attempt.snapshot",
+    status: "ok",
+    payload: {
+      attemptId: agentWork.attemptId,
+      provider: snapshot.provider,
+      model: snapshot.model,
+      promptVersion: snapshot.promptVersion,
+      toolVersion: snapshot.toolVersion,
+      modelRequestSchemaVersion: snapshot.modelRequestSchemaVersion,
+      pricingVersion: snapshot.pricingVersion,
+      guardrailResult: "allowed",
+      outcome: "provider_pending",
+    },
+  });
+
+  const startedAt = performance.now();
+  let inputTokens = 0;
+  let outputTokens = 0;
+  try {
+    const completion = await openai.chat.completions.create({
+      model: snapshot.model,
+      temperature: snapshot.temperature,
+      max_tokens: 300,
+      messages: [
+        {
+          role: "system",
+          content: "Return one advisory remediation candidate as strict JSON. Use only supplied codes and UUID evidence identifiers. Set requiresHumanReview to true. Do not claim completion, approval, publication, signature, billing, submission, final-record creation, or clinical mutation.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            blockerCodes: authority.blockerCodes,
+            suggestedActionCodes: authority.suggestedActionCodes,
+            evidenceSourceIds: authority.evidenceSourceIds,
+          }),
+        },
+      ],
+      tools: [],
+      response_format: { type: "json_object" },
+    } as any);
+    inputTokens = Math.max(0, Number((completion as any).usage?.prompt_tokens ?? 0));
+    outputTokens = Math.max(0, Number((completion as any).usage?.completion_tokens ?? 0));
+    const content = completion.choices[0]?.message?.content;
+    let parsed: unknown = null;
+    try {
+      parsed = typeof content === "string" ? JSON.parse(content) : null;
+    } catch {
+      parsed = null;
+    }
+    const outputDecision = validateAssessmentRemediationSuggestion(parsed, {
+      blockerCodes: authority.blockerCodes,
+      suggestedActionCodes: authority.suggestedActionCodes,
+      evidenceSourceIds: authority.evidenceSourceIds,
+    });
+    if (!outputDecision.allowed || !outputDecision.suggestion) {
+      await recordLedgerModelResult(
+        agentWork,
+        actorUserId,
+        inputTokens,
+        outputTokens,
+        "model_output",
+        outputDecision.reasonCode,
+      );
+      throw new AgentLedgerPolicyError(outputDecision.reasonCode, 502);
+    }
+
+    await recordLedgerModelResult(
+      agentWork,
+      actorUserId,
+      inputTokens,
+      outputTokens,
+      null,
+      null,
+    );
+    await trace({
+      stepName: "llm.response.received",
+      status: "ok",
+      payload: {
+        attemptId: agentWork.attemptId,
+        provider: snapshot.provider,
+        model: snapshot.model,
+        latencyMs: performance.now() - startedAt,
+        tokenUsage: { input: inputTokens, output: outputTokens },
+        computedCost: estimateLedgerModelCost(inputTokens, outputTokens),
+        pricingVersion: snapshot.pricingVersion,
+        guardrailResult: "allowed",
+        outcome: "candidate_evidence",
+      },
+    });
+    return {
+      response: "Advisory candidate evidence generated for human review.",
+      candidateEvidence: outputDecision.suggestion,
+      tokenUsage: {
+        prompt: inputTokens,
+        completion: outputTokens,
+        total: inputTokens + outputTokens,
+      },
+      responseTime: performance.now() - startedAt,
+    };
+  } catch (error) {
+    if (error instanceof AgentLedgerPolicyError) throw error;
+    const errorCode = isInsufficientQuotaError(error)
+      ? "insufficient_quota"
+      : "upstream_unavailable";
+    await recordLedgerModelResult(
+      agentWork,
+      actorUserId,
+      inputTokens,
+      outputTokens,
+      "provider",
+      errorCode,
+    );
+    await trace({
+      stepName: "llm.response.received",
+      status: "error",
+      payload: {
+        attemptId: agentWork.attemptId,
+        provider: snapshot.provider,
+        model: snapshot.model,
+        latencyMs: performance.now() - startedAt,
+        tokenUsage: { input: inputTokens, output: outputTokens },
+        errorClass: "provider",
+        errorCode,
+        guardrailResult: "provider_error",
+        outcome: "no_candidate_evidence",
+      },
+    });
+    throw new AgentUpstreamUnavailableError();
+  }
+}
 
 async function processOptimizedMessage(
   message: string,
@@ -768,7 +1146,7 @@ async function processOptimizedMessage(
         await trace({
           stepName: "tool.args.parse_failed",
           status: "error",
-          payload: { toolName: functionName, error: String(error) },
+          payload: { toolName: functionName, errorCode: "invalid_tool_payload" },
         });
         actionBlockedReason = "invalid_tool_payload";
       }
@@ -805,12 +1183,6 @@ async function processOptimizedMessage(
             role: executionGate.role,
             allowedTools: executionGate.allowedTools,
             deniedTools: executionGate.deniedTools,
-          },
-          replayPayload: {
-            requestId: traceContext.requestId,
-            correlationId: traceContext.correlationId,
-            toolName: functionName,
-            toolArguments: functionArgs,
           },
         });
         action = null as any;
@@ -865,12 +1237,6 @@ async function processOptimizedMessage(
             toolName: functionName,
             role: executionGate.role,
           },
-          replayPayload: {
-            requestId: traceContext.requestId,
-            correlationId: traceContext.correlationId,
-            toolName: functionName,
-            toolArguments: functionArgs,
-          },
         });
         action = null as any;
       } else {
@@ -885,12 +1251,6 @@ async function processOptimizedMessage(
             toolName: functionName,
             role: executionGate.role,
             executionMode,
-          },
-          replayPayload: {
-            requestId: traceContext.requestId,
-            correlationId: traceContext.correlationId,
-            toolName: functionName,
-            toolArguments: functionArgs,
           },
         });
       }
@@ -941,11 +1301,15 @@ async function processOptimizedMessage(
     return response;
 
   } catch (error: any) {
-    console.error('Optimized AI processing failed:', error);
+    console.error('optimized_ai_processing_failed');
     await trace({
       stepName: "processing.error",
       status: "error",
-      payload: { error: error?.message ?? String(error) },
+      payload: {
+        errorCode: isInsufficientQuotaError(error)
+          ? "insufficient_quota"
+          : "upstream_unavailable",
+      },
     });
 
     if (isInsufficientQuotaError(error)) {
@@ -1032,7 +1396,7 @@ Deno.serve(async (req) => {
         headers: responseHeaders,
       });
     }
-    const { message, context } = payload.data;
+    const { message, context, agentWork } = payload.data;
 
     const db = createRequestClient(req);
     const user = await getUserOrThrow(db);
@@ -1056,11 +1420,14 @@ Deno.serve(async (req) => {
 
     const traceContext: TraceContext = {
       requestId,
-      correlationId,
+      correlationId: agentWork?.correlationId ?? correlationId,
       agentOperationId: req.headers.get("x-agent-operation-id"),
       conversationId: context?.conversationId,
       userId: user.id,
       orgId,
+      workItemId: agentWork?.workItemId ?? null,
+      stepId: agentWork?.stepId ?? null,
+      attemptId: agentWork?.attemptId ?? null,
     };
     let traceIndex = 0;
     const trace = (step: TraceStep) =>
@@ -1068,19 +1435,21 @@ Deno.serve(async (req) => {
 
     const promptToolResult = await resolvePromptToolVersion();
     const promptToolVersion = promptToolResult.version;
-    await trace({
-      stepName: "prompt_tool.version.loaded",
-      status: promptToolResult.error ? "error" : "ok",
-      payload: {
-        found: Boolean(promptToolVersion),
-        promptVersion: promptToolVersion?.promptVersion ?? null,
-        toolVersion: promptToolVersion?.toolVersion ?? null,
-        status: promptToolVersion?.status ?? null,
-        error: promptToolResult.error ?? null,
-      },
-    });
+    if (!agentWork) {
+      await trace({
+        stepName: "prompt_tool.version.loaded",
+        status: promptToolResult.error ? "error" : "ok",
+        payload: {
+          found: Boolean(promptToolVersion),
+          promptVersion: promptToolVersion?.promptVersion ?? null,
+          toolVersion: promptToolVersion?.toolVersion ?? null,
+          status: promptToolVersion?.status ?? null,
+          error: promptToolResult.error ?? null,
+        },
+      });
+    }
 
-    const sanitizedMessage = sanitizeText(message, 4000);
+    const sanitizedMessage = message ? sanitizeText(message, 4000) : undefined;
     const sanitizedContext = {
       ...(context as any),
       url: context?.url ? sanitizeText(context.url, 2048) : undefined,
@@ -1091,25 +1460,50 @@ Deno.serve(async (req) => {
       metadata: {
         role: actorRole,
         hasConversation: Boolean(context?.conversationId),
+        ledgerBound: Boolean(agentWork),
         promptVersion: promptToolVersion?.promptVersion ?? null,
         toolVersion: promptToolVersion?.toolVersion ?? null,
       },
     });
-    await trace({
-      stepName: "request.received",
-      status: "ok",
-      payload: {
-        role: actorRole,
-        requestedTools,
-        url: context?.url,
-        agentOperationId: traceContext.agentOperationId ?? null,
-      },
-      replayPayload: {
-        message: sanitizedMessage,
-        context: sanitizedContext,
-        agentOperationId: traceContext.agentOperationId ?? null,
-      },
-    });
+    if (!agentWork) {
+      await trace({
+        stepName: "request.received",
+        status: "ok",
+        payload: {
+          role: actorRole,
+          requestedTools,
+          agentOperationId: traceContext.agentOperationId ?? null,
+          guardrailResult: "request_validated",
+          outcome: "generic_request",
+        },
+      });
+    }
+
+    if (agentWork) {
+      if (!orgId || orgId !== agentWork.organizationId) {
+        throw new AgentLedgerPolicyError("organization_scope_mismatch", 403);
+      }
+      if (!promptToolVersion) {
+        throw new AgentLedgerPolicyError("prompt_tool_version_unavailable", 503);
+      }
+      const response = await processLedgerRemediation(
+        agentWork,
+        user.id,
+        requestId,
+        promptToolVersion,
+        trace,
+      );
+      await trace({
+        stepName: "response.sent",
+        status: "ok",
+        payload: {
+          attemptId: agentWork.attemptId,
+          guardrailResult: "human_review_required",
+          outcome: "candidate_evidence",
+        },
+      });
+      return new Response(JSON.stringify(response), { headers: responseHeaders });
+    }
 
     if (executionGate.deniedTools.length > 0 || executionGate.killSwitchEnabled) {
       logger.warn("authorization.denied", {
@@ -1159,7 +1553,7 @@ Deno.serve(async (req) => {
     };
 
     const response = await processOptimizedMessage(
-      sanitizedMessage,
+      sanitizedMessage as string,
       enrichedContext,
       executionGate,
       trace,
@@ -1193,6 +1587,15 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error: any) {
+    if (error instanceof AgentLedgerPolicyError) {
+      return errorEnvelope({
+        requestId,
+        code: error.code,
+        message: error.message,
+        status: error.status,
+        headers: responseHeaders,
+      });
+    }
     if (error instanceof AgentUpstreamUnavailableError) {
       return errorEnvelope({
         requestId,
@@ -1210,11 +1613,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.error("Handler error:", error);
+    console.error("ai_agent_handler_failed");
     return errorEnvelope({
       requestId,
       code: "internal_error",
-      message: error?.message ?? "Internal Server Error",
+      message: "Internal Server Error",
       status: 500,
       headers: responseHeaders,
     });

@@ -1,0 +1,648 @@
+import { createHash } from "node:crypto";
+import type {
+  WorkExecutionMode,
+  WorkItemStatus,
+  WorkStepStatus,
+} from "./contracts.ts";
+
+export const ASSESSMENT_PREP_BLOCKER_CODES = [
+  "scope_wrong_organization",
+  "scope_wrong_client",
+  "document_missing_or_invalid",
+  "template_type_mismatch",
+  "extraction_failed",
+  "review_read_model_unavailable",
+  "missing_required_evidence",
+  "missing_owner",
+  "owner_not_authorized",
+  "authorization_unavailable",
+] as const;
+
+export type AssessmentPrepBlockerCode =
+  (typeof ASSESSMENT_PREP_BLOCKER_CODES)[number];
+
+export const ASSESSMENT_PREP_PARITY_KINDS = [
+  "missing_required_evidence_count_mismatch",
+] as const;
+
+export type AssessmentPrepParityKind =
+  (typeof ASSESSMENT_PREP_PARITY_KINDS)[number];
+
+export const ASSESSMENT_PREP_STEP_KEYS = [
+  "validate_scope",
+  "observe_upload",
+  "await_extraction",
+  "validate_review_evidence",
+  "build_review_readiness",
+  "assign_clinical_owner",
+  "request_clinical_review",
+] as const;
+
+export type AssessmentPrepStepKey = (typeof ASSESSMENT_PREP_STEP_KEYS)[number];
+
+export type AgentEvidenceSourceKind =
+  | "assessment_document"
+  | "assessment_checklist_item"
+  | "assessment_structured_section"
+  | "assessment_review_event"
+  | "assessment_template_layout";
+
+export interface AssessmentPrepEvidencePointer {
+  sourceKind: AgentEvidenceSourceKind;
+  sourceId: string;
+  locator?: string;
+  sha256: string;
+}
+
+export interface AssessmentPrepAuthoritativeSnapshot {
+  organizationId: string;
+  clientId: string;
+  assessmentDocumentId: string;
+  templateType: string | null;
+  documentState:
+    | "missing"
+    | "uploaded"
+    | "extracting"
+    | "extraction_running"
+    | "extracted"
+    | "drafted"
+    | "approved"
+    | "rejected"
+    | "extraction_failed";
+  scopeVerdict:
+    | "in_scope"
+    | "wrong_client"
+    | "wrong_organization"
+    | "missing_or_invalid";
+  reviewReadModel: {
+    loaded: boolean;
+    unresolvedRequiredCount: number;
+    missingRequiredEvidence: AssessmentPrepEvidencePointer[];
+    evidence: AssessmentPrepEvidencePointer[];
+  };
+  ownerAuthorization: {
+    ownerId: string | null;
+    authorized: boolean;
+    reasonCode:
+      | "missing_owner"
+      | "owner_not_authorized"
+      | "authorization_unavailable"
+      | null;
+  };
+}
+
+export interface AssessmentPrepProjection {
+  organizationId: string;
+  clientId: string;
+  assessmentDocumentId: string;
+  templateType: "iehp_fba";
+  extractionState: "pending" | "complete" | "failed";
+  blockerCodes: AssessmentPrepBlockerCode[];
+  evidence: AssessmentPrepEvidencePointer[];
+  readinessHash: string;
+}
+
+export interface AssessmentPrepWorkflowStep {
+  stepKey: AssessmentPrepStepKey;
+  executionMode: WorkExecutionMode;
+  risk: "clinical";
+  dependencies: AssessmentPrepStepKey[];
+  completionPredicate: string;
+}
+
+export interface AssessmentPrepWorkflowDefinition {
+  workflow: "assessment.iehp.prepare_for_clinical_review@1";
+  workflowKey: "assessment.iehp.prepare_for_clinical_review";
+  version: 1;
+  steps: readonly AssessmentPrepWorkflowStep[];
+}
+
+export interface AssessmentPrepStepTransition {
+  stepKey: AssessmentPrepStepKey;
+  dependencies: AssessmentPrepStepKey[];
+  executionMode: WorkExecutionMode;
+  risk: "clinical";
+  targetStatus: WorkStepStatus;
+  reasonCode: AssessmentPrepBlockerCode | null;
+  completionSatisfied: boolean;
+}
+
+export interface AssessmentPrepParityDescriptor {
+  kind: AssessmentPrepParityKind;
+  reasonCode: "parity_mismatch";
+  metadata: {
+    expectedCount: number;
+    actualCount: number;
+  };
+}
+
+export interface AssessmentPrepParityEvent {
+  eventType: "assessment.iehp.prepare_for_clinical_review.parity_detected";
+  metadata: Record<string, string | number>;
+}
+
+export interface AssessmentPrepShadowResult {
+  workflow: AssessmentPrepWorkflowDefinition;
+  projection: AssessmentPrepProjection;
+  missingRequiredEvidence: AssessmentPrepEvidencePointer[];
+  stepTransitions: AssessmentPrepStepTransition[];
+  workItemStatus: WorkItemStatus;
+  parity: {
+    descriptors: AssessmentPrepParityDescriptor[];
+    events: AssessmentPrepParityEvent[];
+  };
+  generatedClinicalContent: false;
+}
+
+export const ASSESSMENT_PREP_WORKFLOW: AssessmentPrepWorkflowDefinition = {
+  workflow: "assessment.iehp.prepare_for_clinical_review@1",
+  workflowKey: "assessment.iehp.prepare_for_clinical_review",
+  version: 1,
+  steps: [
+    {
+      stepKey: "validate_scope",
+      executionMode: "deterministic",
+      risk: "clinical",
+      dependencies: [],
+      completionPredicate:
+        "scope verdict is in_scope and template type is iehp_fba",
+    },
+    {
+      stepKey: "observe_upload",
+      executionMode: "deterministic",
+      risk: "clinical",
+      dependencies: ["validate_scope"],
+      completionPredicate:
+        "authoritative assessment document is present for the same scope",
+    },
+    {
+      stepKey: "await_extraction",
+      executionMode: "deterministic",
+      risk: "clinical",
+      dependencies: ["observe_upload"],
+      completionPredicate:
+        "document state is extraction-complete and not extraction_failed",
+    },
+    {
+      stepKey: "validate_review_evidence",
+      executionMode: "deterministic",
+      risk: "clinical",
+      dependencies: ["await_extraction"],
+      completionPredicate:
+        "review read model loaded and unresolved required evidence is explicitly enumerated",
+    },
+    {
+      stepKey: "build_review_readiness",
+      executionMode: "deterministic",
+      risk: "clinical",
+      dependencies: ["validate_review_evidence"],
+      completionPredicate:
+        "phi-free readiness projection and readiness hash are computed from authoritative evidence pointers",
+    },
+    {
+      stepKey: "assign_clinical_owner",
+      executionMode: "human",
+      risk: "clinical",
+      dependencies: ["build_review_readiness"],
+      completionPredicate:
+        "owner authorization input is present and authorized by the upstream authority",
+    },
+    {
+      stepKey: "request_clinical_review",
+      executionMode: "human",
+      risk: "clinical",
+      dependencies: ["assign_clinical_owner"],
+      completionPredicate:
+        "all deterministic prerequisites pass and the work item stops at needs_review",
+    },
+  ],
+} as const;
+
+const EXTRACTION_COMPLETE_STATES = new Set<
+  AssessmentPrepAuthoritativeSnapshot["documentState"]
+>(["extracted", "drafted", "approved", "rejected"]);
+
+export function deriveAssessmentPrepShadow(
+  snapshot: AssessmentPrepAuthoritativeSnapshot,
+): AssessmentPrepShadowResult {
+  const blockerCodes = collectBlockerCodes(snapshot);
+  const parity = collectParity(snapshot);
+  const evidence = normalizeEvidence([
+    ...snapshot.reviewReadModel.evidence,
+    ...snapshot.reviewReadModel.missingRequiredEvidence,
+  ]);
+  const extractionState = deriveExtractionState(snapshot.documentState);
+  const missingRequiredEvidence = normalizeEvidence(
+    snapshot.reviewReadModel.missingRequiredEvidence,
+  );
+  const projection: AssessmentPrepProjection = {
+    organizationId: snapshot.organizationId,
+    clientId: snapshot.clientId,
+    assessmentDocumentId: snapshot.assessmentDocumentId,
+    templateType: "iehp_fba",
+    extractionState,
+    blockerCodes,
+    evidence,
+    readinessHash: "",
+  };
+  projection.readinessHash = createReadinessHash(
+    snapshot,
+    projection,
+    missingRequiredEvidence,
+    parity.descriptors,
+  );
+
+  const stepTransitions = buildStepTransitions(snapshot, blockerCodes);
+
+  return {
+    workflow: ASSESSMENT_PREP_WORKFLOW,
+    projection,
+    missingRequiredEvidence,
+    stepTransitions,
+    workItemStatus: deriveShadowWorkItemStatus(stepTransitions),
+    parity,
+    generatedClinicalContent: false,
+  };
+}
+
+function collectBlockerCodes(
+  snapshot: AssessmentPrepAuthoritativeSnapshot,
+): AssessmentPrepBlockerCode[] {
+  const blockers: AssessmentPrepBlockerCode[] = [];
+
+  switch (snapshot.scopeVerdict) {
+    case "wrong_organization":
+      blockers.push("scope_wrong_organization");
+      break;
+    case "wrong_client":
+      blockers.push("scope_wrong_client");
+      break;
+    case "missing_or_invalid":
+      blockers.push("document_missing_or_invalid");
+      break;
+    case "in_scope":
+      break;
+  }
+
+  if (
+    snapshot.scopeVerdict === "in_scope" &&
+    snapshot.templateType !== "iehp_fba"
+  ) {
+    blockers.push("template_type_mismatch");
+  }
+
+  if (
+    snapshot.scopeVerdict === "in_scope" && snapshot.documentState === "missing"
+  ) {
+    blockers.push("document_missing_or_invalid");
+  }
+
+  if (snapshot.documentState === "extraction_failed") {
+    blockers.push("extraction_failed");
+  }
+
+  if (
+    EXTRACTION_COMPLETE_STATES.has(snapshot.documentState) &&
+    !snapshot.reviewReadModel.loaded
+  ) {
+    blockers.push("review_read_model_unavailable");
+  }
+
+  if (
+    EXTRACTION_COMPLETE_STATES.has(snapshot.documentState) &&
+    snapshot.reviewReadModel.loaded &&
+    (
+      snapshot.reviewReadModel.unresolvedRequiredCount > 0 ||
+      snapshot.reviewReadModel.missingRequiredEvidence.length > 0
+    )
+  ) {
+    blockers.push("missing_required_evidence");
+  }
+
+  if (
+    EXTRACTION_COMPLETE_STATES.has(snapshot.documentState) &&
+    snapshot.reviewReadModel.loaded &&
+    !snapshot.ownerAuthorization.authorized &&
+    snapshot.ownerAuthorization.reasonCode
+  ) {
+    blockers.push(snapshot.ownerAuthorization.reasonCode);
+  }
+
+  return dedupeBlockers(blockers);
+}
+
+function collectParity(
+  snapshot: AssessmentPrepAuthoritativeSnapshot,
+): {
+  descriptors: AssessmentPrepParityDescriptor[];
+  events: AssessmentPrepParityEvent[];
+} {
+  const descriptors: AssessmentPrepParityDescriptor[] = [];
+
+  if (
+    snapshot.reviewReadModel.unresolvedRequiredCount !==
+      snapshot.reviewReadModel.missingRequiredEvidence.length
+  ) {
+    descriptors.push({
+      kind: "missing_required_evidence_count_mismatch",
+      reasonCode: "parity_mismatch",
+      metadata: {
+        expectedCount: snapshot.reviewReadModel.unresolvedRequiredCount,
+        actualCount: snapshot.reviewReadModel.missingRequiredEvidence.length,
+      },
+    });
+  }
+
+  return {
+    descriptors,
+    events: descriptors.map((descriptor) => ({
+      eventType: "assessment.iehp.prepare_for_clinical_review.parity_detected",
+      metadata: {
+        workflow_key: ASSESSMENT_PREP_WORKFLOW.workflowKey,
+        workflow_version: ASSESSMENT_PREP_WORKFLOW.version,
+        assessment_document_id: snapshot.assessmentDocumentId,
+        reason_code: descriptor.kind,
+        expected_count: descriptor.metadata.expectedCount,
+        actual_count: descriptor.metadata.actualCount,
+      },
+    })),
+  };
+}
+
+function buildStepTransitions(
+  snapshot: AssessmentPrepAuthoritativeSnapshot,
+  blockerCodes: AssessmentPrepBlockerCode[],
+): AssessmentPrepStepTransition[] {
+  const transitions: AssessmentPrepStepTransition[] = [];
+  const scopeReason = findFirst(blockerCodes, [
+    "scope_wrong_organization",
+    "scope_wrong_client",
+    "document_missing_or_invalid",
+    "template_type_mismatch",
+  ]);
+  const ownerReason = findFirst(blockerCodes, [
+    "missing_owner",
+    "owner_not_authorized",
+    "authorization_unavailable",
+  ]);
+  const hasMissingRequiredEvidence = blockerCodes.includes(
+    "missing_required_evidence",
+  );
+
+  transitions.push(buildTransition("validate_scope", "completed", null, true));
+  if (scopeReason) {
+    transitions[0] = buildTransition(
+      "validate_scope",
+      "failed",
+      scopeReason,
+      false,
+    );
+    return completeWithPending(transitions, "validate_scope");
+  }
+
+  transitions.push(buildTransition("observe_upload", "completed", null, true));
+  if (snapshot.documentState === "missing") {
+    transitions[1] = buildTransition(
+      "observe_upload",
+      "failed",
+      "document_missing_or_invalid",
+      false,
+    );
+    return completeWithPending(transitions, "observe_upload");
+  }
+
+  if (
+    snapshot.documentState === "uploaded" ||
+    snapshot.documentState === "extracting" ||
+    snapshot.documentState === "extraction_running"
+  ) {
+    transitions.push(
+      buildTransition("await_extraction", "waiting", null, false),
+    );
+    return completeWithPending(transitions, "await_extraction");
+  }
+
+  if (snapshot.documentState === "extraction_failed") {
+    transitions.push(
+      buildTransition("await_extraction", "failed", "extraction_failed", false),
+    );
+    return completeWithPending(transitions, "await_extraction");
+  }
+
+  transitions.push(
+    buildTransition("await_extraction", "completed", null, true),
+  );
+
+  if (!snapshot.reviewReadModel.loaded) {
+    transitions.push(
+      buildTransition(
+        "validate_review_evidence",
+        "failed",
+        "review_read_model_unavailable",
+        false,
+      ),
+    );
+    return completeWithPending(transitions, "validate_review_evidence");
+  }
+
+  transitions.push(
+    buildTransition("validate_review_evidence", "completed", null, true),
+  );
+  transitions.push(
+    buildTransition("build_review_readiness", "completed", null, true),
+  );
+
+  if (ownerReason) {
+    transitions.push(
+      buildTransition("assign_clinical_owner", "failed", ownerReason, false),
+    );
+    return completeWithPending(transitions, "assign_clinical_owner");
+  }
+
+  transitions.push(
+    buildTransition("assign_clinical_owner", "completed", null, true),
+  );
+
+  if (hasMissingRequiredEvidence) {
+    transitions.push(
+      buildTransition(
+        "request_clinical_review",
+        "failed",
+        "missing_required_evidence",
+        false,
+      ),
+    );
+    return transitions;
+  }
+
+  transitions.push(
+    buildTransition("request_clinical_review", "completed", null, true),
+  );
+
+  return transitions;
+}
+
+function buildTransition(
+  stepKey: AssessmentPrepStepKey,
+  targetStatus: WorkStepStatus,
+  reasonCode: AssessmentPrepBlockerCode | null,
+  completionSatisfied: boolean,
+): AssessmentPrepStepTransition {
+  const workflowStep = ASSESSMENT_PREP_WORKFLOW.steps.find((step) =>
+    step.stepKey === stepKey
+  );
+  if (!workflowStep) {
+    throw new Error(`Unknown workflow step: ${stepKey}`);
+  }
+
+  return {
+    stepKey,
+    dependencies: [...workflowStep.dependencies],
+    executionMode: workflowStep.executionMode,
+    risk: workflowStep.risk,
+    targetStatus,
+    reasonCode,
+    completionSatisfied,
+  };
+}
+
+function completeWithPending(
+  completed: AssessmentPrepStepTransition[],
+  stopAfter: AssessmentPrepStepKey,
+): AssessmentPrepStepTransition[] {
+  const stepIndex = ASSESSMENT_PREP_STEP_KEYS.indexOf(stopAfter);
+
+  for (const stepKey of ASSESSMENT_PREP_STEP_KEYS.slice(stepIndex + 1)) {
+    completed.push(buildTransition(stepKey, "pending", null, false));
+  }
+
+  return completed;
+}
+
+function deriveShadowWorkItemStatus(
+  stepTransitions: AssessmentPrepStepTransition[],
+): WorkItemStatus {
+  if (stepTransitions.every((step) => step.targetStatus === "completed")) {
+    return "needs_review";
+  }
+  if (stepTransitions.some((step) => step.targetStatus === "waiting")) {
+    return "waiting";
+  }
+  if (stepTransitions.some((step) => step.targetStatus === "failed")) {
+    return "blocked";
+  }
+  return "queued";
+}
+
+function deriveExtractionState(
+  documentState: AssessmentPrepAuthoritativeSnapshot["documentState"],
+): AssessmentPrepProjection["extractionState"] {
+  if (documentState === "extraction_failed") {
+    return "failed";
+  }
+
+  return EXTRACTION_COMPLETE_STATES.has(documentState) ? "complete" : "pending";
+}
+
+function dedupeBlockers(
+  blockerCodes: AssessmentPrepBlockerCode[],
+): AssessmentPrepBlockerCode[] {
+  return [...new Set(blockerCodes)];
+}
+
+function normalizeEvidence(
+  evidence: AssessmentPrepEvidencePointer[],
+): AssessmentPrepEvidencePointer[] {
+  const deduped = new Map<string, AssessmentPrepEvidencePointer>();
+
+  for (const entry of evidence) {
+    const key = `${entry.sourceKind}:${entry.sourceId}:${
+      entry.locator ?? ""
+    }:${entry.sha256}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, {
+        sourceKind: entry.sourceKind,
+        sourceId: entry.sourceId,
+        ...(entry.locator ? { locator: entry.locator } : {}),
+        sha256: entry.sha256,
+      });
+    }
+  }
+
+  return [...deduped.values()].sort((left, right) =>
+    compareStrings(
+      `${left.sourceKind}|${left.sourceId}|${
+        left.locator ?? ""
+      }|${left.sha256}`,
+      `${right.sourceKind}|${right.sourceId}|${
+        right.locator ?? ""
+      }|${right.sha256}`,
+    )
+  );
+}
+
+function createReadinessHash(
+  snapshot: AssessmentPrepAuthoritativeSnapshot,
+  projection: Omit<AssessmentPrepProjection, "readinessHash">,
+  missingRequiredEvidence: AssessmentPrepEvidencePointer[],
+  parity: AssessmentPrepParityDescriptor[],
+): string {
+  const value = normalizeValue({
+    organizationId: snapshot.organizationId,
+    clientId: snapshot.clientId,
+    assessmentDocumentId: snapshot.assessmentDocumentId,
+    templateType: projection.templateType,
+    extractionState: projection.extractionState,
+    blockerCodes: [...projection.blockerCodes].sort(),
+    evidence: projection.evidence,
+    missingRequiredEvidence,
+    reviewReadModelLoaded: snapshot.reviewReadModel.loaded,
+    unresolvedRequiredCount: snapshot.reviewReadModel.unresolvedRequiredCount,
+    ownerAuthorization: {
+      ownerId: snapshot.ownerAuthorization.ownerId,
+      authorized: snapshot.ownerAuthorization.authorized,
+      reasonCode: snapshot.ownerAuthorization.reasonCode,
+    },
+    parity,
+  });
+
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function normalizeValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeValue(entry));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((accumulator, key) => {
+        accumulator[key] = normalizeValue(
+          (value as Record<string, unknown>)[key],
+        );
+        return accumulator;
+      }, {});
+  }
+
+  return value;
+}
+
+function findFirst(
+  values: readonly AssessmentPrepBlockerCode[],
+  candidates: readonly AssessmentPrepBlockerCode[],
+): AssessmentPrepBlockerCode | null {
+  for (const candidate of candidates) {
+    if (values.includes(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function compareStrings(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}

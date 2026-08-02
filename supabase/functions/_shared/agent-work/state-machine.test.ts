@@ -113,6 +113,49 @@ function buildStep(
   };
 }
 
+const MALFORMED_LEASE_CASES: Array<{
+  name: string;
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+}> = [
+  { name: "empty owner and expiration", leaseOwner: "", leaseExpiresAt: "" },
+  {
+    name: "empty owner with null expiration",
+    leaseOwner: "",
+    leaseExpiresAt: null,
+  },
+  {
+    name: "null owner with empty expiration",
+    leaseOwner: null,
+    leaseExpiresAt: "",
+  },
+  {
+    name: "empty owner with valid expiration",
+    leaseOwner: "",
+    leaseExpiresAt: "2026-08-02T12:10:00.000Z",
+  },
+  {
+    name: "valid owner with empty expiration",
+    leaseOwner: "worker-a",
+    leaseExpiresAt: "",
+  },
+  {
+    name: "null owner with valid expiration",
+    leaseOwner: null,
+    leaseExpiresAt: "2026-08-02T12:10:00.000Z",
+  },
+  {
+    name: "valid owner with null expiration",
+    leaseOwner: "worker-a",
+    leaseExpiresAt: null,
+  },
+  {
+    name: "invalid expiration",
+    leaseOwner: "worker-a",
+    leaseExpiresAt: "not-a-date",
+  },
+];
+
 Deno.test("canTransitionWorkItem covers every status pair", () => {
   for (const from of WORK_ITEM_STATUSES) {
     for (const to of WORK_ITEM_STATUSES) {
@@ -408,6 +451,28 @@ Deno.test("deriveReadySteps fails closed across due, lease, and authoritative ve
   }
 });
 
+Deno.test("deriveReadySteps rejects empty, invalid, and mixed lease fields", () => {
+  const now = new Date("2026-08-02T12:00:00.000Z");
+
+  for (const [index, testCase] of MALFORMED_LEASE_CASES.entries()) {
+    const id = `malformed-lease-${index}`;
+    assertEquals(
+      deriveReadySteps({
+        steps: [buildStep({
+          id,
+          leaseOwner: testCase.leaseOwner,
+          leaseExpiresAt: testCase.leaseExpiresAt,
+        })],
+        dependencies: [],
+        now,
+        authoritativeStateVersions: { [id]: 0 },
+      }),
+      [],
+      testCase.name,
+    );
+  }
+});
+
 Deno.test("deriveWorkItemStatus prevents false completion and respects terminal cancellation", () => {
   const cases = [
     { name: "empty work item stays queued", steps: [], expected: "queued" },
@@ -637,6 +702,23 @@ Deno.test("evaluateLease fails closed for stale ownership and expiration", () =>
     assertEquals(
       evaluateLease(testCase.input),
       testCase.expected,
+      testCase.name,
+    );
+  }
+});
+
+Deno.test("evaluateLease treats empty, invalid, and mixed lease fields as stale", () => {
+  const now = new Date("2026-08-02T12:00:00.000Z");
+
+  for (const testCase of MALFORMED_LEASE_CASES) {
+    assertEquals(
+      evaluateLease({
+        leaseOwner: testCase.leaseOwner,
+        leaseExpiresAt: testCase.leaseExpiresAt,
+        workerId: "worker-a",
+        now,
+      }),
+      "stale",
       testCase.name,
     );
   }

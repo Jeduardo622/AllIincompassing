@@ -202,11 +202,14 @@ export function canRetryStep(input: RetryDecisionInput): boolean {
 }
 
 export function evaluateLease(input: LeaseDecisionInput): LeaseDecision {
-  if (!input.leaseOwner && !input.leaseExpiresAt) {
+  if (input.leaseOwner === null && input.leaseExpiresAt === null) {
     return "available";
   }
 
-  if (!input.leaseOwner || !input.leaseExpiresAt) {
+  if (
+    input.leaseOwner === null || input.leaseExpiresAt === null ||
+    input.leaseOwner.length === 0 || input.leaseExpiresAt.length === 0
+  ) {
     return "stale";
   }
 
@@ -341,11 +344,14 @@ function isReadyCandidate(
 }
 
 function isLeaseAvailable(step: WorkStepSnapshot, now: Date): boolean {
-  if (!step.leaseOwner && !step.leaseExpiresAt) {
+  if (step.leaseOwner === null && step.leaseExpiresAt === null) {
     return true;
   }
 
-  if (!step.leaseOwner || !step.leaseExpiresAt) {
+  if (
+    step.leaseOwner === null || step.leaseExpiresAt === null ||
+    step.leaseOwner.length === 0 || step.leaseExpiresAt.length === 0
+  ) {
     return false;
   }
 

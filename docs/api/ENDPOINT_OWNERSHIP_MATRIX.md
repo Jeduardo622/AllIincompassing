@@ -1,6 +1,6 @@
 # Endpoint Ownership Matrix
 
-Last verified: `2026-07-31 (runtime exception review)`
+Last verified: `2026-08-02 (runtime exception review)`
 Machine-readable source: `docs/api/endpoint-convergence-status.json`
 
 | Public API path | Current runtime | Authoritative target | Wave | Status | Owner | Exception expiry |

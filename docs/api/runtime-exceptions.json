@@ -3,63 +3,63 @@
     {
       "functionFile": "assessment-checklist.ts",
       "publicApiPath": "/api/assessment-checklist",
-      "reason": "Server-side checklist workflow logic has not yet been ported to a dedicated edge endpoint.",
+      "reason": "Checklist reads and writes still execute in the legacy assessment business handler, and the Netlify redirect, function wrapper, and client callsites remain active; re-review for edge parity or retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
       "functionFile": "assessment-template-layout.ts",
       "publicApiPath": "/api/assessment-template-layout",
-      "reason": "IEHP template layout metadata is read through a server API shim while assessment upload/review APIs remain on the legacy assessment workflow.",
+      "reason": "Template-layout reads still depend on the legacy assessment workflow, and the Netlify redirect, function wrapper, and IEHP review callsites remain active; re-review for edge parity or retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
       "functionFile": "assessment-documents.ts",
       "publicApiPath": "/api/assessment-documents",
-      "reason": "Document registration/extraction orchestration still runs through server API handler.",
+      "reason": "Document registration, extraction orchestration, and assessment review-event writes still execute in the legacy assessment business handler, and the Netlify redirect, function wrapper, and client callsites remain active; re-review for edge parity or retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
       "functionFile": "assessment-drafts.ts",
       "publicApiPath": "/api/assessment-drafts",
-      "reason": "Draft CRUD and promotion-prep logic requires edge parity implementation.",
+      "reason": "Draft CRUD, draft generation, and promotion-prep writes still execute in the legacy assessment business handler, and the Netlify redirect, function wrapper, and client callsites remain active; re-review for edge parity or retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
       "functionFile": "assessment-promote.ts",
       "publicApiPath": "/api/assessment-promote",
-      "reason": "Promotion transaction semantics are not yet migrated to an authoritative edge endpoint.",
+      "reason": "Promotion preconditions, draft-to-domain writes, and assessment review-event updates still execute in the legacy assessment business handler, and the Netlify redirect, function wrapper, and client callsites remain active; re-review for edge parity or retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
       "functionFile": "assessment-plan-pdf.ts",
       "publicApiPath": "/api/assessment-plan-pdf",
-      "reason": "PDF generation flow depends on template/runtime behavior pending edge-native migration.",
+      "reason": "Assessment plan payload assembly and secret-backed PDF generation still execute in the legacy assessment business handler, and the Netlify redirect, function wrapper, and client callsites remain active; re-review for edge parity or retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
       "functionFile": "book.ts",
       "publicApiPath": "/api/book",
-      "reason": "Route now delegates to edge authority (`sessions-book`) but remains a transport adapter until full legacy fallback removal.",
+      "reason": "The route can proxy to edge `sessions-book`, but it still retains legacy booking fallback, local authority checks, and the compatibility shim for `/api/book`; re-review for full transport-only retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
       "functionFile": "dashboard.ts",
       "publicApiPath": "/api/dashboard",
-      "reason": "Route now delegates to `get-dashboard-data` edge authority; adapter retained for contract stability and rollback.",
+      "reason": "Netlify redirect, transport adapter, and `/api/dashboard` callsites remain active for contract stability while the edge-backed dashboard cutover still retains the compatibility shim; re-review for retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
       "functionFile": "sessions-start.ts",
       "publicApiPath": "/api/sessions-start",
-      "reason": "Route now delegates to edge `sessions-start`; adapter retained temporarily for controlled cutover.",
+      "reason": "The route can proxy to edge `sessions-start`, but it still retains local authority-path execution plus the compatibility shim for `/api/sessions-start`; re-review for full transport-only retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
     }

@@ -1,4 +1,5 @@
 -- @migration-intent: Add the local-first agent work ledger foundation for the IEHP shadow workflow.
+-- @migration-dependencies: none
 -- @migration-rollback: Drop the ledger tables, helper functions, triggers, and trace foreign keys if the local foundation is reverted before any hosted rollout.
 
 begin;

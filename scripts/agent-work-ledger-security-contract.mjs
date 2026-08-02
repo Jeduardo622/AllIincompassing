@@ -39,9 +39,29 @@ const FUNCTION_CONTRACTS = [
     execute: { public: false, anon: false, authenticated: true, service_role: true },
   },
   {
+    signature: "app.current_user_can_read_agent_work_item_endpoint(uuid)",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: true, service_role: true },
+  },
+  {
     signature: "create_agent_assessment_work_item(uuid,uuid,uuid,integer,text)",
     searchPath: "public, pg_temp",
     execute: { public: false, anon: false, authenticated: true, service_role: true },
+  },
+  {
+    signature: "agent_work_recompute_item_status(uuid)",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "agent_work_enforce_dependency_scope()",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "agent_work_enforce_parent_scope()",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
   },
   {
     signature: "claim_agent_work_step(uuid,text,integer)",
@@ -550,6 +570,216 @@ const assertOrganizationAndClientIsolation = async (client, assignedWorkItemId, 
   assert(foreignReadableCount === 0, `Cross-org admin should not read foreign-org work items, found ${foreignReadableCount}`);
 };
 
+const assertDependencyTenantScope = async (client, assignedWorkItemId, unassignedWorkItemId) => {
+  await expectFailure(
+    "cross-client work-item dependency",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          `
+            insert into public.agent_work_item_dependencies (
+              organization_id,
+              predecessor_work_item_id,
+              successor_work_item_id
+            ) values ($1::uuid, $2::uuid, $3::uuid)
+          `,
+          [FIXTURES.orgA, assignedWorkItemId, unassignedWorkItemId],
+        );
+      }),
+    /dependency.*scope mismatch/i,
+  );
+
+  await expectFailure(
+    "null-client work-item dependency mismatch",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        const { rows } = await client.query(
+          `
+            insert into public.agent_work_items (
+              organization_id,
+              client_id,
+              workflow_key,
+              workflow_version,
+              objective,
+              status,
+              dedupe_key
+            ) values ($1::uuid, null, 'contract.dependency.org', 1, 'Synthetic organization-level dependency fixture.', 'queued', $2::text)
+            returning id
+          `,
+          [FIXTURES.orgA, `dependency-null-${RUN_TOKEN}`],
+        );
+
+        await client.query(
+          `
+            insert into public.agent_work_item_dependencies (
+              organization_id,
+              predecessor_work_item_id,
+              successor_work_item_id
+            ) values ($1::uuid, $2::uuid, $3::uuid)
+          `,
+          [FIXTURES.orgA, rows[0].id, assignedWorkItemId],
+        );
+      }),
+    /dependency.*scope mismatch/i,
+  );
+
+  await expectFailure(
+    "cross-client parent work item",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          "update public.agent_work_items set parent_work_item_id = $1::uuid where id = $2::uuid",
+          [assignedWorkItemId, unassignedWorkItemId],
+        );
+      }),
+    /parent.*scope mismatch/i,
+  );
+
+  await expectFailure(
+    "cross-org parent work item",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        const { rows } = await client.query(
+          `
+            insert into public.agent_work_items (
+              organization_id,
+              client_id,
+              workflow_key,
+              workflow_version,
+              objective,
+              status,
+              dedupe_key
+            ) values ($1::uuid, $2::uuid, 'contract.parent.cross-org', 1, 'Synthetic cross-organization parent fixture.', 'queued', $3::text)
+            returning id
+          `,
+          [FIXTURES.orgB, FIXTURES.clientCrossOrg, `parent-cross-org-${RUN_TOKEN}`],
+        );
+
+        await client.query(
+          "update public.agent_work_items set parent_work_item_id = $1::uuid where id = $2::uuid",
+          [assignedWorkItemId, rows[0].id],
+        );
+      }),
+    /parent.*scope mismatch/i,
+  );
+
+  await expectFailure(
+    "dependency endpoint client mutation",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        const { rows } = await client.query(
+          `
+            insert into public.agent_work_items (
+              organization_id,
+              client_id,
+              workflow_key,
+              workflow_version,
+              objective,
+              status,
+              dedupe_key
+            ) values ($1::uuid, $2::uuid, 'contract.dependency.scope-mutation', 1, 'Synthetic dependency scope-mutation fixture.', 'queued', $3::text)
+            returning id
+          `,
+          [FIXTURES.orgA, FIXTURES.clientAssigned, `dependency-mutation-${RUN_TOKEN}`],
+        );
+        const successorId = rows[0].id;
+
+        await client.query(
+          `
+            insert into public.agent_work_item_dependencies (
+              organization_id,
+              predecessor_work_item_id,
+              successor_work_item_id
+            ) values ($1::uuid, $2::uuid, $3::uuid)
+          `,
+          [FIXTURES.orgA, assignedWorkItemId, successorId],
+        );
+
+        await client.query(
+          "update public.agent_work_items set client_id = $1::uuid where id = $2::uuid",
+          [FIXTURES.clientUnassigned, successorId],
+        );
+      }),
+    /graph tenant scope mutation/i,
+  );
+};
+
+const assertDependencyEndpointReadPolicy = async (client, assignedWorkItemId, unassignedWorkItemId) => {
+  await client.query("begin");
+
+  try {
+    await client.query("alter table public.agent_work_item_dependencies disable trigger agent_work_item_dependencies_enforce_scope");
+    const { rows } = await client.query(
+      `
+        insert into public.agent_work_item_dependencies (
+          organization_id,
+          predecessor_work_item_id,
+          successor_work_item_id
+        ) values ($1::uuid, $2::uuid, $3::uuid)
+        returning id
+      `,
+      [FIXTURES.orgA, assignedWorkItemId, unassignedWorkItemId],
+    );
+    const dependencyId = rows[0].id;
+    await client.query("alter table public.agent_work_item_dependencies enable trigger agent_work_item_dependencies_enforce_scope");
+
+    await client.query("set local role authenticated");
+    await client.query("select set_config('request.jwt.claim.role', 'authenticated', true)");
+    await client.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ role: "authenticated", sub: FIXTURES.btA }),
+    ]);
+    await client.query("select set_config('request.jwt.claim.sub', $1, true)", [FIXTURES.btA]);
+
+    const { rows: visibleRows } = await client.query(
+      "select count(*)::integer as count from public.agent_work_item_dependencies where id = $1::uuid",
+      [dependencyId],
+    );
+    await client.query("rollback");
+
+    assert(
+      visibleRows[0]?.count === 0,
+      `Dependency read policy must authorize both endpoints, found ${visibleRows[0]?.count ?? 0} visible edge(s)`,
+    );
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  }
+};
+
+const assertParentEndpointReadPolicy = async (client, assignedWorkItemId, unassignedWorkItemId) => {
+  await client.query("begin");
+
+  try {
+    await client.query("alter table public.agent_work_items disable trigger agent_work_items_enforce_parent_scope");
+    await client.query(
+      "update public.agent_work_items set parent_work_item_id = $1::uuid where id = $2::uuid",
+      [unassignedWorkItemId, assignedWorkItemId],
+    );
+    await client.query("alter table public.agent_work_items enable trigger agent_work_items_enforce_parent_scope");
+
+    await client.query("set local role authenticated");
+    await client.query("select set_config('request.jwt.claim.role', 'authenticated', true)");
+    await client.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ role: "authenticated", sub: FIXTURES.btA }),
+    ]);
+    await client.query("select set_config('request.jwt.claim.sub', $1, true)", [FIXTURES.btA]);
+
+    const { rows } = await client.query(
+      "select count(*)::integer as count from public.agent_work_items where id = $1::uuid",
+      [assignedWorkItemId],
+    );
+    await client.query("rollback");
+
+    assert(
+      rows[0]?.count === 0,
+      `Parent read policy must authorize both endpoints, found ${rows[0]?.count ?? 0} visible child row(s)`,
+    );
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  }
+};
+
 const assertApprovalRoleEnforcement = async (client, assignedWorkItemId) => {
   const { rows: stepRows } = await client.query(
     `
@@ -631,6 +861,375 @@ const assertApprovalRoleEnforcement = async (client, assignedWorkItemId) => {
   assert(bcbaVisibleCount === 1, `BCBA should read required-role approvals, found ${bcbaVisibleCount}`);
 };
 
+const assertClaimEligibility = async (client) => {
+  for (const terminalStatus of ["completed", "failed", "cancelled"]) {
+    await expectFailure(
+      `${terminalStatus} work-item claim`,
+      () =>
+        withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+          const { rows } = await client.query(
+            `
+              insert into public.agent_work_items (
+                organization_id,
+                client_id,
+                workflow_key,
+                workflow_version,
+                objective,
+                status,
+                dedupe_key
+              ) values ($1::uuid, $2::uuid, 'contract.claim.terminal', 1, 'Synthetic terminal claim fixture.', $3::public.agent_work_item_status, $4::text)
+              returning id
+            `,
+            [FIXTURES.orgA, FIXTURES.clientAssigned, terminalStatus, `terminal-${terminalStatus}-${RUN_TOKEN}`],
+          );
+          const workItemId = rows[0].id;
+
+          await client.query(
+            `
+              insert into public.agent_work_steps (
+                work_item_id,
+                organization_id,
+                client_id,
+                step_key,
+                ordinal,
+                execution_mode,
+                status
+              ) values ($1::uuid, $2::uuid, $3::uuid, 'terminal_ready', 10, 'deterministic', 'ready')
+            `,
+            [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned],
+          );
+
+          await client.query("select * from public.claim_agent_work_step($1::uuid, $2::text, $3::integer)", [
+            workItemId,
+            "worker-terminal",
+            120,
+          ]);
+        }),
+      /terminal work item/i,
+    );
+  }
+
+  const humanClaimCount = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+    const { rows } = await client.query(
+      `
+        insert into public.agent_work_items (
+          organization_id,
+          client_id,
+          workflow_key,
+          workflow_version,
+          objective,
+          status,
+          dedupe_key
+        ) values ($1::uuid, $2::uuid, 'contract.claim.human', 1, 'Synthetic human-step claim fixture.', 'queued', $3::text)
+        returning id
+      `,
+      [FIXTURES.orgA, FIXTURES.clientAssigned, `human-${RUN_TOKEN}`],
+    );
+    const workItemId = rows[0].id;
+
+    await client.query(
+      `
+        insert into public.agent_work_steps (
+          work_item_id,
+          organization_id,
+          client_id,
+          step_key,
+          ordinal,
+          execution_mode,
+          status,
+          required_role
+        ) values ($1::uuid, $2::uuid, $3::uuid, 'human_ready', 10, 'human', 'ready', 'bcba')
+      `,
+      [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned],
+    );
+
+    const { rows: claimRows } = await client.query(
+      "select * from public.claim_agent_work_step($1::uuid, $2::text, $3::integer)",
+      [workItemId, "worker-human", 120],
+    );
+    return claimRows.length;
+  });
+
+  assert(humanClaimCount === 0, `Human execution steps must be unclaimable, found ${humanClaimCount} claimed row(s)`);
+};
+
+const assertAttemptSettlement = async (client) => {
+  const settlementCases = [
+    { toStatus: "completed", expectedAttemptStatus: "completed" },
+    { toStatus: "failed", expectedAttemptStatus: "failed" },
+    { toStatus: "cancelled", expectedAttemptStatus: "cancelled" },
+    { toStatus: "ready", expectedAttemptStatus: "cancelled" },
+    { toStatus: "waiting", expectedAttemptStatus: "completed" },
+    { toStatus: "needs_approval", expectedAttemptStatus: "completed" },
+  ];
+
+  for (const { toStatus, expectedAttemptStatus } of settlementCases) {
+    await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      const { rows: itemRows } = await client.query(
+        `
+          insert into public.agent_work_items (
+            organization_id,
+            client_id,
+            workflow_key,
+            workflow_version,
+            objective,
+            status,
+            dedupe_key
+          ) values ($1::uuid, $2::uuid, 'contract.attempt.settlement', 1, 'Synthetic attempt settlement fixture.', 'queued', $3::text)
+          returning id
+        `,
+        [FIXTURES.orgA, FIXTURES.clientAssigned, `settlement-${toStatus}-${RUN_TOKEN}`],
+      );
+      const workItemId = itemRows[0].id;
+
+      await client.query(
+        `
+          insert into public.agent_work_steps (
+            work_item_id,
+            organization_id,
+            client_id,
+            step_key,
+            ordinal,
+            execution_mode,
+            status
+          ) values ($1::uuid, $2::uuid, $3::uuid, $4::text, 10, 'deterministic', 'ready')
+        `,
+        [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `settle_${toStatus}`],
+      );
+
+      const workerId = `worker-${toStatus.replace("_", "-")}`;
+      const { rows: claimRows } = await client.query(
+        "select * from public.claim_agent_work_step($1::uuid, $2::text, $3::integer)",
+        [workItemId, workerId, 120],
+      );
+      const claimedStep = claimRows[0];
+      assert(claimedStep, `Expected ${toStatus} settlement fixture to be claimed`);
+
+      const { rows: attemptRows } = await client.query(
+        `
+          select id
+          from public.agent_work_attempts
+          where step_id = $1::uuid
+            and attempt_number = $2::integer
+          limit 1
+        `,
+        [claimedStep.id, claimedStep.attempt_count],
+      );
+      const attemptId = attemptRows[0]?.id;
+      assert(attemptId, `Expected ${toStatus} settlement fixture to create an attempt`);
+
+      await client.query(
+        "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+        [
+          claimedStep.id,
+          claimedStep.state_version,
+          toStatus,
+          `settle-${toStatus.replace("_", "-")}`,
+          toStatus === "completed" ? HASH_A : null,
+          JSON.stringify({ worker_id: workerId, attempt_id: attemptId, result_code: `settle-${toStatus}` }),
+        ],
+      );
+
+      const { rows: settledRows } = await client.query(
+        "select status, finished_at from public.agent_work_attempts where id = $1::uuid",
+        [attemptId],
+      );
+      const settledAttempt = settledRows[0];
+      assert(
+        settledAttempt?.status === expectedAttemptStatus,
+        `${toStatus} transition must settle attempt as ${expectedAttemptStatus}, found ${settledAttempt?.status}`,
+      );
+      assert(settledAttempt.finished_at, `${toStatus} transition must set attempt finished_at`);
+    });
+  }
+};
+
+const assertApprovalTransitionGate = async (client) => {
+  const workItemId = randomUUID();
+  const stepId = randomUUID();
+
+  await client.query(
+    `
+      insert into public.agent_work_items (
+        id,
+        organization_id,
+        client_id,
+        workflow_key,
+        workflow_version,
+        objective,
+        status,
+        dedupe_key
+      ) values ($1::uuid, $2::uuid, $3::uuid, 'contract.approval.gate', 1, 'Synthetic approval-gate fixture.', 'waiting', $4::text)
+    `,
+    [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `approval-gate-${RUN_TOKEN}`],
+  );
+
+  await client.query(
+    `
+      insert into public.agent_work_steps (
+        id,
+        work_item_id,
+        organization_id,
+        client_id,
+        step_key,
+        ordinal,
+        execution_mode,
+        status,
+        required_role,
+        input_hash
+      ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'approval_gate', 10, 'human', 'needs_approval', 'bcba', $5::text)
+    `,
+    [stepId, workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A],
+  );
+
+  await client.query(
+    `
+      insert into public.agent_work_evidence (
+        work_item_id,
+        step_id,
+        organization_id,
+        client_id,
+        source_kind,
+        source_id,
+        sha256
+      ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'work_step', $2::uuid, $5::text)
+    `,
+    [workItemId, stepId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_B],
+  );
+
+  const transitionWithApproval = async (approval) =>
+    withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      if (approval) {
+        await client.query(
+          `
+            insert into public.agent_work_approvals (
+              work_item_id,
+              step_id,
+              organization_id,
+              client_id,
+              required_role,
+              status,
+              input_hash,
+              evidence_hash,
+              decided_by,
+              decision_reason_code,
+              decided_at,
+              expires_at
+            ) values (
+              $1::uuid,
+              $2::uuid,
+              $3::uuid,
+              $4::uuid,
+              $5::text,
+              'approved',
+              $6::text,
+              $7::text,
+              $8::uuid,
+              'contract-approved',
+              timezone('utc', now()),
+              $9::timestamptz
+            )
+          `,
+          [
+            workItemId,
+            stepId,
+            FIXTURES.orgA,
+            FIXTURES.clientAssigned,
+            approval.requiredRole,
+            approval.inputHash,
+            approval.evidenceHash,
+            approval.decidedBy,
+            approval.expiresAt,
+          ],
+        );
+      }
+
+      const { rows } = await client.query(
+        `
+          select *
+          from public.transition_agent_work_step($1::uuid, 0::bigint, 'completed'::public.agent_work_step_status, 'approval-complete', $2::text, $3::jsonb)
+        `,
+        [stepId, HASH_A, JSON.stringify({ result_code: "approval-complete" })],
+      );
+      return rows[0];
+    });
+
+  const validApproval = {
+    requiredRole: "bcba",
+    inputHash: HASH_A,
+    evidenceHash: HASH_B,
+    decidedBy: FIXTURES.bcbaA,
+    expiresAt: new Date(Date.now() + 300_000).toISOString(),
+  };
+
+  await expectFailure("approval bypass without approval", () => transitionWithApproval(null), /matching approved approval/i);
+  await expectFailure(
+    "approval bypass with wrong required role",
+    () => transitionWithApproval({ ...validApproval, requiredRole: "admin" }),
+    /matching approved approval/i,
+  );
+  await expectFailure(
+    "approval bypass with wrong input hash",
+    () => transitionWithApproval({ ...validApproval, inputHash: HASH_B }),
+    /matching approved approval/i,
+  );
+  await expectFailure(
+    "approval bypass with stale evidence hash",
+    () => transitionWithApproval({ ...validApproval, evidenceHash: HASH_A }),
+    /matching approved approval/i,
+  );
+  await expectFailure(
+    "approval bypass with expired approval",
+    () => transitionWithApproval({ ...validApproval, expiresAt: new Date(Date.now() - 60_000).toISOString() }),
+    /matching approved approval/i,
+  );
+  await expectFailure(
+    "approval bypass with wrong-role decider",
+    () => transitionWithApproval({ ...validApproval, decidedBy: FIXTURES.adminA }),
+    /matching approved approval/i,
+  );
+
+  const approvedStep = await withActor(
+    client,
+    "service_role",
+    "service_role",
+    FIXTURES.adminA,
+    async () => {
+      await client.query(
+        `
+          insert into public.agent_work_approvals (
+            work_item_id,
+            step_id,
+            organization_id,
+            client_id,
+            required_role,
+            status,
+            input_hash,
+            evidence_hash,
+            decided_by,
+            decision_reason_code,
+            decided_at,
+            expires_at
+          ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'bcba', 'approved', $5::text, $6::text, $7::uuid, 'contract-approved', timezone('utc', now()), timezone('utc', now()) + interval '5 minutes')
+        `,
+        [workItemId, stepId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A, HASH_B, FIXTURES.bcbaA],
+      );
+
+      const { rows } = await client.query(
+        `
+          select *
+          from public.transition_agent_work_step($1::uuid, 0::bigint, 'completed'::public.agent_work_step_status, 'approval-complete', $2::text, $3::jsonb)
+        `,
+        [stepId, HASH_A, JSON.stringify({ result_code: "approval-complete" })],
+      );
+      return rows[0];
+    },
+    { commit: true },
+  );
+
+  assert(approvedStep?.status === "completed", `Matching approval must allow completion, found ${approvedStep?.status}`);
+};
+
 const assertClaimAndTransitionContract = async (client, assignedWorkItemId) => {
   const firstClaim = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
     const { rows } = await client.query(
@@ -644,6 +1243,180 @@ const assertClaimAndTransitionContract = async (client, assignedWorkItemId) => {
   assert(firstClaim.step_key === "validate_scope", `Expected validate_scope first, found ${firstClaim.step_key}`);
   assert(firstClaim.status === "running", `Claimed step must enter running, found ${firstClaim.status}`);
   assert(firstClaim.attempt_count === 1, `First claim should increment attempt_count to 1, found ${firstClaim.attempt_count}`);
+
+  const { rows: attemptRows } = await client.query(
+    `
+      select id
+      from public.agent_work_attempts
+      where step_id = $1::uuid
+        and attempt_number = $2::integer
+        and status = 'running'
+      limit 1
+    `,
+    [firstClaim.id, firstClaim.attempt_count],
+  );
+  const firstAttemptId = attemptRows[0]?.id;
+  assert(firstAttemptId, "Expected claim to create a running attempt");
+
+  await expectFailure(
+    "arbitrary event metadata key",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+          [
+            firstClaim.id,
+            firstClaim.state_version,
+            "completed",
+            "metadata-key",
+            HASH_A,
+            JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId, notes: "free text" }),
+          ],
+        );
+      }),
+    /metadata key.*not allowed/i,
+  );
+
+  await expectFailure(
+    "nested event metadata value",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+          [
+            firstClaim.id,
+            firstClaim.state_version,
+            "completed",
+            "metadata-shape",
+            HASH_A,
+            JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId, result_code: { nested: true } }),
+          ],
+        );
+      }),
+    /metadata values must be primitive/i,
+  );
+
+  await expectFailure(
+    "oversized event metadata string",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+          [
+            firstClaim.id,
+            firstClaim.state_version,
+            "completed",
+            "metadata-length",
+            HASH_A,
+            JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId, result_code: "x".repeat(129) }),
+          ],
+        );
+      }),
+    /metadata string.*too long/i,
+  );
+
+  await expectFailure(
+    "URL event metadata value",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+          [
+            firstClaim.id,
+            firstClaim.state_version,
+            "completed",
+            "metadata-url",
+            HASH_A,
+            JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId, result_code: "https://example.invalid" }),
+          ],
+        );
+      }),
+    /metadata URL.*not allowed/i,
+  );
+
+  await expectFailure(
+    "free-text transition reason",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+          [
+            firstClaim.id,
+            firstClaim.state_version,
+            "completed",
+            "contains patient narrative",
+            HASH_A,
+            JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId, result_code: "complete" }),
+          ],
+        );
+      }),
+    /invalid reason code/i,
+  );
+
+  await expectFailure(
+    "cross-worker transition",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+          [
+            firstClaim.id,
+            firstClaim.state_version,
+            "completed",
+            "cross-worker",
+            HASH_A,
+            JSON.stringify({ worker_id: "worker-beta", attempt_id: firstAttemptId }),
+          ],
+        );
+      }),
+    /worker.*mismatch/i,
+  );
+
+  await expectFailure(
+    "stale running attempt transition",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+          [
+            firstClaim.id,
+            firstClaim.state_version,
+            "completed",
+            "stale-attempt",
+            HASH_A,
+            JSON.stringify({ worker_id: "worker-alpha", attempt_id: randomUUID() }),
+          ],
+        );
+      }),
+    /attempt.*mismatch/i,
+  );
+
+  await expectFailure(
+    "expired lease transition",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          `
+            update public.agent_work_steps
+            set lease_expires_at = timezone('utc', now()) - interval '1 second'
+            where id = $1::uuid
+          `,
+          [firstClaim.id],
+        );
+        await client.query(
+          "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+          [
+            firstClaim.id,
+            firstClaim.state_version,
+            "completed",
+            "expired-lease",
+            HASH_A,
+            JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId }),
+          ],
+        );
+      }),
+    /lease.*expired/i,
+  );
 
   const noSecondClaim = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
     const { rows } = await client.query(
@@ -688,7 +1461,14 @@ const assertClaimAndTransitionContract = async (client, assignedWorkItemId) => {
         select *
         from public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)
       `,
-      [firstClaim.id, refreshedStateVersion, "completed", "done", HASH_A, '{"contract":"complete"}'],
+      [
+        firstClaim.id,
+        refreshedStateVersion,
+        "completed",
+        "done",
+        HASH_A,
+        JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId, result_code: "complete" }),
+      ],
     );
     return rows[0];
   }, { commit: true });
@@ -736,7 +1516,13 @@ const main = async () => {
 
     await assertDirectMutationDenials(client, assignedWorkItemId);
     await assertOrganizationAndClientIsolation(client, assignedWorkItemId, unassignedWorkItemId);
+    await assertDependencyTenantScope(client, assignedWorkItemId, unassignedWorkItemId);
+    await assertDependencyEndpointReadPolicy(client, assignedWorkItemId, unassignedWorkItemId);
+    await assertParentEndpointReadPolicy(client, assignedWorkItemId, unassignedWorkItemId);
     await assertApprovalRoleEnforcement(client, assignedWorkItemId);
+    await assertClaimEligibility(client);
+    await assertAttemptSettlement(client);
+    await assertApprovalTransitionGate(client);
     await assertClaimAndTransitionContract(client, assignedWorkItemId);
 
     console.log("Agent work ledger security contract passed.");

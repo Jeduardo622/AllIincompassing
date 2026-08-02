@@ -449,6 +449,119 @@ comment on column public.agent_work_steps.completion_criteria is 'PHI-free deter
 comment on column public.agent_work_evidence.metadata is 'PHI-free evidence metadata only; never raw clinical content.';
 comment on column public.agent_work_events.sanitized_metadata is 'PHI-free sanitized event metadata only.';
 
+create or replace function public.agent_work_enforce_dependency_scope()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_predecessor_organization_id uuid;
+  v_predecessor_client_id uuid;
+  v_successor_organization_id uuid;
+  v_successor_client_id uuid;
+begin
+  select organization_id, client_id
+  into v_predecessor_organization_id, v_predecessor_client_id
+  from public.agent_work_items
+  where id = new.predecessor_work_item_id;
+
+  select organization_id, client_id
+  into v_successor_organization_id, v_successor_client_id
+  from public.agent_work_items
+  where id = new.successor_work_item_id;
+
+  if v_predecessor_organization_id is null
+    or v_successor_organization_id is null
+    or v_predecessor_organization_id <> new.organization_id
+    or v_successor_organization_id <> new.organization_id
+    or v_predecessor_client_id is distinct from v_successor_client_id then
+    raise exception 'Dependency tenant scope mismatch';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.agent_work_enforce_dependency_scope() from public, anon, authenticated, service_role;
+
+drop trigger if exists agent_work_item_dependencies_enforce_scope on public.agent_work_item_dependencies;
+create trigger agent_work_item_dependencies_enforce_scope
+  before insert or update of organization_id, predecessor_work_item_id, successor_work_item_id
+  on public.agent_work_item_dependencies
+  for each row
+  execute function public.agent_work_enforce_dependency_scope();
+
+create or replace function public.agent_work_enforce_parent_scope()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_parent_organization_id uuid;
+  v_parent_client_id uuid;
+begin
+  if new.parent_work_item_id is not null then
+    select organization_id, client_id
+    into v_parent_organization_id, v_parent_client_id
+    from public.agent_work_items
+    where id = new.parent_work_item_id;
+
+    if not found
+      or v_parent_organization_id <> new.organization_id
+      or v_parent_client_id is distinct from new.client_id then
+      raise exception 'Parent tenant scope mismatch';
+    end if;
+  end if;
+
+  if tg_op = 'UPDATE'
+    and (
+      new.organization_id is distinct from old.organization_id
+      or new.client_id is distinct from old.client_id
+    )
+    and (
+      exists (
+        select 1
+        from public.agent_work_item_dependencies dependency
+        join public.agent_work_items peer
+          on peer.id = case
+            when dependency.predecessor_work_item_id = new.id then dependency.successor_work_item_id
+            else dependency.predecessor_work_item_id
+          end
+        where new.id in (dependency.predecessor_work_item_id, dependency.successor_work_item_id)
+          and (
+            dependency.organization_id <> new.organization_id
+            or peer.organization_id <> new.organization_id
+            or peer.client_id is distinct from new.client_id
+          )
+      )
+      or exists (
+        select 1
+        from public.agent_work_items child
+        where child.parent_work_item_id = new.id
+          and (
+            child.organization_id <> new.organization_id
+            or child.client_id is distinct from new.client_id
+          )
+      )
+    ) then
+    raise exception 'Graph tenant scope mutation denied';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.agent_work_enforce_parent_scope() from public, anon, authenticated, service_role;
+
+drop trigger if exists agent_work_items_enforce_parent_scope on public.agent_work_items;
+create trigger agent_work_items_enforce_parent_scope
+  before insert or update of organization_id, client_id, parent_work_item_id
+  on public.agent_work_items
+  for each row
+  execute function public.agent_work_enforce_parent_scope();
+
 alter table public.agent_execution_traces
   add column if not exists work_item_id uuid,
   add column if not exists step_id uuid,
@@ -561,6 +674,21 @@ begin
 
   return app.current_user_can_read_client_programs(p_organization_id, p_client_id);
 end;
+$$;
+
+create or replace function app.current_user_can_read_agent_work_item_endpoint(p_work_item_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+    from public.agent_work_items item
+    where item.id = p_work_item_id
+      and app.current_user_can_read_agent_work_row(item.organization_id, item.client_id)
+  );
 $$;
 
 create or replace function public.agent_work_recompute_item_status(p_work_item_id uuid)
@@ -804,15 +932,32 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
+  v_item_status public.agent_work_item_status;
   v_step public.agent_work_steps%rowtype;
   v_attempt_id uuid;
 begin
-  if p_work_item_id is null or p_worker_id is null or btrim(p_worker_id) = '' then
+  if p_work_item_id is null
+    or p_worker_id is null
+    or btrim(p_worker_id) !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' then
     raise exception 'Invalid claim request';
   end if;
 
   if p_lease_seconds is null or p_lease_seconds < 15 or p_lease_seconds > 900 then
     raise exception 'Lease seconds out of range';
+  end if;
+
+  select status
+  into v_item_status
+  from public.agent_work_items
+  where id = p_work_item_id
+  for update;
+
+  if not found then
+    raise exception 'Work item not found';
+  end if;
+
+  if v_item_status in ('completed', 'failed', 'cancelled') then
+    raise exception 'Cannot claim terminal work item';
   end if;
 
   select s.*
@@ -821,6 +966,7 @@ begin
   join public.agent_work_items i on i.id = s.work_item_id
   where s.work_item_id = p_work_item_id
     and s.status = 'ready'
+    and s.execution_mode <> 'human'
     and i.status not in ('completed', 'failed', 'cancelled')
     and not exists (
       select 1
@@ -913,10 +1059,64 @@ set search_path = public, pg_temp
 as $$
 declare
   v_step public.agent_work_steps%rowtype;
+  v_attempt public.agent_work_attempts%rowtype;
+  v_approval public.agent_work_approvals%rowtype;
+  v_attempt_id uuid;
+  v_current_evidence_hash text;
+  v_worker_id text;
   v_now timestamptz := timezone('utc', now());
 begin
   if p_step_id is null or p_expected_state_version is null or p_to_status is null then
     raise exception 'Invalid transition request';
+  end if;
+
+  if p_reason_code is null or p_reason_code !~ '^[a-z0-9][a-z0-9._:-]{0,63}$' then
+    raise exception 'Invalid reason code';
+  end if;
+
+  if p_sanitized_metadata is not null and jsonb_typeof(p_sanitized_metadata) <> 'object' then
+    raise exception 'Sanitized metadata must be an object';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_object_keys(coalesce(p_sanitized_metadata, '{}'::jsonb)) as metadata_key(key)
+    where metadata_key.key not in (
+      'worker_id',
+      'attempt_id',
+      'result_code',
+      'evidence_hash',
+      'duration_ms',
+      'retry_count'
+    )
+  ) then
+    raise exception 'Metadata key not allowed';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_each(coalesce(p_sanitized_metadata, '{}'::jsonb)) as metadata_entry(key, value)
+    where jsonb_typeof(metadata_entry.value) not in ('string', 'number', 'boolean', 'null')
+  ) then
+    raise exception 'Metadata values must be primitive';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_each(coalesce(p_sanitized_metadata, '{}'::jsonb)) as metadata_entry(key, value)
+    where jsonb_typeof(metadata_entry.value) = 'string'
+      and length(metadata_entry.value #>> '{}') > 128
+  ) then
+    raise exception 'Metadata string value too long';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_each(coalesce(p_sanitized_metadata, '{}'::jsonb)) as metadata_entry(key, value)
+    where jsonb_typeof(metadata_entry.value) = 'string'
+      and (metadata_entry.value #>> '{}') ~* '(https?://|www\.|[a-z][a-z0-9+.-]*://)'
+  ) then
+    raise exception 'Metadata URL values are not allowed';
   end if;
 
   select *
@@ -935,6 +1135,57 @@ begin
 
   if p_output_hash is not null and p_output_hash !~ '^[0-9a-f]{64}$' then
     raise exception 'Invalid output hash';
+  end if;
+
+  if v_step.status = 'running' then
+    if p_sanitized_metadata is null
+      or jsonb_typeof(p_sanitized_metadata) <> 'object'
+      or jsonb_typeof(p_sanitized_metadata -> 'worker_id') <> 'string'
+      or jsonb_typeof(p_sanitized_metadata -> 'attempt_id') <> 'string' then
+      raise exception 'Running transition requires worker_id and attempt_id context';
+    end if;
+
+    v_worker_id := p_sanitized_metadata ->> 'worker_id';
+
+    if v_worker_id !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' then
+      raise exception 'Invalid worker_id context';
+    end if;
+
+    if (p_sanitized_metadata ->> 'attempt_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then
+      raise exception 'Invalid attempt_id context';
+    end if;
+
+    v_attempt_id := (p_sanitized_metadata ->> 'attempt_id')::uuid;
+
+    if v_step.lease_owner is distinct from v_worker_id then
+      raise exception 'Worker lease mismatch';
+    end if;
+
+    if v_step.lease_expires_at is null or v_step.lease_expires_at <= v_now then
+      raise exception 'Worker lease expired';
+    end if;
+
+    select *
+    into v_attempt
+    from public.agent_work_attempts
+    where id = v_attempt_id
+      and work_item_id = v_step.work_item_id
+      and step_id = v_step.id
+      and attempt_number = v_step.attempt_count
+      and status = 'running'
+    for update;
+
+    if not found then
+      raise exception 'Current running attempt mismatch';
+    end if;
+
+    if v_attempt.worker_id is distinct from v_worker_id then
+      raise exception 'Attempt worker mismatch';
+    end if;
+
+    if v_attempt.lease_expires_at is null or v_attempt.lease_expires_at <= v_now then
+      raise exception 'Attempt lease expired';
+    end if;
   end if;
 
   if (v_step.status, p_to_status) not in (
@@ -962,12 +1213,79 @@ begin
     raise exception 'Invalid step transition % -> %', v_step.status, p_to_status;
   end if;
 
+  if v_step.status = 'needs_approval' and p_to_status = 'completed' then
+    select evidence.sha256
+    into v_current_evidence_hash
+    from public.agent_work_evidence evidence
+    where evidence.work_item_id = v_step.work_item_id
+      and evidence.step_id = v_step.id
+      and evidence.organization_id = v_step.organization_id
+      and evidence.client_id is not distinct from v_step.client_id
+    order by evidence.captured_at desc, evidence.created_at desc, evidence.id desc
+    limit 1;
+
+    if v_step.required_role is null
+      or v_step.input_hash is null
+      or v_current_evidence_hash is null then
+      raise exception 'Matching approved approval required';
+    end if;
+
+    select approval.*
+    into v_approval
+    from public.agent_work_approvals approval
+    where approval.work_item_id = v_step.work_item_id
+      and approval.step_id = v_step.id
+      and approval.organization_id = v_step.organization_id
+      and approval.client_id is not distinct from v_step.client_id
+      and approval.status = 'approved'
+      and approval.required_role = v_step.required_role
+      and approval.input_hash = v_step.input_hash
+      and approval.evidence_hash = v_current_evidence_hash
+      and approval.decided_by is not null
+      and approval.decided_at is not null
+      and (approval.expires_at is null or approval.expires_at > v_now)
+      and exists (
+        select 1
+        from public.profiles decider_profile
+        join public.user_roles decider_role on decider_role.user_id = decider_profile.id
+        join public.roles role on role.id = decider_role.role_id
+        where decider_profile.id = approval.decided_by
+          and decider_profile.organization_id = v_step.organization_id
+          and role.name = approval.required_role
+          and coalesce(decider_role.is_active, true) = true
+          and (decider_role.expires_at is null or decider_role.expires_at > v_now)
+      )
+    order by approval.decided_at desc, approval.created_at desc, approval.id desc
+    for update
+    limit 1;
+
+    if not found then
+      raise exception 'Matching approved approval required';
+    end if;
+  end if;
+
+  if v_step.status = 'running' then
+    update public.agent_work_attempts
+    set status = case
+          when p_to_status in ('completed', 'waiting', 'needs_approval') then 'completed'::public.agent_work_attempt_status
+          when p_to_status = 'failed' then 'failed'::public.agent_work_attempt_status
+          else 'cancelled'::public.agent_work_attempt_status
+        end,
+        finished_at = v_now,
+        updated_at = v_now
+    where id = v_attempt.id;
+  end if;
+
   update public.agent_work_steps
   set status = p_to_status,
       output_hash = coalesce(p_output_hash, output_hash),
+      approval_hash = case
+        when v_approval.id is not null then v_approval.evidence_hash
+        else approval_hash
+      end,
       last_error_code = case when p_to_status = 'failed' then p_reason_code else last_error_code end,
       wake_at = case when p_to_status = 'waiting' then coalesce(wake_at, v_now + interval '5 minutes') else null end,
-      lease_owner = case when p_to_status in ('running', 'waiting', 'needs_approval') then lease_owner else null end,
+      lease_owner = case when p_to_status = 'running' then lease_owner else null end,
       lease_expires_at = case when p_to_status = 'running' then lease_expires_at else null end,
       completed_at = case when p_to_status in ('completed', 'skipped', 'cancelled') then v_now else completed_at end,
       state_version = state_version + 1,
@@ -999,6 +1317,7 @@ begin
   insert into public.agent_work_events (
     work_item_id,
     step_id,
+    attempt_id,
     organization_id,
     client_id,
     event_type,
@@ -1008,12 +1327,18 @@ begin
   ) values (
     v_step.work_item_id,
     v_step.id,
+    v_attempt_id,
     v_step.organization_id,
     v_step.client_id,
     'step.transitioned',
     case when auth.uid() is null then 'system' else 'user' end,
     auth.uid()::text,
-    coalesce(p_sanitized_metadata, '{}'::jsonb) || jsonb_build_object(
+    coalesce(p_sanitized_metadata, '{}'::jsonb)
+      || case
+        when v_approval.id is not null then jsonb_build_object('approval_id', v_approval.id::text)
+        else '{}'::jsonb
+      end
+      || jsonb_build_object(
       'to_status', p_to_status::text,
       'reason_code', p_reason_code
     )
@@ -1027,12 +1352,15 @@ $$;
 
 revoke all on function app.current_user_can_read_agent_work_row(uuid, uuid) from public, anon;
 revoke all on function app.current_user_can_manage_agent_work_row(uuid, uuid) from public, anon;
+revoke all on function app.current_user_can_read_agent_work_item_endpoint(uuid) from public, anon;
+revoke all on function public.agent_work_recompute_item_status(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.create_agent_assessment_work_item(uuid, uuid, uuid, integer, text) from public, anon, authenticated;
 revoke all on function public.claim_agent_work_step(uuid, text, integer) from public, anon, authenticated;
 revoke all on function public.transition_agent_work_step(uuid, bigint, public.agent_work_step_status, text, text, jsonb) from public, anon, authenticated;
 
 grant execute on function app.current_user_can_read_agent_work_row(uuid, uuid) to authenticated, service_role;
 grant execute on function app.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
+grant execute on function app.current_user_can_read_agent_work_item_endpoint(uuid) to authenticated, service_role;
 grant execute on function public.create_agent_assessment_work_item(uuid, uuid, uuid, integer, text) to authenticated, service_role;
 grant execute on function public.claim_agent_work_step(uuid, text, integer) to service_role;
 grant execute on function public.transition_agent_work_step(uuid, bigint, public.agent_work_step_status, text, text, jsonb) to service_role;
@@ -1132,7 +1460,13 @@ create policy agent_work_items_org_read
   on public.agent_work_items
   for select
   to authenticated
-  using (app.current_user_can_read_agent_work_row(organization_id, client_id));
+  using (
+    app.current_user_can_read_agent_work_row(organization_id, client_id)
+    and (
+      parent_work_item_id is null
+      or app.current_user_can_read_agent_work_item_endpoint(parent_work_item_id)
+    )
+  );
 
 create policy agent_work_item_dependencies_org_read
   on public.agent_work_item_dependencies
@@ -1141,9 +1475,15 @@ create policy agent_work_item_dependencies_org_read
   using (
     exists (
       select 1
-      from public.agent_work_items item
-      where item.id = predecessor_work_item_id
-        and app.current_user_can_read_agent_work_row(item.organization_id, item.client_id)
+      from public.agent_work_items predecessor
+      where predecessor.id = predecessor_work_item_id
+        and app.current_user_can_read_agent_work_row(predecessor.organization_id, predecessor.client_id)
+    )
+    and exists (
+      select 1
+      from public.agent_work_items successor
+      where successor.id = successor_work_item_id
+        and app.current_user_can_read_agent_work_row(successor.organization_id, successor.client_id)
     )
   );
 

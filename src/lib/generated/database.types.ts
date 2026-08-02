@@ -7912,8 +7912,8 @@ export type Database = {
         Returns: undefined
       }
       assign_therapist_role:
-        | { Args: { p_therapist_id: string }; Returns: undefined }
         | { Args: { p_email: string; p_user_id: string }; Returns: undefined }
+        | { Args: { p_therapist_id: string }; Returns: undefined }
       cache_ai_response: {
         Args: {
           p_cache_key: string
@@ -8028,6 +8028,7 @@ export type Database = {
         Returns: string
       }
       confirm_session_hold:
+        | { Args: { p_hold_key: string; p_session: Json }; Returns: Json }
         | {
             Args: {
               p_actor_id: string
@@ -8036,7 +8037,6 @@ export type Database = {
             }
             Returns: string
           }
-        | { Args: { p_hold_key: string; p_session: Json }; Returns: Json }
       confirm_session_hold_with_enrichment: {
         Args: {
           p_actor_id?: string
@@ -8077,7 +8077,6 @@ export type Database = {
               p_expires_at: string
               p_organization_id: string
               p_role: Database["public"]["Enums"]["role_type"]
-              p_target_therapist_id: string
               p_token_hash: string
             }
             Returns: {
@@ -8093,6 +8092,7 @@ export type Database = {
               p_expires_at: string
               p_organization_id: string
               p_role: Database["public"]["Enums"]["role_type"]
+              p_target_therapist_id: string
               p_token_hash: string
             }
             Returns: {
@@ -8435,6 +8435,19 @@ export type Database = {
         | {
             Args: { p_end_date: string; p_start_date: string }
             Returns: {
+              approved_authorizations: number
+              denied_authorizations: number
+              expired_authorizations: number
+              pending_authorizations: number
+              total_approved_units: number
+              total_authorizations: number
+              total_requested_units: number
+              units_by_service_code: Json
+            }[]
+          }
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
               approval_rate: number
               approval_ratio: number
               approved_authorizations: number
@@ -8446,28 +8459,14 @@ export type Database = {
               total_requested_units: number
             }[]
           }
-        | {
-            Args: { p_end_date: string; p_start_date: string }
-            Returns: {
-              approved_authorizations: number
-              denied_authorizations: number
-              expired_authorizations: number
-              pending_authorizations: number
-              total_approved_units: number
-              total_authorizations: number
-              total_requested_units: number
-              units_by_service_code: Json
-            }[]
-          }
       get_billing_metrics:
         | {
             Args: { p_end_date: string; p_start_date: string }
             Returns: {
               amount_by_client: Json
-              collection_rate: number
+              amount_by_status: Json
               paid_amount: number
               pending_amount: number
-              records_by_status: Json
               rejected_amount: number
               total_billed: number
             }[]
@@ -8476,9 +8475,10 @@ export type Database = {
             Args: { p_end_date: string; p_start_date: string }
             Returns: {
               amount_by_client: Json
-              amount_by_status: Json
+              collection_rate: number
               paid_amount: number
               pending_amount: number
+              records_by_status: Json
               rejected_amount: number
               total_billed: number
             }[]
@@ -8498,11 +8498,10 @@ export type Database = {
             Args: { p_end_date: string; p_start_date: string }
             Returns: {
               active_clients: number
-              activity_rate: number
-              clients_by_age: Json
-              clients_by_gender: Json
-              clients_by_service_preference: Json
               inactive_clients: number
+              new_clients: number
+              service_preferences: Json
+              sessions_per_client: Json
               total_clients: number
             }[]
           }
@@ -8510,10 +8509,11 @@ export type Database = {
             Args: { p_end_date: string; p_start_date: string }
             Returns: {
               active_clients: number
+              activity_rate: number
+              clients_by_age: Json
+              clients_by_gender: Json
+              clients_by_service_preference: Json
               inactive_clients: number
-              new_clients: number
-              service_preferences: Json
-              sessions_per_client: Json
               total_clients: number
             }[]
           }
@@ -8717,13 +8717,7 @@ export type Database = {
       }
       get_sessions_report:
         | {
-            Args: {
-              p_client_id: string
-              p_end_date: string
-              p_start_date: string
-              p_status: string
-              p_therapist_id: string
-            }
+            Args: { p_end_date: string; p_start_date: string }
             Returns: {
               client_name: string
               session_day: string
@@ -8734,7 +8728,13 @@ export type Database = {
             }[]
           }
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: {
+              p_client_id: string
+              p_end_date: string
+              p_start_date: string
+              p_status: string
+              p_therapist_id: string
+            }
             Returns: {
               client_name: string
               session_day: string
@@ -8887,18 +8887,18 @@ export type Database = {
       log_function_performance:
         | {
             Args: {
-              p_execution_time_ms: number
+              p_duration_ms: number
               p_function_name: string
-              p_parameters?: Json
-              p_result_size?: number
+              p_result_size_kb?: number
             }
             Returns: undefined
           }
         | {
             Args: {
-              p_duration_ms: number
+              p_execution_time_ms: number
               p_function_name: string
-              p_result_size_kb?: number
+              p_parameters?: Json
+              p_result_size?: number
             }
             Returns: undefined
           }

@@ -6,24 +6,31 @@ function fail(message: string): never {
   throw error;
 }
 
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    fail(message);
-  }
-}
-
 function assertEquals<T>(actual: T, expected: T, message?: string): void {
-  if (!Object.is(actual, expected)) {
-    fail(message ?? `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    fail(
+      message ??
+        `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
   }
 }
 
-function assertThrows(fn: () => unknown, expectedCode: string, name: string): void {
+function assertThrows(
+  fn: () => unknown,
+  expectedCode: string,
+  name: string,
+): void {
   try {
     fn();
   } catch (error) {
-    assert(error instanceof Error, `${name}: expected Error instance`);
-    assertEquals((error as Error & { code?: string }).code, expectedCode, `${name}: code`);
+    if (!(error instanceof Error)) {
+      fail(`${name}: expected Error instance`);
+    }
+    assertEquals(
+      (error as Error & { code?: string }).code,
+      expectedCode,
+      `${name}: code`,
+    );
     return;
   }
 
@@ -31,151 +38,135 @@ function assertThrows(fn: () => unknown, expectedCode: string, name: string): vo
 }
 
 import {
-  sanitizeEventMetadata,
   type SanitizedEventMetadata,
+  sanitizeTransitionEventMetadata,
+  validateStoredEventMetadata,
 } from "./events.ts";
 
-Deno.test("sanitizeEventMetadata accepts only explicit PHI-free keys and bounded values", () => {
-  const sanitized = sanitizeEventMetadata({
-    organization_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    client_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-    work_item_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-    step_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
-    attempt_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-    actor_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
-    approval_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    evidence_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    workflow: "assessment.iehp.prepare_for_clinical_review@1",
-    action: "transition_step",
-    tool: "review_snapshot",
-    runtime_mode: "active",
-    status: "needs_review",
-    outcome: "approved",
-    reason_code: "approval_current",
+const ATTEMPT_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const WORKER_ID = "11111111-1111-4111-8111-111111111111";
+
+Deno.test("sanitizeTransitionEventMetadata matches the Task 2 RPC metadata contract exactly", () => {
+  const sanitized = sanitizeTransitionEventMetadata({
+    worker_id: WORKER_ID,
+    attempt_id: ATTEMPT_ID,
     result_code: "projection_recorded",
-    retry_count: 2,
+    evidence_hash:
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     duration_ms: 1200,
-    token_count: 4096,
-    prompt_token_count: 1024,
-    completion_token_count: 3072,
-    item_count: 3,
+    retry_count: 2,
   });
 
   const expected: SanitizedEventMetadata = {
-    organization_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    client_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-    work_item_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-    step_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
-    attempt_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-    actor_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
-    approval_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    evidence_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    workflow: "assessment.iehp.prepare_for_clinical_review@1",
-    action: "transition_step",
-    tool: "review_snapshot",
-    runtime_mode: "active",
-    status: "needs_review",
-    outcome: "approved",
-    reason_code: "approval_current",
+    worker_id: WORKER_ID,
+    attempt_id: ATTEMPT_ID,
     result_code: "projection_recorded",
-    retry_count: 2,
+    evidence_hash:
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     duration_ms: 1200,
-    token_count: 4096,
-    prompt_token_count: 1024,
-    completion_token_count: 3072,
-    item_count: 3,
+    retry_count: 2,
   };
 
-  assertEquals(JSON.stringify(sanitized), JSON.stringify(expected), "sanitized metadata round-trips allowlisted values");
+  assertEquals(sanitized, expected);
 });
 
-Deno.test("sanitizeEventMetadata rejects sensitive keys and PHI-like free text", () => {
-  const cases: Array<{ name: string; value: Record<string, unknown> }> = [
-    {
-      name: "raw document text",
-      value: { document_text: "Client presented with aggression during school pickup." },
-    },
-    {
-      name: "patient name",
-      value: { patient_name: "Jane Doe" },
-    },
-    {
-      name: "address",
-      value: { address: "123 Main Street" },
-    },
-    {
-      name: "contact detail",
-      value: { contact_email: "jane@example.com" },
-    },
-    {
-      name: "clinical notes",
-      value: { clinical_notes: "Observed dysregulation and elopement." },
-    },
-    {
-      name: "prompt",
-      value: { prompt: "Summarize the diagnosis and caregiver concerns." },
-    },
-    {
-      name: "reasoning",
-      value: { reasoning_trace: "The model inferred missing parent signatures." },
-    },
-    {
-      name: "authorization header",
-      value: { authorization: "Bearer secret-token" },
-    },
-    {
-      name: "secret",
-      value: { secret_key: "super-secret" },
-    },
-    {
-      name: "signed url",
-      value: { signed_url: "https://example.com/file?sig=abc123" },
-    },
-  ];
-
-  for (const testCase of cases) {
+Deno.test("sanitizeTransitionEventMetadata rejects caller tool selection and stored-only keys", () => {
+  for (
+    const [name, value] of Object.entries({
+      tool: { tool: "review_snapshot" },
+      workflow: { workflow_key: "assessment.iehp.prepare_for_clinical_review" },
+      approval: { approval_id: "ffffffff-ffff-4fff-8fff-ffffffffffff" },
+      status: { to_status: "completed" },
+    })
+  ) {
     assertThrows(
-      () => sanitizeEventMetadata(testCase.value),
+      () => sanitizeTransitionEventMetadata(value),
       "event_metadata_key_forbidden",
-      testCase.name,
+      name,
     );
   }
 });
 
-Deno.test("sanitizeEventMetadata rejects disallowed value shapes and sensitive string patterns", () => {
-  const cases: Array<{ name: string; value: Record<string, unknown>; code: string }> = [
+Deno.test("validateStoredEventMetadata accepts Task 2 system-emitted metadata shapes", () => {
+  const rows: ReadonlyArray<Record<string, unknown>> = [
     {
-      name: "nested object",
-      value: { reason_code: { code: "approval_current" } },
-      code: "event_metadata_type_forbidden",
+      workflow_key: "assessment.iehp.prepare_for_clinical_review",
+      workflow_version: 1,
+      assessment_document_id: "99999999-9999-4999-8999-999999999999",
     },
     {
-      name: "narrative in allowed key",
-      value: { reason_code: "patient discussed transportation barriers" },
-      code: "event_metadata_value_forbidden",
+      lease_seconds: 60,
+      attempt_number: 1,
     },
     {
-      name: "bad hash",
-      value: { evidence_hash: "ABC123" },
-      code: "event_metadata_value_forbidden",
-    },
-    {
-      name: "negative duration",
-      value: { duration_ms: -1 },
-      code: "event_metadata_value_forbidden",
-    },
-    {
-      name: "signed url in allowed token key",
-      value: { tool: "https://signed.example.com/run?signature=abc" },
-      code: "event_metadata_value_forbidden",
+      worker_id: WORKER_ID,
+      attempt_id: ATTEMPT_ID,
+      result_code: "projection_recorded",
+      evidence_hash:
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      duration_ms: 1200,
+      retry_count: 2,
+      approval_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      to_status: "completed",
+      reason_code: "step_completed",
     },
   ];
 
-  for (const testCase of cases) {
+  for (const row of rows) {
+    assertEquals(validateStoredEventMetadata(row), row);
+  }
+});
+
+Deno.test("event metadata validators reject sensitive keys, narratives, URLs, and invalid values", () => {
+  const sensitiveKeys = [
+    "document_text",
+    "patient_name",
+    "address",
+    "contact_email",
+    "diagnosis",
+    "clinical_notes",
+    "prompt",
+    "reasoning_trace",
+    "authorization",
+    "secret_key",
+    "signed_url",
+  ];
+
+  for (const key of sensitiveKeys) {
     assertThrows(
-      () => sanitizeEventMetadata(testCase.value),
-      testCase.code,
-      testCase.name,
+      () => validateStoredEventMetadata({ [key]: "jane" }),
+      "event_metadata_key_forbidden",
+      key,
     );
+  }
+
+  const invalidCases: Array<[string, Record<string, unknown>, string]> = [
+    [
+      "nested object",
+      { reason_code: { code: "step_completed" } },
+      "event_metadata_type_forbidden",
+    ],
+    [
+      "short narrative",
+      { reason_code: "jane needs help" },
+      "event_metadata_value_forbidden",
+    ],
+    [
+      "signed URL",
+      { result_code: "https://signed.example/run" },
+      "event_metadata_value_forbidden",
+    ],
+    ["bad hash", { evidence_hash: "ABC123" }, "event_metadata_value_forbidden"],
+    [
+      "negative duration",
+      { duration_ms: -1 },
+      "event_metadata_value_forbidden",
+    ],
+    ["bad lease", { lease_seconds: 901 }, "event_metadata_value_forbidden"],
+    ["bad attempt", { attempt_number: 0 }, "event_metadata_value_forbidden"],
+  ];
+
+  for (const [name, value, code] of invalidCases) {
+    assertThrows(() => validateStoredEventMetadata(value), code, name);
   }
 });

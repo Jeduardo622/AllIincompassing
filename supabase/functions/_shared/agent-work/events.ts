@@ -1,8 +1,11 @@
+import { WORK_STEP_STATUSES } from "./contracts.ts";
+
 export type SanitizedEventPrimitive = string | number;
 export type SanitizedEventMetadata = Record<string, SanitizedEventPrimitive>;
 
 type MetadataValidator = {
   readonly kind: "uuid" | "sha256" | "machine" | "workflow" | "enum" | "count";
+  readonly min?: number;
   readonly max?: number;
   readonly values?: readonly string[];
 };
@@ -10,52 +13,28 @@ type MetadataValidator = {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
-const MACHINE_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,63}$/;
-const WORKFLOW_TOKEN_PATTERN =
-  /^[a-z0-9][a-z0-9._:-]{0,95}(?:@[a-z0-9][a-z0-9._:-]{0,31})?$/;
+const MACHINE_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
+const WORKFLOW_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,95}$/;
 
-const ALLOWED_KEYS: Readonly<Record<string, MetadataValidator>> = {
-  organization_id: { kind: "uuid" },
-  client_id: { kind: "uuid" },
-  work_item_id: { kind: "uuid" },
-  step_id: { kind: "uuid" },
+const TRANSITION_METADATA_KEYS: Readonly<Record<string, MetadataValidator>> = {
+  worker_id: { kind: "machine" },
   attempt_id: { kind: "uuid" },
-  actor_id: { kind: "uuid" },
-  approval_hash: { kind: "sha256" },
+  result_code: { kind: "machine", max: 63 },
   evidence_hash: { kind: "sha256" },
-  workflow: { kind: "workflow" },
-  action: { kind: "enum", values: ["claim_step", "transition_step", "record_projection"] },
-  tool: { kind: "machine" },
-  runtime_mode: { kind: "enum", values: ["disabled", "shadow", "advisory", "active"] },
-  status: {
-    kind: "enum",
-    values: [
-      "queued",
-      "running",
-      "waiting",
-      "needs_review",
-      "blocked",
-      "completed",
-      "failed",
-      "cancelled",
-      "pending",
-      "ready",
-      "needs_approval",
-      "skipped",
-    ],
-  },
-  outcome: {
-    kind: "enum",
-    values: ["approved", "rejected", "queued", "running", "waiting", "completed", "failed", "cancelled", "blocked"],
-  },
-  reason_code: { kind: "machine" },
-  result_code: { kind: "machine" },
-  retry_count: { kind: "count", max: 100 },
-  duration_ms: { kind: "count", max: 86_400_000 },
-  token_count: { kind: "count", max: 1_000_000 },
-  prompt_token_count: { kind: "count", max: 1_000_000 },
-  completion_token_count: { kind: "count", max: 1_000_000 },
-  item_count: { kind: "count", max: 100_000 },
+  duration_ms: { kind: "count", min: 0, max: 86_400_000 },
+  retry_count: { kind: "count", min: 0, max: 100 },
+};
+
+const STORED_METADATA_KEYS: Readonly<Record<string, MetadataValidator>> = {
+  ...TRANSITION_METADATA_KEYS,
+  workflow_key: { kind: "workflow" },
+  workflow_version: { kind: "count", min: 1, max: 1_000_000 },
+  assessment_document_id: { kind: "uuid" },
+  lease_seconds: { kind: "count", min: 15, max: 900 },
+  attempt_number: { kind: "count", min: 1, max: 1_000_000 },
+  approval_id: { kind: "uuid" },
+  to_status: { kind: "enum", values: WORK_STEP_STATUSES },
+  reason_code: { kind: "machine", max: 63 },
 };
 
 export class EventMetadataError extends Error {
@@ -68,44 +47,56 @@ export class EventMetadataError extends Error {
   }
 }
 
-export function sanitizeEventMetadata(
+export function sanitizeTransitionEventMetadata(
   value: Record<string, unknown> | null | undefined,
 ): SanitizedEventMetadata {
-  if (value == null) {
-    return {};
-  }
+  const metadata = validateMetadataObject(
+    value ?? {},
+    TRANSITION_METADATA_KEYS,
+  );
+  return { ...metadata };
+}
 
-  if (typeof value !== "object" || Array.isArray(value)) {
+export function validateStoredEventMetadata<T extends Record<string, unknown>>(
+  value: T,
+): T {
+  validateMetadataObject(value, STORED_METADATA_KEYS);
+  return value;
+}
+
+function validateMetadataObject(
+  value: unknown,
+  allowedKeys: Readonly<Record<string, MetadataValidator>>,
+): SanitizedEventMetadata {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new EventMetadataError(
       "event_metadata_type_forbidden",
       "Event metadata must be an object.",
     );
   }
 
-  const sanitized: SanitizedEventMetadata = {};
-
+  const validated: SanitizedEventMetadata = {};
   for (const [key, rawValue] of Object.entries(value)) {
-    const validator = ALLOWED_KEYS[key];
+    const validator = allowedKeys[key];
     if (!validator) {
       throw new EventMetadataError(
         "event_metadata_key_forbidden",
-        `Event metadata key "${key}" is not allowed.`,
+        "Event metadata contains a forbidden key.",
       );
     }
 
-    if (typeof rawValue === "object" || typeof rawValue === "boolean" || rawValue == null) {
+    if (typeof rawValue !== "string" && typeof rawValue !== "number") {
       throw new EventMetadataError(
         "event_metadata_type_forbidden",
         `Event metadata key "${key}" must use a primitive PHI-free value.`,
       );
     }
 
-    const primitiveValue = rawValue as SanitizedEventPrimitive;
-    validateMetadataValue(key, primitiveValue, validator);
-    sanitized[key] = primitiveValue;
+    validateMetadataValue(key, rawValue, validator);
+    validated[key] = rawValue;
   }
 
-  return sanitized;
+  return validated;
 }
 
 function validateMetadataValue(
@@ -116,22 +107,26 @@ function validateMetadataValue(
   switch (validator.kind) {
     case "uuid":
       if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
-        throw forbiddenValue(key, value);
+        throw forbiddenValue(key);
       }
       return;
     case "sha256":
       if (typeof value !== "string" || !SHA256_PATTERN.test(value)) {
-        throw forbiddenValue(key, value);
+        throw forbiddenValue(key);
       }
       return;
     case "machine":
-      if (typeof value !== "string" || !MACHINE_TOKEN_PATTERN.test(value)) {
-        throw forbiddenValue(key, value);
+      if (
+        typeof value !== "string" ||
+        !MACHINE_TOKEN_PATTERN.test(value) ||
+        value.length > (validator.max ?? 128)
+      ) {
+        throw forbiddenValue(key);
       }
       return;
     case "workflow":
       if (typeof value !== "string" || !WORKFLOW_TOKEN_PATTERN.test(value)) {
-        throw forbiddenValue(key, value);
+        throw forbiddenValue(key);
       }
       return;
     case "enum":
@@ -139,25 +134,25 @@ function validateMetadataValue(
         typeof value !== "string" ||
         !(validator.values?.includes(value) ?? false)
       ) {
-        throw forbiddenValue(key, value);
+        throw forbiddenValue(key);
       }
       return;
     case "count":
       if (
         typeof value !== "number" ||
         !Number.isInteger(value) ||
-        value < 0 ||
+        value < (validator.min ?? 0) ||
         value > (validator.max ?? Number.MAX_SAFE_INTEGER)
       ) {
-        throw forbiddenValue(key, value);
+        throw forbiddenValue(key);
       }
       return;
   }
 }
 
-function forbiddenValue(key: string, value: SanitizedEventPrimitive): EventMetadataError {
+function forbiddenValue(key: string): EventMetadataError {
   return new EventMetadataError(
     "event_metadata_value_forbidden",
-    `Event metadata key "${key}" received a forbidden value ${JSON.stringify(value)}.`,
+    `Event metadata key "${key}" received a forbidden value.`,
   );
 }

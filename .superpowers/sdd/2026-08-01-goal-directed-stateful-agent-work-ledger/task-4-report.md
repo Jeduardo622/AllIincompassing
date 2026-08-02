@@ -118,4 +118,117 @@ npm run typecheck
 ## Concerns
 
 - this task intentionally stops at the shared boundary layer. No runner, queue, API, or clinical side effects were enabled or validated here.
-- the repository currently assumes the caller supplies authoritative workflow and approval context; later tasks must keep those sources server-owned and fail closed on unavailable runtime policy data.
+- the repository now requires an injected server-owned authority loader; later runner/API work must implement that dependency without reintroducing caller- or model-controlled authority fields.
+
+## Fix Round 1
+
+### Review Inputs
+
+- read and adjudicated all Task 4 review reports:
+  - `task-4-code-review.md`
+  - `task-4-security-review.md`
+  - `task-4-supabase-review.md`
+- verified the findings against the Task 2 claim/transition RPC metadata and stored event shapes before changing code
+
+### RED Evidence
+
+Tests were changed before production code. The first focused runs failed against the old caller-owned repository and single-sanitizer contract.
+
+```powershell
+deno test --no-lock supabase/functions/_shared/agent-work/events.test.ts
+```
+
+```text
+TS2724: events.ts has no exported member named sanitizeTransitionEventMetadata
+TS2305: events.ts has no exported member validateStoredEventMetadata
+```
+
+```powershell
+deno test --no-lock supabase/functions/_shared/agent-work/policy.test.ts
+```
+
+```text
+TS2305: repository.ts has no exported AgentWorkAuthorityContext or AgentWorkAuthorityLoader
+TS2554: AgentWorkRepository expected one constructor argument, but the authority loader and clock were supplied
+TS2739: mutation inputs still required caller runtimeMode, workflow, workerId, killSwitchEnabled, and approval
+TS2353: actor/scope/event row contracts did not support actor.id/kind, loader-owned scope validation, or SQL-shaped rows
+```
+
+### Implementation
+
+- moved mutation authority behind the constructor-injected `AgentWorkAuthorityLoader`
+  - method inputs no longer accept runtime mode, workflow, action, approval, tool, allowed machine sets, clock, worker ID, or scope verdicts
+  - lookup exceptions, null context, malformed context, and exact organization/client/work-item/step binding mismatches fail before RPC
+  - runtime, workflow, action, tool, approval, reason, result, status, worker ID, and workflow-version checks use loader-owned closed sets
+- changed the explicit actor contract to stable `id`, `kind`, and current organization role bindings
+  - claims require `kind = 'worker'`
+  - `p_worker_id` is derived only from validated `actor.id`
+  - claim scope is an exact work-item binding with `stepId = null`
+- split event handling into two contracts
+  - outgoing transition sanitation accepts only Task 2 RPC keys: `worker_id`, `attempt_id`, `result_code`, `evidence_hash`, `duration_ms`, and `retry_count`
+  - stored validation accepts the Task 2 system-emitted creation, claim, and transition keys without cloning or rewriting rows
+  - unknown keys, sensitive keys, nested values, narratives, URLs, malformed IDs/hashes, and out-of-range numbers remain rejected
+- retained a narrow RPC/read client with no table mutation API or generic write escape hatch
+
+### GREEN Evidence
+
+```powershell
+deno test --no-lock supabase/functions/_shared/agent-work/policy.test.ts
+```
+
+```text
+ok | 13 passed | 0 failed
+```
+
+```powershell
+deno test --no-lock supabase/functions/_shared/agent-work/events.test.ts
+```
+
+```text
+ok | 4 passed | 0 failed
+```
+
+```powershell
+$env:PATH='C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;' + $env:PATH
+npm run typecheck
+```
+
+```text
+> tsc -p tsconfig.json --noEmit
+```
+
+Additional local checks:
+
+```text
+deno fmt --check <five Task 4 files> -> pass
+git diff --check -> pass (line-ending warnings only)
+```
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: shared Edge Function authorization, tenant binding, RPC boundary, and audit metadata validation
+- required fix-round checks:
+  - focused Deno policy/repository suite
+  - focused Deno event suite
+  - `npm run typecheck`
+- executed checks:
+  - `deno test --no-lock supabase/functions/_shared/agent-work/policy.test.ts` -> pass, 13 tests
+  - `deno test --no-lock supabase/functions/_shared/agent-work/events.test.ts` -> pass, 4 tests
+  - `npm run typecheck` -> pass
+  - `deno fmt --check` for all five owned files -> pass
+  - `git diff --check` -> pass
+- blocked/unrun broader critical-lane checks: unchanged from the original report; the known unrelated `ci:check-focused` inventory expiry remains owner-waived and no migration, hosted, API, runner, or integration boundary changed in this round
+- result: `pass-with-blocked-checks`
+- reviewer: all three supplied Task 4 reports were addressed; custom reviewer/tester agents were unavailable in this session, so human review remains mandatory before merge
+- residual risk: this slice defines but does not wire the trusted server-owned authority loader. Runner/API integration must implement that dependency without accepting model/upstream authority fields and must undergo a separate critical-lane review.
+
+### PR Hygiene
+
+- branch-ready: yes, dedicated `codex/agent-work-ledger-foundation` branch
+- linear-ready: route artifact links `WIN-271`
+- single-purpose: yes
+- unrelated changes: none
+- protected-path drift: none beyond the five explicitly authorized shared Function files
+- pr-ready: no; this fix round was requested through local commit only, and critical-lane human review is still required before merge

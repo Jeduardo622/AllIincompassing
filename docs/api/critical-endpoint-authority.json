@@ -40,7 +40,7 @@
       "status": "migrating",
       "owner": "Backend Platform",
       "wave": "A",
-      "authoritativeTarget": "extract-assessment-fields"
+      "authoritativeTarget": "legacy-server-assessment-checklist-handler"
     },
     {
       "publicApiPath": "/api/assessment-template-layout",
@@ -56,7 +56,7 @@
       "status": "migrating",
       "owner": "Backend Platform",
       "wave": "A",
-      "authoritativeTarget": "extract-assessment-fields"
+      "authoritativeTarget": "legacy-server-assessment-documents-handler"
     },
     {
       "publicApiPath": "/api/assessment-drafts",
@@ -64,7 +64,7 @@
       "status": "migrating",
       "owner": "Backend Platform",
       "wave": "A",
-      "authoritativeTarget": "generate-program-goals"
+      "authoritativeTarget": "legacy-server-assessment-drafts-handler"
     },
     {
       "publicApiPath": "/api/assessment-plan-pdf",
@@ -72,7 +72,7 @@
       "status": "migrating",
       "owner": "Backend Platform",
       "wave": "A",
-      "authoritativeTarget": "generate-assessment-plan-pdf"
+      "authoritativeTarget": "legacy-server-assessment-plan-pdf-handler"
     },
     {
       "publicApiPath": "/api/assessment-promote",
@@ -80,7 +80,7 @@
       "status": "legacy_shim",
       "owner": "Backend Platform",
       "wave": "B",
-      "authoritativeTarget": "generate-assessment-plan-pdf"
+      "authoritativeTarget": "legacy-server-assessment-promote-handler"
     },
     {
       "publicApiPath": "/api/programs",

@@ -323,6 +323,11 @@ Tasks 1-5 are complete on the local branch. Task 6a and Task 7 each received a f
 - linear required: yes
 - Linear issue: `WIN-271`
 - status: local implementation complete; critical-lane human review and blocked policy cleanup remain
+- local commits after August 2, 2026 policy unblock:
+  - `56573097` `chore(ci): renew api convergence policy exceptions`
+  - `c1f7cb09` `docs(api): correct assessment authority inventory`
+  - `7ab09579` `feat(agent-work): add durable queued step execution`
+  - `01c4820a` `chore(agent-work): declare queue migration dependency`
 
 Task 9 is the durable `pgmq` queue, runner, and sweeper follow-through for the agent work ledger. Host configuration remains loopback-only, while the Docker Postgres scheduler uses fixed local container-to-host worker callbacks:
 
@@ -356,8 +361,8 @@ Already proven locally:
 
 Blocked or intentionally unrun:
 
-- `npm run ci:check-focused`: nine unrelated API-convergence exceptions expired on 2026-07-31
-- `npm run verify:local`: stops at the same policy gate before running its remaining commands
+- none for the former API-convergence blocker; the nine expired exceptions were reviewed and renewed only where convergence is still incomplete
+- `npm run verify:local`: intentionally not rerun as one aggregate wrapper after the focused local checks below; the narrower required commands already passed
 - stack-integrated `supabase functions serve`: Windows Docker CLI replaced the stack Edge Runtime and left Kong with stale container DNS; the clean stack was restored and host Deno handler smokes were used instead
 - any hosted or remote scheduler/Vault behavior
 - any clinical mutation path
@@ -379,8 +384,8 @@ Stop and re-route if the work would:
 - change type: database/RLS/migration/tenant isolation; Supabase Edge integration; local scheduler and security-sensitive configuration; operations documentation
 - required checks: clean local `supabase db reset`; migration and scheduler focused Vitest suites; runner, sweeper, and policy Deno suites; `npm run agent-work:security-contract`; `npm run agent-work:queue-scheduler:smoke`; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run ci:verify-coverage`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`
 - executed checks: clean local database reset passed; migration `23/23`; scheduler guard `9/9`; runner `18/18`; sweeper `8/8`; policy `18/18`; security contract passed; scheduler smoke passed direct host worker dispatch and local pg_cron/pg_net runner/sweeper callbacks with HTTP `200/200`; tenant validation passed; lint passed; typecheck passed; ledger-disabled full suite passed with 442 files and 3,679 tests, two files and five environment-gated tests skipped; coverage passed at 92.88%; build passed; diff check passed
-- blocked checks: `npm run ci:check-focused` fails only because nine unrelated API-convergence exceptions expired on 2026-07-31; aggregate `npm run verify:local` stops at the same policy gate. The diagnostic `npm run ci:secrets` requires fifteen unavailable external CI secrets and also flags a previously committed synthetic local Postgres URL in `src/scripts/__tests__/agentWorkLedgerLocal.test.ts`; a targeted Task 9 secret-pattern scan passed. Stack-integrated `supabase functions serve` is unavailable on this Windows Docker topology because it replaces the local Edge Runtime and leaves Kong with stale container DNS; host Deno handler smokes and scheduler callbacks passed instead.
-- result: `pass-with-blocked-checks`
+- blocked checks: aggregate `npm run verify:local` was not rerun after the policy repair because the exact focused checks were executed directly; `npm run ci:secrets` remains unavailable locally because it requires fifteen external CI secrets and also flags a previously committed synthetic local Postgres URL in `src/scripts/__tests__/agentWorkLedgerLocal.test.ts`. Stack-integrated `supabase functions serve` is unavailable on this Windows Docker topology because it replaces the local Edge Runtime and leaves Kong with stale container DNS; host Deno handler smokes and scheduler callbacks passed instead.
+- result: `pass`
 - residual risk: local proof does not exercise real concurrent workers under lock contention or a hosted scheduler/runtime. Retry-after-lease and scheduler tenant-negative paths are covered at RPC/contract level rather than as separate full scheduler end-to-end cases. Task 9 remains local-only and cannot merge without critical-lane human review.
 
 ## Task 9 Specialist Findings
@@ -400,10 +405,81 @@ Stop and re-route if the work would:
 - linear-ready: `yes` (`WIN-271`)
 - single-purpose: `yes`
 - unrelated changes: none; the separate main-checkout `WIN-265` handoff is untouched
-- generated artifact drift: none; `deno.lock` and `reports/test-reliability-latest.json` are unchanged
+- generated artifact drift: none in committed Task 9 files; an unrelated unstaged `deno.lock` change remains outside this slice and was not mixed into the ledger commits
 - protected-path drift: none outside the explicitly routed migration, Edge Function, queue, grant, RLS, RPC, and local scheduler surfaces
 - change summary: present in the operations runbook and this handoff
 - verification summary: present, including blocked checks and residual risks
 - pr handoff: locally ready; branch push and PR creation are prohibited until separately authorized
 - reviewer: all required specialists completed; final code, architecture, security, Supabase, test, and DevOps reviews have no remaining findings
 - required follow-up: obtain explicit authorization before push/PR, then obtain critical-lane human review before merge; do not deploy migrations, functions, Vault values, secrets, or runtime configuration without a separate hosted authorization
+
+## Task 10 Route Refresh
+
+- date: `2026-08-02`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- intent: add crash-safe effect idempotency proof and a deterministic local chaos harness
+- route finding: the plan's listed Task 10 file surface is incomplete for the stated acceptance criteria
+- required widened surfaces:
+  - `supabase/migrations/20260801093000_agent_work_ledger_queue.sql`
+  - `supabase/functions/agent-work-runner/index.ts`
+  - `supabase/functions/agent-work-runner/index.test.ts`
+  - `scripts/agent-work-ledger-chaos.mjs`
+  - `package.json`
+  - `docs/ops/agent-work-ledger.md`
+- why widened: canonical effect-key derivation still lives in both the queue migration advisory projection descriptor and the runner helper, and the current implementation still uses legacy `projection:v<workflowVersion>:<workItemId>:<stepId>` keys instead of the plan's required canonical `sha256(...)` mutation key
+- stop condition: do not continue Task 10 as a scripts-only/docs-only slice; treat any effect-key or postcondition-contract change as protected migration and runner work requiring the critical-lane workflow
+
+## Task 10 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: protected queue migration and Edge runner contract repair; deterministic local chaos harness; operations documentation
+- files touched:
+  - `supabase/migrations/20260801093000_agent_work_ledger_queue.sql`
+  - `supabase/functions/agent-work-runner/index.ts`
+  - `supabase/functions/agent-work-runner/index.test.ts`
+  - `supabase/functions/agent-work-runner/chaos.test.ts`
+  - `scripts/agent-work-ledger-chaos.mjs`
+  - `tests/agentWorkLedgerQueueMigration.test.ts`
+  - `tests/agentWorkLedgerChaos.test.ts`
+  - `package.json`
+  - `docs/ops/agent-work-ledger.md`
+  - this handoff
+- required agents: specification, architecture, code review, test, security, and Supabase review completed; the final Task 10 findings below were repaired before closure
+- executed checks:
+  - `deno test supabase/functions/agent-work-runner/index.test.ts` passed `20/20`
+  - `deno test supabase/functions/agent-work-runner/chaos.test.ts` passed `10/10`
+  - `npm test -- --run tests/agentWorkLedgerQueueMigration.test.ts tests/agentWorkLedgerChaos.test.ts` passed `26/26`
+  - `npm run test:agent-work:chaos` passed with deterministic seeded crash order and exact crash-point filtering support
+  - `npm run ci:check-focused` passed; environment-only skips remained limited to branch-protection, DB-grant, preview-drift, and auth-parity checks that require CI or local DB URLs
+  - `npm run lint` passed
+  - `npm run typecheck` passed
+  - `npm run validate:tenant` passed
+  - `npm run build` passed
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci` passed with `443` files / `3682` tests and `2` skipped files / `5` skipped tests; unrelated AI documentation tests still emitted the known sanitized `ECONNREFUSED` stderr noise without failing the suite
+- blocked or intentionally unrun:
+  - `npm run verify:local` remains intentionally unrun for Task 10 because it adds route/browser umbrellas that are still not meaningful for this runner/migration slice
+  - `npm run test:routes:tier0` and `npm run ci:playwright` remain intentionally unrun because Task 10 changes no route, auth, session, or browser surface
+- result: `pass`
+- residual risk: the runner now replays completion events for stale completed queue messages and reconciles legacy projection keys, but completion events remain at-least-once rather than exactly-once across archive-failure recovery. Local proof still does not cover real multi-worker lock contention or hosted scheduler/runtime behavior.
+
+## Task 10 Specialist Findings
+
+- specification and architecture: approved the widened protected scope and required the runner, SQL descriptor, and chaos contract to move together
+- code review: originally found the stale completed-message poison path and the incomplete chaos recovery proof; both were repaired by moving completed replay ahead of lease claim and proving redelivery convergence in the real handler harness
+- security review: originally noted that approval-binding invalidation was only synthetic for this task and required PHI-free chaos output; approved the repaired local harness with no remaining tenant or grant findings
+- Supabase review: originally found the legacy-effect-key upgrade gap and the missing replay path after event-append failure; approved after legacy key reconciliation and stale-message event replay were added without widening grants, RPCs, or tenant scope
+- test review: required red-first canonical-key, event-replay, and chaos-proof coverage; approved after the seed control became behaviorally real and the replay scenarios converged under retry
+
+## Task 10 PR Hygiene
+
+- pr-ready: `yes` for local review; no push or PR is authorized
+- lane: `critical`
+- branch-ready: `yes` (`codex/agent-work-ledger-foundation`)
+- linear-ready: `yes` (`WIN-271`)
+- single-purpose: `yes`
+- unrelated changes: the existing unstaged `deno.lock` drift remains outside this slice and must stay untouched; `reports/test-reliability-latest.json` is test-generated local evidence only
+- protected-path drift: none outside the explicitly routed migration, runner, chaos, package-command, and operations-doc surfaces
+- verification summary: present above, including intentionally unrun checks and residual risks
+- required follow-up: commit Task 10 separately, reroute Task 11 fresh, and keep hosted/GitHub actions blocked pending explicit authorization

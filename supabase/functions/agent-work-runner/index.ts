@@ -21,7 +21,13 @@ const RETRY_BASE_SECONDS = 30;
 const RETRY_CAP_SECONDS = 1800;
 const RETRY_JITTER_PERCENT = 20;
 const EXECUTION_MODES = new Set(["deterministic", "model_suggested", "human"]);
-const RUNNABLE_STEP_STATUSES = new Set(["ready", "running", "waiting", "cancelled"]);
+const RUNNABLE_STEP_STATUSES = new Set([
+  "ready",
+  "running",
+  "waiting",
+  "cancelled",
+  "completed",
+]);
 const ITEM_STATUSES = new Set([
   "queued",
   "running",
@@ -84,7 +90,7 @@ type AuthoritativeScope = {
   stepKey: string;
   actorUserId: string;
   executionMode: "deterministic" | "model_suggested" | "human";
-  stepStatus: "ready" | "running" | "waiting" | "cancelled";
+  stepStatus: "ready" | "running" | "waiting" | "cancelled" | "completed";
   itemStatus:
     | "queued"
     | "running"
@@ -366,6 +372,19 @@ export function createAgentWorkRunnerHandler(
         });
       }
 
+      if (isCompletedReplayScope(scope)) {
+        const replayedResult = await reconcileCompletedReplay(
+          deps,
+          queueEnvelope.messageId,
+          scope,
+          expectedEffect,
+        );
+        return respond(200, {
+          success: true,
+          data: replayedResult,
+        });
+      }
+
       const claimedLease = await deps.claimStepLease(scope.stepId);
       if (
         claimedLease.stepId !== scope.stepId ||
@@ -381,16 +400,28 @@ export function createAgentWorkRunnerHandler(
         });
       }
 
-      const existingEffect = await deps.findRecordedEffect(
-        scope.stepId,
-        expectedEffect.effectKey,
+      const existingEffect = await findCompatibleRecordedEffect(
+        deps,
+        scope,
+        expectedEffect,
       );
-      if (existingEffect) {
+      if (existingEffect.kind === "mismatch") {
+        const reasonCode = "effect_record_mismatch";
+        await archiveSilently(deps, queueEnvelope.messageId, reasonCode);
+        return respond(200, {
+          success: true,
+          data: blockedResult(scope, reasonCode),
+        });
+      }
+      if (existingEffect.kind === "found") {
+        const resolvedEffect = {
+          effectKey: existingEffect.record.effectKey,
+          outputHash: expectedEffect.outputHash,
+        };
         if (
-          existingEffect.effectKey !== expectedEffect.effectKey ||
-          existingEffect.outputHash !== expectedEffect.outputHash ||
-          (existingEffect.status !== "pending" &&
-            existingEffect.status !== "verified")
+          existingEffect.record.outputHash !== expectedEffect.outputHash ||
+          (existingEffect.record.status !== "pending" &&
+            existingEffect.record.status !== "verified")
         ) {
           const reasonCode = "effect_record_mismatch";
           await archiveSilently(deps, queueEnvelope.messageId, reasonCode);
@@ -402,7 +433,7 @@ export function createAgentWorkRunnerHandler(
 
         const postcondition = await deps.verifyPostcondition(
           scope,
-          expectedEffect,
+          resolvedEffect,
         );
         if (
           !postcondition.ok ||
@@ -445,7 +476,7 @@ export function createAgentWorkRunnerHandler(
             toStatus: "completed",
             reasonCode: "effect_already_applied",
             outputHash: postcondition.outputHash,
-            effectKey: expectedEffect.effectKey,
+            effectKey: resolvedEffect.effectKey,
             workerId: deps.getWorkerId(),
             attemptId: claimedLease.attemptId,
           });
@@ -453,6 +484,16 @@ export function createAgentWorkRunnerHandler(
           return respond(200, {
             success: true,
             data: blockedResult(scope, "finalization_conflict"),
+          });
+        }
+        const duplicateEventAppended = await appendEventRequired(
+          deps,
+          "agent_work_runner.completed",
+        );
+        if (!duplicateEventAppended) {
+          return respond(200, {
+            success: true,
+            data: blockedResult(scope, "event_append_failed"),
           });
         }
         await archiveSilently(
@@ -546,12 +587,21 @@ export function createAgentWorkRunnerHandler(
           data: blockedResult(scope, "finalization_conflict"),
         });
       }
+      const completionEventAppended = await appendEventRequired(
+        deps,
+        "agent_work_runner.completed",
+      );
+      if (!completionEventAppended) {
+        return respond(200, {
+          success: true,
+          data: blockedResult(scope, "event_append_failed"),
+        });
+      }
       await archiveSilently(
         deps,
         queueEnvelope.messageId,
         execution.reasonCode,
       );
-      await appendEventSilently(deps, "agent_work_runner.completed");
 
       return respond(200, {
         success: true,
@@ -672,12 +722,19 @@ function classifyBlockedScope(scope: AuthoritativeScope): string | null {
   if (scope.executionMode !== "deterministic") {
     return "workflow_definition_not_found";
   }
+  if (scope.stepStatus === "completed" && scope.itemStatus === "needs_review") {
+    return null;
+  }
   if (scope.stepStatus !== "ready") {
     if (scope.stepStatus === "waiting") return "step_waiting";
     if (scope.stepStatus === "running") return "step_already_running";
     return "workflow_definition_not_found";
   }
   return null;
+}
+
+function isCompletedReplayScope(scope: AuthoritativeScope): boolean {
+  return scope.stepStatus === "completed" && scope.itemStatus === "needs_review";
 }
 
 function authorizeRunnerAction(
@@ -856,14 +913,15 @@ async function archiveSilently(
   }
 }
 
-async function appendEventSilently(
+async function appendEventRequired(
   deps: AgentWorkRunnerHandlerDependencies,
   eventType: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await deps.appendEvent(eventType);
+    return true;
   } catch {
-    // Preserve sanitized outward behavior.
+    return false;
   }
 }
 
@@ -882,6 +940,7 @@ export function deriveProjectionEffect(
     | "workflowKey"
     | "workflowVersion"
     | "stepKey"
+    | "actorUserId"
     | "inputHash"
     | "evidenceHashes"
   >,
@@ -898,12 +957,108 @@ export function deriveProjectionEffect(
     inputHash: scope.inputHash,
     evidenceHashes,
   });
+  const outputHash = createHash("sha256").update(canonicalProjection).digest(
+    "hex",
+  );
+  const canonicalEffect = JSON.stringify({
+    organizationId: scope.organizationId,
+    actorUserId: scope.actorUserId,
+    workflowKey: scope.workflowKey,
+    workflowVersion: scope.workflowVersion,
+    stepKey: scope.stepKey,
+    targetKind: "agent_work_step",
+    targetId: scope.stepId,
+    payloadHash: outputHash,
+  });
 
   return {
-    effectKey:
-      `projection:v${scope.workflowVersion}:${scope.workItemId}:${scope.stepId}`,
-    outputHash: createHash("sha256").update(canonicalProjection).digest("hex"),
+    effectKey: createHash("sha256").update(canonicalEffect).digest("hex"),
+    outputHash,
   };
+}
+
+export function deriveLegacyProjectionEffectKey(
+  scope: Pick<AuthoritativeScope, "workItemId" | "stepId" | "workflowVersion">,
+): string {
+  return `projection:v${scope.workflowVersion}:${scope.workItemId}:${scope.stepId}`;
+}
+
+type RecordedEffectLookup =
+  | { kind: "none" }
+  | { kind: "mismatch" }
+  | { kind: "found"; record: RecordedEffect };
+
+async function findCompatibleRecordedEffect(
+  deps: AgentWorkRunnerHandlerDependencies,
+  scope: AuthoritativeScope,
+  expectedEffect: ProjectionEffectDescriptor,
+): Promise<RecordedEffectLookup> {
+  const canonical = await deps.findRecordedEffect(scope.stepId, expectedEffect.effectKey);
+  if (canonical) {
+    return canonical.outputHash === expectedEffect.outputHash
+      ? { kind: "found", record: canonical }
+      : { kind: "mismatch" };
+  }
+
+  const legacyKey = deriveLegacyProjectionEffectKey(scope);
+  if (legacyKey === expectedEffect.effectKey) {
+    return { kind: "none" };
+  }
+  const legacy = await deps.findRecordedEffect(scope.stepId, legacyKey);
+  if (!legacy) {
+    return { kind: "none" };
+  }
+  return legacy.outputHash === expectedEffect.outputHash
+    ? { kind: "found", record: legacy }
+    : { kind: "mismatch" };
+}
+
+async function reconcileCompletedReplay(
+  deps: AgentWorkRunnerHandlerDependencies,
+  messageId: string,
+  scope: AuthoritativeScope,
+  expectedEffect: ProjectionEffectDescriptor,
+): Promise<RunnerOutcome> {
+  const existingEffect = await findCompatibleRecordedEffect(
+    deps,
+    scope,
+    expectedEffect,
+  );
+  if (existingEffect.kind === "mismatch") {
+    const reasonCode = "effect_record_mismatch";
+    await archiveSilently(deps, messageId, reasonCode);
+    return blockedResult(scope, reasonCode);
+  }
+  if (existingEffect.kind === "none") {
+    return blockedResult(scope, "postcondition_not_met");
+  }
+
+  const resolvedEffect = {
+    effectKey: existingEffect.record.effectKey,
+    outputHash: expectedEffect.outputHash,
+  };
+  const postcondition = await deps.verifyPostcondition(scope, resolvedEffect);
+  if (
+    !postcondition.ok ||
+    !SHA256_PATTERN.test(postcondition.outputHash) ||
+    postcondition.outputHash !== expectedEffect.outputHash
+  ) {
+    const reasonCode = postcondition.ok
+      ? "postcondition_not_met"
+      : postcondition.reasonCode;
+    return blockedResult(scope, reasonCode);
+  }
+
+  const eventAppended = await appendEventRequired(
+    deps,
+    "agent_work_runner.completed",
+  );
+  if (!eventAppended) {
+    return blockedResult(scope, "event_append_failed");
+  }
+
+  await archiveSilently(deps, messageId, "effect_already_applied");
+  return completedResult(scope, "effect_already_applied");
 }
 
 export function computeRetryDelaySeconds(

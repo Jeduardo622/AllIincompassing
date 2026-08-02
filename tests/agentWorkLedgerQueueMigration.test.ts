@@ -222,6 +222,13 @@ describe('agent work ledger queue migration contract', () => {
     expect(normalizedQueueSql).toMatch(/assessment_checklist_items/i);
     expect(normalizedQueueSql).toMatch(/assessment_structured_sections/i);
     expect(normalizedQueueSql).toMatch(/digest\(/i);
+    expect(normalizedQueueSql).not.toMatch(/'projection:v%s:%s:%s'/i);
+    expect(normalizedQueueSql).toMatch(
+      /effect_key\s*:=\s*encode\(\s*extensions\.digest\(/i,
+    );
+    expect(normalizedQueueSql).toMatch(/workflow_key/i);
+    expect(normalizedQueueSql).toMatch(/step_key/i);
+    expect(normalizedQueueSql).toMatch(/owner_user_id/i);
     expect(normalizedQueueSql).toMatch(
       /revoke all on function public\.agent_work_advisory_projection_descriptor\([^)]*\) from public, anon, authenticated, service_role/i,
     );

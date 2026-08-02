@@ -857,14 +857,27 @@ begin
     ), '[]'::jsonb)
   );
 
-  effect_key := format(
-    'projection:v%s:%s:%s',
-    v_item.workflow_version,
-    v_item.id,
-    v_step.id
-  );
   output_hash := encode(
     extensions.digest(convert_to(v_snapshot::text, 'UTF8'), 'sha256'),
+    'hex'
+  );
+  effect_key := encode(
+    extensions.digest(
+      convert_to(
+        jsonb_build_object(
+          'organizationId', v_item.organization_id,
+          'actorUserId', coalesce(v_item.owner_user_id, '00000000-0000-4000-8000-000000000001'::uuid),
+          'workflowKey', v_item.workflow_key,
+          'workflowVersion', v_item.workflow_version,
+          'stepKey', v_step.step_key,
+          'targetKind', 'agent_work_step',
+          'targetId', v_step.id,
+          'payloadHash', output_hash
+        )::text,
+        'UTF8'
+      ),
+      'sha256'
+    ),
     'hex'
   );
   return next;

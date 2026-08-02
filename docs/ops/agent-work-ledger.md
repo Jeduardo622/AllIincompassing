@@ -6,6 +6,15 @@ Run `npm run agent-work:shadow-parity`.
 
 The package command always goes through `scripts/agent-work-ledger-local-env.ts run -- ...`, then launches `node scripts/agent-work-ledger-shadow-parity.mjs`. The script independently rejects non-loopback URLs, requires the URLs to exactly match the running stack discovered from the pinned local Supabase CLI, defaults the runtime to `shadow`, and fails if `AGENT_WORK_LEDGER_RUNTIME_MODE` is set to anything else.
 
+Run `npm run test:agent-work:chaos`.
+
+The package command also goes through `scripts/agent-work-ledger-local-env.ts run -- ...`, then launches `node scripts/agent-work-ledger-chaos.mjs`. The chaos wrapper executes the focused Deno chaos harness for the real runner handler with deterministic crash injection and local-only process values. Override seed or isolate one crash point with:
+
+```powershell
+npm run test:agent-work:chaos -- --seed task10-repro-001
+npm run test:agent-work:chaos -- --crash-point after_record_before_transition --seed task10-repro-001
+```
+
 ## Architecture
 
 `scripts/agent-work-ledger-shadow-parity.mjs` is the local parity proof for WIN-271 Task 8.
@@ -170,3 +179,27 @@ The following checks prove the local Task 9 implementation:
 `supabase functions serve` is not used for the Task 9 proof on this Windows Docker setup. The CLI stops the stack-managed Edge Runtime and leaves Kong with stale container DNS. The stack was rebuilt cleanly afterward, and both functions are instead imported as host Deno handlers with process-injected loopback-only values and generated synthetic invocation secrets.
 
 `npm run ci:check-focused` and therefore `npm run verify:local` remain blocked by nine unrelated API-convergence exceptions that expired on 2026-07-31.
+
+## Task 10 Chaos Contract
+
+The Task 10 chaos harness proves crash-safe idempotent convergence for the advisory projection runner without touching hosted systems or `.env*` files.
+
+Crash boundaries:
+
+- `before_claim`
+- `after_claim`
+- `before_effect`
+- `after_effect_before_record`
+- `after_record_before_transition`
+- `after_transition_before_archive`
+- `during_event_append`
+
+The harness uses deterministic synthetic IDs, a seedable scenario order, and in-memory/local-only dependency injection around the real `createAgentWorkRunnerHandler` path. The `--seed` value deterministically reorders the crash scenarios through `AGENT_WORK_CHAOS_CRASH_POINTS`, and `--crash-point` narrows execution to one named boundary for exact local reproduction. It requires:
+
+- one verified effect at convergence for duplicate delivery, retries, worker restarts, and stale-lease recovery paths
+- no verified effect before the authoritative postcondition is observed
+- post-transition completion-event failures to stay redeliverable until a replayed `agent_work_runner.completed` append succeeds and the stale message archives with `effect_already_applied`
+- backward-compatible replay against pre-canonical legacy `projection:v<version>:<workItemId>:<stepId>` effect rows during local upgrade/retry scenarios
+- different target or payload values producing different canonical effect keys and invalidating hash-bound approval bindings in the synthetic approval probe
+
+The command exits nonzero on the first failed crash scenario, postcondition gate, duplicate-effect regression, or approval-binding regression.

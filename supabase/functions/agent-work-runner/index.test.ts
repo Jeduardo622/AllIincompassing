@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   assert,
   assertEquals,
@@ -8,6 +9,7 @@ import {
   assertLocalSupabaseUrl,
   computeRetryDelaySeconds,
   createAgentWorkRunnerHandler,
+  deriveLegacyProjectionEffectKey,
   deriveProjectionEffect,
 } from "./index.ts";
 
@@ -163,7 +165,7 @@ type AuthoritativeScope = {
   stepKey: string;
   actorUserId: string;
   executionMode: "deterministic" | "model_suggested" | "human";
-  stepStatus: "ready" | "running" | "waiting" | "cancelled";
+  stepStatus: "ready" | "running" | "waiting" | "cancelled" | "completed";
   itemStatus:
     | "queued"
     | "running"
@@ -835,6 +837,142 @@ Deno.test("runner verifies the authoritative postcondition before marking an eff
   );
 });
 
+Deno.test("runner replays a completion event and archives the stale message after a transient append failure", async () => {
+  let attempts = 0;
+  const firstDeps = createDeps({
+    appendEvent: async (eventType: string) => {
+      firstDeps.calls.events.push(eventType);
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("event sink unavailable");
+      }
+    },
+  });
+  const firstHandler = createAgentWorkRunnerHandler(firstDeps);
+
+  const firstResponse = await firstHandler(
+    createRequest({ "x-agent-work-runner-secret": INVOCATION_SECRET }),
+  );
+
+  assertEquals(firstResponse.status, 200);
+  assertObjectMatch(await firstResponse.json(), {
+    success: true,
+    data: {
+      outcome: "blocked",
+      workItemId: WORK_ITEM_ID,
+      stepId: STEP_ID,
+      reasonCode: "event_append_failed",
+    } satisfies RunnerResult,
+  });
+  assertEquals(firstDeps.calls.transitions, [{
+    stepId: STEP_ID,
+    expectedStateVersion: "7",
+    toStatus: "completed",
+    reasonCode: "review_readiness_built",
+    outputHash: deriveProjectionEffect(createAuthoritativeScope()).outputHash,
+    effectKey: deriveProjectionEffect(createAuthoritativeScope()).effectKey,
+    workerId: WORKER_ID,
+    attemptId: ATTEMPT_ID,
+  }]);
+  assertEquals(firstDeps.calls.archives, []);
+  assertEquals(firstDeps.calls.events, ["agent_work_runner.completed"]);
+
+  const replayDeps = createDeps({
+    rereadAuthoritativeScope: async (input: RereadScopeInput) => {
+      replayDeps.calls.authoritativeReads.push({ ...input });
+      return createAuthoritativeScope({
+        stepStatus: "completed",
+        itemStatus: "needs_review",
+      });
+    },
+    findRecordedEffect: async (_stepId: string, effectKey: string) => {
+      replayDeps.calls.effectChecks.push(effectKey);
+      return {
+        effectKey,
+        outputHash: deriveProjectionEffect(createAuthoritativeScope()).outputHash,
+        status: "verified",
+        verifiedAt: NOW_ISO,
+      };
+    },
+  });
+  const replayHandler = createAgentWorkRunnerHandler(replayDeps);
+  const secondResponse = await replayHandler(
+    createRequest({ "x-agent-work-runner-secret": INVOCATION_SECRET }),
+  );
+  assertEquals(secondResponse.status, 200);
+  assertObjectMatch(await secondResponse.json(), {
+    success: true,
+    data: {
+      outcome: "completed",
+      workItemId: WORK_ITEM_ID,
+      stepId: STEP_ID,
+      reasonCode: "effect_already_applied",
+    } satisfies RunnerResult,
+  });
+  assertEquals(replayDeps.calls.claims, []);
+  assertEquals(replayDeps.calls.executions, []);
+  assertEquals(replayDeps.calls.archives, [{
+    messageId: MESSAGE_ID,
+    reasonCode: "effect_already_applied",
+  }]);
+  assertEquals(replayDeps.calls.events, ["agent_work_runner.completed"]);
+});
+
+Deno.test("runner reconciles a legacy projection effect key recorded before canonical hashing", async () => {
+  const scope = createAuthoritativeScope();
+  const expectedEffect = deriveProjectionEffect(scope);
+  const legacyKey = deriveLegacyProjectionEffectKey(scope);
+  const deps = createDeps({
+    findRecordedEffect: async (_stepId: string, effectKey: string) => {
+      deps.calls.effectChecks.push(effectKey);
+      if (effectKey === expectedEffect.effectKey) {
+        return null;
+      }
+      if (effectKey === legacyKey) {
+        return {
+          effectKey: legacyKey,
+          outputHash: expectedEffect.outputHash,
+          status: "verified",
+          verifiedAt: NOW_ISO,
+        };
+      }
+      return null;
+    },
+  });
+  const handler = createAgentWorkRunnerHandler(deps);
+
+  const response = await handler(
+    createRequest({ "x-agent-work-runner-secret": INVOCATION_SECRET }),
+  );
+
+  assertEquals(response.status, 200);
+  assertObjectMatch(await response.json(), {
+    success: true,
+    data: {
+      outcome: "completed",
+      workItemId: WORK_ITEM_ID,
+      stepId: STEP_ID,
+      reasonCode: "effect_already_applied",
+    } satisfies RunnerResult,
+  });
+  assertEquals(deps.calls.effectChecks, [expectedEffect.effectKey, legacyKey]);
+  assertEquals(deps.calls.executions, []);
+  assertEquals(deps.calls.transitions, [{
+    stepId: STEP_ID,
+    expectedStateVersion: "7",
+    toStatus: "completed",
+    reasonCode: "effect_already_applied",
+    outputHash: expectedEffect.outputHash,
+    effectKey: legacyKey,
+    workerId: WORKER_ID,
+    attemptId: ATTEMPT_ID,
+  }]);
+  assertEquals(deps.calls.archives, [{
+    messageId: MESSAGE_ID,
+    reasonCode: "effect_already_applied",
+  }]);
+});
+
 Deno.test("runner leaves finalization conflicts deliverable for authoritative reconciliation", async () => {
   const deps = createDeps({
     transitionStep: async () => {
@@ -1127,10 +1265,44 @@ Deno.test("runner derives a stable projection effect from authoritative PHI-free
     ],
   });
 
-  assertEquals(first.effectKey, `projection:v1:${WORK_ITEM_ID}:${STEP_ID}`);
+  const canonicalProjection = JSON.stringify({
+    organizationId: scope.organizationId,
+    clientId: scope.clientId,
+    workItemId: scope.workItemId,
+    stepId: scope.stepId,
+    workflowKey: scope.workflowKey,
+    workflowVersion: scope.workflowVersion,
+    stepKey: scope.stepKey,
+    inputHash: scope.inputHash,
+    evidenceHashes: [...scope.evidenceHashes].sort(),
+  });
+  const payloadHash = createHash("sha256").update(canonicalProjection).digest(
+    "hex",
+  );
+  const expectedEffectKey = createHash("sha256").update(
+    JSON.stringify({
+      organizationId: scope.organizationId,
+      actorUserId: scope.actorUserId,
+      workflowKey: scope.workflowKey,
+      workflowVersion: scope.workflowVersion,
+      stepKey: scope.stepKey,
+      targetKind: "agent_work_step",
+      targetId: scope.stepId,
+      payloadHash,
+    }),
+  ).digest("hex");
+
+  assertEquals(first.effectKey, expectedEffectKey);
+  assertEquals(first.effectKey.length, 64);
   assertEquals(first.outputHash.length, 64);
   assertEquals(reordered.outputHash, reorderedAgain.outputHash);
   assert(first.outputHash !== scope.inputHash);
+  assert(first.effectKey !== reordered.effectKey);
+  const retargeted = deriveProjectionEffect({
+    ...scope,
+    stepId: "88888888-8888-4888-8888-888888888888",
+  });
+  assert(first.effectKey !== retargeted.effectKey);
 });
 
 Deno.test("runner retry policy uses bounded exponential backoff with deterministic jitter", () => {

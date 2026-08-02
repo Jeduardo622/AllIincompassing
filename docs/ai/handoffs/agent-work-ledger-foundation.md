@@ -270,3 +270,48 @@ Tasks 1-5 are complete on the local branch. Task 6a and Task 7 each received a f
 - security review: approved after documenting that assigned care-team read visibility intentionally follows existing client-program read authority while owner, approval, and mutation authority remain separately restricted
 - Supabase review: approved the authority-owned runtime-mode envelope, fail-closed authentication/runtime handling, strict sanitized DTO, RLS-scoped reads, and local reset/Edge smoke evidence
 - test review: approved the focused client/component/IEHP/Edge coverage and verification card; the unrelated expired API convergence inventory remains the only policy blocker
+
+## Task 8 Shadow Parity Route
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- reroute reason: the initial `standard` route was superseded after review established that rollback-only fixture setup still performs privileged local auth, tenant, assessment, and ledger writes; no production schema/function path changed, but the execution path is protected Supabase work
+- why: the exact slice adds a synthetic local verification script, one package command, and an operations runbook; the script writes only to a CLI-discovered local Supabase stack inside per-fixture rollback transactions and must receive critical-lane human review
+- triggering paths: `scripts/agent-work-ledger-shadow-parity.mjs`, `package.json`, `docs/ops/agent-work-ledger.md`, and this implementation handoff
+- repository drift: `docs/ops/agent-work-ledger.md` is absent, so the plan's `Modify` action becomes `Create`
+- required agents: `specification-engineer`, `software-architect`, `implementation-engineer`, `code-review-engineer`, `test-engineer`, `security-engineer`, `supabase-reviewer`, and `documentation-engineer`
+- required checks: red/green shadow-parity command; focused script tests if a separately testable module is introduced; `npm run playwright:iehp-assessment-import-smoke` only when explicitly injected synthetic credentials are available; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run build`; `npm run verify:local`
+- allowed scope: deterministic synthetic fixtures for extraction success/failure, missing checklist evidence, stale approval, changed structured section, and owner removal; supported ledger-skeleton creation; exact adapter-to-authoritative evidence-pointer parity; normalized PHI-free metrics; fail-closed nonzero exits; local/hosted runbook instructions that preserve authorization boundaries
+- non-goals: hosted execution in this task, reading `.env*`, real assessment fixtures, queue/runner/sweeper/Cron, production runtime changes, assessment-domain mutations, clinical approval, promotion, publication, billing, or signatures
+- stop conditions: any need for hosted credentials, customer artifacts, PHI-bearing logs/artifacts, unexplained mismatch, tenant leakage, or expansion into a protected production path
+- Linear: `WIN-271`
+
+## Task 8 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: local-only protected Supabase integration harness and operations documentation
+- files touched: `scripts/agent-work-ledger-shadow-parity.mjs`, `package.json`, `docs/ops/agent-work-ledger.md`, and this handoff
+- required agents: specification, architecture, implementation, code review, test, security, Supabase, and documentation review completed; final code, security, and Supabase verdicts approve with no findings
+- required checks: `npm run agent-work:local:preflight`; `npm run agent-work:shadow-parity`; sanitized bridge/malformed-bridge/database fault probes; local-stack identity and runtime-mode rejection probes; `npm run agent-work:security-contract`; `deno test supabase/functions/_shared/agent-work/assessment-prep.test.ts`; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run validate:tenant`; `npm run test:ci`; `npm run build`; `npm run verify:local`; hosted synthetic IEHP smoke only with separate authorization
+- executed checks: local preflight passed; shadow parity passed with 6/6 fixtures, zero mismatches, full exact evidence-pointer coverage, pinned readiness hashes, isolated same-document section-hash drift, expired-approval reread, and 7/7 hard-failure classes; bridge, malformed-bridge, and database fault probes exited nonzero with fixed sanitized reason codes and no temp-directory leak; non-local URL, loopback identity mismatch, and non-shadow mode probes failed closed; security contract passed; shared adapter Deno suite passed 12/12; lint passed; typecheck passed; tenant validation passed; build passed; `git diff --check` passed
+- executed checks with non-green result: `npm run test:ci` completed 440 test files and 3,647 tests with 5 skips and no assertion failures, then exited `1` on the known Vitest worker `Timeout calling "onTaskUpdate"`; `npm run ci:check-focused` exited `1` only because nine unrelated API convergence exceptions expired on 2026-07-31; `npm run verify:local` stopped at that same policy gate
+- blocked checks: `npm run playwright:iehp-assessment-import-smoke` was not run because hosted Supabase/customer-system access is explicitly unauthorized; no hosted parity command was run
+- result: `pass-with-blocked-checks`
+- residual risk: Task 8 proves pre-runner shadow projection, supported queued skeleton scope, rollback containment, exact evidence/hash parity, and sanitized failures; it intentionally does not prove queue/runner transitions, scheduled execution, or hosted behavior. The malformed-bridge path is opt-in rather than part of the default success run, but its live fault probe passed.
+- pr handoff: locally review-ready on `codex/agent-work-ledger-foundation`; push and PR creation remain prohibited by the task authorization
+
+## Task 8 PR Hygiene
+
+- pr-ready: `yes` for local review; no push or PR is authorized
+- lane: `critical`
+- branch-ready: `yes` (`codex/agent-work-ledger-foundation`)
+- linear-ready: `yes` (`WIN-271`)
+- single-purpose: `yes`
+- unrelated changes: none; test-generated `deno.lock` drift was removed
+- generated artifact drift: none
+- protected-path drift: none outside the explicitly routed rollback-only local Supabase harness behavior
+- change summary: present in the operations runbook and verification card
+- verification summary: present, including blocked and non-green checks
+- reviewer: final code, security, and Supabase reviews approved; test review had only the documented opt-in malformed-bridge residual, which was executed live
+- required follow-up: obtain explicit authorization before push/PR, then obtain critical-lane human review before merge

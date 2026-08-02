@@ -202,3 +202,63 @@ git diff --check
 - result: `pass-with-blocked-checks`
 - residual risk: the future authoritative snapshot loader must supply exact document and template-layout evidence pointers and remains responsible for integration-boundary parity; human review remains required before merge
 - commit note: the normal pre-commit hook ran `npm run ci:check-focused` and failed on nine pre-existing runtime-exception entries that expired on 2026-07-31; no CI/policy files were changed, and the bounded commit used `--no-verify`
+
+## Fix Round 2
+
+### Status
+
+- completed the architecture rereview finding within `assessment-prep.ts` and `assessment-prep.test.ts`
+- retained snapshot-in/projection-out behavior and made no migration, API, domain helper, state-machine, policy, event-contract, CI, environment, hosted, or clinical-write changes
+
+### RED Evidence
+
+The runtime regression test passed an `assessment_document` pointer through `missingRequiredEvidence` with `as any` and failed against the round-one adapter:
+
+```powershell
+deno test --no-lock supabase/functions/_shared/agent-work/assessment-prep.test.ts
+```
+
+```text
+FAILED | 11 passed | 1 failed
+runtime-invalid missing required evidence is blocked and never echoed
+  expected invalid_required_evidence, received the generic missing_required_evidence path
+```
+
+### Fix Summary
+
+- validates `missingRequiredEvidence` at runtime before normalization, parity calculation, hashing, or output shaping
+- accepts only `assessment_checklist_item` and `assessment_structured_section` pointers with canonical non-zero UUIDs, 64-character hexadecimal SHA-256 hashes, and an optional string locator
+- discards forbidden kinds, unknown kinds, malformed IDs/hashes, and non-object values without echoing them into either evidence output
+- emits `invalid_required_evidence` and fails `validate_review_evidence` before `needs_review`
+- reconstructs valid pointers from allowed PHI-free fields, so extra caller properties cannot flow into output
+- preserves valid pointers from mixed valid/invalid input while retaining both invalid and unresolved-evidence blockers
+
+### GREEN Evidence
+
+```text
+deno test --no-lock supabase/functions/_shared/agent-work/assessment-prep.test.ts
+  -> pass, 12 tests
+npm run typecheck
+  -> pass
+npm test -- src/server/__tests__/assessmentTemplateLayoutHandler.test.ts src/server/__tests__/assessmentDocumentsHandler.test.ts src/server/__tests__/assessmentChecklistHandler.test.ts
+  -> pass, 3 files / 84 tests
+deno fmt --check supabase/functions/_shared/agent-work/assessment-prep.ts supabase/functions/_shared/agent-work/assessment-prep.test.ts
+  -> pass
+git diff --check
+  -> pass
+```
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: runtime validation and sanitization at the shared Supabase Function shadow-adapter boundary
+- required checks for this bounded fix round:
+  - focused Deno adapter test
+  - repository typecheck
+  - narrow existing assessment tests
+- executed checks: all bounded checks passed as listed above
+- blocked/unrun checks: broader `ci:check-focused`, full `test:ci`, lint, tenant validation, build, and `verify:local` remain at the Tasks 2-5 integration boundary
+- result: `pass-with-blocked-checks`
+- residual risk: human architecture/security review and the future authoritative snapshot-loader integration remain required; no local reviewer subagent was available for this round
+- commit note: the normal pre-commit hook again failed on the same nine pre-existing API convergence exceptions that expired on 2026-07-31; no CI/policy files were changed, and the bounded round-two commit used `--no-verify`

@@ -14,6 +14,7 @@ export const ASSESSMENT_PREP_BLOCKER_CODES = [
   "document_state_out_of_contract",
   "review_read_model_unavailable",
   "missing_required_evidence",
+  "invalid_required_evidence",
   "missing_owner",
   "owner_not_authorized",
   "authorization_unavailable",
@@ -250,16 +251,17 @@ const RECOGNIZED_DOCUMENT_STATES = new Set<string>([
 export function deriveAssessmentPrepShadow(
   snapshot: AssessmentPrepAuthoritativeSnapshot,
 ): AssessmentPrepShadowResult {
-  const blockerCodes = collectBlockerCodes(snapshot);
-  const parity = collectParity(snapshot);
-  const evidence = normalizeEvidence([
-    ...snapshot.reviewReadModel.evidence,
-    ...snapshot.reviewReadModel.missingRequiredEvidence,
-  ]);
-  const extractionState = deriveExtractionState(snapshot.documentState);
-  const missingRequiredEvidence = normalizeEvidence(
+  const sanitizedMissingEvidence = sanitizeMissingRequiredEvidence(
     snapshot.reviewReadModel.missingRequiredEvidence,
   );
+  const blockerCodes = collectBlockerCodes(snapshot, sanitizedMissingEvidence);
+  const parity = collectParity(snapshot, sanitizedMissingEvidence.pointers);
+  const evidence = normalizeEvidence([
+    ...snapshot.reviewReadModel.evidence,
+    ...sanitizedMissingEvidence.pointers,
+  ]);
+  const extractionState = deriveExtractionState(snapshot.documentState);
+  const missingRequiredEvidence = sanitizedMissingEvidence.pointers;
   const projection: AssessmentPrepProjection = {
     organizationId: snapshot.organizationId,
     clientId: snapshot.clientId,
@@ -292,6 +294,7 @@ export function deriveAssessmentPrepShadow(
 
 function collectBlockerCodes(
   snapshot: AssessmentPrepAuthoritativeSnapshot,
+  sanitizedMissingEvidence: SanitizedMissingRequiredEvidence,
 ): AssessmentPrepBlockerCode[] {
   const blockers: AssessmentPrepBlockerCode[] = [];
   const ownerBlocker = collectOwnerBlocker(snapshot);
@@ -337,9 +340,17 @@ function collectBlockerCodes(
   if (
     snapshot.documentState === "extracted" &&
     snapshot.reviewReadModel.loaded &&
+    sanitizedMissingEvidence.rejected
+  ) {
+    blockers.push("invalid_required_evidence");
+  }
+
+  if (
+    snapshot.documentState === "extracted" &&
+    snapshot.reviewReadModel.loaded &&
     (
       snapshot.reviewReadModel.unresolvedRequiredCount > 0 ||
-      snapshot.reviewReadModel.missingRequiredEvidence.length > 0 ||
+      sanitizedMissingEvidence.pointers.length > 0 ||
       !hasRequiredReadinessEvidence(snapshot)
     )
   ) {
@@ -363,6 +374,7 @@ function collectBlockerCodes(
 
 function collectParity(
   snapshot: AssessmentPrepAuthoritativeSnapshot,
+  missingRequiredEvidence: readonly AssessmentPrepMissingEvidencePointer[],
 ): {
   descriptors: AssessmentPrepParityDescriptor[];
   events: AssessmentPrepParityEvent[];
@@ -371,14 +383,14 @@ function collectParity(
 
   if (
     snapshot.reviewReadModel.unresolvedRequiredCount !==
-      snapshot.reviewReadModel.missingRequiredEvidence.length
+      missingRequiredEvidence.length
   ) {
     descriptors.push({
       kind: "missing_required_evidence_count_mismatch",
       reasonCode: "parity_mismatch",
       metadata: {
         expectedCount: snapshot.reviewReadModel.unresolvedRequiredCount,
-        actualCount: snapshot.reviewReadModel.missingRequiredEvidence.length,
+        actualCount: missingRequiredEvidence.length,
       },
     });
   }
@@ -417,6 +429,9 @@ function buildStepTransitions(
   ]);
   const hasMissingRequiredEvidence = blockerCodes.includes(
     "missing_required_evidence",
+  );
+  const hasInvalidRequiredEvidence = blockerCodes.includes(
+    "invalid_required_evidence",
   );
 
   transitions.push(buildTransition("validate_scope", "completed", null, true));
@@ -481,6 +496,18 @@ function buildStepTransitions(
         "validate_review_evidence",
         "failed",
         "review_read_model_unavailable",
+        false,
+      ),
+    );
+    return completeWithPending(transitions, "validate_review_evidence");
+  }
+
+  if (hasInvalidRequiredEvidence) {
+    transitions.push(
+      buildTransition(
+        "validate_review_evidence",
+        "failed",
+        "invalid_required_evidence",
         false,
       ),
     );
@@ -633,6 +660,56 @@ function normalizeEvidence(
   );
 }
 
+interface SanitizedMissingRequiredEvidence {
+  pointers: AssessmentPrepMissingEvidencePointer[];
+  rejected: boolean;
+}
+
+function sanitizeMissingRequiredEvidence(
+  value: unknown,
+): SanitizedMissingRequiredEvidence {
+  if (!Array.isArray(value)) {
+    return { pointers: [], rejected: true };
+  }
+
+  const pointers: AssessmentPrepMissingEvidencePointer[] = [];
+  let rejected = false;
+
+  for (const candidate of value) {
+    if (!isValidMissingRequiredEvidencePointer(candidate)) {
+      rejected = true;
+      continue;
+    }
+
+    pointers.push({
+      sourceKind: candidate.sourceKind,
+      sourceId: candidate.sourceId,
+      ...(candidate.locator ? { locator: candidate.locator } : {}),
+      sha256: candidate.sha256,
+    });
+  }
+
+  return {
+    pointers: normalizeEvidence(pointers),
+    rejected,
+  };
+}
+
+function isValidMissingRequiredEvidencePointer(
+  value: unknown,
+): value is AssessmentPrepMissingEvidencePointer {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const pointer = value as Record<string, unknown>;
+  return (
+    pointer.sourceKind === "assessment_checklist_item" ||
+    pointer.sourceKind === "assessment_structured_section"
+  ) && isValidUuid(pointer.sourceId) && isValidSha256(pointer.sha256) &&
+    (pointer.locator === undefined || typeof pointer.locator === "string");
+}
+
 function hasRequiredReadinessEvidence(
   snapshot: AssessmentPrepAuthoritativeSnapshot,
 ): boolean {
@@ -653,7 +730,17 @@ function hasRequiredReadinessEvidence(
 function isValidEvidencePointer(
   pointer: AssessmentPrepEvidencePointer,
 ): boolean {
-  return pointer.sourceId.length > 0 && /^[a-f0-9]{64}$/i.test(pointer.sha256);
+  return isValidUuid(pointer.sourceId) && isValidSha256(pointer.sha256);
+}
+
+function isValidUuid(value: unknown): value is string {
+  return typeof value === "string" &&
+    value !== "00000000-0000-0000-0000-000000000000" &&
+    /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value);
+}
+
+function isValidSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
 }
 
 function collectOwnerBlocker(
@@ -675,9 +762,7 @@ function collectOwnerBlocker(
 }
 
 function isValidOwnerId(ownerId: string | null): ownerId is string {
-  return ownerId !== null &&
-    ownerId !== "00000000-0000-0000-0000-000000000000" &&
-    /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(ownerId);
+  return isValidUuid(ownerId);
 }
 
 function createReadinessHash(

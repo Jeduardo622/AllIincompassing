@@ -670,6 +670,175 @@ Deno.test("missing required evidence accepts only checklist or structured-sectio
   assertEquals(invalid.length, 1);
 });
 
+Deno.test("runtime-invalid missing required evidence is blocked and never echoed", () => {
+  const invalidCases: Array<{ name: string; pointer: unknown }> = [
+    {
+      name: "assessment document kind",
+      pointer: {
+        sourceKind: "assessment_document",
+        sourceId: CHECKLIST_ID,
+        sha256: "f".repeat(64),
+      },
+    },
+    {
+      name: "review event kind",
+      pointer: {
+        sourceKind: "assessment_review_event",
+        sourceId: CHECKLIST_ID,
+        sha256: "f".repeat(64),
+      },
+    },
+    {
+      name: "template layout kind",
+      pointer: {
+        sourceKind: "assessment_template_layout",
+        sourceId: CHECKLIST_ID,
+        sha256: "f".repeat(64),
+      },
+    },
+    {
+      name: "unknown kind",
+      pointer: {
+        sourceKind: "assessment_unknown",
+        sourceId: CHECKLIST_ID,
+        sha256: "f".repeat(64),
+      },
+    },
+    {
+      name: "malformed source id",
+      pointer: {
+        sourceKind: "assessment_checklist_item",
+        sourceId: "not-a-uuid",
+        sha256: "f".repeat(64),
+      },
+    },
+    {
+      name: "zero source id",
+      pointer: {
+        sourceKind: "assessment_structured_section",
+        sourceId: "00000000-0000-0000-0000-000000000000",
+        sha256: "f".repeat(64),
+      },
+    },
+    {
+      name: "short hash",
+      pointer: {
+        sourceKind: "assessment_checklist_item",
+        sourceId: CHECKLIST_ID,
+        sha256: "abc123",
+      },
+    },
+    {
+      name: "non-hex hash",
+      pointer: {
+        sourceKind: "assessment_structured_section",
+        sourceId: SECTION_ID,
+        sha256: "z".repeat(64),
+      },
+    },
+    {
+      name: "non-object pointer",
+      pointer: null,
+    },
+  ];
+  let sanitizedReadinessHash: string | null = null;
+
+  for (const testCase of invalidCases) {
+    const result = deriveAssessmentPrepShadow(
+      buildSnapshot({
+        reviewReadModel: {
+          ...buildSnapshot().reviewReadModel,
+          missingRequiredEvidence: [testCase.pointer] as any,
+        },
+      }),
+    );
+
+    assertEquals(result.workItemStatus, "blocked", testCase.name);
+    assertEquals(
+      result.projection.blockerCodes,
+      ["invalid_required_evidence"],
+      testCase.name,
+    );
+    assertEquals(result.missingRequiredEvidence, [], testCase.name);
+    assertEquals(result.projection.evidence.length, 3, testCase.name);
+    assertEquals(
+      result.stepTransitions[3].reasonCode,
+      "invalid_required_evidence",
+      testCase.name,
+    );
+
+    if (sanitizedReadinessHash === null) {
+      sanitizedReadinessHash = result.projection.readinessHash;
+    } else {
+      assertEquals(
+        result.projection.readinessHash,
+        sanitizedReadinessHash,
+        `${testCase.name}: invalid pointer data must not affect hashing`,
+      );
+    }
+  }
+});
+
+Deno.test("runtime-valid missing evidence returns only checklist and structured-section pointers", () => {
+  const missingRequiredEvidence = [
+    {
+      sourceKind: "assessment_checklist_item",
+      sourceId: CHECKLIST_ID,
+      sha256: "d".repeat(64),
+    },
+    {
+      sourceKind: "assessment_structured_section",
+      sourceId: SECTION_ID,
+      sha256: "e".repeat(64),
+    },
+  ] as const;
+  const result = deriveAssessmentPrepShadow(
+    buildSnapshot({
+      reviewReadModel: {
+        ...buildSnapshot().reviewReadModel,
+        unresolvedRequiredCount: 2,
+        missingRequiredEvidence: [...missingRequiredEvidence],
+      },
+    }),
+  );
+
+  assertEquals(result.workItemStatus, "blocked");
+  assertEquals(result.projection.blockerCodes, ["missing_required_evidence"]);
+  assertEquals(result.missingRequiredEvidence, [...missingRequiredEvidence]);
+  assertEquals(
+    result.missingRequiredEvidence.map((pointer) => pointer.sourceKind),
+    ["assessment_checklist_item", "assessment_structured_section"],
+  );
+
+  const mixedResult = deriveAssessmentPrepShadow(
+    buildSnapshot({
+      reviewReadModel: {
+        ...buildSnapshot().reviewReadModel,
+        unresolvedRequiredCount: 2,
+        missingRequiredEvidence: [
+          ...missingRequiredEvidence,
+          {
+            sourceKind: "assessment_review_event",
+            sourceId: REVIEW_EVENT_ID,
+            sha256: "f".repeat(64),
+          },
+        ] as any,
+      },
+    }),
+  );
+
+  assertEquals(mixedResult.workItemStatus, "blocked");
+  assertEquals(mixedResult.projection.blockerCodes, [
+    "invalid_required_evidence",
+    "missing_required_evidence",
+  ]);
+  assertEquals(
+    mixedResult.missingRequiredEvidence,
+    [...missingRequiredEvidence],
+  );
+  assertEquals(mixedResult.projection.evidence.length, 5);
+});
+
 Deno.test(
   "workflow template is immutable and uses the seven documented step keys",
   assertWorkflowImmutable,

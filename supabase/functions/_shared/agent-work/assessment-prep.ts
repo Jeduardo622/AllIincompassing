@@ -11,6 +11,7 @@ export const ASSESSMENT_PREP_BLOCKER_CODES = [
   "document_missing_or_invalid",
   "template_type_mismatch",
   "extraction_failed",
+  "document_state_out_of_contract",
   "review_read_model_unavailable",
   "missing_required_evidence",
   "missing_owner",
@@ -54,6 +55,11 @@ export interface AssessmentPrepEvidencePointer {
   sha256: string;
 }
 
+export interface AssessmentPrepMissingEvidencePointer
+  extends AssessmentPrepEvidencePointer {
+  sourceKind: "assessment_checklist_item" | "assessment_structured_section";
+}
+
 export interface AssessmentPrepAuthoritativeSnapshot {
   organizationId: string;
   clientId: string;
@@ -77,7 +83,7 @@ export interface AssessmentPrepAuthoritativeSnapshot {
   reviewReadModel: {
     loaded: boolean;
     unresolvedRequiredCount: number;
-    missingRequiredEvidence: AssessmentPrepEvidencePointer[];
+    missingRequiredEvidence: AssessmentPrepMissingEvidencePointer[];
     evidence: AssessmentPrepEvidencePointer[];
   };
   ownerAuthorization: {
@@ -103,18 +109,18 @@ export interface AssessmentPrepProjection {
 }
 
 export interface AssessmentPrepWorkflowStep {
-  stepKey: AssessmentPrepStepKey;
-  executionMode: WorkExecutionMode;
-  risk: "clinical";
-  dependencies: AssessmentPrepStepKey[];
-  completionPredicate: string;
+  readonly stepKey: AssessmentPrepStepKey;
+  readonly executionMode: WorkExecutionMode;
+  readonly risk: "clinical";
+  readonly dependencies: readonly AssessmentPrepStepKey[];
+  readonly completionPredicate: string;
 }
 
 export interface AssessmentPrepWorkflowDefinition {
-  workflow: "assessment.iehp.prepare_for_clinical_review@1";
-  workflowKey: "assessment.iehp.prepare_for_clinical_review";
-  version: 1;
-  steps: readonly AssessmentPrepWorkflowStep[];
+  readonly workflow: "assessment.iehp.prepare_for_clinical_review@1";
+  readonly workflowKey: "assessment.iehp.prepare_for_clinical_review";
+  readonly version: 1;
+  readonly steps: readonly AssessmentPrepWorkflowStep[];
 }
 
 export interface AssessmentPrepStepTransition {
@@ -144,7 +150,7 @@ export interface AssessmentPrepParityEvent {
 export interface AssessmentPrepShadowResult {
   workflow: AssessmentPrepWorkflowDefinition;
   projection: AssessmentPrepProjection;
-  missingRequiredEvidence: AssessmentPrepEvidencePointer[];
+  missingRequiredEvidence: AssessmentPrepMissingEvidencePointer[];
   stepTransitions: AssessmentPrepStepTransition[];
   workItemStatus: WorkItemStatus;
   parity: {
@@ -154,73 +160,92 @@ export interface AssessmentPrepShadowResult {
   generatedClinicalContent: false;
 }
 
-export const ASSESSMENT_PREP_WORKFLOW: AssessmentPrepWorkflowDefinition = {
-  workflow: "assessment.iehp.prepare_for_clinical_review@1",
-  workflowKey: "assessment.iehp.prepare_for_clinical_review",
-  version: 1,
-  steps: [
-    {
-      stepKey: "validate_scope",
-      executionMode: "deterministic",
-      risk: "clinical",
-      dependencies: [],
-      completionPredicate:
-        "scope verdict is in_scope and template type is iehp_fba",
-    },
-    {
-      stepKey: "observe_upload",
-      executionMode: "deterministic",
-      risk: "clinical",
-      dependencies: ["validate_scope"],
-      completionPredicate:
-        "authoritative assessment document is present for the same scope",
-    },
-    {
-      stepKey: "await_extraction",
-      executionMode: "deterministic",
-      risk: "clinical",
-      dependencies: ["observe_upload"],
-      completionPredicate:
-        "document state is extraction-complete and not extraction_failed",
-    },
-    {
-      stepKey: "validate_review_evidence",
-      executionMode: "deterministic",
-      risk: "clinical",
-      dependencies: ["await_extraction"],
-      completionPredicate:
-        "review read model loaded and unresolved required evidence is explicitly enumerated",
-    },
-    {
-      stepKey: "build_review_readiness",
-      executionMode: "deterministic",
-      risk: "clinical",
-      dependencies: ["validate_review_evidence"],
-      completionPredicate:
-        "phi-free readiness projection and readiness hash are computed from authoritative evidence pointers",
-    },
-    {
-      stepKey: "assign_clinical_owner",
-      executionMode: "human",
-      risk: "clinical",
-      dependencies: ["build_review_readiness"],
-      completionPredicate:
-        "owner authorization input is present and authorized by the upstream authority",
-    },
-    {
-      stepKey: "request_clinical_review",
-      executionMode: "human",
-      risk: "clinical",
-      dependencies: ["assign_clinical_owner"],
-      completionPredicate:
-        "all deterministic prerequisites pass and the work item stops at needs_review",
-    },
-  ],
-} as const;
+function freezeWorkflowStep(
+  step: AssessmentPrepWorkflowStep,
+): AssessmentPrepWorkflowStep {
+  Object.freeze(step.dependencies);
+  return Object.freeze(step);
+}
 
-const EXTRACTION_COMPLETE_STATES = new Set<
-  AssessmentPrepAuthoritativeSnapshot["documentState"]
->(["extracted", "drafted", "approved", "rejected"]);
+const ASSESSMENT_PREP_WORKFLOW_STEPS = Object.freeze([
+  freezeWorkflowStep({
+    stepKey: "validate_scope",
+    executionMode: "deterministic",
+    risk: "clinical",
+    dependencies: [],
+    completionPredicate:
+      "scope verdict is in_scope and template type is iehp_fba",
+  }),
+  freezeWorkflowStep({
+    stepKey: "observe_upload",
+    executionMode: "deterministic",
+    risk: "clinical",
+    dependencies: ["validate_scope"],
+    completionPredicate:
+      "authoritative assessment document is present for the same scope",
+  }),
+  freezeWorkflowStep({
+    stepKey: "await_extraction",
+    executionMode: "deterministic",
+    risk: "clinical",
+    dependencies: ["observe_upload"],
+    completionPredicate:
+      "document state is exactly extracted and not extraction_failed",
+  }),
+  freezeWorkflowStep({
+    stepKey: "validate_review_evidence",
+    executionMode: "deterministic",
+    risk: "clinical",
+    dependencies: ["await_extraction"],
+    completionPredicate:
+      "review read model loaded and unresolved required evidence is explicitly enumerated",
+  }),
+  freezeWorkflowStep({
+    stepKey: "build_review_readiness",
+    executionMode: "deterministic",
+    risk: "clinical",
+    dependencies: ["validate_review_evidence"],
+    completionPredicate:
+      "phi-free readiness projection and readiness hash are computed from authoritative evidence pointers",
+  }),
+  freezeWorkflowStep({
+    stepKey: "assign_clinical_owner",
+    executionMode: "human",
+    risk: "clinical",
+    dependencies: ["build_review_readiness"],
+    completionPredicate:
+      "owner identifier is valid and upstream authorization is true with no reason code",
+  }),
+  freezeWorkflowStep({
+    stepKey: "request_clinical_review",
+    executionMode: "human",
+    risk: "clinical",
+    dependencies: ["assign_clinical_owner"],
+    completionPredicate:
+      "all deterministic prerequisites pass and the work item stops at needs_review",
+  }),
+]);
+
+export const ASSESSMENT_PREP_WORKFLOW: AssessmentPrepWorkflowDefinition = Object
+  .freeze({
+    workflow: "assessment.iehp.prepare_for_clinical_review@1",
+    workflowKey: "assessment.iehp.prepare_for_clinical_review",
+    version: 1,
+    steps: ASSESSMENT_PREP_WORKFLOW_STEPS,
+  });
+
+const PENDING_DOCUMENT_STATES = new Set<string>([
+  "uploaded",
+  "extracting",
+  "extraction_running",
+]);
+
+const RECOGNIZED_DOCUMENT_STATES = new Set<string>([
+  "missing",
+  ...PENDING_DOCUMENT_STATES,
+  "extracted",
+  "extraction_failed",
+]);
 
 export function deriveAssessmentPrepShadow(
   snapshot: AssessmentPrepAuthoritativeSnapshot,
@@ -269,6 +294,7 @@ function collectBlockerCodes(
   snapshot: AssessmentPrepAuthoritativeSnapshot,
 ): AssessmentPrepBlockerCode[] {
   const blockers: AssessmentPrepBlockerCode[] = [];
+  const ownerBlocker = collectOwnerBlocker(snapshot);
 
   switch (snapshot.scopeVerdict) {
     case "wrong_organization":
@@ -302,30 +328,34 @@ function collectBlockerCodes(
   }
 
   if (
-    EXTRACTION_COMPLETE_STATES.has(snapshot.documentState) &&
+    snapshot.documentState === "extracted" &&
     !snapshot.reviewReadModel.loaded
   ) {
     blockers.push("review_read_model_unavailable");
   }
 
   if (
-    EXTRACTION_COMPLETE_STATES.has(snapshot.documentState) &&
+    snapshot.documentState === "extracted" &&
     snapshot.reviewReadModel.loaded &&
     (
       snapshot.reviewReadModel.unresolvedRequiredCount > 0 ||
-      snapshot.reviewReadModel.missingRequiredEvidence.length > 0
+      snapshot.reviewReadModel.missingRequiredEvidence.length > 0 ||
+      !hasRequiredReadinessEvidence(snapshot)
     )
   ) {
     blockers.push("missing_required_evidence");
   }
 
   if (
-    EXTRACTION_COMPLETE_STATES.has(snapshot.documentState) &&
+    snapshot.documentState === "extracted" &&
     snapshot.reviewReadModel.loaded &&
-    !snapshot.ownerAuthorization.authorized &&
-    snapshot.ownerAuthorization.reasonCode
+    ownerBlocker
   ) {
-    blockers.push(snapshot.ownerAuthorization.reasonCode);
+    blockers.push(ownerBlocker);
+  }
+
+  if (!RECOGNIZED_DOCUMENT_STATES.has(snapshot.documentState)) {
+    blockers.push("document_state_out_of_contract");
   }
 
   return dedupeBlockers(blockers);
@@ -425,6 +455,18 @@ function buildStepTransitions(
   if (snapshot.documentState === "extraction_failed") {
     transitions.push(
       buildTransition("await_extraction", "failed", "extraction_failed", false),
+    );
+    return completeWithPending(transitions, "await_extraction");
+  }
+
+  if (snapshot.documentState !== "extracted") {
+    transitions.push(
+      buildTransition(
+        "await_extraction",
+        "failed",
+        "document_state_out_of_contract",
+        false,
+      ),
     );
     return completeWithPending(transitions, "await_extraction");
   }
@@ -541,7 +583,11 @@ function deriveExtractionState(
     return "failed";
   }
 
-  return EXTRACTION_COMPLETE_STATES.has(documentState) ? "complete" : "pending";
+  if (documentState === "extracted") {
+    return "complete";
+  }
+
+  return PENDING_DOCUMENT_STATES.has(documentState) ? "pending" : "failed";
 }
 
 function dedupeBlockers(
@@ -551,7 +597,13 @@ function dedupeBlockers(
 }
 
 function normalizeEvidence(
-  evidence: AssessmentPrepEvidencePointer[],
+  evidence: readonly AssessmentPrepMissingEvidencePointer[],
+): AssessmentPrepMissingEvidencePointer[];
+function normalizeEvidence(
+  evidence: readonly AssessmentPrepEvidencePointer[],
+): AssessmentPrepEvidencePointer[];
+function normalizeEvidence(
+  evidence: readonly AssessmentPrepEvidencePointer[],
 ): AssessmentPrepEvidencePointer[] {
   const deduped = new Map<string, AssessmentPrepEvidencePointer>();
 
@@ -579,6 +631,53 @@ function normalizeEvidence(
       }|${right.sha256}`,
     )
   );
+}
+
+function hasRequiredReadinessEvidence(
+  snapshot: AssessmentPrepAuthoritativeSnapshot,
+): boolean {
+  const evidence = snapshot.reviewReadModel.evidence;
+  const hasDocument = evidence.some((pointer) =>
+    pointer.sourceKind === "assessment_document" &&
+    pointer.sourceId === snapshot.assessmentDocumentId &&
+    isValidEvidencePointer(pointer)
+  );
+  const hasReadModel = evidence.some((pointer) =>
+    pointer.sourceKind === "assessment_template_layout" &&
+    isValidEvidencePointer(pointer)
+  );
+
+  return evidence.length > 0 && hasDocument && hasReadModel;
+}
+
+function isValidEvidencePointer(
+  pointer: AssessmentPrepEvidencePointer,
+): boolean {
+  return pointer.sourceId.length > 0 && /^[a-f0-9]{64}$/i.test(pointer.sha256);
+}
+
+function collectOwnerBlocker(
+  snapshot: AssessmentPrepAuthoritativeSnapshot,
+): AssessmentPrepBlockerCode | null {
+  const verdict = snapshot.ownerAuthorization;
+
+  if (!isValidOwnerId(verdict.ownerId)) {
+    return "missing_owner";
+  }
+  if (verdict.reasonCode !== null) {
+    return verdict.reasonCode;
+  }
+  if (!verdict.authorized) {
+    return "owner_not_authorized";
+  }
+
+  return null;
+}
+
+function isValidOwnerId(ownerId: string | null): ownerId is string {
+  return ownerId !== null &&
+    ownerId !== "00000000-0000-0000-0000-000000000000" &&
+    /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(ownerId);
 }
 
 function createReadinessHash(

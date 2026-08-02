@@ -46,7 +46,7 @@ const FUNCTION_CONTRACTS = [
   {
     signature: "create_agent_assessment_work_item(uuid,uuid,uuid,integer,text)",
     searchPath: "public, pg_temp",
-    execute: { public: false, anon: false, authenticated: true, service_role: true },
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
   },
   {
     signature: "agent_work_recompute_item_status(uuid)",
@@ -447,7 +447,7 @@ const assertTraceColumns = async (client) => {
 };
 
 const createWorkItems = async (client) => {
-  const assignedWorkItemId = await withActor(client, "authenticated", "authenticated", FIXTURES.adminA, async () => {
+  const assignedWorkItemId = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
     const { rows } = await client.query(
       `
         select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::text) as id
@@ -457,7 +457,7 @@ const createWorkItems = async (client) => {
     return rows[0]?.id;
   }, { commit: true });
 
-  const unassignedWorkItemId = await withActor(client, "authenticated", "authenticated", FIXTURES.adminA, async () => {
+  const unassignedWorkItemId = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
     const { rows } = await client.query(
       `
         select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::text) as id
@@ -471,6 +471,106 @@ const createWorkItems = async (client) => {
   assert(unassignedWorkItemId, "Unassigned work item creation did not return an id");
 
   return { assignedWorkItemId, unassignedWorkItemId };
+};
+
+const assertCreateContainmentAndConcurrency = async (connectionString) => {
+  const authenticatedClient = new Client({ connectionString });
+  await authenticatedClient.connect();
+  try {
+    await expectFailure(
+      "authenticated work-item RPC execution",
+      () =>
+        withActor(authenticatedClient, "authenticated", "authenticated", FIXTURES.adminA, async () => {
+          await authenticatedClient.query(
+            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, 2, $4::text)",
+            [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `authenticated-denied-${RUN_TOKEN}`],
+          );
+        }),
+      /permission denied/i,
+    );
+  } finally {
+    await authenticatedClient.end();
+  }
+
+  const clients = [new Client({ connectionString }), new Client({ connectionString })];
+  await Promise.all(clients.map((client) => client.connect()));
+  try {
+    const ids = await Promise.all(
+      clients.map((client) =>
+        withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+          const { rows } = await client.query(
+            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, 2, $4::text) as id",
+            [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `concurrent-create-${RUN_TOKEN}`],
+          );
+          return rows[0]?.id;
+        }, { commit: true })
+      ),
+    );
+    assert(ids[0] && ids[1] && ids[0] === ids[1], "Concurrent duplicate creates must return one work-item id");
+
+    await expectFailure(
+      "cross-document dedupe collision",
+      () =>
+        withActor(clients[0], "service_role", "service_role", FIXTURES.adminA, async () => {
+          await clients[0].query(
+            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, 2, $4::text)",
+            [FIXTURES.orgA, FIXTURES.clientUnassigned, FIXTURES.docUnassigned, `concurrent-create-${RUN_TOKEN}`],
+          );
+        }),
+      /dedupe key scope mismatch/i,
+    );
+  } finally {
+    await Promise.all(clients.map((client) => client.end()));
+  }
+};
+
+const assertRecomputedTerminalStatuses = async (client) => {
+  const workItemId = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+    const { rows } = await client.query(
+      "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, 3, $4::text) as id",
+      [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `status-recompute-${RUN_TOKEN}`],
+    );
+    return rows[0]?.id;
+  }, { commit: true });
+  assert(workItemId, "Status recompute fixture creation did not return an id");
+
+  await withOwnerTransaction(client, async () => {
+    await client.query(
+      "update public.agent_work_steps set status = 'cancelled', attempt_count = 0 where work_item_id = $1::uuid",
+      [workItemId],
+    );
+    const { rows } = await client.query(
+      "select public.agent_work_recompute_item_status($1::uuid) as status",
+      [workItemId],
+    );
+    assert(rows[0]?.status === "cancelled", `Cancelled terminal graph recomputed as ${rows[0]?.status}`);
+
+    await client.query(
+      `
+        update public.agent_work_steps
+        set status = case when ordinal = 10 then 'failed'::public.agent_work_step_status else 'cancelled'::public.agent_work_step_status end,
+            attempt_count = case when ordinal = 10 then 1 else 0 end,
+            max_attempts = 3
+        where work_item_id = $1::uuid
+      `,
+      [workItemId],
+    );
+    const { rows: blockedRows } = await client.query(
+      "select public.agent_work_recompute_item_status($1::uuid) as status",
+      [workItemId],
+    );
+    assert(blockedRows[0]?.status === "blocked", `Recoverable failed graph recomputed as ${blockedRows[0]?.status}`);
+
+    await client.query(
+      "update public.agent_work_steps set attempt_count = max_attempts where work_item_id = $1::uuid and status = 'failed'",
+      [workItemId],
+    );
+    const { rows: failedRows } = await client.query(
+      "select public.agent_work_recompute_item_status($1::uuid) as status",
+      [workItemId],
+    );
+    assert(failedRows[0]?.status === "failed", `Retry-exhausted graph recomputed as ${failedRows[0]?.status}`);
+  });
 };
 
 const assertDirectMutationDenials = async (client, assignedWorkItemId) => {
@@ -700,7 +800,7 @@ const assertOrganizationAndClientIsolation = async (client, assignedWorkItemId, 
   await expectFailure(
     "cross-org admin work-item creation",
     () =>
-      withActor(client, "authenticated", "authenticated", FIXTURES.adminB, async () => {
+      withActor(client, "service_role", "service_role", FIXTURES.adminB, async () => {
         await client.query(
           `
             select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::text)
@@ -714,7 +814,7 @@ const assertOrganizationAndClientIsolation = async (client, assignedWorkItemId, 
   await expectFailure(
     "bt work-item creation",
     () =>
-      withActor(client, "authenticated", "authenticated", FIXTURES.btA, async () => {
+      withActor(client, "service_role", "service_role", FIXTURES.btA, async () => {
         await client.query(
           `
             select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::text)
@@ -1869,7 +1969,11 @@ const main = async () => {
     await assertTraceColumns(client);
     await seedFixtures(client);
 
+    await assertCreateContainmentAndConcurrency(connectionString);
+
     const { assignedWorkItemId, unassignedWorkItemId } = await createWorkItems(client);
+
+    await assertRecomputedTerminalStatuses(client);
 
     await assertDirectMutationDenials(client, assignedWorkItemId);
     await assertOrganizationAndClientIsolation(client, assignedWorkItemId, unassignedWorkItemId);

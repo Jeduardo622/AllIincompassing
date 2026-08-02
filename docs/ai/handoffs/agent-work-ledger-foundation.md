@@ -45,6 +45,9 @@ This slice must not perform hosted access, clinical mutations, autonomous approv
 - `supabase/functions/_shared/agent-work/assessment-prep.ts`
 - `supabase/functions/_shared/agent-work/assessment-prep.test.ts`
 - `scripts/agent-work-ledger-security-contract.mjs`
+- `scripts/agent-work-ledger-local-env.ts`
+- `src/scripts/agentWorkLedgerLocal.ts`
+- `src/scripts/__tests__/agentWorkLedgerLocal.test.ts`
 - `package.json`
 - `src/lib/generated/database.types.ts`
 - `docs/ai/handoffs/agent-work-ledger-foundation.md`
@@ -150,20 +153,67 @@ The first implementation checkpoint ends with:
 - specialist guidance captured below
 - no hosted access and no domain mutations enabled
 
+Tasks 1-5 are now complete on the local branch. The next implementation task requires a fresh route and a separately bounded critical-lane scope.
+
 ## Specialist Findings
 
 - specification-engineer:
   - narrowed the first slice to plan Tasks 2-5 only
   - required explicit owner-role source-of-truth via `user_roles` / `get_user_roles`
   - required the IEHP adapter to mirror the current review read model instead of inventing a second divergent checklist contract
-- software-architect: pending
-- security-engineer: pending
-- supabase-reviewer: pending
-- test-engineer: pending
+- software-architect:
+  - approved the state-machine and IEHP adapter boundaries after false-readiness, lease, and runtime-evidence fixes
+  - confirmed the adapter consumes an authoritative PHI-free snapshot and cannot approve, promote, publish, bill, sign, or create final records
+- security-engineer:
+  - approved forced RLS, service-role RPC-only writes, server-owned authority loading, model-output isolation, sanitized event metadata, and fail-closed policy lookup
+- supabase-reviewer:
+  - approved the migration, grants, RLS, helper search paths, tenant/client graph scoping, lease/current-attempt checks, and approval hash/role/expiry enforcement
+  - requires Task 4 actor/scope enforcement before any runner or active runtime path; that prerequisite is complete
 - test-engineer:
   - task-level verification should follow the plan's Task 2-5 commands instead of the broad `verify:local` bundle
   - browser and route gates are not meaningful until the work expands into API transport or UI
-- code-review-engineer: pending until implementation diff exists
+- code-review-engineer:
+  - approved Tasks 2-5 after focused fix rounds for transition authority, malformed leases, repository caller authority, adapter readiness, immutability, and untrusted evidence values
+  - final integration review initially rejected authenticated create exposure, divergent SQL/TypeScript item status derivation, and non-atomic duplicate creation
+  - re-review approved after authenticated execute was removed, status derivation was aligned, and concurrent same-document creation was serialized and tested
+
+## Tasks 1-5 Verification Card
+
+- lane: `critical`
+- result: local foundation passes; one unrelated owner-waived policy inventory blocker remains
+- passed:
+  - `npm run agent-work:local:preflight`
+  - `npm run agent-work:db:reset`
+  - `npm run agent-work:security-contract`
+  - `npm run validate:tenant`
+  - focused Deno suites: 43/43
+  - `npm run lint`
+  - `npm run typecheck`
+  - serial full Vitest coverage/reliability: 438 files, 3625 tests
+  - Vite production build via programmatic `build({ envDir: false })`
+- blocked:
+  - `npm run ci:check-focused`: nine unrelated API convergence exceptions expired on 2026-07-31
+  - `npm run verify:local`: begins with the same blocked policy check and adds route coverage that is not meaningful before Tasks 6-7
+- diagnostic evidence:
+  - default parallel `npm run test:ci` exhausted the 4 GB heap
+  - a 6 GB retry passed every assertion but hit one Vitest worker RPC timeout
+  - the equivalent single-worker coverage run and reliability post-step exited zero
+- environment containment:
+  - every ledger database command ran through the local-only preflight
+  - ambient hosted project references were removed only from each child process
+  - Vitest uses `envDir: false`; the build was invoked with `envDir: false`
+  - no existing `.env*` file was read or modified
+  - no hosted Supabase, Netlify, GitHub, production, or customer system was accessed
+
+## Review-Fix Evidence
+
+- authenticated users cannot execute `create_agent_assessment_work_item`; creation is service-role-only
+- the live contract proves two concurrent same-document creates return one work-item ID
+- reuse of a dedupe key for a different assessment fails with `Dedupe key scope mismatch` rather than returning the wrong item or exposing a raw unique violation
+- SQL and TypeScript both derive recoverable failed work as `blocked`, retry-exhausted work as `failed`, terminal cancellation as `cancelled`, and completed/skipped graphs as `needs_review`
+- the IEHP adapter delegates item-status derivation to the shared state machine
+- two clean local database resets and the expanded security contract passed after these fixes
+- future Task 6 requirement: the service-role caller must derive actor identity from a verified JWT and load tenant/document scope from authoritative database state; no request-body or model field may supply actor or tenant authority
 
 ## Rollback
 

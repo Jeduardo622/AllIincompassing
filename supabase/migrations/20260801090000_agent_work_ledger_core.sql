@@ -719,8 +719,16 @@ begin
     from public.agent_work_steps
     where work_item_id = p_work_item_id
       and status = 'failed'
+      and attempt_count >= max_attempts
   ) then
     v_status := 'failed';
+  elsif exists (
+    select 1
+    from public.agent_work_steps
+    where work_item_id = p_work_item_id
+      and status = 'failed'
+  ) then
+    v_status := 'blocked';
   elsif exists (
     select 1
     from public.agent_work_steps
@@ -732,8 +740,18 @@ begin
     select 1
     from public.agent_work_steps
     where work_item_id = p_work_item_id
+      and status = 'cancelled'
+  ) then
+    v_status := 'cancelled';
+  elsif exists (
+    select 1
+    from public.agent_work_steps
+    where work_item_id = p_work_item_id
+      and status in ('completed', 'skipped')
   ) then
     v_status := 'needs_review';
+  else
+    v_status := 'blocked';
   end if;
 
   update public.agent_work_items
@@ -748,6 +766,7 @@ begin
         limit 1
       ),
       completed_at = case when v_status in ('needs_review', 'completed') then timezone('utc', now()) else completed_at end,
+      cancelled_at = case when v_status = 'cancelled' then timezone('utc', now()) else cancelled_at end,
       updated_at = timezone('utc', now())
   where id = p_work_item_id;
 
@@ -796,6 +815,12 @@ begin
     raise exception 'Assessment document scope mismatch';
   end if;
 
+  -- Serialize creation within an organization so document retries converge
+  -- and cross-document dedupe collisions fail with an explicit scope error.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_organization_id::text, 0)
+  );
+
   select link.work_item_id
   into v_existing_id
   from public.agent_work_assessment_links link
@@ -807,6 +832,19 @@ begin
 
   if v_existing_id is not null then
     return v_existing_id;
+  end if;
+
+  select item.id
+  into v_existing_id
+  from public.agent_work_items item
+  where item.organization_id = p_organization_id
+    and item.workflow_key = 'assessment.iehp.prepare_for_clinical_review'
+    and item.workflow_version = p_workflow_version
+    and item.dedupe_key = btrim(p_dedupe_key)
+  limit 1;
+
+  if v_existing_id is not null then
+    raise exception 'Dedupe key scope mismatch';
   end if;
 
   insert into public.agent_work_items (
@@ -1415,7 +1453,7 @@ revoke all on function public.transition_agent_work_step(uuid, bigint, public.ag
 grant execute on function app.current_user_can_read_agent_work_row(uuid, uuid) to authenticated, service_role;
 grant execute on function app.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
 grant execute on function app.current_user_can_read_agent_work_item_endpoint(uuid) to authenticated, service_role;
-grant execute on function public.create_agent_assessment_work_item(uuid, uuid, uuid, integer, text) to authenticated, service_role;
+grant execute on function public.create_agent_assessment_work_item(uuid, uuid, uuid, integer, text) to service_role;
 grant execute on function public.claim_agent_work_step(uuid, text, integer) to service_role;
 grant execute on function public.transition_agent_work_step(uuid, bigint, public.agent_work_step_status, text, text, jsonb) to service_role;
 

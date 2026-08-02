@@ -146,8 +146,16 @@ export function deriveWorkItemStatus(
     return "waiting";
   }
 
-  if (steps.some((step) => step.status === "failed")) {
+  if (
+    steps.some((step) =>
+      step.status === "failed" && step.attemptCount >= step.maxAttempts
+    )
+  ) {
     return "failed";
+  }
+
+  if (steps.some((step) => step.status === "failed")) {
+    return "blocked";
   }
 
   if (

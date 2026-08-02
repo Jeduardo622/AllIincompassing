@@ -4,6 +4,7 @@ import type {
   WorkItemStatus,
   WorkStepStatus,
 } from "./contracts.ts";
+import { deriveWorkItemStatus } from "./state-machine.ts";
 
 export const ASSESSMENT_PREP_BLOCKER_CODES = [
   "scope_wrong_organization",
@@ -591,16 +592,23 @@ function completeWithPending(
 function deriveShadowWorkItemStatus(
   stepTransitions: AssessmentPrepStepTransition[],
 ): WorkItemStatus {
-  if (stepTransitions.every((step) => step.targetStatus === "completed")) {
-    return "needs_review";
-  }
-  if (stepTransitions.some((step) => step.targetStatus === "waiting")) {
-    return "waiting";
-  }
-  if (stepTransitions.some((step) => step.targetStatus === "failed")) {
-    return "blocked";
-  }
-  return "queued";
+  return deriveWorkItemStatus(stepTransitions.map((step, index) => ({
+    id: `shadow-step-${index}`,
+    stepKey: step.stepKey,
+    status: step.targetStatus,
+    executionMode: step.executionMode,
+    stateVersion: 0,
+    attemptCount: 0,
+    maxAttempts: 3,
+    wakeAt: null,
+    leaseOwner: null,
+    leaseExpiresAt: null,
+    requiredRole: null,
+    approvalHash: null,
+    inputHash: null,
+    outputHash: null,
+    lastErrorClass: step.targetStatus === "failed" ? "validation" : null,
+  })));
 }
 
 function deriveExtractionState(

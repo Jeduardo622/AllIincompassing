@@ -492,8 +492,13 @@ Deno.test("deriveWorkItemStatus prevents false completion and respects terminal 
       expected: "waiting",
     },
     {
-      name: "failed step makes item failed",
-      steps: [buildStep({ status: "failed" })],
+      name: "failed step blocks while retry or human recovery remains",
+      steps: [buildStep({ status: "failed", attemptCount: 1 })],
+      expected: "blocked",
+    },
+    {
+      name: "retry-exhausted failed step makes item failed",
+      steps: [buildStep({ status: "failed", attemptCount: 3 })],
       expected: "failed",
     },
     {

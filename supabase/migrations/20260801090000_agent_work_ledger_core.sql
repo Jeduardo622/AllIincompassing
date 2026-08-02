@@ -676,6 +676,88 @@ begin
 end;
 $$;
 
+create or replace function app.actor_can_manage_agent_work_row(
+  p_actor_user_id uuid,
+  p_organization_id uuid,
+  p_client_id uuid
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public, app, pg_temp
+as $$
+declare
+  v_actor_organization_id uuid;
+begin
+  if p_actor_user_id is null or p_organization_id is null then
+    return false;
+  end if;
+
+  select p.organization_id
+  into v_actor_organization_id
+  from public.profiles p
+  where p.id = p_actor_user_id
+    and coalesce(p.is_active, true) = true
+  limit 1;
+
+  if v_actor_organization_id is distinct from p_organization_id then
+    return false;
+  end if;
+
+  if not exists (
+    select 1
+    from public.user_roles ur
+    join public.roles r on r.id = ur.role_id
+    where ur.user_id = p_actor_user_id
+      and r.name in ('admin', 'super_admin', 'bcba')
+      and coalesce(ur.is_active, true) = true
+      and (ur.expires_at is null or ur.expires_at > now())
+  ) then
+    return false;
+  end if;
+
+  if p_client_id is null then
+    return true;
+  end if;
+
+  return exists (
+    select 1
+    from public.clients c
+    where c.id = p_client_id
+      and c.organization_id = p_organization_id
+  );
+end;
+$$;
+
+-- Keep authenticated RLS checks and explicit service-role actor checks on the
+-- same profile- and role-backed authority predicate.
+create or replace function app.current_user_can_manage_agent_work_row(
+  p_organization_id uuid,
+  p_client_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, app, pg_temp
+as $$
+  select app.actor_can_manage_agent_work_row(auth.uid(), p_organization_id, p_client_id);
+$$;
+
+create or replace function public.current_user_can_manage_agent_work_row(
+  p_organization_id uuid,
+  p_client_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, app, pg_temp
+as $$
+  select app.actor_can_manage_agent_work_row(auth.uid(), p_organization_id, p_client_id);
+$$;
+
 create or replace function app.current_user_can_read_agent_work_item_endpoint(p_work_item_id uuid)
 returns boolean
 language sql
@@ -775,6 +857,7 @@ end;
 $$;
 
 create or replace function public.create_agent_assessment_work_item(
+  p_actor_user_id uuid,
   p_organization_id uuid,
   p_client_id uuid,
   p_assessment_document_id uuid,
@@ -790,7 +873,8 @@ declare
   v_existing_id uuid;
   v_work_item_id uuid;
 begin
-  if p_organization_id is null
+  if p_actor_user_id is null
+    or p_organization_id is null
     or p_client_id is null
     or p_assessment_document_id is null
     or p_workflow_version is null
@@ -800,7 +884,7 @@ begin
     raise exception 'Invalid work-item input';
   end if;
 
-  if not app.current_user_can_manage_agent_work_row(p_organization_id, p_client_id) then
+  if not app.actor_can_manage_agent_work_row(p_actor_user_id, p_organization_id, p_client_id) then
     raise exception 'Forbidden';
   end if;
 
@@ -947,7 +1031,7 @@ begin
     p_client_id,
     'work_item.created',
     'user',
-    auth.uid()::text,
+    p_actor_user_id::text,
     jsonb_build_object(
       'workflow_key', 'assessment.iehp.prepare_for_clinical_review',
       'workflow_version', p_workflow_version,
@@ -1444,16 +1528,20 @@ $$;
 
 revoke all on function app.current_user_can_read_agent_work_row(uuid, uuid) from public, anon;
 revoke all on function app.current_user_can_manage_agent_work_row(uuid, uuid) from public, anon;
+revoke all on function app.actor_can_manage_agent_work_row(uuid, uuid, uuid) from public, anon, authenticated;
 revoke all on function app.current_user_can_read_agent_work_item_endpoint(uuid) from public, anon;
+revoke all on function public.current_user_can_manage_agent_work_row(uuid, uuid) from public, anon;
 revoke all on function public.agent_work_recompute_item_status(uuid) from public, anon, authenticated, service_role;
-revoke all on function public.create_agent_assessment_work_item(uuid, uuid, uuid, integer, text) from public, anon, authenticated;
+revoke all on function public.create_agent_assessment_work_item(uuid, uuid, uuid, uuid, integer, text) from public, anon, authenticated;
 revoke all on function public.claim_agent_work_step(uuid, text, integer) from public, anon, authenticated;
 revoke all on function public.transition_agent_work_step(uuid, bigint, public.agent_work_step_status, text, text, jsonb) from public, anon, authenticated;
 
 grant execute on function app.current_user_can_read_agent_work_row(uuid, uuid) to authenticated, service_role;
 grant execute on function app.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
+grant execute on function app.actor_can_manage_agent_work_row(uuid, uuid, uuid) to service_role;
 grant execute on function app.current_user_can_read_agent_work_item_endpoint(uuid) to authenticated, service_role;
-grant execute on function public.create_agent_assessment_work_item(uuid, uuid, uuid, integer, text) to service_role;
+grant execute on function public.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
+grant execute on function public.create_agent_assessment_work_item(uuid, uuid, uuid, uuid, integer, text) to service_role;
 grant execute on function public.claim_agent_work_step(uuid, text, integer) to service_role;
 grant execute on function public.transition_agent_work_step(uuid, bigint, public.agent_work_step_status, text, text, jsonb) to service_role;
 

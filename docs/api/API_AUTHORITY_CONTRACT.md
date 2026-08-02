@@ -54,6 +54,19 @@
   - atomic recurrence confirmation semantics,
   - consistent transition policy and error mapping (`400` validation, `403` forbidden, `409` conflict, `410` expired/missing hold).
 - Operational source for production remediation + rollback: `docs/SESSION_LIFECYCLE_REMEDIATION_RUNBOOK.md`.
+
+## Agent Work Ledger Authority Contract
+
+- Canonical authority: Supabase Edge Function `agent-work-items` with JWT verification enabled.
+- Task 6a exposes only `POST /agent-work-items/assessment-prep`, `GET /agent-work-items?assessment_document_id=<uuid>`, and `GET /agent-work-items/<work-item-id>`.
+- The user JWT supplies only the actor identity. Assessment visibility, organization, client, and current manage capability are re-read from local database authority on every create request.
+- Create authority requires an active `profiles.organization_id` binding and an active allowed `user_roles` row. Auth metadata alone, including profileless super-admin scope metadata, is not ledger authority.
+- Creation is available only in `shadow` or `advisory` mode and calls the service-role-only `create_agent_assessment_work_item` RPC with the verified actor. It writes ledger projection state only; assessment-domain tables remain authoritative and unchanged.
+- List and detail responses are reconstructed as strict sanitized DTOs. They exclude evidence content and hashes, private errors, leases, attempts, credentials, provider requests, and service-role metadata.
+- Owner, cancel, resume, reconcile, and approval-decision routes are intentionally deferred until dedicated authoritative RPCs and their critical-lane tests exist. IEHP work cannot autonomously approve, promote, sign, publish, bill, or create a final clinical record.
+- Local entrypoint verification runs with `npm run agent-work:edge-smoke`. The pinned local gateway cannot validate current Auth `ES256` user tokens, so that command bypasses only gateway JWT verification while exercising the function's fail-closed `getUser` verification; both committed function configs remain `verify_jwt = true`.
+- A future Netlify `/api` compatibility route must use the existing edge-authority adapter pattern and may not duplicate authorization, transitions, reconciliation, or mutation behavior.
+
 ## Retirement Criteria for Netlify Compatibility Shims
 
 A Netlify shim can be marked `retired` only when all of the following are true:

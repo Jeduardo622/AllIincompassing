@@ -8103,6 +8103,7 @@ export type Database = {
           }
       create_agent_assessment_work_item: {
         Args: {
+          p_actor_user_id: string
           p_assessment_document_id: string
           p_client_id: string
           p_dedupe_key: string
@@ -8252,6 +8253,10 @@ export type Database = {
       }
       current_user_can_delete_goal_targets: {
         Args: { target_organization_id: string }
+        Returns: boolean
+      }
+      current_user_can_manage_agent_work_row: {
+        Args: { p_client_id: string; p_organization_id: string }
         Returns: boolean
       }
       current_user_can_manage_locked_trial_event: {

@@ -258,6 +258,9 @@ inspector_port = 8083
 [functions.assign-therapist-user]
 verify_jwt = true
 
+[functions.agent-work-items]
+verify_jwt = true
+
 [functions.extract-assessment-fields]
 verify_jwt = true
 

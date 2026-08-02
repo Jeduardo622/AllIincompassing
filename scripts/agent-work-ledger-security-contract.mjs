@@ -35,7 +35,17 @@ const FUNCTION_CONTRACTS = [
   },
   {
     signature: "app.current_user_can_manage_agent_work_row(uuid,uuid)",
-    searchPath: "public, pg_temp",
+    searchPath: "public, app, pg_temp",
+    execute: { public: false, anon: false, authenticated: true, service_role: true },
+  },
+  {
+    signature: "app.actor_can_manage_agent_work_row(uuid,uuid,uuid)",
+    searchPath: "public, app, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "current_user_can_manage_agent_work_row(uuid,uuid)",
+    searchPath: "public, app, pg_temp",
     execute: { public: false, anon: false, authenticated: true, service_role: true },
   },
   {
@@ -44,7 +54,7 @@ const FUNCTION_CONTRACTS = [
     execute: { public: false, anon: false, authenticated: true, service_role: true },
   },
   {
-    signature: "create_agent_assessment_work_item(uuid,uuid,uuid,integer,text)",
+    signature: "create_agent_assessment_work_item(uuid,uuid,uuid,uuid,integer,text)",
     searchPath: "public, pg_temp",
     execute: { public: false, anon: false, authenticated: false, service_role: true },
   },
@@ -90,6 +100,7 @@ const FIXTURES = {
   clientCrossOrg: "00000000-0000-4000-8000-00000000a103",
   docAssigned: randomUUID(),
   docUnassigned: randomUUID(),
+  smokeDocAssigned: "00000000-0000-4000-8000-00000000a201",
   approvalAssigned: randomUUID(),
 };
 
@@ -300,7 +311,8 @@ const seedFixtures = async (client) => {
     )
     values
       ('${FIXTURES.docAssigned}', '${FIXTURES.orgA}', '${FIXTURES.clientAssigned}', '${FIXTURES.adminA}', 'iehp_fba', 'assigned-${RUN_TOKEN}.pdf', 'application/pdf', 128, 'client-documents', 'synthetic/${RUN_TOKEN}/assigned.pdf'),
-      ('${FIXTURES.docUnassigned}', '${FIXTURES.orgA}', '${FIXTURES.clientUnassigned}', '${FIXTURES.adminA}', 'iehp_fba', 'unassigned-${RUN_TOKEN}.pdf', 'application/pdf', 128, 'client-documents', 'synthetic/${RUN_TOKEN}/unassigned.pdf')
+      ('${FIXTURES.docUnassigned}', '${FIXTURES.orgA}', '${FIXTURES.clientUnassigned}', '${FIXTURES.adminA}', 'iehp_fba', 'unassigned-${RUN_TOKEN}.pdf', 'application/pdf', 128, 'client-documents', 'synthetic/${RUN_TOKEN}/unassigned.pdf'),
+      ('${FIXTURES.smokeDocAssigned}', '${FIXTURES.orgA}', '${FIXTURES.clientAssigned}', '${FIXTURES.adminA}', 'iehp_fba', 'ledger-edge-smoke-assigned.pdf', 'application/pdf', 128, 'client-documents', 'synthetic/ledger-edge-smoke/assigned.pdf')
     on conflict (id) do nothing;
   `);
 };
@@ -450,9 +462,9 @@ const createWorkItems = async (client) => {
   const assignedWorkItemId = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
     const { rows } = await client.query(
       `
-        select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::text) as id
+        select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::integer, $6::text) as id
       `,
-      [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, 1, `ledger-contract-assigned-${RUN_TOKEN}`],
+      [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, 1, `ledger-contract-assigned-${RUN_TOKEN}`],
     );
     return rows[0]?.id;
   }, { commit: true });
@@ -460,9 +472,9 @@ const createWorkItems = async (client) => {
   const unassignedWorkItemId = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
     const { rows } = await client.query(
       `
-        select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::text) as id
+        select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::integer, $6::text) as id
       `,
-      [FIXTURES.orgA, FIXTURES.clientUnassigned, FIXTURES.docUnassigned, 1, `ledger-contract-unassigned-${RUN_TOKEN}`],
+      [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientUnassigned, FIXTURES.docUnassigned, 1, `ledger-contract-unassigned-${RUN_TOKEN}`],
     );
     return rows[0]?.id;
   }, { commit: true });
@@ -471,6 +483,42 @@ const createWorkItems = async (client) => {
   assert(unassignedWorkItemId, "Unassigned work item creation did not return an id");
 
   return { assignedWorkItemId, unassignedWorkItemId };
+};
+
+const assertManagePredicateParity = async (client) => {
+  const cases = [
+    [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientAssigned, true],
+    [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientUnassigned, true],
+    [FIXTURES.bcbaA, FIXTURES.orgA, FIXTURES.clientAssigned, true],
+    [FIXTURES.bcbaA, FIXTURES.orgA, FIXTURES.clientUnassigned, true],
+    [FIXTURES.btA, FIXTURES.orgA, FIXTURES.clientAssigned, false],
+    [FIXTURES.adminB, FIXTURES.orgA, FIXTURES.clientAssigned, false],
+  ];
+
+  for (const [actorId, organizationId, clientId, expected] of cases) {
+    const { rows } = await withActor(
+      client,
+      "service_role",
+      "authenticated",
+      actorId,
+      async () =>
+        client.query(
+          `
+            select
+              app.current_user_can_manage_agent_work_row($1::uuid, $2::uuid) as legacy_allowed,
+              app.actor_can_manage_agent_work_row($3::uuid, $1::uuid, $2::uuid) as actor_allowed,
+              public.current_user_can_manage_agent_work_row($1::uuid, $2::uuid) as api_allowed
+          `,
+          [organizationId, clientId, actorId],
+        ),
+    );
+    assert(
+      rows[0]?.legacy_allowed === expected &&
+        rows[0]?.actor_allowed === expected &&
+        rows[0]?.api_allowed === expected,
+      `Manage predicate parity failed for actor ${actorId}`,
+    );
+  }
 };
 
 const assertCreateContainmentAndConcurrency = async (connectionString) => {
@@ -482,14 +530,97 @@ const assertCreateContainmentAndConcurrency = async (connectionString) => {
       () =>
         withActor(authenticatedClient, "authenticated", "authenticated", FIXTURES.adminA, async () => {
           await authenticatedClient.query(
-            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, 2, $4::text)",
-            [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `authenticated-denied-${RUN_TOKEN}`],
+            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, 2, $5::text)",
+            [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `authenticated-denied-${RUN_TOKEN}`],
           );
         }),
       /permission denied/i,
     );
   } finally {
     await authenticatedClient.end();
+  }
+
+  const serviceClient = new Client({ connectionString });
+  await serviceClient.connect();
+  try {
+    await expectFailure(
+      "cross-tenant supplied actor",
+      () =>
+        withActor(serviceClient, "service_role", "service_role", FIXTURES.adminA, async () => {
+          await serviceClient.query(
+            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, 2, $5::text)",
+            [FIXTURES.adminB, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `spoofed-actor-${RUN_TOKEN}`],
+          );
+        }),
+      /forbidden/i,
+    );
+
+    await expectFailure(
+      "null supplied actor",
+      () =>
+        withActor(serviceClient, "service_role", "service_role", FIXTURES.adminA, async () => {
+          await serviceClient.query(
+            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, 2, $5::text)",
+            [null, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `null-actor-${RUN_TOKEN}`],
+          );
+        }),
+      /invalid work-item input/i,
+    );
+
+    const { rows: profilelessRows } = await withOwnerSetupAndActor(
+      serviceClient,
+      async () => {
+        await serviceClient.query("select set_config('app.bypass_profile_role_guard', 'on', true)");
+        await serviceClient.query(
+          "update public.profiles set organization_id = null where id = $1::uuid",
+          [FIXTURES.adminA],
+        );
+      },
+      "service_role",
+      "authenticated",
+      FIXTURES.adminA,
+      async () =>
+        serviceClient.query(
+          `
+            select
+              app.current_user_can_manage_agent_work_row($1::uuid, $2::uuid) as rls_allowed,
+              public.current_user_can_manage_agent_work_row($1::uuid, $2::uuid) as api_allowed
+          `,
+          [FIXTURES.orgA, FIXTURES.clientAssigned],
+        ),
+    );
+    assert(
+      profilelessRows[0]?.rls_allowed === false &&
+        profilelessRows[0]?.api_allowed === false,
+      "Profileless actor metadata must not authorize RLS or API manage predicates",
+    );
+
+    await expectFailure(
+      "profileless supplied actor",
+      () =>
+        withOwnerSetupAndActor(
+          serviceClient,
+          async () => {
+            await serviceClient.query("select set_config('app.bypass_profile_role_guard', 'on', true)");
+            await serviceClient.query(
+              "update public.profiles set organization_id = null where id = $1::uuid",
+              [FIXTURES.adminA],
+            );
+          },
+          "service_role",
+          "service_role",
+          FIXTURES.adminA,
+          async () => {
+            await serviceClient.query(
+              "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, 2, $5::text)",
+              [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `profileless-actor-${RUN_TOKEN}`],
+            );
+          },
+        ),
+      /forbidden/i,
+    );
+  } finally {
+    await serviceClient.end();
   }
 
   const clients = [new Client({ connectionString }), new Client({ connectionString })];
@@ -499,8 +630,8 @@ const assertCreateContainmentAndConcurrency = async (connectionString) => {
       clients.map((client) =>
         withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
           const { rows } = await client.query(
-            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, 2, $4::text) as id",
-            [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `concurrent-create-${RUN_TOKEN}`],
+            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, 2, $5::text) as id",
+            [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `concurrent-create-${RUN_TOKEN}`],
           );
           return rows[0]?.id;
         }, { commit: true })
@@ -513,8 +644,8 @@ const assertCreateContainmentAndConcurrency = async (connectionString) => {
       () =>
         withActor(clients[0], "service_role", "service_role", FIXTURES.adminA, async () => {
           await clients[0].query(
-            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, 2, $4::text)",
-            [FIXTURES.orgA, FIXTURES.clientUnassigned, FIXTURES.docUnassigned, `concurrent-create-${RUN_TOKEN}`],
+            "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, 2, $5::text)",
+            [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientUnassigned, FIXTURES.docUnassigned, `concurrent-create-${RUN_TOKEN}`],
           );
         }),
       /dedupe key scope mismatch/i,
@@ -527,8 +658,8 @@ const assertCreateContainmentAndConcurrency = async (connectionString) => {
 const assertRecomputedTerminalStatuses = async (client) => {
   const workItemId = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
     const { rows } = await client.query(
-      "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, 3, $4::text) as id",
-      [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `status-recompute-${RUN_TOKEN}`],
+      "select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, 3, $5::text) as id",
+      [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, `status-recompute-${RUN_TOKEN}`],
     );
     return rows[0]?.id;
   }, { commit: true });
@@ -803,9 +934,9 @@ const assertOrganizationAndClientIsolation = async (client, assignedWorkItemId, 
       withActor(client, "service_role", "service_role", FIXTURES.adminB, async () => {
         await client.query(
           `
-            select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::text)
+            select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::integer, $6::text)
           `,
-          [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, 2, "cross-org-denied"],
+          [FIXTURES.adminB, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, 2, "cross-org-denied"],
         );
       }),
     /forbidden|scope mismatch/i,
@@ -817,9 +948,9 @@ const assertOrganizationAndClientIsolation = async (client, assignedWorkItemId, 
       withActor(client, "service_role", "service_role", FIXTURES.btA, async () => {
         await client.query(
           `
-            select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::text)
+            select public.create_agent_assessment_work_item($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::integer, $6::text)
           `,
-          [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, 2, "bt-denied"],
+          [FIXTURES.btA, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned, 2, "bt-denied"],
         );
       }),
     /forbidden/i,
@@ -1968,6 +2099,8 @@ const main = async () => {
     await assertFunctionContracts(client);
     await assertTraceColumns(client);
     await seedFixtures(client);
+
+    await assertManagePredicateParity(client);
 
     await assertCreateContainmentAndConcurrency(connectionString);
 

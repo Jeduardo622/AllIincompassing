@@ -1,4 +1,5 @@
 -- @migration-intent: Add the private durable pgmq-backed agent work queue, bounded service-role wrappers, and local-inert scheduler helpers for the agent work ledger.
+-- @migration-dependencies: 20260801090000_agent_work_ledger_core.sql
 -- @migration-rollback: Drop the queue wrappers, trigger, sweeper helpers, and optional scheduler helpers; archive tables created by pgmq can be dropped only if the queue is no longer needed.
 
 begin;

@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { callApi } from "../../lib/api";
+import { useAuth } from "../../lib/authContext";
+import {
+  createAssessmentWorkLedgerQueryOptions,
+  type AssessmentWorkLedgerPanelState,
+} from "../../lib/agent-work-ledger";
 import { showError, showSuccess } from "../../lib/toast";
 import type { AssessmentDocumentRecord } from "../../lib/assessment-documents";
+import { AssessmentWorkLedgerPanel } from "../agent-work/AssessmentWorkLedgerPanel";
 import { parseApiErrorMessage, parseJson } from "./ProgramsGoalsTab.helpers";
 
 type ReviewStatus = "not_started" | "drafted" | "verified" | "approved";
@@ -643,6 +649,7 @@ export function IehpFbaLayoutReview({
   organizationId: string | null | undefined;
 }) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const attentionTargetRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [activePage, setActivePage] = useState(1);
   const [pendingAttentionFocusPage, setPendingAttentionFocusPage] = useState<number | null>(null);
@@ -651,6 +658,27 @@ export function IehpFbaLayoutReview({
   const [rawPreviewBySectionId, setRawPreviewBySectionId] = useState<Record<string, boolean>>({});
   const [expandedFieldByKey, setExpandedFieldByKey] = useState<Record<string, boolean>>({});
   const [expandedStructuredSectionById, setExpandedStructuredSectionById] = useState<Record<string, boolean>>({});
+
+  const ledgerEnabled = Boolean(
+    assessmentDocument.id
+      && assessmentDocument.client_id
+      && organizationId
+      && user?.id,
+  );
+  const ledgerQuery = useQuery({
+    ...createAssessmentWorkLedgerQueryOptions({
+      organizationId: organizationId ?? "MISSING_ORG",
+      clientId: assessmentDocument.client_id || "MISSING_CLIENT",
+      assessmentDocumentId: assessmentDocument.id || "MISSING_DOCUMENT",
+      authIdentity: user?.id ?? "MISSING_AUTH",
+    }),
+    enabled: ledgerEnabled,
+  });
+  const ledgerState: AssessmentWorkLedgerPanelState = !ledgerEnabled
+    ? { kind: "disabled" }
+    : ledgerQuery.isLoading
+      ? { kind: "loading" }
+      : ledgerQuery.data ?? { kind: "unavailable" };
 
   const queryKey = ["assessment-template-layout", assessmentDocument.id, organizationId ?? "MISSING_ORG"] as const;
   const { data = EMPTY_LAYOUT, isLoading, isError } = useQuery({
@@ -998,7 +1026,9 @@ export function IehpFbaLayoutReview({
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-slate-700 bg-slate-950 p-3 text-slate-100">
+    <div id="iehp-layout-review" className="space-y-4 rounded-xl border border-slate-700 bg-slate-950 p-3 text-slate-100">
+      <AssessmentWorkLedgerPanel state={ledgerState} reviewHref="#iehp-current-review-section" />
+
       <div className="rounded-md border border-cyan-700/40 bg-cyan-950/40 p-3 text-xs text-cyan-100">
         <p className="font-semibold">IEHP FBA document-style review</p>
         <p>
@@ -1078,7 +1108,7 @@ export function IehpFbaLayoutReview({
           })}
         </nav>
 
-        <section className="overflow-auto rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+        <section id="iehp-current-review-section" className="overflow-auto rounded-lg border border-slate-700 bg-slate-900/60 p-3">
           <div className="mx-auto min-h-[58rem] max-w-[52rem] bg-slate-900 p-8 text-slate-100 shadow-xl">
             <div className="mb-5 border-b border-slate-300 pb-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">

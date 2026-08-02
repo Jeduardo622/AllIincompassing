@@ -1,0 +1,171 @@
+import { z } from "zod";
+import { callEdgeFunctionHttp } from "./api";
+
+const runtimeModeSchema = z.enum(["shadow", "advisory"]);
+const workItemStatusSchema = z.enum([
+  "queued",
+  "running",
+  "waiting",
+  "blocked",
+  "needs_review",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+const stepStatusSchema = z.enum([
+  "pending",
+  "ready",
+  "running",
+  "waiting",
+  "blocked",
+  "needs_approval",
+  "completed",
+  "skipped",
+  "failed",
+  "cancelled",
+]);
+
+const blockerSchema = z.object({
+  code: z.string().min(1),
+  stepKey: z.string().min(1),
+  action: z.string().min(1),
+}).strict();
+
+const stepSchema = z.object({
+  id: z.string().min(1),
+  key: z.string().min(1),
+  status: stepStatusSchema,
+  executionMode: z.enum(["deterministic", "model_suggested", "human"]),
+  evidenceCount: z.number().int().nonnegative(),
+  lastReasonCode: z.string().nullable(),
+}).strict();
+
+const approvalSchema = z.object({
+  id: z.string().min(1),
+  stepId: z.string().min(1),
+  status: z.enum(["pending", "approved", "rejected", "expired", "revoked"]),
+  requiredRole: z.string().min(1),
+  expiresAt: z.string().datetime().nullable(),
+}).strict();
+
+const workItemSchema = z.object({
+  id: z.string().min(1),
+  workflowKey: z.string().min(1),
+  workflowVersion: z.number().int().positive(),
+  objective: z.string().min(1),
+  status: workItemStatusSchema,
+  risk: z.enum(["low", "moderate", "high", "clinical"]),
+  ownerUserId: z.string().nullable(),
+  dueAt: z.string().datetime().nullable(),
+  blockers: z.array(blockerSchema),
+  steps: z.array(stepSchema),
+  approvals: z.array(approvalSchema),
+  updatedAt: z.string().datetime(),
+}).strict();
+
+const listEnvelopeSchema = z.object({
+  success: z.literal(true),
+  data: z.array(workItemSchema),
+  meta: z.object({ runtimeMode: runtimeModeSchema }).strict(),
+}).strict();
+
+const errorEnvelopeSchema = z.object({
+  success: z.literal(false),
+  error: z.string(),
+  code: z.string().optional(),
+}).strict();
+
+export type AgentWorkRuntimeMode = z.infer<typeof runtimeModeSchema>;
+export type AgentWorkItem = z.infer<typeof workItemSchema>;
+
+export type AssessmentWorkLedgerPanelState =
+  | { kind: "loading" }
+  | { kind: "disabled" }
+  | { kind: "aborted" }
+  | { kind: "unauthorized" }
+  | { kind: "forbidden" }
+  | { kind: "unavailable" }
+  | { kind: "no-ledger"; runtimeMode: AgentWorkRuntimeMode }
+  | { kind: "available"; runtimeMode: AgentWorkRuntimeMode; item: AgentWorkItem };
+
+interface FetchAssessmentWorkLedgerInput {
+  assessmentDocumentId: string;
+  signal?: AbortSignal;
+}
+
+const parseJson = async (response: Response): Promise<unknown> => {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+};
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
+
+export async function fetchAssessmentWorkLedger({
+  assessmentDocumentId,
+  signal,
+}: FetchAssessmentWorkLedgerInput): Promise<AssessmentWorkLedgerPanelState> {
+  try {
+    const response = await callEdgeFunctionHttp(
+      `agent-work-items?assessment_document_id=${encodeURIComponent(assessmentDocumentId)}`,
+      { method: "GET", signal },
+    );
+    const payload = await parseJson(response);
+
+    if (!response.ok) {
+      const errorEnvelope = errorEnvelopeSchema.safeParse(payload);
+      if (response.status === 403 && errorEnvelope.success && errorEnvelope.data.code === "runtime_mode_disabled") {
+        return { kind: "disabled" };
+      }
+      if (response.status === 401) {
+        return { kind: "unauthorized" };
+      }
+      if (response.status === 403) return { kind: "forbidden" };
+      return { kind: "unavailable" };
+    }
+
+    const envelope = listEnvelopeSchema.safeParse(payload);
+    if (!envelope.success) return { kind: "unavailable" };
+    const { data, meta } = envelope.data;
+    if (data.length === 0) {
+      return { kind: "no-ledger", runtimeMode: meta.runtimeMode };
+    }
+    return { kind: "available", runtimeMode: meta.runtimeMode, item: data[0] };
+  } catch (error) {
+    return isAbortError(error) || signal?.aborted
+      ? { kind: "aborted" }
+      : { kind: "unavailable" };
+  }
+}
+
+interface AssessmentWorkLedgerQueryScope {
+  organizationId: string;
+  clientId: string;
+  assessmentDocumentId: string;
+  authIdentity: string;
+}
+
+export const createAssessmentWorkLedgerQueryOptions = (
+  scope: AssessmentWorkLedgerQueryScope,
+) => ({
+  queryKey: [
+    "assessment-work-ledger",
+    scope.organizationId,
+    scope.clientId,
+    scope.assessmentDocumentId,
+    scope.authIdentity,
+  ] as const,
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    fetchAssessmentWorkLedger({
+      assessmentDocumentId: scope.assessmentDocumentId,
+      signal,
+    }),
+  staleTime: 0,
+  gcTime: 0,
+  retry: false,
+});

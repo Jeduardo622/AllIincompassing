@@ -282,7 +282,11 @@ export function createAgentWorkItemsHandler(
           workflowVersion: input.workflowVersion,
           dedupeKey: `assessment-prep:${scope.id}:v${input.workflowVersion}`,
         });
-        return respond(201, { success: true, data: strictView(created) });
+        return respond(201, {
+          success: true,
+          data: strictView(created),
+          meta: { runtimeMode: mode },
+        });
       } catch (error) {
         if (error instanceof AgentWorkRequestError) {
           return reject(error.status, error.publicMessage, error.code);
@@ -302,7 +306,11 @@ export function createAgentWorkItemsHandler(
         const items = await deps.listWorkItemsByAssessmentDocument(
           assessmentDocumentId,
         );
-        return respond(200, { success: true, data: items.map(strictView) });
+        return respond(200, {
+          success: true,
+          data: items.map(strictView),
+          meta: { runtimeMode: mode },
+        });
       } catch {
         return reject(500, "Work item lookup failed", "lookup_failed");
       }
@@ -316,7 +324,11 @@ export function createAgentWorkItemsHandler(
       try {
         const item = await deps.getWorkItemDetail(detailMatch[1]);
         return item
-          ? respond(200, { success: true, data: strictView(item) })
+          ? respond(200, {
+            success: true,
+            data: strictView(item),
+            meta: { runtimeMode: mode },
+          })
           : reject(404, "Not found");
       } catch {
         return reject(500, "Work item lookup failed", "lookup_failed");

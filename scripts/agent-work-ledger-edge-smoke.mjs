@@ -263,6 +263,7 @@ const main = async () => {
     assert(first.response.status === 201 && first.body?.success === true, "Create request failed.");
     assert(second.response.status === 201 && second.body?.success === true, "Idempotent create request failed.");
     assert(first.body.data.id === second.body.data.id, "Duplicate create returned a different work item.");
+    assert(first.body.meta?.runtimeMode === "shadow", "Create response runtime mode drifted.");
     assertSanitizedItem(first.body.data);
 
     const list = await request(`${functionUrl}?assessment_document_id=${documentId}`, {
@@ -270,12 +271,14 @@ const main = async () => {
     });
     assert(list.response.status === 200 && list.body?.success === true, "Assigned BT list request failed.");
     assert(Array.isArray(list.body.data) && list.body.data.length > 0, "Assigned BT list was empty.");
+    assert(list.body.meta?.runtimeMode === "shadow", "List response runtime mode drifted.");
     list.body.data.forEach(assertSanitizedItem);
 
     const detail = await request(`${functionUrl}/${first.body.data.id}`, {
       headers: headersFor(adminToken),
     });
     assert(detail.response.status === 200 && detail.body?.success === true, "Detail request failed.");
+    assert(detail.body.meta?.runtimeMode === "shadow", "Detail response runtime mode drifted.");
     assertSanitizedItem(detail.body.data);
 
     const crossTenant = await request(`${functionUrl}/${first.body.data.id}`, {

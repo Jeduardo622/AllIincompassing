@@ -264,6 +264,7 @@ Deno.test("POST assessment-prep derives actor and document scope before calling 
   const body = await response.json();
   assertEquals(body.success, true);
   assertEquals(body.data, createView());
+  assertEquals(body.meta, { runtimeMode: "shadow" });
 });
 
 Deno.test("POST assessment-prep permits advisory mode without changing the bounded create contract", async () => {
@@ -354,6 +355,7 @@ Deno.test("GET list requires a valid assessment_document_id query parameter and 
   assertEquals(body.data.length, 1);
   assertEquals(body.data[0].id, WORK_ITEM_ID);
   assertEquals("internalError" in body.data[0], false);
+  assertEquals(body.meta, { runtimeMode: "shadow" });
 });
 
 Deno.test("GET routes require authentication and reject malformed detail IDs", async () => {
@@ -517,6 +519,7 @@ Deno.test("GET detail returns 404 for non-visible rows and maps only the strict 
   assertEquals(body.success, true);
   assertEquals(body.data.id, WORK_ITEM_ID);
   assertEquals("credentials" in body.data, false);
+  assertEquals(body.meta, { runtimeMode: "shadow" });
 });
 
 Deno.test("unsupported owner cancel resume approval and reconcile routes are explicitly deferred", async () => {

@@ -6,7 +6,9 @@
 - Branch: `codex/agent-work-ledger-foundation`
 - Rollout mode: local-only, `disabled` / `shadow` / `advisory` only
 
-## Routing
+## Routing History
+
+### Initial Tasks 2-5 Route (Completed)
 
 - classification: `high-risk human-reviewed`
 - lane: `critical`
@@ -19,7 +21,27 @@
   - `src/lib/generated/database.types.ts`
   - `docs/ai/handoffs/agent-work-ledger-foundation.md`
 
-## Task Intent
+### Task 6a Follow-On Route (Completed)
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- triggering paths: `supabase/functions/agent-work-items/**`, `supabase/config.toml`, the service-role create RPC in `supabase/migrations/20260801090000_agent_work_ledger_core.sql`, local Edge smoke scripts, and API authority documentation
+- allowed scope: JWT-authenticated create plus RLS-scoped sanitized list/detail transport, local-only function serving, and explicit non-disclosing `501` responses for deferred owner/cancel/resume/reconcile/approval routes
+- non-goals: UI, queue/runner/sweeper/Cron, approval decisions, assessment-domain mutations, hosted access, and any runtime mode beyond `disabled`, `shadow`, or `advisory`
+- result: complete in commit `7579bf47` and `2d231d68`; specialist and local verification evidence is recorded below
+
+### Task 7 Follow-On Route (Current)
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- why: the planned UI was initially `standard`, but a truthful `Shadow` versus `Advisory` label required a minimal authority amendment in `supabase/functions/agent-work-items/**`; the slice was re-routed before that protected-path edit
+- triggering paths: `supabase/functions/agent-work-items/**`, `src/lib/agent-work-ledger.ts`, `src/components/agent-work/**`, `src/components/ClientDetails/IehpFbaLayoutReview.tsx`, focused tests, local Edge smoke, and API/handoff documentation
+- allowed scope: authority-owned `meta.runtimeMode` on successful create/list/detail envelopes; a strict, read-only, identity-scoped client query; and an advisory panel linked to the active authoritative IEHP review section
+- non-goals: auto-create, owner/cancel/resume/reconcile, approval decisions, copied clinical content, polling, runtime-config changes, server proxies, queue workers, and clinical-domain mutations
+- stop conditions: stale cross-scope rendering, session replay, body logging, malformed DTO acceptance, tenant leakage, PHI leakage, or pressure to expand into mutation behavior
+- required agents: specification, architecture, implementation, code review, test, security, and Supabase review
+
+## Initial Task Intent
 
 Implement the bounded local-first foundation for the Agent Work Ledger:
 
@@ -27,11 +49,11 @@ Implement the bounded local-first foundation for the Agent Work Ledger:
 - shared state machine, policy, and sanitized event utilities
 - IEHP assessment shadow adapter that stops at `needs_review`
 
-This first slice is limited to plan Tasks 2-5. It does not include endpoint transport, UI, queue/runner/Cron work, shadow-parity scripting, or the fully containerized harness.
+The initial slice was limited to plan Tasks 2-5. It did not include endpoint transport, UI, queue/runner/Cron work, shadow-parity scripting, or the fully containerized harness. The endpoint and UI exclusions were superseded only by the fresh Task 6a and Task 7 routes above.
 
 This slice must not perform hosted access, clinical mutations, autonomous approval, promotion, publication, billing, or signature behavior.
 
-## Allowed Files And Surfaces
+## Initial Allowed Files And Surfaces
 
 - `supabase/migrations/20260801090000_agent_work_ledger_core.sql`
 - `supabase/functions/_shared/agent-work/contracts.ts`
@@ -52,7 +74,7 @@ This slice must not perform hosted access, clinical mutations, autonomous approv
 - `src/lib/generated/database.types.ts`
 - `docs/ai/handoffs/agent-work-ledger-foundation.md`
 
-For this slice, `agent_execution_traces` nullable foreign-key additions are in scope because they are part of the core schema task in the approved plan. Queue, runner, sweeper, API endpoint, UI, Docker harness, and shadow-parity files are out of scope until a fresh follow-on slice is routed.
+For the initial slice, `agent_execution_traces` nullable foreign-key additions were in scope because they are part of the core schema task in the approved plan. Queue, runner, sweeper, API endpoint, UI, Docker harness, and shadow-parity files remained out of scope until fresh follow-on routing. Task 6a and Task 7 have now been routed separately above; queue, runner, sweeper, and harness work remain out of scope.
 
 ## Explicit Non-Goals
 
@@ -73,7 +95,7 @@ Stop immediately and re-scope if any task would:
 - permit duplicate effects, stale approvals, false completion, tenant leakage, or unverified mutation effects
 - enable any objective beyond `needs_review`
 
-Stop and re-route if the implementation needs:
+The following were the initial slice's re-route triggers. Task 6a and Task 7 satisfied the endpoint/UI triggers through the fresh routes above:
 
 - any `supabase/functions/agent-work-*` endpoint, runner, or sweeper file
 - any UI file under `src/components/**` or `src/pages/**`
@@ -153,7 +175,7 @@ The first implementation checkpoint ends with:
 - specialist guidance captured below
 - no hosted access and no domain mutations enabled
 
-Tasks 1-5 are now complete on the local branch. The next implementation task requires a fresh route and a separately bounded critical-lane scope.
+Tasks 1-5 are complete on the local branch. Task 6a and Task 7 each received a fresh, separately bounded critical-lane route as recorded above. Every later protected slice still requires its own fresh route.
 
 ## Specialist Findings
 
@@ -220,3 +242,31 @@ Tasks 1-5 are now complete on the local branch. The next implementation task req
 - Keep ledger runtime mode `disabled`.
 - Remove the local worktree or reset the branch locally if the local-only safety envelope cannot be maintained.
 - Do not deploy or push any branch state without explicit authorization.
+
+## Task 7 Advisory UI
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- scope: a read-only IEHP work-ledger panel plus an authority-owned `meta.runtimeMode` field on successful create/list/detail Edge envelopes
+- domain authority: the existing IEHP assessment review remains authoritative; the panel cannot create, assign, cancel, resume, reconcile, approve, promote, sign, publish, bill, or create final clinical records
+- tenant boundary: the authenticated Edge Function and existing RLS-scoped list RPC determine visibility; the browser query key is isolated by organization, client, assessment document, and authenticated user identity
+- read audience: list/detail visibility intentionally follows existing client-program read authority, including assigned care-team viewers already proven by the Task 6a assigned-BT local smoke; the bounded `admin`/`bcba`/`super_admin` set applies to ownership and approval authority, not sanitized read-only projection visibility
+- runtime behavior: `disabled` hides the panel without blocking the existing review; `shadow` and `advisory` are labeled exactly from server-owned policy; unavailable or malformed data fails to a non-blocking sanitized state
+- data minimization: the strict browser DTO accepts only workflow state, sanitized blockers, evidence counts, approvals, ownership presence, and timestamps; no clinical values, evidence hashes, raw payloads, leases, attempts, credentials, or private errors are rendered
+
+### Task 7 Verification Card
+
+- required: focused browser-client and component tests; Edge contract tests; local served Edge smoke; `npm run ci:check-focused`; `npm run validate:tenant`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run ci:verify-coverage`; `npm run build`; `npm run verify:local`
+- passed: ledger client 8/8; advisory panel 11/11; IEHP review 22/22; ledger Deno 61/61; `npm run agent-work:edge-smoke`; tenant validation; lint; typecheck; production build; full Vitest coverage with an explicit local 8 GB Node heap (440 files, 3,645 tests, 5 environment-gated skips); coverage verification at 92.88%; `git diff --check`
+- diagnostic: the first full-suite attempt exhausted the default 4 GB Node heap without an assertion failure; the unchanged suite then passed completely after setting `NODE_OPTIONS=--max-old-space-size=8192` only for the host process. After the final review-only UI/test refinements, a second parallel full run emitted no assertion failure but ended on Vitest worker RPC timeout, and a deterministic single-worker retry exceeded the bounded 10-minute command window. All changed post-fix surfaces pass focused tests, lint, typecheck, and build.
+- blocked: `npm run ci:check-focused` and aggregate `npm run verify:local` stop on nine unrelated API convergence exceptions that expired on 2026-07-31; the owner authorized continuing without changing that inventory
+- not required: route/auth Playwright gates because this slice adds no route, login, guard, or session-lifecycle behavior
+- result: `pass-with-blocked-checks`; final code, security, Supabase, and test reviews approve
+- residual risk: the served local gateway JWT and CORS limitations recorded in Task 6a remain; repository and function configs still require JWT verification, and the function still verifies users fail closed with `getUser`
+
+### Task 7 Specialist Findings
+
+- code review: approved after the routing history was made explicit, generated lock/report drift was removed, blocker links targeted the active authoritative review section, loading copy became mode-neutral, and unavailable-flow coverage was added
+- security review: approved after documenting that assigned care-team read visibility intentionally follows existing client-program read authority while owner, approval, and mutation authority remain separately restricted
+- Supabase review: approved the authority-owned runtime-mode envelope, fail-closed authentication/runtime handling, strict sanitized DTO, RLS-scoped reads, and local reset/Edge smoke evidence
+- test review: approved the focused client/component/IEHP/Edge coverage and verification card; the unrelated expired API convergence inventory remains the only policy blocker

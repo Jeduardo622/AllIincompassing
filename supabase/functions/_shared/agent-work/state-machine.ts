@@ -15,9 +15,23 @@ import type {
   WorkStepStatus,
 } from "./contracts.ts";
 
-const TERMINAL_WORK_ITEM_STATUSES = new Set<WorkItemStatus>(["needs_review", "completed", "cancelled"]);
-const TERMINAL_WORK_STEP_STATUSES = new Set<WorkStepStatus>(["completed", "failed", "skipped", "cancelled"]);
-const READY_CANDIDATE_STATUSES = new Set<WorkStepStatus>(["pending", "ready", "waiting", "failed"]);
+const TERMINAL_WORK_ITEM_STATUSES = new Set<WorkItemStatus>([
+  "needs_review",
+  "completed",
+  "cancelled",
+]);
+const TERMINAL_WORK_STEP_STATUSES = new Set<WorkStepStatus>([
+  "completed",
+  "failed",
+  "skipped",
+  "cancelled",
+]);
+const READY_CANDIDATE_STATUSES = new Set<WorkStepStatus>([
+  "pending",
+  "ready",
+  "waiting",
+  "failed",
+]);
 
 const WORK_ITEM_TRANSITIONS = new Set<string>([
   "queued->running",
@@ -68,7 +82,10 @@ const STEP_TRANSITIONS = new Set<string>([
   "failed->cancelled",
 ]);
 
-export function canTransitionWorkItem(from: WorkItemStatus, to: WorkItemStatus): boolean {
+export function canTransitionWorkItem(
+  from: WorkItemStatus,
+  to: WorkItemStatus,
+): boolean {
   if (from === to) {
     return false;
   }
@@ -80,7 +97,10 @@ export function canTransitionWorkItem(from: WorkItemStatus, to: WorkItemStatus):
   return WORK_ITEM_TRANSITIONS.has(`${from}->${to}`);
 }
 
-export function canTransitionStep(from: WorkStepStatus, to: WorkStepStatus): boolean {
+export function canTransitionStep(
+  from: WorkStepStatus,
+  to: WorkStepStatus,
+): boolean {
   if (from === to) {
     return false;
   }
@@ -90,14 +110,26 @@ export function canTransitionStep(from: WorkStepStatus, to: WorkStepStatus): boo
 
 export function deriveReadySteps(input: DeriveReadyStepsInput): string[] {
   const stepsById = new Map(input.steps.map((step) => [step.id, step]));
-  const dependenciesBySuccessor = groupDependenciesBySuccessor(input.dependencies);
+  const dependenciesBySuccessor = groupDependenciesBySuccessor(
+    input.dependencies,
+  );
 
   return input.steps
-    .filter((step) => isReadyCandidate(step, stepsById, dependenciesBySuccessor, input.now))
+    .filter((step) =>
+      isReadyCandidate(
+        step,
+        stepsById,
+        dependenciesBySuccessor,
+        input.authoritativeStateVersions,
+        input.now,
+      )
+    )
     .map((step) => step.id);
 }
 
-export function deriveWorkItemStatus(steps: WorkStepSnapshot[]): WorkItemStatus {
+export function deriveWorkItemStatus(
+  steps: WorkStepSnapshot[],
+): WorkItemStatus {
   if (steps.length === 0) {
     return "queued";
   }
@@ -106,7 +138,11 @@ export function deriveWorkItemStatus(steps: WorkStepSnapshot[]): WorkItemStatus 
     return "running";
   }
 
-  if (steps.some((step) => step.status === "waiting" || step.status === "needs_approval")) {
+  if (
+    steps.some((step) =>
+      step.status === "waiting" || step.status === "needs_approval"
+    )
+  ) {
     return "waiting";
   }
 
@@ -114,7 +150,9 @@ export function deriveWorkItemStatus(steps: WorkStepSnapshot[]): WorkItemStatus 
     return "failed";
   }
 
-  if (steps.some((step) => step.status === "ready" || step.status === "pending")) {
+  if (
+    steps.some((step) => step.status === "ready" || step.status === "pending")
+  ) {
     return "queued";
   }
 
@@ -130,8 +168,21 @@ export function deriveWorkItemStatus(steps: WorkStepSnapshot[]): WorkItemStatus 
 }
 
 export function canonicalApprovalHash(input: ApprovalHashInput): string {
-  const canonicalValue = normalizeValue(input);
-  return createHash("sha256").update(JSON.stringify(canonicalValue)).digest("hex");
+  const canonicalValue = normalizeValue({
+    workItemId: input.workItemId,
+    stepId: input.stepId,
+    requiredRole: input.requiredRole,
+    executionMode: input.executionMode,
+    inputHash: input.inputHash,
+    evidenceHashes: [...input.evidenceHashes].sort(),
+    completionCriteria: input.completionCriteria,
+    dependencyKeys: [...input.dependencyKeys].sort(),
+    toolAllowlist: [...input.toolAllowlist].sort(),
+    workflowVersion: input.workflowVersion,
+  });
+  return createHash("sha256").update(JSON.stringify(canonicalValue)).digest(
+    "hex",
+  );
 }
 
 export function canRetryStep(input: RetryDecisionInput): boolean {
@@ -160,15 +211,23 @@ export function evaluateLease(input: LeaseDecisionInput): LeaseDecision {
   }
 
   const leaseExpiresAt = Date.parse(input.leaseExpiresAt);
-  if (!Number.isFinite(leaseExpiresAt) || leaseExpiresAt <= input.now.getTime()) {
+  if (
+    !Number.isFinite(leaseExpiresAt) || leaseExpiresAt <= input.now.getTime()
+  ) {
     return "stale";
   }
 
-  return input.leaseOwner === input.workerId ? "held_by_worker" : "held_by_other";
+  return input.leaseOwner === input.workerId
+    ? "held_by_worker"
+    : "held_by_other";
 }
 
-export function evaluateStateVersion(input: StateVersionInput): StateVersionDecision {
-  return input.expectedStateVersion === input.actualStateVersion ? "current" : "stale";
+export function evaluateStateVersion(
+  input: StateVersionInput,
+): StateVersionDecision {
+  return input.expectedStateVersion === input.actualStateVersion
+    ? "current"
+    : "stale";
 }
 
 export function isApprovalCurrent(input: ApprovalCurrentInput): boolean {
@@ -188,7 +247,9 @@ export function isApprovalCurrent(input: ApprovalCurrentInput): boolean {
   return Number.isFinite(expiresAt) && expiresAt > input.now.getTime();
 }
 
-export function deriveCancellationPropagation(input: CancellationPropagationInput): string[] {
+export function deriveCancellationPropagation(
+  input: CancellationPropagationInput,
+): string[] {
   const stepsById = new Map(input.steps.map((step) => [step.id, step]));
   const successorsByStepId = new Map<string, string[]>();
 
@@ -229,17 +290,35 @@ function isReadyCandidate(
   step: WorkStepSnapshot,
   stepsById: Map<string, WorkStepSnapshot>,
   dependenciesBySuccessor: Map<string, WorkStepDependency[]>,
+  authoritativeStateVersions: Readonly<Record<string, number>>,
   now: Date,
 ): boolean {
   if (!READY_CANDIDATE_STATUSES.has(step.status)) {
     return false;
   }
 
-  if (step.status === "failed" && !canRetryStep({
-    errorClass: step.lastErrorClass,
-    attemptCount: step.attemptCount,
-    maxAttempts: step.maxAttempts,
-  })) {
+  const authoritativeStateVersion = authoritativeStateVersions[step.id];
+  if (
+    typeof authoritativeStateVersion !== "number" ||
+    evaluateStateVersion({
+        expectedStateVersion: authoritativeStateVersion,
+        actualStateVersion: step.stateVersion,
+      }) === "stale"
+  ) {
+    return false;
+  }
+
+  if (!isLeaseAvailable(step, now)) {
+    return false;
+  }
+
+  if (
+    step.status === "failed" && !canRetryStep({
+      errorClass: step.lastErrorClass,
+      attemptCount: step.attemptCount,
+      maxAttempts: step.maxAttempts,
+    })
+  ) {
     return false;
   }
 
@@ -261,7 +340,22 @@ function isReadyCandidate(
   return true;
 }
 
-function groupDependenciesBySuccessor(dependencies: WorkStepDependency[]): Map<string, WorkStepDependency[]> {
+function isLeaseAvailable(step: WorkStepSnapshot, now: Date): boolean {
+  if (!step.leaseOwner && !step.leaseExpiresAt) {
+    return true;
+  }
+
+  if (!step.leaseOwner || !step.leaseExpiresAt) {
+    return false;
+  }
+
+  const leaseExpiresAt = Date.parse(step.leaseExpiresAt);
+  return Number.isFinite(leaseExpiresAt) && leaseExpiresAt <= now.getTime();
+}
+
+function groupDependenciesBySuccessor(
+  dependencies: WorkStepDependency[],
+): Map<string, WorkStepDependency[]> {
   const grouped = new Map<string, WorkStepDependency[]>();
 
   for (const dependency of dependencies) {
@@ -275,24 +369,19 @@ function groupDependenciesBySuccessor(dependencies: WorkStepDependency[]): Map<s
 
 function normalizeValue(value: unknown): unknown {
   if (Array.isArray(value)) {
-    const normalizedEntries = value.map((entry) => normalizeValue(entry));
-    return normalizedEntries.sort(compareCanonicalValues);
+    return value.map((entry) => normalizeValue(entry));
   }
 
   if (value && typeof value === "object") {
     return Object.keys(value as Record<string, unknown>)
       .sort()
       .reduce<Record<string, unknown>>((accumulator, key) => {
-        accumulator[key] = normalizeValue((value as Record<string, unknown>)[key]);
+        accumulator[key] = normalizeValue(
+          (value as Record<string, unknown>)[key],
+        );
         return accumulator;
       }, {});
   }
 
   return value;
-}
-
-function compareCanonicalValues(left: unknown, right: unknown): number {
-  const leftJson = JSON.stringify(left);
-  const rightJson = JSON.stringify(right);
-  return leftJson.localeCompare(rightJson);
 }

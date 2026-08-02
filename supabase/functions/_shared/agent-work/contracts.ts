@@ -25,10 +25,20 @@ export const WORK_STEP_STATUSES = [
 
 export type WorkStepStatus = (typeof WORK_STEP_STATUSES)[number];
 
-export const WORK_EXECUTION_MODES = ["deterministic", "model_suggested", "human"] as const;
+export const WORK_EXECUTION_MODES = [
+  "deterministic",
+  "model_suggested",
+  "human",
+] as const;
 export type WorkExecutionMode = (typeof WORK_EXECUTION_MODES)[number];
 
-export const WORK_APPROVAL_STATUSES = ["pending", "approved", "rejected", "expired", "revoked"] as const;
+export const WORK_APPROVAL_STATUSES = [
+  "pending",
+  "approved",
+  "rejected",
+  "expired",
+  "revoked",
+] as const;
 export type WorkApprovalStatus = (typeof WORK_APPROVAL_STATUSES)[number];
 
 export const RETRYABLE_ERROR_CLASSES = [
@@ -47,10 +57,15 @@ export const NON_RETRYABLE_ERROR_CLASSES = [
 ] as const;
 
 export type RetryableErrorClass = (typeof RETRYABLE_ERROR_CLASSES)[number];
-export type NonRetryableErrorClass = (typeof NON_RETRYABLE_ERROR_CLASSES)[number];
+export type NonRetryableErrorClass =
+  (typeof NON_RETRYABLE_ERROR_CLASSES)[number];
 export type WorkStepErrorClass = RetryableErrorClass | NonRetryableErrorClass;
 
-export type LeaseDecision = "available" | "held_by_worker" | "held_by_other" | "stale";
+export type LeaseDecision =
+  | "available"
+  | "held_by_worker"
+  | "held_by_other"
+  | "stale";
 export type StateVersionDecision = "current" | "stale";
 
 export type WorkStepSnapshot = {
@@ -125,6 +140,7 @@ export type DeriveReadyStepsInput = {
   steps: WorkStepSnapshot[];
   dependencies: WorkStepDependency[];
   now: Date;
+  authoritativeStateVersions: Readonly<Record<string, number>>;
 };
 
 export type ServerWorkflowAuthority = Pick<

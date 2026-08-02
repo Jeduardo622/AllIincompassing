@@ -110,6 +110,7 @@
     "agent-work:db:reset": "tsx scripts/agent-work-ledger-local-env.ts run -- supabase db reset --local --yes",
     "agent-work:edge-smoke": "npm run agent-work:security-contract && tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-edge-smoke.mjs",
     "agent-work:shadow-parity": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-shadow-parity.mjs",
+    "agent-work:queue-scheduler:smoke": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-local-scheduler.mjs smoke",
     "migration:new": "node scripts/migrations/new-migration-with-header.mjs",
     "validate:tenant": "npx tsx scripts/check-tenant-safety.ts",
     "perf:p2:baseline": "node scripts/perf/capture-p2-baseline.mjs",

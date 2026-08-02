@@ -315,3 +315,95 @@ Tasks 1-5 are complete on the local branch. Task 6a and Task 7 each received a f
 - verification summary: present, including blocked and non-green checks
 - reviewer: final code, security, and Supabase reviews approved; test review had only the documented opt-in malformed-bridge residual, which was executed live
 - required follow-up: obtain explicit authorization before push/PR, then obtain critical-lane human review before merge
+
+## Task 9 Current Scope
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- linear required: yes
+- Linear issue: `WIN-271`
+- status: local implementation complete; critical-lane human review and blocked policy cleanup remain
+
+Task 9 is the durable `pgmq` queue, runner, and sweeper follow-through for the agent work ledger. Host configuration remains loopback-only, while the Docker Postgres scheduler uses fixed local container-to-host worker callbacks:
+
+- local scheduler/Vault setup only
+- no hosted connection
+- no `.env*` reads
+- no clinical mutations
+- only `disabled`, `shadow`, and `advisory` runtime restriction modes
+
+## Task 9 Verification State
+
+Already proven locally:
+
+- local preflight
+- clean db reset
+- migration static `23/23`
+- local scheduler guard `9/9`
+- security contract pass
+- durable queue/RPC lifecycle probes, including exact-string message ids, deterministic-only claim, authoritative scope/hash, stale lease, wait, approval expiry, poison, retry ceiling, duplicate effect, domain-drift rejection, and authoritative finalization
+- runner `18/18`
+- sweeper `8/8`
+- policy `18/18`
+- `npm run agent-work:queue-scheduler:smoke`: direct host worker calls plus fixed local pg_cron/pg_net runner and sweeper responses `200/200`
+- scheduler cleanup: zero fixed jobs, zero fixed Vault entries, and zero host listeners after the proof
+- `npm run validate:tenant`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- ledger-disabled `npm run test:ci`: 442 files and 3,679 tests passed; two files and five environment-gated tests skipped
+- `npm run ci:verify-coverage`: 92.88%
+
+Blocked or intentionally unrun:
+
+- `npm run ci:check-focused`: nine unrelated API-convergence exceptions expired on 2026-07-31
+- `npm run verify:local`: stops at the same policy gate before running its remaining commands
+- stack-integrated `supabase functions serve`: Windows Docker CLI replaced the stack Edge Runtime and left Kong with stale container DNS; the clean stack was restored and host Deno handler smokes were used instead
+- any hosted or remote scheduler/Vault behavior
+- any clinical mutation path
+
+## Task 9 Stop Conditions
+
+Stop and re-route if the work would:
+
+- expand beyond the named local-only surfaces
+- require hosted Supabase, Netlify, or remote scheduler access
+- introduce clinical writes or any final-record mutation
+- move outside the supported runtime restriction set
+- require touching any path outside the current ledger foundation slice without fresh routing
+
+## Task 9 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database/RLS/migration/tenant isolation; Supabase Edge integration; local scheduler and security-sensitive configuration; operations documentation
+- required checks: clean local `supabase db reset`; migration and scheduler focused Vitest suites; runner, sweeper, and policy Deno suites; `npm run agent-work:security-contract`; `npm run agent-work:queue-scheduler:smoke`; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run ci:verify-coverage`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`
+- executed checks: clean local database reset passed; migration `23/23`; scheduler guard `9/9`; runner `18/18`; sweeper `8/8`; policy `18/18`; security contract passed; scheduler smoke passed direct host worker dispatch and local pg_cron/pg_net runner/sweeper callbacks with HTTP `200/200`; tenant validation passed; lint passed; typecheck passed; ledger-disabled full suite passed with 442 files and 3,679 tests, two files and five environment-gated tests skipped; coverage passed at 92.88%; build passed; diff check passed
+- blocked checks: `npm run ci:check-focused` fails only because nine unrelated API-convergence exceptions expired on 2026-07-31; aggregate `npm run verify:local` stops at the same policy gate. The diagnostic `npm run ci:secrets` requires fifteen unavailable external CI secrets and also flags a previously committed synthetic local Postgres URL in `src/scripts/__tests__/agentWorkLedgerLocal.test.ts`; a targeted Task 9 secret-pattern scan passed. Stack-integrated `supabase functions serve` is unavailable on this Windows Docker topology because it replaces the local Edge Runtime and leaves Kong with stale container DNS; host Deno handler smokes and scheduler callbacks passed instead.
+- result: `pass-with-blocked-checks`
+- residual risk: local proof does not exercise real concurrent workers under lock contention or a hosted scheduler/runtime. Retry-after-lease and scheduler tenant-negative paths are covered at RPC/contract level rather than as separate full scheduler end-to-end cases. Task 9 remains local-only and cannot merge without critical-lane human review.
+
+## Task 9 Specialist Findings
+
+- specification and architecture: scope and authority boundaries approved; the architecture reviewer withdrew the initial host-bridge concern after the live fixed callback evidence returned `200/200`
+- code review: approved with no remaining findings after authoritative scope/hash rereads, retry settlement, exact-string message ids, and cleanup behavior were verified
+- security review: approved with no remaining findings; fixed-name Vault relay values are owner-controlled, local-only, exact-matched, and cleaned after the smoke
+- Supabase review: approved with no remaining findings across migration, grants, RLS, RPC exposure, queue semantics, runner, and sweeper
+- test review: approved with no remaining findings; retained residual gaps are real concurrency/lock contention, a dedicated retry-after-lease scheduler case, and a dedicated scheduler tenant-negative case
+- DevOps review: approved with no remaining findings; pinned CLI/runtime usage, bounded health checks, deterministic synthetic setup, and cleanup were confirmed
+
+## Task 9 PR Hygiene
+
+- pr-ready: `yes` for local review; no push or PR is authorized
+- lane: `critical`
+- branch-ready: `yes` (`codex/agent-work-ledger-foundation`)
+- linear-ready: `yes` (`WIN-271`)
+- single-purpose: `yes`
+- unrelated changes: none; the separate main-checkout `WIN-265` handoff is untouched
+- generated artifact drift: none; `deno.lock` and `reports/test-reliability-latest.json` are unchanged
+- protected-path drift: none outside the explicitly routed migration, Edge Function, queue, grant, RLS, RPC, and local scheduler surfaces
+- change summary: present in the operations runbook and this handoff
+- verification summary: present, including blocked checks and residual risks
+- pr handoff: locally ready; branch push and PR creation are prohibited until separately authorized
+- reviewer: all required specialists completed; final code, architecture, security, Supabase, test, and DevOps reviews have no remaining findings
+- required follow-up: obtain explicit authorization before push/PR, then obtain critical-lane human review before merge; do not deploy migrations, functions, Vault values, secrets, or runtime configuration without a separate hosted authorization

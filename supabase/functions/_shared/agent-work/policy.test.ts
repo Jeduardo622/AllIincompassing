@@ -290,6 +290,132 @@ Deno.test("authorizeWorkAction preserves mode semantics and forbids clinical eff
   assertEquals(projection.allowed, true);
 });
 
+function buildAdvisoryWorkflow(): WorkflowDefinition {
+  return {
+    ...BASE_WORKFLOW,
+    actions: {
+      ...BASE_WORKFLOW.actions,
+      claim_step: {
+        ...BASE_WORKFLOW.actions.claim_step,
+        allowedRuntimeModes: ["advisory", "active"],
+      },
+      transition_step: {
+        ...BASE_WORKFLOW.actions.transition_step,
+        allowedRuntimeModes: ["advisory", "active"],
+      },
+    },
+  };
+}
+
+Deno.test("authorizeWorkAction allows advisory claim_step when the server-owned workflow action explicitly permits it", () => {
+  const decision = authorize({
+    runtimeMode: "advisory",
+    workflow: buildAdvisoryWorkflow(),
+    action: buildAction({
+      action: "claim_step",
+      tool: "claim_step",
+      approval: null,
+    }),
+  });
+
+  assertEquals(decision.allowed, true);
+  assertEquals(decision.reasonCode, "allowed");
+  assertEquals(decision.allowedTool, "claim_step");
+});
+
+Deno.test("authorizeWorkAction allows advisory transition_step when the server-owned workflow action explicitly permits it", () => {
+  const decision = authorize({
+    runtimeMode: "advisory",
+    workflow: buildAdvisoryWorkflow(),
+    action: buildAction(),
+  });
+
+  assertEquals(decision.allowed, true);
+  assertEquals(decision.reasonCode, "allowed");
+  assertEquals(decision.allowedTool, "review_snapshot");
+});
+
+Deno.test("authorizeWorkAction keeps advisory fail-closed for shadow, clinical-effect, and unavailable policy cases", () => {
+  const advisoryWorkflow = buildAdvisoryWorkflow();
+
+  assertEquals(
+    authorize({
+      runtimeMode: "shadow",
+      workflow: advisoryWorkflow,
+      action: buildAction({
+        action: "claim_step",
+        tool: "claim_step",
+        approval: null,
+      }),
+    }).reasonCode,
+    "shadow_mode_projection_only",
+  );
+  assertEquals(
+    authorize({
+      runtimeMode: "advisory",
+      workflow: advisoryWorkflow,
+      action: buildAction({
+        action: "claim_step",
+        tool: "claim_step",
+        approval: null,
+        clinicalEffect: true,
+      }),
+    }).reasonCode,
+    "clinical_effects_forbidden",
+  );
+  assertEquals(
+    authorize({
+      runtimeMode: null,
+      workflow: advisoryWorkflow,
+      action: buildAction({
+        action: "claim_step",
+        tool: "claim_step",
+        approval: null,
+      }),
+    }).reasonCode,
+    "runtime_mode_unavailable",
+  );
+});
+
+Deno.test("authorizeWorkAction rejects advisory claim_step for a human/user actor path via role and actor constraints", () => {
+  const decision = authorize({
+    runtimeMode: "advisory",
+    workflow: buildAdvisoryWorkflow(),
+    actor: buildActor({
+      kind: "user",
+      currentOrgRoles: [{
+        organizationId: ORGANIZATION_ID,
+        role: "observer",
+        active: true,
+        expiresAt: null,
+      }],
+    }),
+    action: buildAction({
+      action: "claim_step",
+      tool: "claim_step",
+      approval: null,
+    }),
+  });
+
+  assertEquals(decision.allowed, false);
+  assertEquals(decision.reasonCode, "insufficient_role");
+});
+
+Deno.test("authorizeWorkAction keeps advisory unavailable to claim_step when the server-owned tool is not allowed", () => {
+  const decision = authorize({
+    runtimeMode: "advisory",
+    workflow: buildAdvisoryWorkflow(),
+    action: buildAction({
+      action: "claim_step",
+      tool: "review_snapshot",
+      approval: null,
+    }),
+  });
+
+  assertEquals(decision.allowed, false);
+  assertEquals(decision.reasonCode, "forbidden_tool");
+});
+
 function buildAuthority(
   overrides: Partial<AgentWorkAuthorityContext> = {},
 ): AgentWorkAuthorityContext {

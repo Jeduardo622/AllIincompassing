@@ -21,7 +21,7 @@ It:
 - stores and separately rereads a rollback-only expired approval as a persistence guard; approval state is not an input to the pre-runner adapter and this fixture does not claim approval-sensitive projection behavior
 - prints one PHI-free JSON line per fixture, then rolls the transaction back
 
-This command tests the pre-runner shadow adapter and supported work-item creation boundary. It does not fabricate final ledger step state or claim to exercise the queue/runner transition path planned for Task 9.
+This command tests the pre-runner shadow adapter and supported work-item creation boundary. It does not fabricate final ledger step state or claim to exercise the durable queue, runner, sweeper, or local scheduler/Vault path planned for Task 9.
 
 ## Fixtures
 
@@ -97,6 +97,26 @@ If local preconditions are not met, disable the proof by not running it. Do not 
 
 To disable the ledger locally without changing assessment behavior, run the application/Edge Function authority with ledger runtime policy `disabled` and do not run worker commands. Assessment domain tables and the existing upload/review/promotion workflow remain authoritative and independent of this parity command.
 
+## Task 9 Local-Only Direction
+
+Task 9 extends the local-first ledger into a durable `pgmq` queue plus runner/sweeper coordination, but only within the local stack. Host-side Supabase/database configuration is loopback-only; Postgres uses fixed `host.docker.internal` callbacks to the loopback-bound host workers.
+
+- allowed runtime modes remain `disabled`, `shadow`, and `advisory`
+- no clinical mutations are allowed
+- no hosted Supabase, Netlify, or remote queue/scheduler access is allowed
+- scheduler/Vault setup must stay local, with fixed container-to-host callback targets
+- any worker or scheduler proof must remain local-only until a fresh route says otherwise
+
+Task 9 is implemented and verified locally. It is not authorized for hosted execution, deployment, push, or merge, and its critical-lane changes still require human review.
+
+Run the local queue/scheduler proof only after the complete local Supabase stack is healthy:
+
+```powershell
+npm run agent-work:queue-scheduler:smoke
+```
+
+The command is wrapped by the repository local-environment preflight. It rejects non-loopback Supabase and database URLs, generates process-only runner/sweeper secrets, serves both functions as host Deno handlers, enables only the required local scheduler extensions, stores three fixed-name local Vault entries, creates two fixed-name cron jobs, verifies direct worker calls and cron responses, then removes the jobs, Vault entries, and host processes on success or failure. Set `DENO_BIN` to an explicit local Deno executable only when `deno` is not already on `PATH`.
+
 ## Hosted Command
 
 Hosted parity or hosted assessment smoke remains authorization-gated and blocked in this task.
@@ -127,3 +147,26 @@ The command exits `0` only when:
 - both Supabase URLs exactly match the CLI-discovered running local stack
 
 The command exits nonzero on the first parity, scope, runtime, sanitizer, or schema failure.
+
+## Proven Checks
+
+The following checks prove the local Task 9 implementation:
+
+- local preflight
+- clean db reset
+- migration static `23/23`
+- local scheduler guard `9/9`
+- security contract pass
+- durable queue, exact-string message id, deterministic-only claim, authoritative scope/hash, stale lease, wait, approval-expiry, poison, retry-ceiling, duplicate-effect, domain-drift rejection, and authoritative-finalization SQL probes
+- runner `18/18`
+- sweeper `8/8`
+- policy `18/18`
+- local Deno direct smoke: runner defined fail-closed/empty outcomes; sweeper `200/success`
+- local pg_cron/pg_net smoke: fixed runner and sweeper jobs returned `200/200`, followed by zero remaining jobs, Vault entries, or listeners
+- `npm run validate:tenant`, `npm run lint`, `npm run typecheck`, `npm run build`
+- ledger-disabled `npm run test:ci`: 442 files and 3,679 tests passed; two files and five environment-gated tests skipped
+- `npm run ci:verify-coverage`: 92.88% line coverage
+
+`supabase functions serve` is not used for the Task 9 proof on this Windows Docker setup. The CLI stops the stack-managed Edge Runtime and leaves Kong with stale container DNS. The stack was rebuilt cleanly afterward, and both functions are instead imported as host Deno handlers with process-injected loopback-only values and generated synthetic invocation secrets.
+
+`npm run ci:check-focused` and therefore `npm run verify:local` remain blocked by nine unrelated API-convergence exceptions that expired on 2026-07-31.

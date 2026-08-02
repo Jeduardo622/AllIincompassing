@@ -83,6 +83,116 @@ const FUNCTION_CONTRACTS = [
     searchPath: "public, pg_temp",
     execute: { public: false, anon: false, authenticated: false, service_role: true },
   },
+  {
+    signature: "agent_work_validate_queue_payload(jsonb)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "agent_work_log_queue_event(uuid,text,text,text,jsonb)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "enqueue_agent_work_message(uuid,timestamp with time zone,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "read_agent_work_messages(integer,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "archive_agent_work_message(text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "load_agent_work_runtime_policy(text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "claim_queued_agent_work_step(uuid,uuid,text,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "read_agent_work_runner_scope(uuid,uuid,uuid,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "agent_work_advisory_projection_descriptor(uuid)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "read_agent_work_advisory_projection_descriptor(uuid)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "agent_work_lock_advisory_projection_context(uuid,uuid,text,bigint,text,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "record_agent_work_advisory_projection_effect(uuid,uuid,text,bigint,text,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "read_agent_work_advisory_projection_effect(uuid,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "finalize_agent_work_advisory_projection_effect(uuid,uuid,text,bigint,text,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "schedule_agent_work_step_retry(uuid,integer,text,jsonb)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "requeue_expired_agent_work_leases(timestamp with time zone,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "wake_due_agent_work_steps(timestamp with time zone,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "expire_agent_work_approvals(timestamp with time zone,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "archive_agent_work_poison_messages(timestamp with time zone,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "enable_local_agent_work_queue_scheduler(text,integer,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "disable_local_agent_work_queue_scheduler()",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "agent_work_enqueue_ready_step_trigger()",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
 ];
 
 const REQUIRED_TRACE_COLUMNS = ["work_item_id", "step_id", "attempt_id"];
@@ -143,6 +253,27 @@ const expectFailure = async (label, fn, matcher) => {
   }
 
   throw new Error(`${label} unexpectedly succeeded`);
+};
+
+const expectFailureInTransaction = async (client, label, fn, matcher) => {
+  const savepoint = `contract_${randomUUID().replace(/-/g, "")}`;
+  await client.query(`savepoint ${savepoint}`);
+  let caught;
+  try {
+    await fn();
+  } catch (error) {
+    caught = error;
+  }
+  await client.query(`rollback to savepoint ${savepoint}`);
+  await client.query(`release savepoint ${savepoint}`);
+
+  if (!caught) {
+    throw new Error(`${label} unexpectedly succeeded`);
+  }
+  const message = caught instanceof Error ? caught.message : String(caught);
+  if (!matcher.test(message)) {
+    throw new Error(`${label} failed with unexpected error: ${message}`);
+  }
 };
 
 const withActor = async (client, dbRole, claimRole, userId, callback, { commit = false } = {}) => {
@@ -456,6 +587,621 @@ const assertTraceColumns = async (client) => {
     missingTraceColumns.length === 0,
     `Missing agent_execution_traces ledger columns: ${missingTraceColumns.join(", ")}`,
   );
+};
+
+const assertQueueAndSweeperContract = async (client) => {
+  await withOwnerTransaction(client, async () => {
+    const workItemId = randomUUID();
+    const stepId = randomUUID();
+    const modelStepId = randomUUID();
+    const retryWorkItemId = randomUUID();
+    const retryStepId = randomUUID();
+    const approvalId = randomUUID();
+    const projectionWorkItemId = randomUUID();
+    const projectionStepId = randomUUID();
+
+    await client.query(
+      `
+        insert into public.agent_work_items (
+          id, organization_id, client_id, workflow_key, workflow_version,
+          objective, status, risk, completion_criteria, dedupe_key
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid,
+          'assessment.iehp.prepare_for_clinical_review', 1,
+          'Synthetic queue contract work item.', 'queued', 'low',
+          '{"terminal_state":"needs_review"}'::jsonb, $4::text
+        )
+      `,
+      [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `queue-contract-${RUN_TOKEN}`],
+    );
+    await client.query(
+      `
+        insert into public.agent_work_steps (
+          id, work_item_id, organization_id, client_id, step_key, ordinal,
+          execution_mode, status, risk, completion_criteria, input_hash
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'validate_scope', 10,
+          'deterministic', 'ready', 'low', '{}'::jsonb, $5::text
+        )
+      `,
+      [stepId, workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A],
+    );
+
+    const { rows: advisoryRows } = await client.query(
+      "select * from public.load_agent_work_runtime_policy('advisory')",
+    );
+    assert(
+      advisoryRows[0]?.runtimeMode === "advisory" && advisoryRows[0]?.authoritative === true,
+      "Authoritative runtime policy did not preserve advisory mode",
+    );
+    await client.query(
+      "update public.agent_runtime_config set actions_disabled = true where config_key = 'global'",
+    );
+    const { rows: disabledRows } = await client.query(
+      "select * from public.load_agent_work_runtime_policy('advisory')",
+    );
+    assert(
+      disabledRows[0]?.runtimeMode === "disabled" && disabledRows[0]?.killSwitchEnabled === true,
+      "Authoritative runtime kill switch did not fail closed",
+    );
+    await client.query(
+      "update public.agent_runtime_config set actions_disabled = false where config_key = 'global'",
+    );
+
+    const { rows: queueRows } = await client.query(
+      "select * from public.read_agent_work_messages(60, 1)",
+    );
+    const message = queueRows[0];
+    assert(message, "Ready-step trigger did not enqueue a queue message");
+    assert(
+      message.work_item_id === workItemId &&
+        message.step_id === stepId &&
+        message.organization_id === FIXTURES.orgA &&
+        message.message?.workItemId === workItemId &&
+        message.message?.stepId === stepId &&
+        message.message?.organizationId === FIXTURES.orgA,
+      "Queue message scope did not match the authoritative synthetic row",
+    );
+    const { rows: archiveRows } = await client.query(
+      "select public.archive_agent_work_message($1::text) as archived",
+      [message.msg_id],
+    );
+    assert(archiveRows[0]?.archived === true, "Queue message archive did not succeed");
+
+    const futureCorrelationId = `future.${RUN_TOKEN}`;
+    const { rows: futureMessageRows } = await client.query(
+      `
+        select pgmq.send(
+          queue_name => 'agent_work_steps',
+          msg => jsonb_build_object(
+            'workItemId', $1::uuid::text,
+            'stepId', $2::uuid::text,
+            'organizationId', $3::uuid::text,
+            'availableAt', to_jsonb(timezone('utc', now()) + interval '5 minutes'),
+            'correlationId', $4::text,
+            'workflowVersion', 1
+          )
+        )::text as msg_id
+      `,
+      [workItemId, stepId, FIXTURES.orgA, futureCorrelationId],
+    );
+    const futureMessageId = futureMessageRows[0]?.msg_id;
+    assert(/^\d+$/.test(futureMessageId ?? ""), "Queue message ids must remain exact decimal strings");
+    const { rows: futureReadRows } = await client.query(
+      "select * from public.read_agent_work_messages(60, 1)",
+    );
+    assert(futureReadRows.length === 0, "Future-due queue message became runnable early");
+    const { rows: preservedFutureRows } = await client.query(
+      `
+        select read_ct, vt > timezone('utc', now()) + interval '4 minutes' as delayed
+        from pgmq.q_agent_work_steps
+        where msg_id = $1::text::bigint
+      `,
+      [futureMessageId],
+    );
+    assert(
+      preservedFutureRows[0]?.read_ct >= 1 && preservedFutureRows[0]?.delayed === true,
+      "Future-due queue message was not preserved with authoritative visibility",
+    );
+    const { rows: futureArchiveRows } = await client.query(
+      "select public.archive_agent_work_message($1::text) as archived",
+      [futureMessageId],
+    );
+    assert(futureArchiveRows[0]?.archived === true, "Future queue message cleanup failed");
+
+    await client.query(
+      `
+        insert into public.agent_work_steps (
+          id, work_item_id, organization_id, client_id, step_key, ordinal,
+          execution_mode, status, risk, completion_criteria, input_hash
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'model_boundary', 20,
+          'model_suggested', 'ready', 'low', '{}'::jsonb, $5::text
+        )
+      `,
+      [modelStepId, workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A],
+    );
+    await expectFailureInTransaction(
+      client,
+      "model-suggested queued claim",
+      () => client.query(
+        "select * from public.claim_queued_agent_work_step($1::uuid, $2::uuid, 'queue-contract-worker', 60)",
+        [workItemId, modelStepId],
+      ),
+      /not claimable/i,
+    );
+
+    await client.query(
+      `
+        insert into public.agent_work_items (
+          id, organization_id, client_id, workflow_key, workflow_version,
+          objective, status, risk, completion_criteria, dedupe_key
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid,
+          'assessment.iehp.prepare_for_clinical_review', 1,
+          'Synthetic retry boundary work item.', 'queued', 'low',
+          '{"terminal_state":"needs_review"}'::jsonb, $4::text
+        )
+      `,
+      [retryWorkItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `retry-contract-${RUN_TOKEN}`],
+    );
+    await client.query(
+      `
+        insert into public.agent_work_steps (
+          id, work_item_id, organization_id, client_id, step_key, ordinal,
+          execution_mode, status, risk, completion_criteria, input_hash, max_attempts
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'retry_boundary', 10,
+          'deterministic', 'ready', 'low', '{}'::jsonb, $5::text, 2
+        )
+      `,
+      [retryStepId, retryWorkItemId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A],
+    );
+    await client.query(
+      "select * from public.claim_queued_agent_work_step($1::uuid, $2::uuid, 'retry-worker', 60)",
+      [retryWorkItemId, retryStepId],
+    );
+    const { rows: scheduledRetryRows } = await client.query(
+      "select public.schedule_agent_work_step_retry($1::uuid, 0, 'synthetic_retry', '{}'::jsonb) as result",
+      [retryStepId],
+    );
+    assert(
+      scheduledRetryRows[0]?.result?.outcome === "retry_scheduled",
+      "Retry RPC did not schedule a non-terminal retry",
+    );
+    await client.query(
+      "select * from public.claim_queued_agent_work_step($1::uuid, $2::uuid, 'retry-worker', 60)",
+      [retryWorkItemId, retryStepId],
+    );
+    const { rows: exhaustedRetryRows } = await client.query(
+      "select public.schedule_agent_work_step_retry($1::uuid, 0, 'synthetic_retry', '{}'::jsonb) as result",
+      [retryStepId],
+    );
+    assert(
+      exhaustedRetryRows[0]?.result?.outcome === "retry_limit_exhausted",
+      "Retry RPC did not fail closed at the exact attempt ceiling",
+    );
+    const { rows: exhaustedStepRows } = await client.query(
+      `
+        select status, lease_owner, lease_expires_at,
+          not exists (
+            select 1 from public.agent_work_attempts
+            where step_id = $1::uuid and status = 'running'
+          ) as attempts_settled
+        from public.agent_work_steps
+        where id = $1::uuid
+      `,
+      [retryStepId],
+    );
+    assert(
+      exhaustedStepRows[0]?.status === "failed" &&
+        exhaustedStepRows[0]?.lease_owner === null &&
+        exhaustedStepRows[0]?.lease_expires_at === null &&
+        exhaustedStepRows[0]?.attempts_settled === true,
+      "Retry ceiling did not atomically fail the step and settle its running attempt",
+    );
+
+    const { rows: claimRows } = await client.query(
+      "select * from public.claim_queued_agent_work_step($1::uuid, $2::uuid, 'queue-contract-worker', 60)",
+      [workItemId, stepId],
+    );
+    const claim = claimRows[0];
+    assert(
+      claim?.id === stepId && claim?.work_item_id === workItemId && claim?.attempt_id,
+      "Exact queued-step claim did not return the bound step and attempt",
+    );
+
+    await client.query(
+      "update public.agent_work_steps set lease_expires_at = now() - interval '1 second' where id = $1::uuid",
+      [stepId],
+    );
+    const { rows: recoveredRows } = await client.query(
+      "select * from public.requeue_expired_agent_work_leases(now(), 10)",
+    );
+    assert(
+      recoveredRows.some((row) => row.reasonCode === "lease_expired"),
+      "Expired lease was not requeued with a sanitized reason code",
+    );
+
+    await client.query(
+      `
+        update public.agent_work_steps
+        set status = 'waiting', wake_at = now() - interval '1 second'
+        where id = $1::uuid
+      `,
+      [stepId],
+    );
+    const { rows: wakeRows } = await client.query(
+      "select * from public.wake_due_agent_work_steps(now(), 10)",
+    );
+    assert(
+      wakeRows.some((row) => row.reasonCode === "due_wait_wakeup"),
+      "Due waiting step was not woken with a sanitized reason code",
+    );
+
+    await client.query(
+      `
+        insert into public.agent_work_approvals (
+          id, work_item_id, step_id, organization_id, client_id,
+          required_role, status, input_hash, evidence_hash, expires_at
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+          'bcba', 'pending', $6::text, $7::text, now() - interval '1 second'
+        )
+      `,
+      [approvalId, workItemId, stepId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A, HASH_B],
+    );
+    const { rows: approvalRows } = await client.query(
+      "select public.expire_agent_work_approvals(now(), 10) as result",
+    );
+    assert(
+      approvalRows[0]?.result?.expired?.some((row) => row.reasonCode === "approval_expired"),
+      "Expired approval was not reported by the sweeper contract",
+    );
+
+    await client.query(
+      `
+        update public.agent_work_steps
+        set status = 'running', attempt_count = max_attempts,
+            lease_owner = 'queue-contract-worker',
+            lease_expires_at = now() - interval '1 second'
+        where id = $1::uuid
+      `,
+      [stepId],
+    );
+    const { rows: poisonRows } = await client.query(
+      "select * from public.requeue_expired_agent_work_leases(now(), 10)",
+    );
+    assert(
+      poisonRows.some((row) => row.reasonCode === "poison_retry_ceiling"),
+      "Retry ceiling did not move the expired lease to a visible poison state",
+    );
+    const { rows: poisonArchiveRows } = await client.query(
+      "select public.archive_agent_work_poison_messages(clock_timestamp() + interval '1 second', 100) as result",
+    );
+    assert(
+      poisonArchiveRows[0]?.result?.retryCeiling?.some(
+        (row) => row.reasonCode === "poison_retry_ceiling",
+      ),
+      "Poison message was not archived in the retry-ceiling bucket",
+    );
+
+    await client.query(
+      `
+        insert into public.agent_work_items (
+          id, organization_id, client_id, workflow_key, workflow_version,
+          objective, status, risk, completion_criteria, dedupe_key
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid,
+          'assessment.iehp.prepare_for_clinical_review', 1,
+          'Synthetic advisory projection contract work item.', 'queued', 'low',
+          '{"terminal_state":"needs_review"}'::jsonb, $4::text
+        )
+      `,
+      [projectionWorkItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `projection-contract-${RUN_TOKEN}`],
+    );
+    await client.query(
+      `
+        insert into public.agent_work_assessment_links (
+          work_item_id, organization_id, client_id, assessment_document_id,
+          workflow_key, workflow_version
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+          'assessment.iehp.prepare_for_clinical_review', 1
+        )
+      `,
+      [projectionWorkItemId, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.docAssigned],
+    );
+    await client.query(
+      `
+        insert into public.agent_work_steps (
+          id, work_item_id, organization_id, client_id, step_key, ordinal,
+          execution_mode, status, risk, completion_criteria, input_hash
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'project_advisory_effect', 20,
+          'deterministic', 'ready', 'low', '{}'::jsonb, $5::text
+        )
+      `,
+      [projectionStepId, projectionWorkItemId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A],
+    );
+
+    const { rows: projectionDescriptorRows } = await client.query(
+      "select * from public.read_agent_work_advisory_projection_descriptor($1::uuid)",
+      [projectionStepId],
+    );
+    const projectionEffectKey = projectionDescriptorRows[0]?.effect_key;
+    const projectionOutputHash = projectionDescriptorRows[0]?.output_hash;
+    assert(
+      typeof projectionEffectKey === "string" &&
+        /^[a-f0-9]{64}$/.test(projectionOutputHash ?? ""),
+      "Projection descriptor did not derive a sanitized authoritative hash",
+    );
+
+    const { rows: firstProjectionClaimRows } = await client.query(
+      "select * from public.claim_queued_agent_work_step($1::uuid, $2::uuid, 'projection-worker', 60)",
+      [projectionWorkItemId, projectionStepId],
+    );
+    const firstProjectionClaim = firstProjectionClaimRows[0];
+    assert(firstProjectionClaim?.attempt_id, "Projection claim did not return an attempt id");
+
+    const { rows: firstProjectionEffectRows } = await client.query(
+      `
+        select *
+        from public.record_agent_work_advisory_projection_effect(
+          $1::uuid, $2::uuid, $3::text, $4::bigint, $5::text, $6::text
+        )
+      `,
+      [
+        projectionStepId,
+        firstProjectionClaim.attempt_id,
+        "projection-worker",
+        firstProjectionClaim.state_version,
+        projectionEffectKey,
+        projectionOutputHash,
+      ],
+    );
+    assert(
+      firstProjectionEffectRows[0]?.status === "pending" &&
+        firstProjectionEffectRows[0]?.effect_kind === "advisory_projection" &&
+        firstProjectionEffectRows[0]?.target_kind === "agent_work_step" &&
+        firstProjectionEffectRows[0]?.target_id === projectionStepId,
+      "Projection effect record RPC did not persist the fixed advisory projection effect contract",
+    );
+
+    await client.query(
+      `
+        update public.agent_work_steps
+        set lease_expires_at = now() - interval '1 second'
+        where id = $1::uuid
+      `,
+      [projectionStepId],
+    );
+    await client.query("select * from public.requeue_expired_agent_work_leases(now(), 10)");
+
+    const { rows: secondProjectionClaimRows } = await client.query(
+      "select * from public.claim_queued_agent_work_step($1::uuid, $2::uuid, 'projection-worker', 60)",
+      [projectionWorkItemId, projectionStepId],
+    );
+    const secondProjectionClaim = secondProjectionClaimRows[0];
+    assert(
+      secondProjectionClaim?.attempt_id && secondProjectionClaim.attempt_id !== firstProjectionClaim.attempt_id,
+      "Projection re-claim did not issue a fresh running attempt",
+    );
+
+    const { rows: secondProjectionEffectRows } = await client.query(
+      `
+        select *
+        from public.record_agent_work_advisory_projection_effect(
+          $1::uuid, $2::uuid, $3::text, $4::bigint, $5::text, $6::text
+        )
+      `,
+      [
+        projectionStepId,
+        secondProjectionClaim.attempt_id,
+        "projection-worker",
+        secondProjectionClaim.state_version,
+        projectionEffectKey,
+        projectionOutputHash,
+      ],
+    );
+    assert(
+      secondProjectionEffectRows[0]?.id === firstProjectionEffectRows[0]?.id,
+      "Projection duplicate delivery should reconcile to one effect row",
+    );
+
+    const { rows: projectionReadRows } = await client.query(
+      "select * from public.read_agent_work_advisory_projection_effect($1::uuid, $2::text)",
+      [projectionStepId, projectionEffectKey],
+    );
+    assert(
+      projectionReadRows[0]?.status === "pending" &&
+        projectionReadRows[0]?.step_status === "running" &&
+        projectionReadRows[0]?.payload_hash === projectionOutputHash,
+      "Projection read RPC did not expose the authoritative pending effect postcondition",
+    );
+
+    await expectFailureInTransaction(
+      client,
+      "projection finalization after authoritative domain drift",
+      async () => {
+        await client.query(
+          "update public.assessment_documents set updated_at = updated_at + interval '1 second' where id = $1::uuid",
+          [FIXTURES.docAssigned],
+        );
+        await client.query(
+          `
+            select *
+            from public.finalize_agent_work_advisory_projection_effect(
+              $1::uuid, $2::uuid, $3::text, $4::bigint, $5::text, $6::text
+            )
+          `,
+          [
+            projectionStepId,
+            secondProjectionClaim.attempt_id,
+            "projection-worker",
+            secondProjectionClaim.state_version,
+            projectionEffectKey,
+            projectionOutputHash,
+          ],
+        );
+      },
+      /authoritative domain hash mismatch/i,
+    );
+
+    const { rows: finalizedProjectionRows } = await client.query(
+      `
+        select *
+        from public.finalize_agent_work_advisory_projection_effect(
+          $1::uuid, $2::uuid, $3::text, $4::bigint, $5::text, $6::text
+        )
+      `,
+      [
+        projectionStepId,
+        secondProjectionClaim.attempt_id,
+        "projection-worker",
+        secondProjectionClaim.state_version,
+        projectionEffectKey,
+        projectionOutputHash,
+      ],
+    );
+    assert(
+      finalizedProjectionRows[0]?.status === "completed",
+      "Projection finalize RPC did not atomically complete the running step",
+    );
+
+    const { rows: finalizedProjectionEffectRows } = await client.query(
+      "select * from public.read_agent_work_advisory_projection_effect($1::uuid, $2::text)",
+      [projectionStepId, projectionEffectKey],
+    );
+    assert(
+      finalizedProjectionEffectRows[0]?.status === "verified" &&
+        finalizedProjectionEffectRows[0]?.step_status === "completed" &&
+        finalizedProjectionEffectRows[0]?.attempt_id === secondProjectionClaim.attempt_id,
+      "Projection finalize/read contract did not preserve the verified effect row and authoritative completion state",
+    );
+
+    const { rows: projectionEffectCountRows } = await client.query(
+      `
+        select count(*)::integer as effect_count
+        from public.agent_work_effects
+        where organization_id = $1::uuid
+          and unique_effect_key = $2::text
+      `,
+      [FIXTURES.orgA, projectionEffectKey],
+    );
+    assert(
+      projectionEffectCountRows[0]?.effect_count === 1,
+      "Projection duplicate delivery created more than one effect row",
+    );
+
+    const verifiedProjectionWorkItemId = randomUUID();
+    const verifiedProjectionStepId = randomUUID();
+
+    await client.query(
+      `
+        insert into public.agent_work_items (
+          id, organization_id, client_id, workflow_key, workflow_version,
+          objective, status, risk, completion_criteria, dedupe_key
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid,
+          'assessment.iehp.prepare_for_clinical_review', 1,
+          'Synthetic verified projection contract work item.', 'queued', 'low',
+          '{"terminal_state":"needs_review"}'::jsonb, $4::text
+        )
+      `,
+      [verifiedProjectionWorkItemId, FIXTURES.orgA, FIXTURES.clientUnassigned, `projection-verified-contract-${RUN_TOKEN}`],
+    );
+    await client.query(
+      `
+        insert into public.agent_work_assessment_links (
+          work_item_id, organization_id, client_id, assessment_document_id,
+          workflow_key, workflow_version
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+          'assessment.iehp.prepare_for_clinical_review', 1
+        )
+      `,
+      [verifiedProjectionWorkItemId, FIXTURES.orgA, FIXTURES.clientUnassigned, FIXTURES.docUnassigned],
+    );
+    await client.query(
+      `
+        insert into public.agent_work_steps (
+          id, work_item_id, organization_id, client_id, step_key, ordinal,
+          execution_mode, status, risk, completion_criteria, input_hash
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'project_verified_advisory_effect', 30,
+          'deterministic', 'ready', 'low', '{}'::jsonb, $5::text
+        )
+      `,
+      [verifiedProjectionStepId, verifiedProjectionWorkItemId, FIXTURES.orgA, FIXTURES.clientUnassigned, HASH_B],
+    );
+
+    const { rows: verifiedProjectionDescriptorRows } = await client.query(
+      "select * from public.read_agent_work_advisory_projection_descriptor($1::uuid)",
+      [verifiedProjectionStepId],
+    );
+    const verifiedProjectionEffectKey = verifiedProjectionDescriptorRows[0]?.effect_key;
+    const verifiedProjectionOutputHash = verifiedProjectionDescriptorRows[0]?.output_hash;
+    assert(
+      typeof verifiedProjectionEffectKey === "string" &&
+        /^[a-f0-9]{64}$/.test(verifiedProjectionOutputHash ?? ""),
+      "Verified projection descriptor did not derive a sanitized authoritative hash",
+    );
+
+    const { rows: verifiedProjectionClaimRows } = await client.query(
+      "select * from public.claim_queued_agent_work_step($1::uuid, $2::uuid, 'projection-worker', 60)",
+      [verifiedProjectionWorkItemId, verifiedProjectionStepId],
+    );
+    const verifiedProjectionClaim = verifiedProjectionClaimRows[0];
+    assert(verifiedProjectionClaim?.attempt_id, "Verified projection claim did not return an attempt id");
+
+    const { rows: verifiedProjectionEffectRows } = await client.query(
+      `
+        select *
+        from public.record_agent_work_advisory_projection_effect(
+          $1::uuid, $2::uuid, $3::text, $4::bigint, $5::text, $6::text
+        )
+      `,
+      [
+        verifiedProjectionStepId,
+        verifiedProjectionClaim.attempt_id,
+        "projection-worker",
+        verifiedProjectionClaim.state_version,
+        verifiedProjectionEffectKey,
+        verifiedProjectionOutputHash,
+      ],
+    );
+    await client.query(
+      `
+        update public.agent_work_effects
+        set status = 'verified',
+            verified_at = now()
+        where id = $1::uuid
+      `,
+      [verifiedProjectionEffectRows[0]?.id],
+    );
+
+    const { rows: verifiedFinalizeRows } = await client.query(
+      `
+        select *
+        from public.finalize_agent_work_advisory_projection_effect(
+          $1::uuid, $2::uuid, $3::text, $4::bigint, $5::text, $6::text
+        )
+      `,
+      [
+        verifiedProjectionStepId,
+        verifiedProjectionClaim.attempt_id,
+        "projection-worker",
+        verifiedProjectionClaim.state_version,
+        verifiedProjectionEffectKey,
+        verifiedProjectionOutputHash,
+      ],
+    );
+    assert(
+      verifiedFinalizeRows[0]?.status === "completed",
+      "Projection finalize RPC did not reconcile an already verified matching effect",
+    );
+  });
 };
 
 const createWorkItems = async (client) => {
@@ -2099,6 +2845,7 @@ const main = async () => {
     await assertFunctionContracts(client);
     await assertTraceColumns(client);
     await seedFixtures(client);
+    await assertQueueAndSweeperContract(client);
 
     await assertManagePredicateParity(client);
 

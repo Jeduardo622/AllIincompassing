@@ -142,7 +142,14 @@ export function authorizeWorkAction(
     input.runtimeMode === "advisory" &&
     input.action.action !== "record_projection"
   ) {
-    return deny("advisory_mode_projection_only", input.runtimeMode);
+    const advisoryActionAllowed = input.action.action === "claim_step" ||
+      input.action.action === "transition_step";
+    if (
+      !advisoryActionAllowed ||
+      !actionDefinition.allowedRuntimeModes.includes("advisory")
+    ) {
+      return deny("advisory_mode_projection_only", input.runtimeMode);
+    }
   }
   if (!actionDefinition.allowedRuntimeModes.includes(input.runtimeMode)) {
     return deny("runtime_mode_not_permitted", input.runtimeMode);

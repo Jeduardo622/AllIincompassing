@@ -1119,6 +1119,56 @@ begin
     raise exception 'Metadata URL values are not allowed';
   end if;
 
+  if p_sanitized_metadata ? 'worker_id'
+    and (
+      jsonb_typeof(p_sanitized_metadata -> 'worker_id') <> 'string'
+      or (p_sanitized_metadata ->> 'worker_id') !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+    ) then
+    raise exception 'Invalid metadata worker_id';
+  end if;
+
+  if p_sanitized_metadata ? 'attempt_id'
+    and (
+      jsonb_typeof(p_sanitized_metadata -> 'attempt_id') <> 'string'
+      or (p_sanitized_metadata ->> 'attempt_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    ) then
+    raise exception 'Invalid metadata attempt_id';
+  end if;
+
+  if p_sanitized_metadata ? 'result_code'
+    and (
+      jsonb_typeof(p_sanitized_metadata -> 'result_code') <> 'string'
+      or (p_sanitized_metadata ->> 'result_code') !~ '^[a-z0-9][a-z0-9._:-]{0,63}$'
+    ) then
+    raise exception 'Invalid metadata result_code';
+  end if;
+
+  if p_sanitized_metadata ? 'evidence_hash'
+    and (
+      jsonb_typeof(p_sanitized_metadata -> 'evidence_hash') <> 'string'
+      or (p_sanitized_metadata ->> 'evidence_hash') !~ '^[0-9a-f]{64}$'
+    ) then
+    raise exception 'Invalid metadata evidence_hash';
+  end if;
+
+  if p_sanitized_metadata ? 'duration_ms'
+    and (
+      jsonb_typeof(p_sanitized_metadata -> 'duration_ms') <> 'number'
+      or (p_sanitized_metadata ->> 'duration_ms') !~ '^(0|[1-9][0-9]*)$'
+      or (p_sanitized_metadata ->> 'duration_ms')::numeric > 86400000
+    ) then
+    raise exception 'Invalid metadata duration_ms';
+  end if;
+
+  if p_sanitized_metadata ? 'retry_count'
+    and (
+      jsonb_typeof(p_sanitized_metadata -> 'retry_count') <> 'number'
+      or (p_sanitized_metadata ->> 'retry_count') !~ '^(0|[1-9][0-9]*)$'
+      or (p_sanitized_metadata ->> 'retry_count')::numeric > 100
+    ) then
+    raise exception 'Invalid metadata retry_count';
+  end if;
+
   select *
   into v_step
   from public.agent_work_steps
@@ -1131,6 +1181,10 @@ begin
 
   if v_step.state_version <> p_expected_state_version then
     raise exception 'Stale state version';
+  end if;
+
+  if v_step.execution_mode = 'human' then
+    raise exception 'Generic human step transitions are not allowed';
   end if;
 
   if p_output_hash is not null and p_output_hash !~ '^[0-9a-f]{64}$' then
@@ -1564,16 +1618,27 @@ grant select on public.agent_work_attempts to authenticated;
 grant select on public.agent_work_effects to authenticated;
 grant select on public.agent_work_events to authenticated;
 
-grant all on public.agent_work_items to service_role;
-grant all on public.agent_work_item_dependencies to service_role;
-grant all on public.agent_work_assessment_links to service_role;
-grant all on public.agent_work_steps to service_role;
-grant all on public.agent_work_step_dependencies to service_role;
-grant all on public.agent_work_evidence to service_role;
-grant all on public.agent_work_approvals to service_role;
-grant all on public.agent_work_attempts to service_role;
-grant all on public.agent_work_effects to service_role;
-grant all on public.agent_work_events to service_role;
+revoke all on public.agent_work_items from service_role;
+revoke all on public.agent_work_item_dependencies from service_role;
+revoke all on public.agent_work_assessment_links from service_role;
+revoke all on public.agent_work_steps from service_role;
+revoke all on public.agent_work_step_dependencies from service_role;
+revoke all on public.agent_work_evidence from service_role;
+revoke all on public.agent_work_approvals from service_role;
+revoke all on public.agent_work_attempts from service_role;
+revoke all on public.agent_work_effects from service_role;
+revoke all on public.agent_work_events from service_role;
+
+grant select on public.agent_work_items to service_role;
+grant select on public.agent_work_item_dependencies to service_role;
+grant select on public.agent_work_assessment_links to service_role;
+grant select on public.agent_work_steps to service_role;
+grant select on public.agent_work_step_dependencies to service_role;
+grant select on public.agent_work_evidence to service_role;
+grant select on public.agent_work_approvals to service_role;
+grant select on public.agent_work_attempts to service_role;
+grant select on public.agent_work_effects to service_role;
+grant select on public.agent_work_events to service_role;
 
 drop trigger if exists agent_work_items_set_updated_at on public.agent_work_items;
 create trigger agent_work_items_set_updated_at

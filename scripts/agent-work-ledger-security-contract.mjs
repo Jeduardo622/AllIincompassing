@@ -115,7 +115,7 @@ const toPrivilegeList = (value) => {
     return value;
   }
   if (typeof value === "string" && value.length > 0) {
-    return value.split(",");
+    return value.replace(/^\{|\}$/g, "").split(",").filter(Boolean);
   }
   return [];
 };
@@ -138,6 +138,48 @@ const withActor = async (client, dbRole, claimRole, userId, callback, { commit =
   await client.query("begin");
 
   try {
+    await client.query(`set local role ${dbRole}`);
+    await client.query("select set_config('request.jwt.claim.role', $1, true)", [claimRole]);
+    await client.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify(userId ? { role: claimRole, sub: userId } : { role: claimRole }),
+    ]);
+    await client.query("select set_config('request.jwt.claim.sub', $1, true)", [userId ?? ""]);
+
+    const result = await callback();
+    await client.query(commit ? "commit" : "rollback");
+    return result;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  }
+};
+
+const withOwnerTransaction = async (client, callback, { commit = false } = {}) => {
+  await client.query("begin");
+
+  try {
+    const result = await callback();
+    await client.query(commit ? "commit" : "rollback");
+    return result;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  }
+};
+
+const withOwnerSetupAndActor = async (
+  client,
+  setup,
+  dbRole,
+  claimRole,
+  userId,
+  callback,
+  { commit = false } = {},
+) => {
+  await client.query("begin");
+
+  try {
+    await setup();
     await client.query(`set local role ${dbRole}`);
     await client.query("select set_config('request.jwt.claim.role', $1, true)", [claimRole]);
     await client.query("select set_config('request.jwt.claims', $1, true)", [
@@ -301,7 +343,7 @@ const assertTableGrants = async (client) => {
       from information_schema.role_table_grants
       where table_schema = 'public'
         and table_name = any($1::text[])
-        and grantee in ('PUBLIC', 'anon', 'authenticated')
+        and grantee in ('PUBLIC', 'anon', 'authenticated', 'service_role')
       group by table_name, grantee
       order by table_name, grantee
     `,
@@ -318,6 +360,23 @@ const assertTableGrants = async (client) => {
     unsafeGrants.length === 0,
     `Broad ledger table grants detected: ${unsafeGrants
       .map((row) => `${row.grantee}:${row.table_name}:${toPrivilegeList(row.privileges).join(",")}`)
+      .join("; ")}`,
+  );
+
+  const serviceRoleGrants = new Map(
+    rows
+      .filter((row) => row.grantee === "service_role")
+      .map((row) => [row.table_name, toPrivilegeList(row.privileges)]),
+  );
+  const invalidServiceRoleGrants = INTERNAL_MUTATION_TABLES.filter((tableName) => {
+    const privileges = serviceRoleGrants.get(tableName) ?? [];
+    return privileges.length !== 1 || privileges[0] !== "SELECT";
+  });
+
+  assert(
+    invalidServiceRoleGrants.length === 0,
+    `service_role must have SELECT only on ledger tables: ${invalidServiceRoleGrants
+      .map((tableName) => `${tableName}:${(serviceRoleGrants.get(tableName) ?? []).join(",") || "none"}`)
       .join("; ")}`,
   );
 };
@@ -475,6 +534,104 @@ const assertDirectMutationDenials = async (client, assignedWorkItemId) => {
     /(permission denied|new row violates row-level security policy)/i,
   );
 
+  const { rows: stepRows } = await client.query(
+    "select id from public.agent_work_steps where work_item_id = $1::uuid order by ordinal limit 1",
+    [assignedWorkItemId],
+  );
+  const stepId = stepRows[0]?.id;
+  assert(stepId, "Expected a seeded step for service-role mutation denials");
+
+  await expectFailure(
+    "service_role approval synthesis",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          `
+            insert into public.agent_work_approvals (
+              work_item_id,
+              step_id,
+              organization_id,
+              client_id,
+              required_role,
+              status,
+              input_hash,
+              evidence_hash
+            ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'bcba', 'approved', $5::text, $6::text)
+          `,
+          [assignedWorkItemId, stepId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A, HASH_B],
+        );
+      }),
+    /permission denied/i,
+  );
+
+  await expectFailure(
+    "service_role evidence synthesis",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query(
+          `
+            insert into public.agent_work_evidence (
+              work_item_id,
+              step_id,
+              organization_id,
+              client_id,
+              source_kind,
+              source_id,
+              sha256
+            ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'work_step', $2::uuid, $5::text)
+          `,
+          [assignedWorkItemId, stepId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A],
+        );
+      }),
+    /permission denied/i,
+  );
+
+  await expectFailure(
+    "service_role direct work-item update",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query("update public.agent_work_items set objective = 'illegal update' where id = $1::uuid", [
+          assignedWorkItemId,
+        ]);
+      }),
+    /permission denied/i,
+  );
+
+  const evidenceId = randomUUID();
+  await client.query(
+    `
+      insert into public.agent_work_evidence (
+        id,
+        work_item_id,
+        step_id,
+        organization_id,
+        client_id,
+        source_kind,
+        source_id,
+        sha256
+      ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'work_step', $3::uuid, $6::text)
+    `,
+    [evidenceId, assignedWorkItemId, stepId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A],
+  );
+
+  await expectFailure(
+    "service_role direct evidence delete",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query("delete from public.agent_work_evidence where id = $1::uuid", [evidenceId]);
+      }),
+    /permission denied/i,
+  );
+
+  await expectFailure(
+    "service_role direct effects truncate",
+    () =>
+      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query("truncate table public.agent_work_effects");
+      }),
+    /permission denied/i,
+  );
+
   const { rows: eventRows } = await client.query(
     `
       select id
@@ -501,13 +658,38 @@ const assertDirectMutationDenials = async (client, assignedWorkItemId) => {
           [eventId],
         );
       }),
-    /append-only/i,
+    /(permission denied|append-only)/i,
   );
 
   await expectFailure(
     "service_role delete of agent_work_events",
     () =>
       withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+        await client.query("delete from public.agent_work_events where id = $1::uuid", [eventId]);
+      }),
+    /(permission denied|append-only)/i,
+  );
+
+  await expectFailure(
+    "owner update of append-only agent_work_events",
+    () =>
+      withOwnerTransaction(client, async () => {
+        await client.query(
+          `
+            update public.agent_work_events
+            set sanitized_metadata = sanitized_metadata || '{"illegal":true}'::jsonb
+            where id = $1::uuid
+          `,
+          [eventId],
+        );
+      }),
+    /append-only/i,
+  );
+
+  await expectFailure(
+    "owner delete of append-only agent_work_events",
+    () =>
+      withOwnerTransaction(client, async () => {
         await client.query("delete from public.agent_work_events where id = $1::uuid", [eventId]);
       }),
     /append-only/i,
@@ -574,7 +756,7 @@ const assertDependencyTenantScope = async (client, assignedWorkItemId, unassigne
   await expectFailure(
     "cross-client work-item dependency",
     () =>
-      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      withOwnerTransaction(client, async () => {
         await client.query(
           `
             insert into public.agent_work_item_dependencies (
@@ -592,7 +774,7 @@ const assertDependencyTenantScope = async (client, assignedWorkItemId, unassigne
   await expectFailure(
     "null-client work-item dependency mismatch",
     () =>
-      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      withOwnerTransaction(client, async () => {
         const { rows } = await client.query(
           `
             insert into public.agent_work_items (
@@ -626,7 +808,7 @@ const assertDependencyTenantScope = async (client, assignedWorkItemId, unassigne
   await expectFailure(
     "cross-client parent work item",
     () =>
-      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      withOwnerTransaction(client, async () => {
         await client.query(
           "update public.agent_work_items set parent_work_item_id = $1::uuid where id = $2::uuid",
           [assignedWorkItemId, unassignedWorkItemId],
@@ -638,7 +820,7 @@ const assertDependencyTenantScope = async (client, assignedWorkItemId, unassigne
   await expectFailure(
     "cross-org parent work item",
     () =>
-      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      withOwnerTransaction(client, async () => {
         const { rows } = await client.query(
           `
             insert into public.agent_work_items (
@@ -666,7 +848,7 @@ const assertDependencyTenantScope = async (client, assignedWorkItemId, unassigne
   await expectFailure(
     "dependency endpoint client mutation",
     () =>
-      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      withOwnerTransaction(client, async () => {
         const { rows } = await client.query(
           `
             insert into public.agent_work_items (
@@ -863,53 +1045,6 @@ const assertApprovalRoleEnforcement = async (client, assignedWorkItemId) => {
 
 const assertClaimEligibility = async (client) => {
   for (const terminalStatus of ["completed", "failed", "cancelled"]) {
-    await expectFailure(
-      `${terminalStatus} work-item claim`,
-      () =>
-        withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
-          const { rows } = await client.query(
-            `
-              insert into public.agent_work_items (
-                organization_id,
-                client_id,
-                workflow_key,
-                workflow_version,
-                objective,
-                status,
-                dedupe_key
-              ) values ($1::uuid, $2::uuid, 'contract.claim.terminal', 1, 'Synthetic terminal claim fixture.', $3::public.agent_work_item_status, $4::text)
-              returning id
-            `,
-            [FIXTURES.orgA, FIXTURES.clientAssigned, terminalStatus, `terminal-${terminalStatus}-${RUN_TOKEN}`],
-          );
-          const workItemId = rows[0].id;
-
-          await client.query(
-            `
-              insert into public.agent_work_steps (
-                work_item_id,
-                organization_id,
-                client_id,
-                step_key,
-                ordinal,
-                execution_mode,
-                status
-              ) values ($1::uuid, $2::uuid, $3::uuid, 'terminal_ready', 10, 'deterministic', 'ready')
-            `,
-            [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned],
-          );
-
-          await client.query("select * from public.claim_agent_work_step($1::uuid, $2::text, $3::integer)", [
-            workItemId,
-            "worker-terminal",
-            120,
-          ]);
-        }),
-      /terminal work item/i,
-    );
-  }
-
-  const humanClaimCount = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
     const { rows } = await client.query(
       `
         insert into public.agent_work_items (
@@ -920,10 +1055,10 @@ const assertClaimEligibility = async (client) => {
           objective,
           status,
           dedupe_key
-        ) values ($1::uuid, $2::uuid, 'contract.claim.human', 1, 'Synthetic human-step claim fixture.', 'queued', $3::text)
+        ) values ($1::uuid, $2::uuid, 'contract.claim.terminal', 1, 'Synthetic terminal claim fixture.', $3::public.agent_work_item_status, $4::text)
         returning id
       `,
-      [FIXTURES.orgA, FIXTURES.clientAssigned, `human-${RUN_TOKEN}`],
+      [FIXTURES.orgA, FIXTURES.clientAssigned, terminalStatus, `terminal-${terminalStatus}-${RUN_TOKEN}`],
     );
     const workItemId = rows[0].id;
 
@@ -936,21 +1071,143 @@ const assertClaimEligibility = async (client) => {
           step_key,
           ordinal,
           execution_mode,
-          status,
-          required_role
-        ) values ($1::uuid, $2::uuid, $3::uuid, 'human_ready', 10, 'human', 'ready', 'bcba')
+          status
+        ) values ($1::uuid, $2::uuid, $3::uuid, 'terminal_ready', 10, 'deterministic', 'ready')
       `,
       [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned],
     );
 
+    await expectFailure(
+      `${terminalStatus} work-item claim`,
+      () =>
+        withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+          await client.query("select * from public.claim_agent_work_step($1::uuid, $2::text, $3::integer)", [
+            workItemId,
+            "worker-terminal",
+            120,
+          ]);
+        }),
+      /terminal work item/i,
+    );
+  }
+
+  const { rows: humanItemRows } = await client.query(
+    `
+      insert into public.agent_work_items (
+        organization_id,
+        client_id,
+        workflow_key,
+        workflow_version,
+        objective,
+        status,
+        dedupe_key
+      ) values ($1::uuid, $2::uuid, 'contract.claim.human', 1, 'Synthetic human-step claim fixture.', 'queued', $3::text)
+      returning id
+    `,
+    [FIXTURES.orgA, FIXTURES.clientAssigned, `human-${RUN_TOKEN}`],
+  );
+  const humanWorkItemId = humanItemRows[0].id;
+
+  await client.query(
+    `
+      insert into public.agent_work_steps (
+        work_item_id,
+        organization_id,
+        client_id,
+        step_key,
+        ordinal,
+        execution_mode,
+        status,
+        required_role
+      ) values ($1::uuid, $2::uuid, $3::uuid, 'human_ready', 10, 'human', 'ready', 'bcba')
+    `,
+    [humanWorkItemId, FIXTURES.orgA, FIXTURES.clientAssigned],
+  );
+
+  const humanClaimCount = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
     const { rows: claimRows } = await client.query(
       "select * from public.claim_agent_work_step($1::uuid, $2::text, $3::integer)",
-      [workItemId, "worker-human", 120],
+      [humanWorkItemId, "worker-human", 120],
     );
     return claimRows.length;
   });
 
   assert(humanClaimCount === 0, `Human execution steps must be unclaimable, found ${humanClaimCount} claimed row(s)`);
+};
+
+const assertHumanTransitionDenials = async (client) => {
+  const transitions = [
+    ["pending", "ready"],
+    ["pending", "cancelled"],
+    ["pending", "skipped"],
+    ["ready", "running"],
+    ["ready", "cancelled"],
+    ["ready", "skipped"],
+    ["running", "waiting"],
+    ["running", "needs_approval"],
+    ["running", "completed"],
+    ["running", "failed"],
+    ["running", "ready"],
+    ["running", "cancelled"],
+    ["waiting", "ready"],
+    ["waiting", "failed"],
+    ["waiting", "cancelled"],
+    ["needs_approval", "ready"],
+    ["needs_approval", "completed"],
+    ["needs_approval", "failed"],
+    ["failed", "ready"],
+    ["failed", "cancelled"],
+  ];
+
+  for (const [fromStatus, toStatus] of transitions) {
+    const workItemId = randomUUID();
+    const stepId = randomUUID();
+
+    await client.query(
+      `
+        insert into public.agent_work_items (
+          id,
+          organization_id,
+          client_id,
+          workflow_key,
+          workflow_version,
+          objective,
+          status,
+          dedupe_key
+        ) values ($1::uuid, $2::uuid, $3::uuid, 'contract.human.transition', 1, 'Synthetic human transition fixture.', 'waiting', $4::text)
+      `,
+      [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `human-${fromStatus}-${toStatus}-${RUN_TOKEN}`],
+    );
+
+    await client.query(
+      `
+        insert into public.agent_work_steps (
+          id,
+          work_item_id,
+          organization_id,
+          client_id,
+          step_key,
+          ordinal,
+          execution_mode,
+          status,
+          required_role
+        ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, 10, 'human', $6::public.agent_work_step_status, 'bcba')
+      `,
+      [stepId, workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `human_${fromStatus}_${toStatus}`, fromStatus],
+    );
+
+    await expectFailure(
+      `human ${fromStatus} -> ${toStatus} generic transition`,
+      () =>
+        withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+          await client.query(
+            "select public.transition_agent_work_step($1::uuid, 0::bigint, $2::public.agent_work_step_status, $3::text, $4::text, $5::jsonb)",
+            [stepId, toStatus, `human-${fromStatus}-${toStatus}`, null, "{}"],
+          );
+        }),
+      /generic human step transitions are not allowed/i,
+    );
+  }
 };
 
 const assertAttemptSettlement = async (client) => {
@@ -964,39 +1221,39 @@ const assertAttemptSettlement = async (client) => {
   ];
 
   for (const { toStatus, expectedAttemptStatus } of settlementCases) {
+    const { rows: itemRows } = await client.query(
+      `
+        insert into public.agent_work_items (
+          organization_id,
+          client_id,
+          workflow_key,
+          workflow_version,
+          objective,
+          status,
+          dedupe_key
+        ) values ($1::uuid, $2::uuid, 'contract.attempt.settlement', 1, 'Synthetic attempt settlement fixture.', 'queued', $3::text)
+        returning id
+      `,
+      [FIXTURES.orgA, FIXTURES.clientAssigned, `settlement-${toStatus}-${RUN_TOKEN}`],
+    );
+    const workItemId = itemRows[0].id;
+
+    await client.query(
+      `
+        insert into public.agent_work_steps (
+          work_item_id,
+          organization_id,
+          client_id,
+          step_key,
+          ordinal,
+          execution_mode,
+          status
+        ) values ($1::uuid, $2::uuid, $3::uuid, $4::text, 10, 'deterministic', 'ready')
+      `,
+      [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `settle_${toStatus}`],
+    );
+
     await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
-      const { rows: itemRows } = await client.query(
-        `
-          insert into public.agent_work_items (
-            organization_id,
-            client_id,
-            workflow_key,
-            workflow_version,
-            objective,
-            status,
-            dedupe_key
-          ) values ($1::uuid, $2::uuid, 'contract.attempt.settlement', 1, 'Synthetic attempt settlement fixture.', 'queued', $3::text)
-          returning id
-        `,
-        [FIXTURES.orgA, FIXTURES.clientAssigned, `settlement-${toStatus}-${RUN_TOKEN}`],
-      );
-      const workItemId = itemRows[0].id;
-
-      await client.query(
-        `
-          insert into public.agent_work_steps (
-            work_item_id,
-            organization_id,
-            client_id,
-            step_key,
-            ordinal,
-            execution_mode,
-            status
-          ) values ($1::uuid, $2::uuid, $3::uuid, $4::text, 10, 'deterministic', 'ready')
-        `,
-        [workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `settle_${toStatus}`],
-      );
-
       const workerId = `worker-${toStatus.replace("_", "-")}`;
       const { rows: claimRows } = await client.query(
         "select * from public.claim_agent_work_step($1::uuid, $2::text, $3::integer)",
@@ -1077,7 +1334,7 @@ const assertApprovalTransitionGate = async (client) => {
         status,
         required_role,
         input_hash
-      ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'approval_gate', 10, 'human', 'needs_approval', 'bcba', $5::text)
+      ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'approval_gate', 10, 'model_suggested', 'needs_approval', 'bcba', $5::text)
     `,
     [stepId, workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A],
   );
@@ -1098,61 +1355,68 @@ const assertApprovalTransitionGate = async (client) => {
   );
 
   const transitionWithApproval = async (approval) =>
-    withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
-      if (approval) {
-        await client.query(
+    withOwnerSetupAndActor(
+      client,
+      async () => {
+        if (approval) {
+          await client.query(
+            `
+              insert into public.agent_work_approvals (
+                work_item_id,
+                step_id,
+                organization_id,
+                client_id,
+                required_role,
+                status,
+                input_hash,
+                evidence_hash,
+                decided_by,
+                decision_reason_code,
+                decided_at,
+                expires_at
+              ) values (
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                $4::uuid,
+                $5::text,
+                'approved',
+                $6::text,
+                $7::text,
+                $8::uuid,
+                'contract-approved',
+                timezone('utc', now()),
+                $9::timestamptz
+              )
+            `,
+            [
+              workItemId,
+              stepId,
+              FIXTURES.orgA,
+              FIXTURES.clientAssigned,
+              approval.requiredRole,
+              approval.inputHash,
+              approval.evidenceHash,
+              approval.decidedBy,
+              approval.expiresAt,
+            ],
+          );
+        }
+      },
+      "service_role",
+      "service_role",
+      FIXTURES.adminA,
+      async () => {
+        const { rows } = await client.query(
           `
-            insert into public.agent_work_approvals (
-              work_item_id,
-              step_id,
-              organization_id,
-              client_id,
-              required_role,
-              status,
-              input_hash,
-              evidence_hash,
-              decided_by,
-              decision_reason_code,
-              decided_at,
-              expires_at
-            ) values (
-              $1::uuid,
-              $2::uuid,
-              $3::uuid,
-              $4::uuid,
-              $5::text,
-              'approved',
-              $6::text,
-              $7::text,
-              $8::uuid,
-              'contract-approved',
-              timezone('utc', now()),
-              $9::timestamptz
-            )
+            select *
+            from public.transition_agent_work_step($1::uuid, 0::bigint, 'completed'::public.agent_work_step_status, 'approval-complete', $2::text, $3::jsonb)
           `,
-          [
-            workItemId,
-            stepId,
-            FIXTURES.orgA,
-            FIXTURES.clientAssigned,
-            approval.requiredRole,
-            approval.inputHash,
-            approval.evidenceHash,
-            approval.decidedBy,
-            approval.expiresAt,
-          ],
+          [stepId, HASH_A, JSON.stringify({ result_code: "approval-complete" })],
         );
-      }
-
-      const { rows } = await client.query(
-        `
-          select *
-          from public.transition_agent_work_step($1::uuid, 0::bigint, 'completed'::public.agent_work_step_status, 'approval-complete', $2::text, $3::jsonb)
-        `,
-        [stepId, HASH_A, JSON.stringify({ result_code: "approval-complete" })],
-      );
-      return rows[0];
-    });
+        return rows[0];
+      },
+    );
 
   const validApproval = {
     requiredRole: "bcba",
@@ -1189,11 +1453,8 @@ const assertApprovalTransitionGate = async (client) => {
     /matching approved approval/i,
   );
 
-  const approvedStep = await withActor(
+  const approvedStep = await withOwnerSetupAndActor(
     client,
-    "service_role",
-    "service_role",
-    FIXTURES.adminA,
     async () => {
       await client.query(
         `
@@ -1214,7 +1475,11 @@ const assertApprovalTransitionGate = async (client) => {
         `,
         [workItemId, stepId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_A, HASH_B, FIXTURES.bcbaA],
       );
-
+    },
+    "service_role",
+    "service_role",
+    FIXTURES.adminA,
+    async () => {
       const { rows } = await client.query(
         `
           select *
@@ -1334,6 +1599,83 @@ const assertClaimAndTransitionContract = async (client, assignedWorkItemId) => {
     /metadata URL.*not allowed/i,
   );
 
+  const invalidTypedMetadata = [
+    {
+      label: "short narrative result_code",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, result_code: "Jane improved" },
+      matcher: /invalid metadata result_code/i,
+    },
+    {
+      label: "short PHI-like evidence_hash",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, evidence_hash: "Jane" },
+      matcher: /invalid metadata evidence_hash/i,
+    },
+    {
+      label: "uppercase evidence_hash",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, evidence_hash: "A".repeat(64) },
+      matcher: /invalid metadata evidence_hash/i,
+    },
+    {
+      label: "narrative attempt_id",
+      metadata: { worker_id: "worker-alpha", attempt_id: "client Jane" },
+      matcher: /invalid metadata attempt_id/i,
+    },
+    {
+      label: "string duration_ms",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, duration_ms: "1200" },
+      matcher: /invalid metadata duration_ms/i,
+    },
+    {
+      label: "negative duration_ms",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, duration_ms: -1 },
+      matcher: /invalid metadata duration_ms/i,
+    },
+    {
+      label: "fractional duration_ms",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, duration_ms: 1.5 },
+      matcher: /invalid metadata duration_ms/i,
+    },
+    {
+      label: "out-of-range duration_ms",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, duration_ms: 86_400_001 },
+      matcher: /invalid metadata duration_ms/i,
+    },
+    {
+      label: "string retry_count",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, retry_count: "1" },
+      matcher: /invalid metadata retry_count/i,
+    },
+    {
+      label: "negative retry_count",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, retry_count: -1 },
+      matcher: /invalid metadata retry_count/i,
+    },
+    {
+      label: "fractional retry_count",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, retry_count: 1.5 },
+      matcher: /invalid metadata retry_count/i,
+    },
+    {
+      label: "out-of-range retry_count",
+      metadata: { worker_id: "worker-alpha", attempt_id: firstAttemptId, retry_count: 101 },
+      matcher: /invalid metadata retry_count/i,
+    },
+  ];
+
+  for (const { label, metadata, matcher } of invalidTypedMetadata) {
+    await expectFailure(
+      label,
+      () =>
+        withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+          await client.query(
+            "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+            [firstClaim.id, firstClaim.state_version, "completed", "metadata-type", HASH_A, JSON.stringify(metadata)],
+          );
+        }),
+      matcher,
+    );
+  }
+
   await expectFailure(
     "free-text transition reason",
     () =>
@@ -1394,27 +1736,35 @@ const assertClaimAndTransitionContract = async (client, assignedWorkItemId) => {
   await expectFailure(
     "expired lease transition",
     () =>
-      withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
-        await client.query(
-          `
-            update public.agent_work_steps
-            set lease_expires_at = timezone('utc', now()) - interval '1 second'
-            where id = $1::uuid
-          `,
-          [firstClaim.id],
-        );
-        await client.query(
-          "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
-          [
-            firstClaim.id,
-            firstClaim.state_version,
-            "completed",
-            "expired-lease",
-            HASH_A,
-            JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId }),
-          ],
-        );
-      }),
+      withOwnerSetupAndActor(
+        client,
+        async () => {
+          await client.query(
+            `
+              update public.agent_work_steps
+              set lease_expires_at = timezone('utc', now()) - interval '1 second'
+              where id = $1::uuid
+            `,
+            [firstClaim.id],
+          );
+        },
+        "service_role",
+        "service_role",
+        FIXTURES.adminA,
+        async () => {
+          await client.query(
+            "select public.transition_agent_work_step($1::uuid, $2::bigint, $3::public.agent_work_step_status, $4::text, $5::text, $6::jsonb)",
+            [
+              firstClaim.id,
+              firstClaim.state_version,
+              "completed",
+              "expired-lease",
+              HASH_A,
+              JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId }),
+            ],
+          );
+        },
+      ),
     /lease.*expired/i,
   );
 
@@ -1467,7 +1817,14 @@ const assertClaimAndTransitionContract = async (client, assignedWorkItemId) => {
         "completed",
         "done",
         HASH_A,
-        JSON.stringify({ worker_id: "worker-alpha", attempt_id: firstAttemptId, result_code: "complete" }),
+        JSON.stringify({
+          worker_id: "worker-alpha",
+          attempt_id: firstAttemptId,
+          result_code: "complete",
+          evidence_hash: HASH_A,
+          duration_ms: 1200,
+          retry_count: 0,
+        }),
       ],
     );
     return rows[0];
@@ -1521,6 +1878,7 @@ const main = async () => {
     await assertParentEndpointReadPolicy(client, assignedWorkItemId, unassignedWorkItemId);
     await assertApprovalRoleEnforcement(client, assignedWorkItemId);
     await assertClaimEligibility(client);
+    await assertHumanTransitionDenials(client);
     await assertAttemptSettlement(client);
     await assertApprovalTransitionGate(client);
     await assertClaimAndTransitionContract(client, assignedWorkItemId);

@@ -230,3 +230,107 @@ Connecting to db 5432
 - No `.env*`, hosted Supabase, project ref, GitHub, Netlify, customer data, PHI, or later-task files were accessed or changed.
 - Local Supabase repeatedly returned a post-restart `502` after successfully rebuilding and applying migrations. Immediate preflight and contract runs passed; this is recorded as a local Docker restart concern, not treated as a schema failure.
 - The normal Husky commit hook was attempted and failed solely on the same owner-waived `ci:check-focused` exception expiries. The focused local commit therefore used the explicitly authorized `--no-verify` bypass; CI inventory was not changed.
+
+## Fix round 2
+
+### Implementation summary
+
+- `transition_agent_work_step` now rejects every generic transition when the locked step has `execution_mode = 'human'`, before lease, approval, or transition-matrix handling. The contract covers all 20 transition pairs currently present in the generic matrix, including `ready -> running`, `ready -> cancelled`, and `ready -> skipped`.
+- All ten ledger tables now revoke every direct `service_role` table privilege and grant `SELECT` only. Existing narrowly declared RPC `EXECUTE` grants remain unchanged, and the contract proves direct approval/evidence synthesis plus representative update/delete/truncate operations fail while create/claim/transition security-definer RPCs still work.
+- Caller-controlled transition metadata now has key-specific validation: `attempt_id` must be a UUID; `evidence_hash` must be lowercase SHA-256; `duration_ms` must be an integer from 0 through 86,400,000; `retry_count` must be an integer from 0 through 100; and `worker_id`/`result_code` must match bounded machine-token patterns. Status and execution-mode values remain closed PostgreSQL enums, and `p_reason_code` remains a bounded machine-code field.
+- Contract fixture construction that requires direct table writes now runs only as the local database owner. Runtime behavior remains exercised as `service_role` through SELECT and RPC calls. The round-1 approval fixture was corrected from `human` to `model_suggested` because generic human transitions are now unconditionally forbidden.
+
+### Exact RED evidence
+
+Each RED run used the local-only wrapper with ambient project refs removed from the child PowerShell process:
+
+```powershell
+$env:PATH='C:\Users\test\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;' + $env:PATH
+Remove-Item Env:SUPABASE_PROJECT_REF -ErrorAction SilentlyContinue
+Remove-Item Env:VITE_SUPABASE_PROJECT_REF -ErrorAction SilentlyContinue
+npm run agent-work:security-contract
+```
+
+Human transition RED:
+
+```text
+Agent work ledger security contract failed.
+human pending -> ready generic transition unexpectedly succeeded
+```
+
+Service-role privilege RED:
+
+```text
+Agent work ledger security contract failed.
+Broad ledger table grants detected: service_role:agent_work_approvals:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}; service_role:agent_work_assessment_links:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}; service_role:agent_work_attempts:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}; service_role:agent_work_effects:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}; service_role:agent_work_events:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}; service_role:agent_work_evidence:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}; service_role:agent_work_item_dependencies:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}; service_role:agent_work_items:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}; service_role:agent_work_step_dependencies:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}; service_role:agent_work_steps:{DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE}
+```
+
+Typed metadata RED:
+
+```text
+Agent work ledger security contract failed.
+short narrative result_code unexpectedly succeeded
+```
+
+### Exact GREEN evidence
+
+The final migration replay completed locally and applied the Task 2 migration:
+
+```powershell
+npm run agent-work:db:reset
+```
+
+```text
+Applying migration 20260801090000_agent_work_ledger_core.sql...
+Seeding data from supabase/seed.sql...
+Restarting containers...
+Finished supabase db reset on branch main.
+```
+
+The full focused contract passed against that fresh local database, including the additional owner-level append-only trigger proof added during self-review:
+
+```powershell
+npm run agent-work:security-contract
+```
+
+```text
+Agent work ledger security contract passed.
+```
+
+### Files changed
+
+- `supabase/migrations/20260801090000_agent_work_ledger_core.sql`
+- `scripts/agent-work-ledger-security-contract.mjs`
+- `.superpowers/sdd/2026-08-01-goal-directed-stateful-agent-work-ledger/task-2-report.md`
+
+`src/lib/generated/database.types.ts` was not regenerated because round 2 changes only function bodies, grants, and contract fixtures; no schema shape, enum, column, return type, or RPC signature changed.
+
+### Verification card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database/RLS/grants/RPC behavior/tenant-isolation contract
+- required focused checks:
+  - `npm run agent-work:security-contract`
+  - `npm run validate:tenant`
+  - `npm run typecheck`
+  - `npm run ci:check-focused`
+- executed checks:
+  - `npm run agent-work:db:reset` -> pass; fresh local migration replay completed
+  - `npm run agent-work:security-contract` -> pass: `Agent work ledger security contract passed.`
+  - `npm run validate:tenant` -> pass: `tenant-safety: all checks passed`
+  - `npm run typecheck` -> pass
+  - `npm run ci:check-focused` -> fail only on the owner-waived, unchanged July 31, 2026 runtime-exception inventory
+- blocked checks: `npm run ci:check-focused` -> unrelated expired entries for assessment-checklist, assessment-template-layout, assessment-documents, assessment-drafts, assessment-plan-pdf, assessment-promote, dashboard, book, and sessions-start; inventory intentionally unchanged
+- result: `pass-with-blocked-checks`
+- residual risk: Task 4 actor/scope validation at the Edge Function repository boundary remains a hard prerequisite before any runner or active mode. The shared static `service_role` credential cannot provide a non-forgeable per-worker identity; Task 2 intentionally retains lease/current-attempt binding without pretending to solve that boundary cryptographically.
+
+### Self-review findings and concerns
+
+- Self-review restored explicit append-only trigger execution as the local database owner after recognizing that the new service-role denial cases now stop at table privileges. Both privilege denial and trigger enforcement are covered.
+- Catalog assertions cover effective direct grants declared for all ten ledger tables; behavior assertions separately prove service-role approval/evidence synthesis and update/delete/truncate attempts fail.
+- The human-transition contract is table-driven from the complete current generic matrix, so every existing generic path is denied for human steps. Later human approval/handoff requires a separately routed function.
+- Metadata tests include short narrative/PHI-like strings in allowed keys, uppercase and malformed hashes, invalid UUID context, wrong numeric types, negative/fractional values, upper-bound violations, and a valid fully typed payload.
+- No `.env*`, hosted Supabase, project ref, GitHub, Netlify, customer data, PHI, production artifact, later-task file, or CI inventory was accessed or changed.
+- Human re-review remains required for this critical migration/grant/RPC change. Linear linkage remains `WIN-271`; no push or PR was performed under the local-only authorization boundary.
+- The normal round-2 Husky commit hook was attempted and failed only at `ci:check-focused` on the same nine owner-waived July 31 expiries listed above. The local commit used the explicitly authorized `--no-verify` bypass; the CI exception inventory remained unchanged.

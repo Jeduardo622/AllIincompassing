@@ -41,6 +41,7 @@ const statusOutput = [
 
 type FailureKind = "nonzero" | "timeout";
 type ResidueKind = "container" | "volume" | "network-attached" | "network-remains";
+type SupabaseResidueKind = "clears-after-retry" | "container" | "volume";
 
 type Invocation = {
   command: string;
@@ -60,6 +61,7 @@ const makeExecutor = ({
   failureInjection,
   preflightResidue,
   residue,
+  supabaseResidue,
 }: {
   failCleanupAudit?: boolean;
   failPreflightComposeDown?: boolean;
@@ -72,6 +74,7 @@ const makeExecutor = ({
   failureInjection?: { id: string; kind: FailureKind };
   preflightResidue?: "container" | "volume";
   residue?: ResidueKind;
+  supabaseResidue?: SupabaseResidueKind;
 } = {}) => {
   const invocations: Invocation[] = [];
   let networkExists = false;
@@ -80,6 +83,8 @@ const makeExecutor = ({
   let composeResidueProofSeen = false;
   let containerProofCount = 0;
   let volumeProofCount = 0;
+  let supabaseResidueActive = Boolean(supabaseResidue);
+  let supabaseStopCount = 0;
   const execute = async (
     command: string,
     args: string[],
@@ -89,6 +94,12 @@ const makeExecutor = ({
     } = {},
   ) => {
     invocations.push({ command, args, env: { ...options.env } });
+    if (command === "supabase" && args[0] === "stop") {
+      supabaseStopCount += 1;
+      if (supabaseResidue === "clears-after-retry" && supabaseStopCount >= 2) {
+        supabaseResidueActive = false;
+      }
+    }
     if (command === "docker-compose" && args.includes("down") && !composeDownSeen) {
       composeDownSeen = true;
       if (failPreflightComposeDown) {
@@ -175,10 +186,20 @@ const makeExecutor = ({
     }
     if (command === "docker" && args[0] === "ps") {
       containerProofCount += 1;
+      const composeResidueQuery = args.includes(
+        "label=com.docker.compose.project=agent-work-ledger-phase2",
+      );
+      const supabaseResidueQuery = args.includes(
+        "label=com.supabase.cli.project=AllIincompassing",
+      );
       return {
         code: 0,
-        stdout: preflightResidue === "container" && containerProofCount === 1 ||
-            residue === "container" && containerProofCount > 1
+        stdout: supabaseResidueQuery && supabaseResidueActive &&
+            supabaseResidue !== "volume"
+          ? "leftover-supabase-container\n"
+          : composeResidueQuery &&
+              (preflightResidue === "container" && containerProofCount === 1 ||
+                residue === "container" && containerProofCount > 1)
           ? "leftover-container\n"
           : "",
         stderr: "",
@@ -186,10 +207,20 @@ const makeExecutor = ({
     }
     if (command === "docker" && args[0] === "volume" && args[1] === "ls") {
       volumeProofCount += 1;
+      const composeResidueQuery = args.includes(
+        "label=com.docker.compose.project=agent-work-ledger-phase2",
+      );
+      const supabaseResidueQuery = args.includes(
+        "label=com.supabase.cli.project=AllIincompassing",
+      );
       return {
         code: 0,
-        stdout: preflightResidue === "volume" && volumeProofCount === 1 ||
-            residue === "volume" && volumeProofCount > 1
+        stdout: supabaseResidueQuery && supabaseResidueActive &&
+            supabaseResidue === "volume"
+          ? "leftover-supabase-volume\n"
+          : composeResidueQuery &&
+              (preflightResidue === "volume" && volumeProofCount === 1 ||
+                residue === "volume" && volumeProofCount > 1)
           ? "leftover-volume\n"
           : "",
         stderr: "",
@@ -227,6 +258,7 @@ const createHarnessFixture = async (options: {
   failureInjection?: { id: string; kind: FailureKind };
   preflightResidue?: "container" | "volume";
   residue?: ResidueKind;
+  supabaseResidue?: SupabaseResidueKind;
 } = {}) => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "phase2-harness-test-"));
   const archiveRoot = await mkdtemp(path.join(os.tmpdir(), "phase2-archive-test-"));
@@ -381,6 +413,83 @@ describe("agent work ledger phase2 harness contracts", () => {
       "stack-health",
     ]);
   });
+
+  it("keeps resets on the isolated network and proves Supabase residue is gone", async () => {
+    const fixture = await createHarnessFixture();
+    await fixture.run();
+
+    const resets = fixture.executor.invocations.filter((entry) =>
+      entry.command === "supabase" &&
+      entry.args[0] === "db" &&
+      entry.args[1] === "reset"
+    );
+    expect(resets).toHaveLength(
+      PHASE2_CHECKS.filter(({ destructive }) => destructive).length,
+    );
+    expect(resets.every(({ args }) =>
+      args.includes("--network-id") && args.includes("agent-work-phase2")
+    )).toBe(true);
+
+    const stops = fixture.executor.invocations.filter((entry) =>
+      entry.command === "supabase" && entry.args[0] === "stop"
+    );
+    expect(stops).toHaveLength(2);
+    expect(fixture.executor.invocations.some((entry) =>
+      entry.command === "docker" &&
+      entry.args[0] === "ps" &&
+      entry.args.includes("label=com.supabase.cli.project=AllIincompassing")
+    )).toBe(true);
+    expect(fixture.executor.invocations.some((entry) =>
+      entry.command === "docker" &&
+      entry.args[0] === "volume" &&
+      entry.args.includes("label=com.supabase.cli.project=AllIincompassing")
+    )).toBe(true);
+  });
+
+  it("retries Supabase stop after observed residue and proves the retry clears it", async () => {
+    const fixture = await createHarnessFixture({
+      supabaseResidue: "clears-after-retry",
+    });
+    await fixture.run();
+
+    const invocations = fixture.executor.invocations;
+    const stops = invocations
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) =>
+        entry.command === "supabase" && entry.args[0] === "stop"
+      );
+    const supabaseProofs = invocations
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) =>
+        entry.command === "docker" &&
+        entry.args.includes("label=com.supabase.cli.project=AllIincompassing")
+      );
+
+    expect(stops).toHaveLength(3);
+    expect(supabaseProofs[0].index).toBeGreaterThan(stops[0].index);
+    expect(stops[1].index).toBeGreaterThan(supabaseProofs[0].index);
+    expect(supabaseProofs[2].index).toBeGreaterThan(stops[1].index);
+  });
+
+  it.each([
+    ["container", "supabase_initial_container_residue_found"],
+    ["volume", "supabase_initial_volume_residue_found"],
+  ] as const)(
+    "fails closed when Supabase %s residue persists after retry",
+    async (supabaseResidue, reasonCode) => {
+      const fixture = await createHarnessFixture({ supabaseResidue });
+      await expect(fixture.run()).rejects.toThrow(reasonCode);
+      const artifacts = createRunArtifacts({
+        projectRoot: fixture.cwd,
+        runId: "20260803T010203Z-test",
+      });
+      const manifest = JSON.parse(await readFile(artifacts.manifestPath, "utf8"));
+      expect(manifest).toMatchObject({
+        exitStatus: "failed",
+        failure: { reasonCode },
+      });
+    },
+  );
 
   it("uses the standalone Compose binary with the minimal child environment", async () => {
     const fixture = await createHarnessFixture();

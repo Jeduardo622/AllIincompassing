@@ -571,6 +571,62 @@ const assertNoComposeResidue = async ({
   }
 };
 
+const stopSupabaseAndAssertNoResidue = async ({
+  cwd,
+  env,
+  execute,
+  reasonPrefix,
+}) => {
+  const stopArgs = [
+    "stop",
+    "--project-id",
+    PHASE2_PROJECT_ID,
+    "--no-backup",
+    "--yes",
+  ];
+  const projectLabel = `label=com.supabase.cli.project=${PHASE2_PROJECT_ID}`;
+
+  const inspectResidue = async () => {
+    const containers = await executeChecked(
+      execute,
+      "docker",
+      ["ps", "-aq", "--filter", projectLabel],
+      { cwd, env, timeoutMs: HARD_TIMEOUT_BUDGETS_MS.residueCheck },
+      `${reasonPrefix}_container_residue_check_failed`,
+    );
+    const volumes = await executeChecked(
+      execute,
+      "docker",
+      ["volume", "ls", "-q", "--filter", projectLabel],
+      { cwd, env, timeoutMs: HARD_TIMEOUT_BUDGETS_MS.residueCheck },
+      `${reasonPrefix}_volume_residue_check_failed`,
+    );
+    return {
+      containers: containers.stdout.trim(),
+      volumes: volumes.stdout.trim(),
+    };
+  };
+
+  // The CLI can return before restart-policy containers have fully exited.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await executeChecked(
+      execute,
+      "supabase",
+      stopArgs,
+      { cwd, env, timeoutMs: HARD_TIMEOUT_BUDGETS_MS.supabaseStop },
+      `${reasonPrefix}_stop_failed`,
+    );
+    const residue = await inspectResidue();
+    if (!residue.containers && !residue.volumes) return;
+    if (attempt === 1) {
+      if (residue.containers) {
+        throw new Error(`${reasonPrefix}_container_residue_found`);
+      }
+      throw new Error(`${reasonPrefix}_volume_residue_found`);
+    }
+  }
+};
+
 const checkDuration = (startedAt, endedAt) =>
   Math.max(0, endedAt.getTime() - startedAt.getTime());
 
@@ -727,19 +783,12 @@ export const runPhase2Harness = async ({
       reasonPrefix: "compose_preflight",
     });
 
-    await executeChecked(
+    await stopSupabaseAndAssertNoResidue({
+      cwd,
+      env: childEnv,
       execute,
-      "supabase",
-      [
-        "stop",
-        "--project-id",
-        PHASE2_PROJECT_ID,
-        "--no-backup",
-        "--yes",
-      ],
-      { cwd, env: childEnv, timeoutMs: HARD_TIMEOUT_BUDGETS_MS.supabaseStop },
-      "supabase_initial_stop_failed",
-    );
+      reasonPrefix: "supabase_initial",
+    });
     await executeChecked(
       execute,
       "docker",
@@ -797,7 +846,14 @@ export const runPhase2Harness = async ({
           await executeChecked(
             execute,
             "supabase",
-            ["db", "reset", "--local", "--yes"],
+            [
+              "db",
+              "reset",
+              "--local",
+              "--network-id",
+              PHASE2_NETWORK,
+              "--yes",
+            ],
             {
               cwd,
               env: childEnv,
@@ -938,19 +994,12 @@ export const runPhase2Harness = async ({
     }
 
     await attempt("supabaseStop", "supabase_stop_failed", async () => {
-      await executeChecked(
+      await stopSupabaseAndAssertNoResidue({
+        cwd,
+        env: childEnv,
         execute,
-        "supabase",
-        [
-          "stop",
-          "--project-id",
-          PHASE2_PROJECT_ID,
-          "--no-backup",
-          "--yes",
-        ],
-        { cwd, env: childEnv, timeoutMs: HARD_TIMEOUT_BUDGETS_MS.supabaseStop },
-        "supabase_stop_failed",
-      );
+        reasonPrefix: "supabase",
+      });
     });
 
     await attempt("composeResidue", "compose_residue_failed", async () => {

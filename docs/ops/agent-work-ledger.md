@@ -266,7 +266,7 @@ Runtime contract:
 Local proof after the architecture correction:
 
 - focused Vitest: `263/263` across 12 files
-- Agent Work Deno tests: `86/86` across five files with no network permission
+- Agent Work Deno tests: `155/155` across 12 files with no network permission
 - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, and `npm run build`: pass
 - fresh `npm run agent-work:db:reset`: pass
 - `npm run agent-work:edge-smoke`: pass, including its security preflight, IEHP/CalOptima create and idempotency, list/detail, tenant denial, shadow mutation denial, and deferred routes

@@ -79,18 +79,6 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
     command: customCheckCommand("items-smoke"),
   },
   {
-    id: "queue-scheduler",
-    destructive: true,
-    command: ["node", "scripts/agent-work-ledger-local-scheduler.mjs", "smoke"],
-    auth: {
-      bearer: "service-role",
-      invocationSecrets: [
-        "x-agent-work-runner-secret",
-        "x-agent-work-sweeper-secret",
-      ],
-    },
-  },
-  {
     id: "chaos",
     destructive: true,
     command: ["node", "scripts/agent-work-ledger-chaos.mjs"],
@@ -104,6 +92,18 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
     id: "retention-trace",
     destructive: true,
     command: customCheckCommand("retention-trace"),
+  },
+  {
+    id: "queue-scheduler",
+    destructive: true,
+    command: ["node", "scripts/agent-work-ledger-local-scheduler.mjs", "smoke"],
+    auth: {
+      bearer: "service-role",
+      invocationSecrets: [
+        "x-agent-work-runner-secret",
+        "x-agent-work-sweeper-secret",
+      ],
+    },
   },
   {
     id: "app-api-unit-build",

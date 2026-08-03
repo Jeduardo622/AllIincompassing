@@ -792,10 +792,10 @@ describe("agent work ledger phase2 harness contracts", () => {
       "schema-seed",
       "tenant-security",
       "items-smoke",
-      "queue-scheduler",
       "chaos",
       "shadow-parity",
       "retention-trace",
+      "queue-scheduler",
       "app-api-unit-build",
       "deno-cached-tests",
       "cleanup-audit",
@@ -805,6 +805,8 @@ describe("agent work ledger phase2 harness contracts", () => {
       "scripts/agent-work-ledger-harness/containerEntrypoint.mjs",
       "items-smoke",
     ]);
+    expect(PHASE2_CHECKS.filter(({ destructive }) => destructive).at(-1)?.id)
+      .toBe("queue-scheduler");
     expect(HARD_TIMEOUT_BUDGETS_MS).toEqual({
       preflight: 30_000,
       archive: 30_000,
@@ -978,10 +980,10 @@ describe("agent work ledger phase2 harness contracts", () => {
       ["schema-seed", [database]],
       ["tenant-security", [database]],
       ["items-smoke", [http, database, service("http://agent-work-items:8000/agent-work-items")]],
-      ["queue-scheduler", [http, database, service("http://agent-work-runner:8000/agent-work-runner"), service("http://agent-work-sweeper:8000/agent-work-sweeper")]],
       ["chaos", [database]],
       ["shadow-parity", [http, database]],
       ["retention-trace", [database]],
+      ["queue-scheduler", [http, database, service("http://agent-work-runner:8000/agent-work-runner"), service("http://agent-work-sweeper:8000/agent-work-sweeper")]],
       ["app-api-unit-build", [http]],
       ["deno-cached-tests", [http]],
       ["cleanup-audit", [database]],

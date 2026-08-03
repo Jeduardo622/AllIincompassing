@@ -173,22 +173,41 @@ Deno.test("POST requires the dedicated sweeper invocation secret", async () => {
   }
 });
 
-Deno.test("sweeper runtime accepts only loopback Supabase URLs", () => {
+Deno.test("sweeper runtime accepts loopback by default and only exact Kong in phase2", () => {
   assertEquals(assertLocalSupabaseUrl("http://127.0.0.1:54321"), "http://127.0.0.1:54321");
   assertEquals(assertLocalSupabaseUrl("http://localhost:54321"), "http://localhost:54321");
+  assertEquals(
+    assertLocalSupabaseUrl("http://SUPABASE_KONG_AllIincompassing:8000", true),
+    "http://supabase_kong_alliincompassing:8000",
+  );
   for (const value of [
+    "https://supabase_kong_alliincompassing:8000",
+    "http://user@supabase_kong_alliincompassing:8000",
+    "http://supabase_kong_alliincompassing:8000/path",
+    "http://supabase_kong_alliincompassing:8000/?query=1",
+    "http://supabase_kong_alliincompassing:8000/#fragment",
+    "http://supabase_kong_alliincompassing:54321",
     "https://example.supabase.co",
     "http://host.docker.internal:54321",
+    "http://kong:8000",
+    "http://172.18.0.2:8000",
     "not-a-url",
   ]) {
     let rejected = false;
     try {
-      assertLocalSupabaseUrl(value);
+      assertLocalSupabaseUrl(value, true);
     } catch {
       rejected = true;
     }
     assertEquals(rejected, true, value);
   }
+  let rejectedWithoutFlag = false;
+  try {
+    assertLocalSupabaseUrl("http://supabase_kong_alliincompassing:8000", false);
+  } catch {
+    rejectedWithoutFlag = true;
+  }
+  assertEquals(rejectedWithoutFlag, true);
 });
 
 Deno.test("POST fails closed when runtime mode is disabled, unreadable, or unsupported", async () => {

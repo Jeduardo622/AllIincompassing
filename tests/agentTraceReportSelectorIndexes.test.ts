@@ -67,7 +67,7 @@ describe("agent trace report selector indexes", () => {
     expect(packageJson.scripts?.["agent-work:trace-index-contract"]).toBe(
       "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-trace-index-contract.mjs",
     );
-    expect(contract).toContain("assertLoopback");
+    expect(contract).toContain("assertLocalPostgresUrl");
     expect(contract).toContain("ROLLBACK");
     expect(contract).toContain("generate_series(1, 20000)");
     expect(contract).toContain("EXPLAIN (ANALYZE, FORMAT JSON");

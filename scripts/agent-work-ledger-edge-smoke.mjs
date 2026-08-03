@@ -7,7 +7,8 @@ import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 
 import {
-  assertExactLocalRuntimeUrl,
+  assertLocalPostgresUrl,
+  assertLocalSupabaseHttpUrl,
 } from "./agent-work-ledger-harness/localRuntime.mjs";
 import { startAgentWorkItemsRuntime } from "./agent-work-ledger-harness/edgeRuntime.mjs";
 
@@ -62,8 +63,6 @@ const requiredEnv = (name) => {
   if (!value) throw new Error(`${name} is required.`);
   return value;
 };
-
-const assertLoopback = (value, name) => assertExactLocalRuntimeUrl(value, name);
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -135,8 +134,8 @@ const main = async () => {
   const supabaseUrl = requiredEnv("SUPABASE_URL").replace(/\/$/, "");
   const anonKey = requiredEnv("SUPABASE_ANON_KEY");
   const databaseUrl = requiredEnv("SUPABASE_DB_URL");
-  assertLoopback(supabaseUrl, "SUPABASE_URL");
-  assertLoopback(databaseUrl, "SUPABASE_DB_URL");
+  assertLocalSupabaseHttpUrl(supabaseUrl, "SUPABASE_URL");
+  assertLocalPostgresUrl(databaseUrl, "SUPABASE_DB_URL");
 
   const config = await readFile("supabase/config.toml", "utf8");
   const functionConfig = await readFile("supabase/functions/agent-work-items/function.toml", "utf8");

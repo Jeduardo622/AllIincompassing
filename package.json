@@ -112,6 +112,7 @@
     "agent-work:shadow-parity": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-shadow-parity.mjs",
     "test:agent-work:chaos": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-chaos.mjs",
     "test:agent-work:eval": "tsx scripts/lib/agent-work-ledger-eval-cli.ts",
+    "test:agent-work:phase2": "node scripts/agent-work-ledger-harness/runPhase2Harness.mjs",
     "agent-work:retention-contract": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-retention-contract.mjs",
     "agent-work:trace-index-contract": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-trace-index-contract.mjs",
     "agent-work:queue-scheduler:smoke": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-local-scheduler.mjs smoke",

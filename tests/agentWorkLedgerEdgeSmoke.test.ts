@@ -36,7 +36,7 @@ describe("agent work ledger Edge smoke contract", () => {
       runtimeFile: "unused-in-container-mode",
       env: {
         AGENT_WORK_PHASE2_CONTAINER: "1",
-        AGENT_WORK_ITEMS_URL: "http://agent-work-items:8002/agent-work-items/",
+        AGENT_WORK_ITEMS_URL: "http://agent-work-items:8000/agent-work-items/",
       },
       spawnImpl: (...args: unknown[]) => {
         spawnCalls.push(args);
@@ -44,8 +44,22 @@ describe("agent work ledger Edge smoke contract", () => {
       },
     });
 
-    expect(runtime.functionUrl).toBe("http://agent-work-items:8002/agent-work-items");
+    expect(runtime.functionUrl).toBe("http://agent-work-items:8000/agent-work-items");
     expect(runtime.child).toBeNull();
     expect(spawnCalls).toEqual([]);
+  });
+
+  it("rejects a non-Compose function service port in container mode", () => {
+    expect(() => startAgentWorkItemsRuntime({
+      supabaseUrl: "http://supabase_kong_alliincompassing:8000",
+      runtimeFile: "unused-in-container-mode",
+      env: {
+        AGENT_WORK_PHASE2_CONTAINER: "1",
+        AGENT_WORK_ITEMS_URL: "http://agent-work-items:8002/agent-work-items",
+      },
+      spawnImpl: () => {
+        throw new Error("must not spawn");
+      },
+    })).toThrow(/function service/i);
   });
 });

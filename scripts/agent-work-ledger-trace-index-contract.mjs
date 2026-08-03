@@ -2,6 +2,8 @@ import pg from "pg";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertLocalPostgresUrl } from "./agent-work-ledger-harness/localRuntime.mjs";
+
 const { Client } = pg;
 
 const FIXTURE_COUNT = 20_000;
@@ -22,13 +24,6 @@ const requiredEnv = (name) => {
   return value;
 };
 
-const assertLoopback = (value, name) => {
-  const parsed = new URL(value);
-  if (!new Set(["127.0.0.1", "localhost"]).has(parsed.hostname)) {
-    throw new Error(`${name} must use a loopback host.`);
-  }
-};
-
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
@@ -45,7 +40,10 @@ export const sanitizeFailure = (error) => {
   if (message === "Synthetic local session fixture is missing.") {
     return "fixture_missing";
   }
-  if (/^(?:SUPABASE_DB_URL is required|SUPABASE_DB_URL must use a loopback host)\.$/.test(message)) {
+  if (
+    message === "SUPABASE_DB_URL is required." ||
+    message === "SUPABASE_DB_URL must use an exact local Postgres endpoint."
+  ) {
     return "local_preflight_failed";
   }
   return "database_contract_failed";
@@ -70,7 +68,7 @@ const explain = async (database, sql, values, expectedIndex) => {
 
 const main = async () => {
   const databaseUrl = requiredEnv("SUPABASE_DB_URL");
-  assertLoopback(databaseUrl, "SUPABASE_DB_URL");
+  assertLocalPostgresUrl(databaseUrl, "SUPABASE_DB_URL");
 
   const database = new Client({ connectionString: databaseUrl });
   const readDatabaseFailure = attachDatabaseErrorGuard(database);

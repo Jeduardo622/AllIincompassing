@@ -1,5 +1,7 @@
 import { Client } from "pg";
 
+import { assertLocalPostgresUrl } from "./agent-work-ledger-harness/localRuntime.mjs";
+
 const ORG_A_ID = "00000000-0000-4000-8000-00000000b001";
 const ORG_B_ID = "00000000-0000-4000-8000-00000000b002";
 const ADMIN_A_ID = "00000000-0000-0000-0000-000000000000";
@@ -21,20 +23,13 @@ const requiredEnv = (name) => {
   return value;
 };
 
-const assertLoopback = (value, name) => {
-  const parsed = new URL(value);
-  if (!new Set(["127.0.0.1", "localhost"]).has(parsed.hostname)) {
-    throw new Error(name + " must use a loopback host.");
-  }
-};
-
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
 const main = async () => {
   const databaseUrl = requiredEnv("SUPABASE_DB_URL");
-  assertLoopback(databaseUrl, "SUPABASE_DB_URL");
+  assertLocalPostgresUrl(databaseUrl, "SUPABASE_DB_URL");
 
   const database = new Client({ connectionString: databaseUrl });
   await database.connect();

@@ -254,17 +254,26 @@ function requireEnv(name: string): string {
   return value;
 }
 
-export function assertLocalSupabaseUrl(value: string): string {
+export function assertLocalSupabaseUrl(
+  value: string,
+  phase2Container = Deno.env.get("AGENT_WORK_PHASE2_CONTAINER")?.trim() === "1",
+): string {
   let url: URL;
   try {
     url = new URL(value);
   } catch {
     throw new Error("SUPABASE_URL must be a valid local URL");
   }
-  if (
-    url.protocol !== "http:" ||
-    (url.hostname !== "127.0.0.1" && url.hostname !== "localhost")
-  ) {
+  const cleanOrigin = url.protocol === "http:" &&
+    url.username === "" &&
+    url.password === "" &&
+    url.search === "" &&
+    url.hash === "" &&
+    url.pathname === "/";
+  const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost";
+  const exactPhase2Kong = phase2Container &&
+    url.origin === "http://supabase_kong_alliincompassing:8000";
+  if (!cleanOrigin || (!loopback && !exactPhase2Kong)) {
     throw new Error("SUPABASE_URL must target the loopback local stack");
   }
   return url.origin;

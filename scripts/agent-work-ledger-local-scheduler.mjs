@@ -6,7 +6,8 @@ import { pathToFileURL } from "node:url";
 import pg from "pg";
 
 import {
-  assertExactLocalRuntimeUrl,
+  assertLocalPostgresUrl,
+  assertLocalSupabaseHttpUrl,
   isPhase2ContainerMode,
 } from "./agent-work-ledger-harness/localRuntime.mjs";
 
@@ -26,13 +27,15 @@ const START_TIMEOUT_MS = 30_000;
 const CRON_TIMEOUT_MS = 90_000;
 
 export const assertLoopbackUrl = (value, name, env) =>
-  assertExactLocalRuntimeUrl(value, name, env);
+  value.startsWith("postgres")
+    ? assertLocalPostgresUrl(value, name, env)
+    : assertLocalSupabaseHttpUrl(value, name, env);
 
 export const getSmokeInvocationTargets = (env = process.env) =>
   isPhase2ContainerMode(env)
     ? {
         runner: "http://agent-work-runner:8000/agent-work-runner",
-        sweeper: "http://agent-work-sweeper:8001/agent-work-sweeper",
+        sweeper: "http://agent-work-sweeper:8000/agent-work-sweeper",
       }
     : {
         runner: "http://127.0.0.1:8000/agent-work-runner",
@@ -43,7 +46,7 @@ export const getCronInvocationTargets = (env = process.env) =>
   isPhase2ContainerMode(env)
     ? {
         runner: "http://agent-work-runner:8000/agent-work-runner",
-        sweeper: "http://agent-work-sweeper:8001/agent-work-sweeper",
+        sweeper: "http://agent-work-sweeper:8000/agent-work-sweeper",
       }
     : {
         runner: "http://host.docker.internal:8000/agent-work-runner",
@@ -57,11 +60,13 @@ export const classifySchedulerResponse = (statusCode, body) => {
   return null;
 };
 
-const requiredEnv = (name) => {
-  const value = process.env[name]?.trim();
+const requiredEnvFrom = (env, name) => {
+  const value = env[name]?.trim();
   if (!value) throw new Error(`${name} is required.`);
   return value;
 };
+
+const requiredEnv = (name) => requiredEnvFrom(process.env, name);
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -78,7 +83,7 @@ const withContext = async (label, operation) => {
 
 const connectLocalDatabase = async () => {
   const databaseUrl = requiredEnv("SUPABASE_DB_URL");
-  assertLoopbackUrl(databaseUrl, "SUPABASE_DB_URL");
+  assertLocalPostgresUrl(databaseUrl, "SUPABASE_DB_URL");
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   const { rows } = await client.query("select current_user");
@@ -283,15 +288,23 @@ export const waitForSchedulerFunctions = (
   waitForFunctionImpl(targets.sweeper, processStates.sweeper),
 ]);
 
-const invokeHostFunction = async (url, serviceRoleKey, secretHeader, invocationSecret, body) => {
+export const buildSchedulerInvocationHeaders = (secrets, role) => {
+  const runner = role === "runner";
+  const sweeper = role === "sweeper";
+  if (!runner && !sweeper) throw new Error("Unknown scheduler invocation role.");
+  return {
+    apikey: secrets.serviceRoleKey,
+    authorization: `Bearer ${secrets.serviceRoleKey}`,
+    "content-type": "application/json",
+    [runner ? "x-agent-work-runner-secret" : "x-agent-work-sweeper-secret"]:
+      runner ? secrets.runnerSecret : secrets.sweeperSecret,
+  };
+};
+
+const invokeHostFunction = async (url, secrets, role, body) => {
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      apikey: serviceRoleKey,
-      authorization: `Bearer ${serviceRoleKey}`,
-      "content-type": "application/json",
-      [secretHeader]: invocationSecret,
-    },
+    headers: buildSchedulerInvocationHeaders(secrets, role),
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(10_000),
   });
@@ -344,21 +357,33 @@ const waitForCronEvidence = async (client, baselineResponseId, startedAt) => {
   throw new Error("Timed out waiting for both local cron invocation responses.");
 };
 
-const loadSecrets = ({ generateInvocationSecrets = false } = {}) => ({
+export const resolveSchedulerSmokeSecrets = ({
+  env = process.env,
+  randomBytesImpl = randomBytes,
+} = {}) => {
+  const containerMode = isPhase2ContainerMode(env);
+  return {
+    serviceRoleKey: requiredEnvFrom(env, "SUPABASE_SERVICE_ROLE_KEY"),
+    runnerSecret: containerMode
+      ? requiredEnvFrom(env, "AGENT_WORK_RUNNER_SECRET")
+      : randomBytesImpl(32).toString("hex"),
+    sweeperSecret: containerMode
+      ? requiredEnvFrom(env, "AGENT_WORK_SWEEPER_SECRET")
+      : randomBytesImpl(32).toString("hex"),
+  };
+};
+
+const loadCommandSecrets = () => ({
   serviceRoleKey: requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  runnerSecret: generateInvocationSecrets
-    ? randomBytes(32).toString("hex")
-    : requiredEnv("AGENT_WORK_RUNNER_SECRET"),
-  sweeperSecret: generateInvocationSecrets
-    ? randomBytes(32).toString("hex")
-    : requiredEnv("AGENT_WORK_SWEEPER_SECRET"),
+  runnerSecret: requiredEnv("AGENT_WORK_RUNNER_SECRET"),
+  sweeperSecret: requiredEnv("AGENT_WORK_SWEEPER_SECRET"),
 });
 
 const runSmoke = async () => {
   const supabaseUrl = requiredEnv("SUPABASE_URL");
-  assertLoopbackUrl(supabaseUrl, "SUPABASE_URL");
+  assertLocalSupabaseHttpUrl(supabaseUrl, "SUPABASE_URL");
   const denoBin = process.env.DENO_BIN?.trim() || "deno";
-  const secrets = loadSecrets({ generateInvocationSecrets: true });
+  const secrets = resolveSchedulerSmokeSecrets();
   const smokeTargets = getSmokeInvocationTargets();
   const client = await connectLocalDatabase();
   const runner = isPhase2ContainerMode()
@@ -374,9 +399,8 @@ const runSmoke = async () => {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const result = await invokeHostFunction(
         smokeTargets.runner,
-        secrets.serviceRoleKey,
-        "x-agent-work-runner-secret",
-        secrets.runnerSecret,
+        secrets,
+        "runner",
         { source: "local_scheduler_smoke" },
       );
       runnerDirectEvidence.push(result);
@@ -388,9 +412,8 @@ const runSmoke = async () => {
     );
     const sweeperDirectEvidence = await invokeHostFunction(
       smokeTargets.sweeper,
-      secrets.serviceRoleKey,
-      "x-agent-work-sweeper-secret",
-      secrets.sweeperSecret,
+      secrets,
+      "sweeper",
       { source: "local_scheduler_smoke", maxItemsPerPass: 25 },
     );
     const directEvidence = { runner: runnerDirectEvidence, sweeper: sweeperDirectEvidence };
@@ -426,7 +449,7 @@ const runCommand = async () => {
   if (!["setup", "verify", "teardown"].includes(command)) {
     throw new Error("Usage: node scripts/agent-work-ledger-local-scheduler.mjs <setup|verify|teardown|smoke>");
   }
-  assertLoopbackUrl(requiredEnv("SUPABASE_URL"), "SUPABASE_URL");
+  assertLocalSupabaseHttpUrl(requiredEnv("SUPABASE_URL"), "SUPABASE_URL");
   const client = await connectLocalDatabase();
   try {
     if (command === "teardown") {
@@ -434,7 +457,7 @@ const runCommand = async () => {
       console.log(JSON.stringify({ success: true, jobsRemoved: FIXED_JOB_NAMES.length, secretsRemoved: FIXED_SECRET_NAMES.length }));
       return;
     }
-    const secrets = loadSecrets();
+    const secrets = loadCommandSecrets();
     if (command === "setup") {
       const setup = await setupScheduler(client, secrets);
       console.log(JSON.stringify({ success: true, setup, jobs: await verifyScheduler(client, secrets) }));

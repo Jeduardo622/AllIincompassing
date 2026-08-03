@@ -6,6 +6,8 @@ import {
   FIXED_SECRET_NAMES,
   getCronInvocationTargets,
   getSmokeInvocationTargets,
+  buildSchedulerInvocationHeaders,
+  resolveSchedulerSmokeSecrets,
   rewriteSchedulerTargetsForContainer,
   setupScheduler,
   teardownScheduler,
@@ -44,7 +46,7 @@ describe('local Agent Work Ledger scheduler guard', () => {
     ['postgresql', '://', 'postgres', ':', 'synthetic', '@db.project.supabase.co:5432/postgres'].join(''),
     'http://host.docker.internal:54321',
   ])('rejects a non-loopback URL: %s', (value) => {
-    expect(() => assertLoopbackUrl(value, 'LOCAL_URL')).toThrow(/loopback/i);
+    expect(() => assertLoopbackUrl(value, 'LOCAL_URL')).toThrow(/local/i);
   });
 
   it('uses only fixed local Vault secret names', () => {
@@ -89,12 +91,71 @@ describe('local Agent Work Ledger scheduler guard', () => {
   it('switches to exact phase2 service DNS targets in container mode only', () => {
     expect(getSmokeInvocationTargets({ AGENT_WORK_PHASE2_CONTAINER: '1' })).toEqual({
       runner: 'http://agent-work-runner:8000/agent-work-runner',
-      sweeper: 'http://agent-work-sweeper:8001/agent-work-sweeper',
+      sweeper: 'http://agent-work-sweeper:8000/agent-work-sweeper',
     });
     expect(getCronInvocationTargets({ AGENT_WORK_PHASE2_CONTAINER: '1' })).toEqual({
       runner: 'http://agent-work-runner:8000/agent-work-runner',
-      sweeper: 'http://agent-work-sweeper:8001/agent-work-sweeper',
+      sweeper: 'http://agent-work-sweeper:8000/agent-work-sweeper',
     });
+  });
+
+  it('reuses the running container invocation secrets for direct and cron auth', async () => {
+    const env = {
+      AGENT_WORK_PHASE2_CONTAINER: '1',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role',
+      AGENT_WORK_RUNNER_SECRET: 'running-runner-secret',
+      AGENT_WORK_SWEEPER_SECRET: 'running-sweeper-secret',
+    };
+    let generated = 0;
+    const secrets = resolveSchedulerSmokeSecrets({
+      env,
+      randomBytesImpl: () => {
+        generated += 1;
+        return Buffer.from('not-used');
+      },
+    });
+
+    expect(secrets).toEqual({
+      serviceRoleKey: 'service-role',
+      runnerSecret: 'running-runner-secret',
+      sweeperSecret: 'running-sweeper-secret',
+    });
+    expect(generated).toBe(0);
+    expect(buildSchedulerInvocationHeaders(secrets, 'runner')).toEqual({
+      apikey: 'service-role',
+      authorization: 'Bearer service-role',
+      'content-type': 'application/json',
+      'x-agent-work-runner-secret': 'running-runner-secret',
+    });
+    expect(buildSchedulerInvocationHeaders(secrets, 'sweeper')).toEqual({
+      apikey: 'service-role',
+      authorization: 'Bearer service-role',
+      'content-type': 'application/json',
+      'x-agent-work-sweeper-secret': 'running-sweeper-secret',
+    });
+
+    const { calls, client } = createQueryRecorder();
+    await setupScheduler(client, secrets, env);
+    const storedValues = calls
+      .filter(({ text }) => text.includes('vault.create_secret'))
+      .map(({ params }) => params[0]);
+    expect(storedValues).toEqual([
+      'service-role',
+      'running-runner-secret',
+      'running-sweeper-secret',
+    ]);
+  });
+
+  it('generates fresh invocation secrets only for host-spawn smoke mode', () => {
+    let generated = 0;
+    const secrets = resolveSchedulerSmokeSecrets({
+      env: { SUPABASE_SERVICE_ROLE_KEY: 'service-role' },
+      randomBytesImpl: () => Buffer.from(`generated-${++generated}`),
+    });
+
+    expect(secrets.serviceRoleKey).toBe('service-role');
+    expect(secrets.runnerSecret).not.toBe(secrets.sweeperSecret);
+    expect(generated).toBe(2);
   });
 
   it('polls already-running container services through the bounded startup wait', async () => {
@@ -107,7 +168,7 @@ describe('local Agent Work Ledger scheduler guard', () => {
 
     expect(calls).toEqual([
       ['http://agent-work-runner:8000/agent-work-runner', null],
-      ['http://agent-work-sweeper:8001/agent-work-sweeper', null],
+      ['http://agent-work-sweeper:8000/agent-work-sweeper', null],
     ]);
   });
 
@@ -152,7 +213,7 @@ describe('local Agent Work Ledger scheduler guard', () => {
       [
         'agent-work-sweeper-local',
         'http://host.docker.internal:8001/agent-work-sweeper',
-        'http://agent-work-sweeper:8001/agent-work-sweeper',
+        'http://agent-work-sweeper:8000/agent-work-sweeper',
       ],
     ]);
   });

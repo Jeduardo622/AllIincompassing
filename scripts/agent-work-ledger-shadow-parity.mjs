@@ -7,6 +7,12 @@ import { pathToFileURL } from "node:url";
 
 import pg from "pg";
 
+import {
+  assertLocalPostgresUrl,
+  assertLocalSupabaseHttpUrl,
+  isPhase2ContainerMode,
+} from "./agent-work-ledger-harness/localRuntime.mjs";
+
 const { Client } = pg;
 
 const WORKFLOW_KEY = "assessment.iehp.prepare_for_clinical_review";
@@ -356,20 +362,6 @@ const assert = (condition, message) => {
   }
 };
 
-const assertLoopbackHttpUrl = (value, name) => {
-  const parsed = new URL(value);
-  if (!new Set(["127.0.0.1", "localhost"]).has(parsed.hostname)) {
-    throw new Error(`${name} must use a loopback host.`);
-  }
-};
-
-const assertLoopbackDatabaseUrl = (value, name) => {
-  const parsed = new URL(value);
-  if (!new Set(["127.0.0.1", "localhost"]).has(parsed.hostname)) {
-    throw new Error(`${name} must use a loopback host.`);
-  }
-};
-
 const parseStatusEnv = (output) => {
   const values = {};
   for (const rawLine of output.split(/\r?\n/)) {
@@ -383,17 +375,45 @@ const parseStatusEnv = (output) => {
   return values;
 };
 
-const assertMatchesRunningLocalStack = (supabaseUrl, databaseUrl) => {
-  const childEnv = { ...process.env };
+const PHASE2_PROJECT_STACK_MAPPINGS = Object.freeze({
+  AllIincompassing: Object.freeze({
+    supabaseUrl: "http://supabase_kong_alliincompassing:8000",
+    databaseUrl:
+      "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres",
+  }),
+});
+
+const postgresIdentity = (parsed) => JSON.stringify({
+  protocol: parsed.protocol,
+  hostname: parsed.hostname.toLowerCase(),
+  port: parsed.port,
+  username: parsed.username,
+  password: parsed.password,
+  pathname: parsed.pathname,
+  search: parsed.search,
+  hash: parsed.hash,
+});
+
+export const assertMatchesRunningLocalStack = (
+  supabaseUrl,
+  databaseUrl,
+  {
+    env = process.env,
+    spawnImpl = spawnSync,
+    cwd = process.cwd(),
+    platform = process.platform,
+  } = {},
+) => {
+  const childEnv = { ...env };
   delete childEnv.SUPABASE_PROJECT_REF;
   delete childEnv.VITE_SUPABASE_PROJECT_REF;
   const supabaseCli = join(
-    process.cwd(),
+    cwd,
     "node_modules/supabase/bin",
-    process.platform === "win32" ? "supabase.exe" : "supabase",
+    platform === "win32" ? "supabase.exe" : "supabase",
   );
-  const result = spawnSync(supabaseCli, ["status", "-o", "env"], {
-    cwd: process.cwd(),
+  const result = spawnImpl(supabaseCli, ["status", "-o", "env"], {
+    cwd,
     env: childEnv,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -402,13 +422,68 @@ const assertMatchesRunningLocalStack = (supabaseUrl, databaseUrl) => {
     throw new Error("local_stack_status_unavailable");
   }
   const statusEnv = parseStatusEnv(result.stdout);
-  const expectedApiUrl = statusEnv.API_URL?.replace(/\/$/, "");
-  const actualApiUrl = supabaseUrl.replace(/\/$/, "");
+  const expectedApiUrl = statusEnv.API_URL;
+  const expectedDatabaseUrl = statusEnv.DB_URL;
+  if (!expectedApiUrl || !expectedDatabaseUrl) {
+    throw new Error("local_stack_identity_mismatch");
+  }
+  let statusApi;
+  let statusDatabase;
+  try {
+    statusApi = assertLocalSupabaseHttpUrl(
+      expectedApiUrl,
+      "supabase status API_URL",
+      {},
+    );
+    statusDatabase = assertLocalPostgresUrl(
+      expectedDatabaseUrl,
+      "supabase status DB_URL",
+      {},
+    );
+    if (statusDatabase.username !== "postgres") {
+      throw new Error("status_database_owner_mismatch");
+    }
+  } catch {
+    throw new Error("local_stack_identity_mismatch");
+  }
+
+  if (isPhase2ContainerMode(env)) {
+    const projectId = env.AGENT_WORK_PHASE2_PROJECT_ID?.trim();
+    const mapping = PHASE2_PROJECT_STACK_MAPPINGS[projectId];
+    if (!mapping) throw new Error("local_stack_identity_mismatch");
+    try {
+      const suppliedApi = assertLocalSupabaseHttpUrl(
+        supabaseUrl,
+        "SUPABASE_URL",
+        env,
+      );
+      const suppliedDatabase = assertLocalPostgresUrl(
+        databaseUrl,
+        "SUPABASE_DB_URL",
+        env,
+      );
+      if (
+        suppliedApi.origin !== mapping.supabaseUrl ||
+        postgresIdentity(suppliedDatabase) !==
+          postgresIdentity(new URL(mapping.databaseUrl))
+      ) {
+        throw new Error("container_mapping_mismatch");
+      }
+    } catch {
+      throw new Error("local_stack_identity_mismatch");
+    }
+    return;
+  }
+
+  const actualApi = assertLocalSupabaseHttpUrl(supabaseUrl, "SUPABASE_URL", env);
+  const actualDatabase = assertLocalPostgresUrl(
+    databaseUrl,
+    "SUPABASE_DB_URL",
+    env,
+  );
   if (
-    !expectedApiUrl ||
-    !statusEnv.DB_URL ||
-    actualApiUrl !== expectedApiUrl ||
-    databaseUrl !== statusEnv.DB_URL
+    actualApi.origin !== statusApi.origin ||
+    postgresIdentity(actualDatabase) !== postgresIdentity(statusDatabase)
   ) {
     throw new Error("local_stack_identity_mismatch");
   }
@@ -1610,8 +1685,6 @@ const runNegativeProbes = () => {
 const main = async () => {
   const supabaseUrl = requiredEnv("SUPABASE_URL");
   const databaseUrl = requiredEnv("SUPABASE_DB_URL");
-  assertLoopbackHttpUrl(supabaseUrl, "SUPABASE_URL");
-  assertLoopbackDatabaseUrl(databaseUrl, "SUPABASE_DB_URL");
   assertMatchesRunningLocalStack(supabaseUrl, databaseUrl);
   if (RUNTIME_MODE !== OUTPUT_RUNTIME_MODE) {
     throw new Error("AGENT_WORK_LEDGER_RUNTIME_MODE must be shadow for shadow parity.");
@@ -1676,20 +1749,22 @@ const main = async () => {
   }
 };
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : "internal_error";
-  const reasonCode = new Set([
-    "local_stack_status_unavailable",
-    "local_stack_identity_mismatch",
-    "adapter_bridge_failed",
-    "sanitizer_violation",
-  ]).has(message)
-    ? message
-    : message.includes("AGENT_WORK_LEDGER_RUNTIME_MODE")
-    ? "runtime_mode_forbidden"
-    : message.includes("loopback host")
-    ? "non_local_url_forbidden"
-    : "internal_error";
-  console.error(JSON.stringify({ error: "shadow_parity_failed", reason_code: reasonCode }));
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    const message = error instanceof Error ? error.message : "internal_error";
+    const reasonCode = new Set([
+      "local_stack_status_unavailable",
+      "local_stack_identity_mismatch",
+      "adapter_bridge_failed",
+      "sanitizer_violation",
+    ]).has(message)
+      ? message
+      : message.includes("AGENT_WORK_LEDGER_RUNTIME_MODE")
+      ? "runtime_mode_forbidden"
+      : message.includes("exact local")
+      ? "non_local_url_forbidden"
+      : "internal_error";
+    console.error(JSON.stringify({ error: "shadow_parity_failed", reason_code: reasonCode }));
+    process.exit(1);
+  });
+}

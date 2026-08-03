@@ -867,6 +867,17 @@ Stop and re-route if the work would:
 
 The accepted architecture keeps only lifecycle orchestration on the host. Supabase remains its complete CLI-managed Docker stack; the app, work-item function, runner, sweeper, and every Phase 2 verification workload run in containers on a dedicated local network. The image is built from committed `HEAD` through a temporary `git archive`, preventing unrelated `deno.lock` or reliability-report drift from entering the proof.
 
+### Phase 2 P2.1 Container Adapter Checkpoint
+
+- commit: `992838a3 feat(agent-work): add container-safe local adapters`
+- TDD: focused adapter suite failed before the shared exact-host validator, container Edge runtime seam, and scheduler service-target/readiness seams existed; final GREEN passed `33/33` tests across three files
+- review: initial review found missing container readiness, insufficient no-spawn/JWT-bypass proof, and insufficient scheduler transaction/cleanup coverage; fix round 1 addressed all three and scoped re-review returned spec `PASS` and quality `APPROVE`
+- host compatibility: fresh host-mode Edge smoke passed; after another fresh reset, queue/scheduler smoke passed direct runner/sweeper evidence and Cron callbacks at HTTP `200/200`
+- safety: migrations/functions/config were unchanged; container hosts require the exact Phase 2 flag and hardcoded service allowlist; host loopback behavior is unchanged; fixed Cron/Vault cleanup remains in `finally`
+- hook: normal pre-commit `ci:check-focused` passed without bypass
+- unrelated drift: `deno.lock` and `reports/test-reliability-latest.json` remain unstaged and excluded
+- next: P2.2 one-command harness implementation is in progress under the same critical route
+
 ## Future GitHub Commands - Not Authorized
 
 Run only after explicit GitHub authorization and after required human review:
@@ -903,3 +914,71 @@ Before any function deployment, configure the reviewed invocation secrets and ru
 ## Task 16 Disposition
 
 Task 16 is not required for Phase 1 completion. It remains the next separately routed increment after the IEHP ledger is stable and is not started by this branch.
+
+## Phase 2 P2.2 Closure
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- issue: `WIN-271`
+- branch: `codex/agent-work-ledger-foundation`
+- final committed snapshot: `7a81b5e8c13432c2a181dbbdd721fb5963cdfbac`
+- one command: `npm run test:agent-work:phase2`
+- architecture: host lifecycle orchestration only; complete CLI-managed Supabase Docker stack plus containerized app, items function, runner, sweeper, and all verification workloads on the isolated `agent-work-phase2` network
+- runtime boundary: only `disabled`, `shadow`, and `advisory`; no provider calls, clinical effects, autonomous approval, publication, billing, submission, final-record creation, or hosted action
+
+### Phase 2 Commits After P2.1
+
+- `2574aa75 feat(agent-work): add containerized integration harness`
+- `74cae763 fix(agent-work): use standalone compose in harness`
+- `3c7fff7c fix(agent-work): allow phase2 app health host`
+- `76c23a93 fix(agent-work): preserve phase2 reset network`
+- `48d22ff5 fix(agent-work): seed phase2 scheduler extensions`
+- `c8072b04 fix(agent-work): isolate phase2 items fixtures`
+- `d11087bf fix(agent-work): await container items runtime`
+- `a5d92c83 fix(agent-work): alter phase2 cron jobs safely`
+- `04464f7d fix(agent-work): retry phase2 database reset`
+- `348b66bd fix(agent-work): run scheduler after reset checks`
+- `f03e663e fix(agent-work): verify container parity locally`
+- `5c9e82fc test(agent-work): cover phase2 app hostname`
+- `7a81b5e8 fix(agent-work): allow phase2 Deno mode check`
+
+Every commit used the normal pre-commit hook; `ci:check-focused` passed without bypass. The existing Task 9 recovery stashes remain untouched. Pre-existing `deno.lock` and `reports/test-reliability-latest.json` drift remains unstaged and excluded.
+
+### Two-Run Evidence
+
+- run `20260803T114359Z-058316`: commit `7a81b5e8c13432c2a181dbbdd721fb5963cdfbac`; image `sha256:f08c5b872e9ba998ced234155824c7384877a59e446a583bd9ef79b92ab56d55`; 11 of 11 checks passed; cleanup passed; exit passed; 532,389 ms; summary hash `32670de26ed97d2e622a2d71e7bf9c461031d10358b92fa626d5137fee6446f4`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+- run `20260803T115308Z-5c0634`: same commit and image; 11 of 11 checks passed; cleanup passed; exit passed; 581,086 ms; summary hash `910d7776116c5053c6ee63b34c3d1173a6fc78a1701319263afe89255b545460`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+- post-run residue: no Supabase project containers, Compose project containers, Compose project volumes, or `agent-work-phase2` network
+
+### Phase 2 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: local runtime configuration; Docker/Compose lifecycle; server/API/Edge integration; database, queue, scheduler, and tenant-isolation verification; docs/process
+- required checks: `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; focused Phase 2 tests; `npm run test:agent-work:chaos`; Agent Work Ledger Deno tests; `npm run agent-work:security-contract`; `npm run agent-work:shadow-parity`; `npm run agent-work:queue-scheduler:smoke`; `npm run agent-work:retention-contract`; `npm run agent-work:trace-index-contract`; fresh local reset/migration application; Edge/API smoke; two consecutive `npm run test:agent-work:phase2` runs; normal pre-commit hook; `git diff --check`
+- executed checks:
+  - focused Phase 2 suite: pass at 8 files and 124 tests
+  - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build`: pass
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: pass at 463 of 465 files and 3,909 of 3,914 tests; two files and five tests skipped only for dedicated unconfigured local Postgres URLs
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`: pass in 483.9 seconds, including coverage policy, production build, and 220 of 220 Tier-0 route tests
+  - Agent Work Ledger Deno tests: pass at 111 of 111 across nine files
+  - deterministic chaos: pass at 10 of 10 with seed `task10-default-seed`
+  - shadow parity: pass at 6 of 6 fixtures and 7 of 7 negative probes
+  - security contract: pass on fresh local synthetic state
+  - queue/scheduler smoke: pass; direct runner `blocked` then `no_work`, sweeper processed four actions, and Cron callbacks returned HTTP `200/200`
+  - retention contract: pass with stable export, cross-tenant and non-service denial, hold preservation, and zero-delete `policy_unapproved`
+  - trace-index contract: pass with 20,000 transaction-local rows per source, eight indexes, and 11 plan checks
+  - Phase 2 cold lifecycle: pass twice consecutively with 11 of 11 checks and clean teardown, as recorded above
+  - `git diff --check`: pass before documentation closure
+- blocked checks:
+  - final host-mode `npm run agent-work:db:reset`: migrations and seed applied from recreated state, but Supabase CLI v2.58.5 returned nonzero during Storage/proxy restart (`buckets` union type mismatch, request timeout, or HTTP 502 across bounded attempts); the Phase 2 isolated-network reset path passed before each destructive check in both successful runs
+  - final host-mode `npm run agent-work:edge-smoke`: fresh security preflight passed after queue reset, but the failed CLI restart omitted the Edge runtime; a backup-preserving stop/start then exposed local Storage duplicate `migrations_name_key` metadata and was discarded with `supabase stop --no-backup`; containerized items/API smoke passed in both Phase 2 runs
+  - branch protection, hosted preview drift, hosted function-auth parity, hosted assessment smoke, GitHub checks, and deployment: authorization-gated and intentionally not run
+- result: `pass-with-blocked-checks`
+- residual risk: human protected-path, Supabase, security, clinical, product, and privacy review remains mandatory; host Supabase CLI v2.58.5 Storage restart behavior needs an independently routed local tooling upgrade or clean-stack investigation; Task 14 deletion remains blocked until approved periods exist for `ledger_history`, `queue_archive`, and `execution_trace`
+
+### Specialist Disposition
+
+Architecture, specification, implementation, test, code review, security, Supabase, DevOps, performance, and documentation lanes were used across P2.1/P2.2. Load-bearing findings were corrected through TDD: standalone Compose discovery, exact Vite host allowance, isolated reset networking, extension ownership, fixture isolation, Edge readiness, `cron.alter_job`, bounded reset/stop recovery, scheduler ordering, container parity identity, and least-privilege Deno env access. Final focused correctness and security re-reviews found no remaining code findings. Human review remains mandatory because migrations and functions are protected.
+
+The retention policy exception was not used. No approved retention periods were found, so deletion stays disabled and returns `policy_unapproved`; this exact policy decision remains for a human owner. Task 16 remains separately routed and was not started.

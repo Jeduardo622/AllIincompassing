@@ -203,6 +203,41 @@ The trace-index contract inserts 20,000 transaction-local synthetic rows into ea
 
 The Edge smoke runs in `shadow`, proves create/list/detail/idempotency and tenant denial, rejects owner and approval-decision writes with `advisory_mode_required`, and confirms only cancel, resume, and reconcile remain deferred. Phase 1 does not authorize `active` mode, hosted assessment checks, deployment, or provider calls.
 
+## Phase 2 Container Harness
+
+Run the complete local integration harness from a committed snapshot with Docker Desktop, the standalone `docker-compose` binary, the repository-pinned Supabase CLI, Node, npm, and Git on `PATH`:
+
+```powershell
+npm run test:agent-work:phase2
+```
+
+The command fails closed before startup when it detects a hosted project reference, non-loopback host URL, remote-capable credential, relevant uncommitted image input, stale Compose resource, or stale Supabase resource. It builds `agent-work-ledger-phase2:local` from `git archive HEAD`, creates the dedicated `agent-work-phase2` network, starts the complete CLI-managed Supabase Docker stack, and starts the app plus the items, runner, and sweeper services from the committed image.
+
+The fixed check order is:
+
+1. stack health
+2. schema and deterministic seed
+3. tenant and security contract
+4. items/API smoke
+5. deterministic chaos
+6. shadow parity
+7. retention and trace contracts
+8. queue, scheduler, runner, and sweeper smoke
+9. app/API unit tests and production build
+10. cached Agent Work Ledger Deno tests
+11. cleanup audit
+
+Every destructive check begins with a fresh database reset on the isolated network. The scheduler check runs last among destructive checks because it enables `pg_cron`; this prevents extension worker activity from racing later resets while still making cleanup audit the terminal database-state check. All waits and retries are bounded. Cleanup removes Compose containers and volumes, the local Supabase stack and volumes, the dedicated network, Cron jobs, Vault entries, queue fixtures, temporary archive context, and listeners, then fails if residue remains.
+
+Sanitized manifests and summary logs are written under `.reports/agent-work-ledger-phase2/<run-id>/`. They contain command status, timing, commit and image identities, PHI-free output hashes, and cleanup results, but no credentials or command output payloads. The directory is ignored and is not a release artifact.
+
+The final local proof completed two consecutive cold runs from commit `7a81b5e8c13432c2a181dbbdd721fb5963cdfbac` and image `sha256:f08c5b872e9ba998ced234155824c7384877a59e446a583bd9ef79b92ab56d55`:
+
+- `20260803T114359Z-058316`: 11 of 11 checks passed in 532,389 ms; summary hash `32670de26ed97d2e622a2d71e7bf9c461031d10358b92fa626d5137fee6446f4`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+- `20260803T115308Z-5c0634`: 11 of 11 checks passed in 581,086 ms; summary hash `910d7776116c5053c6ee63b34c3d1173a6fc78a1701319263afe89255b545460`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+
+Both runs passed cleanup and left no labeled Supabase/Compose containers, Compose volumes, or `agent-work-phase2` network. This command is local-only. It does not push, deploy, contact a model provider, use `active` mode, or authorize hosted configuration.
+
 ## Task 9 Local-Only Direction
 
 Task 9 extends the local-first ledger into a durable `pgmq` queue plus runner/sweeper coordination, but only within the local stack. Host-side Supabase/database configuration is loopback-only; Postgres uses fixed `host.docker.internal` callbacks to the loopback-bound host workers.

@@ -609,3 +609,61 @@ Stop and re-route if the work would:
 - PR handoff: locally ready; exact future push/PR commands are deferred to Task 15 and require explicit authorization
 - reviewer: final code, security, and Supabase reviews completed with no findings
 - required follow-up: create the focused local Task 12 commit, reroute Task 13, and keep all GitHub/hosted actions blocked
+
+## Task 13 Route
+
+- date: `2026-08-02`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- intent: add tenant-scoped Agent Work Ledger operations monitoring, inert replay packets, and versioned synthetic release gates without changing execution authority
+- triggering paths: protected `supabase/functions/agent-trace-report/**`; monitoring UI/client contracts; replay/eval scripts; local release-gate tests and runbooks
+- allowed scope: `src/pages/MonitoringDashboard.tsx` and focused tests; `src/lib/agentTraceReport.ts` and tests; `supabase/functions/agent-trace-report/index.ts` and focused tests; `scripts/agent-replay.ts`, `src/lib/agentReplay.ts`, and tests; a new pure Agent Work Ledger eval helper/command, versioned synthetic fixture, focused tests, and `package.json`; `docs/OBSERVABILITY_RUNBOOK.md`, `docs/ops/agent-work-ledger.md`, and this handoff
+- non-goals: migrations, RLS/grant changes, new routes/roles/capabilities, browser-direct privileged reads, raw trace/replay/clinical payloads, default or opt-in tool/provider re-execution, hosted access, `active` mode, assessment-domain mutation, retention/export/recovery, or deployment
+- stop conditions: any required schema/index/grant widening, unbounded aggregate query, tenantless read, free-form dashboard JSON, raw prompt/model/tool content, external provider call, or scope outside the routed read-model/tooling surfaces
+- authority boundary: the existing request client authenticates and resolves organization/operator role before any service query; every service query remains explicitly organization-scoped; the UI retains the existing `viewMonitoring` capability boundary
+- performance boundary: operations results and drilldowns are bounded and report truncation/limits; selector-based JSONB paths remain opt-in diagnostics rather than background polling
+- required agents: specification, architecture, implementation, code review, test, security, performance, Supabase, and documentation
+- reviewer required: yes; human review remains mandatory before merge
+- verify-change required: yes
+- linear required: yes (`WIN-271`; start comment `6964134d-770e-4b93-ad61-86db1bee2788`)
+
+## Task 13 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: tenant-scoped operational reporting; protected Supabase Edge read boundary; inert local replay diagnostics; synthetic release evaluation; monitoring UI and runbooks
+- red evidence: the new contracts initially failed on missing explicit replay mode, replay fanout during ordinary trace reads, unsafe replay hashes, and a release gate that stayed open on truncated samples; later red tests exposed whole-work-item replay fanout, incomplete child/root query acceptance, and ambiguous zero/multiple-work-item selectors
+- executed checks:
+  - focused Task 13 Vitest: pass at `42/42` across eight files
+  - `npm run test:agent-work:eval`: pass at six deterministic fixtures; all seven safety gates were zero and readiness evidence coverage was `100%`
+  - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build`: pass
+  - `deno fmt --check` for the four Task 13 Deno/TypeScript runtime files: pass
+  - `npm run test:routes:tier0`: pass at `220/220`
+  - fresh `npm run agent-work:db:reset`: pass; all local migrations applied from empty state
+  - `npm run agent-work:security-contract`: pass from fresh state
+  - `npm run agent-work:queue-scheduler:smoke`: pass; runner converged through `blocked` then `no_work`, scheduler callbacks returned `200/200`, and the sweeper processed four actions
+  - `npm run agent-work:shadow-parity`: pass at `6/6` fixtures and `7/7` negative probes with zero mismatches
+  - `npm run test:agent-work:chaos`: pass at `10/10` with seed `task10-default-seed`
+  - `git diff --check`: pass
+- blocked or failing checks:
+  - clean `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci` failed with clustered existing UI timeouts plus Vitest worker `onTaskUpdate` timeout; a bounded `VITEST_MAX_THREADS=4` retry reproduced ten UI failures and the same worker RPC timeout; `ProgramsGoalsTab.test.tsx` passed alone at `115/115`, so the broad suite remains accurately recorded as contention-sensitive rather than passing
+  - `npm run verify:local` was not rerun because it embeds the same failing `test:ci` command
+  - direct frozen `deno check` is blocked because local `node_modules` lacks the lock-pinned `npm:@supabase/supabase-js@2.50.0`; no install or `deno.lock` mutation was authorized
+  - `npm run agent-work:edge-smoke` passed its embedded security contract after a second fresh reset but failed its first synthetic create request; no hosted endpoint was contacted, and the failure remains for the final integration-harness isolation pass
+- specialist dispositions:
+  - specification, architecture, code, test, security, performance, Supabase, and documentation reviews completed
+  - initial replay-scope, truncation, hash-validation, hot-path, and selector-ambiguity findings were repaired with exact-count bounded queries, step/attempt filtering, server-side evidence validation, explicit replay mode, and fail-closed sampled release gates
+  - final code, security, Supabase, performance, architecture, and documentation reviews reported no remaining Task 13 findings
+- result: `pass-with-blocked-checks`
+- residual risk: the protected Edge boundary requires human review; broad-suite worker contention and the local edge-smoke create failure remain unresolved; operations metrics are bounded samples and explicitly block release decisions when truncated; replay remains inert and local/tenant-scoped; hosted behavior is intentionally untested
+
+### Task 13 PR Hygiene
+
+- pr-ready: `no` for the full branch until the broad-suite and edge-smoke blockers are resolved or dispositioned by the final local harness
+- branch-ready: `yes` for a focused local Task 13 commit on `codex/agent-work-ledger-foundation`
+- linear-ready: `yes` under `WIN-271`; completion comment `c92e823b-025b-41d5-865a-7aaddf2d7035`
+- single-purpose: `yes`; the slice is limited to monitoring, inert replay, deterministic eval gates, focused tests, and operations documentation
+- unrelated changes: `deno.lock` and `reports/test-reliability-latest.json` remain unstaged and excluded
+- protected-path drift: none outside the explicitly routed `agent-trace-report` Edge Function
+- GitHub/hosted actions: not authorized and not performed
+- required follow-up: create the focused local Task 13 commit, reroute Task 14, and isolate destructive queue checks in Phase 2 so each contract starts from deterministic state

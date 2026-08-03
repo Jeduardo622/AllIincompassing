@@ -229,3 +229,36 @@ npm run validate:tenant
 ```
 
 The security contract uses synthetic local fixtures and must prove authorized approve/reject, cross-organization denial, expired/revoked authority, hash drift, duplicate/conflicting decisions, rejection behavior, cancellation, and PHI-free audit metadata. Do not use hosted Supabase or real assessment data for this proof.
+
+## Task 13 Monitoring, Replay, And Evaluation
+
+Run the fixed-seed synthetic release gate:
+
+```powershell
+npm run test:agent-work:eval
+```
+
+The command reads only `scripts/fixtures/agent-work-ledger-eval-fixture.v1.json`, performs no network or provider calls, and emits deterministic sanitized JSON. Transition correctness, tool selection, evidence coverage, and policy compliance are graded before optional model-quality fields. It exits nonzero unless all release thresholds are met:
+
+- cross-tenant access `0`
+- false completion `0`
+- unverified mutation effects `0`
+- PHI payload violations `0`
+- approval bypass or stale approval acceptance `0`
+- unknown state transitions `0`
+- stale running steps beyond the sweeper SLO `0`
+- readiness evidence coverage `100%`
+
+The `/monitoring` Agent Trace Replay tab loads `agent-work-operations.v1` only on operator action. The Edge function authenticates the request, resolves the organization and an existing `admin`, `super_admin`, or `monitoring` role, then applies `organization_id` to every service-role query. Each surface is limited to 500 rows and is explicitly presented as a sample. If any surface is truncated, live release-gate evaluation is `blocked_incomplete_sample` and all numeric release signals are unavailable rather than inferred from partial data. Drill-down fields are limited to sanitized work-item/step IDs and machine reason codes.
+
+Non-blocking observations include median time to `needs_review`, accumulated step-state time, retry/abort and human-override rates, duplicate effects prevented, token/cost per completed objective, and workflow/provider/model/version groups. Blocker resolution and clinician administrative time are explicitly unavailable until authoritative timestamps exist; do not infer or synthesize them.
+
+Replay packets are `agent-work-replay.v1`, have `executionAllowed: false`, and contain only workflow/version/status, selector-bound step and transition identifiers, evidence pointer hashes, approval hash/status/timestamps, attempt versions/guardrail outcomes, and effect verification. Replay is an explicit Edge mode and is not loaded by ordinary trace reports. The function validates tokens and hashes before serialization and fails closed when a selector is not step/attempt-bound or any bounded replay surface is incomplete. The CLI accepts one loopback packet only:
+
+```powershell
+npx tsx scripts/agent-replay.ts --packet-url http://127.0.0.1:54321/functions/v1/agent-trace-report --request-id <safe-id>
+```
+
+Pass a local operator token through the process-only `EDGE_REPLAY_ACCESS_TOKEN` variable when required. The CLI rejects non-loopback URLs, URL credentials, multiple packets, unknown fields, malformed hashes/timestamps, and any executable packet. It never reads `.env*`, contacts a model provider, executes a tool, or mutates ledger/domain state.
+
+Alert and triage ownership is recorded in `docs/OBSERVABILITY_RUNBOOK.md`. On a release-gate violation, stop local scheduler/worker activity, set ledger runtime policy to `disabled`, preserve sanitized evidence, quarantine or drain messages, and reconcile with authoritative domain records. `active` mode is not authorized; only `disabled`, `shadow`, and `advisory` are valid for this increment.

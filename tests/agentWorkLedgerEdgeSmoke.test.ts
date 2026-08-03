@@ -3,7 +3,10 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { startAgentWorkItemsRuntime } from "../scripts/agent-work-ledger-harness/edgeRuntime.mjs";
+import {
+  hasExitedRuntimeChild,
+  startAgentWorkItemsRuntime,
+} from "../scripts/agent-work-ledger-harness/edgeRuntime.mjs";
 
 const script = readFileSync(
   path.join(process.cwd(), "scripts", "agent-work-ledger-edge-smoke.mjs"),
@@ -14,6 +17,12 @@ const deferredBlock =
   script.match(/const deferredPaths = \[([\s\S]*?)\];/)?.[1] ?? "";
 
 describe("agent work ledger Edge smoke contract", () => {
+  it("does not treat container mode's null child as an exited process", () => {
+    expect(hasExitedRuntimeChild(null)).toBe(false);
+    expect(hasExitedRuntimeChild({ exitCode: null })).toBe(false);
+    expect(hasExitedRuntimeChild({ exitCode: 1 })).toBe(true);
+  });
+
   it("treats owner and approval decision as implemented shadow-mode mutations", () => {
     expect(script).toContain("shadowMutationProbes");
     expect(script).toContain("advisory_mode_required");

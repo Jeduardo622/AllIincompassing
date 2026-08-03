@@ -9,6 +9,9 @@ const requiredEnv = (env, name) => {
   return value;
 };
 
+export const hasExitedRuntimeChild = (child) =>
+  child !== null && child.exitCode !== null;
+
 export const startAgentWorkItemsRuntime = ({
   supabaseUrl,
   runtimeFile,

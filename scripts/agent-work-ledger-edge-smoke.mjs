@@ -10,7 +10,10 @@ import {
   assertLocalPostgresUrl,
   assertLocalSupabaseHttpUrl,
 } from "./agent-work-ledger-harness/localRuntime.mjs";
-import { startAgentWorkItemsRuntime } from "./agent-work-ledger-harness/edgeRuntime.mjs";
+import {
+  hasExitedRuntimeChild,
+  startAgentWorkItemsRuntime,
+} from "./agent-work-ledger-harness/edgeRuntime.mjs";
 
 const { Client } = pg;
 
@@ -98,7 +101,9 @@ const request = async (url, init = {}) => {
 const waitForFunction = async (url, child = null) => {
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (child?.exitCode !== null) throw new Error("Local Edge Function exited before becoming healthy.");
+    if (hasExitedRuntimeChild(child)) {
+      throw new Error("Local Edge Function exited before becoming healthy.");
+    }
     try {
       const { response } = await request(url);
       if (response.status === 401) return;

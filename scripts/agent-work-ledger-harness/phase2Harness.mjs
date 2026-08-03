@@ -133,6 +133,7 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
       "test",
       "--cached-only",
       "--frozen",
+      "--node-modules-dir=none",
       "--lock=/opt/agent-work-ledger-deno.lock",
       "--allow-env=AGENT_WORK_PHASE2_CONTAINER,SUPABASE_URL,VITE_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_ANON_KEY,VITE_SUPABASE_ANON_KEY,SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_PUBLISHABLE_KEY,SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,OPENAI_API_KEY,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE",
       "supabase/functions/_shared/agent-work/caloptima-draft-review.test.ts",

@@ -35,7 +35,7 @@ LABEL phase2.image-content-policy="source-runtime-synthetic-tests-only"
 
 # The repository lock is excluded from runtime use; this lock/cache is image-local.
 RUN rm -f /workspace/deno.lock \
-  && deno cache --node-modules-dir=auto --frozen=false \
+  && deno cache --node-modules-dir=none --frozen=false \
     --lock=/opt/agent-work-ledger-deno.lock \
     supabase/functions/agent-work-items/index.ts \
     supabase/functions/agent-work-runner/index.ts \

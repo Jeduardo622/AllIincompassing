@@ -69,6 +69,7 @@ describe("agent work ledger phase2 container assets", () => {
         "run",
         "--cached-only",
         "--frozen",
+        "--node-modules-dir=none",
         "--lock=/opt/agent-work-ledger-deno.lock",
         "--allow-all",
         entrypoint,
@@ -144,7 +145,8 @@ describe("agent work ledger phase2 container assets", () => {
     expect(dockerfile).toContain("npm ci --ignore-scripts");
     expect(dockerfile).toContain("/opt/agent-work-ledger-deno.lock");
     expect(dockerfile).toContain("deno cache");
-    expect(dockerfile).toContain("--node-modules-dir=auto");
+    expect(dockerfile).toContain("--node-modules-dir=none");
+    expect(dockerfile).not.toContain("--node-modules-dir=auto");
     expect(dockerfile).toContain("supabase/functions/generate-program-goals/index.ts");
     expect(dockerfile).toContain("supabase/functions/generate-program-goals/index.test.ts");
     expect(dockerfile).not.toContain("ENTRYPOINT");

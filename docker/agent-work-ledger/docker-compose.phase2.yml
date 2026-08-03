@@ -37,6 +37,7 @@ services:
       - run
       - --cached-only
       - --frozen
+      - --node-modules-dir=none
       - --lock=/opt/agent-work-ledger-deno.lock
       - --allow-all
       - supabase/functions/agent-work-items/index.ts
@@ -59,6 +60,7 @@ services:
       - run
       - --cached-only
       - --frozen
+      - --node-modules-dir=none
       - --lock=/opt/agent-work-ledger-deno.lock
       - --allow-all
       - supabase/functions/agent-work-runner/index.ts
@@ -81,6 +83,7 @@ services:
       - run
       - --cached-only
       - --frozen
+      - --node-modules-dir=none
       - --lock=/opt/agent-work-ledger-deno.lock
       - --allow-all
       - supabase/functions/agent-work-sweeper/index.ts

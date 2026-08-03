@@ -690,7 +690,14 @@ describe("agent work ledger phase2 harness contracts", () => {
     )).toBe(true);
     expect(manifest.checks[0].sanitizedOutputSha256).toBe(
       createHash("sha256")
-        .update(sanitizeCommandEvidence({ code: 0, stdout: "secret", stderr: "" }))
+        .update(sanitizeCommandEvidence(
+          {
+            code: 0,
+            stdout: `raw child output containing ${serviceRoleKey}`,
+            stderr: "",
+          },
+          [serviceRoleKey],
+        ))
         .digest("hex"),
     );
     expect(manifest.artifacts.summaryLogSha256).toBe(
@@ -710,6 +717,28 @@ describe("agent work ledger phase2 harness contracts", () => {
       )).digest("hex"),
     );
     expect(JSON.stringify(manifest)).not.toContain(serviceRoleKey);
+  });
+
+  it("fingerprints redacted output content instead of only its presence", () => {
+    const secret = "local-secret-not-for-evidence";
+    const first = sanitizeCommandEvidence(
+      { code: 0, stdout: `result=alpha token=${secret}`, stderr: "" },
+      [secret],
+    );
+    const second = sanitizeCommandEvidence(
+      { code: 0, stdout: `result=beta token=${secret}`, stderr: "" },
+      [secret],
+    );
+    const equivalent = sanitizeCommandEvidence(
+      { code: 0, stdout: "result=alpha token=another-secret", stderr: "" },
+      ["another-secret"],
+    );
+
+    expect(first).not.toEqual(second);
+    expect(first).toEqual(equivalent);
+    expect(first).not.toContain(secret);
+    expect(first).toContain("stdout_sha256=");
+    expect(first).toContain("stderr_sha256=");
   });
 
   it("fails the run and manifest when the mandatory cleanup audit fails", async () => {

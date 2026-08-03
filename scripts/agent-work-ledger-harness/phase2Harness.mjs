@@ -439,11 +439,26 @@ const timestampRunId = (now) => {
 const sha256 = (value) =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
-export const sanitizeCommandEvidence = ({ code, stdout, stderr }) =>
+const sanitizeCommandOutput = (value, redactions) => {
+  let sanitized = String(value ?? "").replace(/\r\n/g, "\n");
+  const tokens = [...new Set(
+    redactions.filter((entry) => typeof entry === "string" && entry.length > 0),
+  )].sort((left, right) => right.length - left.length);
+  for (const token of tokens) sanitized = sanitized.replaceAll(token, "[redacted]");
+  return sanitized
+    .replace(/eyJ[A-Za-z0-9._-]+/g, "[redacted-token]")
+    .replace(/\b(?:sbp|sb_secret|sb_publishable)_[A-Za-z0-9._-]+\b/g, "[redacted-key]")
+    .replace(/(postgres(?:ql)?:\/\/)[^@\s]+@/gi, "$1[redacted]@");
+};
+
+export const sanitizeCommandEvidence = (
+  { code, stdout, stderr },
+  redactions = [],
+) =>
   [
     `exit_code=${Number.isInteger(code) ? code : 1}`,
-    `stdout=${String(stdout ?? "").length > 0 ? "present" : "empty"}`,
-    `stderr=${String(stderr ?? "").length > 0 ? "present" : "empty"}`,
+    `stdout_sha256=${sha256(sanitizeCommandOutput(stdout, redactions))}`,
+    `stderr_sha256=${sha256(sanitizeCommandOutput(stderr, redactions))}`,
   ].join(";");
 
 class HarnessCommandError extends Error {
@@ -702,7 +717,17 @@ const resetSupabaseDatabase = async ({ cwd, env, execute, reasonCode }) => {
 const checkDuration = (startedAt, endedAt) =>
   Math.max(0, endedAt.getTime() - startedAt.getTime());
 
-const resultHash = (result) => sha256(sanitizeCommandEvidence(result));
+const resultHash = (result, runtimeEnv) => sha256(sanitizeCommandEvidence(
+  result,
+  [
+    runtimeEnv.PHASE2_CONTAINER_SUPABASE_URL,
+    runtimeEnv.PHASE2_CONTAINER_SUPABASE_DB_URL,
+    runtimeEnv.PHASE2_SUPABASE_ANON_KEY,
+    runtimeEnv.PHASE2_SUPABASE_SERVICE_ROLE_KEY,
+    runtimeEnv.PHASE2_RUNNER_SECRET,
+    runtimeEnv.PHASE2_SWEEPER_SECRET,
+  ],
+));
 
 const reasonFrom = (error, fallback) =>
   error instanceof HarnessCommandError
@@ -952,7 +977,7 @@ export const runPhase2Harness = async ({
           startedAtUtc: checkStarted.toISOString(),
           endedAtUtc: checkEnded.toISOString(),
           durationMs: checkDuration(checkStarted, checkEnded),
-          sanitizedOutputSha256: resultHash(result),
+          sanitizedOutputSha256: resultHash(result, runtimeEnv),
         });
         summaryLines.push(`${check.id}: passed`);
         if (check.id === "cleanup-audit") cleanupAuditPassed = true;
@@ -965,7 +990,7 @@ export const runPhase2Harness = async ({
           startedAtUtc: checkStarted.toISOString(),
           endedAtUtc: checkEnded.toISOString(),
           durationMs: checkDuration(checkStarted, checkEnded),
-          sanitizedOutputSha256: resultHash(result),
+          sanitizedOutputSha256: resultHash(result, runtimeEnv),
         });
         summaryLines.push(`${check.id}: failed`);
         throw error;

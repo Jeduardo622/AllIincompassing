@@ -554,3 +554,58 @@ Stop and re-route if the work would:
 - protected-path drift: intentional and contained to the routed core migration and Supabase functions
 - verification summary: recorded above
 - required follow-up: commit Task 11 separately, update `WIN-271`, reroute Task 12 fresh, and keep all GitHub/hosted actions blocked pending explicit authorization
+
+## Task 12 Route
+
+- date: `2026-08-02`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- intent: add durable, hash-bound human owner handoff and approval decisions for advisory IEHP ledger state only
+- triggering paths: core migration/RPC/grants/RLS, `agent-work-items`, typed client/UI confirmation, focused security and migration tests, authority/operations docs
+- allowed scope: the smallest coherent ledger migration, owner-handoff RPC, approval-decision RPC, sanitized server-owned authority projection, client confirmation, focused tests, and documentation
+- non-goals: assessment-domain mutation, promotion, document generation, signature, publication, payer submission, billing, final-record creation, active mode, hosted access, push, PR, or deploy
+- stop conditions: any domain authority write, client-synthesized tenant/role/hash authority, direct approval-table DML, raw evidence/hash disclosure, or spill into cancel/resume/reconcile behavior
+- required agents: specification, implementation, code review, test, security, architecture, Supabase, and documentation
+- reviewer required: yes; human review remains mandatory before merge
+- verify-change required: yes
+- linear required: yes (`WIN-271`)
+
+## Task 12 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database approval authority; protected Supabase Edge mutation; tenant/role/hash validation; advisory UI confirmation; tests and docs
+- required checks: `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; focused approval Vitest; Agent Work Ledger Deno tests; fresh `supabase db reset --local --yes`; `npm run agent-work:security-contract`; `npm run agent-work:shadow-parity`; `npm run test:agent-work:chaos`; `npm run agent-work:queue-scheduler:smoke`; `git diff --check`
+- red evidence: Deno typecheck failed on missing approval DTO/dependencies; SQL and component contracts lacked the handoff/decision behavior; live client-access denial initially failed; the assigned-approver RLS regression test failed when the policy directly invoked revoked arbitrary-scope helpers; the post-decision response test failed while Edge still reread through caller RLS
+- executed checks:
+  - fresh `supabase db reset --local --yes`: pass; all migrations applied from empty local state
+  - `npm run agent-work:security-contract`: pass; synthetic live approve/reject, cross-tenant denial, hash/workflow/current-step/cancel drift, exact-role and client-access loss, expiry/revocation, duplicate/conflict/concurrent decisions, rehandoff, sweep, event RLS/sanitization, and handoff-decision race probes passed
+  - Agent Work Ledger Deno tests: `50/50` pass (`agent-work-items` `22/22`, runner `20/20`, sweeper `8/8`)
+  - focused approval/client/component Vitest: `33/33` pass (`10`, `9`, and `14` tests)
+  - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build`: pass
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: pass at `448/450` files and `3714/3719` tests; two files/five tests skipped only because their dedicated local Postgres proof URLs were not configured
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`: pass in `386s`; includes the same full suite, `92.88%` line coverage, production build, and `220/220` Tier-0 route tests
+  - `npm run agent-work:shadow-parity`: pass at `6/6` fixtures and `7/7` negative probes with zero mismatches
+  - `npm run test:agent-work:chaos`: pass at `10/10` with seed `task10-default-seed`
+  - `npm run agent-work:queue-scheduler:smoke`: pass; scheduler callbacks returned HTTP `200/200`, runner converged through `blocked` then `no_work`, and sweeper processed four actions
+  - `git diff --check`: pass
+- blocked checks: branch-protection validation is CI-only; the aggregate privileged-function DB grant probe skipped without `SUPABASE_DB_URL`, but the separate live local security contract proved the exact grants; Supabase auth parity remains disabled outside CI; hosted IEHP, GitHub, deployment, and external-provider checks were intentionally not run under the local-only authorization boundary
+- specialist review: specification, architecture, implementation, test, performance, documentation, code, security, and Supabase reviews completed; final code, security, and Supabase review passes approved the caller-bound pending RLS plus bounded service-role post-decision reread with no findings
+- result: `pass-with-blocked-checks`
+- residual risk: the protected migration and Edge boundary still require human review before any future merge, and hosted runtime behavior remains intentionally untested; domain assessment tables remain authoritative and no active runtime, clinical mutation, promotion, publication, signature, payer submission, billing, or final-record creation is enabled
+
+### Task 12 PR Hygiene
+
+- pr-ready: `yes` for local human review; push and PR creation remain intentionally blocked by the task authorization
+- lane: `critical`
+- branch-ready: `yes` on `codex/agent-work-ledger-foundation`
+- linear-ready: `yes`; `WIN-271` completion comment `ca944ba0-1bb3-40d6-8437-ba2784a78110`
+- single-purpose: `yes`; the diff is limited to durable advisory human handoff/approval authority, its UI/API projection, focused tests, and supporting docs
+- unrelated changes: `deno.lock` and `reports/test-reliability-latest.json` remain unstaged and excluded
+- generated artifact drift: the existing test-reliability report drift remains unstaged; no Task 12 generated artifact is missing
+- protected-path drift: none outside the explicitly routed migrations and `agent-work-items` Edge Function
+- change summary: present
+- verification summary: present above
+- PR handoff: locally ready; exact future push/PR commands are deferred to Task 15 and require explicit authorization
+- reviewer: final code, security, and Supabase reviews completed with no findings
+- required follow-up: create the focused local Task 12 commit, reroute Task 13, and keep all GitHub/hosted actions blocked

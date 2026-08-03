@@ -16,9 +16,14 @@ const modeHeading = (mode: "shadow" | "advisory"): string =>
 export function AssessmentWorkLedgerPanel({
   state,
   reviewHref = "#iehp-current-review-section",
+  onApprovalDecision,
 }: {
   state: AssessmentWorkLedgerPanelState;
   reviewHref?: string;
+  onApprovalDecision?: (
+    approval: Extract<AssessmentWorkLedgerPanelState, { kind: "available" }>["item"]["approvals"][number],
+    decision: "approve" | "reject",
+  ) => void | Promise<void>;
 }) {
   if (state.kind === "disabled" || state.kind === "aborted") return null;
 
@@ -86,7 +91,7 @@ export function AssessmentWorkLedgerPanel({
         <WorkStepTimeline steps={item.steps} />
         <div className="space-y-4">
           <WorkBlockers blockers={item.blockers} reviewHref={reviewHref} />
-          <WorkApprovalCard approvals={item.approvals} />
+          <WorkApprovalCard approvals={item.approvals} runtimeMode={runtimeMode} onDecision={onApprovalDecision} />
         </div>
       </div>
 

@@ -29,6 +29,17 @@ $$;
 
 select pgmq.create('agent_work_steps');
 
+create index if not exists agent_work_approvals_expiry_sweep_idx
+  on public.agent_work_approvals (expires_at, id)
+  where status in ('pending', 'approved')
+    and expires_at is not null;
+
+create index if not exists agent_work_approvals_stale_sweep_idx
+  on public.agent_work_approvals (requested_at, id)
+  where status in ('pending', 'approved')
+    and revoked_at is null
+    and approval_hash is not null;
+
 create or replace function public.agent_work_validate_queue_payload(p_payload jsonb)
 returns table(
   work_item_id uuid,
@@ -1701,13 +1712,20 @@ begin
   end if;
 
   for v_approval in
-    select id, step_id, work_item_id, expires_at
-    from public.agent_work_approvals
-    where status in ('pending', 'approved')
-      and expires_at is not null
-    order by expires_at asc, id asc
+    select approval.id, approval.step_id, approval.work_item_id, approval.expires_at
+    from public.agent_work_approvals approval
+    left join public.agent_work_steps step
+      on step.id = approval.step_id
+      and step.work_item_id = approval.work_item_id
+    where approval.status in ('pending', 'approved')
+      and approval.expires_at is not null
+      and not (
+        approval.status = 'approved'
+        and step.status = 'completed'
+      )
+    order by approval.expires_at asc, approval.id asc
     limit p_max_items_per_pass
-    for update skip locked
+    for update of approval skip locked
   loop
     if v_approval.expires_at <= p_now then
       update public.agent_work_approvals
@@ -1744,6 +1762,158 @@ begin
 
   return jsonb_build_object(
     'expired', v_expired,
+    'skippedCurrent', v_skipped_current
+  );
+end;
+$$;
+
+create or replace function public.revoke_stale_agent_work_approvals(
+  p_now timestamptz,
+  p_max_items_per_pass integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_approval public.agent_work_approvals%rowtype;
+  v_item public.agent_work_items%rowtype;
+  v_step public.agent_work_steps%rowtype;
+  v_current_input_hash text;
+  v_current_evidence_hash text;
+  v_current_approval_hash text;
+  v_reason_code text;
+  v_revoked jsonb := '[]'::jsonb;
+  v_skipped_current jsonb := '[]'::jsonb;
+begin
+  if p_now is null then
+    raise exception 'p_now is required';
+  end if;
+
+  if p_max_items_per_pass is null or p_max_items_per_pass < 1 or p_max_items_per_pass > 500 then
+    raise exception 'p_max_items_per_pass is out of range';
+  end if;
+
+  for v_approval in
+    select approval.*
+    from public.agent_work_approvals approval
+    where approval.status in ('pending', 'approved')
+      and approval.revoked_at is null
+      and approval.approval_hash is not null
+    order by approval.requested_at asc, approval.id asc
+    limit p_max_items_per_pass
+    for update of approval skip locked
+  loop
+    v_item := null;
+    v_step := null;
+    v_reason_code := null;
+
+    select item.*
+    into v_item
+    from public.agent_work_items item
+    where item.id = v_approval.work_item_id
+      and item.organization_id = v_approval.organization_id;
+
+    select step.*
+    into v_step
+    from public.agent_work_steps step
+    where step.id = v_approval.step_id
+      and step.work_item_id = v_approval.work_item_id;
+
+    if v_item.id is null or v_step.id is null or v_item.status = 'cancelled' then
+      v_reason_code := 'work_cancelled';
+    elsif v_approval.status = 'approved' and v_step.status = 'completed' then
+      v_skipped_current := v_skipped_current || jsonb_build_array(
+        jsonb_build_object('reasonCode', 'approval_consumed')
+      );
+      continue;
+    elsif v_item.current_step_id is distinct from v_step.id then
+      v_reason_code := 'step_not_current';
+    elsif not public.agent_work_user_has_exact_role(
+      v_approval.assigned_to,
+      v_item.organization_id,
+      v_approval.required_role,
+      p_now
+    ) or not public.agent_work_user_has_client_access(
+      v_approval.assigned_to,
+      v_item.organization_id,
+      v_item.client_id,
+      p_now
+    ) then
+      v_reason_code := 'owner_authority_lost';
+    elsif v_approval.workflow_version <> v_item.workflow_version then
+      v_reason_code := 'workflow_version_changed';
+    else
+      v_current_input_hash := public.agent_work_compute_input_hash(v_item.id, v_step.id);
+      v_current_evidence_hash := public.agent_work_compute_evidence_hash(v_item.id);
+      v_current_approval_hash := public.agent_work_compute_approval_hash(
+        v_item.id,
+        v_step.id,
+        v_item.workflow_version,
+        v_approval.required_role,
+        v_approval.assigned_to,
+        v_approval.request_reason_code,
+        v_current_input_hash,
+        v_current_evidence_hash
+      );
+
+      if v_approval.status = 'pending'
+        and (
+          v_step.status <> 'needs_approval'
+          or v_step.input_hash is distinct from v_approval.input_hash
+        ) then
+        v_reason_code := 'input_hash_changed';
+      elsif v_approval.input_hash <> v_current_input_hash then
+        v_reason_code := 'input_hash_changed';
+      elsif v_approval.evidence_hash <> v_current_evidence_hash then
+        v_reason_code := 'evidence_hash_changed';
+      elsif v_step.approval_hash is distinct from v_approval.approval_hash
+        or v_approval.approval_hash <> v_current_approval_hash then
+        v_reason_code := 'input_hash_changed';
+      end if;
+    end if;
+
+    if v_reason_code is null then
+      v_skipped_current := v_skipped_current || jsonb_build_array(
+        jsonb_build_object('reasonCode', 'approval_current')
+      );
+      continue;
+    end if;
+
+    update public.agent_work_approvals approval
+    set status = 'revoked',
+        revoked_at = p_now,
+        revoked_by = null,
+        revoked_reason_code = v_reason_code,
+        updated_at = p_now
+    where approval.id = v_approval.id
+    returning approval.* into v_approval;
+
+    if v_approval.step_id is not null then
+      perform public.agent_work_log_queue_event(
+        v_approval.step_id,
+        'approval.revoked',
+        'system',
+        'pgmq',
+        jsonb_build_object(
+          'approval_id', v_approval.id::text,
+          'reason_code', v_reason_code
+        )
+      );
+    end if;
+
+    if v_approval.work_item_id is not null then
+      perform public.agent_work_recompute_item_status(v_approval.work_item_id);
+    end if;
+
+    v_revoked := v_revoked || jsonb_build_array(
+      jsonb_build_object('reasonCode', v_reason_code)
+    );
+  end loop;
+
+  return jsonb_build_object(
+    'revoked', v_revoked,
     'skippedCurrent', v_skipped_current
   );
 end;
@@ -2059,6 +2229,7 @@ revoke all on function public.schedule_agent_work_step_retry(uuid, integer, text
 revoke all on function public.requeue_expired_agent_work_leases(timestamptz, integer) from public, anon, authenticated;
 revoke all on function public.wake_due_agent_work_steps(timestamptz, integer) from public, anon, authenticated;
 revoke all on function public.expire_agent_work_approvals(timestamptz, integer) from public, anon, authenticated;
+revoke all on function public.revoke_stale_agent_work_approvals(timestamptz, integer) from public, anon, authenticated;
 revoke all on function public.archive_agent_work_poison_messages(timestamptz, integer) from public, anon, authenticated;
 revoke all on function public.enable_local_agent_work_queue_scheduler(text, integer, integer) from public, anon, authenticated, service_role;
 revoke all on function public.disable_local_agent_work_queue_scheduler() from public, anon, authenticated, service_role;
@@ -2078,6 +2249,7 @@ grant execute on function public.schedule_agent_work_step_retry(uuid, integer, t
 grant execute on function public.requeue_expired_agent_work_leases(timestamptz, integer) to service_role;
 grant execute on function public.wake_due_agent_work_steps(timestamptz, integer) to service_role;
 grant execute on function public.expire_agent_work_approvals(timestamptz, integer) to service_role;
+grant execute on function public.revoke_stale_agent_work_approvals(timestamptz, integer) to service_role;
 grant execute on function public.archive_agent_work_poison_messages(timestamptz, integer) to service_role;
 
 commit;

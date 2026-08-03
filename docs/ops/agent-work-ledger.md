@@ -203,3 +203,29 @@ The harness uses deterministic synthetic IDs, a seedable scenario order, and in-
 - different target or payload values producing different canonical effect keys and invalidating hash-bound approval bindings in the synthetic approval probe
 
 The command exits nonzero on the first failed crash scenario, postcondition gate, duplicate-effect regression, or approval-binding regression.
+
+## Task 12 Human Handoff Contract
+
+Durable human handoffs are ledger-only and available only when the `agent-work-items` authority is in `advisory` mode. `shadow` remains read-only.
+
+- the handoff RPC derives canonical SHA-256 input, evidence-set, and approval binding hashes from current ledger authority
+- the assigned owner must have an active same-organization profile, an active unexpired exact `user_roles` assignment, and current client access under repository policy; assignment-bound BT access is re-read at handoff, decision, and sweep time
+- approval handoff and decisions share the item-to-step-to-approval lock order; decisions re-read current tenant/role/hash/workflow/current-step authority and allow one compare-and-swap winner
+- an identical replay returns the stored decision; a different second decision records a sanitized conflict and returns `409`
+- expiry is distinct from revocation; owner loss, owner change, non-current step, input/evidence drift, cancellation, and workflow-version drift revoke the binding
+- consumed approvals remain approved after step completion; expiry and stale-binding sweeps use separate bounded partial indexes
+- approval governance events are manager-only even when other PHI-free ledger events are visible to assigned read-only viewers
+- the UI reveals only a pending approval's evidence count and, inside explicit confirmation, an eight-character hash suffix; historical approval confirmation metadata is `null`, and approval-owner UUIDs are not projected
+- assigned approvers read only their currently decidable pending row through caller-bound RLS; after a successful service-only decision RPC, the Edge Function rereads exactly that approval by work item, assigned actor, and approval id through the service boundary and returns only the sanitized decision projection
+- approve/reject changes ledger handoff state only; IEHP assessment, promotion, document generation, signature, payer submission, billing, and final-record paths are not called
+
+Focused local proof:
+
+```powershell
+deno test supabase/functions/agent-work-items/index.test.ts
+npm test -- --run tests/agentWorkLedgerApprovalMigration.test.ts src/lib/__tests__/agent-work-ledger.test.ts src/components/agent-work/__tests__/AssessmentWorkLedgerPanel.test.tsx
+npm run agent-work:security-contract
+npm run validate:tenant
+```
+
+The security contract uses synthetic local fixtures and must prove authorized approve/reject, cross-organization denial, expired/revoked authority, hash drift, duplicate/conflicting decisions, rejection behavior, cancellation, and PHI-free audit metadata. Do not use hosted Supabase or real assessment data for this proof.

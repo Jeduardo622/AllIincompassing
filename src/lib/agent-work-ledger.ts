@@ -46,6 +46,10 @@ const approvalSchema = z.object({
   status: z.enum(["pending", "approved", "rejected", "expired", "revoked"]),
   requiredRole: z.string().min(1),
   expiresAt: z.string().datetime().nullable(),
+  requestedAt: z.string().datetime(),
+  evidenceCount: z.number().int().nonnegative().nullable(),
+  evidenceHashSuffix: z.string().regex(/^[0-9a-f]{8}$/).nullable(),
+  canDecide: z.boolean(),
 }).strict();
 
 const workItemSchema = z.object({
@@ -69,6 +73,12 @@ const listEnvelopeSchema = z.object({
   meta: z.object({ runtimeMode: runtimeModeSchema }).strict(),
 }).strict();
 
+const approvalEnvelopeSchema = z.object({
+  success: z.literal(true),
+  data: approvalSchema,
+  meta: z.object({ outcome: z.enum(["decided", "duplicate"]) }).strict(),
+}).strict();
+
 const errorEnvelopeSchema = z.object({
   success: z.literal(false),
   error: z.string(),
@@ -77,6 +87,7 @@ const errorEnvelopeSchema = z.object({
 
 export type AgentWorkRuntimeMode = z.infer<typeof runtimeModeSchema>;
 export type AgentWorkItem = z.infer<typeof workItemSchema>;
+export type AgentWorkApprovalDecision = "approve" | "reject";
 
 export type AssessmentWorkLedgerPanelState =
   | { kind: "loading" }
@@ -141,6 +152,30 @@ export async function fetchAssessmentWorkLedger({
       ? { kind: "aborted" }
       : { kind: "unavailable" };
   }
+}
+
+export async function decideAgentWorkApproval(input: {
+  workItemId: string;
+  approvalId: string;
+  decision: AgentWorkApprovalDecision;
+  reasonCode: string;
+}): Promise<AgentWorkItem["approvals"][number]> {
+  const response = await callEdgeFunctionHttp(
+    `agent-work-items/${encodeURIComponent(input.workItemId)}/approvals/${encodeURIComponent(input.approvalId)}/decision`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: input.decision, reasonCode: input.reasonCode }),
+    },
+  );
+  const payload = await parseJson(response);
+  if (!response.ok) {
+    const parsed = errorEnvelopeSchema.safeParse(payload);
+    throw new Error(parsed.success ? parsed.data.error : "Approval decision failed");
+  }
+  const parsed = approvalEnvelopeSchema.safeParse(payload);
+  if (!parsed.success) throw new Error("Approval response was invalid");
+  return parsed.data.data;
 }
 
 interface AssessmentWorkLedgerQueryScope {

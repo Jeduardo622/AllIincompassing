@@ -47,6 +47,10 @@ export interface AgentWorkItemApprovalView {
   status: "pending" | "approved" | "rejected" | "expired" | "revoked";
   requiredRole: string;
   expiresAt: string | null;
+  requestedAt: string;
+  evidenceCount: number | null;
+  evidenceHashSuffix: string | null;
+  canDecide: boolean;
 }
 
 export interface AgentWorkItemView {
@@ -79,6 +83,37 @@ interface CreateAssessmentWorkItemInput {
   dedupeKey: string;
 }
 
+interface RequestApprovalHandoffInput {
+  actorUserId: string;
+  workItemId: string;
+  stepId: string;
+  assignedOwnerUserId: string;
+  reasonCode: string;
+  expiresAt: string;
+}
+
+interface DecideApprovalInput {
+  actorUserId: string;
+  workItemId: string;
+  approvalId: string;
+  decision: "approve" | "reject";
+  reasonCode: string;
+}
+
+type ApprovalDecisionOutcome =
+  | "decided"
+  | "duplicate"
+  | "conflict"
+  | "expired"
+  | "revoked"
+  | "forbidden"
+  | "not_found";
+
+interface ApprovalDecisionResult {
+  outcome: ApprovalDecisionOutcome;
+  approval: AgentWorkItemApprovalView | null;
+}
+
 export class AgentWorkRequestError extends Error {
   constructor(
     readonly status: 403 | 404 | 409,
@@ -108,11 +143,15 @@ export interface AgentWorkItemsHandlerDependencies {
     assessmentDocumentId: string,
   ): Promise<AgentWorkItemView[]>;
   getWorkItemDetail(workItemId: string): Promise<AgentWorkItemView | null>;
+  requestApprovalHandoff(
+    input: RequestApprovalHandoffInput,
+  ): Promise<AgentWorkItemApprovalView>;
+  decideApproval(input: DecideApprovalInput): Promise<ApprovalDecisionResult>;
 }
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const REASON_CODE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const REASON_CODE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const WORKFLOW_VERSION = 1;
 const MAX_BODY_BYTES = 4096;
 function strictView(view: AgentWorkItemView): AgentWorkItemView {
@@ -144,6 +183,10 @@ function strictView(view: AgentWorkItemView): AgentWorkItemView {
       status: approval.status,
       requiredRole: approval.requiredRole,
       expiresAt: approval.expiresAt,
+      requestedAt: approval.requestedAt,
+      evidenceCount: approval.evidenceCount,
+      evidenceHashSuffix: approval.evidenceHashSuffix,
+      canDecide: approval.canDecide,
     })),
     updatedAt: view.updatedAt,
   };
@@ -158,8 +201,7 @@ function routePath(pathname: string): string {
 }
 
 function isDeferredMutation(path: string): boolean {
-  return /^\/[0-9a-f-]+\/(owner|cancel|resume|reconcile)$/i.test(path) ||
-    /^\/[0-9a-f-]+\/approvals\/[0-9a-f-]+\/decision$/i.test(path);
+  return /^\/[0-9a-f-]+\/(cancel|resume|reconcile)$/i.test(path);
 }
 
 async function parseCreateBody(
@@ -196,6 +238,66 @@ function validateCreateBody(body: Record<string, unknown>): {
   return {
     assessmentDocumentId: body.assessmentDocumentId,
     workflowVersion: workflowVersion as number,
+  };
+}
+
+function validateHandoffBody(body: Record<string, unknown>): {
+  stepId: string;
+  assignedOwnerUserId: string;
+  reasonCode: string;
+  expiresAt: string;
+} | null {
+  const allowed = new Set([
+    "stepId",
+    "assignedOwnerUserId",
+    "reasonCode",
+    "expiresAt",
+  ]);
+  if (Object.keys(body).some((key) => !allowed.has(key))) return null;
+  if (
+    typeof body.stepId !== "string" || !UUID_PATTERN.test(body.stepId) ||
+    typeof body.assignedOwnerUserId !== "string" ||
+    !UUID_PATTERN.test(body.assignedOwnerUserId) ||
+    typeof body.reasonCode !== "string" ||
+    !REASON_CODE_PATTERN.test(body.reasonCode) ||
+    typeof body.expiresAt !== "string" ||
+    !Number.isFinite(Date.parse(body.expiresAt))
+  ) return null;
+  return {
+    stepId: body.stepId,
+    assignedOwnerUserId: body.assignedOwnerUserId,
+    reasonCode: body.reasonCode,
+    expiresAt: body.expiresAt,
+  };
+}
+
+function validateDecisionBody(body: Record<string, unknown>): {
+  decision: "approve" | "reject";
+  reasonCode: string;
+} | null {
+  const allowed = new Set(["decision", "reasonCode"]);
+  if (Object.keys(body).some((key) => !allowed.has(key))) return null;
+  if (
+    (body.decision !== "approve" && body.decision !== "reject") ||
+    typeof body.reasonCode !== "string" ||
+    !REASON_CODE_PATTERN.test(body.reasonCode)
+  ) return null;
+  return { decision: body.decision, reasonCode: body.reasonCode };
+}
+
+function strictApproval(
+  view: AgentWorkItemApprovalView,
+): AgentWorkItemApprovalView {
+  return {
+    id: view.id,
+    stepId: view.stepId,
+    status: view.status,
+    requiredRole: view.requiredRole,
+    expiresAt: view.expiresAt,
+    requestedAt: view.requestedAt,
+    evidenceCount: view.evidenceCount,
+    evidenceHashSuffix: view.evidenceHashSuffix,
+    canDecide: view.canDecide,
   };
 }
 
@@ -241,6 +343,86 @@ export function createAgentWorkItemsHandler(
 
     const url = new URL(request.url);
     const path = routePath(url.pathname);
+
+    const ownerMatch = path.match(/^\/([0-9a-f-]+)\/owner$/i);
+    if (request.method === "POST" && ownerMatch) {
+      if (mode !== "advisory") {
+        return reject(403, "Advisory mode required", "advisory_mode_required");
+      }
+      if (!UUID_PATTERN.test(ownerMatch[1])) {
+        return reject(400, "Invalid work item id");
+      }
+      const body = await parseCreateBody(request);
+      const input = body ? validateHandoffBody(body) : null;
+      if (!input) return reject(400, "Invalid request body");
+      try {
+        const approval = await deps.requestApprovalHandoff({
+          actorUserId: user.id,
+          workItemId: ownerMatch[1],
+          ...input,
+        });
+        return respond(201, { success: true, data: strictApproval(approval) });
+      } catch (error) {
+        if (error instanceof AgentWorkRequestError) {
+          return reject(error.status, error.publicMessage, error.code);
+        }
+        return reject(500, "Approval handoff failed", "handoff_failed");
+      }
+    }
+
+    const decisionMatch = path.match(
+      /^\/([0-9a-f-]+)\/approvals\/([0-9a-f-]+)\/decision$/i,
+    );
+    if (request.method === "POST" && decisionMatch) {
+      if (mode !== "advisory") {
+        return reject(403, "Advisory mode required", "advisory_mode_required");
+      }
+      if (
+        !UUID_PATTERN.test(decisionMatch[1]) ||
+        !UUID_PATTERN.test(decisionMatch[2])
+      ) {
+        return reject(400, "Invalid approval target");
+      }
+      const body = await parseCreateBody(request);
+      const input = body ? validateDecisionBody(body) : null;
+      if (!input) return reject(400, "Invalid request body");
+      try {
+        const result = await deps.decideApproval({
+          actorUserId: user.id,
+          workItemId: decisionMatch[1],
+          approvalId: decisionMatch[2],
+          ...input,
+        });
+        if (
+          (result.outcome === "decided" || result.outcome === "duplicate") &&
+          result.approval
+        ) {
+          return respond(200, {
+            success: true,
+            data: strictApproval(result.approval),
+            meta: { outcome: result.outcome },
+          });
+        }
+        const mapped: Partial<
+          Record<ApprovalDecisionOutcome, [number, string, string]>
+        > = {
+          forbidden: [403, "Forbidden", "forbidden"],
+          not_found: [404, "Not found", "not_found"],
+          conflict: [409, "Conflict", "conflict"],
+          expired: [409, "Conflict", "approval_expired"],
+          revoked: [409, "Conflict", "approval_revoked"],
+        };
+        const mappedOutcome = mapped[result.outcome];
+        return mappedOutcome
+          ? reject(mappedOutcome[0], mappedOutcome[1], mappedOutcome[2])
+          : reject(409, "Conflict", "conflict");
+      } catch (error) {
+        if (error instanceof AgentWorkRequestError) {
+          return reject(error.status, error.publicMessage, error.code);
+        }
+        return reject(500, "Approval decision failed", "decision_failed");
+      }
+    }
 
     if (request.method === "POST" && isDeferredMutation(path)) {
       return reject(
@@ -360,6 +542,29 @@ function safeReasonCode(value: unknown): string | null {
     : null;
 }
 
+function requestErrorForRpcMessage(
+  message: string,
+): AgentWorkRequestError | null {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("forbidden") ||
+    normalized.includes("owner") && normalized.includes("role")
+  ) {
+    return new AgentWorkRequestError(403, "Forbidden", "forbidden");
+  }
+  if (normalized.includes("not found")) {
+    return new AgentWorkRequestError(404, "Not found", "not_found");
+  }
+  if (
+    normalized.includes("conflict") || normalized.includes("unavailable") ||
+    normalized.includes("cancelled") || normalized.includes("expired") ||
+    normalized.includes("stale")
+  ) {
+    return new AgentWorkRequestError(409, "Conflict", "conflict");
+  }
+  return null;
+}
+
 function blockerForStep(step: any): AgentWorkItemBlockerView | null {
   if (step.status === "needs_approval") {
     return {
@@ -422,7 +627,9 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
           .order("ordinal", { ascending: true }),
         requestClient
           .from("agent_work_approvals")
-          .select("id,step_id,status,required_role,expires_at,requested_at")
+          .select(
+            "id,step_id,status,required_role,expires_at,requested_at,evidence_hash",
+          )
           .eq("work_item_id", workItemId)
           .order("requested_at", { ascending: true }),
         requestClient
@@ -433,6 +640,16 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
       if (stepsResult.error) throw stepsResult.error;
       if (approvalsResult.error) throw approvalsResult.error;
       if (evidenceResult.error) throw evidenceResult.error;
+
+      const { data: decidableRows, error: authorityError } = await requestClient
+        .rpc(
+          "current_user_decidable_agent_work_approval_ids",
+          { p_work_item_id: workItemId },
+        );
+      if (authorityError) throw authorityError;
+      const decidableApprovalIds = new Set(
+        (decidableRows ?? []).map((row: any) => row.approval_id),
+      );
 
       const evidenceCounts = new Map<string, number>();
       for (const evidence of evidenceResult.data ?? []) {
@@ -453,6 +670,24 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         evidenceCount: evidenceCounts.get(step.id) ?? 0,
         lastReasonCode: safeReasonCode(step.last_error_code),
       }));
+      const approvals = (approvalsResult.data ?? []).map(
+        (approval: any): AgentWorkItemApprovalView => {
+          const isPending = approval.status === "pending";
+          return {
+            id: approval.id,
+            stepId: approval.step_id,
+            status: approval.status,
+            requiredRole: approval.required_role,
+            expiresAt: approval.expires_at,
+            requestedAt: approval.requested_at,
+            evidenceCount: isPending ? (evidenceResult.data ?? []).length : null,
+            evidenceHashSuffix: isPending && typeof approval.evidence_hash === "string"
+              ? approval.evidence_hash.slice(-8)
+              : null,
+            canDecide: isPending && decidableApprovalIds.has(approval.id),
+          };
+        },
+      );
 
       return {
         id: item.id,
@@ -467,15 +702,7 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
           value,
         ): value is AgentWorkItemBlockerView => value !== null),
         steps,
-        approvals: (approvalsResult.data ?? []).map((
-          approval: any,
-        ): AgentWorkItemApprovalView => ({
-          id: approval.id,
-          stepId: approval.step_id,
-          status: approval.status,
-          requiredRole: approval.required_role,
-          expiresAt: approval.expires_at,
-        })),
+        approvals,
         updatedAt: item.updated_at,
       };
     };
@@ -566,6 +793,78 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         );
       },
       getWorkItemDetail: getDetail,
+      requestApprovalHandoff: async (input) => {
+        const { data, error } = await serviceClient.rpc(
+          "request_agent_work_approval_handoff",
+          {
+            p_actor_user_id: input.actorUserId,
+            p_work_item_id: input.workItemId,
+            p_step_id: input.stepId,
+            p_assigned_owner_user_id: input.assignedOwnerUserId,
+            p_reason_code: input.reasonCode,
+            p_expires_at: input.expiresAt,
+          },
+        );
+        if (error) throw requestErrorForRpcMessage(error.message) ?? error;
+        const approvalId = data && typeof data === "object" &&
+            typeof (data as Record<string, unknown>).approval_id === "string"
+          ? (data as Record<string, string>).approval_id
+          : null;
+        const detail = await getDetail(input.workItemId);
+        const approval = detail?.approvals.find((candidate) =>
+          candidate.id === approvalId
+        );
+        if (!approval) {
+          throw new Error("Approval handoff result was not visible");
+        }
+        return approval;
+      },
+      decideApproval: async (input) => {
+        const { data, error } = await serviceClient.rpc(
+          "decide_agent_work_approval",
+          {
+            p_actor_user_id: input.actorUserId,
+            p_work_item_id: input.workItemId,
+            p_approval_id: input.approvalId,
+            p_decision: input.decision,
+            p_reason_code: input.reasonCode,
+          },
+        );
+        if (error) throw requestErrorForRpcMessage(error.message) ?? error;
+        const payload = data && typeof data === "object"
+          ? data as Record<string, unknown>
+          : {};
+        const outcome = typeof payload.outcome === "string"
+          ? payload.outcome as ApprovalDecisionOutcome
+          : "conflict";
+        if (outcome !== "decided" && outcome !== "duplicate") {
+          return { outcome, approval: null };
+        }
+        const { data: approval, error: approvalError } = await serviceClient
+          .from("agent_work_approvals")
+          .select("id,step_id,status,required_role,expires_at,requested_at")
+          .eq("work_item_id", input.workItemId)
+          .eq("assigned_to", input.actorUserId)
+          .eq("id", input.approvalId)
+          .maybeSingle();
+        if (approvalError) throw approvalError;
+        return {
+          outcome,
+          approval: approval
+            ? {
+              id: approval.id,
+              stepId: approval.step_id,
+              status: approval.status,
+              requiredRole: approval.required_role,
+              expiresAt: approval.expires_at,
+              requestedAt: approval.requested_at,
+              evidenceCount: null,
+              evidenceHashSuffix: null,
+              canDecide: false,
+            }
+            : null,
+        };
+      },
     })(request);
   };
 }

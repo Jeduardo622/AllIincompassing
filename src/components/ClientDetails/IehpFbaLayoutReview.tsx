@@ -4,6 +4,7 @@ import { callApi } from "../../lib/api";
 import { useAuth } from "../../lib/authContext";
 import {
   createAssessmentWorkLedgerQueryOptions,
+  decideAgentWorkApproval,
   type AssessmentWorkLedgerPanelState,
 } from "../../lib/agent-work-ledger";
 import { showError, showSuccess } from "../../lib/toast";
@@ -679,6 +680,16 @@ export function IehpFbaLayoutReview({
     : ledgerQuery.isLoading
       ? { kind: "loading" }
       : ledgerQuery.data ?? { kind: "unavailable" };
+  const approvalDecision = useMutation({
+    mutationFn: decideAgentWorkApproval,
+    onSuccess: async () => {
+      await ledgerQuery.refetch();
+      showSuccess("Clinical review handoff decision recorded.");
+    },
+    onError: (error) => {
+      showError(error instanceof Error ? error.message : "Failed to record handoff decision");
+    },
+  });
 
   const queryKey = ["assessment-template-layout", assessmentDocument.id, organizationId ?? "MISSING_ORG"] as const;
   const { data = EMPTY_LAYOUT, isLoading, isError } = useQuery({
@@ -1027,7 +1038,18 @@ export function IehpFbaLayoutReview({
 
   return (
     <div id="iehp-layout-review" className="space-y-4 rounded-xl border border-slate-700 bg-slate-950 p-3 text-slate-100">
-      <AssessmentWorkLedgerPanel state={ledgerState} reviewHref="#iehp-current-review-section" />
+      <AssessmentWorkLedgerPanel
+        state={ledgerState}
+        reviewHref="#iehp-current-review-section"
+        onApprovalDecision={(approval, decision) => approvalDecision.mutateAsync({
+          workItemId: ledgerState.kind === "available" ? ledgerState.item.id : "",
+          approvalId: approval.id,
+          decision,
+          reasonCode: decision === "approve"
+            ? "clinical_review_accepted"
+            : "clinical_review_rejected",
+        })}
+      />
 
       <div className="rounded-md border border-cyan-700/40 bg-cyan-950/40 p-3 text-xs text-cyan-100">
         <p className="font-semibold">IEHP FBA document-style review</p>

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { fireEvent } from "@testing-library/react";
 import { renderWithProviders, screen, within } from "../../../test/utils";
 import { AssessmentWorkLedgerPanel } from "../AssessmentWorkLedgerPanel";
 import type { AssessmentWorkLedgerPanelState } from "../../../lib/agent-work-ledger";
@@ -49,6 +50,10 @@ const buildAvailableState = (
         status: "pending",
         requiredRole: "bcba",
         expiresAt: null,
+        requestedAt: "2026-08-02T12:00:00.000Z",
+        evidenceCount: 2,
+        evidenceHashSuffix: "89abcdef",
+        canDecide: true,
       },
     ],
     updatedAt: "2026-08-02T12:00:00.000Z",
@@ -82,6 +87,77 @@ describe("AssessmentWorkLedgerPanel", () => {
     expect(screen.getByText("Await extraction")).toBeInTheDocument();
     expect(screen.getByText("Read-only approvals")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
+  });
+
+  it("shows decision controls only for an authorized pending approval in advisory mode", () => {
+    const onApprovalDecision = vi.fn();
+    renderWithProviders(
+      <AssessmentWorkLedgerPanel state={buildAvailableState()} onApprovalDecision={onApprovalDecision} />,
+    );
+
+    expect(screen.getByRole("button", { name: "Approve clinical review handoff" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject clinical review handoff" })).toBeInTheDocument();
+    expect(screen.getAllByText(/2 evidence items/i)).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Approve clinical review handoff" }));
+    expect(screen.getByRole("dialog", { name: /Confirm approve handoff/i })).toBeInTheDocument();
+    expect(screen.getByText(/89abcdef/i)).toBeInTheDocument();
+    expect(screen.getByText(/does not publish, sign, submit, bill, or create a final clinical record/i)).toBeInTheDocument();
+    expect(onApprovalDecision).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm approve" }));
+    expect(onApprovalDecision).toHaveBeenCalledWith(
+      buildAvailableState().item.approvals[0],
+      "approve",
+    );
+  });
+
+  it("keeps controls hidden for stale authority, terminal approvals, and shadow mode", () => {
+    const base = buildAvailableState();
+    const renderState = (
+      runtimeMode: "shadow" | "advisory",
+      status: "pending" | "approved",
+      canDecide: boolean,
+    ) => ({
+      ...base,
+      runtimeMode,
+      item: {
+        ...base.item,
+        approvals: [{ ...base.item.approvals[0], status, canDecide }],
+      },
+    });
+    const { rerender } = renderWithProviders(
+      <AssessmentWorkLedgerPanel state={renderState("advisory", "pending", false)} onApprovalDecision={vi.fn()} />,
+    );
+    expect(screen.queryByRole("button", { name: /clinical review handoff/i })).not.toBeInTheDocument();
+    rerender(<AssessmentWorkLedgerPanel state={renderState("advisory", "approved", true)} onApprovalDecision={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /clinical review handoff/i })).not.toBeInTheDocument();
+    rerender(<AssessmentWorkLedgerPanel state={renderState("shadow", "pending", true)} onApprovalDecision={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /clinical review handoff/i })).not.toBeInTheDocument();
+  });
+
+  it("does not expose confirmation metadata for historical approvals", () => {
+    const base = buildAvailableState();
+    renderWithProviders(
+      <AssessmentWorkLedgerPanel
+        state={{
+          ...base,
+          item: {
+            ...base.item,
+            approvals: [{
+              ...base.item.approvals[0],
+              status: "approved",
+              evidenceCount: null,
+              evidenceHashSuffix: null,
+              canDecide: false,
+            }],
+          },
+        }}
+      />,
+    );
+
+    const approvalSection = screen.getByRole("heading", { name: /clinical review handoffs/i }).closest("section");
+    expect(approvalSection).not.toBeNull();
+    expect(within(approvalSection!).queryByText(/evidence item/i)).not.toBeInTheDocument();
+    expect(within(approvalSection!).queryByText(/hash suffix/i)).not.toBeInTheDocument();
   });
 
   it.each([
@@ -139,7 +215,7 @@ describe("AssessmentWorkLedgerPanel", () => {
       "#iehp-current-review-section",
     );
     expect(screen.getByText("Owner assigned")).toBeInTheDocument();
-    expect(screen.getByText("2 evidence items")).toBeInTheDocument();
+    expect(screen.getAllByText("2 evidence items")).toHaveLength(2);
     expect(screen.queryByText(/hash/i)).not.toBeInTheDocument();
   });
 });

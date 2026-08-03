@@ -18,6 +18,7 @@ const ASSESSMENT_DOCUMENT_ID = "44444444-4444-4444-8444-444444444444";
 const WORK_ITEM_ID = "55555555-5555-4555-8555-555555555555";
 const STEP_ID = "66666666-6666-4666-8666-666666666666";
 const APPROVAL_ID = "77777777-7777-4777-8777-777777777777";
+const OWNER_ID = "88888888-8888-4888-8888-888888888888";
 
 function createStep(
   overrides: Partial<AgentWorkItemStepView> = {},
@@ -42,6 +43,10 @@ function createApproval(
     status: "pending",
     requiredRole: "bcba",
     expiresAt: null,
+    requestedAt: "2026-08-02T12:00:00.000Z",
+    evidenceCount: 2,
+    evidenceHashSuffix: "89abcdef",
+    canDecide: true,
     ...overrides,
   };
 }
@@ -86,12 +91,16 @@ function createDeps(
     createArgs: Array<Record<string, unknown>>;
     listArgs: string[];
     detailArgs: string[];
+    handoffArgs: Array<Record<string, unknown>>;
+    decisionArgs: Array<Record<string, unknown>>;
   };
 } {
   const calls = {
     createArgs: [] as Array<Record<string, unknown>>,
     listArgs: [] as string[],
     detailArgs: [] as string[],
+    handoffArgs: [] as Array<Record<string, unknown>>,
+    decisionArgs: [] as Array<Record<string, unknown>>,
   };
 
   const deps: HandlerDeps = {
@@ -118,6 +127,22 @@ function createDeps(
     getWorkItemDetail: async (workItemId) => {
       calls.detailArgs.push(workItemId);
       return createView({ id: workItemId });
+    },
+    requestApprovalHandoff: async (input) => {
+      calls.handoffArgs.push({ ...input });
+      return createApproval();
+    },
+    decideApproval: async (input) => {
+      calls.decisionArgs.push({ ...input });
+      return {
+        outcome: "decided",
+        approval: createApproval({
+          status: input.decision === "approve" ? "approved" : "rejected",
+          evidenceCount: null,
+          evidenceHashSuffix: null,
+          canDecide: false,
+        }),
+      };
     },
   };
 
@@ -522,15 +547,13 @@ Deno.test("GET detail returns 404 for non-visible rows and maps only the strict 
   assertEquals(body.meta, { runtimeMode: "shadow" });
 });
 
-Deno.test("unsupported owner cancel resume approval and reconcile routes are explicitly deferred", async () => {
+Deno.test("unsupported cancel resume and reconcile routes are explicitly deferred", async () => {
   const deps = createDeps();
   const handler = createAgentWorkItemsHandler(deps);
 
   const paths = [
-    `/agent-work-items/${WORK_ITEM_ID}/owner`,
     `/agent-work-items/${WORK_ITEM_ID}/cancel`,
     `/agent-work-items/${WORK_ITEM_ID}/resume`,
-    `/agent-work-items/${WORK_ITEM_ID}/approvals/${APPROVAL_ID}/decision`,
     `/agent-work-items/${WORK_ITEM_ID}/reconcile`,
   ];
 
@@ -549,4 +572,134 @@ Deno.test("unsupported owner cancel resume approval and reconcile routes are exp
       code: "deferred_route",
     });
   }
+});
+
+Deno.test("POST owner handoff derives actor and accepts only bounded approval-request fields", async () => {
+  const deps = createDeps({ getRuntimeMode: () => "advisory" });
+  const handler = createAgentWorkItemsHandler(deps);
+  const response = await handler(createRequest(
+    `/agent-work-items/${WORK_ITEM_ID}/owner`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stepId: STEP_ID,
+        assignedOwnerUserId: OWNER_ID,
+        reasonCode: "clinical_review_handoff",
+        expiresAt: "2026-08-03T12:00:00.000Z",
+      }),
+    },
+  ));
+
+  assertEquals(response.status, 201);
+  assertEquals(deps.calls.handoffArgs, [{
+    actorUserId: USER_ID,
+    workItemId: WORK_ITEM_ID,
+    stepId: STEP_ID,
+    assignedOwnerUserId: OWNER_ID,
+    reasonCode: "clinical_review_handoff",
+    expiresAt: "2026-08-03T12:00:00.000Z",
+  }]);
+});
+
+Deno.test("POST approval decision delegates current authority and CAS to the RPC", async () => {
+  const deps = createDeps({ getRuntimeMode: () => "advisory" });
+  const handler = createAgentWorkItemsHandler(deps);
+  const response = await handler(createRequest(
+    `/agent-work-items/${WORK_ITEM_ID}/approvals/${APPROVAL_ID}/decision`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decision: "approve",
+        reasonCode: "clinical_review_accepted",
+      }),
+    },
+  ));
+
+  assertEquals(response.status, 200);
+  assertEquals(deps.calls.decisionArgs, [{
+    actorUserId: USER_ID,
+    workItemId: WORK_ITEM_ID,
+    approvalId: APPROVAL_ID,
+    decision: "approve",
+    reasonCode: "clinical_review_accepted",
+  }]);
+  const body = await response.json();
+  assertEquals(body.data.status, "approved");
+  assertEquals(body.data.evidenceHashSuffix, null);
+  assertEquals(JSON.stringify(body).includes("input_hash"), false);
+  assertEquals(JSON.stringify(body).includes("evidence_hash"), false);
+});
+
+Deno.test("POST approval decision maps stale authority and CAS outcomes without disclosure", async () => {
+  for (
+    const [outcome, status, code] of [
+      ["forbidden", 403, "forbidden"],
+      ["not_found", 404, "not_found"],
+      ["conflict", 409, "conflict"],
+      ["expired", 409, "approval_expired"],
+      ["revoked", 409, "approval_revoked"],
+    ] as const
+  ) {
+    const handler = createAgentWorkItemsHandler(createDeps({
+      getRuntimeMode: () => "advisory",
+      decideApproval: async () => ({ outcome, approval: null }),
+    }));
+    const response = await handler(createRequest(
+      `/agent-work-items/${WORK_ITEM_ID}/approvals/${APPROVAL_ID}/decision`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision: "reject",
+          reasonCode: "clinical_review_rejected",
+        }),
+      },
+    ));
+    assertEquals(response.status, status);
+    assertObjectMatch(await response.json(), { success: false, code });
+  }
+});
+
+Deno.test("POST approval mutations reject extra authority, invalid decisions, and shadow writes", async () => {
+  const advisoryHandler = createAgentWorkItemsHandler(
+    createDeps({ getRuntimeMode: () => "advisory" }),
+  );
+  for (
+    const [path, body] of [
+      [`/agent-work-items/${WORK_ITEM_ID}/owner`, {
+        stepId: STEP_ID,
+        assignedOwnerUserId: OWNER_ID,
+        reasonCode: "handoff",
+        organizationId: ORGANIZATION_ID,
+      }],
+      [`/agent-work-items/${WORK_ITEM_ID}/approvals/${APPROVAL_ID}/decision`, {
+        decision: "override",
+        reasonCode: "handoff",
+      }],
+    ] as const
+  ) {
+    const response = await advisoryHandler(createRequest(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+    assertEquals(response.status, 400);
+  }
+
+  const shadowHandler = createAgentWorkItemsHandler(createDeps());
+  const response = await shadowHandler(createRequest(
+    `/agent-work-items/${WORK_ITEM_ID}/approvals/${APPROVAL_ID}/decision`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decision: "approve",
+        reasonCode: "clinical_review_accepted",
+      }),
+    },
+  ));
+  assertEquals(response.status, 403);
+  assertObjectMatch(await response.json(), { code: "advisory_mode_required" });
 });

@@ -286,21 +286,37 @@ create table if not exists public.agent_work_approvals (
   step_id uuid,
   organization_id uuid not null references public.organizations(id) on delete restrict,
   client_id uuid references public.clients(id) on delete restrict,
+  workflow_version integer check (workflow_version is null or workflow_version > 0),
   required_role text not null,
+  assigned_to uuid,
   status public.agent_work_approval_status not null default 'pending',
+  request_reason_code text,
   input_hash text not null,
   evidence_hash text not null,
+  approval_hash text,
   requested_by uuid,
   decided_by uuid,
   decision_reason_code text,
   requested_at timestamptz not null default timezone('utc', now()),
   decided_at timestamptz,
   expires_at timestamptz,
+  revoked_at timestamptz,
+  revoked_by uuid,
+  revoked_reason_code text,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
   constraint agent_work_approvals_required_role_not_blank check (length(trim(required_role)) > 0),
+  constraint agent_work_approvals_request_reason_code_format check (
+    request_reason_code is null or request_reason_code ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'
+  ),
   constraint agent_work_approvals_input_hash_format check (input_hash ~ '^[0-9a-f]{64}$'),
   constraint agent_work_approvals_evidence_hash_format check (evidence_hash ~ '^[0-9a-f]{64}$'),
+  constraint agent_work_approvals_approval_hash_format check (
+    approval_hash is null or approval_hash ~ '^[0-9a-f]{64}$'
+  ),
+  constraint agent_work_approvals_revoked_reason_code_format check (
+    revoked_reason_code is null or revoked_reason_code ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'
+  ),
   constraint agent_work_approvals_work_item_fk
     foreign key (work_item_id, organization_id)
     references public.agent_work_items(id, organization_id)
@@ -317,6 +333,16 @@ create index if not exists agent_work_approvals_item_status_idx
 create index if not exists agent_work_approvals_step_status_idx
   on public.agent_work_approvals (step_id, status)
   where step_id is not null;
+
+create index if not exists agent_work_approvals_assigned_to_status_idx
+  on public.agent_work_approvals (assigned_to, status, requested_at desc);
+
+create unique index if not exists agent_work_approvals_live_step_uidx
+  on public.agent_work_approvals (step_id)
+  where step_id is not null
+    and approval_hash is not null
+    and status in ('pending', 'approved')
+    and revoked_at is null;
 
 create table if not exists public.agent_work_attempts (
   id uuid primary key default gen_random_uuid(),
@@ -715,6 +741,53 @@ begin
 end;
 $$;
 
+create or replace function public.agent_work_user_has_client_access(
+  p_user_id uuid,
+  p_organization_id uuid,
+  p_client_id uuid,
+  p_reference_at timestamptz default timezone('utc', now())
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.profiles profile
+    join public.user_roles role_member on role_member.user_id = profile.id
+    join public.roles role on role.id = role_member.role_id
+    join public.clients client
+      on client.id = p_client_id
+      and client.organization_id = p_organization_id
+    where profile.id = p_user_id
+      and profile.organization_id = p_organization_id
+      and coalesce(profile.is_active, true) = true
+      and coalesce(role_member.is_active, true) = true
+      and (role_member.expires_at is null or role_member.expires_at > p_reference_at)
+      and (
+        role.name in (
+          'admin', 'org_admin', 'super_admin', 'org_super_admin',
+          'midtier', 'bcba', 'therapist'
+        )
+        or (
+          role.name = 'bt'
+          and (
+            client.therapist_id = p_user_id
+            or exists (
+              select 1
+              from public.client_therapist_links link
+              where link.organization_id = p_organization_id
+                and link.client_id = p_client_id
+                and link.therapist_id = p_user_id
+            )
+          )
+        )
+      )
+  );
+$$;
+
 create or replace function app.actor_can_manage_agent_work_row(
   p_actor_user_id uuid,
   p_organization_id uuid,
@@ -760,11 +833,11 @@ begin
     return true;
   end if;
 
-  return exists (
-    select 1
-    from public.clients c
-    where c.id = p_client_id
-      and c.organization_id = p_organization_id
+  return public.agent_work_user_has_client_access(
+    p_actor_user_id,
+    p_organization_id,
+    p_client_id,
+    timezone('utc', now())
   );
 end;
 $$;
@@ -795,6 +868,311 @@ security definer
 set search_path = public, app, pg_temp
 as $$
   select app.actor_can_manage_agent_work_row(auth.uid(), p_organization_id, p_client_id);
+$$;
+
+create or replace function public.agent_work_user_has_exact_role(
+  p_user_id uuid,
+  p_organization_id uuid,
+  p_required_role text,
+  p_reference_at timestamptz default timezone('utc', now())
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if p_user_id is null
+    or p_organization_id is null
+    or p_required_role is null
+    or btrim(p_required_role) = '' then
+    return false;
+  end if;
+
+  return exists (
+    select 1
+    from public.profiles profile
+    join public.user_roles role_member on role_member.user_id = profile.id
+    join public.roles role on role.id = role_member.role_id
+    where profile.id = p_user_id
+      and profile.organization_id = p_organization_id
+      and coalesce(profile.is_active, true) = true
+      and role.name = btrim(p_required_role)
+      and coalesce(role_member.is_active, true) = true
+      and (role_member.expires_at is null or role_member.expires_at > p_reference_at)
+  );
+end;
+$$;
+
+create or replace function public.agent_work_compute_input_hash(
+  p_work_item_id uuid,
+  p_step_id uuid
+)
+returns text
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_step public.agent_work_steps%rowtype;
+  v_item public.agent_work_items%rowtype;
+  v_payload jsonb;
+begin
+  if p_work_item_id is null or p_step_id is null then
+    raise exception 'Input hash scope is required';
+  end if;
+
+  select step.*
+  into v_step
+  from public.agent_work_steps step
+  where step.id = p_step_id
+    and step.work_item_id = p_work_item_id;
+
+  if not found then
+    raise exception 'Input hash step is unavailable';
+  end if;
+
+  select item.*
+  into v_item
+  from public.agent_work_items item
+  where item.id = p_work_item_id
+    and item.organization_id = v_step.organization_id;
+
+  if not found then
+    raise exception 'Input hash work item is unavailable';
+  end if;
+
+  v_payload := jsonb_build_object(
+    'workItemId', v_item.id,
+    'organizationId', v_item.organization_id,
+    'clientId', v_item.client_id,
+    'workflowKey', v_item.workflow_key,
+    'workflowVersion', v_item.workflow_version,
+    'stepId', v_step.id,
+    'stepKey', v_step.step_key,
+    'requiredRole', v_step.required_role,
+    'completionCriteria', coalesce(v_step.completion_criteria, '{}'::jsonb),
+    'predecessorOutputs', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'stepId', predecessor.id,
+          'stepKey', predecessor.step_key,
+          'status', predecessor.status,
+          'outputHash', predecessor.output_hash
+        )
+        order by predecessor.ordinal, predecessor.id
+      )
+      from public.agent_work_step_dependencies dependency
+      join public.agent_work_steps predecessor
+        on predecessor.id = dependency.predecessor_step_id
+      where dependency.successor_step_id = v_step.id
+    ), '[]'::jsonb)
+  );
+
+  return encode(
+    extensions.digest(convert_to(v_payload::text, 'UTF8'), 'sha256'),
+    'hex'
+  );
+end;
+$$;
+
+create or replace function public.agent_work_compute_evidence_hash(
+  p_work_item_id uuid
+)
+returns text
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_payload jsonb;
+begin
+  if p_work_item_id is null then
+    raise exception 'Evidence hash work item is required';
+  end if;
+
+  v_payload := coalesce((
+    select jsonb_agg(
+      jsonb_build_object(
+        'stepId', evidence.step_id,
+        'sourceKind', evidence.source_kind,
+        'sourceId', evidence.source_id,
+        'locator', evidence.locator,
+        'sha256', evidence.sha256
+      )
+      order by
+        evidence.step_id nulls first,
+        evidence.source_kind,
+        evidence.source_id,
+        evidence.locator nulls first,
+        evidence.sha256,
+        evidence.id
+    )
+    from public.agent_work_evidence evidence
+    where evidence.work_item_id = p_work_item_id
+  ), '[]'::jsonb);
+
+  return encode(
+    extensions.digest(convert_to(v_payload::text, 'UTF8'), 'sha256'),
+    'hex'
+  );
+end;
+$$;
+
+create or replace function public.agent_work_compute_approval_hash(
+  p_work_item_id uuid,
+  p_step_id uuid,
+  p_workflow_version integer,
+  p_required_role text,
+  p_assigned_to uuid,
+  p_request_reason_code text,
+  p_input_hash text,
+  p_evidence_hash text
+)
+returns text
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select encode(
+    extensions.digest(
+      convert_to(
+        jsonb_build_object(
+          'workItemId', p_work_item_id,
+          'stepId', p_step_id,
+          'workflowVersion', p_workflow_version,
+          'requiredRole', p_required_role,
+          'assignedTo', p_assigned_to,
+          'requestReasonCode', p_request_reason_code,
+          'inputHash', p_input_hash,
+          'evidenceHash', p_evidence_hash
+        )::text,
+        'UTF8'
+      ),
+      'sha256'
+    ),
+    'hex'
+  );
+$$;
+
+create or replace function public.current_user_can_decide_agent_work_approval(p_approval_id uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_approval public.agent_work_approvals%rowtype;
+  v_step public.agent_work_steps%rowtype;
+  v_item public.agent_work_items%rowtype;
+  v_current_input_hash text;
+  v_current_evidence_hash text;
+  v_current_approval_hash text;
+  v_now timestamptz := timezone('utc', now());
+begin
+  if v_user_id is null or p_approval_id is null then
+    return false;
+  end if;
+
+  select approval.*
+  into v_approval
+  from public.agent_work_approvals approval
+  where approval.id = p_approval_id
+    and approval.status = 'pending'
+    and approval.assigned_to = v_user_id
+    and approval.revoked_at is null
+    and (approval.expires_at is null or approval.expires_at > v_now);
+
+  if not found then
+    return false;
+  end if;
+
+  if v_approval.workflow_version is null
+    or v_approval.assigned_to is null
+    or v_approval.request_reason_code is null
+    or v_approval.approval_hash is null then
+    return false;
+  end if;
+
+  select step.*
+  into v_step
+  from public.agent_work_steps step
+  where step.id = v_approval.step_id
+    and step.work_item_id = v_approval.work_item_id;
+
+  if not found
+    or v_step.execution_mode <> 'human'
+    or v_step.status <> 'needs_approval' then
+    return false;
+  end if;
+
+  select item.*
+  into v_item
+  from public.agent_work_items item
+  where item.id = v_approval.work_item_id
+    and item.organization_id = v_approval.organization_id;
+
+  if not found
+    or v_item.status = 'cancelled'
+    or v_item.current_step_id is distinct from v_step.id then
+    return false;
+  end if;
+
+  if not public.agent_work_user_has_exact_role(
+    v_user_id,
+    v_approval.organization_id,
+    v_approval.required_role,
+    v_now
+  ) or not public.agent_work_user_has_client_access(
+    v_user_id,
+    v_approval.organization_id,
+    v_item.client_id,
+    v_now
+  ) then
+    return false;
+  end if;
+
+  v_current_input_hash := public.agent_work_compute_input_hash(v_approval.work_item_id, v_approval.step_id);
+  v_current_evidence_hash := public.agent_work_compute_evidence_hash(v_approval.work_item_id);
+  v_current_approval_hash := public.agent_work_compute_approval_hash(
+    v_approval.work_item_id,
+    v_approval.step_id,
+    v_item.workflow_version,
+    v_approval.required_role,
+    v_approval.assigned_to,
+    v_approval.request_reason_code,
+    v_current_input_hash,
+    v_current_evidence_hash
+  );
+
+  return v_approval.workflow_version = v_item.workflow_version
+    and v_approval.input_hash = v_current_input_hash
+    and v_approval.evidence_hash = v_current_evidence_hash
+    and v_approval.approval_hash = v_current_approval_hash
+    and v_step.input_hash = v_current_input_hash
+    and v_step.approval_hash = v_current_approval_hash;
+end;
+$$;
+
+create or replace function public.current_user_decidable_agent_work_approval_ids(p_work_item_id uuid)
+returns table (approval_id uuid)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select approval.id
+  from public.agent_work_approvals approval
+  where approval.work_item_id = p_work_item_id
+    and approval.status = 'pending'
+    and public.current_user_can_decide_agent_work_approval(approval.id)
+  order by approval.requested_at asc, approval.id asc;
 $$;
 
 create or replace function app.current_user_can_read_agent_work_item_endpoint(p_work_item_id uuid)
@@ -1495,7 +1873,7 @@ begin
   set status = p_to_status,
       output_hash = coalesce(p_output_hash, output_hash),
       approval_hash = case
-        when v_approval.id is not null then v_approval.evidence_hash
+        when v_approval.id is not null then v_approval.approval_hash
         else approval_hash
       end,
       last_error_code = case when p_to_status = 'failed' then p_reason_code else last_error_code end,
@@ -1562,6 +1940,750 @@ begin
   perform public.agent_work_recompute_item_status(v_step.work_item_id);
 
   return v_step;
+end;
+$$;
+
+create or replace function public.request_agent_work_approval_handoff(
+  p_actor_user_id uuid,
+  p_work_item_id uuid,
+  p_step_id uuid,
+  p_assigned_owner_user_id uuid,
+  p_reason_code text,
+  p_expires_at timestamptz
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_item public.agent_work_items%rowtype;
+  v_step public.agent_work_steps%rowtype;
+  v_existing public.agent_work_approvals%rowtype;
+  v_approval public.agent_work_approvals%rowtype;
+  v_input_hash text;
+  v_evidence_hash text;
+  v_approval_hash text;
+  v_expires_at timestamptz;
+  v_now timestamptz := timezone('utc', now());
+begin
+  if p_actor_user_id is null
+    or p_work_item_id is null
+    or p_step_id is null
+    or p_assigned_owner_user_id is null
+    or p_reason_code is null
+    or p_expires_at is null
+    or p_expires_at <= v_now
+    or btrim(p_reason_code) !~ '^[a-z0-9][a-z0-9._:-]{0,63}$' then
+    raise exception 'Invalid approval handoff request';
+  end if;
+
+  select item.*
+  into v_item
+  from public.agent_work_items item
+  where item.id = p_work_item_id
+  for update of item;
+
+  if not found then
+    raise exception 'Work item not found';
+  end if;
+
+  if not app.actor_can_manage_agent_work_row(
+    p_actor_user_id,
+    v_item.organization_id,
+    v_item.client_id
+  ) then
+    raise exception 'Forbidden';
+  end if;
+
+  select step.*
+  into v_step
+  from public.agent_work_steps step
+  where step.id = p_step_id
+    and step.work_item_id = p_work_item_id
+    and step.organization_id = v_item.organization_id
+  for update of step;
+
+  if not found
+    or v_step.execution_mode <> 'human'
+    or v_step.required_role is null
+    or v_step.status not in ('ready', 'needs_approval', 'failed')
+    or exists (
+      select 1
+      from public.agent_work_step_dependencies dependency
+      join public.agent_work_steps predecessor
+        on predecessor.id = dependency.predecessor_step_id
+      where dependency.successor_step_id = v_step.id
+        and predecessor.status <> 'completed'
+    )
+    or exists (
+      select 1
+      from public.agent_work_steps prior_step
+      where prior_step.work_item_id = v_step.work_item_id
+        and prior_step.ordinal < v_step.ordinal
+        and prior_step.status <> 'completed'
+    ) then
+    raise exception 'Approval handoff step is unavailable';
+  end if;
+
+  if v_item.status = 'cancelled' then
+    raise exception 'work_cancelled';
+  end if;
+
+  if not public.agent_work_user_has_exact_role(
+    p_assigned_owner_user_id,
+    v_item.organization_id,
+    v_step.required_role,
+    v_now
+  ) or not public.agent_work_user_has_client_access(
+    p_assigned_owner_user_id,
+    v_item.organization_id,
+    v_item.client_id,
+    v_now
+  ) then
+    raise exception 'Assigned owner must have active same-org exact role and client access';
+  end if;
+
+  update public.agent_work_items item
+  set owner_user_id = p_assigned_owner_user_id,
+      state_version = item.state_version + 1,
+      updated_at = v_now
+  where item.id = v_item.id
+    and item.owner_user_id is distinct from p_assigned_owner_user_id
+  returning item.* into v_item;
+
+  if not found then
+    select item.*
+    into v_item
+    from public.agent_work_items item
+    where item.id = p_work_item_id;
+  end if;
+
+  v_input_hash := public.agent_work_compute_input_hash(v_item.id, v_step.id);
+  v_evidence_hash := public.agent_work_compute_evidence_hash(v_item.id);
+  v_approval_hash := public.agent_work_compute_approval_hash(
+    v_item.id,
+    v_step.id,
+    v_item.workflow_version,
+    v_step.required_role,
+    p_assigned_owner_user_id,
+    btrim(p_reason_code),
+    v_input_hash,
+    v_evidence_hash
+  );
+  v_expires_at := p_expires_at;
+
+  select approval.*
+  into v_existing
+  from public.agent_work_approvals approval
+  where approval.step_id = v_step.id
+    and approval.status in ('pending', 'approved')
+    and approval.revoked_at is null
+  order by approval.requested_at desc, approval.id desc
+  limit 1
+  for update of approval;
+
+  if found then
+    if v_existing.status = 'pending'
+      and v_existing.assigned_to = p_assigned_owner_user_id
+      and v_existing.request_reason_code = btrim(p_reason_code)
+      and v_existing.workflow_version = v_item.workflow_version
+      and v_existing.input_hash = v_input_hash
+      and v_existing.evidence_hash = v_evidence_hash
+      and v_existing.approval_hash = v_approval_hash
+      and (v_existing.expires_at is null or v_existing.expires_at > v_now) then
+      return jsonb_build_object(
+        'outcome', 'duplicate',
+        'approval_id', v_existing.id
+      );
+    end if;
+
+    update public.agent_work_approvals approval
+    set status = 'revoked',
+        revoked_at = v_now,
+        revoked_by = p_actor_user_id,
+        revoked_reason_code = case
+          when v_item.status = 'cancelled' then 'work_cancelled'
+          when approval.workflow_version <> v_item.workflow_version then 'workflow_version_changed'
+          when approval.input_hash <> v_input_hash then 'input_hash_changed'
+          when approval.evidence_hash <> v_evidence_hash then 'evidence_hash_changed'
+          else 'owner_authority_lost'
+        end,
+        updated_at = v_now
+    where approval.id = v_existing.id;
+
+    insert into public.agent_work_events (
+      work_item_id,
+      step_id,
+      organization_id,
+      client_id,
+      event_type,
+      actor_kind,
+      actor_id,
+      sanitized_metadata
+    ) values (
+      v_item.id,
+      v_step.id,
+      v_item.organization_id,
+      v_item.client_id,
+      'approval.revoked',
+      'user',
+      p_actor_user_id::text,
+      jsonb_build_object(
+        'approval_id', v_existing.id::text,
+        'reason_code', case
+          when v_item.status = 'cancelled' then 'work_cancelled'
+          when v_existing.workflow_version <> v_item.workflow_version then 'workflow_version_changed'
+          when v_existing.input_hash <> v_input_hash then 'input_hash_changed'
+          when v_existing.evidence_hash <> v_evidence_hash then 'evidence_hash_changed'
+          else 'owner_authority_lost'
+        end
+      )
+    );
+  end if;
+
+  insert into public.agent_work_approvals (
+    work_item_id,
+    step_id,
+    organization_id,
+    client_id,
+    workflow_version,
+    required_role,
+    assigned_to,
+    status,
+    request_reason_code,
+    input_hash,
+    evidence_hash,
+    approval_hash,
+    requested_by,
+    requested_at,
+    expires_at
+  ) values (
+    v_item.id,
+    v_step.id,
+    v_item.organization_id,
+    v_item.client_id,
+    v_item.workflow_version,
+    v_step.required_role,
+    p_assigned_owner_user_id,
+    'pending',
+    btrim(p_reason_code),
+    v_input_hash,
+    v_evidence_hash,
+    v_approval_hash,
+    p_actor_user_id,
+    v_now,
+    v_expires_at
+  )
+  returning * into v_approval;
+
+  update public.agent_work_steps step
+  set status = 'needs_approval',
+      input_hash = v_input_hash,
+      approval_hash = v_approval_hash,
+      last_error_class = null,
+      last_error_code = null,
+      wake_at = null,
+      lease_owner = null,
+      lease_expires_at = null,
+      state_version = step.state_version + 1,
+      updated_at = v_now
+  where step.id = v_step.id
+  returning step.* into v_step;
+
+  insert into public.agent_work_events (
+    work_item_id,
+    step_id,
+    organization_id,
+    client_id,
+    event_type,
+    actor_kind,
+    actor_id,
+    sanitized_metadata
+  ) values (
+    v_item.id,
+    v_step.id,
+    v_item.organization_id,
+    v_item.client_id,
+    'approval.requested',
+    'user',
+    p_actor_user_id::text,
+    jsonb_build_object(
+      'approval_id', v_approval.id::text,
+      'assigned_to', p_assigned_owner_user_id::text,
+      'request_reason_code', btrim(p_reason_code),
+      'clinical_review_handoff', true
+    )
+  );
+
+  perform public.agent_work_recompute_item_status(v_item.id);
+  return jsonb_build_object(
+    'outcome', 'created',
+    'approval_id', v_approval.id
+  );
+end;
+$$;
+
+create or replace function public.decide_agent_work_approval(
+  p_actor_user_id uuid,
+  p_work_item_id uuid,
+  p_approval_id uuid,
+  p_decision text,
+  p_reason_code text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_approval public.agent_work_approvals%rowtype;
+  v_step public.agent_work_steps%rowtype;
+  v_item public.agent_work_items%rowtype;
+  v_successor public.agent_work_steps%rowtype;
+  v_current_input_hash text;
+  v_current_evidence_hash text;
+  v_current_approval_hash text;
+  v_decision_status public.agent_work_approval_status;
+  v_reason text := btrim(p_reason_code);
+  v_revoked_reason text;
+  v_now timestamptz := timezone('utc', now());
+begin
+  if p_actor_user_id is null
+    or p_work_item_id is null
+    or p_approval_id is null
+    or p_decision is null
+    or lower(btrim(p_decision)) not in ('approve', 'approved', 'reject', 'rejected')
+    or p_reason_code is null
+    or v_reason !~ '^[a-z0-9][a-z0-9._:-]{0,63}$' then
+    raise exception 'Invalid approval decision request';
+  end if;
+
+  v_decision_status := case
+    when lower(btrim(p_decision)) in ('approve', 'approved') then 'approved'::public.agent_work_approval_status
+    else 'rejected'::public.agent_work_approval_status
+  end;
+
+  -- Keep the lock order aligned with handoff: item, step, then approval.
+  select item.*
+  into v_item
+  from public.agent_work_items item
+  where item.id = p_work_item_id
+  for update of item;
+
+  if not found then
+    return jsonb_build_object(
+      'outcome', 'not_found',
+      'approval_id', p_approval_id
+    );
+  end if;
+
+  select approval.*
+  into v_approval
+  from public.agent_work_approvals approval
+  where approval.id = p_approval_id
+    and approval.work_item_id = v_item.id
+    and approval.organization_id = v_item.organization_id;
+
+  if not found then
+    return jsonb_build_object(
+      'outcome', 'not_found',
+      'approval_id', p_approval_id
+    );
+  end if;
+
+  select step.*
+  into v_step
+  from public.agent_work_steps step
+  where step.id = v_approval.step_id
+    and step.work_item_id = v_approval.work_item_id
+  for update of step;
+
+  if not found then
+    return jsonb_build_object(
+      'outcome', 'not_found',
+      'approval_id', v_approval.id
+    );
+  end if;
+
+  select approval.*
+  into v_approval
+  from public.agent_work_approvals approval
+  where approval.id = p_approval_id
+    and approval.work_item_id = v_item.id
+    and approval.organization_id = v_item.organization_id
+    and approval.step_id = v_step.id
+  for update of approval;
+
+  if not found then
+    return jsonb_build_object(
+      'outcome', 'not_found',
+      'approval_id', p_approval_id
+    );
+  end if;
+
+  if v_approval.workflow_version is null
+    or v_approval.assigned_to is null
+    or v_approval.request_reason_code is null
+    or v_approval.approval_hash is null then
+    return jsonb_build_object(
+      'outcome', 'conflict',
+      'approval_id', v_approval.id
+    );
+  end if;
+
+  -- An unauthorised caller must not be able to mutate even stale approval state.
+  if v_approval.assigned_to <> p_actor_user_id
+    or not public.agent_work_user_has_exact_role(
+      p_actor_user_id,
+      v_item.organization_id,
+      v_approval.required_role,
+      v_now
+    )
+    or not public.agent_work_user_has_client_access(
+      p_actor_user_id,
+      v_item.organization_id,
+      v_item.client_id,
+      v_now
+    ) then
+    return jsonb_build_object(
+      'outcome', 'forbidden',
+      'approval_id', v_approval.id
+    );
+  end if;
+
+  if v_approval.status in ('approved', 'rejected') then
+    if v_approval.status = v_decision_status
+      and v_approval.decided_by = p_actor_user_id
+      and v_approval.decision_reason_code = v_reason then
+      return jsonb_build_object(
+        'outcome', 'duplicate',
+        'approval_id', v_approval.id
+      );
+    else
+      insert into public.agent_work_events (
+        work_item_id,
+        step_id,
+        organization_id,
+        client_id,
+        event_type,
+        actor_kind,
+        actor_id,
+        sanitized_metadata
+      ) values (
+        v_item.id,
+        v_step.id,
+        v_item.organization_id,
+        v_item.client_id,
+        'approval.conflict',
+        'user',
+        p_actor_user_id::text,
+        jsonb_build_object(
+          'approval_id', v_approval.id::text,
+          'decision', lower(btrim(p_decision))
+        )
+      );
+      return jsonb_build_object(
+        'outcome', 'conflict',
+        'approval_id', v_approval.id
+      );
+    end if;
+  end if;
+
+  if v_approval.status = 'pending'
+    and v_approval.expires_at is not null
+    and v_approval.expires_at <= v_now then
+    update public.agent_work_approvals approval
+    set status = 'expired',
+        updated_at = v_now
+    where approval.id = v_approval.id
+    returning approval.* into v_approval;
+
+    insert into public.agent_work_events (
+      work_item_id,
+      step_id,
+      organization_id,
+      client_id,
+      event_type,
+      actor_kind,
+      actor_id,
+      sanitized_metadata
+    ) values (
+      v_item.id,
+      v_step.id,
+      v_item.organization_id,
+      v_item.client_id,
+      'approval.expired',
+      'user',
+      p_actor_user_id::text,
+      jsonb_build_object(
+        'approval_id', v_approval.id::text,
+        'reason_code', 'approval_expired'
+      )
+    );
+
+    perform public.agent_work_recompute_item_status(v_item.id);
+    return jsonb_build_object(
+      'outcome', 'expired',
+      'approval_id', v_approval.id
+    );
+  end if;
+
+  if v_approval.status <> 'pending'
+    or v_approval.revoked_at is not null then
+    return jsonb_build_object(
+      'outcome', case
+        when v_approval.status = 'revoked' or v_approval.revoked_at is not null then 'revoked'
+        else 'conflict'
+      end,
+      'approval_id', v_approval.id
+    );
+  end if;
+
+  v_current_input_hash := public.agent_work_compute_input_hash(v_item.id, v_step.id);
+  v_current_evidence_hash := public.agent_work_compute_evidence_hash(v_item.id);
+  v_current_approval_hash := public.agent_work_compute_approval_hash(
+    v_item.id,
+    v_step.id,
+    v_item.workflow_version,
+    v_approval.required_role,
+    v_approval.assigned_to,
+    v_approval.request_reason_code,
+    v_current_input_hash,
+    v_current_evidence_hash
+  );
+
+  v_revoked_reason := null;
+
+  if v_item.status = 'cancelled' then
+    v_revoked_reason := 'work_cancelled';
+  elsif v_item.current_step_id is distinct from v_step.id then
+    v_revoked_reason := 'step_not_current';
+  elsif v_approval.workflow_version <> v_item.workflow_version then
+    v_revoked_reason := 'workflow_version_changed';
+  elsif v_step.status <> 'needs_approval'
+    or v_step.input_hash is distinct from v_approval.input_hash
+    or v_approval.input_hash <> v_current_input_hash then
+    v_revoked_reason := 'input_hash_changed';
+  elsif v_approval.evidence_hash <> v_current_evidence_hash then
+    v_revoked_reason := 'evidence_hash_changed';
+  elsif v_step.approval_hash is distinct from v_approval.approval_hash
+    or v_approval.approval_hash <> v_current_approval_hash then
+    v_revoked_reason := 'input_hash_changed';
+  end if;
+
+  if v_revoked_reason is not null then
+    update public.agent_work_approvals approval
+    set status = 'revoked',
+        revoked_at = v_now,
+        revoked_by = p_actor_user_id,
+        revoked_reason_code = v_revoked_reason,
+        updated_at = v_now
+    where approval.id = v_approval.id
+    returning approval.* into v_approval;
+
+    insert into public.agent_work_events (
+      work_item_id,
+      step_id,
+      organization_id,
+      client_id,
+      event_type,
+      actor_kind,
+      actor_id,
+      sanitized_metadata
+    ) values (
+      v_item.id,
+      v_step.id,
+      v_item.organization_id,
+      v_item.client_id,
+      'approval.revoked',
+      'user',
+      p_actor_user_id::text,
+      jsonb_build_object(
+        'approval_id', v_approval.id::text,
+        'reason_code', v_revoked_reason
+      )
+    );
+
+    perform public.agent_work_recompute_item_status(v_item.id);
+    return jsonb_build_object(
+      'outcome', 'revoked',
+      'approval_id', v_approval.id
+    );
+  end if;
+
+  update public.agent_work_approvals approval
+  set status = v_decision_status,
+      decided_by = p_actor_user_id,
+      decision_reason_code = v_reason,
+      decided_at = v_now,
+      updated_at = v_now
+  where approval.id = v_approval.id
+  returning approval.* into v_approval;
+
+  if v_approval.status = 'approved' then
+    update public.agent_work_steps step
+    set status = 'completed',
+        approval_hash = v_approval.approval_hash,
+        completed_at = v_now,
+        last_error_class = null,
+        last_error_code = null,
+        wake_at = null,
+        lease_owner = null,
+        lease_expires_at = null,
+        state_version = step.state_version + 1,
+        updated_at = v_now
+    where step.id = v_step.id
+      and step.status = 'needs_approval'
+      and step.input_hash = v_approval.input_hash
+      and step.approval_hash = v_approval.approval_hash
+    returning step.* into v_step;
+
+    if not found then
+      update public.agent_work_approvals approval
+      set status = 'revoked',
+          revoked_at = v_now,
+          revoked_by = p_actor_user_id,
+          revoked_reason_code = 'input_hash_changed',
+          updated_at = v_now
+      where approval.id = v_approval.id
+      returning approval.* into v_approval;
+
+      insert into public.agent_work_events (
+        work_item_id,
+        step_id,
+        organization_id,
+        client_id,
+        event_type,
+        actor_kind,
+        actor_id,
+        sanitized_metadata
+      ) values (
+        v_item.id,
+        v_step.id,
+        v_item.organization_id,
+        v_item.client_id,
+        'approval.revoked',
+        'user',
+        p_actor_user_id::text,
+        jsonb_build_object(
+          'approval_id', v_approval.id::text,
+          'reason_code', 'input_hash_changed'
+        )
+      );
+
+      perform public.agent_work_recompute_item_status(v_item.id);
+      return jsonb_build_object(
+        'outcome', 'revoked',
+        'approval_id', v_approval.id
+      );
+    end if;
+
+    update public.agent_work_steps successor
+    set status = 'ready',
+        state_version = successor.state_version + 1,
+        updated_at = v_now
+    where successor.work_item_id = v_step.work_item_id
+      and successor.status = 'pending'
+      and exists (
+        select 1
+        from public.agent_work_step_dependencies dependency
+        where dependency.successor_step_id = successor.id
+      )
+      and not exists (
+        select 1
+        from public.agent_work_step_dependencies dependency
+        join public.agent_work_steps predecessor on predecessor.id = dependency.predecessor_step_id
+        where dependency.successor_step_id = successor.id
+          and predecessor.status <> 'completed'
+      )
+    returning successor.* into v_successor;
+  else
+    update public.agent_work_steps step
+    set status = 'failed',
+        last_error_class = 'approval',
+        last_error_code = v_reason,
+        wake_at = null,
+        lease_owner = null,
+        lease_expires_at = null,
+        state_version = step.state_version + 1,
+        updated_at = v_now
+    where step.id = v_step.id
+      and step.status = 'needs_approval'
+      and step.input_hash = v_approval.input_hash
+      and step.approval_hash = v_approval.approval_hash
+    returning step.* into v_step;
+
+    if not found then
+      update public.agent_work_approvals approval
+      set status = 'revoked',
+          revoked_at = v_now,
+          revoked_by = p_actor_user_id,
+          revoked_reason_code = 'input_hash_changed',
+          updated_at = v_now
+      where approval.id = v_approval.id
+      returning approval.* into v_approval;
+
+      insert into public.agent_work_events (
+        work_item_id,
+        step_id,
+        organization_id,
+        client_id,
+        event_type,
+        actor_kind,
+        actor_id,
+        sanitized_metadata
+      ) values (
+        v_item.id,
+        v_step.id,
+        v_item.organization_id,
+        v_item.client_id,
+        'approval.revoked',
+        'user',
+        p_actor_user_id::text,
+        jsonb_build_object(
+          'approval_id', v_approval.id::text,
+          'reason_code', 'input_hash_changed'
+        )
+      );
+
+      perform public.agent_work_recompute_item_status(v_item.id);
+      return jsonb_build_object(
+        'outcome', 'revoked',
+        'approval_id', v_approval.id
+      );
+    end if;
+  end if;
+
+  insert into public.agent_work_events (
+    work_item_id,
+    step_id,
+    organization_id,
+    client_id,
+    event_type,
+    actor_kind,
+    actor_id,
+    sanitized_metadata
+  ) values (
+    v_item.id,
+    v_step.id,
+    v_item.organization_id,
+    v_item.client_id,
+    'approval.decided',
+    'user',
+    p_actor_user_id::text,
+    jsonb_build_object(
+      'approval_id', v_approval.id::text,
+      'decision', v_approval.status,
+      'result_code', case when v_approval.status = 'approved' then 'approved' else 'rejected' end
+    )
+  );
+
+  perform public.agent_work_recompute_item_status(v_item.id);
+  return jsonb_build_object(
+    'outcome', 'decided',
+    'approval_id', v_approval.id
+  );
 end;
 $$;
 
@@ -1863,10 +2985,19 @@ revoke all on function app.current_user_can_manage_agent_work_row(uuid, uuid) fr
 revoke all on function app.actor_can_manage_agent_work_row(uuid, uuid, uuid) from public, anon, authenticated;
 revoke all on function app.current_user_can_read_agent_work_item_endpoint(uuid) from public, anon;
 revoke all on function public.current_user_can_manage_agent_work_row(uuid, uuid) from public, anon;
+revoke all on function public.agent_work_user_has_exact_role(uuid, uuid, text, timestamptz) from public, anon, authenticated, service_role;
+revoke all on function public.agent_work_user_has_client_access(uuid, uuid, uuid, timestamptz) from public, anon, authenticated, service_role;
+revoke all on function public.agent_work_compute_input_hash(uuid, uuid) from public, anon, authenticated, service_role;
+revoke all on function public.agent_work_compute_evidence_hash(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.agent_work_compute_approval_hash(uuid, uuid, integer, text, uuid, text, text, text) from public, anon, authenticated, service_role;
+revoke all on function public.current_user_can_decide_agent_work_approval(uuid) from public, anon;
+revoke all on function public.current_user_decidable_agent_work_approval_ids(uuid) from public, anon;
 revoke all on function public.agent_work_recompute_item_status(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.create_agent_assessment_work_item(uuid, uuid, uuid, uuid, integer, text) from public, anon, authenticated;
 revoke all on function public.claim_agent_work_step(uuid, text, integer) from public, anon, authenticated;
 revoke all on function public.transition_agent_work_step(uuid, bigint, public.agent_work_step_status, text, text, jsonb) from public, anon, authenticated;
+revoke all on function public.request_agent_work_approval_handoff(uuid, uuid, uuid, uuid, text, timestamptz) from public, anon, authenticated;
+revoke all on function public.decide_agent_work_approval(uuid, uuid, uuid, text, text) from public, anon, authenticated;
 revoke all on function public.snapshot_agent_work_model_attempt(uuid, uuid, uuid, uuid, uuid, uuid, integer, text, text, text, text, text, text, numeric, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.record_agent_work_model_attempt_result(uuid, uuid, uuid, uuid, uuid, uuid, integer, integer, numeric, text, text) from public, anon, authenticated, service_role;
 
@@ -1874,7 +3005,11 @@ grant execute on function app.current_user_can_read_agent_work_row(uuid, uuid) t
 grant execute on function app.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
 grant execute on function app.actor_can_manage_agent_work_row(uuid, uuid, uuid) to service_role;
 grant execute on function app.current_user_can_read_agent_work_item_endpoint(uuid) to authenticated, service_role;
+grant execute on function public.current_user_can_decide_agent_work_approval(uuid) to authenticated, service_role;
+grant execute on function public.current_user_decidable_agent_work_approval_ids(uuid) to authenticated, service_role;
 grant execute on function public.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
+grant execute on function public.request_agent_work_approval_handoff(uuid, uuid, uuid, uuid, text, timestamptz) to service_role;
+grant execute on function public.decide_agent_work_approval(uuid, uuid, uuid, text, text) to service_role;
 grant execute on function public.create_agent_assessment_work_item(uuid, uuid, uuid, uuid, integer, text) to service_role;
 grant execute on function public.claim_agent_work_step(uuid, text, integer) to service_role;
 grant execute on function public.transition_agent_work_step(uuid, bigint, public.agent_work_step_status, text, text, jsonb) to service_role;
@@ -2038,7 +3173,13 @@ create policy agent_work_approvals_org_read
   on public.agent_work_approvals
   for select
   to authenticated
-  using (app.current_user_can_manage_agent_work_row(organization_id, client_id));
+  using (
+    app.current_user_can_manage_agent_work_row(organization_id, client_id)
+    or (
+      assigned_to = auth.uid()
+      and public.current_user_can_decide_agent_work_approval(id)
+    )
+  );
 
 create policy agent_work_attempts_org_read
   on public.agent_work_attempts
@@ -2056,7 +3197,13 @@ create policy agent_work_events_org_read
   on public.agent_work_events
   for select
   to authenticated
-  using (app.current_user_can_read_agent_work_row(organization_id, client_id));
+  using (
+    app.current_user_can_read_agent_work_row(organization_id, client_id)
+    and (
+      event_type not like 'approval.%'
+      or app.current_user_can_manage_agent_work_row(organization_id, client_id)
+    )
+  );
 
 revoke all on public.agent_work_items from public, anon, authenticated;
 revoke all on public.agent_work_item_dependencies from public, anon, authenticated;

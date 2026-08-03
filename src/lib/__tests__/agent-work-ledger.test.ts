@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { callEdgeFunctionHttp } from "../api";
 import {
   createAssessmentWorkLedgerQueryOptions,
+  decideAgentWorkApproval,
   fetchAssessmentWorkLedger,
 } from "../agent-work-ledger";
 
@@ -47,6 +48,10 @@ const buildEnvelope = (overrides: Record<string, unknown> = {}) => ({
           status: "pending",
           requiredRole: "bcba",
           expiresAt: null,
+          requestedAt: "2026-08-02T12:00:00.000Z",
+          evidenceCount: 2,
+          evidenceHashSuffix: "89abcdef",
+          canDecide: true,
         },
       ],
       updatedAt: "2026-08-02T12:00:00.000Z",
@@ -214,5 +219,34 @@ describe("agent-work-ledger client", () => {
     ]);
     expect(options.staleTime).toBe(0);
     expect(options.gcTime).toBe(0);
+  });
+
+  it("posts a bounded advisory approval decision and validates the sanitized response", async () => {
+    const approval = buildEnvelope().data[0].approvals[0];
+    mockedCallEdgeFunctionHttp.mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: {
+        ...approval,
+        status: "approved",
+        evidenceCount: null,
+        evidenceHashSuffix: null,
+        canDecide: false,
+      },
+      meta: { outcome: "decided" },
+    }), { status: 200 }));
+
+    await expect(decideAgentWorkApproval({
+      workItemId: "55555555-5555-4555-8555-555555555555",
+      approvalId: "77777777-7777-4777-8777-777777777777",
+      decision: "approve",
+      reasonCode: "clinical_review_accepted",
+    })).resolves.toMatchObject({ status: "approved", evidenceHashSuffix: null });
+    expect(mockedCallEdgeFunctionHttp).toHaveBeenCalledWith(
+      "agent-work-items/55555555-5555-4555-8555-555555555555/approvals/77777777-7777-4777-8777-777777777777/decision",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ decision: "approve", reasonCode: "clinical_review_accepted" }),
+      }),
+    );
   });
 });

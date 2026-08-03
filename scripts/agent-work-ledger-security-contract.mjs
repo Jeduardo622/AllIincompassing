@@ -49,6 +49,41 @@ const FUNCTION_CONTRACTS = [
     execute: { public: false, anon: false, authenticated: true, service_role: true },
   },
   {
+    signature: "agent_work_user_has_exact_role(uuid,uuid,text,timestamp with time zone)",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "agent_work_user_has_client_access(uuid,uuid,uuid,timestamp with time zone)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "agent_work_compute_input_hash(uuid,uuid)",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "agent_work_compute_evidence_hash(uuid)",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "agent_work_compute_approval_hash(uuid,uuid,integer,text,uuid,text,text,text)",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: false },
+  },
+  {
+    signature: "current_user_can_decide_agent_work_approval(uuid)",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: true, service_role: true },
+  },
+  {
+    signature: "current_user_decidable_agent_work_approval_ids(uuid)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: true, service_role: true },
+  },
+  {
     signature: "app.current_user_can_read_agent_work_item_endpoint(uuid)",
     searchPath: "public, pg_temp",
     execute: { public: false, anon: false, authenticated: true, service_role: true },
@@ -80,6 +115,16 @@ const FUNCTION_CONTRACTS = [
   },
   {
     signature: "transition_agent_work_step(uuid,bigint,agent_work_step_status,text,text,jsonb)",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "request_agent_work_approval_handoff(uuid,uuid,uuid,uuid,text,timestamp with time zone)",
+    searchPath: "public, pg_temp",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "decide_agent_work_approval(uuid,uuid,uuid,text,text)",
     searchPath: "public, pg_temp",
     execute: { public: false, anon: false, authenticated: false, service_role: true },
   },
@@ -180,6 +225,11 @@ const FUNCTION_CONTRACTS = [
   },
   {
     signature: "expire_agent_work_approvals(timestamp with time zone,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "revoke_stale_agent_work_approvals(timestamp with time zone,integer)",
     searchPath: "\"\"",
     execute: { public: false, anon: false, authenticated: false, service_role: true },
   },
@@ -3013,6 +3063,503 @@ const assertClaimAndTransitionContract = async (client, assignedWorkItemId) => {
   );
 };
 
+const assertApprovalHandoffAndDecisionContract = async (client, connectionString) => {
+  const createFixture = async (
+    suffix,
+    { requiredRole = "admin", clientId = FIXTURES.clientAssigned } = {},
+  ) => {
+    const workItemId = randomUUID();
+    const stepId = randomUUID();
+    await client.query(
+      `
+        insert into public.agent_work_items (
+          id, organization_id, client_id, workflow_key, workflow_version,
+          objective, status, risk, owner_user_id, completion_criteria, dedupe_key
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, 'contract.approval.handoff', 1,
+          'Synthetic advisory handoff fixture.', 'waiting', 'clinical', $4::uuid,
+          '{"terminal_state":"needs_review"}'::jsonb, $5::text
+        )
+      `,
+      [workItemId, FIXTURES.orgA, clientId, FIXTURES.adminA, `approval-handoff-${suffix}-${RUN_TOKEN}`],
+    );
+    await client.query(
+      `
+        insert into public.agent_work_steps (
+          id, work_item_id, organization_id, client_id, step_key, ordinal,
+          execution_mode, status, risk, required_role
+        ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, 10, 'human', 'ready', 'clinical', $6::text)
+      `,
+      [stepId, workItemId, FIXTURES.orgA, clientId, `clinical_review_${suffix}`, requiredRole],
+    );
+    await client.query(
+      "update public.agent_work_items set current_step_id = $2::uuid where id = $1::uuid",
+      [workItemId, stepId],
+    );
+    await client.query(
+      `
+        insert into public.agent_work_evidence (
+          work_item_id, step_id, organization_id, client_id, source_kind, source_id, sha256
+        ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'work_step', $2::uuid, $5::text)
+      `,
+      [workItemId, stepId, FIXTURES.orgA, clientId, HASH_A],
+    );
+    return { workItemId, stepId };
+  };
+
+  const requestHandoff = async (fixture, assignedOwnerUserId = FIXTURES.adminA) =>
+    withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      const { rows } = await client.query(
+        `
+          select public.request_agent_work_approval_handoff(
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::timestamptz
+          ) as result
+        `,
+        [
+          FIXTURES.adminA,
+          fixture.workItemId,
+          fixture.stepId,
+          assignedOwnerUserId,
+          "clinical_review_handoff",
+          new Date(Date.now() + 300_000).toISOString(),
+        ],
+      );
+      return rows[0]?.result;
+    }, { commit: true });
+
+  const decide = async (dbClient, fixture, approvalId, actorId, decision, reasonCode) =>
+    withActor(dbClient, "service_role", "service_role", actorId, async () => {
+      const { rows } = await dbClient.query(
+        "select public.decide_agent_work_approval($1::uuid, $2::uuid, $3::uuid, $4::text, $5::text) as result",
+        [actorId, fixture.workItemId, approvalId, decision, reasonCode],
+      );
+      return rows[0]?.result;
+    }, { commit: true });
+
+  const unassignedBtFixture = await createFixture(
+    "unassigned-bt",
+    { requiredRole: "bt", clientId: FIXTURES.clientUnassigned },
+  );
+  await expectFailure(
+    "approval owner without client access",
+    () => requestHandoff(unassignedBtFixture, FIXTURES.btA),
+    /client access/i,
+  );
+
+  const revokedClientAccessFixture = await createFixture(
+    "revoked-client-access",
+    { requiredRole: "bt" },
+  );
+  const revokedClientAccessHandoff = await requestHandoff(revokedClientAccessFixture, FIXTURES.btA);
+  const assignedBtApprovalCount = await withActor(
+    client,
+    "authenticated",
+    "authenticated",
+    FIXTURES.btA,
+    async () => {
+      const { rows } = await client.query(
+        "select count(*)::integer as count from public.agent_work_approvals where id = $1::uuid",
+        [revokedClientAccessHandoff.approval_id],
+      );
+      return rows[0]?.count ?? 0;
+    },
+  );
+  assert(assignedBtApprovalCount === 1, "Current assigned approver could not read the approval row");
+  await client.query(
+    "delete from public.client_therapist_links where client_id = $1::uuid and therapist_id = $2::uuid",
+    [FIXTURES.clientAssigned, FIXTURES.btA],
+  );
+  await client.query(
+    "update public.clients set therapist_id = null where id = $1::uuid",
+    [FIXTURES.clientAssigned],
+  );
+  try {
+    const deniedClientAccess = await decide(
+      client,
+      revokedClientAccessFixture,
+      revokedClientAccessHandoff.approval_id,
+      FIXTURES.btA,
+      "approve",
+      "clinical_review_accepted",
+    );
+    assert(deniedClientAccess?.outcome === "forbidden", "Owner without current client access decided approval");
+    const pendingAccessApproval = await client.query(
+      "select status from public.agent_work_approvals where id = $1::uuid",
+      [revokedClientAccessHandoff.approval_id],
+    );
+    assert(pendingAccessApproval.rows[0]?.status === "pending", "Forbidden client-access decision mutated approval");
+    const revokedBtApprovalCount = await withActor(
+      client,
+      "authenticated",
+      "authenticated",
+      FIXTURES.btA,
+      async () => {
+        const { rows } = await client.query(
+          "select count(*)::integer as count from public.agent_work_approvals where id = $1::uuid",
+          [revokedClientAccessHandoff.approval_id],
+        );
+        return rows[0]?.count ?? 0;
+      },
+    );
+    assert(revokedBtApprovalCount === 0, "Approver retained approval visibility after client access loss");
+    const sweptAccess = await client.query(
+      "select public.revoke_stale_agent_work_approvals(now(), 500) as result",
+    );
+    assert(
+      sweptAccess.rows[0]?.result?.revoked?.some((row) => row.reasonCode === "owner_authority_lost"),
+      "Sweeper did not revoke lost client access",
+    );
+  } finally {
+    await client.query(
+      "update public.clients set therapist_id = $2::uuid where id = $1::uuid",
+      [FIXTURES.clientAssigned, FIXTURES.btA],
+    );
+    await client.query(
+      `insert into public.client_therapist_links (client_id, therapist_id, organization_id, created_by)
+       values ($1::uuid, $2::uuid, $3::uuid, $4::uuid)
+       on conflict (client_id, therapist_id) do nothing`,
+      [FIXTURES.clientAssigned, FIXTURES.btA, FIXTURES.orgA, FIXTURES.adminA],
+    );
+  }
+
+  const approvedFixture = await createFixture("approved");
+  const handoff = await requestHandoff(approvedFixture);
+  assert(handoff?.outcome === "created", `Expected created handoff, found ${handoff?.outcome}`);
+  const duplicateHandoff = await requestHandoff(approvedFixture);
+  assert(duplicateHandoff?.outcome === "duplicate", "Identical handoff request was not idempotent");
+  const approvalId = handoff.approval_id;
+
+  const ownerRow = await client.query(
+    "select owner_user_id from public.agent_work_items where id = $1::uuid",
+    [approvedFixture.workItemId],
+  );
+  assert(ownerRow.rows[0]?.owner_user_id === FIXTURES.adminA, "Handoff did not persist the assigned ledger owner");
+
+  const adminCanDecide = await withActor(client, "authenticated", "authenticated", FIXTURES.adminA, async () => {
+    const { rows } = await client.query(
+      "select public.current_user_can_decide_agent_work_approval($1::uuid) as allowed",
+      [approvalId],
+    );
+    return rows[0]?.allowed;
+  });
+  const crossOrgCanDecide = await withActor(client, "authenticated", "authenticated", FIXTURES.adminB, async () => {
+    const { rows } = await client.query(
+      "select public.current_user_can_decide_agent_work_approval($1::uuid) as allowed",
+      [approvalId],
+    );
+    return rows[0]?.allowed;
+  });
+  assert(adminCanDecide === true, "Assigned same-org role could not decide pending approval");
+  assert(crossOrgCanDecide === false, "Cross-org role received approval decision authority");
+
+  const crossOrgDecision = await decide(
+    client,
+    approvedFixture,
+    approvalId,
+    FIXTURES.adminB,
+    "approve",
+    "clinical_review_accepted",
+  );
+  assert(crossOrgDecision?.outcome === "forbidden", "Cross-org approval decision did not fail closed");
+
+  const approved = await decide(
+    client,
+    approvedFixture,
+    approvalId,
+    FIXTURES.adminA,
+    "approve",
+    "clinical_review_accepted",
+  );
+  assert(approved?.outcome === "decided", "Authorized approval decision did not win");
+  const duplicate = await decide(
+    client,
+    approvedFixture,
+    approvalId,
+    FIXTURES.adminA,
+    "approve",
+    "clinical_review_accepted",
+  );
+  assert(duplicate?.outcome === "duplicate", "Identical approval decision did not return stored result");
+  const conflict = await decide(
+    client,
+    approvedFixture,
+    approvalId,
+    FIXTURES.adminA,
+    "approve",
+    "different_reason",
+  );
+  assert(conflict?.outcome === "conflict", "Conflicting approval replay did not return conflict");
+
+  await client.query(
+    "update public.agent_work_approvals set expires_at = now() - interval '1 second' where id = $1::uuid",
+    [approvalId],
+  );
+  await client.query("select public.expire_agent_work_approvals(now(), 500)");
+  const consumedApproval = await client.query(
+    "select status from public.agent_work_approvals where id = $1::uuid",
+    [approvalId],
+  );
+  assert(consumedApproval.rows[0]?.status === "approved", "Consumed approval was rewritten after completion");
+  const approvedState = await client.query(
+    "select status from public.agent_work_steps where id = $1::uuid",
+    [approvedFixture.stepId],
+  );
+  assert(approvedState.rows[0]?.status === "completed", "Approved handoff did not complete only the ledger step");
+
+  const rejectedFixture = await createFixture("rejected");
+  const rejectedHandoff = await requestHandoff(rejectedFixture);
+  const rejected = await decide(
+    client,
+    rejectedFixture,
+    rejectedHandoff.approval_id,
+    FIXTURES.adminA,
+    "reject",
+    "clinical_review_rejected",
+  );
+  assert(rejected?.outcome === "decided", "Authorized rejection did not persist");
+  const rejectedState = await client.query(
+    "select status from public.agent_work_steps where id = $1::uuid",
+    [rejectedFixture.stepId],
+  );
+  assert(rejectedState.rows[0]?.status === "failed", "Rejected handoff advanced or left the ledger step actionable");
+
+  const expiredFixture = await createFixture("expired");
+  const expiredHandoff = await requestHandoff(expiredFixture);
+  await client.query(
+    "update public.agent_work_approvals set expires_at = now() - interval '1 second' where id = $1::uuid",
+    [expiredHandoff.approval_id],
+  );
+  const expired = await decide(
+    client,
+    expiredFixture,
+    expiredHandoff.approval_id,
+    FIXTURES.adminA,
+    "approve",
+    "clinical_review_accepted",
+  );
+  assert(expired?.outcome === "expired", "Late approval decision did not persist expiry");
+
+  for (const [suffix, mutate, expectedReason] of [
+    ["input-drift", async (fixture) => client.query(
+      "update public.agent_work_steps set completion_criteria = '{\"changed\":true}'::jsonb where id = $1::uuid",
+      [fixture.stepId],
+    ), "input_hash_changed"],
+    ["evidence-drift", async (fixture) => client.query(
+      `insert into public.agent_work_evidence (work_item_id, step_id, organization_id, client_id, source_kind, source_id, sha256)
+       values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'work_step', gen_random_uuid(), $5::text)`,
+      [fixture.workItemId, fixture.stepId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_B],
+    ), "evidence_hash_changed"],
+    ["workflow-drift", async (fixture) => client.query(
+      "update public.agent_work_items set workflow_version = workflow_version + 1 where id = $1::uuid",
+      [fixture.workItemId],
+    ), "workflow_version_changed"],
+    ["non-current-step", async (fixture) => client.query(
+      `with successor as (
+         insert into public.agent_work_steps (
+           work_item_id, organization_id, client_id, step_key, ordinal,
+           execution_mode, status, risk, required_role
+         ) values ($1::uuid, $2::uuid, $3::uuid, $4::text, 20, 'human', 'ready', 'clinical', 'admin')
+         returning id
+       )
+       update public.agent_work_items
+       set current_step_id = (select id from successor)
+       where id = $1::uuid`,
+      [fixture.workItemId, FIXTURES.orgA, FIXTURES.clientAssigned, `successor_${RUN_TOKEN}`],
+    ), "step_not_current"],
+    ["cancelled", async (fixture) => client.query(
+      "update public.agent_work_items set status = 'cancelled', cancelled_at = now() where id = $1::uuid",
+      [fixture.workItemId],
+    ), "work_cancelled"],
+  ]) {
+    const fixture = await createFixture(suffix);
+    const requested = await requestHandoff(fixture);
+    await mutate(fixture);
+    const result = await decide(
+      client,
+      fixture,
+      requested.approval_id,
+      FIXTURES.adminA,
+      "approve",
+      "clinical_review_accepted",
+    );
+    assert(result?.outcome === "revoked", `${suffix} did not revoke the approval binding`);
+    const reason = await client.query(
+      "select revoked_reason_code from public.agent_work_approvals where id = $1::uuid",
+      [requested.approval_id],
+    );
+    assert(reason.rows[0]?.revoked_reason_code === expectedReason, `${suffix} recorded the wrong revocation reason`);
+  }
+
+  const rehandoffFixture = await createFixture("rehandoff");
+  const firstHandoff = await requestHandoff(rehandoffFixture);
+  await client.query(
+    "update public.agent_work_steps set completion_criteria = '{\"changed\":true}'::jsonb where id = $1::uuid",
+    [rehandoffFixture.stepId],
+  );
+  const staleDecision = await decide(
+    client,
+    rehandoffFixture,
+    firstHandoff.approval_id,
+    FIXTURES.adminA,
+    "approve",
+    "clinical_review_accepted",
+  );
+  assert(staleDecision?.outcome === "revoked", "Re-handoff fixture did not revoke stale approval");
+  const secondHandoff = await requestHandoff(rehandoffFixture);
+  assert(secondHandoff?.outcome === "created", "Re-handoff after revocation did not create a new approval");
+  assert(secondHandoff?.approval_id !== firstHandoff.approval_id, "Re-handoff reused revoked approval history");
+
+  const sweptFixture = await createFixture("swept-evidence-drift");
+  const sweptHandoff = await requestHandoff(sweptFixture);
+  await client.query(
+    `insert into public.agent_work_evidence (work_item_id, step_id, organization_id, client_id, source_kind, source_id, sha256)
+     values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'work_step', gen_random_uuid(), $5::text)`,
+    [sweptFixture.workItemId, sweptFixture.stepId, FIXTURES.orgA, FIXTURES.clientAssigned, HASH_B],
+  );
+  const swept = await client.query(
+    "select public.revoke_stale_agent_work_approvals(now(), 500) as result",
+  );
+  assert(
+    swept.rows[0]?.result?.revoked?.some((row) => row.reasonCode === "evidence_hash_changed"),
+    "Stale-approval sweeper did not report evidence drift",
+  );
+  const sweptApproval = await client.query(
+    "select status, revoked_reason_code, revoked_by from public.agent_work_approvals where id = $1::uuid",
+    [sweptHandoff.approval_id],
+  );
+  assert(sweptApproval.rows[0]?.status === "revoked", "Stale-approval sweeper did not persist revocation");
+  assert(
+    sweptApproval.rows[0]?.revoked_reason_code === "evidence_hash_changed",
+    "Stale-approval sweeper persisted the wrong revocation reason",
+  );
+  assert(sweptApproval.rows[0]?.revoked_by === null, "System-swept approval unexpectedly recorded a user actor");
+
+  const revokedRoleFixture = await createFixture("revoked-role");
+  const revokedRoleHandoff = await requestHandoff(revokedRoleFixture);
+  await client.query(
+    `update public.user_roles set is_active = false
+     where user_id = $1::uuid and role_id = (select id from public.roles where name = 'admin')`,
+    [FIXTURES.adminA],
+  );
+  const revokedRole = await decide(
+    client,
+    revokedRoleFixture,
+    revokedRoleHandoff.approval_id,
+    FIXTURES.adminA,
+    "approve",
+    "clinical_review_accepted",
+  );
+  assert(revokedRole?.outcome === "forbidden", "Role-revoked owner was allowed to mutate approval state");
+  const pendingAfterForbidden = await client.query(
+    "select status from public.agent_work_approvals where id = $1::uuid",
+    [revokedRoleHandoff.approval_id],
+  );
+  assert(pendingAfterForbidden.rows[0]?.status === "pending", "Forbidden approval decision mutated stale state");
+  const sweptRole = await client.query(
+    "select public.revoke_stale_agent_work_approvals(now(), 500) as result",
+  );
+  assert(
+    sweptRole.rows[0]?.result?.revoked?.some((row) => row.reasonCode === "owner_authority_lost"),
+    "Stale-approval sweeper did not revoke lost owner authority",
+  );
+  await client.query(
+    `update public.user_roles set is_active = true
+     where user_id = $1::uuid and role_id = (select id from public.roles where name = 'admin')`,
+    [FIXTURES.adminA],
+  );
+
+  const concurrentFixture = await createFixture("concurrent");
+  const concurrentHandoff = await requestHandoff(concurrentFixture);
+  const firstClient = new Client({ connectionString });
+  const secondClient = new Client({ connectionString });
+  await Promise.all([firstClient.connect(), secondClient.connect()]);
+  try {
+    const outcomes = await Promise.all([
+      decide(firstClient, concurrentFixture, concurrentHandoff.approval_id, FIXTURES.adminA, "approve", "concurrent_a"),
+      decide(secondClient, concurrentFixture, concurrentHandoff.approval_id, FIXTURES.adminA, "reject", "concurrent_b"),
+    ]);
+    assert(
+      outcomes.map((result) => result?.outcome).sort().join(",") === "conflict,decided",
+      `Concurrent decisions did not converge to one winner: ${JSON.stringify(outcomes)}`,
+    );
+  } finally {
+    await Promise.all([firstClient.end(), secondClient.end()]);
+  }
+
+  const handoffRaceFixture = await createFixture("handoff-decision-race");
+  const handoffRaceApproval = await requestHandoff(handoffRaceFixture);
+  const handoffClient = new Client({ connectionString });
+  const decisionClient = new Client({ connectionString });
+  await Promise.all([handoffClient.connect(), decisionClient.connect()]);
+  try {
+    await Promise.all([
+      handoffClient.query("set statement_timeout = '5s'"),
+      decisionClient.query("set statement_timeout = '5s'"),
+    ]);
+    const raceResults = await Promise.allSettled([
+      withActor(handoffClient, "service_role", "service_role", FIXTURES.adminA, async () => {
+        const { rows } = await handoffClient.query(
+          `select public.request_agent_work_approval_handoff(
+             $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::timestamptz
+           ) as result`,
+          [
+            FIXTURES.adminA,
+            handoffRaceFixture.workItemId,
+            handoffRaceFixture.stepId,
+            FIXTURES.adminA,
+            "clinical_review_reassigned",
+            new Date(Date.now() + 300_000).toISOString(),
+          ],
+        );
+        return rows[0]?.result;
+      }, { commit: true }),
+      decide(
+        decisionClient,
+        handoffRaceFixture,
+        handoffRaceApproval.approval_id,
+        FIXTURES.adminA,
+        "approve",
+        "clinical_review_accepted",
+      ),
+    ]);
+    const raceFailureText = raceResults
+      .filter((result) => result.status === "rejected")
+      .map((result) => String(result.reason?.message ?? result.reason))
+      .join(" ");
+    assert(!/deadlock detected|40P01|statement timeout|57014/i.test(raceFailureText), "Handoff/decision race deadlocked");
+    assert(raceResults.some((result) => result.status === "fulfilled"), "Handoff/decision race produced no winner");
+  } finally {
+    await Promise.all([handoffClient.end(), decisionClient.end()]);
+  }
+
+  const auditRows = await client.query(
+    `select event_type, sanitized_metadata
+     from public.agent_work_events
+     where event_type in ('approval.requested', 'approval.decided', 'approval.expired', 'approval.revoked', 'approval.conflict')`,
+  );
+  const eventTypes = new Set(auditRows.rows.map((row) => row.event_type));
+  for (const eventType of ["approval.requested", "approval.decided", "approval.expired", "approval.revoked", "approval.conflict"]) {
+    assert(eventTypes.has(eventType), `Missing sanitized ${eventType} audit event`);
+  }
+  const auditText = JSON.stringify(auditRows.rows);
+  assert(!auditText.includes(HASH_A) && !auditText.includes(HASH_B), "Approval audit disclosed a full hash");
+  assert(!auditText.includes("example.invalid"), "Approval audit disclosed an email-like fixture value");
+
+  const btApprovalEventCount = await withActor(
+    client,
+    "authenticated",
+    "authenticated",
+    FIXTURES.btA,
+    async () => {
+      const { rows } = await client.query(
+        "select count(*)::integer as count from public.agent_work_events where event_type like 'approval.%'",
+      );
+      return rows[0]?.count ?? 0;
+    },
+  );
+  assert(btApprovalEventCount === 0, "Read-only client viewer could read approval governance events");
+};
+
 const main = async () => {
   const connectionString = getRequiredEnv("SUPABASE_DB_URL");
   const client = new Client({ connectionString });
@@ -3031,6 +3578,8 @@ const main = async () => {
     await assertCreateContainmentAndConcurrency(connectionString);
 
     const { assignedWorkItemId, unassignedWorkItemId } = await createWorkItems(client);
+
+    await assertApprovalHandoffAndDecisionContract(client, connectionString);
 
     await assertRecomputedTerminalStatuses(client);
 

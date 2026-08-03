@@ -6,6 +6,11 @@ import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 
+import {
+  assertExactLocalRuntimeUrl,
+} from "./agent-work-ledger-harness/localRuntime.mjs";
+import { startAgentWorkItemsRuntime } from "./agent-work-ledger-harness/edgeRuntime.mjs";
+
 const { Client } = pg;
 
 const ADMIN_A = {
@@ -58,12 +63,7 @@ const requiredEnv = (name) => {
   return value;
 };
 
-const assertLoopback = (value, name) => {
-  const parsed = new URL(value);
-  if (!new Set(["127.0.0.1", "localhost"]).has(parsed.hostname)) {
-    throw new Error(`${name} must use a loopback host.`);
-  }
-};
+const assertLoopback = (value, name) => assertExactLocalRuntimeUrl(value, name);
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -96,10 +96,10 @@ const request = async (url, init = {}) => {
   return { response, body };
 };
 
-const waitForFunction = async (url, child) => {
+const waitForFunction = async (url, child = null) => {
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error("Local Edge Function exited before becoming healthy.");
+    if (child?.exitCode !== null) throw new Error("Local Edge Function exited before becoming healthy.");
     try {
       const { response } = await request(url);
       if (response.status === 401) return;
@@ -220,22 +220,20 @@ const main = async () => {
   await writeFile(runtimeFile, "AGENT_WORK_LEDGER_RUNTIME_MODE=shadow\n", { encoding: "ascii", mode: 0o600 });
 
   let child;
-  let output = "";
+  let getOutput = () => "";
   try {
-    // Pinned local gateways reject Auth's ES256 tokens. The function still verifies
-    // the real user token with getUser; repository config remains verify_jwt=true.
-    child = spawn(
-      process.platform === "win32" ? "supabase.exe" : "supabase",
-      ["functions", "serve", "agent-work-items", "--no-verify-jwt", "--env-file", runtimeFile],
-      { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] },
-    );
-    const collect = (chunk) => {
-      output = `${output}${chunk.toString("utf8")}`.slice(-4_000);
-    };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
+    // Host mode preserves the existing local gateway workaround. Container mode
+    // returns the already-running service URL without invoking the spawn dependency.
+    const runtime = startAgentWorkItemsRuntime({
+      supabaseUrl,
+      runtimeFile,
+      env: process.env,
+      spawnImpl: spawn,
+    });
+    child = runtime.child;
+    getOutput = runtime.getOutput;
+    const { functionUrl } = runtime;
 
-    const functionUrl = `${supabaseUrl}/functions/v1/agent-work-items`;
     await waitForFunction(functionUrl, child);
 
     const [adminToken, btToken, crossTenantToken] = await Promise.all([
@@ -332,7 +330,7 @@ const main = async () => {
 
     console.log("Agent work ledger local Edge smoke passed (create/list/detail/idempotency/tenant/shadow mutation denial/deferred routes)." );
   } catch (error) {
-    const safeOutput = output.replace(/eyJ[A-Za-z0-9._-]+/g, "[redacted-token]");
+    const safeOutput = getOutput().replace(/eyJ[A-Za-z0-9._-]+/g, "[redacted-token]");
     if (safeOutput.trim()) console.error(safeOutput.trim());
     throw error;
   } finally {

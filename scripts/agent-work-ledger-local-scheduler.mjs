@@ -5,6 +5,11 @@ import { pathToFileURL } from "node:url";
 
 import pg from "pg";
 
+import {
+  assertExactLocalRuntimeUrl,
+  isPhase2ContainerMode,
+} from "./agent-work-ledger-harness/localRuntime.mjs";
+
 const { Client } = pg;
 
 export const FIXED_SECRET_NAMES = Object.freeze([
@@ -17,22 +22,33 @@ const FIXED_JOB_NAMES = Object.freeze([
   "agent-work-runner-local",
   "agent-work-sweeper-local",
 ]);
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
 const START_TIMEOUT_MS = 30_000;
 const CRON_TIMEOUT_MS = 90_000;
 
-export const assertLoopbackUrl = (value, name) => {
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error(`${name} must be a valid URL.`);
-  }
-  if (!LOOPBACK_HOSTS.has(parsed.hostname)) {
-    throw new Error(`${name} must use a loopback host.`);
-  }
-  return parsed;
-};
+export const assertLoopbackUrl = (value, name, env) =>
+  assertExactLocalRuntimeUrl(value, name, env);
+
+export const getSmokeInvocationTargets = (env = process.env) =>
+  isPhase2ContainerMode(env)
+    ? {
+        runner: "http://agent-work-runner:8000/agent-work-runner",
+        sweeper: "http://agent-work-sweeper:8001/agent-work-sweeper",
+      }
+    : {
+        runner: "http://127.0.0.1:8000/agent-work-runner",
+        sweeper: "http://127.0.0.1:8001/agent-work-sweeper",
+      };
+
+export const getCronInvocationTargets = (env = process.env) =>
+  isPhase2ContainerMode(env)
+    ? {
+        runner: "http://agent-work-runner:8000/agent-work-runner",
+        sweeper: "http://agent-work-sweeper:8001/agent-work-sweeper",
+      }
+    : {
+        runner: "http://host.docker.internal:8000/agent-work-runner",
+        sweeper: "http://host.docker.internal:8001/agent-work-sweeper",
+      };
 
 export const classifySchedulerResponse = (statusCode, body) => {
   if (statusCode !== 200 || body?.success !== true || !body.data) return null;
@@ -91,7 +107,37 @@ const upsertVaultSecret = async (client, name, value) => {
   );
 };
 
-const setupScheduler = async (client, secrets) => {
+const replaceSchedulerTarget = async (client, jobName, expectedUrl, nextUrl) => {
+  const { rowCount } = await client.query(
+    `
+      update cron.job
+      set command = replace(command, $2::text, $3::text)
+      where jobname = $1::text
+        and position($2::text in command) > 0
+    `,
+    [jobName, expectedUrl, nextUrl],
+  );
+  assert(rowCount === 1, `Container scheduler target rewrite failed for ${jobName}.`);
+};
+
+export const rewriteSchedulerTargetsForContainer = async (client, env = process.env) => {
+  if (!isPhase2ContainerMode(env)) return;
+  const cronTargets = getCronInvocationTargets(env);
+  await replaceSchedulerTarget(
+    client,
+    FIXED_JOB_NAMES[0],
+    "http://host.docker.internal:8000/agent-work-runner",
+    cronTargets.runner,
+  );
+  await replaceSchedulerTarget(
+    client,
+    FIXED_JOB_NAMES[1],
+    "http://host.docker.internal:8001/agent-work-sweeper",
+    cronTargets.sweeper,
+  );
+};
+
+export const setupScheduler = async (client, secrets, env = process.env) => {
   await withContext("enable local scheduler extensions", async () => {
     await client.query("create extension if not exists pg_cron");
     await client.query("create extension if not exists pg_net with schema extensions");
@@ -109,6 +155,9 @@ const setupScheduler = async (client, secrets) => {
       client.query(
         "select public.enable_local_agent_work_queue_scheduler('* * * * *', 5000, 25) as result",
       ));
+    await withContext("rewrite fixed local scheduler targets for phase2 containers", () =>
+      rewriteSchedulerTargetsForContainer(client, env),
+    );
     await client.query("commit");
     return rows[0]?.result;
   } catch (error) {
@@ -118,6 +167,7 @@ const setupScheduler = async (client, secrets) => {
 };
 
 const verifyScheduler = async (client, secrets) => {
+  const cronTargets = getCronInvocationTargets();
   const { rows: jobs } = await client.query(
     `
       select jobname, schedule, command, active
@@ -130,8 +180,8 @@ const verifyScheduler = async (client, secrets) => {
   assert(jobs.length === 2, "Expected exactly two fixed local scheduler jobs.");
   const combinedCommands = jobs.map((job) => job.command).join("\n");
   assert(jobs.every((job) => job.schedule === "* * * * *" && job.active === true), "Local scheduler jobs are not active on the fixed schedule.");
-  assert(combinedCommands.includes("http://host.docker.internal:8000/agent-work-runner"), "Runner scheduler target drifted.");
-  assert(combinedCommands.includes("http://host.docker.internal:8001/agent-work-sweeper"), "Sweeper scheduler target drifted.");
+  assert(combinedCommands.includes(cronTargets.runner), "Runner scheduler target drifted.");
+  assert(combinedCommands.includes(cronTargets.sweeper), "Sweeper scheduler target drifted.");
   assert(combinedCommands.includes("x-agent-work-runner-secret"), "Runner invocation header is missing.");
   assert(combinedCommands.includes("x-agent-work-sweeper-secret"), "Sweeper invocation header is missing.");
   assert(!combinedCommands.includes(secrets.serviceRoleKey), "Scheduler command contains a plaintext service-role key.");
@@ -146,7 +196,7 @@ const verifyScheduler = async (client, secrets) => {
   return jobs.map(({ jobname, schedule, active }) => ({ jobname, schedule, active }));
 };
 
-const teardownScheduler = async (client) => {
+export const teardownScheduler = async (client) => {
   const { rows } = await client.query(
     "select exists(select 1 from pg_extension where extname = 'pg_cron') as enabled",
   );
@@ -194,14 +244,22 @@ const spawnFunction = (denoBin, entrypoint, port, secrets) => {
   return { child, getOutput: () => output };
 };
 
-const waitForFunction = async (url, processState) => {
-  const deadline = Date.now() + START_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    if (processState.child.exitCode !== null) {
+export const waitForFunction = async (
+  url,
+  processState = null,
+  {
+    now = Date.now,
+    fetchImpl = fetch,
+    sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  } = {},
+) => {
+  const deadline = now() + START_TIMEOUT_MS;
+  while (now() < deadline) {
+    if (processState && processState.child.exitCode !== null) {
       throw new Error(`Local function exited before startup: ${processState.getOutput()}`);
     }
     try {
-      const response = await fetch(url, {
+      const response = await fetchImpl(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -211,10 +269,19 @@ const waitForFunction = async (url, processState) => {
     } catch {
       // Host Deno may briefly reset connections while loading npm modules.
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await sleep(250);
   }
   throw new Error(`Timed out waiting for ${url}.`);
 };
+
+export const waitForSchedulerFunctions = (
+  targets,
+  processStates,
+  waitForFunctionImpl = waitForFunction,
+) => Promise.all([
+  waitForFunctionImpl(targets.runner, processStates.runner),
+  waitForFunctionImpl(targets.sweeper, processStates.sweeper),
+]);
 
 const invokeHostFunction = async (url, serviceRoleKey, secretHeader, invocationSecret, body) => {
   const response = await fetch(url, {
@@ -292,19 +359,21 @@ const runSmoke = async () => {
   assertLoopbackUrl(supabaseUrl, "SUPABASE_URL");
   const denoBin = process.env.DENO_BIN?.trim() || "deno";
   const secrets = loadSecrets({ generateInvocationSecrets: true });
+  const smokeTargets = getSmokeInvocationTargets();
   const client = await connectLocalDatabase();
-  const runner = spawnFunction(denoBin, "supabase/functions/agent-work-runner/index.ts", 8000, secrets);
-  const sweeper = spawnFunction(denoBin, "supabase/functions/agent-work-sweeper/index.ts", 8001, secrets);
+  const runner = isPhase2ContainerMode()
+    ? null
+    : spawnFunction(denoBin, "supabase/functions/agent-work-runner/index.ts", 8000, secrets);
+  const sweeper = isPhase2ContainerMode()
+    ? null
+    : spawnFunction(denoBin, "supabase/functions/agent-work-sweeper/index.ts", 8001, secrets);
   let failure;
   try {
-    await Promise.all([
-      waitForFunction("http://127.0.0.1:8000/agent-work-runner", runner),
-      waitForFunction("http://127.0.0.1:8001/agent-work-sweeper", sweeper),
-    ]);
+    await waitForSchedulerFunctions(smokeTargets, { runner, sweeper });
     const runnerDirectEvidence = [];
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const result = await invokeHostFunction(
-        "http://127.0.0.1:8000/agent-work-runner",
+        smokeTargets.runner,
         secrets.serviceRoleKey,
         "x-agent-work-runner-secret",
         secrets.runnerSecret,
@@ -318,7 +387,7 @@ const runSmoke = async () => {
       "Runner did not reach a completed effect or empty queue within the local smoke bound.",
     );
     const sweeperDirectEvidence = await invokeHostFunction(
-      "http://127.0.0.1:8001/agent-work-sweeper",
+      smokeTargets.sweeper,
       secrets.serviceRoleKey,
       "x-agent-work-sweeper-secret",
       secrets.sweeperSecret,
@@ -342,8 +411,8 @@ const runSmoke = async () => {
     if (!failure) failure = error;
   } finally {
     await client.end();
-    stopProcessTree(runner.child);
-    stopProcessTree(sweeper.child);
+    if (runner) stopProcessTree(runner.child);
+    if (sweeper) stopProcessTree(sweeper.child);
   }
   if (failure) throw failure;
 };

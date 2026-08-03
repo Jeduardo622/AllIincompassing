@@ -119,6 +119,7 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
       "--cached-only",
       "--frozen",
       "--lock=/opt/agent-work-ledger-deno.lock",
+      "--allow-env=AGENT_WORK_PHASE2_CONTAINER",
       "supabase/functions/agent-work-items/index.test.ts",
       "supabase/functions/agent-work-runner/index.test.ts",
       "supabase/functions/agent-work-runner/chaos.test.ts",

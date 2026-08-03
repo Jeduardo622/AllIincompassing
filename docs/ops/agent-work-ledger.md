@@ -195,9 +195,9 @@ npm run test:agent-work:chaos
 npm run test:agent-work:eval
 ```
 
-Reset the database again before each destructive stateful contract when reproducing the release evidence. The current branch-level proof passed `test:ci` at 456 of 458 files and 3,763 of 3,768 tests; the remaining two files and five tests are explicitly skipped because their dedicated local Postgres URLs are not configured. `verify:local` passed in 460.9 seconds with the same suite, coverage policy, production build, and 220 of 220 Tier-0 route tests.
+Reset the database again before each destructive stateful contract when reproducing the release evidence. The final branch-level proof passed `test:ci` at 465 of 467 files and 3,930 of 3,935 tests; the remaining two files and five tests are explicitly skipped because their dedicated local Postgres URLs are not configured. `verify:local` passed in 709.3 seconds with the same suite, coverage policy, production build, and 220 of 220 Tier-0 route tests.
 
-The cached Agent Work Ledger Deno set passed 101 tests across the shared policy/state modules and the items, runner, and sweeper functions. `supabase/functions/ai-agent-optimized/persistence.test.ts` remains separately blocked because the local dependency tree does not contain the lock-pinned `npm:@supabase/supabase-js@2.50.0`; do not install it or modify `deno.lock` as part of this proof.
+The cached Agent Work Ledger Deno set passed 155 tests across 12 shared policy/state, items, runner, sweeper, CalOptima, and generator files with no network permission. The Phase 2 image keeps npm dependencies lockfile-exact and caches Deno npm imports separately with `--node-modules-dir=none`; do not use Deno automatic `node_modules` installation in this image because it can replace npm-locked packages.
 
 The trace-index contract inserts 20,000 transaction-local synthetic rows into each report source, proves all 11 production report query shapes use their eight intended indexes, then rolls back the fixtures. This includes session-audit request, correlation, top-level operation-ID, and nested trace operation-ID containment. The Supabase CLI applies migrations through a SQL pipeline and rejects `CREATE INDEX CONCURRENTLY`; the additive indexes therefore use ordinary `CREATE INDEX`. A future hosted rollout must schedule the migration for a bounded low-write window and inspect table/index size and lock activity before and during application.
 
@@ -231,10 +231,10 @@ Every destructive check begins with a fresh database reset on the isolated netwo
 
 Sanitized manifests and summary logs are written under `.reports/agent-work-ledger-phase2/<run-id>/`. They contain command status, timing, commit and image identities, PHI-free output hashes, and cleanup results, but no credentials or command output payloads. The directory is ignored and is not a release artifact.
 
-The final local proof completed two consecutive cold runs from commit `7a81b5e8c13432c2a181dbbdd721fb5963cdfbac` and image `sha256:f08c5b872e9ba998ced234155824c7384877a59e446a583bd9ef79b92ab56d55`:
+The final local proof completed two consecutive cold runs from commit `73c2bba7aaf6666ebd6aff531c4b70dd01f15cb4` and image `sha256:959f3d9cff3f286be67162b6b44e6d1a9d7174f8ec9cdcb89dadbc4ef4bbb1f1`:
 
-- `20260803T114359Z-058316`: 11 of 11 checks passed in 532,389 ms; summary hash `32670de26ed97d2e622a2d71e7bf9c461031d10358b92fa626d5137fee6446f4`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
-- `20260803T115308Z-5c0634`: 11 of 11 checks passed in 581,086 ms; summary hash `910d7776116c5053c6ee63b34c3d1173a6fc78a1701319263afe89255b545460`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+- `20260803T181851Z-8a9790`: 11 of 11 checks passed in 675,848 ms; summary hash `436f43dacd55e1c5ce92c4d762e0489ed4d022b74852be81842516f81dcad112`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+- `20260803T183022Z-9fec57`: 11 of 11 checks passed in 647,538 ms; summary hash `829596e47221dd31054d710374bf905279ac239408f5cf3fd0cbf785bddba34d`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
 
 Both runs passed cleanup and left no labeled Supabase/Compose containers, Compose volumes, or `agent-work-phase2` network. This command is local-only. It does not push, deploy, contact a model provider, use `active` mode, or authorize hosted configuration.
 
@@ -271,7 +271,7 @@ Local proof after the architecture correction:
 - fresh `npm run agent-work:db:reset`: pass
 - `npm run agent-work:edge-smoke`: pass, including its security preflight, IEHP/CalOptima create and idempotency, list/detail, tenant denial, shadow mutation denial, and deferred routes
 - `npm run agent-work:security-contract`: pass from fresh database and queue state, including failed-attempt recording/fresh retry, SQL-owned hashing, database-recomputed immutable replay after draft edits, exact source binding, approved-content drift, approval reopening, and cross-tenant denial
-- full Phase 1 and two-run Phase 2 evidence is recorded in the handoff after completion
+- full Phase 1 and two-run Phase 2 evidence is recorded in the handoff; all required local gates passed
 
 Human protected-path, Supabase, security, clinical, product, and privacy review remains required before any merge.
 

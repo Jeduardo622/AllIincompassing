@@ -887,6 +887,7 @@ git push -u origin codex/agent-work-ledger-foundation
 gh pr create --base main --head codex/agent-work-ledger-foundation --title "feat(agent-work): add goal-directed stateful work ledger" --body-file docs/ai/handoffs/agent-work-ledger-foundation.md
 gh pr checks --watch
 gh pr view --json reviewDecision,mergeStateStatus,statusCheckRollup
+gh pr merge --squash --delete-branch
 ```
 
 Do not merge until required human protected-path, Supabase, security, clinical, product, and privacy review is complete and live required checks pass.
@@ -904,9 +905,11 @@ supabase functions deploy agent-work-items --project-ref $env:SUPABASE_PROJECT_R
 supabase functions deploy agent-work-runner --project-ref $env:SUPABASE_PROJECT_REF
 supabase functions deploy agent-work-sweeper --project-ref $env:SUPABASE_PROJECT_REF
 supabase functions deploy agent-trace-report --project-ref $env:SUPABASE_PROJECT_REF
+supabase functions deploy ai-agent-optimized --project-ref $env:SUPABASE_PROJECT_REF
+supabase functions deploy generate-program-goals --project-ref $env:SUPABASE_PROJECT_REF
 ```
 
-Before any function deployment, configure the reviewed invocation secrets and runtime policy through the authorized hosted secret/configuration path without writing `.env*`; start only in `disabled`. Review Queue, Cron, Vault, JWT policy, grants, and tenant-scoped synthetic health evidence before any later `shadow` or `advisory` decision. No `active` stage is authorized.
+Before any function deployment, configure the reviewed invocation secrets and runtime policy through the authorized hosted secret/configuration path without writing `.env*`; start only in `disabled`. Review Queue, Cron, Vault, JWT policy, grants, and tenant-scoped synthetic health evidence before any later `shadow` or `advisory` decision. Deploy the application through its separately authorized Netlify release workflow only after the Supabase schema/functions remain healthy in `disabled`, then run redacted tenant and assessment smoke before considering `shadow`. No `active` stage is authorized.
 
 ## Task 16 Disposition
 
@@ -921,7 +924,7 @@ Task 16 is implemented locally as the separately routed critical CalOptima adapt
 - stop conditions:
   - the plan's workflow-defined SQL condition triggered during implementation; work returned to architecture review before continuing
   - initial architecture, security, Supabase, and code reviews requested a recut around persistence authority, replay, request identity, and evidence binding
-  - the corrected boundary now keeps model output advisory, gives the deterministic SQL snapshot transaction sole draft persistence authority, and is undergoing final correction-only review
+  - the corrected boundary keeps model output advisory, gives the deterministic SQL snapshot transaction sole draft persistence authority, and passed final correction-only correctness, security, Supabase, and architecture review
 
 The implemented architecture stays advisory-only:
 
@@ -940,12 +943,15 @@ Current Task 16 verification card:
 
 - classification/lane: `high-risk human-reviewed` / `critical`
 - required: focused migration/security/Edge/client/UI tests; full Agent Work Deno tests; fresh reset; security, tenant, shadow, queue, chaos, policy, lint, typecheck, build, full Node suite, `verify:local`, Phase 2 twice, normal hook, `verify-change`, and `pr-hygiene`
-- passed after final review corrections: focused Vitest `263/263` across 12 files; Agent Work Deno `86/86` across five files with explicit env permissions and no network permission; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run build`; `git diff --check`; repeated fresh `npm run agent-work:db:reset`; and fresh-state `npm run agent-work:edge-smoke`
+- passed after final review corrections: focused Vitest `263/263` across 12 files; complete Agent Work Deno `155/155` across 12 files with explicit env permissions and no network permission; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run validate:tenant`; `npm run build`; `git diff --check`; repeated fresh `npm run agent-work:db:reset`; and fresh-state security, Edge, queue/scheduler, shadow-parity, retention, and trace-index contracts
 - the fresh live security lifecycle proves SQL-owned hashing, one immutable packet, database-recomputed replay integrity, failed-attempt recording and fresh retry, replay stability after editable draft mutation, exact source-token rejection, approved-content drift invalidation, consumed-approval reopening, and cross-tenant denial
 - the served Edge lifecycle proves IEHP and CalOptima create/idempotency/list/detail, tenant denial, exact sanitized DTOs, shadow mutation denial, and deferred-route handling through the complete local gateway/runtime
-- normal hook evidence: `b720169e fix(agent-work): restore retention contract owner role` passed `ci:check-focused` without bypass after the Task 16 packet table gained an explicit service-role RLS policy while retaining direct table revokes
+- normal hook evidence: `9f53bb09 feat(agent-work): add CalOptima ledger adapter`, `5eaba6f9 fix(agent-work): cache exact Deno npm dependencies`, and `73c2bba7 fix(agent-work): isolate Deno package cache` each passed `ci:check-focused` without bypass
 - final correctness, security, Supabase, and architecture re-reviews approve with no remaining actionable findings
-- remaining: Task 16 commit/hook, full Phase 1 matrix, and two fresh Phase 2 runs from committed `HEAD`
+- full Node proof: `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci` passed at 465 of 467 files and 3,930 of 3,935 tests; two files and five tests skipped only for their dedicated unconfigured local Postgres URLs
+- full local proof: `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local` passed in 709.3 seconds, including the same suite, coverage policy, production build, and 220 of 220 Tier-0 route tests
+- deterministic proof: chaos passed `10/10` with seed `task10-default-seed`; eval passed six fixtures with all seven safety counters at zero and readiness evidence coverage at 100%; shadow parity passed `7/7` fixtures and all negative probes with zero mismatches
+- result: all required Phase 1 local gates and both final Phase 2 runs passed; only authorization-gated GitHub, hosted, browser, provider, and deployment actions remain unrun
 
 Human protected-path, Supabase, security, clinical, product, and privacy review remains mandatory before any later GitHub merge.
 
@@ -955,7 +961,7 @@ Human protected-path, Supabase, security, clinical, product, and privacy review 
 - lane: `critical`
 - issue: `WIN-271`
 - branch: `codex/agent-work-ledger-foundation`
-- final committed snapshot: `7a81b5e8c13432c2a181dbbdd721fb5963cdfbac`
+- final committed implementation snapshot: `73c2bba7aaf6666ebd6aff531c4b70dd01f15cb4`
 - one command: `npm run test:agent-work:phase2`
 - architecture: host lifecycle orchestration only; complete CLI-managed Supabase Docker stack plus containerized app, items function, runner, sweeper, and all verification workloads on the isolated `agent-work-phase2` network
 - runtime boundary: only `disabled`, `shadow`, and `advisory`; no provider calls, clinical effects, autonomous approval, publication, billing, submission, final-record creation, or hosted action
@@ -975,14 +981,21 @@ Human protected-path, Supabase, security, clinical, product, and privacy review 
 - `f03e663e fix(agent-work): verify container parity locally`
 - `5c9e82fc test(agent-work): cover phase2 app hostname`
 - `7a81b5e8 fix(agent-work): allow phase2 Deno mode check`
+- `c5b84276 docs(agent-work): record phase2 container evidence`
+- `b720169e fix(agent-work): restore retention contract owner role`
+- `9f53bb09 feat(agent-work): add CalOptima ledger adapter`
+- `5eaba6f9 fix(agent-work): cache exact Deno npm dependencies`
+- `73c2bba7 fix(agent-work): isolate Deno package cache`
 
 Every commit used the normal pre-commit hook; `ci:check-focused` passed without bypass. The existing Task 9 recovery stashes remain untouched. Pre-existing `deno.lock` and `reports/test-reliability-latest.json` drift remains unstaged and excluded.
 
 ### Two-Run Evidence
 
-- run `20260803T114359Z-058316`: commit `7a81b5e8c13432c2a181dbbdd721fb5963cdfbac`; image `sha256:f08c5b872e9ba998ced234155824c7384877a59e446a583bd9ef79b92ab56d55`; 11 of 11 checks passed; cleanup passed; exit passed; 532,389 ms; summary hash `32670de26ed97d2e622a2d71e7bf9c461031d10358b92fa626d5137fee6446f4`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
-- run `20260803T115308Z-5c0634`: same commit and image; 11 of 11 checks passed; cleanup passed; exit passed; 581,086 ms; summary hash `910d7776116c5053c6ee63b34c3d1173a6fc78a1701319263afe89255b545460`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+- run `20260803T181851Z-8a9790`: commit `73c2bba7aaf6666ebd6aff531c4b70dd01f15cb4`; image `sha256:959f3d9cff3f286be67162b6b44e6d1a9d7174f8ec9cdcb89dadbc4ef4bbb1f1`; 11 of 11 checks passed; cleanup passed; exit passed; 675,848 ms; summary hash `436f43dacd55e1c5ce92c4d762e0489ed4d022b74852be81842516f81dcad112`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+- run `20260803T183022Z-9fec57`: same commit and image; 11 of 11 checks passed; cleanup passed; exit passed; 647,538 ms; summary hash `829596e47221dd31054d710374bf905279ac239408f5cf3fd0cbf785bddba34d`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
 - post-run residue: no Supabase project containers, Compose project containers, Compose project volumes, or `agent-work-phase2` network
+
+Pre-final diagnostics were not counted as successful runs. The first attempt failed closed before startup on an inherited `SUPABASE_ACCESS_TOKEN`; its value was never read, and all remote-capable keys were cleared for subsequent process-local invocations. Adding the Task 16 Deno files then exposed exact `npm:zod@3.23.8` cache resolution; the first automatic-module repair built but replaced npm-locked Node dependencies and made items smoke fail under pinned Node 20. TDD correction moved Deno imports to the image-only cache with `--node-modules-dir=none` for cache, services, and tests, preserved the lockfile Supabase client version, and produced the two clean runs above.
 
 ### Phase 2 Verification Card
 
@@ -991,13 +1004,13 @@ Every commit used the normal pre-commit hook; `ci:check-focused` passed without 
 - change type: local runtime configuration; Docker/Compose lifecycle; server/API/Edge integration; database, queue, scheduler, and tenant-isolation verification; docs/process
 - required checks: `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; focused Phase 2 tests; `npm run test:agent-work:chaos`; Agent Work Ledger Deno tests; `npm run agent-work:security-contract`; `npm run agent-work:shadow-parity`; `npm run agent-work:queue-scheduler:smoke`; `npm run agent-work:retention-contract`; `npm run agent-work:trace-index-contract`; fresh local reset/migration application; Edge/API smoke; two consecutive `npm run test:agent-work:phase2` runs; normal pre-commit hook; `git diff --check`
 - executed checks:
-  - focused Phase 2 suite: pass at 8 files and 124 tests
+  - focused Phase 2 suite: pass at 8 files and 124 tests; final Deno cache-isolation regression subset passed at 65 of 65 tests
   - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build`: pass
-  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: pass at 463 of 465 files and 3,909 of 3,914 tests; two files and five tests skipped only for dedicated unconfigured local Postgres URLs
-  - `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`: pass in 483.9 seconds, including coverage policy, production build, and 220 of 220 Tier-0 route tests
-  - Agent Work Ledger Deno tests: pass at 111 of 111 across nine files
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: pass at 465 of 467 files and 3,930 of 3,935 tests; two files and five tests skipped only for dedicated unconfigured local Postgres URLs
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`: pass in 709.3 seconds, including coverage policy, production build, and 220 of 220 Tier-0 route tests
+  - Agent Work Ledger Deno tests: pass at 155 of 155 across 12 files with explicit environment permissions and no network permission
   - deterministic chaos: pass at 10 of 10 with seed `task10-default-seed`
-  - shadow parity: pass at 6 of 6 fixtures and 7 of 7 negative probes
+  - shadow parity: pass at 7 of 7 fixtures and all negative probes with zero mismatches
   - security contract: pass on fresh local synthetic state
   - queue/scheduler smoke: pass; direct runner `blocked` then `no_work`, sweeper processed four actions, and Cron callbacks returned HTTP `200/200`
   - retention contract: pass with stable export, cross-tenant and non-service denial, hold preservation, and zero-delete `policy_unapproved`
@@ -1005,14 +1018,13 @@ Every commit used the normal pre-commit hook; `ci:check-focused` passed without 
   - Phase 2 cold lifecycle: pass twice consecutively with 11 of 11 checks and clean teardown, as recorded above
   - `git diff --check`: pass before documentation closure
 - blocked checks:
-  - final host-mode `npm run agent-work:db:reset`: migrations and seed applied from recreated state, but Supabase CLI v2.58.5 returned nonzero during Storage/proxy restart (`buckets` union type mismatch, request timeout, or HTTP 502 across bounded attempts); the Phase 2 isolated-network reset path passed before each destructive check in both successful runs
-  - final host-mode `npm run agent-work:edge-smoke`: fresh security preflight passed after queue reset, but the failed CLI restart omitted the Edge runtime; a backup-preserving stop/start then exposed local Storage duplicate `migrations_name_key` metadata and was discarded with `supabase stop --no-backup`; containerized items/API smoke passed in both Phase 2 runs
+  - none among required Phase 1 or Phase 2 local gates; fresh host-mode resets, security, served Edge, queue/scheduler, parity, retention, and trace contracts all passed
   - branch protection, hosted preview drift, hosted function-auth parity, hosted assessment smoke, GitHub checks, and deployment: authorization-gated and intentionally not run
-- result: `pass-with-blocked-checks`
-- residual risk: human protected-path, Supabase, security, clinical, product, and privacy review remains mandatory; host Supabase CLI v2.58.5 Storage restart behavior needs an independently routed local tooling upgrade or clean-stack investigation; Task 14 deletion remains blocked until approved periods exist for `ledger_history`, `queue_archive`, and `execution_trace`
+- result: `pass` for the complete authorized local scope
+- residual risk: human protected-path, Supabase, security, clinical, product, and privacy review remains mandatory; Task 14 deletion remains blocked until approved periods exist for `ledger_history`, `queue_archive`, and `execution_trace`; hosted size, lock, and write-load behavior remains unmeasured
 
 ### Specialist Disposition
 
 Architecture, specification, implementation, test, code review, security, Supabase, DevOps, performance, and documentation lanes were used across P2.1/P2.2. Load-bearing findings were corrected through TDD: standalone Compose discovery, exact Vite host allowance, isolated reset networking, extension ownership, fixture isolation, Edge readiness, `cron.alter_job`, bounded reset/stop recovery, scheduler ordering, container parity identity, and least-privilege Deno env access. Final focused correctness and security re-reviews found no remaining code findings. Human review remains mandatory because migrations and functions are protected.
 
-The retention policy exception was not used. No approved retention periods were found, so deletion stays disabled and returns `policy_unapproved`; this exact policy decision remains for a human owner. Task 16 is now the active separately routed critical increment described above.
+The retention policy exception was not used. No approved retention periods were found, so deletion stays disabled and returns `policy_unapproved`; privacy, security, product, and operations owners must approve explicit periods for `ledger_history`, `queue_archive`, and `execution_trace` before any deletion path can be implemented. Task 16 is complete for the authorized local scope and remains subject to mandatory human protected-path and clinical review before GitHub or hosted action.

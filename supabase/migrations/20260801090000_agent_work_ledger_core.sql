@@ -822,7 +822,7 @@ begin
     from public.user_roles ur
     join public.roles r on r.id = ur.role_id
     where ur.user_id = p_actor_user_id
-      and r.name in ('admin', 'super_admin', 'bcba')
+      and r.name in ('admin', 'org_admin', 'super_admin', 'org_super_admin', 'bcba')
       and coalesce(ur.is_active, true) = true
       and (ur.expires_at is null or ur.expires_at > now())
   ) then

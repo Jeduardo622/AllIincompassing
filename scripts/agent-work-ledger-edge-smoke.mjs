@@ -286,11 +286,39 @@ const main = async () => {
     });
     assert(crossTenant.response.status === 404, "Cross-tenant detail did not fail closed.");
 
+    const shadowMutationProbes = [
+      {
+        path: `/${first.body.data.id}/owner`,
+        body: {
+          stepId: first.body.data.steps[0].id,
+          assignedOwnerUserId: BT_A.id,
+          reasonCode: "clinical_review_handoff",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+        },
+      },
+      {
+        path: `/${first.body.data.id}/approvals/00000000-0000-4000-8000-00000000a999/decision`,
+        body: {
+          decision: "approve",
+          reasonCode: "clinical_review_accepted",
+        },
+      },
+    ];
+    for (const probe of shadowMutationProbes) {
+      const denied = await request(`${functionUrl}${probe.path}`, {
+        method: "POST",
+        headers: headersFor(adminToken),
+        body: JSON.stringify(probe.body),
+      });
+      assert(
+        denied.response.status === 403 && denied.body?.code === "advisory_mode_required",
+        `Shadow mutation did not fail closed: ${probe.path}`,
+      );
+    }
+
     const deferredPaths = [
-      `/${first.body.data.id}/owner`,
       `/${first.body.data.id}/cancel`,
       `/${first.body.data.id}/resume`,
-      `/${first.body.data.id}/approvals/00000000-0000-4000-8000-00000000a999/decision`,
       `/${first.body.data.id}/reconcile`,
     ];
     for (const path of deferredPaths) {
@@ -302,7 +330,7 @@ const main = async () => {
       assert(deferred.response.status === 501 && deferred.body?.code === "deferred_route", `Deferred route executed: ${path}`);
     }
 
-    console.log("Agent work ledger local Edge smoke passed (create/list/detail/idempotency/tenant/deferred routes)." );
+    console.log("Agent work ledger local Edge smoke passed (create/list/detail/idempotency/tenant/shadow mutation denial/deferred routes)." );
   } catch (error) {
     const safeOutput = output.replace(/eyJ[A-Za-z0-9._-]+/g, "[redacted-token]");
     if (safeOutput.trim()) console.error(safeOutput.trim());

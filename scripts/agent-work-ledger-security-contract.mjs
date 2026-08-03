@@ -1325,6 +1325,49 @@ const assertManagePredicateParity = async (client) => {
       `Manage predicate parity failed for actor ${actorId}`,
     );
   }
+
+  for (const roleName of ["org_admin", "org_super_admin"]) {
+    const { rows } = await withOwnerSetupAndActor(
+      client,
+      async () => {
+        await client.query(
+          `insert into public.roles (name, description)
+           values ($1::text, 'Synthetic legacy storage-role alias')
+           on conflict (name) do nothing`,
+          [roleName],
+        );
+        await client.query(
+          "alter table public.user_roles disable trigger sync_profile_role_update_trigger",
+        );
+        await client.query(
+          `update public.user_roles
+           set role_id = (select id from public.roles where name = $2::text)
+           where user_id = $1::uuid
+             and role_id = (select id from public.roles where name = 'admin')`,
+          [FIXTURES.adminA, roleName],
+        );
+        await client.query(
+          "alter table public.user_roles enable trigger sync_profile_role_update_trigger",
+        );
+      },
+      "service_role",
+      "authenticated",
+      FIXTURES.adminA,
+      () => client.query(
+        `select
+           app.current_user_can_manage_agent_work_row($1::uuid, $2::uuid) as legacy_allowed,
+           app.actor_can_manage_agent_work_row($3::uuid, $1::uuid, $2::uuid) as actor_allowed,
+           public.current_user_can_manage_agent_work_row($1::uuid, $2::uuid) as api_allowed`,
+        [FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.adminA],
+      ),
+    );
+    assert(
+      rows[0]?.legacy_allowed === true &&
+        rows[0]?.actor_allowed === true &&
+        rows[0]?.api_allowed === true,
+      `Alias manage predicate parity failed for ${roleName}`,
+    );
+  }
 };
 
 const assertCreateContainmentAndConcurrency = async (connectionString) => {

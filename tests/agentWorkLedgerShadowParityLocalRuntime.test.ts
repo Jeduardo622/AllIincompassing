@@ -26,7 +26,13 @@ describe("agent work ledger shadow parity local stack identity", () => {
     expect(spawnImpl).toHaveBeenCalledOnce();
   });
 
-  it("maps loopback status only to the exact Compose endpoints in container mode", () => {
+  it("maps only the exact Compose endpoints without invoking the host CLI", () => {
+    const spawnImpl = vi.fn(() => ({
+      status: 1,
+      stdout: "",
+      stderr: "unavailable in the container",
+    }));
+
     expect(() => assertMatchesRunningLocalStack(
       "http://SUPABASE_KONG_AllIincompassing:8000",
       "postgresql://postgres:postgres@SUPABASE_DB_AllIincompassing:5432/postgres",
@@ -35,9 +41,10 @@ describe("agent work ledger shadow parity local stack identity", () => {
           AGENT_WORK_PHASE2_CONTAINER: "1",
           AGENT_WORK_PHASE2_PROJECT_ID: "AllIincompassing",
         },
-        spawnImpl: statusRunner(),
+        spawnImpl,
       },
     )).not.toThrow();
+    expect(spawnImpl).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -71,20 +78,17 @@ describe("agent work ledger shadow parity local stack identity", () => {
     )).toThrow();
   });
 
-  it("rejects a non-loopback status identity even with exact container endpoints", () => {
+  it("rejects a non-loopback status identity in host mode", () => {
     const nonLocalStatus = [
       'API_URL="https://project.supabase.co"',
       'DB_URL="postgresql://postgres:postgres@db.project.supabase.co:5432/postgres"',
     ].join("\n");
 
     expect(() => assertMatchesRunningLocalStack(
-      "http://supabase_kong_alliincompassing:8000",
-      "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres",
+      "http://127.0.0.1:54321",
+      "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
       {
-        env: {
-          AGENT_WORK_PHASE2_CONTAINER: "1",
-          AGENT_WORK_PHASE2_PROJECT_ID: "AllIincompassing",
-        },
+        env: {},
         spawnImpl: statusRunner(nonLocalStatus),
       },
     )).toThrow("local_stack_identity_mismatch");

@@ -404,6 +404,34 @@ export const assertMatchesRunningLocalStack = (
     platform = process.platform,
   } = {},
 ) => {
+  if (isPhase2ContainerMode(env)) {
+    const projectId = env.AGENT_WORK_PHASE2_PROJECT_ID?.trim();
+    const mapping = PHASE2_PROJECT_STACK_MAPPINGS[projectId];
+    if (!mapping) throw new Error("local_stack_identity_mismatch");
+    try {
+      const suppliedApi = assertLocalSupabaseHttpUrl(
+        supabaseUrl,
+        "SUPABASE_URL",
+        env,
+      );
+      const suppliedDatabase = assertLocalPostgresUrl(
+        databaseUrl,
+        "SUPABASE_DB_URL",
+        env,
+      );
+      if (
+        suppliedApi.origin !== mapping.supabaseUrl ||
+        postgresIdentity(suppliedDatabase) !==
+          postgresIdentity(new URL(mapping.databaseUrl))
+      ) {
+        throw new Error("container_mapping_mismatch");
+      }
+    } catch {
+      throw new Error("local_stack_identity_mismatch");
+    }
+    return;
+  }
+
   const childEnv = { ...env };
   delete childEnv.SUPABASE_PROJECT_REF;
   delete childEnv.VITE_SUPABASE_PROJECT_REF;
@@ -445,34 +473,6 @@ export const assertMatchesRunningLocalStack = (
     }
   } catch {
     throw new Error("local_stack_identity_mismatch");
-  }
-
-  if (isPhase2ContainerMode(env)) {
-    const projectId = env.AGENT_WORK_PHASE2_PROJECT_ID?.trim();
-    const mapping = PHASE2_PROJECT_STACK_MAPPINGS[projectId];
-    if (!mapping) throw new Error("local_stack_identity_mismatch");
-    try {
-      const suppliedApi = assertLocalSupabaseHttpUrl(
-        supabaseUrl,
-        "SUPABASE_URL",
-        env,
-      );
-      const suppliedDatabase = assertLocalPostgresUrl(
-        databaseUrl,
-        "SUPABASE_DB_URL",
-        env,
-      );
-      if (
-        suppliedApi.origin !== mapping.supabaseUrl ||
-        postgresIdentity(suppliedDatabase) !==
-          postgresIdentity(new URL(mapping.databaseUrl))
-      ) {
-        throw new Error("container_mapping_mismatch");
-      }
-    } catch {
-      throw new Error("local_stack_identity_mismatch");
-    }
-    return;
   }
 
   const actualApi = assertLocalSupabaseHttpUrl(supabaseUrl, "SUPABASE_URL", env);

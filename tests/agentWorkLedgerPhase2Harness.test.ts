@@ -852,6 +852,24 @@ describe("agent work ledger phase2 harness contracts", () => {
     }
   });
 
+  it("allows the exact Compose app hostname without disabling Vite host checks", async () => {
+    const compose = await readFile(
+      path.join(
+        process.cwd(),
+        "docker",
+        "agent-work-ledger",
+        "docker-compose.phase2.yml",
+      ),
+      "utf8",
+    );
+
+    expect(compose).toContain(
+      '__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "agent-work-app"',
+    );
+    expect(compose.match(/__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS/g)).toHaveLength(1);
+    expect(compose).not.toContain("allowedHosts: true");
+  });
+
   it("keeps clean HEAD archive inputs and sanitized report paths", () => {
     expect(createArchivePlan()).toEqual({
       archiveFileName: "repo.tar",

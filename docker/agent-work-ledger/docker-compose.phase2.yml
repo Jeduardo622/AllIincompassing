@@ -24,6 +24,7 @@ services:
     environment:
       <<: *phase2-public-environment
       AGENT_WORK_APP_RUNTIME_MODE: shadow
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "agent-work-app"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "--max-time", "2", "http://localhost:4173/"]
       <<: *function-healthcheck

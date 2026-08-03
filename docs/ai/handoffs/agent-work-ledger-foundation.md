@@ -961,7 +961,7 @@ Human protected-path, Supabase, security, clinical, product, and privacy review 
 - lane: `critical`
 - issue: `WIN-271`
 - branch: `codex/agent-work-ledger-foundation`
-- final committed implementation snapshot: `73c2bba7aaf6666ebd6aff531c4b70dd01f15cb4`
+- final committed implementation snapshot: `1fc70a7a7a5b156c17770ca2b1051cda0d4453d2`
 - one command: `npm run test:agent-work:phase2`
 - architecture: host lifecycle orchestration only; complete CLI-managed Supabase Docker stack plus containerized app, items function, runner, sweeper, and all verification workloads on the isolated `agent-work-phase2` network
 - runtime boundary: only `disabled`, `shadow`, and `advisory`; no provider calls, clinical effects, autonomous approval, publication, billing, submission, final-record creation, or hosted action
@@ -986,16 +986,18 @@ Human protected-path, Supabase, security, clinical, product, and privacy review 
 - `9f53bb09 feat(agent-work): add CalOptima ledger adapter`
 - `5eaba6f9 fix(agent-work): cache exact Deno npm dependencies`
 - `73c2bba7 fix(agent-work): isolate Deno package cache`
+- `20e7c5dc docs(agent-work): align final Deno evidence`
+- `1fc70a7a fix(agent-work): hash sanitized phase2 evidence`
 
 Every commit used the normal pre-commit hook; `ci:check-focused` passed without bypass. The existing Task 9 recovery stashes remain untouched. Pre-existing `deno.lock` and `reports/test-reliability-latest.json` drift remains unstaged and excluded.
 
 ### Two-Run Evidence
 
-- run `20260803T181851Z-8a9790`: commit `73c2bba7aaf6666ebd6aff531c4b70dd01f15cb4`; image `sha256:959f3d9cff3f286be67162b6b44e6d1a9d7174f8ec9cdcb89dadbc4ef4bbb1f1`; 11 of 11 checks passed; cleanup passed; exit passed; 675,848 ms; summary hash `436f43dacd55e1c5ce92c4d762e0489ed4d022b74852be81842516f81dcad112`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
-- run `20260803T183022Z-9fec57`: same commit and image; 11 of 11 checks passed; cleanup passed; exit passed; 647,538 ms; summary hash `829596e47221dd31054d710374bf905279ac239408f5cf3fd0cbf785bddba34d`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+- run `20260803T185829Z-d05fc4`: commit `1fc70a7a7a5b156c17770ca2b1051cda0d4453d2`; image `sha256:73931d43b8788096a51932ccb26d290b9b6306d1de00daf6b72ce05a4d1b54da`; 11 of 11 checks passed; cleanup passed; exit passed; 706,061 ms; summary hash `997ce09f2d564e48f910f0e54fa988762a9c24910acd9ef2ba17be4505a23463`; content evidence hash `5096d5c81921b3fa909f7941a1802ae6da261c4e25198b2523db77183e7453f8`
+- run `20260803T191036Z-4b2760`: same commit and image; 11 of 11 checks passed; cleanup passed; exit passed; 688,824 ms; summary hash `e608ce716355a3b94df8dca3e8297eb57bc76deb7613023b30c02ce809dae03d`; content evidence hash `ed6b23a21432a9c409eaec3a16ceec3ddfbc51cf245e7f7b762608c4c910f993`
 - post-run residue: no Supabase project containers, Compose project containers, Compose project volumes, or `agent-work-phase2` network
 
-Pre-final diagnostics were not counted as successful runs. The first attempt failed closed before startup on an inherited `SUPABASE_ACCESS_TOKEN`; its value was never read, and all remote-capable keys were cleared for subsequent process-local invocations. Adding the Task 16 Deno files then exposed exact `npm:zod@3.23.8` cache resolution; the first automatic-module repair built but replaced npm-locked Node dependencies and made items smoke fail under pinned Node 20. TDD correction moved Deno imports to the image-only cache with `--node-modules-dir=none` for cache, services, and tests, preserved the lockfile Supabase client version, and produced the two clean runs above.
+Pre-final diagnostics were not counted as successful runs. The first attempt failed closed before startup on an inherited `SUPABASE_ACCESS_TOKEN`; its value was never read, and all remote-capable keys were cleared for subsequent process-local invocations. Adding the Task 16 Deno files then exposed exact `npm:zod@3.23.8` cache resolution; the first automatic-module repair built but replaced npm-locked Node dependencies and made items smoke fail under pinned Node 20. TDD correction moved Deno imports to the image-only cache with `--node-modules-dir=none` for cache, services, and tests and preserved the lockfile Supabase client version. Final security review then found that the original evidence hash represented only output presence; TDD correction now hashes the redacted stdout and stderr content without persisting payloads, and the two clean runs above prove that hardened contract.
 
 ### Phase 2 Verification Card
 
@@ -1004,7 +1006,7 @@ Pre-final diagnostics were not counted as successful runs. The first attempt fai
 - change type: local runtime configuration; Docker/Compose lifecycle; server/API/Edge integration; database, queue, scheduler, and tenant-isolation verification; docs/process
 - required checks: `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; focused Phase 2 tests; `npm run test:agent-work:chaos`; Agent Work Ledger Deno tests; `npm run agent-work:security-contract`; `npm run agent-work:shadow-parity`; `npm run agent-work:queue-scheduler:smoke`; `npm run agent-work:retention-contract`; `npm run agent-work:trace-index-contract`; fresh local reset/migration application; Edge/API smoke; two consecutive `npm run test:agent-work:phase2` runs; normal pre-commit hook; `git diff --check`
 - executed checks:
-  - focused Phase 2 suite: pass at 8 files and 124 tests; final Deno cache-isolation regression subset passed at 65 of 65 tests
+  - focused Phase 2 suite: pass at 8 files and 153 tests, including redacted content-fingerprint collision and credential-sanitization coverage
   - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build`: pass
   - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: pass at 465 of 467 files and 3,930 of 3,935 tests; two files and five tests skipped only for dedicated unconfigured local Postgres URLs
   - `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`: pass in 709.3 seconds, including coverage policy, production build, and 220 of 220 Tier-0 route tests
@@ -1025,6 +1027,6 @@ Pre-final diagnostics were not counted as successful runs. The first attempt fai
 
 ### Specialist Disposition
 
-Architecture, specification, implementation, test, code review, security, Supabase, DevOps, performance, and documentation lanes were used across P2.1/P2.2. Load-bearing findings were corrected through TDD: standalone Compose discovery, exact Vite host allowance, isolated reset networking, extension ownership, fixture isolation, Edge readiness, `cron.alter_job`, bounded reset/stop recovery, scheduler ordering, container parity identity, and least-privilege Deno env access. Final focused correctness and security re-reviews found no remaining code findings. Human review remains mandatory because migrations and functions are protected.
+Architecture, specification, implementation, test, code review, security, Supabase, DevOps, performance, and documentation lanes were used across P2.1/P2.2. Load-bearing findings were corrected through TDD: standalone Compose discovery, exact Vite host allowance, isolated reset networking, extension ownership, fixture isolation, Edge readiness, `cron.alter_job`, bounded reset/stop recovery, scheduler ordering, container parity identity, least-privilege Deno env access, and content-bound sanitized evidence hashes. Final focused correctness and security re-reviews found no remaining code findings. Human review remains mandatory because migrations and functions are protected.
 
 The retention policy exception was not used. No approved retention periods were found, so deletion stays disabled and returns `policy_unapproved`; privacy, security, product, and operations owners must approve explicit periods for `ledger_history`, `queue_archive`, and `execution_trace` before any deletion path can be implemented. Task 16 is complete for the authorized local scope and remains subject to mandatory human protected-path and clinical review before GitHub or hosted action.

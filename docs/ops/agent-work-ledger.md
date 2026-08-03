@@ -229,12 +229,12 @@ The fixed check order is:
 
 Every destructive check begins with a fresh database reset on the isolated network. The scheduler check runs last among destructive checks because it enables `pg_cron`; this prevents extension worker activity from racing later resets while still making cleanup audit the terminal database-state check. All waits and retries are bounded. Cleanup removes Compose containers and volumes, the local Supabase stack and volumes, the dedicated network, Cron jobs, Vault entries, queue fixtures, temporary archive context, and listeners, then fails if residue remains.
 
-Sanitized manifests and summary logs are written under `.reports/agent-work-ledger-phase2/<run-id>/`. They contain command status, timing, commit and image identities, PHI-free output hashes, and cleanup results, but no credentials or command output payloads. The directory is ignored and is not a release artifact.
+Sanitized manifests and summary logs are written under `.reports/agent-work-ledger-phase2/<run-id>/`. They contain command status, timing, commit and image identities, SHA-256 fingerprints of redacted PHI-free command output, and cleanup results, but no credentials or command output payloads. The directory is ignored and is not a release artifact.
 
-The final local proof completed two consecutive cold runs from commit `73c2bba7aaf6666ebd6aff531c4b70dd01f15cb4` and image `sha256:959f3d9cff3f286be67162b6b44e6d1a9d7174f8ec9cdcb89dadbc4ef4bbb1f1`:
+The final local proof completed two consecutive cold runs from commit `1fc70a7a7a5b156c17770ca2b1051cda0d4453d2` and image `sha256:73931d43b8788096a51932ccb26d290b9b6306d1de00daf6b72ce05a4d1b54da`:
 
-- `20260803T181851Z-8a9790`: 11 of 11 checks passed in 675,848 ms; summary hash `436f43dacd55e1c5ce92c4d762e0489ed4d022b74852be81842516f81dcad112`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
-- `20260803T183022Z-9fec57`: 11 of 11 checks passed in 647,538 ms; summary hash `829596e47221dd31054d710374bf905279ac239408f5cf3fd0cbf785bddba34d`; evidence hash `9fb9a0a6b185802101bd4e060d8ddd986390f43efec5f28a8c018407168a2d8c`
+- `20260803T185829Z-d05fc4`: 11 of 11 checks passed in 706,061 ms; summary hash `997ce09f2d564e48f910f0e54fa988762a9c24910acd9ef2ba17be4505a23463`; content evidence hash `5096d5c81921b3fa909f7941a1802ae6da261c4e25198b2523db77183e7453f8`
+- `20260803T191036Z-4b2760`: 11 of 11 checks passed in 688,824 ms; summary hash `e608ce716355a3b94df8dca3e8297eb57bc76deb7613023b30c02ce809dae03d`; content evidence hash `ed6b23a21432a9c409eaec3a16ceec3ddfbc51cf245e7f7b762608c4c910f993`
 
 Both runs passed cleanup and left no labeled Supabase/Compose containers, Compose volumes, or `agent-work-phase2` network. This command is local-only. It does not push, deploy, contact a model provider, use `active` mode, or authorize hosted configuration.
 

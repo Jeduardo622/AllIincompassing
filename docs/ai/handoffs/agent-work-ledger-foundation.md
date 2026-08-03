@@ -852,6 +852,21 @@ Stop and re-route if the work would:
 - Task 15 implementation commit: `5b4673ca test(agent-work): complete local release verification`; normal pre-commit hook passed `ci:check-focused` without bypass
 - required follow-up: commit this evidence checkpoint, update `WIN-271`, then route Phase 2 separately
 
+## Phase 2 Container Harness Route
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- issue: `WIN-271`
+- why: the fully containerized harness crosses local runtime configuration, Docker networking, privileged database access, Edge Function execution, queue/Cron/Vault state, and credential boundaries
+- plan: `docs/superpowers/plans/2026-08-02-agent-work-ledger-phase2-container-harness.md`
+- allowed surfaces: dedicated Docker/Compose assets; `scripts/agent-work-ledger-harness/**`; narrow container adapters in local ledger smoke scripts; focused tests; `package.json`; Docker/git ignore policy; Agent Work Ledger plan/runbook/handoff
+- non-goals: migrations, function authority, RLS/grants/RPCs, application feature behavior, CI/deploy surfaces, hosted systems, `.env*`, `active` mode, and Task 16
+- stop conditions: non-local target or inherited remote credential; weakened auth/tenant/runtime gate; unsanitized fixture/output requirement; hosted or migration scope expansion
+- required agents: specification, architecture, implementation, code review, test, security, DevOps, Supabase, performance, and documentation specialists
+- mandatory proof: focused TDD; existing local Edge/scheduler compatibility; complete fresh container run; exact Phase 2 command twice; policy/lint/typecheck/tenant/build/diff/hook gates; `verify-change`; `pr-hygiene`
+
+The accepted architecture keeps only lifecycle orchestration on the host. Supabase remains its complete CLI-managed Docker stack; the app, work-item function, runner, sweeper, and every Phase 2 verification workload run in containers on a dedicated local network. The image is built from committed `HEAD` through a temporary `git archive`, preventing unrelated `deno.lock` or reliability-report drift from entering the proof.
+
 ## Future GitHub Commands - Not Authorized
 
 Run only after explicit GitHub authorization and after required human review:

@@ -54,6 +54,7 @@ const makeExecutor = ({
   failPreflightComposeDown = false,
   failPreflightResidueProof = false,
   failStatus = false,
+  firstResetFails = false,
   gitStatusOutput = "",
   gitStatusRequiredPathspec,
   interruptController,
@@ -67,6 +68,7 @@ const makeExecutor = ({
   failPreflightComposeDown?: boolean;
   failPreflightResidueProof?: boolean;
   failStatus?: boolean;
+  firstResetFails?: boolean;
   gitStatusOutput?: string;
   gitStatusRequiredPathspec?: string;
   interruptController?: AbortController;
@@ -85,6 +87,7 @@ const makeExecutor = ({
   let volumeProofCount = 0;
   let supabaseResidueActive = Boolean(supabaseResidue);
   let supabaseStopCount = 0;
+  let resetCount = 0;
   const execute = async (
     command: string,
     args: string[],
@@ -98,6 +101,12 @@ const makeExecutor = ({
       supabaseStopCount += 1;
       if (supabaseResidue === "clears-after-retry" && supabaseStopCount >= 2) {
         supabaseResidueActive = false;
+      }
+    }
+    if (command === "supabase" && args[0] === "db" && args[1] === "reset") {
+      resetCount += 1;
+      if (firstResetFails && resetCount === 1) {
+        return { code: 1, stdout: "", stderr: "transient reset failure" };
       }
     }
     if (command === "docker-compose" && args.includes("down") && !composeDownSeen) {
@@ -251,6 +260,7 @@ const createHarnessFixture = async (options: {
   failPreflightComposeDown?: boolean;
   failPreflightResidueProof?: boolean;
   failStatus?: boolean;
+  firstResetFails?: boolean;
   gitStatusOutput?: string;
   gitStatusRequiredPathspec?: string;
   interruptController?: AbortController;
@@ -443,6 +453,23 @@ describe("agent work ledger phase2 harness contracts", () => {
       entry.command === "docker" &&
       entry.args[0] === "volume" &&
       entry.args.includes("label=com.supabase.cli.project=AllIincompassing")
+    )).toBe(true);
+  });
+
+  it("retries one failed local reset and keeps the retry on the isolated network", async () => {
+    const fixture = await createHarnessFixture({ firstResetFails: true });
+    await fixture.run();
+
+    const resets = fixture.executor.invocations.filter((entry) =>
+      entry.command === "supabase" &&
+      entry.args[0] === "db" &&
+      entry.args[1] === "reset"
+    );
+    expect(resets).toHaveLength(
+      PHASE2_CHECKS.filter(({ destructive }) => destructive).length + 1,
+    );
+    expect(resets.slice(0, 2).every(({ args }) =>
+      args.includes("--network-id") && args.includes("agent-work-phase2")
     )).toBe(true);
   });
 

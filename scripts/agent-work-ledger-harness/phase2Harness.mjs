@@ -627,6 +627,32 @@ const stopSupabaseAndAssertNoResidue = async ({
   }
 };
 
+const resetSupabaseDatabase = async ({ cwd, env, execute, reasonCode }) => {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await executeChecked(
+        execute,
+        "supabase",
+        [
+          "db",
+          "reset",
+          "--local",
+          "--network-id",
+          PHASE2_NETWORK,
+          "--yes",
+        ],
+        { cwd, env, timeoutMs: HARD_TIMEOUT_BUDGETS_MS.supabaseReset },
+        reasonCode,
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+};
+
 const checkDuration = (startedAt, endedAt) =>
   Math.max(0, endedAt.getTime() - startedAt.getTime());
 
@@ -843,24 +869,12 @@ export const runPhase2Harness = async ({
       let result = { code: 1, stdout: "", stderr: "" };
       try {
         if (check.destructive) {
-          await executeChecked(
+          await resetSupabaseDatabase({
+            cwd,
+            env: childEnv,
             execute,
-            "supabase",
-            [
-              "db",
-              "reset",
-              "--local",
-              "--network-id",
-              PHASE2_NETWORK,
-              "--yes",
-            ],
-            {
-              cwd,
-              env: childEnv,
-              timeoutMs: HARD_TIMEOUT_BUDGETS_MS.supabaseReset,
-            },
-            `reset_${check.id}_failed`,
-          );
+            reasonCode: `reset_${check.id}_failed`,
+          });
         }
         const reasonCode = check.id === "cleanup-audit"
           ? "cleanup_audit_failed"

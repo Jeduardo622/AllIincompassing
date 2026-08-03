@@ -7,6 +7,41 @@ import {
 } from "../scripts/agent-work-ledger-harness/containerEntrypoint.mjs";
 
 describe("agent work ledger phase2 custom container roles", () => {
+  it("seeds synthetic security fixtures before the items smoke", async () => {
+    const calls: Array<[string, string[], Record<string, string>]> = [];
+    await runContainerRole("items-smoke", {
+      env: {
+        PATH: "/usr/bin",
+        AGENT_WORK_PHASE2_CONTAINER: "1",
+        AGENT_WORK_ITEMS_URL: "http://agent-work-items:8000/agent-work-items",
+        SUPABASE_ANON_KEY: "public-anon",
+        SUPABASE_DB_URL: "phase2-db",
+        SUPABASE_URL: "phase2-http",
+        SUPABASE_SERVICE_ROLE_KEY: "must-not-leak",
+      },
+      runCommand: async (
+        command: string,
+        args: string[],
+        env: Record<string, string>,
+      ) => {
+        calls.push([command, args, env]);
+      },
+    });
+
+    expect(calls.map(([command, args]) => [command, args])).toEqual([
+      ["node", ["scripts/agent-work-ledger-security-contract.mjs"]],
+      ["node", ["scripts/agent-work-ledger-edge-smoke.mjs"]],
+    ]);
+    expect(calls.map(([, , env]) => env)).toEqual(Array(2).fill({
+      AGENT_WORK_ITEMS_URL: "http://agent-work-items:8000/agent-work-items",
+      AGENT_WORK_PHASE2_CONTAINER: "1",
+      PATH: "/usr/bin",
+      SUPABASE_ANON_KEY: "public-anon",
+      SUPABASE_DB_URL: "phase2-db",
+      SUPABASE_URL: "phase2-http",
+    }));
+  });
+
   it("executes retention and trace contracts as real child commands", async () => {
     const calls: Array<[string, string[], Record<string, string>]> = [];
     await runContainerRole("retention-trace", {

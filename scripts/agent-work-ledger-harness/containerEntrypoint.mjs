@@ -25,6 +25,12 @@ const CHILD_BASE_ENV_KEYS = Object.freeze([
 ]);
 
 const ROLE_CHILD_ENV_KEYS = Object.freeze({
+  "items-smoke": [
+    "AGENT_WORK_ITEMS_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_DB_URL",
+    "SUPABASE_URL",
+  ],
   "retention-trace": ["SUPABASE_DB_URL"],
   "app-api-unit-build": [
     "SUPABASE_URL",
@@ -189,6 +195,20 @@ export const runContainerRole = async (role, {
   }
   if (role === "schema-seed") {
     await runSchemaSeed({ env, ClientImpl });
+    return;
+  }
+  if (role === "items-smoke") {
+    const childEnv = buildContainerRoleChildEnv(role, env);
+    await runCommand(
+      "node",
+      ["scripts/agent-work-ledger-security-contract.mjs"],
+      childEnv,
+    );
+    await runCommand(
+      "node",
+      ["scripts/agent-work-ledger-edge-smoke.mjs"],
+      childEnv,
+    );
     return;
   }
   if (role === "retention-trace") {

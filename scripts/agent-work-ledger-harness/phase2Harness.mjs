@@ -76,7 +76,7 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
   {
     id: "items-smoke",
     destructive: true,
-    command: ["node", "scripts/agent-work-ledger-edge-smoke.mjs"],
+    command: customCheckCommand("items-smoke"),
   },
   {
     id: "queue-scheduler",

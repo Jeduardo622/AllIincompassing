@@ -773,6 +773,11 @@ describe("agent work ledger phase2 harness contracts", () => {
       "deno-cached-tests",
       "cleanup-audit",
     ]);
+    expect(getCheckDefinition("items-smoke").command).toEqual([
+      "node",
+      "scripts/agent-work-ledger-harness/containerEntrypoint.mjs",
+      "items-smoke",
+    ]);
     expect(HARD_TIMEOUT_BUDGETS_MS).toEqual({
       preflight: 30_000,
       archive: 30_000,

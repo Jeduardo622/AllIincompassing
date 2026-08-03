@@ -109,3 +109,37 @@ Use for docs-only or process-only changes with no code or config impact.
 - verify links, commands, and file paths manually
 
 Run additional commands only if the doc changes alter required developer workflow or verification guidance.
+
+## Agent Work Ledger Retention Documentation
+
+Use for Task 14 retention documentation updates in `docs/ops/agent-work-ledger.md` and matching verification guidance in this file.
+
+- verify the stated local contract against the current scaffold and existing policy blocker
+- confirm the doc only describes local-only, PHI-free artifacts and no hosted action
+- confirm the doc does not invent approved retention periods, prune deletions, or domain cascades
+- confirm the doc preserves the assessment domain as authoritative for post-restore reconciliation
+
+Required manual checks:
+
+- `npm test -- --run tests/agentWorkLedgerRetentionMigration.test.ts` (current contract: `13/13`)
+- `npm run agent-work:retention-contract`
+- fresh local reset or equivalent clean-stack confirmation before relying on retention output
+- security check for service-role-only export, grant scope, and RLS/hold coverage
+- chaos check for queue quarantine, poison handling, worker disablement, and replay safety
+- shadow check for ledger parity, export hash stability, and exact-work-item scope
+
+Expectation checks:
+
+- canonical export hash is returned for the exact work item
+- export acquires a database-side share lock across every exported ledger surface before reading, producing one consistent manifest while briefly blocking ledger writes
+- export count is tenant-scoped and consistent with the exact work-item scope
+- holds remain machine-coded and scoped to org, work item, and category
+- no domain records are deleted by prune
+- prune remains denied with `policy_unapproved` and `deleted_count=0`
+- no approved retention periods are present yet
+- no queue archive or execution trace deletion is implemented yet
+- no domain cascade is implemented yet
+
+Blocked-state note:
+
+- when retention policy rows are absent, treat the slice as unconfigured and do not claim prune proof, deletion proof, or production readiness

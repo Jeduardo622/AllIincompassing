@@ -667,3 +667,70 @@ Stop and re-route if the work would:
 - protected-path drift: none outside the explicitly routed `agent-trace-report` Edge Function
 - GitHub/hosted actions: not authorized and not performed
 - required follow-up: create the focused local Task 13 commit, reroute Task 14, and isolate destructive queue checks in Phase 2 so each contract starts from deterministic state
+
+## Task 14 Route
+
+- date: `2026-08-02`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- intent: add only the policy-neutral, fail-closed retention foundation that is safe before an Agent Work Ledger retention period is approved
+- triggering paths: protected `supabase/migrations/20260801100000_agent_work_ledger_retention.sql`; service-role export/prune RPC exposure; tenant-scoped hold metadata; verification policy and operations documentation
+- approved-policy search: `docs/security/tenant-isolation.md` approves periods only for chat/conversation, AI cache, and AI processing-log tables; it does not approve periods for Agent Work Ledger history, PGMQ archive rows, or execution traces
+- exact policy blocker: no approved retention period exists for Agent Work Ledger records, queue archives, or traces; privacy, security, product, and operations owners must approve an explicit period for each category before deletion can be implemented or enabled
+- allowed scope: sanitized service-role export; category and hold metadata with no seeded policy rows; an explicit prune RPC that contains no deletion path and returns a fixed fail-closed unapproved-policy result; focused static/live tests; package command; operations/verification docs; this handoff
+- non-goals: any default or fallback period, caller-supplied cutoff authority, seeded TTL, scheduled deletion, actual prune/delete statement, queue archive access, trace deletion, assessment-domain cascade, user-facing export, hosted access, push, PR, or deploy
+- stop conditions: any need for an invented duration; an export containing source/prompt/tool/model/clinical content; a grant beyond `service_role`; policy-category inheritance; a delete path; an unscoped tenant read; or expansion into functions, workers, schedulers, Vault, CI workflows, or domain tables
+- required agents: specification, architecture, implementation, code review, test, security/privacy, Supabase, and documentation
+- reviewer required: yes; human policy and protected-path review remain mandatory
+- verify-change required: yes
+- mandatory checks: focused migration and live retention contracts; fresh local database reset; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local` when the broad suite permits; Agent Work Ledger security, chaos, and shadow contracts
+- linear required: yes (`WIN-271`)
+
+## Task 14 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: protected retention migration; service-role export/prune authority; tenant-bound hold and receipt metadata; local retention contract; recovery and verification documentation
+- policy decision: no repository-approved retention period exists for `ledger_history`, `queue_archive`, or `execution_trace`; no period, cutoff, policy row, deletion statement, archive deletion, trace deletion, scheduler, or domain cascade was introduced
+- red evidence:
+  - the initial focused migration contract failed `9/9` before the migration existed
+  - the composite org/work-item regression test then failed `1/10` against independently keyed hold and receipt rows
+  - append-only policy-history and effect-export-index tests then failed `2/12` before those protections were added
+- executed checks:
+  - focused retention migration Vitest: pass at `13/13`
+  - fresh `npm run agent-work:db:reset`: pass; the retention migration applied from empty local state after all dependencies
+  - `npm run agent-work:retention-contract`: pass; all exported relations were populated, free-form sentinels were absent, operational identifiers and trace payloads were hashed, active hold state was included, repeated exports were stable, authenticated RPC/table access and cross-tenant export/metadata writes were denied, and prune returned fixed `policy_unapproved` with zero deletes while assessment authority remained unchanged
+  - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build`: pass
+  - `npm run agent-work:security-contract`: pass from the fresh database
+  - `npm run agent-work:queue-scheduler:smoke`: pass; local callbacks returned HTTP `200/200`, runner converged through `blocked` then `no_work`, and sweeper processed four actions
+  - `npm run agent-work:shadow-parity`: pass at `6/6` fixtures and `7/7` negative probes with zero mismatches
+  - `npm run test:agent-work:chaos`: pass at `10/10` with seed `task10-default-seed`
+  - `git diff --check`: pass
+- blocked or deferred checks:
+  - the branch's latest exact `npm run test:ci` attempt remains the Task 13 Vitest fork-worker contention failure; it was not misreported or rerun for this migration-only slice, and Task 15 owns the bounded serialized full-suite remedy and exact branch-level disposition
+  - `npm run verify:local` remains deferred because it embeds the same exact broad-suite command; Task 15 owns the final branch-level run
+  - hosted database, queue, function, backup/restore, GitHub, deployment, and external-provider checks were intentionally not run under the local-only authorization boundary
+- specialist dispositions:
+  - initial code, security, Supabase, and test reviews found composite tenant-binding, raw operational identifier, active-hold export, populated-relation coverage, policy-history, effect-index, and snapshot-consistency gaps; all were repaired
+  - final security and Supabase reviews reported no findings
+  - final performance review accepted the global share-lock tradeoff for a rare, service-role recovery primitive; workers and schedulers must be disabled and the transaction kept short
+  - final code review approved the implementation and required only this verification/hygiene artifact
+- result: `pass-with-policy-and-broad-suite-blockers`
+- residual risk: actual retention remains deliberately unimplemented until privacy, security, product, and operations approve explicit periods for all three categories; the export briefly blocks writes across ledger surfaces; the protected migration still requires human review before any future merge
+
+### Task 14 PR Hygiene
+
+- pr-ready: `no` for the full branch until Task 15 resolves or precisely dispositions the broad-suite and edge-smoke blockers; the focused Task 14 commit is reviewable
+- lane: `critical`
+- branch-ready: `yes` on `codex/agent-work-ledger-foundation`
+- linear-ready: `yes` under `WIN-271`
+- single-purpose: `yes`; the slice is limited to the policy-neutral retention/export/hold foundation, its local contracts, and recovery documentation
+- unrelated changes: `deno.lock` and `reports/test-reliability-latest.json` remain unstaged and excluded
+- generated artifact drift: the pre-existing reliability report drift remains excluded; no Task 14 generated artifact is missing
+- protected-path drift: none outside the explicitly routed retention migration
+- change summary: present
+- verification summary: present above
+- PR handoff: intentionally local-only; no push or PR is authorized
+- reviewer: completed; final code, security, Supabase, and performance dispositions are recorded above
+- required follow-up: create the focused Task 14 local commit, update `WIN-271`, route Task 15 fresh, and keep all GitHub/hosted actions blocked
+- handoff summary: Task 14 adds a service-role-only, tenant-tight, PHI-free deterministic recovery export plus hold/receipt metadata and a fixed zero-delete prune gate. No retention period or deletion path exists; category-specific policy approval and protected-path human review remain mandatory.

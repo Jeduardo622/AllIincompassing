@@ -106,6 +106,73 @@ If local preconditions are not met, disable the proof by not running it. Do not 
 
 To disable the ledger locally without changing assessment behavior, run the application/Edge Function authority with ledger runtime policy `disabled` and do not run worker commands. Assessment domain tables and the existing upload/review/promotion workflow remain authoritative and independent of this parity command.
 
+## Retention Contract And Blocker
+
+Task 14 remains unconfigured for retention enforcement until category-specific periods are approved and introduced by a separately reviewed policy migration. The current local surfaces prove only the fail-closed retention foundation, not a live retention policy:
+
+- `supabase/migrations/20260801100000_agent_work_ledger_retention.sql`
+- `npm run agent-work:retention-contract`
+- no approved ledger retention periods exist
+- three distinct categories exist: `ledger_history`, `queue_archive`, and `execution_trace`
+- no policy rows are seeded
+- service-role-only sanitized exact-work-item export returns the canonical hash
+- holds are machine-coded and org/work-item/category scoped
+- prune RPC has no deletion path and always denies with `policy_unapproved` and `deleted_count=0`
+- no queue archive or trace deletion is implemented
+- no domain cascade exists
+
+Ownership for this slice is the policy-neutral migration, local contracts, documentation, and policy clarification. Do not infer production retention approval, prune authority, or deletion readiness from the foundation state.
+
+## Export, Prune, And Recovery Contract
+
+The export path is the recovery primitive. The exact-work-item export must remain service-role only, sanitized, PHI-free, and hash-stable for the authoritative work-item payload. The documented contract is:
+
+- export takes a database-side share lock across every exported ledger surface before its first read, so the manifest is internally consistent and ledger writes remain blocked until the export transaction ends
+- export returns the canonical hash for the exact work item scope
+- export output is countable and tenant-scoped
+- export output must reflect any active hold state
+- export output must not imply domain deletion
+- prune remains a policy check only until a policy row exists
+- prune must not delete queue archive, execution trace, or assessment-domain records
+- prune must fail closed when retention is unconfigured
+
+Post-restore validation must reconcile the ledger against the authoritative assessment domain before any operator treats the restored state as usable. That reconciliation should compare the authoritative assessment records, the export hash, the item counts, the hold state, and the tenant scope. The assessment domain remains the source of truth after restore; the ledger is a replay and reconciliation surface, not the primary record.
+
+## Disaster Recovery
+
+Recovery procedures stay local-only and PHI-free.
+
+- disable workers and schedulers before restore or replay
+- drain or quarantine any queued poison messages before resuming reads
+- rotate keys or secrets without naming them in artifacts or logs
+- keep backup and restore validation local
+- preserve sanitized exports, hashes, and counts only
+- do not capture hosted action or active mode transitions in the handoff
+- record disaster-recovery ownership across ops, app, and database roles before attempting replay
+
+The operator sequence is:
+
+1. stop worker and scheduler activity
+2. confirm the ledger runtime policy is `disabled`
+3. export the exact work item with the service-role-only path
+4. restore from local backup
+5. reconcile the restored ledger against the authoritative assessment domain
+6. verify holds, counts, and tenant scope before any re-enable decision
+
+Keep the export transaction short. The consistency lock is intentionally global to the ledger surfaces and is suitable only after workers and schedulers are disabled; it is not a background reporting path.
+
+## Local Commands
+
+Use only local commands for proof and recovery documentation:
+
+```powershell
+npm run agent-work:retention-contract
+npm run agent-work:shadow-parity
+npm run test:agent-work:chaos
+```
+
+Do not add hosted commands, deployment steps, or active-mode instructions to this doc. Any future retention enablement requires a new approved policy row and a fresh route.
+
 ## Task 9 Local-Only Direction
 
 Task 9 extends the local-first ledger into a durable `pgmq` queue plus runner/sweeper coordination, but only within the local stack. Host-side Supabase/database configuration is loopback-only; Postgres uses fixed `host.docker.internal` callbacks to the loopback-bound host workers.
@@ -179,6 +246,21 @@ The following checks prove the local Task 9 implementation:
 `supabase functions serve` is not used for the Task 9 proof on this Windows Docker setup. The CLI stops the stack-managed Edge Runtime and leaves Kong with stale container DNS. The stack was rebuilt cleanly afterward, and both functions are instead imported as host Deno handlers with process-injected loopback-only values and generated synthetic invocation secrets.
 
 `npm run ci:check-focused` and therefore `npm run verify:local` remain blocked by nine unrelated API-convergence exceptions that expired on 2026-07-31.
+
+## Task 14 Retention Documentation Guardrails
+
+Task 14 implements only a fail-closed foundation until retention policy approval exists.
+
+- no active mode
+- no hosted action
+- no invented retention periods
+- no claim of actual prune deletion
+- no claim of queue archive or trace deletion
+- no claim of domain cascade behavior
+- no claim of hosted backup/restore execution
+- no claim of production readiness beyond the scaffolded contract
+
+The docs should continue to state the blocking condition plainly: retention is unconfigured until category-specific periods are approved and introduced by a separately reviewed migration, and the assessment domain remains authoritative for reconciliation after any restore.
 
 ## Task 10 Chaos Contract
 

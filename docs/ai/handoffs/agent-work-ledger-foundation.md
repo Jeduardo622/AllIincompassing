@@ -1030,3 +1030,17 @@ Pre-final diagnostics were not counted as successful runs. The first attempt fai
 Architecture, specification, implementation, test, code review, security, Supabase, DevOps, performance, and documentation lanes were used across P2.1/P2.2. Load-bearing findings were corrected through TDD: standalone Compose discovery, exact Vite host allowance, isolated reset networking, extension ownership, fixture isolation, Edge readiness, `cron.alter_job`, bounded reset/stop recovery, scheduler ordering, container parity identity, least-privilege Deno env access, and content-bound sanitized evidence hashes. Final focused correctness and security re-reviews found no remaining code findings. Human review remains mandatory because migrations and functions are protected.
 
 The retention policy exception was not used. No approved retention periods were found, so deletion stays disabled and returns `policy_unapproved`; privacy, security, product, and operations owners must approve explicit periods for `ledger_history`, `queue_archive`, and `execution_trace` before any deletion path can be implemented. Task 16 is complete for the authorized local scope and remains subject to mandatory human protected-path and clinical review before GitHub or hosted action.
+
+### Final PR Hygiene
+
+- pr-ready: `yes` for local human review; `no` for merge until mandatory protected-path, Supabase, security, clinical, product, and privacy review and live required checks are complete
+- lane: `critical`
+- branch-ready: `yes` on `codex/agent-work-ledger-foundation`; push remains authorization-gated
+- linear-ready: `yes` under `WIN-271`; final local evidence comment `93c3b983-c637-46ea-8769-b7fbcc614271`
+- single-purpose: `yes`; the 98-file branch is large but remains the task-committed Agent Work Ledger Tasks 10-16 plus its required Phase 2 local harness, tests, and evidence
+- unrelated changes: pre-existing `deno.lock` and `reports/test-reliability-latest.json` remain unstaged and excluded; both Task 9 recovery stashes remain untouched
+- generated artifact drift: none in committed scope; Phase 2 manifests are ignored local evidence and both final runs are recorded by hash
+- protected-path drift: none outside the separately routed critical migration, function, tenant, queue, scheduler, runner, and local runtime surfaces
+- change summary and verification card: present in this handoff and `docs/ops/agent-work-ledger.md`
+- reviewer: final correctness, security, and DevOps re-reviews approve with no actionable findings
+- PR handoff: exact future push, PR, check, merge, hosted Supabase, and deployment sequencing is present above; none was executed

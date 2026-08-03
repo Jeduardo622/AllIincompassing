@@ -105,6 +105,7 @@ describe("agent work ledger phase2 container assets", () => {
       VITE_SUPABASE_ANON_KEY: "synthetic-anon",
       VITE_SUPABASE_EDGE_URL: "http://supabase_kong_AllIincompassing:8000",
       VITE_SUPABASE_URL: "http://supabase_kong_AllIincompassing:8000",
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "agent-work-app",
     });
     expect(config.services["agent-work-items"].environment).toEqual({
       AGENT_WORK_LEDGER_RUNTIME_MODE: "shadow",

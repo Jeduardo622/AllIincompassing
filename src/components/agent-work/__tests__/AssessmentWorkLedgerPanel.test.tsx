@@ -194,10 +194,10 @@ describe("AssessmentWorkLedgerPanel", () => {
     expect(screen.getByText(/Sign in again to view advisory ledger status/i)).toBeInTheDocument();
 
     rerender(<AssessmentWorkLedgerPanel state={{ kind: "forbidden" }} />);
-    expect(screen.getByText(/You do not have access to this advisory ledger/i)).toBeInTheDocument();
+    expect(screen.getByText(/You do not have access to this advisory ledger. The current review remains available./i)).toBeInTheDocument();
 
     rerender(<AssessmentWorkLedgerPanel state={{ kind: "unavailable" }} />);
-    expect(screen.getByText(/Advisory work ledger is currently unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/Advisory work ledger is currently unavailable. The current review remains available./i)).toBeInTheDocument();
   });
 
   it("renders blockers, evidence counts, owner status, and the review jump link only", () => {

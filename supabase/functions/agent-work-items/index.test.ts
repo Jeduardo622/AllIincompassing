@@ -19,6 +19,8 @@ const WORK_ITEM_ID = "55555555-5555-4555-8555-555555555555";
 const STEP_ID = "66666666-6666-4666-8666-666666666666";
 const APPROVAL_ID = "77777777-7777-4777-8777-777777777777";
 const OWNER_ID = "88888888-8888-4888-8888-888888888888";
+const IEHP_WORKFLOW_KEY = "assessment.iehp.prepare_for_clinical_review";
+const CALOPTIMA_WORKFLOW_KEY = "assessment.caloptima.prepare_draft_review";
 
 function createStep(
   overrides: Partial<AgentWorkItemStepView> = {},
@@ -67,7 +69,7 @@ function createView(
 ): AgentWorkItemView {
   return {
     id: WORK_ITEM_ID,
-    workflowKey: "assessment.iehp.prepare_for_clinical_review",
+    workflowKey: IEHP_WORKFLOW_KEY,
     workflowVersion: 1,
     objective: "Prepare this IEHP assessment for clinical review.",
     status: "needs_review",
@@ -89,18 +91,22 @@ function createDeps(
 ): HandlerDeps & {
   calls: {
     createArgs: Array<Record<string, unknown>>;
-    listArgs: string[];
+    calOptimaCreateArgs: Array<Record<string, unknown>>;
+    listArgs: Array<Record<string, unknown>>;
     detailArgs: string[];
     handoffArgs: Array<Record<string, unknown>>;
     decisionArgs: Array<Record<string, unknown>>;
+    refreshArgs: Array<Record<string, unknown>>;
   };
 } {
   const calls = {
     createArgs: [] as Array<Record<string, unknown>>,
-    listArgs: [] as string[],
+    calOptimaCreateArgs: [] as Array<Record<string, unknown>>,
+    listArgs: [] as Array<Record<string, unknown>>,
     detailArgs: [] as string[],
     handoffArgs: [] as Array<Record<string, unknown>>,
     decisionArgs: [] as Array<Record<string, unknown>>,
+    refreshArgs: [] as Array<Record<string, unknown>>,
   };
 
   const deps: HandlerDeps = {
@@ -109,6 +115,7 @@ function createDeps(
       Vary: "Origin",
     }),
     getRuntimeMode: () => "shadow",
+    loadRuntimePolicy: async () => overrides.getRuntimeMode?.() ?? "shadow",
     getAuthenticatedUser: async () => ({ id: USER_ID }),
     loadAssessmentDocumentScope: async (assessmentDocumentId) => ({
       id: assessmentDocumentId,
@@ -120,13 +127,27 @@ function createDeps(
       calls.createArgs.push({ ...input });
       return createView();
     },
-    listWorkItemsByAssessmentDocument: async (assessmentDocumentId) => {
-      calls.listArgs.push(assessmentDocumentId);
+    createCalOptimaDraftReviewWorkItem: async (input) => {
+      calls.calOptimaCreateArgs.push({ ...input });
+      return createView({
+        workflowKey: CALOPTIMA_WORKFLOW_KEY,
+        objective: "Prepare approved CalOptima assessment evidence as a draft program/goal packet for human review.",
+      });
+    },
+    listWorkItemsByAssessmentDocument: async (
+      assessmentDocumentId,
+      workflowKey,
+    ) => {
+      calls.listArgs.push({ assessmentDocumentId, workflowKey });
       return [createView()];
     },
     getWorkItemDetail: async (workItemId) => {
       calls.detailArgs.push(workItemId);
       return createView({ id: workItemId });
+    },
+    refreshCalOptimaEvidence: async (input) => {
+      calls.refreshArgs.push({ ...input });
+      return true;
     },
     requestApprovalHandoff: async (input) => {
       calls.handoffArgs.push({ ...input });
@@ -292,6 +313,36 @@ Deno.test("POST assessment-prep derives actor and document scope before calling 
   assertEquals(body.meta, { runtimeMode: "shadow" });
 });
 
+Deno.test("POST caloptima-draft-review derives actor and document scope before returning the created item", async () => {
+  const deps = createDeps();
+  const handler = createAgentWorkItemsHandler(deps);
+
+  const response = await handler(
+    createRequest("/agent-work-items/caloptima-draft-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assessmentDocumentId: ASSESSMENT_DOCUMENT_ID,
+        workflowVersion: 1,
+      }),
+    }),
+  );
+
+  assertEquals(response.status, 201);
+  assertEquals(deps.calls.calOptimaCreateArgs, [{
+    actorUserId: USER_ID,
+    organizationId: ORGANIZATION_ID,
+    clientId: CLIENT_ID,
+    assessmentDocumentId: ASSESSMENT_DOCUMENT_ID,
+    workflowVersion: 1,
+    dedupeKey: `caloptima-draft-review:${ASSESSMENT_DOCUMENT_ID}:v1`,
+  }]);
+  const body = await response.json();
+  assertEquals(body.success, true);
+  assertEquals(body.data.workflowKey, CALOPTIMA_WORKFLOW_KEY);
+  assertEquals(body.meta, { runtimeMode: "shadow" });
+});
+
 Deno.test("POST assessment-prep permits advisory mode without changing the bounded create contract", async () => {
   const handler = createAgentWorkItemsHandler(createDeps({
     getRuntimeMode: () => "advisory",
@@ -304,6 +355,142 @@ Deno.test("POST assessment-prep permits advisory mode without changing the bound
     }),
   );
   assertEquals(response.status, 201);
+});
+
+Deno.test("POST caloptima-draft-review rejects extra authority and route-shaping fields", async () => {
+  const handler = createAgentWorkItemsHandler(createDeps());
+  for (
+    const body of [
+      {
+        assessmentDocumentId: ASSESSMENT_DOCUMENT_ID,
+        organizationId: ORGANIZATION_ID,
+      },
+      {
+        assessmentDocumentId: ASSESSMENT_DOCUMENT_ID,
+        workflowKey: CALOPTIMA_WORKFLOW_KEY,
+      },
+      {
+        assessmentDocumentId: ASSESSMENT_DOCUMENT_ID,
+        templateType: "caloptima_fba",
+      },
+      {
+        assessmentDocumentId: ASSESSMENT_DOCUMENT_ID,
+        scope: { organizationId: ORGANIZATION_ID, clientId: CLIENT_ID },
+      },
+    ]
+  ) {
+    const response = await handler(
+      createRequest("/agent-work-items/caloptima-draft-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+    assertEquals(response.status, 400);
+    assertObjectMatch(await response.json(), {
+      success: false,
+      error: "Invalid request body",
+    });
+  }
+});
+
+Deno.test("POST caloptima-draft-review rejects unsupported workflow versions and hidden scope mismatches", async () => {
+  const unsupportedVersion = createAgentWorkItemsHandler(createDeps());
+  const unsupportedResponse = await unsupportedVersion(
+    createRequest("/agent-work-items/caloptima-draft-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assessmentDocumentId: ASSESSMENT_DOCUMENT_ID,
+        workflowVersion: 2,
+      }),
+    }),
+  );
+  assertEquals(unsupportedResponse.status, 400);
+  assertObjectMatch(await unsupportedResponse.json(), {
+    success: false,
+    code: "unsupported_workflow_version",
+  });
+
+  const mismatchedScope = createAgentWorkItemsHandler(createDeps({
+    createCalOptimaDraftReviewWorkItem: async () => {
+      throw new AgentWorkRequestError(404, "Not found", "not_found");
+    },
+  }));
+  const mismatchResponse = await mismatchedScope(
+    createRequest("/agent-work-items/caloptima-draft-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assessmentDocumentId: ASSESSMENT_DOCUMENT_ID }),
+    }),
+  );
+  assertEquals(mismatchResponse.status, 404);
+  assertObjectMatch(await mismatchResponse.json(), {
+    success: false,
+    code: "not_found",
+  });
+});
+
+Deno.test("POST caloptima-draft-review rejects non-managers and hides create failures", async () => {
+  const forbiddenDeps = createDeps({
+    currentUserCanManage: async () => false,
+  });
+  const forbiddenHandler = createAgentWorkItemsHandler(forbiddenDeps);
+  const forbiddenResponse = await forbiddenHandler(
+    createRequest("/agent-work-items/caloptima-draft-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assessmentDocumentId: ASSESSMENT_DOCUMENT_ID }),
+    }),
+  );
+  assertEquals(forbiddenResponse.status, 403);
+  assertObjectMatch(await forbiddenResponse.json(), {
+    success: false,
+    error: "Forbidden",
+  });
+  assertEquals(forbiddenDeps.calls.calOptimaCreateArgs, []);
+
+  const runtimeFailureHandler = createAgentWorkItemsHandler(createDeps({
+    createCalOptimaDraftReviewWorkItem: async () => {
+      throw new Error("cross-client mismatch");
+    },
+  }));
+  const runtimeFailureResponse = await runtimeFailureHandler(
+    createRequest("/agent-work-items/caloptima-draft-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assessmentDocumentId: ASSESSMENT_DOCUMENT_ID }),
+    }),
+  );
+  assertEquals(runtimeFailureResponse.status, 500);
+  const runtimeFailureBody = await runtimeFailureResponse.json();
+  assertObjectMatch(runtimeFailureBody, {
+    success: false,
+    code: "create_failed",
+  });
+  assertEquals(
+    JSON.stringify(runtimeFailureBody).includes(
+      "cross-client mismatch",
+    ),
+    false,
+  );
+});
+
+Deno.test("POST caloptima-draft-review hides tenant-invisible documents before the service RPC", async () => {
+  const deps = createDeps({
+    loadAssessmentDocumentScope: async () => null,
+  });
+  const handler = createAgentWorkItemsHandler(deps);
+  const response = await handler(
+    createRequest("/agent-work-items/caloptima-draft-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assessmentDocumentId: ASSESSMENT_DOCUMENT_ID }),
+    }),
+  );
+
+  assertEquals(response.status, 404);
+  assertEquals(deps.calls.calOptimaCreateArgs, []);
 });
 
 Deno.test("POST assessment-prep returns 404 when the assessment document is not RLS-visible", async () => {
@@ -350,8 +537,11 @@ Deno.test("POST assessment-prep returns 403 when the current DB manage capabilit
 
 Deno.test("GET list requires a valid assessment_document_id query parameter and returns sanitized views", async () => {
   const deps = createDeps({
-    listWorkItemsByAssessmentDocument: async (assessmentDocumentId) => {
-      deps.calls.listArgs.push(assessmentDocumentId);
+    listWorkItemsByAssessmentDocument: async (
+      assessmentDocumentId,
+      workflowKey,
+    ) => {
+      deps.calls.listArgs.push({ assessmentDocumentId, workflowKey });
       return [
         {
           ...createView(),
@@ -374,13 +564,44 @@ Deno.test("GET list requires a valid assessment_document_id query parameter and 
   );
 
   assertEquals(okResponse.status, 200);
-  assertEquals(deps.calls.listArgs, [ASSESSMENT_DOCUMENT_ID]);
+  assertEquals(deps.calls.listArgs, [{
+    assessmentDocumentId: ASSESSMENT_DOCUMENT_ID,
+    workflowKey: IEHP_WORKFLOW_KEY,
+  }]);
   const body = await okResponse.json();
   assertEquals(body.success, true);
   assertEquals(body.data.length, 1);
   assertEquals(body.data[0].id, WORK_ITEM_ID);
   assertEquals("internalError" in body.data[0], false);
   assertEquals(body.meta, { runtimeMode: "shadow" });
+});
+
+Deno.test("GET list constrains workflow_key to IEHP or CalOptima and preserves the IEHP default", async () => {
+  const deps = createDeps();
+  const handler = createAgentWorkItemsHandler(deps);
+
+  const explicitCalOptima = await handler(
+    createRequest(
+      `/agent-work-items?assessment_document_id=${ASSESSMENT_DOCUMENT_ID}&workflow_key=${encodeURIComponent(CALOPTIMA_WORKFLOW_KEY)}`,
+    ),
+  );
+  assertEquals(explicitCalOptima.status, 200);
+
+  const invalidWorkflow = await handler(
+    createRequest(
+      `/agent-work-items?assessment_document_id=${ASSESSMENT_DOCUMENT_ID}&workflow_key=${encodeURIComponent("assessment.other.workflow")}`,
+    ),
+  );
+  assertEquals(invalidWorkflow.status, 400);
+  assertObjectMatch(await invalidWorkflow.json(), {
+    success: false,
+    error: "Invalid workflow_key",
+  });
+
+  assertEquals(deps.calls.listArgs, [{
+    assessmentDocumentId: ASSESSMENT_DOCUMENT_ID,
+    workflowKey: CALOPTIMA_WORKFLOW_KEY,
+  }]);
 });
 
 Deno.test("GET routes require authentication and reject malformed detail IDs", async () => {
@@ -431,11 +652,9 @@ Deno.test("OPTIONS is public and unsupported methods remain non-disclosing", asy
   assertEquals(disallowedOrigin.headers.get("vary"), "Origin");
 });
 
-Deno.test("POST assessment-prep fails closed when runtime policy lookup fails", async () => {
+Deno.test("POST assessment-prep fails closed when authoritative runtime policy lookup fails", async () => {
   const handler = createAgentWorkItemsHandler(createDeps({
-    getRuntimeMode: () => {
-      throw new Error("policy unavailable");
-    },
+    loadRuntimePolicy: async () => { throw new Error("policy unavailable"); },
   }));
 
   const response = await handler(
@@ -448,6 +667,42 @@ Deno.test("POST assessment-prep fails closed when runtime policy lookup fails", 
 
   assertEquals(response.status, 403);
   assertObjectMatch(await response.json(), { code: "runtime_mode_disabled" });
+});
+
+Deno.test("every mutation fails closed when authoritative policy disables actions", async () => {
+  const deps = createDeps({ loadRuntimePolicy: async () => "disabled" });
+  const handler = createAgentWorkItemsHandler(deps);
+  const requests = [
+    createRequest("/agent-work-items/assessment-prep", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assessmentDocumentId: ASSESSMENT_DOCUMENT_ID }),
+    }),
+    createRequest("/agent-work-items/caloptima-draft-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assessmentDocumentId: ASSESSMENT_DOCUMENT_ID }),
+    }),
+    createRequest(`/agent-work-items/${WORK_ITEM_ID}/owner`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stepId: STEP_ID,
+        assignedOwnerUserId: OWNER_ID,
+        reasonCode: "clinical_review",
+        expiresAt: "2026-08-04T12:00:00.000Z",
+      }),
+    }),
+  ];
+
+  for (const request of requests) {
+    const response = await handler(request);
+    assertEquals(response.status, 403);
+    assertObjectMatch(await response.json(), { code: "runtime_mode_disabled" });
+  }
+  assertEquals(deps.calls.createArgs.length, 0);
+  assertEquals(deps.calls.calOptimaCreateArgs.length, 0);
+  assertEquals(deps.calls.handoffArgs.length, 0);
 });
 
 Deno.test("disabled mode rejects list and detail reads", async () => {
@@ -592,6 +847,10 @@ Deno.test("POST owner handoff derives actor and accepts only bounded approval-re
   ));
 
   assertEquals(response.status, 201);
+  assertEquals(deps.calls.refreshArgs, [{
+    actorUserId: USER_ID,
+    workItemId: WORK_ITEM_ID,
+  }]);
   assertEquals(deps.calls.handoffArgs, [{
     actorUserId: USER_ID,
     workItemId: WORK_ITEM_ID,
@@ -618,6 +877,10 @@ Deno.test("POST approval decision delegates current authority and CAS to the RPC
   ));
 
   assertEquals(response.status, 200);
+  assertEquals(deps.calls.refreshArgs, [{
+    actorUserId: USER_ID,
+    workItemId: WORK_ITEM_ID,
+  }]);
   assertEquals(deps.calls.decisionArgs, [{
     actorUserId: USER_ID,
     workItemId: WORK_ITEM_ID,
@@ -630,6 +893,80 @@ Deno.test("POST approval decision delegates current authority and CAS to the RPC
   assertEquals(body.data.evidenceHashSuffix, null);
   assertEquals(JSON.stringify(body).includes("input_hash"), false);
   assertEquals(JSON.stringify(body).includes("evidence_hash"), false);
+});
+
+Deno.test("POST CalOptima reconcile refreshes evidence in advisory mode", async () => {
+  const deps = createDeps({
+    getRuntimeMode: () => "advisory",
+    getWorkItemDetail: async (workItemId) => {
+      deps.calls.detailArgs.push(workItemId);
+      return createView({
+        id: workItemId,
+        workflowKey: CALOPTIMA_WORKFLOW_KEY,
+      });
+    },
+  });
+  const handler = createAgentWorkItemsHandler(deps);
+  const response = await handler(createRequest(
+    `/agent-work-items/${WORK_ITEM_ID}/reconcile`,
+    { method: "POST" },
+  ));
+
+  assertEquals(response.status, 200);
+  assertEquals(deps.calls.refreshArgs, [{
+    actorUserId: USER_ID,
+    workItemId: WORK_ITEM_ID,
+  }]);
+  assertEquals(deps.calls.detailArgs, [WORK_ITEM_ID]);
+  assertObjectMatch(await response.json(), {
+    success: true,
+    meta: { runtimeMode: "advisory" },
+  });
+});
+
+Deno.test("POST reconcile remains deferred for non-CalOptima workflows in advisory mode", async () => {
+  const deps = createDeps({
+    getRuntimeMode: () => "advisory",
+    refreshCalOptimaEvidence: async (input) => {
+      deps.calls.refreshArgs.push({ ...input });
+      return false;
+    },
+  });
+  const handler = createAgentWorkItemsHandler(deps);
+  const response = await handler(createRequest(
+    `/agent-work-items/${WORK_ITEM_ID}/reconcile`,
+    { method: "POST" },
+  ));
+
+  assertEquals(response.status, 501);
+  assertObjectMatch(await response.json(), {
+    success: false,
+    code: "deferred_route",
+  });
+  assertEquals(deps.calls.refreshArgs, [{
+    actorUserId: USER_ID,
+    workItemId: WORK_ITEM_ID,
+  }]);
+  assertEquals(deps.calls.detailArgs, []);
+});
+
+Deno.test("POST CalOptima reconcile fails closed before detail disclosure when tenant scope is hidden", async () => {
+  const deps = createDeps({
+    getRuntimeMode: () => "advisory",
+    refreshCalOptimaEvidence: async (input) => {
+      deps.calls.refreshArgs.push({ ...input });
+      throw new AgentWorkRequestError(404, "Not found", "not_found");
+    },
+  });
+  const handler = createAgentWorkItemsHandler(deps);
+  const response = await handler(createRequest(
+    `/agent-work-items/${WORK_ITEM_ID}/reconcile`,
+    { method: "POST" },
+  ));
+
+  assertEquals(response.status, 404);
+  assertEquals(deps.calls.refreshArgs, [{ actorUserId: USER_ID, workItemId: WORK_ITEM_ID }]);
+  assertEquals(deps.calls.detailArgs, []);
 });
 
 Deno.test("POST approval decision maps stale authority and CAS outcomes without disclosure", async () => {

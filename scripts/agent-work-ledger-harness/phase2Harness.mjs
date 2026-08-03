@@ -32,6 +32,21 @@ export const PHASE2_HEAD_GUARD_PATHS = Object.freeze([
   "supabase/functions/agent-work-items",
   "supabase/functions/agent-work-runner",
   "supabase/functions/agent-work-sweeper",
+  "supabase/functions/generate-program-goals",
+  "supabase/functions/_shared/agent-work",
+  "supabase/functions/_shared/org.ts",
+  "src/lib/agent-work-ledger.ts",
+  "src/lib/ai.ts",
+  "src/lib/__tests__/agent-work-ledger.test.ts",
+  "src/lib/__tests__/ai-auth-fetch.test.ts",
+  "src/components/agent-work",
+  "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+  "src/components/__tests__/ProgramsGoalsTab.test.tsx",
+  "src/server/api/assessment-drafts.ts",
+  "src/server/api/assessment-promote.ts",
+  "src/server/__tests__/assessmentDraftsHandler.test.ts",
+  "src/server/__tests__/assessmentPromoteHandler.test.ts",
+  "src/server/__tests__/runtimeConfigHandler.test.ts",
   ":(glob)tests/agentWorkLedger*.test.ts",
   ":(glob)tests/agentTrace*.test.ts",
 ]);
@@ -119,11 +134,14 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
       "--cached-only",
       "--frozen",
       "--lock=/opt/agent-work-ledger-deno.lock",
-      "--allow-env=AGENT_WORK_PHASE2_CONTAINER",
+      "--allow-env=AGENT_WORK_PHASE2_CONTAINER,SUPABASE_URL,VITE_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_ANON_KEY,VITE_SUPABASE_ANON_KEY,SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_PUBLISHABLE_KEY,SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,OPENAI_API_KEY,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE",
+      "supabase/functions/_shared/agent-work/caloptima-draft-review.test.ts",
       "supabase/functions/agent-work-items/index.test.ts",
       "supabase/functions/agent-work-runner/index.test.ts",
       "supabase/functions/agent-work-runner/chaos.test.ts",
       "supabase/functions/agent-work-sweeper/index.test.ts",
+      "supabase/functions/generate-program-goals/ledger.test.ts",
+      "supabase/functions/generate-program-goals/index.test.ts",
     ],
   },
   {
@@ -262,10 +280,36 @@ const parseUrl = (value, reasonCode) => {
 const isLoopback = (hostname) =>
   hostname === "127.0.0.1" || hostname === "localhost";
 
+const EXACT_HTTP_PATHS = Object.freeze({
+  SUPABASE_URL: "/",
+  VITE_SUPABASE_URL: "/",
+  SUPABASE_EDGE_URL: "/",
+  VITE_SUPABASE_EDGE_URL: "/",
+  AGENT_WORK_ITEMS_URL: "/functions/v1/agent-work-items",
+  AGENT_WORK_RUNNER_URL: "/functions/v1/agent-work-runner",
+  AGENT_WORK_SWEEPER_URL: "/functions/v1/agent-work-sweeper",
+});
+
 const assertHostLocalUrl = (value, key) => {
   const parsed = parseUrl(value, `${key}_must_remain_local_only`);
-  if (!isLoopback(parsed.hostname)) {
-    throw new Error(`${key} must remain local-only for the Phase 2 harness.`);
+  const hasSuffix = Boolean(parsed.search || parsed.hash);
+  if (key === "SUPABASE_DB_URL") {
+    const isPostgres = parsed.protocol === "postgres:" || parsed.protocol === "postgresql:";
+    if (!isPostgres || !isLoopback(parsed.hostname) || hasSuffix || parsed.pathname !== "/postgres") {
+      throw new Error(`${key} must be an exact local-only PostgreSQL URL for the Phase 2 harness.`);
+    }
+    return;
+  }
+
+  if (
+    parsed.protocol !== "http:" ||
+    !isLoopback(parsed.hostname) ||
+    parsed.username ||
+    parsed.password ||
+    hasSuffix ||
+    parsed.pathname !== EXACT_HTTP_PATHS[key]
+  ) {
+    throw new Error(`${key} must be an exact local-only HTTP URL for the Phase 2 harness.`);
   }
 };
 

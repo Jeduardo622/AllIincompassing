@@ -233,9 +233,19 @@ export const runContainerRole = async (role, {
       "run",
       "tests/agentWorkLedgerEval.test.ts",
       "tests/agentWorkLedgerEvalCli.test.ts",
+      "tests/agentWorkLedgerCalOptimaMigration.test.ts",
       "src/lib/__tests__/agent-work-ledger.test.ts",
       "src/components/agent-work/__tests__/AssessmentWorkLedgerPanel.test.tsx",
       "src/server/__tests__/runtimeConfigHandler.test.ts",
+    ], childEnv);
+    await runCommand("node", [
+      "node_modules/vitest/vitest.mjs",
+      "run",
+      "src/components/__tests__/ProgramsGoalsTab.test.tsx",
+      "src/server/__tests__/assessmentDraftsHandler.test.ts",
+      "src/server/__tests__/assessmentPromoteHandler.test.ts",
+      "-t",
+      "CalOptima|caloptima",
     ], childEnv);
     await runCommand("npm", ["run", "build"], childEnv);
     return;

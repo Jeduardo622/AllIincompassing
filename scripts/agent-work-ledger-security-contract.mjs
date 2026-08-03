@@ -94,6 +94,41 @@ const FUNCTION_CONTRACTS = [
     execute: { public: false, anon: false, authenticated: false, service_role: true },
   },
   {
+    signature: "create_agent_caloptima_draft_review_work_item(uuid,uuid,uuid,uuid,integer,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "begin_agent_work_caloptima_model_attempt(uuid,uuid,uuid,uuid,text,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "complete_agent_work_caloptima_model_attempt(uuid,uuid,uuid,uuid,uuid,uuid,jsonb,integer,integer,numeric,text,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "fail_agent_work_caloptima_model_attempt(uuid,uuid,uuid,uuid,uuid,uuid,text)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "snapshot_agent_work_caloptima_draft_packet(uuid,uuid,uuid,uuid,uuid,uuid,jsonb)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "read_agent_work_caloptima_draft_packet(uuid,uuid,uuid,uuid)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
+    signature: "refresh_agent_work_caloptima_evidence(uuid,uuid,uuid,uuid)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: false, service_role: true },
+  },
+  {
     signature: "agent_work_recompute_item_status(uuid)",
     searchPath: "public, pg_temp",
     execute: { public: false, anon: false, authenticated: false, service_role: false },
@@ -271,6 +306,7 @@ const FIXTURES = {
   docAssigned: randomUUID(),
   docUnassigned: randomUUID(),
   smokeDocAssigned: "00000000-0000-4000-8000-00000000a201",
+  smokeCalOptimaDocAssigned: "00000000-0000-4000-8000-00000000a204",
   approvalAssigned: randomUUID(),
 };
 
@@ -503,7 +539,8 @@ const seedFixtures = async (client) => {
     values
       ('${FIXTURES.docAssigned}', '${FIXTURES.orgA}', '${FIXTURES.clientAssigned}', '${FIXTURES.adminA}', 'iehp_fba', 'assigned-${RUN_TOKEN}.pdf', 'application/pdf', 128, 'client-documents', 'synthetic/${RUN_TOKEN}/assigned.pdf'),
       ('${FIXTURES.docUnassigned}', '${FIXTURES.orgA}', '${FIXTURES.clientUnassigned}', '${FIXTURES.adminA}', 'iehp_fba', 'unassigned-${RUN_TOKEN}.pdf', 'application/pdf', 128, 'client-documents', 'synthetic/${RUN_TOKEN}/unassigned.pdf'),
-      ('${FIXTURES.smokeDocAssigned}', '${FIXTURES.orgA}', '${FIXTURES.clientAssigned}', '${FIXTURES.adminA}', 'iehp_fba', 'ledger-edge-smoke-assigned.pdf', 'application/pdf', 128, 'client-documents', 'synthetic/ledger-edge-smoke/assigned.pdf')
+      ('${FIXTURES.smokeDocAssigned}', '${FIXTURES.orgA}', '${FIXTURES.clientAssigned}', '${FIXTURES.adminA}', 'iehp_fba', 'ledger-edge-smoke-assigned.pdf', 'application/pdf', 128, 'client-documents', 'synthetic/ledger-edge-smoke/assigned.pdf'),
+      ('${FIXTURES.smokeCalOptimaDocAssigned}', '${FIXTURES.orgA}', '${FIXTURES.clientAssigned}', '${FIXTURES.adminA}', 'caloptima_fba', 'ledger-edge-smoke-caloptima.pdf', 'application/pdf', 128, 'client-documents', 'synthetic/ledger-edge-smoke/caloptima.pdf')
     on conflict (id) do nothing;
   `);
 };
@@ -1262,6 +1299,507 @@ const assertQueueAndSweeperContract = async (client) => {
       "Projection finalize RPC did not reconcile an already verified matching effect",
     );
   });
+};
+
+const assertCalOptimaDraftReviewLifecycle = async (client) => {
+  const documentId = FIXTURES.smokeCalOptimaDocAssigned;
+  const before = await client.query(
+    `
+      select
+        (select status from public.assessment_documents where id = $1::uuid) as document_status,
+        (select count(*)::integer from public.programs where client_id = $2::uuid) as program_count,
+        (select count(*)::integer from public.goals where client_id = $2::uuid) as goal_count
+    `,
+    [documentId, FIXTURES.clientAssigned],
+  );
+
+  const createWorkItem = (actorId, organizationId, dedupeKey) =>
+    withActor(client, "service_role", "service_role", actorId, async () => {
+      const { rows } = await client.query(
+        `
+          select public.create_agent_caloptima_draft_review_work_item(
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid, 1, $5::text
+          ) as id
+        `,
+        [actorId, organizationId, FIXTURES.clientAssigned, documentId, dedupeKey],
+      );
+      return rows[0]?.id;
+    }, { commit: true });
+
+  const workItemId = await createWorkItem(
+    FIXTURES.adminA,
+    FIXTURES.orgA,
+    `caloptima-lifecycle-${RUN_TOKEN}`,
+  );
+  assert(workItemId, "CalOptima lifecycle work-item creation did not return an id");
+  const duplicateWorkItemId = await createWorkItem(
+    FIXTURES.adminA,
+    FIXTURES.orgA,
+    `caloptima-lifecycle-duplicate-${RUN_TOKEN}`,
+  );
+  assert(duplicateWorkItemId === workItemId, "CalOptima document creation was not idempotent");
+
+  await expectFailure(
+    "CalOptima cross-tenant creation",
+    () => createWorkItem(FIXTURES.adminB, FIXTURES.orgA, `caloptima-cross-org-${RUN_TOKEN}`),
+    /forbidden/i,
+  );
+
+  const completeProjection = async (stepKey) =>
+    withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      const stepResult = await client.query(
+        `select id, status from public.agent_work_steps where work_item_id = $1::uuid and step_key = $2::text`,
+        [workItemId, stepKey],
+      );
+      const stepId = stepResult.rows[0]?.id;
+      assert(stepResult.rows[0]?.status === "ready", `${stepKey} was not ready for deterministic execution`);
+
+      const descriptorResult = await client.query(
+        "select * from public.read_agent_work_advisory_projection_descriptor($1::uuid)",
+        [stepId],
+      );
+      const descriptor = descriptorResult.rows[0];
+      assert(
+        /^[a-f0-9]{64}$/.test(descriptor?.effect_key ?? "") &&
+          /^[a-f0-9]{64}$/.test(descriptor?.output_hash ?? ""),
+        `${stepKey} did not return canonical projection hashes`,
+      );
+
+      const claimResult = await client.query(
+        "select * from public.claim_queued_agent_work_step($1::uuid, $2::uuid, $3::text, 60)",
+        [workItemId, stepId, `caloptima-${stepKey}`],
+      );
+      const claim = claimResult.rows[0];
+      assert(claim?.attempt_id, `${stepKey} did not return a deterministic attempt`);
+
+      const effectResult = await client.query(
+        `
+          select * from public.record_agent_work_advisory_projection_effect(
+            $1::uuid, $2::uuid, $3::text, $4::bigint, $5::text, $6::text
+          )
+        `,
+        [
+          stepId,
+          claim.attempt_id,
+          `caloptima-${stepKey}`,
+          claim.state_version,
+          descriptor.effect_key,
+          descriptor.output_hash,
+        ],
+      );
+      assert(effectResult.rows[0]?.status === "pending", `${stepKey} effect was not recorded pending verification`);
+
+      const finalized = await client.query(
+        `
+          select * from public.finalize_agent_work_advisory_projection_effect(
+            $1::uuid, $2::uuid, $3::text, $4::bigint, $5::text, $6::text
+          )
+        `,
+        [
+          stepId,
+          claim.attempt_id,
+          `caloptima-${stepKey}`,
+          claim.state_version,
+          descriptor.effect_key,
+          descriptor.output_hash,
+        ],
+      );
+      assert(finalized.rows[0]?.status === "completed", `${stepKey} projection did not verify and complete`);
+      return { stepId, ...descriptor };
+    }, { commit: true });
+
+  await completeProjection("validate_scope");
+
+  let structuredEvidenceId;
+  await withOwnerTransaction(client, async () => {
+    await client.query(
+      `
+        insert into public.assessment_checklist_items (
+          assessment_document_id, organization_id, client_id, section_key, label,
+          placeholder_key, mode, source, required, extraction_method, validation_rule,
+          status, last_reviewed_by, last_reviewed_at
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, 'synthetic_scope', 'Synthetic scope evidence',
+          $4::text, 'MANUAL', 'synthetic', true, 'synthetic', 'synthetic',
+          'approved', $5::uuid, now()
+        )
+      `,
+      [documentId, FIXTURES.orgA, FIXTURES.clientAssigned, `ledger_${RUN_TOKEN}`, FIXTURES.bcbaA],
+    );
+    const structuredInsert = await client.query(
+      `
+        insert into public.assessment_structured_sections (
+          assessment_document_id, organization_id, client_id, section_key, field_key,
+          payload, status, required, reviewed_by, reviewed_at
+        ) values (
+          $1::uuid, $2::uuid, $3::uuid, 'synthetic_goals', 'CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS',
+          '{"synthetic":true}'::jsonb, 'approved', true, $4::uuid, now()
+        ) returning id
+      `,
+      [documentId, FIXTURES.orgA, FIXTURES.clientAssigned, FIXTURES.bcbaA],
+    );
+    structuredEvidenceId = structuredInsert.rows[0]?.id;
+  }, { commit: true });
+  assert(structuredEvidenceId, "CalOptima structured evidence fixture was not created");
+
+  await completeProjection("await_approved_evidence");
+
+  const beginModelAttempt = (actorId, organizationId) =>
+    withActor(client, "service_role", "service_role", actorId, async () => {
+      const { rows } = await client.query(
+        `
+          select * from public.begin_agent_work_caloptima_model_attempt(
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::text
+          )
+        `,
+        [
+          actorId,
+          organizationId,
+          FIXTURES.clientAssigned,
+          workItemId,
+          `caloptima.correlation.${RUN_TOKEN}`,
+          `caloptima.request.${RUN_TOKEN}`,
+        ],
+      );
+      return rows[0];
+    }, { commit: true });
+
+  const failedPreparationAttempt = await beginModelAttempt(FIXTURES.adminA, FIXTURES.orgA);
+  assert(
+    failedPreparationAttempt?.attempt_status === "running" &&
+      Array.isArray(failedPreparationAttempt.allowed_tools) && failedPreparationAttempt.allowed_tools.length === 0 &&
+      Array.isArray(failedPreparationAttempt.guarded_tools) && failedPreparationAttempt.guarded_tools.length === 0,
+    "CalOptima model attempt did not fail closed to the fixed no-tools contract",
+  );
+  const duplicateModelAttempt = await beginModelAttempt(FIXTURES.adminA, FIXTURES.orgA);
+  assert(
+    duplicateModelAttempt?.attempt_id === failedPreparationAttempt.attempt_id,
+    "CalOptima model begin replay did not return the running attempt",
+  );
+  await expectFailure(
+    "CalOptima cross-org model begin",
+    () => beginModelAttempt(FIXTURES.adminB, FIXTURES.orgA),
+    /forbidden/i,
+  );
+
+  const claimedPreparationState = await client.query(
+    "select status, execution_mode, organization_id, client_id from public.agent_work_steps where id = $1::uuid",
+    [failedPreparationAttempt.step_id],
+  );
+  const claimedPreparationStep = claimedPreparationState.rows[0];
+  assert(
+    claimedPreparationStep?.status === "running" &&
+      claimedPreparationStep?.execution_mode === "model_suggested" &&
+      claimedPreparationStep?.organization_id === FIXTURES.orgA &&
+      claimedPreparationStep?.client_id === FIXTURES.clientAssigned,
+    `CalOptima preparation claim state mismatch: ${JSON.stringify(claimedPreparationStep ?? null)}`,
+  );
+
+  let reopenedModelStep;
+  try {
+    reopenedModelStep = await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      const { rows } = await client.query(
+        `
+          select result.* from public.fail_agent_work_caloptima_model_attempt(
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, $7::text
+          ) as result
+        `,
+        [
+          FIXTURES.adminA,
+          FIXTURES.orgA,
+          FIXTURES.clientAssigned,
+          workItemId,
+          failedPreparationAttempt.step_id,
+          failedPreparationAttempt.attempt_id,
+          "authoritative_payload_unavailable",
+        ],
+      );
+      return rows[0];
+    }, { commit: true });
+  } catch (error) {
+    const context = error && typeof error === "object" && typeof error.where === "string" ? ` (${error.where})` : "";
+    throw new Error(`CalOptima preparation settlement failed: ${error instanceof Error ? error.message : String(error)}${context}`);
+  }
+  assert(reopenedModelStep?.status === "ready", "CalOptima preparation failure did not reopen the model step for retry");
+  const failedAttemptResult = await client.query(
+    "select status, error_class, error_code from public.agent_work_attempts where id = $1::uuid",
+    [failedPreparationAttempt.attempt_id],
+  );
+  assert(
+    failedAttemptResult.rows[0]?.status === "failed" &&
+      failedAttemptResult.rows[0]?.error_class === "input" &&
+      failedAttemptResult.rows[0]?.error_code === "authoritative_payload_unavailable",
+    "CalOptima preparation failure was not recorded on the claimed attempt",
+  );
+
+  const modelAttempt = await beginModelAttempt(FIXTURES.adminA, FIXTURES.orgA);
+  assert(
+    modelAttempt?.attempt_status === "running" && modelAttempt.attempt_id !== failedPreparationAttempt.attempt_id,
+    "CalOptima preparation retry did not claim a fresh attempt",
+  );
+
+  await expectFailure(
+    "CalOptima snapshot before draft staging",
+    () => withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      const { rows } = await client.query(
+        `select id from public.agent_work_steps where work_item_id = $1::uuid and step_key = 'snapshot_draft_packet'`,
+        [workItemId],
+      );
+      await client.query("select * from public.read_agent_work_advisory_projection_descriptor($1::uuid)", [rows[0]?.id]);
+    }),
+    /draft packet is unavailable/i,
+  );
+
+  const draftPacket = {
+    programs: [{
+      name: "Synthetic draft program",
+      description: "Synthetic draft-only program for local contract verification.",
+      rationale: "Synthetic approved evidence supports a human-review-only draft.",
+      evidence_refs: [{ section_key: "synthetic_goals", source_span: `assessment_structured_section:${structuredEvidenceId}` }],
+      review_flags: [],
+    }],
+    goals: [{
+      program_name: "Synthetic draft program",
+      title: "Synthetic draft goal",
+      description: "Synthetic advisory goal description for local review.",
+      original_text: "Synthetic approved source text for local contract verification.",
+      goal_type: "child",
+      target_behavior: "Synthetic observable replacement response",
+      measurement_type: "Frequency",
+      baseline_data: "Synthetic baseline requires clinician confirmation.",
+      target_criteria: "Synthetic target requires clinician confirmation.",
+      mastery_criteria: "Synthetic mastery requires clinician confirmation.",
+      maintenance_criteria: "Synthetic maintenance requires clinician confirmation.",
+      generalization_criteria: "Synthetic generalization requires clinician confirmation.",
+      objective_data_points: ["Synthetic observation count"],
+      rationale: "Synthetic approved evidence supports a draft goal for review.",
+      evidence_refs: [{ section_key: "synthetic_goals", source_span: `assessment_structured_section:${structuredEvidenceId}` }],
+      review_flags: ["clinician_confirmation_needed"],
+    }],
+    summary_rationale: "Synthetic local-only draft packet for BCBA review.",
+    confidence: "low",
+  };
+
+  const completeModelAttempt = (packet = draftPacket) =>
+    withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      const { rows } = await client.query(
+        `
+          select (public.complete_agent_work_caloptima_model_attempt(
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
+            $7::jsonb, 11, 7, 0.001, null, null
+          )).*
+        `,
+        [
+          FIXTURES.adminA,
+          FIXTURES.orgA,
+          FIXTURES.clientAssigned,
+          workItemId,
+          modelAttempt.step_id,
+          modelAttempt.attempt_id,
+          JSON.stringify(packet),
+        ],
+      );
+      return rows[0];
+    }, { commit: true });
+
+  await expectFailure(
+    "CalOptima draft snapshot with unapproved evidence reference",
+    () => completeModelAttempt({
+      ...draftPacket,
+      programs: draftPacket.programs.map((program) => ({
+        ...program,
+        evidence_refs: [{ section_key: "unapproved_section", source_span: "Synthetic invalid reference." }],
+      })),
+    }),
+    /evidence contract/i,
+  );
+
+  const completedModelStep = await completeModelAttempt();
+  assert(completedModelStep?.status === "completed", "CalOptima model suggestion was not snapshotted");
+  const duplicateCompletedModelStep = await completeModelAttempt();
+  assert(
+    duplicateCompletedModelStep?.id === completedModelStep.id &&
+      duplicateCompletedModelStep?.output_hash === completedModelStep.output_hash,
+    "CalOptima model completion replay did not converge to the stored result",
+  );
+  const modelEffectCount = await client.query(
+    `
+      select count(*)::integer as count
+      from public.agent_work_effects
+      where work_item_id = $1::uuid and step_id = $2::uuid and effect_kind = 'model_suggestion_snapshot'
+    `,
+    [workItemId, modelAttempt.step_id],
+  );
+  assert(modelEffectCount.rows[0]?.count === 1, "CalOptima model completion replay created duplicate effects");
+
+  const completedReplay = await beginModelAttempt(FIXTURES.adminA, FIXTURES.orgA);
+  assert(
+    completedReplay?.attempt_id === modelAttempt.attempt_id &&
+      completedReplay?.attempt_status === "completed" &&
+      completedReplay?.output_hash === completedModelStep.output_hash,
+    "CalOptima completed model replay did not converge without another provider attempt",
+  );
+
+  const draftProgramResult = await client.query(
+    "select id from public.assessment_draft_programs where assessment_document_id = $1::uuid and name = $2::text",
+    [documentId, draftPacket.programs[0].name],
+  );
+  const draftProgramId = draftProgramResult.rows[0]?.id;
+  assert(draftProgramId, "CalOptima model completion did not atomically stage the draft packet");
+
+  const readImmutablePacket = (actorId, organizationId) =>
+    withActor(client, "service_role", "service_role", actorId, async () => {
+      const { rows } = await client.query(
+        "select * from public.read_agent_work_caloptima_draft_packet($1::uuid, $2::uuid, $3::uuid, $4::uuid)",
+        [actorId, organizationId, FIXTURES.clientAssigned, workItemId],
+      );
+      return rows[0];
+    });
+  const immutableBeforeEdit = await readImmutablePacket(FIXTURES.adminA, FIXTURES.orgA);
+  assert(
+    immutableBeforeEdit?.packet?.programs?.[0]?.name === draftPacket.programs[0].name &&
+      immutableBeforeEdit?.packet?.goals?.[0]?.title === draftPacket.goals[0].title &&
+      immutableBeforeEdit?.output_hash === completedModelStep.output_hash &&
+      immutableBeforeEdit?.packet_hash === immutableBeforeEdit.output_hash,
+    "CalOptima immutable replay packet did not match the SQL-owned model result",
+  );
+  await withOwnerTransaction(client, async () => {
+    await client.query(
+      "update public.assessment_draft_programs set description = 'Synthetic clinician edit after snapshot.' where id = $1::uuid",
+      [draftProgramId],
+    );
+  }, { commit: true });
+  const immutableAfterEdit = await readImmutablePacket(FIXTURES.adminA, FIXTURES.orgA);
+  assert(
+    JSON.stringify(immutableAfterEdit) === JSON.stringify(immutableBeforeEdit),
+    "CalOptima immutable replay changed after editable draft-domain mutation",
+  );
+  await expectFailure(
+    "CalOptima cross-tenant immutable replay",
+    () => readImmutablePacket(FIXTURES.adminB, FIXTURES.orgA),
+    /forbidden/i,
+  );
+
+  const snapshottedStep = await client.query(
+    "select status from public.agent_work_steps where work_item_id = $1::uuid and step_key = 'snapshot_draft_packet'",
+    [workItemId],
+  );
+  assert(
+    snapshottedStep.rows[0]?.status === "completed",
+    "CalOptima deterministic snapshot did not atomically persist and verify the draft packet",
+  );
+
+  const getStep = async (stepKey) => {
+    const { rows } = await client.query(
+      "select id, status from public.agent_work_steps where work_item_id = $1::uuid and step_key = $2::text",
+      [workItemId, stepKey],
+    );
+    return rows[0];
+  };
+  const requestHandoff = (stepId) =>
+    withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+      const { rows } = await client.query(
+        `
+          select public.request_agent_work_approval_handoff(
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'clinical_review_handoff', $5::timestamptz
+          ) as result
+        `,
+        [FIXTURES.adminA, workItemId, stepId, FIXTURES.bcbaA, new Date(Date.now() + 300_000).toISOString()],
+      );
+      return rows[0]?.result;
+    }, { commit: true });
+  const decideApproval = (approvalId) =>
+    withActor(client, "service_role", "service_role", FIXTURES.bcbaA, async () => {
+      const { rows } = await client.query(
+        `select public.decide_agent_work_approval($1::uuid, $2::uuid, $3::uuid, 'approve', 'clinical_review_accepted') as result`,
+        [FIXTURES.bcbaA, workItemId, approvalId],
+      );
+      return rows[0]?.result;
+    }, { commit: true });
+
+  const assignStep = await getStep("assign_clinical_owner");
+  assert(assignStep?.status === "ready", "CalOptima clinical owner step was not promoted to ready");
+  const staleHandoff = await requestHandoff(assignStep.id);
+  assert(staleHandoff?.outcome === "created", "CalOptima clinical owner handoff was not created");
+
+  await withOwnerTransaction(client, async () => {
+    await client.query(
+      "update public.assessment_structured_sections set payload = '{\"synthetic\":true,\"revision\":2}'::jsonb where id = $1::uuid",
+      [structuredEvidenceId],
+    );
+  }, { commit: true });
+  await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+    const { rows } = await client.query(
+      "select public.refresh_agent_work_caloptima_evidence($1::uuid, $2::uuid, $3::uuid, $4::uuid) as result",
+      [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientAssigned, workItemId],
+    );
+    assert(rows[0]?.result?.revoked === 1, "CalOptima evidence refresh did not revoke the stale approval");
+  }, { commit: true });
+  const staleApproval = await client.query(
+    "select status, revoked_reason_code from public.agent_work_approvals where id = $1::uuid",
+    [staleHandoff.approval_id],
+  );
+  assert(
+    staleApproval.rows[0]?.status === "revoked" && staleApproval.rows[0]?.revoked_reason_code === "evidence_hash_changed",
+    "CalOptima stale approval was not revoked for evidence_hash_changed",
+  );
+
+  let currentHandoff = await requestHandoff(assignStep.id);
+  let assigned = await decideApproval(currentHandoff.approval_id);
+  assert(assigned?.outcome === "decided", "CalOptima BCBA owner handoff was not approved");
+
+  await withOwnerTransaction(client, async () => {
+    await client.query(
+      "update public.assessment_draft_programs set rationale = rationale || ' Synthetic clinician revision.' where id = $1::uuid",
+      [draftProgramId],
+    );
+  }, { commit: true });
+  await withActor(client, "service_role", "service_role", FIXTURES.adminA, async () => {
+    const { rows } = await client.query(
+      "select public.refresh_agent_work_caloptima_evidence($1::uuid, $2::uuid, $3::uuid, $4::uuid) as result",
+      [FIXTURES.adminA, FIXTURES.orgA, FIXTURES.clientAssigned, workItemId],
+    );
+    assert(
+      rows[0]?.result?.revoked === 1 && rows[0]?.result?.reopened === 1,
+      "CalOptima consumed approval drift did not revoke and reopen the decision step",
+    );
+  }, { commit: true });
+  const reopenedAssignStep = await getStep("assign_clinical_owner");
+  assert(
+    reopenedAssignStep?.status === "needs_approval",
+    "CalOptima evidence drift did not return the completed step to needs_approval",
+  );
+  currentHandoff = await requestHandoff(assignStep.id);
+  assigned = await decideApproval(currentHandoff.approval_id);
+  assert(assigned?.outcome === "decided", "CalOptima reopened BCBA owner handoff was not approved");
+
+  const reviewStep = await getStep("request_draft_review");
+  assert(reviewStep?.status === "ready", "CalOptima draft review step was not promoted to ready");
+  const reviewHandoff = await requestHandoff(reviewStep.id);
+  const reviewDecision = await decideApproval(reviewHandoff.approval_id);
+  assert(reviewDecision?.outcome === "decided", "CalOptima draft review handoff was not approved");
+
+  const after = await client.query(
+    `
+      select
+        (select status from public.agent_work_items where id = $1::uuid) as work_status,
+        (select status from public.assessment_documents where id = $2::uuid) as document_status,
+        (select count(*)::integer from public.programs where client_id = $3::uuid) as program_count,
+        (select count(*)::integer from public.goals where client_id = $3::uuid) as goal_count,
+        (select count(*)::integer from public.assessment_draft_programs where assessment_document_id = $2::uuid and accept_state = 'pending') as draft_program_count,
+        (select count(*)::integer from public.assessment_draft_goals where assessment_document_id = $2::uuid and accept_state = 'pending') as draft_goal_count
+    `,
+    [workItemId, documentId, FIXTURES.clientAssigned],
+  );
+  assert(after.rows[0]?.work_status === "needs_review", "CalOptima lifecycle did not terminate at human review");
+  assert(
+    after.rows[0]?.document_status === before.rows[0]?.document_status &&
+      after.rows[0]?.program_count === before.rows[0]?.program_count &&
+      after.rows[0]?.goal_count === before.rows[0]?.goal_count &&
+      after.rows[0]?.draft_program_count === 1 &&
+      after.rows[0]?.draft_goal_count === 1,
+    "CalOptima advisory workflow did not preserve the no promotion contract",
+  );
 };
 
 const createWorkItems = async (client) => {
@@ -3619,6 +4157,7 @@ const main = async () => {
     await assertManagePredicateParity(client);
 
     await assertCreateContainmentAndConcurrency(connectionString);
+    await assertCalOptimaDraftReviewLifecycle(client);
 
     const { assignedWorkItemId, unassignedWorkItemId } = await createWorkItems(client);
 

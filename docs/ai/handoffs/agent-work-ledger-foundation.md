@@ -156,10 +156,7 @@ Checks currently not meaningful for this slice:
   - `assessment_checklist_items`
   - `assessment_structured_sections`
   - the current IEHP review layout/query shape consumed by `src/components/ClientDetails/IehpFbaLayoutReview.tsx`
-- Review ownership and approval role checks must use `user_roles` / `get_user_roles`, with the current bounded owner role set:
-  - `admin`
-  - `bcba`
-  - `super_admin`
+- Workflow initiation and management checks use `user_roles` / `get_user_roles` through the existing manager predicate (`admin`/`org_admin`, `bcba`, and `super_admin`/`org_super_admin`). The v1 IEHP and CalOptima clinical owner and approval-decision steps require an exact active `bcba` role plus current client access. Expanding clinical ownership or approval authority to managers is an explicit plan Section 9 governance decision and is not authorized in this increment.
 - Runtime policy authority for slice 1 must default fail closed:
   - local default mode: `disabled`
   - read-only observation allowed only in `shadow` or `advisory`
@@ -250,7 +247,7 @@ Tasks 1-5 are complete on the local branch. Task 6a and Task 7 each received a f
 - scope: a read-only IEHP work-ledger panel plus an authority-owned `meta.runtimeMode` field on successful create/list/detail Edge envelopes
 - domain authority: the existing IEHP assessment review remains authoritative; the panel cannot create, assign, cancel, resume, reconcile, approve, promote, sign, publish, bill, or create final clinical records
 - tenant boundary: the authenticated Edge Function and existing RLS-scoped list RPC determine visibility; the browser query key is isolated by organization, client, assessment document, and authenticated user identity
-- read audience: list/detail visibility intentionally follows existing client-program read authority, including assigned care-team viewers already proven by the Task 6a assigned-BT local smoke; the bounded `admin`/`bcba`/`super_admin` set applies to ownership and approval authority, not sanitized read-only projection visibility
+- read audience: list/detail visibility intentionally follows existing client-program read authority, including assigned care-team viewers already proven by the Task 6a assigned-BT local smoke; manager roles may initiate and manage a bounded workflow, while the v1 clinical owner and approval decision remain exact-BCBA; neither authority boundary changes sanitized read-only projection visibility
 - runtime behavior: `disabled` hides the panel without blocking the existing review; `shadow` and `advisory` are labeled exactly from server-owned policy; unavailable or malformed data fails to a non-blocking sanitized state
 - data minimization: the strict browser DTO accepts only workflow state, sanitized blockers, evidence counts, approvals, ownership presence, and timestamps; no clinical values, evidence hashes, raw payloads, leases, attempts, credentials, or private errors are rendered
 
@@ -860,7 +857,7 @@ Stop and re-route if the work would:
 - why: the fully containerized harness crosses local runtime configuration, Docker networking, privileged database access, Edge Function execution, queue/Cron/Vault state, and credential boundaries
 - plan: `docs/superpowers/plans/2026-08-02-agent-work-ledger-phase2-container-harness.md`
 - allowed surfaces: dedicated Docker/Compose assets; `scripts/agent-work-ledger-harness/**`; narrow container adapters in local ledger smoke scripts; focused tests; `package.json`; Docker/git ignore policy; Agent Work Ledger plan/runbook/handoff
-- non-goals: migrations, function authority, RLS/grants/RPCs, application feature behavior, CI/deploy surfaces, hosted systems, `.env*`, `active` mode, and Task 16
+- non-goals: migrations, function authority, RLS/grants/RPCs, application feature behavior, CI/deploy surfaces, hosted systems, `.env*`, and `active` mode; Task 16 was routed separately after this Phase 2 slice
 - stop conditions: non-local target or inherited remote credential; weakened auth/tenant/runtime gate; unsanitized fixture/output requirement; hosted or migration scope expansion
 - required agents: specification, architecture, implementation, code review, test, security, DevOps, Supabase, performance, and documentation specialists
 - mandatory proof: focused TDD; existing local Edge/scheduler compatibility; complete fresh container run; exact Phase 2 command twice; policy/lint/typecheck/tenant/build/diff/hook gates; `verify-change`; `pr-hygiene`
@@ -913,7 +910,44 @@ Before any function deployment, configure the reviewed invocation secrets and ru
 
 ## Task 16 Disposition
 
-Task 16 is not required for Phase 1 completion. It remains the next separately routed increment after the IEHP ledger is stable and is not started by this branch.
+Task 16 is implemented locally as the separately routed critical CalOptima adapter increment under `WIN-271`. It proves the generic ledger against `assessment.caloptima.prepare_draft_review@1` without adding payer-specific columns to core ledger tables or broadening runtime agency.
+
+- allowed scope:
+  - the two additive Task 16 migrations, fixed workflow/RPC contracts, CalOptima generator ledger adapter, item/runner runtime-policy enforcement, client/UI panel wiring, local security/shadow/Edge/harness compatibility, focused tests, and this documentation
+- non-goals:
+  - no hosted, provider, browser, GitHub, deployment, or `.env*` action
+  - no `active` mode, autonomous clinical decision, promotion, publication, signature, billing, submission, final-record creation, or mutation of authoritative programs/goals
+  - no model-authored workflow graph, generic payload blob in core ledger tables, or polymorphic tenant scope
+- stop conditions:
+  - the plan's workflow-defined SQL condition triggered during implementation; work returned to architecture review before continuing
+  - initial architecture, security, Supabase, and code reviews requested a recut around persistence authority, replay, request identity, and evidence binding
+  - the corrected boundary now keeps model output advisory, gives the deterministic SQL snapshot transaction sole draft persistence authority, and is undergoing final correction-only review
+
+The implemented architecture stays advisory-only:
+
+- every generator request requires the fixed ledger correlation envelope and stable `caloptima-ledger.<work-item-id>` request/correlation identity; the legacy provider path is rejected
+- SQL computes the canonical packet hash, stores one immutable tenant-scoped packet per work item, and exposes replay only through an actor-checked service RPC
+- editable `assessment_draft_programs` and `assessment_draft_goals` remain the human-review domain surface, but replay never reconstructs from them
+- packet references use exact PHI-free source-record tokens; evidence hashes include approved checklist/structured content, so authoritative content drift revokes stale approval and reopens the decision step
+- authenticated create scope is resolved by a service-only, actor-checked `resolve_agent_work_assessment_scope` RPC; direct authenticated/service table grants remain absent, and cross-tenant or wrong-template documents resolve to no row
+- manager roles may initiate/manage through the existing actor predicate, while the current IEHP and CalOptima v1 clinical owner and approval-decision steps require exact active BCBA authority; any role expansion remains the plan Section 9 human governance decision
+- the generic runner refuses the CalOptima immutable-packet snapshot step, non-CalOptima reconcile stays deferred, and completed replay reads the immutable packet without first loading mutable clinical input; PostgreSQL recomputes the packet hash and the Edge function requires it to match both the stored and attempt-bound hashes
+- preparation failures after a valid model claim are settled through a service-only actor/tenant-bound RPC that records the sanitized input failure and atomically transitions `running -> failed -> ready` for a fresh retry
+- runtime policy remains fail-closed when policy data is missing, unreadable, or unsupported
+- deterministic fallback remains low-confidence and clinician-flagged; local tests use stubs/fakes and never contact a model provider
+
+Current Task 16 verification card:
+
+- classification/lane: `high-risk human-reviewed` / `critical`
+- required: focused migration/security/Edge/client/UI tests; full Agent Work Deno tests; fresh reset; security, tenant, shadow, queue, chaos, policy, lint, typecheck, build, full Node suite, `verify:local`, Phase 2 twice, normal hook, `verify-change`, and `pr-hygiene`
+- passed after final review corrections: focused Vitest `263/263` across 12 files; Agent Work Deno `86/86` across five files with explicit env permissions and no network permission; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run build`; `git diff --check`; repeated fresh `npm run agent-work:db:reset`; and fresh-state `npm run agent-work:edge-smoke`
+- the fresh live security lifecycle proves SQL-owned hashing, one immutable packet, database-recomputed replay integrity, failed-attempt recording and fresh retry, replay stability after editable draft mutation, exact source-token rejection, approved-content drift invalidation, consumed-approval reopening, and cross-tenant denial
+- the served Edge lifecycle proves IEHP and CalOptima create/idempotency/list/detail, tenant denial, exact sanitized DTOs, shadow mutation denial, and deferred-route handling through the complete local gateway/runtime
+- normal hook evidence: `b720169e fix(agent-work): restore retention contract owner role` passed `ci:check-focused` without bypass after the Task 16 packet table gained an explicit service-role RLS policy while retaining direct table revokes
+- final correctness, security, Supabase, and architecture re-reviews approve with no remaining actionable findings
+- remaining: Task 16 commit/hook, full Phase 1 matrix, and two fresh Phase 2 runs from committed `HEAD`
+
+Human protected-path, Supabase, security, clinical, product, and privacy review remains mandatory before any later GitHub merge.
 
 ## Phase 2 P2.2 Closure
 
@@ -981,4 +1015,4 @@ Every commit used the normal pre-commit hook; `ci:check-focused` passed without 
 
 Architecture, specification, implementation, test, code review, security, Supabase, DevOps, performance, and documentation lanes were used across P2.1/P2.2. Load-bearing findings were corrected through TDD: standalone Compose discovery, exact Vite host allowance, isolated reset networking, extension ownership, fixture isolation, Edge readiness, `cron.alter_job`, bounded reset/stop recovery, scheduler ordering, container parity identity, and least-privilege Deno env access. Final focused correctness and security re-reviews found no remaining code findings. Human review remains mandatory because migrations and functions are protected.
 
-The retention policy exception was not used. No approved retention periods were found, so deletion stays disabled and returns `policy_unapproved`; this exact policy decision remains for a human owner. Task 16 remains separately routed and was not started.
+The retention policy exception was not used. No approved retention periods were found, so deletion stays disabled and returns `policy_unapproved`; this exact policy decision remains for a human owner. Task 16 is now the active separately routed critical increment described above.

@@ -238,6 +238,43 @@ The final local proof completed two consecutive cold runs from commit `7a81b5e8c
 
 Both runs passed cleanup and left no labeled Supabase/Compose containers, Compose volumes, or `agent-work-phase2` network. This command is local-only. It does not push, deploy, contact a model provider, use `active` mode, or authorize hosted configuration.
 
+## Task 16 CalOptima Adapter
+
+Task 16 is the separately routed critical CalOptima adapter. It prepares approved synthetic or redacted CalOptima evidence as an editable draft program/goal packet for BCBA review and stops at `needs_review`.
+
+- allowed scope:
+  - fixed `assessment.caloptima.prepare_draft_review@1` workflow and actor-checked RPCs
+  - CalOptima generator ledger envelope, deterministic snapshot, domain draft staging, UI review panel, focused local contracts, and harness compatibility
+- non-goals:
+  - no hosted, provider, browser, deployment, GitHub, or `.env*` action
+  - no `active` mode or autonomous approval, clinical mutation, promotion, publication, signature, billing, submission, or final-record creation
+- stop conditions:
+  - fail closed when runtime policy is missing, unreadable, unsupported, or `disabled`
+  - stop if evidence is not approved, tenant scope does not match, a source token is unbound, or the immutable packet/hash disagrees
+
+Runtime contract:
+
+- Manager roles may initiate and manage the bounded workflow through the existing actor predicate, but v1 clinical ownership and approval decisions require an exact active `bcba` assignment with current client access. Role expansion is a human governance gate under plan Section 9 and is not authorized here.
+- The client and Edge function require the exact stable `caloptima-ledger.<work-item-id>` request/correlation identity. Legacy caller-supplied generation bodies are rejected.
+- The model step is advisory, no-tools, version-snapshotted, and unable to author graph, scope, approval, execution mode, or completion policy.
+- The SQL snapshot transaction validates the packet, computes its canonical SHA-256 hash, stores one immutable tenant-scoped replay packet, stages only `assessment_draft_*` rows, records/verifies the effect, and completes the deterministic snapshot step atomically.
+- A preparation failure after a valid model claim is recorded through a service-only actor/tenant-bound RPC and atomically transitions the step `running -> failed -> ready`; the next request claims a fresh attempt instead of inheriting a stranded lease.
+- Evidence references contain PHI-free exact source-record tokens. The ledger evidence hash includes approved checklist and structured source content; content drift invalidates hash-bound approvals and reopens the decision step.
+- Replay reads the immutable packet through an actor-checked service RPC. PostgreSQL recomputes the packet hash from the stored `jsonb`, and the Edge function requires that hash to match both the stored result and the attempt-bound expected hash. Later clinician edits to domain draft rows cannot alter the replayed model result.
+- Deterministic fallback is low-confidence and includes `clinician_confirmation_needed`/`evidence_gap`; it never promotes or publishes.
+
+Local proof after the architecture correction:
+
+- focused Vitest: `263/263` across 12 files
+- Agent Work Deno tests: `86/86` across five files with no network permission
+- `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, and `npm run build`: pass
+- fresh `npm run agent-work:db:reset`: pass
+- `npm run agent-work:edge-smoke`: pass, including its security preflight, IEHP/CalOptima create and idempotency, list/detail, tenant denial, shadow mutation denial, and deferred routes
+- `npm run agent-work:security-contract`: pass from fresh database and queue state, including failed-attempt recording/fresh retry, SQL-owned hashing, database-recomputed immutable replay after draft edits, exact source binding, approved-content drift, approval reopening, and cross-tenant denial
+- full Phase 1 and two-run Phase 2 evidence is recorded in the handoff after completion
+
+Human protected-path, Supabase, security, clinical, product, and privacy review remains required before any merge.
+
 ## Task 9 Local-Only Direction
 
 Task 9 extends the local-first ledger into a durable `pgmq` queue plus runner/sweeper coordination, but only within the local stack. Host-side Supabase/database configuration is loopback-only; Postgres uses fixed `host.docker.internal` callbacks to the loopback-bound host workers.

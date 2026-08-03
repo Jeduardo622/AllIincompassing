@@ -39,8 +39,12 @@ RUN rm -f /workspace/deno.lock \
     supabase/functions/agent-work-items/index.ts \
     supabase/functions/agent-work-runner/index.ts \
     supabase/functions/agent-work-sweeper/index.ts \
+    supabase/functions/_shared/agent-work/caloptima-draft-review.test.ts \
     supabase/functions/agent-work-items/index.test.ts \
     supabase/functions/agent-work-runner/index.test.ts \
     supabase/functions/agent-work-runner/chaos.test.ts \
     supabase/functions/agent-work-sweeper/index.test.ts \
+    supabase/functions/generate-program-goals/index.ts \
+    supabase/functions/generate-program-goals/index.test.ts \
+    supabase/functions/generate-program-goals/ledger.test.ts \
   && test -s /opt/agent-work-ledger-deno.lock

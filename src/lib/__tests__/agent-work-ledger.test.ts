@@ -1,9 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { callEdgeFunctionHttp } from "../api";
 import {
+  AGENT_WORKFLOW_KEYS,
+  createCalOptimaDraftReviewWorkLedger,
+  createCalOptimaWorkLedgerQueryOptions,
   createAssessmentWorkLedgerQueryOptions,
   decideAgentWorkApproval,
   fetchAssessmentWorkLedger,
+  requestAgentWorkApprovalHandoff,
 } from "../agent-work-ledger";
 
 vi.mock("../api", () => ({
@@ -80,7 +84,7 @@ describe("agent-work-ledger client", () => {
     });
 
     expect(mockedCallEdgeFunctionHttp).toHaveBeenCalledWith(
-      "agent-work-items?assessment_document_id=44444444-4444-4444-8444-444444444444",
+      "agent-work-items?assessment_document_id=44444444-4444-4444-8444-444444444444&workflow_key=assessment.iehp.prepare_for_clinical_review",
       expect.objectContaining({
         method: "GET",
         signal: controller.signal,
@@ -212,6 +216,7 @@ describe("agent-work-ledger client", () => {
 
     expect(options.queryKey).toEqual([
       "assessment-work-ledger",
+      AGENT_WORKFLOW_KEYS.iehpAssessmentPrep,
       "org-1",
       "client-1",
       "44444444-4444-4444-8444-444444444444",
@@ -219,6 +224,105 @@ describe("agent-work-ledger client", () => {
     ]);
     expect(options.staleTime).toBe(0);
     expect(options.gcTime).toBe(0);
+  });
+
+  it("defaults GET/query workflow scoping to IEHP, isolates cache by workflow key, and creates CalOptima draft-review work items through a fixed POST contract", async () => {
+    expect(AGENT_WORKFLOW_KEYS.caloptimaDraftReview).toBe(
+      "assessment.caloptima.prepare_draft_review",
+    );
+    mockedCallEdgeFunctionHttp
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(buildEnvelope()), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            {
+              success: true,
+              data: {
+                ...buildEnvelope().data[0],
+                workflowKey: AGENT_WORKFLOW_KEYS.caloptimaDraftReview,
+                objective: "Prepare approved CalOptima assessment evidence as a draft program/goal packet for human review.",
+              },
+              meta: {
+                runtimeMode: "advisory",
+              },
+            },
+          ),
+          { status: 201 },
+        ),
+      );
+
+    await expect(
+      fetchAssessmentWorkLedger({
+        assessmentDocumentId: "44444444-4444-4444-8444-444444444444",
+      }),
+    ).resolves.toMatchObject({
+      kind: "available",
+      item: {
+        workflowKey: AGENT_WORKFLOW_KEYS.iehpAssessmentPrep,
+      },
+    });
+
+    expect(mockedCallEdgeFunctionHttp).toHaveBeenNthCalledWith(
+      1,
+      "agent-work-items?assessment_document_id=44444444-4444-4444-8444-444444444444&workflow_key=assessment.iehp.prepare_for_clinical_review",
+      expect.objectContaining({
+        method: "GET",
+      }),
+    );
+
+    const defaultOptions = createAssessmentWorkLedgerQueryOptions({
+      organizationId: "org-1",
+      clientId: "client-1",
+      assessmentDocumentId: "44444444-4444-4444-8444-444444444444",
+      authIdentity: "user-1",
+    });
+
+    const calOptimaOptions = createCalOptimaWorkLedgerQueryOptions({
+      organizationId: "org-1",
+      clientId: "client-1",
+      assessmentDocumentId: "44444444-4444-4444-8444-444444444444",
+      authIdentity: "user-1",
+    });
+
+    expect(defaultOptions.queryKey).toEqual([
+      "assessment-work-ledger",
+      AGENT_WORKFLOW_KEYS.iehpAssessmentPrep,
+      "org-1",
+      "client-1",
+      "44444444-4444-4444-8444-444444444444",
+      "user-1",
+    ]);
+    expect(calOptimaOptions.queryKey).toEqual([
+      "assessment-work-ledger",
+      AGENT_WORKFLOW_KEYS.caloptimaDraftReview,
+      "org-1",
+      "client-1",
+      "44444444-4444-4444-8444-444444444444",
+      "user-1",
+    ]);
+
+    await expect(
+      createCalOptimaDraftReviewWorkLedger({
+        assessmentDocumentId: "44444444-4444-4444-8444-444444444444",
+      }),
+    ).resolves.toMatchObject({
+      workflowKey: AGENT_WORKFLOW_KEYS.caloptimaDraftReview,
+      objective: "Prepare approved CalOptima assessment evidence as a draft program/goal packet for human review.",
+    });
+
+    expect(mockedCallEdgeFunctionHttp).toHaveBeenNthCalledWith(
+      2,
+      "agent-work-items/caloptima-draft-review",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assessmentDocumentId: "44444444-4444-4444-8444-444444444444",
+        }),
+      }),
+    );
   });
 
   it("posts a bounded advisory approval decision and validates the sanitized response", async () => {
@@ -246,6 +350,35 @@ describe("agent-work-ledger client", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ decision: "approve", reasonCode: "clinical_review_accepted" }),
+      }),
+    );
+  });
+
+  it("requests a hash-bound human handoff through the fixed owner route", async () => {
+    const approval = buildEnvelope().data[0].approvals[0];
+    mockedCallEdgeFunctionHttp.mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: approval,
+    }), { status: 201 }));
+
+    await expect(requestAgentWorkApprovalHandoff({
+      workItemId: "55555555-5555-4555-8555-555555555555",
+      stepId: "66666666-6666-4666-8666-666666666666",
+      assignedOwnerUserId: "11111111-1111-4111-8111-111111111111",
+      reasonCode: "clinical_review_handoff",
+      expiresAt: "2026-08-10T12:00:00.000Z",
+    })).resolves.toMatchObject({ id: approval.id, status: "pending" });
+
+    expect(mockedCallEdgeFunctionHttp).toHaveBeenCalledWith(
+      "agent-work-items/55555555-5555-4555-8555-555555555555/owner",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          stepId: "66666666-6666-4666-8666-666666666666",
+          assignedOwnerUserId: "11111111-1111-4111-8111-111111111111",
+          reasonCode: "clinical_review_handoff",
+          expiresAt: "2026-08-10T12:00:00.000Z",
+        }),
       }),
     );
   });

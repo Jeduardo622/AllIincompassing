@@ -401,7 +401,6 @@ export const assertMatchesRunningLocalStack = (
     env = process.env,
     spawnImpl = spawnSync,
     cwd = process.cwd(),
-    platform = process.platform,
   } = {},
 ) => {
   if (isPhase2ContainerMode(env)) {
@@ -435,11 +434,7 @@ export const assertMatchesRunningLocalStack = (
   const childEnv = { ...env };
   delete childEnv.SUPABASE_PROJECT_REF;
   delete childEnv.VITE_SUPABASE_PROJECT_REF;
-  const supabaseCli = join(
-    cwd,
-    "node_modules/supabase/bin",
-    platform === "win32" ? "supabase.exe" : "supabase",
-  );
+  const supabaseCli = env.SUPABASE_CLI?.trim() || "supabase";
   const result = spawnImpl(supabaseCli, ["status", "-o", "env"], {
     cwd,
     env: childEnv,
@@ -543,11 +538,18 @@ const createBridgeModule = async () => {
     const adapterUrl = pathToFileURL(
       join(process.cwd(), "supabase/functions/_shared/agent-work/assessment-prep.ts"),
     ).href;
+    const calOptimaAdapterUrl = pathToFileURL(
+      join(process.cwd(), "supabase/functions/_shared/agent-work/caloptima-draft-review.ts"),
+    ).href;
     const bridgeSource = `import { deriveAssessmentPrepShadow } from ${JSON.stringify(adapterUrl)};
+import { deriveCalOptimaDraftReview } from ${JSON.stringify(calOptimaAdapterUrl)};
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
-const snapshot = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-process.stdout.write(JSON.stringify(deriveAssessmentPrepShadow(snapshot)));
+const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+const output = input.adapter === "caloptima"
+  ? deriveCalOptimaDraftReview(input.snapshot)
+  : deriveAssessmentPrepShadow(input.snapshot);
+process.stdout.write(JSON.stringify(output));
 `;
     await writeFile(bridgePath, bridgeSource, { encoding: "utf8" });
     return { runtimeDir, bridgePath };
@@ -557,7 +559,7 @@ process.stdout.write(JSON.stringify(deriveAssessmentPrepShadow(snapshot)));
   }
 };
 
-const deriveShadowProjection = async (bridgePath, snapshot) => {
+const deriveShadowProjection = async (bridgePath, snapshot, adapter = "iehp") => {
   const tsxCliPath = join(process.cwd(), "node_modules/tsx/dist/cli.mjs");
   const commandArgs = TEST_FAULT === "bridge"
     ? [
@@ -569,7 +571,7 @@ const deriveShadowProjection = async (bridgePath, snapshot) => {
     : [tsxCliPath, bridgePath];
   const result = spawnSync(process.execPath, commandArgs, {
     cwd: process.cwd(),
-    input: JSON.stringify(snapshot),
+    input: JSON.stringify({ adapter, snapshot }),
     encoding: "utf8",
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -581,6 +583,84 @@ const deriveShadowProjection = async (bridgePath, snapshot) => {
   } catch {
     throw new Error("adapter_bridge_failed");
   }
+};
+
+const runCalOptimaParityProbe = async (bridgePath) => {
+  const snapshot = {
+    organizationId: "00000000-0000-4000-8000-00000000ca01",
+    clientId: "00000000-0000-4000-8000-00000000ca02",
+    actorId: "00000000-0000-4000-8000-00000000ca03",
+    targetDocumentId: "00000000-0000-4000-8000-00000000ca04",
+    templateType: "caloptima_fba",
+    scopeVerdict: "in_scope",
+    approvals: {
+      requiredChecklist: {
+        expectedApprovedCount: 1,
+        approved: [{ recordId: "00000000-0000-4000-8000-00000000ca11", sha256: "a".repeat(64) }],
+      },
+      requiredStructured: {
+        expectedApprovedCount: 1,
+        approved: [{ recordId: "00000000-0000-4000-8000-00000000ca12", sha256: "b".repeat(64), sectionKind: "goal" }],
+      },
+      approvedGoalSections: {
+        expectedCount: 1,
+        approved: [{ recordId: "00000000-0000-4000-8000-00000000ca12", sha256: "b".repeat(64) }],
+      },
+    },
+    draftPackets: {
+      programRecords: [{
+        packetRecordId: "00000000-0000-4000-8000-00000000ca21",
+        sourceRecordId: "00000000-0000-4000-8000-00000000ca11",
+        evidenceSha256: "a".repeat(64),
+        reviewFlags: [],
+      }],
+      goalRecords: [{
+        packetRecordId: "00000000-0000-4000-8000-00000000ca22",
+        sourceRecordId: "00000000-0000-4000-8000-00000000ca12",
+        evidenceSha256: "b".repeat(64),
+        reviewFlags: ["weak_measurement_definition"],
+      }],
+    },
+    ownerAuthorization: {
+      ownerId: "00000000-0000-4000-8000-00000000ca31",
+      authorized: true,
+      reasonCode: null,
+    },
+  };
+  const projection = await deriveShadowProjection(bridgePath, snapshot, "caloptima");
+  assert(projection.workItemStatus === "needs_review", "caloptima parity status drifted.");
+  assert(projection.projection.blockerCodes.length === 0, "caloptima parity blockers drifted.");
+  assert(projection.modelSuggestion?.executionMode === "model_suggested", "caloptima model mode drifted.");
+  assert(projection.modelSuggestion?.allowedTools?.length === 0, "caloptima model tools drifted.");
+  assert(projection.mutationAuthority === false && projection.promotionAuthority === false,
+    "caloptima authority drifted.");
+
+  const changed = structuredClone(snapshot);
+  changed.approvals.approvedGoalSections.approved[0].sha256 = "c".repeat(64);
+  const changedProjection = await deriveShadowProjection(bridgePath, changed, "caloptima");
+  assert(changedProjection.projection.readinessHash !== projection.projection.readinessHash,
+    "caloptima hash-bound parity did not change.");
+
+  return {
+    fixture_id: "caloptima_draft_review",
+    projection_count: 1,
+    mismatch_reason_code: null,
+    authoritative_state: {
+      work_item_status: "needs_review",
+      blocker_codes: [],
+      evidence_pointer_count: 2,
+    },
+    projected_state: {
+      work_item_status: projection.workItemStatus,
+      blocker_codes: projection.projection.blockerCodes,
+      evidence_pointer_count: 2,
+    },
+    state_transition: "approved_evidence->needs_review",
+    evidence_pointer_coverage_rate: 1,
+    runtime_mode: OUTPUT_RUNTIME_MODE,
+    workflow_version: 1,
+    duration_ms: DURATION_MS,
+  };
 };
 
 const seedGlobalScope = async (client) => {
@@ -1711,6 +1791,7 @@ const main = async () => {
       outcomes.push(await runFixture(client, bridge.bridgePath, fixture));
     }
     const records = outcomes.map((outcome) => outcome.record);
+    records.push(await runCalOptimaParityProbe(bridge.bridgePath));
 
     const negativeProbeCount = runNegativeProbes();
 

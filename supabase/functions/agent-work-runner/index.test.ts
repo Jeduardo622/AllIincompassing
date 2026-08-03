@@ -780,6 +780,11 @@ Deno.test("runner rejects cancelled human and unknown workflow executions after 
       expectedReasonCode: "human_step_requires_manual_action",
     },
     {
+      name: "guarded model step",
+      scope: createAuthoritativeScope({ executionMode: "model_suggested" }),
+      expectedReasonCode: "model_step_requires_guarded_provider",
+    },
+    {
       name: "unknown workflow",
       scope: createAuthoritativeScope({
         workflowKey: "assessment.unknown.workflow",
@@ -818,6 +823,41 @@ Deno.test("runner rejects cancelled human and unknown workflow executions after 
       reasonCode: scenario.expectedReasonCode,
     }], scenario.name);
   }
+});
+
+Deno.test("runner leaves the CalOptima immutable packet snapshot to its dedicated SQL adapter", async () => {
+  const scope = createAuthoritativeScope({
+    workflowKey: "assessment.caloptima.prepare_draft_review",
+    stepKey: "snapshot_draft_packet",
+  });
+  const deps = createDeps({
+    rereadAuthoritativeScope: async (input: RereadScopeInput) => {
+      deps.calls.authoritativeReads.push({ ...input });
+      return scope;
+    },
+  });
+  const handler = createAgentWorkRunnerHandler(deps);
+
+  const response = await handler(
+    createRequest({ "x-agent-work-runner-secret": INVOCATION_SECRET }),
+  );
+
+  assertEquals(response.status, 200);
+  assertObjectMatch(await response.json(), {
+    success: true,
+    data: {
+      outcome: "blocked",
+      workItemId: WORK_ITEM_ID,
+      stepId: STEP_ID,
+      reasonCode: "dedicated_adapter_step",
+    } satisfies RunnerResult,
+  });
+  assertEquals(deps.calls.claims, []);
+  assertEquals(deps.calls.executions.length, 0);
+  assertEquals(deps.calls.archives, [{
+    messageId: MESSAGE_ID,
+    reasonCode: "dedicated_adapter_step",
+  }]);
 });
 
 Deno.test("runner verifies the authoritative postcondition before marking an effect verified or completing the step", async () => {

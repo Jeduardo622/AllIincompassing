@@ -4,6 +4,7 @@ import { ClipboardList, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from "lu
 import type { Client, Goal, GoalDomain, GoalTarget, GoalTargetCompleteMasteryInput, GoalTargetPhaseCriterion, GoalTargetTransition, Program, ProgramNote, TargetMeasurementType, TrialEvent } from "../../types";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
+import { generateProgramGoalDraft } from "../../lib/ai";
 import { useActiveOrganizationId } from "../../lib/organization";
 import { useAuth } from "../../lib/authContext";
 import {
@@ -18,6 +19,14 @@ import {
   PROMPT_OUTCOME_LABELS,
   PROMPT_OUTCOME_ORDER,
 } from "../../lib/trial-prompt-outcomes";
+import {
+  createCalOptimaDraftReviewWorkLedger,
+  createCalOptimaWorkLedgerQueryOptions,
+  decideAgentWorkApproval,
+  requestAgentWorkApprovalHandoff,
+  type AssessmentWorkLedgerPanelState,
+} from "../../lib/agent-work-ledger";
+import { AssessmentWorkLedgerPanel } from "../agent-work/AssessmentWorkLedgerPanel";
 import { IehpFbaLayoutReview } from "./IehpFbaLayoutReview";
 import { canRoleManageGoalTargetProgression, GoalTargetProgressionEditor, type ManualOverrideInput, type SaveCriterionInput } from "./GoalTargetProgressionEditor";
 import { GoalTargetProgressionHistory } from "./GoalTargetProgressionHistory";
@@ -521,6 +530,13 @@ const buildProgramGoalsQueryKey = (programId: string | null, organizationId?: st
 
 const buildGoalDomainsQueryKey = (organizationId?: string | null) =>
   ["goal-domains", organizationId ?? "MISSING_ORG"] as const;
+
+const createCalOptimaDraftReviewWorkLedgerQueryOptions = (scope: {
+  organizationId: string;
+  clientId: string;
+  assessmentDocumentId: string;
+  authIdentity: string;
+}) => createCalOptimaWorkLedgerQueryOptions(scope);
 
 const buildProgramNotesQueryKey = (programId: string | null, organizationId?: string | null) =>
   ["program-notes", programId, organizationId ?? "MISSING_ORG"] as const;
@@ -1602,7 +1618,7 @@ function GoalCard({
 export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
-  const { effectiveRole, hasCapability, session } = useAuth();
+  const { effectiveRole, hasCapability, hasExactRole, session } = useAuth();
   const canManageProgramsGoals = hasCapability("manageProgramsGoals");
   const canManageProgression = canRoleManageGoalTargetProgression(effectiveRole);
   const canDeleteGoalTargets = hasCapability("deleteGoalTargets");
@@ -2048,9 +2064,129 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     : TEMPLATE_LABELS[assessmentTemplateType];
   const uploadAssessmentTemplateLabel = TEMPLATE_LABELS[assessmentTemplateType];
   const selectedAssessmentIsIehp = selectedAssessmentDocument?.template_type === "iehp_fba";
+  const selectedAssessmentIsCalOptima = selectedAssessmentDocument?.template_type === "caloptima_fba";
   const exportAssessmentPdfLabel = selectedAssessmentIsIehp
     ? "Generate completed IEHP DOCX"
     : `Optional: Export Completed ${selectedAssessmentTemplateLabel} PDF`;
+  const calOptimaLedgerEnabled = Boolean(
+    selectedAssessmentIsCalOptima &&
+    selectedAssessmentDocument?.id &&
+    selectedAssessmentDocument?.client_id &&
+    organizationId &&
+    session?.user?.id,
+  );
+  const calOptimaLedgerQuery = useQuery({
+    ...createCalOptimaDraftReviewWorkLedgerQueryOptions({
+      organizationId: organizationId ?? "MISSING_ORG",
+      clientId: selectedAssessmentDocument?.client_id ?? "MISSING_CLIENT",
+      assessmentDocumentId: selectedAssessmentDocument?.id ?? "MISSING_DOCUMENT",
+      authIdentity: session?.user?.id ?? "MISSING_AUTH",
+    }),
+    enabled: calOptimaLedgerEnabled,
+  });
+  const calOptimaLedgerState: AssessmentWorkLedgerPanelState = !selectedAssessmentIsCalOptima
+    ? { kind: "disabled" }
+    : !calOptimaLedgerEnabled
+      ? { kind: "disabled" }
+      : calOptimaLedgerQuery.isLoading
+        ? { kind: "loading" }
+        : calOptimaLedgerQuery.data ?? { kind: "unavailable" };
+  const calOptimaApprovalDecision = useMutation({
+    mutationFn: decideAgentWorkApproval,
+    onSuccess: async () => {
+      await calOptimaLedgerQuery.refetch();
+      showSuccess("Clinical review handoff decision recorded.");
+    },
+    onError: (error) => {
+      showError(error instanceof Error ? error.message : "Failed to record handoff decision");
+    },
+  });
+  const calOptimaLedgerItem = calOptimaLedgerState.kind === "available"
+    ? calOptimaLedgerState.item
+    : null;
+  const calOptimaModelStep = calOptimaLedgerItem?.steps.find(
+    (step) => step.key === "suggest_draft_packet" && step.status === "ready",
+  ) ?? null;
+  const calOptimaHumanStep = calOptimaLedgerItem?.steps.find(
+    (step) =>
+      (step.key === "assign_clinical_owner" || step.key === "request_draft_review") &&
+      step.status === "ready",
+  ) ?? null;
+  const calOptimaIsAdvisory = calOptimaLedgerState.kind === "no-ledger"
+    ? calOptimaLedgerState.runtimeMode === "advisory"
+    : calOptimaLedgerState.kind === "available" && calOptimaLedgerState.runtimeMode === "advisory";
+  const createCalOptimaLedger = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssessmentDocument?.id) throw new Error("Select a CalOptima assessment first");
+      return createCalOptimaDraftReviewWorkLedger({
+        assessmentDocumentId: selectedAssessmentDocument.id,
+      });
+    },
+    onSuccess: async () => {
+      await calOptimaLedgerQuery.refetch();
+      showSuccess("Advisory work item created.");
+    },
+    onError: (error) => {
+      showError(error instanceof Error ? error.message : "Failed to create advisory work item");
+    },
+  });
+  const runCalOptimaLedgerModel = useMutation({
+    mutationFn: async () => {
+      if (
+        !calOptimaLedgerItem ||
+        !calOptimaModelStep ||
+        !selectedAssessmentDocument?.id ||
+        !selectedAssessmentDocument.client_id ||
+        !organizationId ||
+        !session?.access_token
+      ) {
+        throw new Error("The advisory draft step is not ready");
+      }
+      return generateProgramGoalDraft(
+        "Generate a draft packet from approved assessment evidence only.",
+        { accessToken: session.access_token },
+        {
+          assessmentDocumentId: selectedAssessmentDocument.id,
+          clientId: selectedAssessmentDocument.client_id,
+          organizationId,
+          ledgerWorkItemId: calOptimaLedgerItem.id,
+        },
+      );
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        calOptimaLedgerQuery.refetch(),
+        queryClient.invalidateQueries({
+          queryKey: ["assessment-drafts", selectedAssessmentDocument?.id, organizationId ?? "MISSING_ORG"],
+        }),
+      ]);
+      showSuccess("Advisory draft packet generated and staged for clinical review.");
+    },
+    onError: (error) => {
+      showError(error instanceof Error ? error.message : "Failed to generate advisory draft packet");
+    },
+  });
+  const assignCalOptimaClinicalOwner = useMutation({
+    mutationFn: async () => {
+      if (!calOptimaLedgerItem || !calOptimaHumanStep || !session?.user?.id) {
+        throw new Error("The clinical handoff step is not ready");
+      }
+      return requestAgentWorkApprovalHandoff({
+        workItemId: calOptimaLedgerItem.id,
+        stepId: calOptimaHumanStep.id,
+        assignedOwnerUserId: session.user.id,
+        reasonCode: "clinical_review_handoff",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+    },
+    onSuccess: async () => {
+      await calOptimaLedgerQuery.refetch();
+      showSuccess("Clinical review handoff requested.");
+    },
+    onError: (error) => {
+      showError(error instanceof Error ? error.message : "Failed to request clinical review handoff");
+    },
+  });
   useEffect(() => {
     if (!selectedAssessmentId || selectedAssessmentDocument?.status !== "drafted") {
       return;
@@ -3693,217 +3829,265 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               ) : checklistBySection.length === 0 && structuredSectionsBySection.length === 0 ? (
                 <p className="text-sm text-gray-500">Checklist not available yet for this assessment.</p>
               ) : (
-                <div className="space-y-4">
-                  {checklistBySection.map(([section, rows]) => (
-                    <div key={section} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">
-                        {section.replace(/_/g, " ")}
-                      </h4>
-                      <div className="space-y-3">
-                        {rows.map((row) => {
-                          const edit = checklistEdits[row.id] ?? {
-                            status: row.status,
-                            reviewNotes: row.review_notes ?? "",
-                            valueText: row.value_text ?? "",
-                          };
-                          const isApprovedStatusLocked = row.status === "approved";
-                          return (
-                            <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
-                              <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{row.label}</div>
-                              <div className="text-[11px] text-gray-500 mb-2">
-                                {row.placeholder_key} • {row.mode} • required: {String(row.required)}
-                                {row.review_notes ? ` • ${row.review_notes}` : ""}
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                <select
-                                  value={edit.status}
-                                  disabled={!canManageProgramsGoals || isApprovedStatusLocked}
-                                  onChange={(event) =>
-                                    setChecklistEdits((current) => ({
-                                      ...current,
-                                      [row.id]: {
-                                        ...edit,
-                                        status: event.target.value as AssessmentChecklistItem["status"],
-                                      },
-                                    }))
-                                  }
-                                  className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
-                                >
-                                  <option value="not_started">not_started</option>
-                                  <option value="drafted">drafted</option>
-                                  <option value="verified">verified</option>
-                                  <option value="approved">approved</option>
-                                </select>
-                                <input
-                                  value={edit.reviewNotes}
-                                  disabled={!canManageProgramsGoals}
-                                  onChange={(event) =>
-                                    setChecklistEdits((current) => ({
-                                      ...current,
-                                      [row.id]: {
-                                        ...edit,
-                                        reviewNotes: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  placeholder="Review notes"
-                                  className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
-                                />
-                                <input
-                                  value={edit.valueText}
-                                  disabled={!canManageProgramsGoals}
-                                  onChange={(event) =>
-                                    setChecklistEdits((current) => ({
-                                      ...current,
-                                      [row.id]: {
-                                        ...edit,
-                                        valueText: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  placeholder="Field value"
-                                  className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
-                                />
-                              </div>
-                              {canManageProgramsGoals && (
-                                <button
-                                  type="button"
-                                  onClick={() => updateChecklistItem.mutate(row.id)}
-                                  disabled={updateChecklistItem.isLoading}
-                                  className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-                                >
-                                  Save Checklist Row
-                                </button>
-                              )}
-                              {isApprovedStatusLocked && (
-                                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
-                                  Approved checklist rows stay approved; update notes or field value without lowering status.
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
-                      Structured {selectedAssessmentTemplateLabel} Sections
-                    </h4>
-                    {structuredSectionsBySection.length === 0 ? (
-                      <p className="text-sm text-gray-500">No structured sections available yet for this assessment.</p>
-                    ) : (
-                      structuredSectionsBySection.map(([section, rows]) => (
-                        <div key={section} className="rounded-md border border-cyan-200 dark:border-cyan-900/60 p-3">
-                          <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">
-                            {section.replace(/_/g, " ")}
-                          </h5>
-                          <div className="space-y-3">
-                            {rows.map((row) => {
-                              const edit = structuredSectionEdits[row.id] ?? {
-                                status: row.status,
-                                reviewNotes: row.review_notes ?? "",
-                                payload: formatStructuredSectionPayload(row.payload),
-                              };
-                              const previewLines = buildStructuredPayloadPreview(row.payload ?? {});
-                              const isApprovedStatusLocked = row.status === "approved";
-                              return (
-                                <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
-                                  <div className="text-xs font-medium text-gray-800 dark:text-gray-200">
-                                    {humanizeStructuredSectionLabel(row)} #{row.section_index + 1}
-                                  </div>
-                                  <div className="text-[11px] text-gray-500 dark:text-gray-300">{row.field_key}</div>
-                                  <div className="text-[11px] text-gray-500 mb-2">
-                                    required: {String(row.required)}
-                                    {row.review_notes ? ` • ${row.review_notes}` : ""}
-                                  </div>
-                                  {previewLines.length > 0 && (
-                                    <div className="mb-2 rounded bg-gray-50 p-2 text-xs text-gray-700 dark:bg-gray-800/60 dark:text-gray-200">
-                                      <div className="mb-1 font-semibold">Extracted preview</div>
-                                      <ul className="space-y-1">
-                                        {previewLines.map((line, index) => (
-                                          <li key={`${row.id}-preview-${index}`} className="break-words">
-                                            {line}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                  <div className="grid grid-cols-1 gap-2">
-                                    <select
-                                      value={edit.status}
-                                      disabled={!canManageProgramsGoals || isApprovedStatusLocked}
-                                      onChange={(event) =>
-                                        setStructuredSectionEdits((current) => ({
-                                          ...current,
-                                          [row.id]: {
-                                            ...edit,
-                                            status: event.target.value as AssessmentStructuredSection["status"],
-                                          },
-                                        }))
-                                      }
-                                      className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
-                                    >
-                                      <option value="not_started">not_started</option>
-                                      <option value="drafted">drafted</option>
-                                      <option value="verified">verified</option>
-                                      <option value="approved">approved</option>
-                                      <option value="rejected">rejected</option>
-                                    </select>
-                                    <input
-                                      value={edit.reviewNotes}
-                                      disabled={!canManageProgramsGoals || isApprovedStatusLocked}
-                                      onChange={(event) =>
-                                        setStructuredSectionEdits((current) => ({
-                                          ...current,
-                                          [row.id]: {
-                                            ...edit,
-                                            reviewNotes: event.target.value,
-                                          },
-                                        }))
-                                      }
-                                      placeholder="Review notes"
-                                      className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
-                                    />
-                                    <textarea
-                                      value={edit.payload}
-                                      rows={8}
-                                      disabled={!canManageProgramsGoals || isApprovedStatusLocked}
-                                      onChange={(event) =>
-                                        setStructuredSectionEdits((current) => ({
-                                          ...current,
-                                          [row.id]: {
-                                            ...edit,
-                                            payload: event.target.value,
-                                          },
-                                        }))
-                                      }
-                                      className="font-mono rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-xs"
-                                    />
-                                  </div>
-                                  {canManageProgramsGoals && (
-                                    <button
-                                      type="button"
-                                      onClick={() => updateStructuredSection.mutate(row.id)}
-                                      disabled={updateStructuredSection.isLoading || isApprovedStatusLocked}
-                                      className="mt-2 px-3 py-1 text-xs font-medium text-white bg-cyan-700 rounded hover:bg-cyan-800 disabled:opacity-50"
-                                    >
-                                      Save Structured Section
-                                    </button>
-                                  )}
-                                  {isApprovedStatusLocked && (
-                                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
-                                      Approved structured sections are locked to preserve reviewed document data for export.
-                                    </p>
-                                  )}
+                <div className={selectedAssessmentIsCalOptima ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]" : "space-y-4"}>
+                  <div id="caloptima-current-review-section" className="space-y-4">
+                    {checklistBySection.map(([section, rows]) => (
+                      <div key={section} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">
+                          {section.replace(/_/g, " ")}
+                        </h4>
+                        <div className="space-y-3">
+                          {rows.map((row) => {
+                            const edit = checklistEdits[row.id] ?? {
+                              status: row.status,
+                              reviewNotes: row.review_notes ?? "",
+                              valueText: row.value_text ?? "",
+                            };
+                            const isApprovedStatusLocked = row.status === "approved";
+                            return (
+                              <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
+                                <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{row.label}</div>
+                                <div className="text-[11px] text-gray-500 mb-2">
+                                  {row.placeholder_key} • {row.mode} • required: {String(row.required)}
+                                  {row.review_notes ? ` • ${row.review_notes}` : ""}
                                 </div>
-                              );
-                            })}
-                          </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                  <select
+                                    value={edit.status}
+                                    disabled={!canManageProgramsGoals || isApprovedStatusLocked}
+                                    onChange={(event) =>
+                                      setChecklistEdits((current) => ({
+                                        ...current,
+                                        [row.id]: {
+                                          ...edit,
+                                          status: event.target.value as AssessmentChecklistItem["status"],
+                                        },
+                                      }))
+                                    }
+                                    className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                  >
+                                    <option value="not_started">not_started</option>
+                                    <option value="drafted">drafted</option>
+                                    <option value="verified">verified</option>
+                                    <option value="approved">approved</option>
+                                  </select>
+                                  <input
+                                    value={edit.reviewNotes}
+                                    disabled={!canManageProgramsGoals}
+                                    onChange={(event) =>
+                                      setChecklistEdits((current) => ({
+                                        ...current,
+                                        [row.id]: {
+                                          ...edit,
+                                          reviewNotes: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="Review notes"
+                                    className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                  />
+                                  <input
+                                    value={edit.valueText}
+                                    disabled={!canManageProgramsGoals}
+                                    onChange={(event) =>
+                                      setChecklistEdits((current) => ({
+                                        ...current,
+                                        [row.id]: {
+                                          ...edit,
+                                          valueText: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="Field value"
+                                    className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                  />
+                                </div>
+                                {canManageProgramsGoals && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateChecklistItem.mutate(row.id)}
+                                    disabled={updateChecklistItem.isLoading}
+                                    className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                                  >
+                                    Save Checklist Row
+                                  </button>
+                                )}
+                                {isApprovedStatusLocked && (
+                                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
+                                    Approved checklist rows stay approved; update notes or field value without lowering status.
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))
-                    )}
+                      </div>
+                    ))}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                        Structured {selectedAssessmentTemplateLabel} Sections
+                      </h4>
+                      {structuredSectionsBySection.length === 0 ? (
+                        <p className="text-sm text-gray-500">No structured sections available yet for this assessment.</p>
+                      ) : (
+                        structuredSectionsBySection.map(([section, rows]) => (
+                          <div key={section} className="rounded-md border border-cyan-200 dark:border-cyan-900/60 p-3">
+                            <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">
+                              {section.replace(/_/g, " ")}
+                            </h5>
+                            <div className="space-y-3">
+                              {rows.map((row) => {
+                                const edit = structuredSectionEdits[row.id] ?? {
+                                  status: row.status,
+                                  reviewNotes: row.review_notes ?? "",
+                                  payload: formatStructuredSectionPayload(row.payload),
+                                };
+                                const previewLines = buildStructuredPayloadPreview(row.payload ?? {});
+                                const isApprovedStatusLocked = row.status === "approved";
+                                return (
+                                  <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
+                                    <div className="text-xs font-medium text-gray-800 dark:text-gray-200">
+                                      {humanizeStructuredSectionLabel(row)} #{row.section_index + 1}
+                                    </div>
+                                    <div className="text-[11px] text-gray-500 dark:text-gray-300">{row.field_key}</div>
+                                    <div className="text-[11px] text-gray-500 mb-2">
+                                      required: {String(row.required)}
+                                      {row.review_notes ? ` • ${row.review_notes}` : ""}
+                                    </div>
+                                    {previewLines.length > 0 && (
+                                      <div className="mb-2 rounded bg-gray-50 p-2 text-xs text-gray-700 dark:bg-gray-800/60 dark:text-gray-200">
+                                        <div className="mb-1 font-semibold">Extracted preview</div>
+                                        <ul className="space-y-1">
+                                          {previewLines.map((line, index) => (
+                                            <li key={`${row.id}-preview-${index}`} className="break-words">
+                                              {line}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                    <div className="grid grid-cols-1 gap-2">
+                                      <select
+                                        value={edit.status}
+                                        disabled={!canManageProgramsGoals || isApprovedStatusLocked}
+                                        onChange={(event) =>
+                                          setStructuredSectionEdits((current) => ({
+                                            ...current,
+                                            [row.id]: {
+                                              ...edit,
+                                              status: event.target.value as AssessmentStructuredSection["status"],
+                                            },
+                                          }))
+                                        }
+                                        className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                      >
+                                        <option value="not_started">not_started</option>
+                                        <option value="drafted">drafted</option>
+                                        <option value="verified">verified</option>
+                                        <option value="approved">approved</option>
+                                        <option value="rejected">rejected</option>
+                                      </select>
+                                      <input
+                                        value={edit.reviewNotes}
+                                        disabled={!canManageProgramsGoals || isApprovedStatusLocked}
+                                        onChange={(event) =>
+                                          setStructuredSectionEdits((current) => ({
+                                            ...current,
+                                            [row.id]: {
+                                              ...edit,
+                                              reviewNotes: event.target.value,
+                                            },
+                                          }))
+                                        }
+                                        placeholder="Review notes"
+                                        className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                      />
+                                      <textarea
+                                        value={edit.payload}
+                                        rows={8}
+                                        disabled={!canManageProgramsGoals || isApprovedStatusLocked}
+                                        onChange={(event) =>
+                                          setStructuredSectionEdits((current) => ({
+                                            ...current,
+                                            [row.id]: {
+                                              ...edit,
+                                              payload: event.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className="font-mono rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-xs"
+                                      />
+                                    </div>
+                                    {canManageProgramsGoals && (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateStructuredSection.mutate(row.id)}
+                                        disabled={updateStructuredSection.isLoading || isApprovedStatusLocked}
+                                        className="mt-2 px-3 py-1 text-xs font-medium text-white bg-cyan-700 rounded hover:bg-cyan-800 disabled:opacity-50"
+                                      >
+                                        Save Structured Section
+                                      </button>
+                                    )}
+                                    {isApprovedStatusLocked && (
+                                      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
+                                        Approved structured sections are locked to preserve reviewed document data for export.
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
+                  {selectedAssessmentIsCalOptima && (
+                    <div className="space-y-3 xl:sticky xl:top-4 xl:self-start">
+                      <AssessmentWorkLedgerPanel
+                        state={calOptimaLedgerState}
+                        reviewHref="#caloptima-current-review-section"
+                        onApprovalDecision={(approval, decision) => calOptimaApprovalDecision.mutateAsync({
+                          workItemId: calOptimaLedgerState.kind === "available" ? calOptimaLedgerState.item.id : "",
+                          approvalId: approval.id,
+                          decision,
+                          reasonCode: decision === "approve"
+                            ? "clinical_review_accepted"
+                            : "clinical_review_rejected",
+                        })}
+                      />
+                      {calOptimaIsAdvisory && canManageProgramsGoals && calOptimaLedgerState.kind === "no-ledger" && (
+                        <button
+                          type="button"
+                          onClick={() => createCalOptimaLedger.mutate()}
+                          disabled={createCalOptimaLedger.isLoading}
+                          className="w-full rounded-md bg-cyan-700 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-50"
+                        >
+                          {createCalOptimaLedger.isLoading ? "Creating advisory work item..." : "Create advisory work item"}
+                        </button>
+                      )}
+                      {calOptimaIsAdvisory && canManageProgramsGoals && calOptimaModelStep && (
+                        <button
+                          type="button"
+                          onClick={() => runCalOptimaLedgerModel.mutate()}
+                          disabled={runCalOptimaLedgerModel.isLoading}
+                          className="w-full rounded-md bg-cyan-700 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-50"
+                        >
+                          {runCalOptimaLedgerModel.isLoading ? "Generating advisory draft packet..." : "Generate advisory draft packet"}
+                        </button>
+                      )}
+                      {calOptimaIsAdvisory && (hasExactRole?.("bcba") ?? effectiveRole === "bcba") && calOptimaHumanStep && (
+                        <button
+                          type="button"
+                          onClick={() => assignCalOptimaClinicalOwner.mutate()}
+                          disabled={assignCalOptimaClinicalOwner.isLoading}
+                          className="w-full rounded-md border border-cyan-700 px-3 py-2 text-sm font-semibold text-cyan-800 hover:bg-cyan-50 disabled:opacity-50 dark:text-cyan-100 dark:hover:bg-cyan-950/40"
+                        >
+                          {assignCalOptimaClinicalOwner.isLoading ? "Requesting clinical handoff..." : "Assign clinical review to me"}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

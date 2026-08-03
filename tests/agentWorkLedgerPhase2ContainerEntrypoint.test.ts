@@ -107,13 +107,23 @@ describe("agent work ledger phase2 custom container roles", () => {
         "run",
         "tests/agentWorkLedgerEval.test.ts",
         "tests/agentWorkLedgerEvalCli.test.ts",
+        "tests/agentWorkLedgerCalOptimaMigration.test.ts",
         "src/lib/__tests__/agent-work-ledger.test.ts",
         "src/components/agent-work/__tests__/AssessmentWorkLedgerPanel.test.tsx",
         "src/server/__tests__/runtimeConfigHandler.test.ts",
       ]],
+      ["node", [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "src/components/__tests__/ProgramsGoalsTab.test.tsx",
+        "src/server/__tests__/assessmentDraftsHandler.test.ts",
+        "src/server/__tests__/assessmentPromoteHandler.test.ts",
+        "-t",
+        "CalOptima|caloptima",
+      ]],
       ["npm", ["run", "build"]],
     ]);
-    expect(calls.map(([, , env]) => env)).toEqual(Array(3).fill({
+    expect(calls.map(([, , env]) => env)).toEqual(Array(4).fill({
       AGENT_WORK_PHASE2_CONTAINER: "1",
       HOME: "/home/node",
       PATH: "/usr/bin",

@@ -25,6 +25,9 @@ export type WorkStepStatus =
   | "failed"
   | "cancelled";
 export type WorkExecutionMode = "deterministic" | "model_suggested" | "human";
+export type SupportedWorkflowKey =
+  | "assessment.iehp.prepare_for_clinical_review"
+  | "assessment.caloptima.prepare_draft_review";
 
 export interface AgentWorkItemBlockerView {
   code: string;
@@ -83,6 +86,15 @@ interface CreateAssessmentWorkItemInput {
   dedupeKey: string;
 }
 
+interface CreateCalOptimaDraftReviewWorkItemInput {
+  actorUserId: string;
+  organizationId: string;
+  clientId: string;
+  assessmentDocumentId: string;
+  workflowVersion: number;
+  dedupeKey: string;
+}
+
 interface RequestApprovalHandoffInput {
   actorUserId: string;
   workItemId: string;
@@ -98,6 +110,11 @@ interface DecideApprovalInput {
   approvalId: string;
   decision: "approve" | "reject";
   reasonCode: string;
+}
+
+interface RefreshCalOptimaEvidenceInput {
+  actorUserId: string;
+  workItemId: string;
 }
 
 type ApprovalDecisionOutcome =
@@ -128,9 +145,12 @@ export class AgentWorkRequestError extends Error {
 export interface AgentWorkItemsHandlerDependencies {
   getCorsHeaders(request: Request): Record<string, string>;
   getRuntimeMode(): AgentWorkRuntimeMode;
+  loadRuntimePolicy(): Promise<AgentWorkRuntimeMode>;
   getAuthenticatedUser(request: Request): Promise<{ id: string } | null>;
   loadAssessmentDocumentScope(
     assessmentDocumentId: string,
+    workflowKey: SupportedWorkflowKey,
+    actorUserId: string,
   ): Promise<AssessmentDocumentScope | null>;
   currentUserCanManage(
     organizationId: string,
@@ -139,10 +159,17 @@ export interface AgentWorkItemsHandlerDependencies {
   createAssessmentWorkItem(
     input: CreateAssessmentWorkItemInput,
   ): Promise<AgentWorkItemView>;
+  createCalOptimaDraftReviewWorkItem(
+    input: CreateCalOptimaDraftReviewWorkItemInput,
+  ): Promise<AgentWorkItemView>;
   listWorkItemsByAssessmentDocument(
     assessmentDocumentId: string,
+    workflowKey: SupportedWorkflowKey,
   ): Promise<AgentWorkItemView[]>;
   getWorkItemDetail(workItemId: string): Promise<AgentWorkItemView | null>;
+  refreshCalOptimaEvidence(
+    input: RefreshCalOptimaEvidenceInput,
+  ): Promise<boolean>;
   requestApprovalHandoff(
     input: RequestApprovalHandoffInput,
   ): Promise<AgentWorkItemApprovalView>;
@@ -154,6 +181,17 @@ const UUID_PATTERN =
 const REASON_CODE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const WORKFLOW_VERSION = 1;
 const MAX_BODY_BYTES = 4096;
+const IEHP_WORKFLOW_KEY = "assessment.iehp.prepare_for_clinical_review";
+const CALOPTIMA_DRAFT_REVIEW_WORKFLOW_KEY =
+  "assessment.caloptima.prepare_draft_review";
+
+function isSupportedWorkflowKey(
+  value: string | null,
+): value is SupportedWorkflowKey {
+  return value === IEHP_WORKFLOW_KEY ||
+    value === CALOPTIMA_DRAFT_REVIEW_WORKFLOW_KEY;
+}
+
 function strictView(view: AgentWorkItemView): AgentWorkItemView {
   return {
     id: view.id,
@@ -333,7 +371,7 @@ export function createAgentWorkItemsHandler(
 
     let mode: AgentWorkRuntimeMode;
     try {
-      mode = deps.getRuntimeMode();
+      mode = await deps.loadRuntimePolicy();
     } catch {
       mode = "disabled";
     }
@@ -356,6 +394,10 @@ export function createAgentWorkItemsHandler(
       const input = body ? validateHandoffBody(body) : null;
       if (!input) return reject(400, "Invalid request body");
       try {
+        await deps.refreshCalOptimaEvidence({
+          actorUserId: user.id,
+          workItemId: ownerMatch[1],
+        });
         const approval = await deps.requestApprovalHandoff({
           actorUserId: user.id,
           workItemId: ownerMatch[1],
@@ -387,6 +429,10 @@ export function createAgentWorkItemsHandler(
       const input = body ? validateDecisionBody(body) : null;
       if (!input) return reject(400, "Invalid request body");
       try {
+        await deps.refreshCalOptimaEvidence({
+          actorUserId: user.id,
+          workItemId: decisionMatch[1],
+        });
         const result = await deps.decideApproval({
           actorUserId: user.id,
           workItemId: decisionMatch[1],
@@ -424,6 +470,39 @@ export function createAgentWorkItemsHandler(
       }
     }
 
+    const reconcileMatch = path.match(/^\/([0-9a-f-]+)\/reconcile$/i);
+    if (request.method === "POST" && reconcileMatch && mode === "advisory") {
+      if (!UUID_PATTERN.test(reconcileMatch[1])) {
+        return reject(400, "Invalid work item id");
+      }
+      try {
+        const refreshed = await deps.refreshCalOptimaEvidence({
+          actorUserId: user.id,
+          workItemId: reconcileMatch[1],
+        });
+        if (!refreshed) {
+          return reject(
+            501,
+            "Route deferred pending authoritative RPC",
+            "deferred_route",
+          );
+        }
+        const item = await deps.getWorkItemDetail(reconcileMatch[1]);
+        return item
+          ? respond(200, {
+            success: true,
+            data: strictView(item),
+            meta: { runtimeMode: mode },
+          })
+          : reject(404, "Not found");
+      } catch (error) {
+        if (error instanceof AgentWorkRequestError) {
+          return reject(error.status, error.publicMessage, error.code);
+        }
+        return reject(500, "Evidence refresh failed", "refresh_failed");
+      }
+    }
+
     if (request.method === "POST" && isDeferredMutation(path)) {
       return reject(
         501,
@@ -446,6 +525,8 @@ export function createAgentWorkItemsHandler(
       try {
         const scope = await deps.loadAssessmentDocumentScope(
           input.assessmentDocumentId,
+          IEHP_WORKFLOW_KEY,
+          user.id,
         );
         if (!scope) return reject(404, "Not found");
         if (
@@ -477,6 +558,54 @@ export function createAgentWorkItemsHandler(
       }
     }
 
+    if (request.method === "POST" && path === "/caloptima-draft-review") {
+      const body = await parseCreateBody(request);
+      const input = body ? validateCreateBody(body) : null;
+      if (!input) return reject(400, "Invalid request body");
+      if (input.workflowVersion !== WORKFLOW_VERSION) {
+        return reject(
+          400,
+          "Unsupported workflow version",
+          "unsupported_workflow_version",
+        );
+      }
+      try {
+        const scope = await deps.loadAssessmentDocumentScope(
+          input.assessmentDocumentId,
+          CALOPTIMA_DRAFT_REVIEW_WORKFLOW_KEY,
+          user.id,
+        );
+        if (!scope) return reject(404, "Not found");
+        if (
+          !await deps.currentUserCanManage(
+            scope.organizationId,
+            scope.clientId,
+          )
+        ) {
+          return reject(403, "Forbidden");
+        }
+        const created = await deps.createCalOptimaDraftReviewWorkItem({
+          actorUserId: user.id,
+          organizationId: scope.organizationId,
+          clientId: scope.clientId,
+          assessmentDocumentId: scope.id,
+          workflowVersion: input.workflowVersion,
+          dedupeKey:
+            `caloptima-draft-review:${scope.id}:v${input.workflowVersion}`,
+        });
+        return respond(201, {
+          success: true,
+          data: strictView(created),
+          meta: { runtimeMode: mode },
+        });
+      } catch (error) {
+        if (error instanceof AgentWorkRequestError) {
+          return reject(error.status, error.publicMessage, error.code);
+        }
+        return reject(500, "Work item creation failed", "create_failed");
+      }
+    }
+
     if (request.method === "GET" && path === "/") {
       const assessmentDocumentId = url.searchParams.get(
         "assessment_document_id",
@@ -484,9 +613,14 @@ export function createAgentWorkItemsHandler(
       if (!assessmentDocumentId || !UUID_PATTERN.test(assessmentDocumentId)) {
         return reject(400, "Invalid assessment_document_id");
       }
+      const workflowKey = url.searchParams.get("workflow_key");
+      if (workflowKey !== null && !isSupportedWorkflowKey(workflowKey)) {
+        return reject(400, "Invalid workflow_key");
+      }
       try {
         const items = await deps.listWorkItemsByAssessmentDocument(
           assessmentDocumentId,
+          workflowKey ?? IEHP_WORKFLOW_KEY,
         );
         return respond(200, {
           success: true,
@@ -616,8 +750,14 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         )
         .eq("id", workItemId)
         .maybeSingle();
-      if (itemError) throw itemError;
-      if (!item) return null;
+      if (itemError) {
+        console.error("agent-work-items detail read failed", itemError.code ?? "unknown");
+        throw itemError;
+      }
+      if (!item) {
+        console.error("agent-work-items detail not visible");
+        return null;
+      }
 
       const [stepsResult, approvalsResult, evidenceResult] = await Promise.all([
         requestClient
@@ -637,16 +777,28 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
           .select("step_id")
           .eq("work_item_id", workItemId),
       ]);
-      if (stepsResult.error) throw stepsResult.error;
-      if (approvalsResult.error) throw approvalsResult.error;
-      if (evidenceResult.error) throw evidenceResult.error;
+      if (stepsResult.error) {
+        console.error("agent-work-items step read failed", stepsResult.error.code ?? "unknown");
+        throw stepsResult.error;
+      }
+      if (approvalsResult.error) {
+        console.error("agent-work-items approval read failed", approvalsResult.error.code ?? "unknown");
+        throw approvalsResult.error;
+      }
+      if (evidenceResult.error) {
+        console.error("agent-work-items evidence read failed", evidenceResult.error.code ?? "unknown");
+        throw evidenceResult.error;
+      }
 
       const { data: decidableRows, error: authorityError } = await requestClient
         .rpc(
           "current_user_decidable_agent_work_approval_ids",
           { p_work_item_id: workItemId },
         );
-      if (authorityError) throw authorityError;
+      if (authorityError) {
+        console.error("agent-work-items approval authority read failed", authorityError.code ?? "unknown");
+        throw authorityError;
+      }
       const decidableApprovalIds = new Set(
         (decidableRows ?? []).map((row: any) => row.approval_id),
       );
@@ -710,24 +862,57 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
     return createAgentWorkItemsHandler({
       getCorsHeaders: corsHeadersForRequest,
       getRuntimeMode: runtimeMode,
+      loadRuntimePolicy: async () => {
+        const { data, error } = await serviceClient.rpc(
+          "load_agent_work_runtime_policy",
+          { p_mode_input: runtimeMode() },
+        );
+        const row = Array.isArray(data)
+          ? data[0] as Record<string, unknown> | undefined
+          : undefined;
+        if (
+          error || !row || row.authoritative !== true ||
+          typeof row.runtimeMode !== "string" ||
+          typeof row.actionsDisabled !== "boolean" ||
+          typeof row.killSwitchEnabled !== "boolean"
+        ) {
+          throw new Error("runtime_policy_unavailable");
+        }
+        if (row.actionsDisabled || row.killSwitchEnabled) return "disabled";
+        if (
+          row.runtimeMode !== "disabled" && row.runtimeMode !== "shadow" &&
+          row.runtimeMode !== "advisory"
+        ) {
+          throw new Error("runtime_policy_unavailable");
+        }
+        return row.runtimeMode;
+      },
       getAuthenticatedUser: async () => {
         if (!token) return null;
         const { data, error } = await requestClient.auth.getUser(token);
         return error || !data.user ? null : { id: data.user.id };
       },
-      loadAssessmentDocumentScope: async (assessmentDocumentId) => {
-        const { data, error } = await requestClient
-          .from("assessment_documents")
-          .select("id,organization_id,client_id,template_type")
-          .eq("id", assessmentDocumentId)
-          .eq("template_type", "iehp_fba")
-          .maybeSingle();
+      loadAssessmentDocumentScope: async (
+        assessmentDocumentId,
+        workflowKey,
+        actorUserId,
+      ) => {
+        const { data, error } = await serviceClient.rpc(
+          "resolve_agent_work_assessment_scope",
+          {
+            p_actor_user_id: actorUserId,
+            p_assessment_document_id: assessmentDocumentId,
+            p_workflow_key: workflowKey,
+            p_workflow_version: WORKFLOW_VERSION,
+          },
+        );
         if (error) throw error;
-        return data
+        const row = Array.isArray(data) ? data[0] : data;
+        return row
           ? {
-            id: data.id,
-            organizationId: data.organization_id,
-            clientId: data.client_id,
+            id: row.id,
+            organizationId: row.organization_id,
+            clientId: row.client_id,
           }
           : null;
       },
@@ -755,6 +940,7 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
           },
         );
         if (error) {
+          console.error("agent-work-items IEHP create RPC failed", error.code ?? "unknown");
           const message = error.message.toLowerCase();
           if (message.includes("forbidden")) {
             throw new AgentWorkRequestError(403, "Forbidden", "forbidden");
@@ -776,12 +962,56 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         }
         return detail;
       },
-      listWorkItemsByAssessmentDocument: async (assessmentDocumentId) => {
+      createCalOptimaDraftReviewWorkItem: async (input) => {
+        const { data, error } = await serviceClient.rpc(
+          "create_agent_caloptima_draft_review_work_item",
+          {
+            p_actor_user_id: input.actorUserId,
+            p_organization_id: input.organizationId,
+            p_client_id: input.clientId,
+            p_assessment_document_id: input.assessmentDocumentId,
+            p_workflow_version: input.workflowVersion,
+            p_dedupe_key: input.dedupeKey,
+          },
+        );
+        if (error) {
+          console.error("agent-work-items CalOptima create RPC failed", error.code ?? "unknown");
+          const message = error.message.toLowerCase();
+          if (message.includes("forbidden")) {
+            throw new AgentWorkRequestError(403, "Forbidden", "forbidden");
+          }
+          if (
+            message.includes("assessment document scope mismatch") ||
+            message.includes("not found")
+          ) {
+            throw new AgentWorkRequestError(404, "Not found", "not_found");
+          }
+          if (
+            message.includes("dedupe key scope mismatch") ||
+            message.includes("conflict")
+          ) {
+            throw new AgentWorkRequestError(409, "Conflict", "conflict");
+          }
+          throw error;
+        }
+        if (typeof data !== "string") {
+          throw new Error("Create RPC returned no id");
+        }
+        const detail = await getDetail(data);
+        if (!detail) {
+          throw new Error("Created item is not visible to the requesting user");
+        }
+        return detail;
+      },
+      listWorkItemsByAssessmentDocument: async (
+        assessmentDocumentId,
+        workflowKey,
+      ) => {
         const { data, error } = await requestClient
           .from("agent_work_assessment_links")
           .select("work_item_id")
           .eq("assessment_document_id", assessmentDocumentId)
-          .eq("workflow_key", "assessment.iehp.prepare_for_clinical_review")
+          .eq("workflow_key", workflowKey)
           .eq("workflow_version", WORKFLOW_VERSION)
           .order("created_at", { ascending: false });
         if (error) throw error;
@@ -793,6 +1023,32 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         );
       },
       getWorkItemDetail: getDetail,
+      refreshCalOptimaEvidence: async (input) => {
+        const { data: item, error: itemError } = await requestClient
+          .from("agent_work_items")
+          .select("organization_id,client_id,workflow_key")
+          .eq("id", input.workItemId)
+          .maybeSingle();
+        if (itemError) throw itemError;
+        if (!item) {
+          throw new AgentWorkRequestError(404, "Not found", "not_found");
+        }
+        if (item.workflow_key !== CALOPTIMA_DRAFT_REVIEW_WORKFLOW_KEY) {
+          return false;
+        }
+
+        const { error } = await serviceClient.rpc(
+          "refresh_agent_work_caloptima_evidence",
+          {
+            p_actor_user_id: input.actorUserId,
+            p_organization_id: item.organization_id,
+            p_client_id: item.client_id,
+            p_work_item_id: input.workItemId,
+          },
+        );
+        if (error) throw requestErrorForRpcMessage(error.message) ?? error;
+        return true;
+      },
       requestApprovalHandoff: async (input) => {
         const { data, error } = await serviceClient.rpc(
           "request_agent_work_approval_handoff",

@@ -1,4 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/testing/asserts.ts";
+import {
+  assertEquals,
+  assertRejects,
+} from "https://deno.land/std@0.224.0/testing/asserts.ts";
 
 Deno.env.set("SUPABASE_URL", "https://example.supabase.co");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-key");
@@ -63,6 +66,17 @@ const buildValidResponse = () => {
     confidence: "medium" as const,
   };
 };
+
+Deno.test("ledger replay is bound to the original canonical output hash", async () => {
+  const packet = buildValidResponse();
+  const expectedHash = await (await import("./ledger.ts")).hashLedgerModelOutput(packet);
+  assertEquals(await __TESTING__.verifyLedgerReplayPacket(packet, expectedHash, expectedHash, expectedHash), packet);
+  await assertRejects(
+    () => __TESTING__.verifyLedgerReplayPacket(packet, expectedHash, "0".repeat(64), expectedHash),
+    Error,
+    "persisted_draft_packet_hash_mismatch",
+  );
+});
 
 Deno.test("parseAndValidateCandidate accepts valid structured output", () => {
   const candidate = JSON.stringify(buildValidResponse());
@@ -289,4 +303,190 @@ Deno.test("buildFallbackResponse remains schema-compliant and fully flagged", ()
   assertEquals(fallback.programs.every((program) => program.evidence_refs.length > 0), true);
   assertEquals(fallback.goals.every((goal) => goal.evidence_refs.length > 0), true);
   assertEquals(fallback.goals.every((goal) => goal.review_flags.includes("clinician_confirmation_needed")), true);
+});
+
+Deno.test("ledger generation accepts only fixed server-issued correlation fields", () => {
+  const valid = {
+    assessmentDocumentId: "11111111-1111-4111-8111-111111111111",
+    organizationId: "33333333-3333-4333-8333-333333333333",
+    clientId: "22222222-2222-4222-8222-222222222222",
+    workItemId: "44444444-4444-4444-8444-444444444444",
+    correlationId: "caloptima.test.1",
+  };
+
+  assertEquals(__TESTING__.ledgerGenerationSchema.safeParse(valid).success, true);
+  assertEquals(__TESTING__.ledgerGenerationSchema.safeParse({
+    ...valid,
+    approved_checklist_rows: [{ value_text: "caller supplied evidence" }],
+  }).success, false);
+  assertEquals(__TESTING__.ledgerGenerationSchema.safeParse({
+    ...valid,
+    completion: "approved",
+  }).success, false);
+  assertEquals(__TESTING__.ledgerGenerationSchema.safeParse({
+    ...valid,
+    tools: ["assessment-promote"],
+  }).success, false);
+});
+
+Deno.test("ledger model completion request explicitly disables every tool", () => {
+  const request = __TESTING__.buildCompletionRequest("Synthetic prompt", true);
+  assertEquals(request.model, "gpt-4o");
+  assertEquals(request.temperature, 0.1);
+  assertEquals(request.tools, []);
+  assertEquals(request.messages[1], { role: "user", content: "Synthetic prompt" });
+});
+
+Deno.test("ledger generation snapshots fixed versions before returning authoritative input", async () => {
+  const calls: string[] = [];
+  const correlation = __TESTING__.ledgerGenerationSchema.parse({
+    assessmentDocumentId: "11111111-1111-4111-8111-111111111111",
+    organizationId: "33333333-3333-4333-8333-333333333333",
+    clientId: "22222222-2222-4222-8222-222222222222",
+    workItemId: "44444444-4444-4444-8444-444444444444",
+    correlationId: "caloptima.test.2",
+  });
+  const authoritativePayload = __TESTING__.requestSchema.parse({
+    assessment_document_id: correlation.assessmentDocumentId,
+    client_id: correlation.clientId,
+    organization_id: correlation.organizationId,
+    client_display_name: "",
+    organization_guidance: "",
+    approved_checklist_rows: [{
+      section_key: "treatment",
+      label: "Approved treatment evidence",
+      placeholder_key: "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+      value_text: "Synthetic approved evidence for a draft-only candidate.",
+      value_json: {},
+    }],
+    extracted_canonical_fields: { approved_goal_count: 1 },
+    assessment_summary: "Synthetic approved evidence for a draft-only candidate.",
+    source_evidence_snippets: [{
+      section_key: "treatment",
+      snippet: "Synthetic approved evidence for a draft-only candidate.",
+    }],
+  });
+
+  const prepared = await __TESTING__.prepareLedgerGeneration({
+    actorUserId: "77777777-7777-4777-8777-777777777777",
+    requestId: "request.caloptima.1",
+    correlation,
+  }, {
+    loadAuthoritativePayload: async (input: unknown) => {
+      calls.push("load");
+      assertEquals(input, {
+        actorUserId: "77777777-7777-4777-8777-777777777777",
+        assessmentDocumentId: correlation.assessmentDocumentId,
+        organizationId: correlation.organizationId,
+        clientId: correlation.clientId,
+      });
+      return authoritativePayload;
+    },
+    beginAttempt: async (input: Record<string, unknown>) => {
+      calls.push("begin");
+      assertEquals(input.provider, "openai");
+      assertEquals(input.model, "gpt-4o");
+      assertEquals(input.promptVersion, "caloptima-draft-review.prompt.v1");
+      assertEquals(input.toolVersion, "caloptima-draft-review.no-tools.v1");
+      assertEquals(input.modelRequestSchemaVersion, "caloptima-draft-review.response.v1");
+      assertEquals(input.allowedTools, []);
+      return {
+        authoritative: true,
+        stepId: "55555555-5555-4555-8555-555555555555",
+        attemptId: "66666666-6666-4666-8666-666666666666",
+        attemptStatus: "running",
+        outputHash: null,
+      };
+    },
+    settleAttemptFailure: async () => {
+      throw new Error("unexpected_settlement");
+    },
+  });
+
+  assertEquals(calls, ["begin", "load"]);
+  assertEquals(prepared.payload, authoritativePayload);
+  assertEquals(prepared.authoritative, true);
+  assertEquals(prepared.canTransitionWorkflow, false);
+  assertEquals(prepared.canPublish, false);
+});
+
+Deno.test("ledger generation fails closed on scope mismatch or denied snapshot", async () => {
+  const correlation = __TESTING__.ledgerGenerationSchema.parse({
+    assessmentDocumentId: "11111111-1111-4111-8111-111111111111",
+    organizationId: "33333333-3333-4333-8333-333333333333",
+    clientId: "22222222-2222-4222-8222-222222222222",
+    workItemId: "44444444-4444-4444-8444-444444444444",
+    correlationId: "caloptima.test.3",
+  });
+  const mismatched = __TESTING__.requestSchema.parse({
+    assessment_document_id: correlation.assessmentDocumentId,
+    client_id: "88888888-8888-4888-8888-888888888888",
+    organization_id: correlation.organizationId,
+    client_display_name: "",
+    organization_guidance: "",
+    approved_checklist_rows: [],
+    extracted_canonical_fields: {},
+    assessment_summary: "Synthetic approved evidence with enough characters.",
+    source_evidence_snippets: [{
+      section_key: "treatment",
+      snippet: "Synthetic approved evidence with enough characters.",
+    }],
+  });
+
+  await assertRejects(
+    () => __TESTING__.prepareLedgerGeneration({
+      actorUserId: "77777777-7777-4777-8777-777777777777",
+      requestId: "request.caloptima.2",
+      correlation,
+    }, {
+      loadAuthoritativePayload: async () => mismatched,
+      beginAttempt: async () => ({
+        authoritative: true,
+        stepId: "55555555-5555-4555-8555-555555555555",
+        attemptId: "66666666-6666-4666-8666-666666666666",
+        attemptStatus: "running",
+        outputHash: null,
+      }),
+      settleAttemptFailure: async () => {},
+    }),
+    Error,
+    "authoritative_scope_mismatch",
+  );
+
+  await assertRejects(
+    () => __TESTING__.prepareLedgerGeneration({
+      actorUserId: "77777777-7777-4777-8777-777777777777",
+      requestId: "request.caloptima.3",
+      correlation,
+    }, {
+      loadAuthoritativePayload: async () => ({ ...mismatched, client_id: correlation.clientId }),
+      beginAttempt: async () => ({
+        authoritative: false,
+        stepId: "55555555-5555-4555-8555-555555555555",
+        attemptId: "66666666-6666-4666-8666-666666666666",
+        attemptStatus: "running",
+        outputHash: null,
+      }),
+      settleAttemptFailure: async () => {},
+    }),
+    Error,
+    "attempt_snapshot_denied",
+  );
+});
+
+Deno.test("ledger generation requires the stable work-item request identity", async () => {
+  assertEquals(
+    __TESTING__.deriveStableLedgerRequestId("44444444-4444-4444-8444-444444444444"),
+    "caloptima-ledger.44444444-4444-4444-8444-444444444444",
+  );
+});
+
+Deno.test("structured evidence uses approved payload content instead of locator metadata", () => {
+  assertEquals(
+    __TESTING__.selectStructuredEvidenceContent({
+      payload: { approved: "content" },
+      source_span: { page_number: 7 },
+    }),
+    { approved: "content" },
+  );
 });

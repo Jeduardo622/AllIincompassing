@@ -44,8 +44,8 @@ export function AssessmentWorkLedgerPanel({
           {state.kind === "unauthorized"
             ? "Sign in again to view advisory ledger status."
             : state.kind === "forbidden"
-              ? "You do not have access to this advisory ledger. The IEHP review remains available."
-            : "Advisory work ledger is currently unavailable. The IEHP review remains available."}
+              ? "You do not have access to this advisory ledger. The current review remains available."
+            : "Advisory work ledger is currently unavailable. The current review remains available."}
         </p>
       </section>
     );

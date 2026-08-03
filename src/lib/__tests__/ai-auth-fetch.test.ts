@@ -169,7 +169,7 @@ describe('AI edge function authentication', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('calls generate-program-goals with authenticated headers', async () => {
+  it('rejects the legacy unbound generate-program-goals request', async () => {
     fetchMock.mockResolvedValueOnce(
       buildFetchResponse({
         programs: [
@@ -206,25 +206,12 @@ describe('AI edge function authentication', () => {
       })
     );
 
-    const result = await generateProgramGoalDraft(
+    await expect(generateProgramGoalDraft(
       'Assessment text with sufficient detail for generation.',
       { accessToken },
-      { clientName: 'Client One' }
-    );
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${edgeBase}generate-program-goals`,
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          apikey: anonKey,
-          Authorization: `Bearer ${accessToken}`,
-          'x-request-id': expect.any(String),
-          'x-correlation-id': expect.any(String),
-        }),
-      })
-    );
-    expect(result.programs[0]?.name).toBe('Communication Program');
+      { clientName: 'Client One' },
+    )).rejects.toThrow('Ledger-bound generation requires assessment, client, and organization scope');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('rejects generateProgramGoalDraft when assessment text is too short', async () => {
@@ -232,5 +219,39 @@ describe('AI edge function authentication', () => {
       generateProgramGoalDraft('Too short', { accessToken })
     ).rejects.toThrow('Assessment text must be at least 20 characters');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the strict ledger correlation envelope without caller-supplied evidence or attempt authority', async () => {
+    fetchMock.mockResolvedValueOnce(buildFetchResponse({
+      programs: [],
+      goals: [],
+      summary_rationale: 'Synthetic ledger response',
+      confidence: 'low',
+    }));
+
+    await generateProgramGoalDraft(
+      'Assessment text is ignored for ledger-bound authoritative loading.',
+      { accessToken },
+      {
+        assessmentDocumentId: '11111111-1111-4111-8111-111111111111',
+        organizationId: '33333333-3333-4333-8333-333333333333',
+        clientId: '22222222-2222-4222-8222-222222222222',
+        ledgerWorkItemId: '44444444-4444-4444-8444-444444444444',
+      },
+    );
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    expect(headers['x-request-id']).toBe(
+      'caloptima-ledger.44444444-4444-4444-8444-444444444444',
+    );
+    expect(headers['x-correlation-id']).toBe(headers['x-request-id']);
+    expect(JSON.parse(init.body as string)).toEqual({
+      assessmentDocumentId: '11111111-1111-4111-8111-111111111111',
+      organizationId: '33333333-3333-4333-8333-333333333333',
+      clientId: '22222222-2222-4222-8222-222222222222',
+      workItemId: '44444444-4444-4444-8444-444444444444',
+      correlationId: headers['x-correlation-id'],
+    });
   });
 });

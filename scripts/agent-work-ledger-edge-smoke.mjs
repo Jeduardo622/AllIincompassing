@@ -32,6 +32,7 @@ const ADMIN_B = {
 const ORG_A_ID = "00000000-0000-4000-8000-00000000a001";
 const CLIENT_ASSIGNED_ID = "00000000-0000-4000-8000-00000000a101";
 const DOCUMENT_ASSIGNED_ID = "00000000-0000-4000-8000-00000000a201";
+const CALOPTIMA_DOCUMENT_ASSIGNED_ID = "00000000-0000-4000-8000-00000000a204";
 const SYNTHETIC_PASSWORD = "Synthetic-Ledger-Only-2026!";
 const START_TIMEOUT_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -59,7 +60,17 @@ const STEP_KEYS = [
   "status",
 ];
 const BLOCKER_KEYS = ["action", "code", "stepKey"];
-const APPROVAL_KEYS = ["expiresAt", "id", "requiredRole", "status", "stepId"];
+const APPROVAL_KEYS = [
+  "canDecide",
+  "evidenceCount",
+  "evidenceHashSuffix",
+  "expiresAt",
+  "id",
+  "requestedAt",
+  "requiredRole",
+  "status",
+  "stepId",
+];
 
 const requiredEnv = (name) => {
   const value = process.env[name]?.trim();
@@ -98,15 +109,15 @@ const request = async (url, init = {}) => {
   return { response, body };
 };
 
-const waitForFunction = async (url, child = null) => {
+const waitForFunction = async (url, headers, child = null) => {
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (hasExitedRuntimeChild(child)) {
       throw new Error("Local Edge Function exited before becoming healthy.");
     }
     try {
-      const { response } = await request(url);
-      if (response.status === 401) return;
+      const { response } = await request(url, { headers });
+      if (response.status === 200) return;
     } catch {
       // The local gateway may reset connections while the worker starts.
     }
@@ -150,6 +161,7 @@ const main = async () => {
   const database = new Client({ connectionString: databaseUrl });
   await database.connect();
   let documentId;
+  let calOptimaDocumentId;
   try {
     await database.query(
       `
@@ -214,10 +226,24 @@ const main = async () => {
       [DOCUMENT_ASSIGNED_ID, ORG_A_ID, CLIENT_ASSIGNED_ID],
     );
     documentId = rows[0]?.id;
+    const { rows: calOptimaRows } = await database.query(
+      `
+        select id
+        from public.assessment_documents
+        where id = $1::uuid
+          and organization_id = $2::uuid
+          and client_id = $3::uuid
+          and template_type = 'caloptima_fba'
+          and object_path like 'synthetic/%'
+      `,
+      [CALOPTIMA_DOCUMENT_ASSIGNED_ID, ORG_A_ID, CLIENT_ASSIGNED_ID],
+    );
+    calOptimaDocumentId = calOptimaRows[0]?.id;
   } finally {
     await database.end();
   }
   assert(typeof documentId === "string", "Synthetic assessment fixture is missing.");
+  assert(typeof calOptimaDocumentId === "string", "Synthetic CalOptima fixture is missing.");
 
   const runtimeDir = await mkdtemp(join(tmpdir(), "agent-work-edge-smoke-"));
   const runtimeFile = join(runtimeDir, "runtime.local");
@@ -238,18 +264,17 @@ const main = async () => {
     getOutput = runtime.getOutput;
     const { functionUrl } = runtime;
 
-    await waitForFunction(functionUrl, child);
-
-    const [adminToken, btToken, crossTenantToken] = await Promise.all([
-      signIn(supabaseUrl, anonKey, ADMIN_A.email),
-      signIn(supabaseUrl, anonKey, BT_A.email),
-      signIn(supabaseUrl, anonKey, ADMIN_B.email),
-    ]);
     const headersFor = (token) => ({
       apikey: anonKey,
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
     });
+    const [adminToken, btToken, crossTenantToken] = await Promise.all([
+      signIn(supabaseUrl, anonKey, ADMIN_A.email),
+      signIn(supabaseUrl, anonKey, BT_A.email),
+      signIn(supabaseUrl, anonKey, ADMIN_B.email),
+    ]);
+    await waitForFunction(`${functionUrl}?assessment_document_id=${documentId}`, headersFor(adminToken), child);
 
     const createBody = JSON.stringify({ assessmentDocumentId: documentId, workflowVersion: 1 });
     const first = await request(`${functionUrl}/assessment-prep`, {
@@ -262,11 +287,69 @@ const main = async () => {
       headers: headersFor(adminToken),
       body: createBody,
     });
-    assert(first.response.status === 201 && first.body?.success === true, "Create request failed.");
-    assert(second.response.status === 201 && second.body?.success === true, "Idempotent create request failed.");
+    assert(
+      first.response.status === 201 && first.body?.success === true,
+      `Create request failed (${first.response.status}/${first.body?.code ?? "no-code"}).`,
+    );
+    assert(
+      second.response.status === 201 && second.body?.success === true,
+      `Idempotent create request failed (${second.response.status}/${second.body?.code ?? "no-code"}).`,
+    );
     assert(first.body.data.id === second.body.data.id, "Duplicate create returned a different work item.");
     assert(first.body.meta?.runtimeMode === "shadow", "Create response runtime mode drifted.");
     assertSanitizedItem(first.body.data);
+
+    const calOptimaCreateBody = JSON.stringify({
+      assessmentDocumentId: calOptimaDocumentId,
+      workflowVersion: 1,
+    });
+    const calOptimaFirst = await request(`${functionUrl}/caloptima-draft-review`, {
+      method: "POST",
+      headers: headersFor(adminToken),
+      body: calOptimaCreateBody,
+    });
+    const calOptimaSecond = await request(`${functionUrl}/caloptima-draft-review`, {
+      method: "POST",
+      headers: headersFor(adminToken),
+      body: calOptimaCreateBody,
+    });
+    assert(
+      calOptimaFirst.response.status === 201 && calOptimaFirst.body?.success === true,
+      `CalOptima create request failed (${calOptimaFirst.response.status}/${calOptimaFirst.body?.code ?? "no-code"}).`,
+    );
+    assert(
+      calOptimaSecond.response.status === 201 && calOptimaSecond.body?.success === true,
+      `CalOptima idempotent create request failed (${calOptimaSecond.response.status}/${calOptimaSecond.body?.code ?? "no-code"}).`,
+    );
+    assert(
+      calOptimaFirst.body.data.id === calOptimaSecond.body.data.id,
+      "CalOptima duplicate create returned a different work item.",
+    );
+    assert(
+      calOptimaFirst.body.data.workflowKey === "assessment.caloptima.prepare_draft_review",
+      "CalOptima workflow key drifted.",
+    );
+    assert(calOptimaFirst.body.data.steps.length === 6, "CalOptima fixed step graph drifted.");
+    assertSanitizedItem(calOptimaFirst.body.data);
+
+    const calOptimaList = await request(
+      `${functionUrl}?assessment_document_id=${calOptimaDocumentId}&workflow_key=assessment.caloptima.prepare_draft_review`,
+      { headers: headersFor(btToken) },
+    );
+    assert(
+      calOptimaList.response.status === 200 && calOptimaList.body?.success === true,
+      "CalOptima workflow-scoped list request failed.",
+    );
+    assert(
+      calOptimaList.body.data.length === 1 &&
+        calOptimaList.body.data[0].id === calOptimaFirst.body.data.id,
+      "CalOptima workflow-scoped list drifted.",
+    );
+
+    const calOptimaCrossTenant = await request(`${functionUrl}/${calOptimaFirst.body.data.id}`, {
+      headers: headersFor(crossTenantToken),
+    });
+    assert(calOptimaCrossTenant.response.status === 404, "CalOptima cross-tenant detail did not fail closed.");
 
     const list = await request(`${functionUrl}?assessment_document_id=${documentId}`, {
       headers: headersFor(btToken),

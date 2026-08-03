@@ -79,15 +79,32 @@ const approvalEnvelopeSchema = z.object({
   meta: z.object({ outcome: z.enum(["decided", "duplicate"]) }).strict(),
 }).strict();
 
+const approvalHandoffEnvelopeSchema = z.object({
+  success: z.literal(true),
+  data: approvalSchema,
+}).strict();
+
 const errorEnvelopeSchema = z.object({
   success: z.literal(false),
   error: z.string(),
   code: z.string().optional(),
 }).strict();
 
+const detailEnvelopeSchema = z.object({
+  success: z.literal(true),
+  data: workItemSchema,
+  meta: z.object({ runtimeMode: runtimeModeSchema }).strict(),
+}).strict();
+
+export const AGENT_WORKFLOW_KEYS = {
+  iehpAssessmentPrep: "assessment.iehp.prepare_for_clinical_review",
+  caloptimaDraftReview: "assessment.caloptima.prepare_draft_review",
+} as const;
+
 export type AgentWorkRuntimeMode = z.infer<typeof runtimeModeSchema>;
 export type AgentWorkItem = z.infer<typeof workItemSchema>;
 export type AgentWorkApprovalDecision = "approve" | "reject";
+export type AgentWorkWorkflowKey = typeof AGENT_WORKFLOW_KEYS[keyof typeof AGENT_WORKFLOW_KEYS];
 
 export type AssessmentWorkLedgerPanelState =
   | { kind: "loading" }
@@ -101,6 +118,7 @@ export type AssessmentWorkLedgerPanelState =
 
 interface FetchAssessmentWorkLedgerInput {
   assessmentDocumentId: string;
+  workflowKey?: AgentWorkWorkflowKey;
   signal?: AbortSignal;
 }
 
@@ -119,11 +137,16 @@ const isAbortError = (error: unknown): boolean =>
 
 export async function fetchAssessmentWorkLedger({
   assessmentDocumentId,
+  workflowKey = AGENT_WORKFLOW_KEYS.iehpAssessmentPrep,
   signal,
 }: FetchAssessmentWorkLedgerInput): Promise<AssessmentWorkLedgerPanelState> {
   try {
+    const searchParams = new URLSearchParams({
+      assessment_document_id: assessmentDocumentId,
+      workflow_key: workflowKey,
+    });
     const response = await callEdgeFunctionHttp(
-      `agent-work-items?assessment_document_id=${encodeURIComponent(assessmentDocumentId)}`,
+      `agent-work-items?${searchParams.toString()}`,
       { method: "GET", signal },
     );
     const payload = await parseJson(response);
@@ -178,29 +201,92 @@ export async function decideAgentWorkApproval(input: {
   return parsed.data.data;
 }
 
+export async function requestAgentWorkApprovalHandoff(input: {
+  workItemId: string;
+  stepId: string;
+  assignedOwnerUserId: string;
+  reasonCode: string;
+  expiresAt: string;
+}): Promise<AgentWorkItem["approvals"][number]> {
+  const response = await callEdgeFunctionHttp(
+    `agent-work-items/${encodeURIComponent(input.workItemId)}/owner`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stepId: input.stepId,
+        assignedOwnerUserId: input.assignedOwnerUserId,
+        reasonCode: input.reasonCode,
+        expiresAt: input.expiresAt,
+      }),
+    },
+  );
+  const payload = await parseJson(response);
+  if (!response.ok) {
+    const parsed = errorEnvelopeSchema.safeParse(payload);
+    throw new Error(parsed.success ? parsed.data.error : "Approval handoff failed");
+  }
+  const parsed = approvalHandoffEnvelopeSchema.safeParse(payload);
+  if (!parsed.success) throw new Error("Approval handoff response was invalid");
+  return parsed.data.data;
+}
+
+export async function createCalOptimaDraftReviewWorkLedger(input: {
+  assessmentDocumentId: string;
+}): Promise<AgentWorkItem> {
+  const response = await callEdgeFunctionHttp("agent-work-items/caloptima-draft-review", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ assessmentDocumentId: input.assessmentDocumentId }),
+  });
+  const payload = await parseJson(response);
+  if (!response.ok) {
+    const parsed = errorEnvelopeSchema.safeParse(payload);
+    throw new Error(parsed.success ? parsed.data.error : "Work item creation failed");
+  }
+  const parsed = detailEnvelopeSchema.safeParse(payload);
+  if (!parsed.success) throw new Error("Work item creation response was invalid");
+  return parsed.data.data;
+}
+
 interface AssessmentWorkLedgerQueryScope {
   organizationId: string;
   clientId: string;
   assessmentDocumentId: string;
   authIdentity: string;
+  workflowKey?: AgentWorkWorkflowKey;
 }
 
 export const createAssessmentWorkLedgerQueryOptions = (
   scope: AssessmentWorkLedgerQueryScope,
-) => ({
-  queryKey: [
-    "assessment-work-ledger",
-    scope.organizationId,
-    scope.clientId,
-    scope.assessmentDocumentId,
-    scope.authIdentity,
-  ] as const,
-  queryFn: ({ signal }: { signal: AbortSignal }) =>
-    fetchAssessmentWorkLedger({
-      assessmentDocumentId: scope.assessmentDocumentId,
-      signal,
-    }),
-  staleTime: 0,
-  gcTime: 0,
-  retry: false,
-});
+) => {
+  const workflowKey = scope.workflowKey ?? AGENT_WORKFLOW_KEYS.iehpAssessmentPrep;
+
+  return {
+    queryKey: [
+      "assessment-work-ledger",
+      workflowKey,
+      scope.organizationId,
+      scope.clientId,
+      scope.assessmentDocumentId,
+      scope.authIdentity,
+    ] as const,
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      fetchAssessmentWorkLedger({
+        assessmentDocumentId: scope.assessmentDocumentId,
+        workflowKey,
+        signal,
+      }),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  };
+};
+
+export const createCalOptimaWorkLedgerQueryOptions = (
+  scope: Omit<AssessmentWorkLedgerQueryScope, "workflowKey">,
+) =>
+  createAssessmentWorkLedgerQueryOptions({
+    ...scope,
+    workflowKey: AGENT_WORKFLOW_KEYS.caloptimaDraftReview,
+  });

@@ -321,6 +321,15 @@ describe("agent work ledger phase2 harness contracts", () => {
     expect(() => validatePhase2HostEnv({
       OPENAI_API_KEY: "provider-key",
     })).toThrow(/credential/i);
+    expect(() => validatePhase2HostEnv({
+      SUPABASE_URL: "http://user:secret@127.0.0.1:54321/",
+    })).toThrow(/exact local/i);
+    expect(() => validatePhase2HostEnv({
+      VITE_SUPABASE_URL: "http://127.0.0.1:54321/functions/v1?token=secret",
+    })).toThrow(/exact local/i);
+    expect(() => validatePhase2HostEnv({
+      SUPABASE_DB_URL: "postgresql://postgres:postgres@127.0.0.1:54322/not-postgres",
+    })).toThrow(/exact local/i);
   });
 
   it("parses local status output and derives exact process-only container values", () => {
@@ -574,6 +583,21 @@ describe("agent work ledger phase2 harness contracts", () => {
       "supabase/functions/agent-work-items",
       "supabase/functions/agent-work-runner",
       "supabase/functions/agent-work-sweeper",
+      "supabase/functions/generate-program-goals",
+      "supabase/functions/_shared/agent-work",
+      "supabase/functions/_shared/org.ts",
+      "src/lib/agent-work-ledger.ts",
+      "src/lib/ai.ts",
+      "src/lib/__tests__/agent-work-ledger.test.ts",
+      "src/lib/__tests__/ai-auth-fetch.test.ts",
+      "src/components/agent-work",
+      "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+      "src/components/__tests__/ProgramsGoalsTab.test.tsx",
+      "src/server/api/assessment-drafts.ts",
+      "src/server/api/assessment-promote.ts",
+      "src/server/__tests__/assessmentDraftsHandler.test.ts",
+      "src/server/__tests__/assessmentPromoteHandler.test.ts",
+      "src/server/__tests__/runtimeConfigHandler.test.ts",
       ":(glob)tests/agentWorkLedger*.test.ts",
       ":(glob)tests/agentTrace*.test.ts",
     ]);
@@ -951,11 +975,14 @@ describe("agent work ledger phase2 harness contracts", () => {
       "--cached-only",
       "--frozen",
       "--lock=/opt/agent-work-ledger-deno.lock",
-      "--allow-env=AGENT_WORK_PHASE2_CONTAINER",
+      "--allow-env=AGENT_WORK_PHASE2_CONTAINER,SUPABASE_URL,VITE_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_ANON_KEY,VITE_SUPABASE_ANON_KEY,SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_PUBLISHABLE_KEY,SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,OPENAI_API_KEY,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE",
+      "supabase/functions/_shared/agent-work/caloptima-draft-review.test.ts",
       "supabase/functions/agent-work-items/index.test.ts",
       "supabase/functions/agent-work-runner/index.test.ts",
       "supabase/functions/agent-work-runner/chaos.test.ts",
       "supabase/functions/agent-work-sweeper/index.test.ts",
+      "supabase/functions/generate-program-goals/ledger.test.ts",
+      "supabase/functions/generate-program-goals/index.test.ts",
     ]);
   });
 

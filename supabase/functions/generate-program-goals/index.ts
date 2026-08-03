@@ -1,11 +1,18 @@
 import { OpenAI } from "npm:openai@5.5.1";
 import { z } from "npm:zod@3.23.8";
-import { createRequestClient } from "../_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { requireOrg } from "../_shared/org.ts";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
+import {
+  CALOPTIMA_LEDGER_MODEL_SNAPSHOT,
+  LedgerPreparationError,
+  ledgerGenerationSchema,
+  prepareLedgerGeneration,
+  type LedgerGenerationCorrelation,
+} from "./ledger.ts";
 
-const openai = new OpenAI({
+const createOpenAIClient = (): OpenAI => new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
 });
 
@@ -58,7 +65,7 @@ Clinical drafting rules:
 
 Evidence rules:
 - Each program and each goal must include evidence_refs.
-- Each evidence ref must point to the relevant extracted section or source snippet.
+- Each evidence ref must copy an exact section_key and opaque source_span token supplied with the relevant source evidence.
 - If a goal is supported only weakly, include an evidence_gap or clinician_confirmation_needed review flag.
 
 Review flag vocabulary:
@@ -99,6 +106,7 @@ const checklistRowSchema = z
     section_key: z.string().trim().min(1).max(160),
     label: z.string().trim().min(1).max(240),
     placeholder_key: z.string().trim().min(1).max(200),
+    source_span: z.string().trim().min(1).max(1200).optional().default("unbound-source"),
     value_text: z.string().trim().max(2000).optional(),
     value_json: z.record(z.unknown()).optional(),
   })
@@ -108,6 +116,7 @@ const sourceEvidenceSnippetSchema = z
   .object({
     section_key: z.string().trim().min(1).max(160),
     snippet: z.string().trim().min(1).max(2000),
+    source_span: z.string().trim().min(1).max(1200).optional().default("unbound-source"),
   })
   .strict();
 
@@ -171,9 +180,271 @@ const responseSchema = z
   })
   .strict();
 
-type RequestPayload = z.infer<typeof requestSchema>;
-type ResponsePayload = z.infer<typeof responseSchema>;
-type DraftGoal = ResponsePayload["goals"][number];
+type EvidenceRef = { section_key: string; source_span: string };
+type ReviewFlag = (typeof REVIEW_FLAGS)[number];
+type RequestPayload = {
+  assessment_document_id: string;
+  client_id: string;
+  organization_id: string;
+  client_display_name: string;
+  organization_guidance: string;
+  approved_checklist_rows: Array<{
+    section_key: string;
+    label: string;
+    placeholder_key: string;
+    source_span: string;
+    value_text?: string;
+    value_json?: Record<string, unknown>;
+  }>;
+  extracted_canonical_fields: Record<string, unknown>;
+  assessment_summary: string;
+  source_evidence_snippets: Array<{ section_key: string; snippet: string; source_span: string }>;
+};
+type DraftProgram = {
+  name: string;
+  description: string;
+  rationale: string;
+  evidence_refs: EvidenceRef[];
+  review_flags: ReviewFlag[];
+};
+type DraftGoal = {
+  program_name: string;
+  title: string;
+  description: string;
+  original_text: string;
+  goal_type: "child" | "parent";
+  target_behavior: string;
+  measurement_type: string;
+  baseline_data: string;
+  target_criteria: string;
+  mastery_criteria: string;
+  maintenance_criteria: string;
+  generalization_criteria: string;
+  objective_data_points: string[];
+  rationale: string;
+  evidence_refs: EvidenceRef[];
+  review_flags: ReviewFlag[];
+};
+type ResponsePayload = {
+  programs: DraftProgram[];
+  goals: DraftGoal[];
+  summary_rationale: string;
+  confidence: "low" | "medium" | "high";
+};
+
+const CALOPTIMA_GOAL_FIELD_KEYS = new Set([
+  "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+  "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+  "CALOPTIMA_FBA_PARENT_GOALS",
+]);
+
+class LedgerGenerationError extends Error {
+  constructor(readonly code: string, readonly status = 409) {
+    super(code);
+    this.name = "LedgerGenerationError";
+  }
+}
+
+const configuredLedgerRuntimeMode = (): "disabled" | "shadow" | "advisory" => {
+  const configured = (Deno.env.get("AGENT_WORK_LEDGER_RUNTIME_MODE") ?? "disabled").trim().toLowerCase();
+  return configured === "shadow" || configured === "advisory" ? configured : "disabled";
+};
+
+async function requireLedgerAdvisoryRuntime(): Promise<void> {
+  const { data, error } = await supabaseAdmin.rpc("load_agent_work_runtime_policy", {
+    p_mode_input: configuredLedgerRuntimeMode(),
+  });
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
+  if (
+    error || !row || row.authoritative !== true || row.runtimeMode !== "advisory" ||
+    row.actionsDisabled !== false || row.killSwitchEnabled !== false
+  ) {
+    throw new LedgerGenerationError("runtime_mode_not_advisory", 503);
+  }
+}
+
+const compactEvidence = (value: unknown, max = 1800): string => {
+  const serialized = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  return serialized.replace(/\s+/g, " ").trim().slice(0, max);
+};
+
+const selectStructuredEvidenceContent = (row: Record<string, unknown>): unknown =>
+  row.payload ?? row.source_span;
+
+async function loadAuthoritativeCalOptimaPayload(
+  db: ReturnType<typeof createRequestClient>,
+  input: {
+    assessmentDocumentId: string;
+    organizationId: string;
+    clientId: string;
+  },
+): Promise<RequestPayload> {
+  const { data: document, error: documentError } = await db
+    .from("assessment_documents")
+    .select("id,organization_id,client_id,template_type")
+    .eq("id", input.assessmentDocumentId)
+    .eq("organization_id", input.organizationId)
+    .eq("client_id", input.clientId)
+    .maybeSingle();
+  if (documentError || !document || document.template_type !== "caloptima_fba") {
+    throw new LedgerGenerationError("authoritative_document_scope_denied");
+  }
+
+  const [checklistResult, structuredResult] = await Promise.all([
+    db.from("assessment_checklist_items")
+      .select("id,section_key,label,placeholder_key,value_text,value_json,status,required")
+      .eq("assessment_document_id", input.assessmentDocumentId)
+      .eq("organization_id", input.organizationId)
+      .eq("client_id", input.clientId),
+    db.from("assessment_structured_sections")
+      .select("id,section_key,field_key,payload,source_span,status,required")
+      .eq("assessment_document_id", input.assessmentDocumentId)
+      .eq("organization_id", input.organizationId)
+      .eq("client_id", input.clientId),
+  ]);
+  if (checklistResult.error || structuredResult.error) {
+    throw new LedgerGenerationError("authoritative_evidence_unavailable", 503);
+  }
+
+  const checklistRows = (checklistResult.data ?? []) as Array<Record<string, unknown>>;
+  const structuredRows = (structuredResult.data ?? []) as Array<Record<string, unknown>>;
+  const requiredChecklist = checklistRows.filter((row) => row.required === true);
+  const requiredStructured = structuredRows.filter((row) => row.required === true);
+  const approvedGoalSections = structuredRows.filter((row) =>
+    row.status === "approved" && typeof row.field_key === "string" && CALOPTIMA_GOAL_FIELD_KEYS.has(row.field_key)
+  );
+  if (
+    requiredChecklist.length === 0 || requiredStructured.length === 0 ||
+    requiredChecklist.some((row) => row.status !== "approved") ||
+    requiredStructured.some((row) => row.status !== "approved") ||
+    approvedGoalSections.length === 0
+  ) {
+    throw new LedgerGenerationError("approved_evidence_precondition_failed");
+  }
+
+  const approvedChecklistRows = checklistRows.filter((row) => row.status === "approved").map((row) => ({
+    section_key: String(row.section_key ?? "assessment"),
+    label: String(row.label ?? "Approved evidence"),
+    placeholder_key: String(row.placeholder_key ?? "approved_evidence"),
+    source_span: `assessment_checklist_item:${String(row.id)}`,
+    ...(typeof row.value_text === "string" && row.value_text.trim() ? { value_text: row.value_text.trim() } : {}),
+    ...(row.value_json && typeof row.value_json === "object" ? { value_json: row.value_json as Record<string, unknown> } : {}),
+  }));
+  const extractedCanonicalFields = Object.fromEntries(structuredRows
+    .filter((row) => row.status === "approved" && typeof row.field_key === "string")
+    .sort((left, right) => String(left.field_key).localeCompare(String(right.field_key)))
+    .map((row) => [String(row.field_key), row.payload ?? {}]));
+  const checklistEvidenceSnippets = checklistRows
+    .filter((row) => row.status === "approved")
+    .map((row) => ({
+      section_key: String(row.section_key ?? row.placeholder_key ?? "assessment"),
+      snippet: compactEvidence(row.value_text ?? row.value_json),
+      source_span: `assessment_checklist_item:${String(row.id)}`,
+    }));
+  const structuredEvidenceSnippets = structuredRows
+    .filter((row) => row.status === "approved")
+    .map((row) => ({
+      section_key: String(row.section_key ?? "structured_evidence"),
+      snippet: compactEvidence(selectStructuredEvidenceContent(row)),
+      source_span: `assessment_structured_section:${String(row.id)}`,
+    }))
+    .filter((row) => row.snippet.length > 0);
+  const sourceEvidenceSnippets = [...checklistEvidenceSnippets, ...structuredEvidenceSnippets]
+    .filter((row) => row.snippet.length > 0)
+    .slice(0, 120);
+  const assessmentSummary = approvedChecklistRows
+    .map((row) => compactEvidence(row.value_text ?? row.value_json))
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, MAX_TEXT_CHARS);
+  const fallbackSummary = sourceEvidenceSnippets.map((row) => row.snippet).join(" ").slice(0, MAX_TEXT_CHARS);
+
+  return requestSchema.parse({
+    assessment_document_id: input.assessmentDocumentId,
+    client_id: input.clientId,
+    organization_id: input.organizationId,
+    client_display_name: "",
+    organization_guidance: "",
+    approved_checklist_rows: approvedChecklistRows,
+    extracted_canonical_fields: extractedCanonicalFields,
+    assessment_summary: assessmentSummary.length >= 20 ? assessmentSummary : fallbackSummary,
+    source_evidence_snippets: sourceEvidenceSnippets,
+  });
+}
+
+async function loadPersistedCalOptimaDraftPacket(
+  actorUserId: string,
+  input: LedgerGenerationCorrelation,
+): Promise<{ packet: ResponsePayload; outputHash: string; packetHash: string }> {
+  const { data, error } = await supabaseAdmin.rpc("read_agent_work_caloptima_draft_packet", {
+    p_actor_user_id: actorUserId,
+    p_organization_id: input.organizationId,
+    p_client_id: input.clientId,
+    p_work_item_id: input.workItemId,
+  });
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
+  if (
+    error || !row || typeof row.output_hash !== "string" ||
+    typeof row.packet_hash !== "string" ||
+    !/^[0-9a-f]{64}$/.test(row.output_hash) ||
+    !/^[0-9a-f]{64}$/.test(row.packet_hash)
+  ) {
+    throw new LedgerGenerationError("persisted_draft_packet_unavailable", 503);
+  }
+  const parsed = responseSchema.safeParse(row.packet);
+  if (!parsed.success) {
+    throw new LedgerGenerationError("persisted_draft_packet_invalid", 503);
+  }
+  return { packet: parsed.data, outputHash: row.output_hash, packetHash: row.packet_hash };
+}
+
+export async function verifyLedgerReplayPacket(
+  packet: ResponsePayload,
+  persistedOutputHash: string,
+  persistedPacketHash: string,
+  expectedOutputHash: string | null,
+): Promise<ResponsePayload> {
+  if (
+    !expectedOutputHash || persistedOutputHash !== expectedOutputHash ||
+    persistedPacketHash !== persistedOutputHash
+  ) {
+    throw new LedgerGenerationError("persisted_draft_packet_hash_mismatch", 409);
+  }
+  return packet;
+}
+
+const estimateModelCost = (inputTokens: number, outputTokens: number): number =>
+  Number(((inputTokens * 2.5 + outputTokens * 10) / 1_000_000).toFixed(8));
+
+async function recordLedgerModelResult(
+  context: {
+    correlation: LedgerGenerationCorrelation;
+    actorUserId: string;
+    stepId: string;
+    attemptId: string;
+  },
+  output: ResponsePayload,
+  inputTokens: number,
+  outputTokens: number,
+  errorClass: string | null,
+  errorCode: string | null,
+): Promise<void> {
+  const { error } = await supabaseAdmin.rpc("complete_agent_work_caloptima_model_attempt", {
+    p_actor_user_id: context.actorUserId,
+    p_organization_id: context.correlation.organizationId,
+    p_client_id: context.correlation.clientId,
+    p_work_item_id: context.correlation.workItemId,
+    p_step_id: context.stepId,
+    p_attempt_id: context.attemptId,
+    p_draft_packet: output,
+    p_input_token_count: inputTokens,
+    p_output_token_count: outputTokens,
+    p_computed_cost: estimateModelCost(inputTokens, outputTokens),
+    p_error_class: errorClass,
+    p_error_code: errorCode,
+  });
+  if (error) throw new LedgerGenerationError("attempt_completion_failed", 503);
+}
 
 type AttemptFailureReason =
   | "timeout"
@@ -184,6 +455,7 @@ type AttemptFailureReason =
   | "duplicate_goal_titles"
   | "missing_program_match"
   | "missing_evidence_refs"
+  | "unbound_evidence_ref"
   | "weak_evidence_missing_flags";
 
 const normalizeTitle = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -261,6 +533,20 @@ const hasMissingEvidenceRefs = (payload: ResponsePayload): boolean => {
   return payload.goals.some((goal) => goal.evidence_refs.length === 0);
 };
 
+const hasUnboundEvidenceRef = (output: ResponsePayload, input: RequestPayload): boolean => {
+  const catalog = new Set<string>();
+  for (const row of input.approved_checklist_rows) {
+    catalog.add(`${row.section_key}\u0000${row.source_span}`);
+    catalog.add(`${row.placeholder_key}\u0000${row.source_span}`);
+  }
+  for (const row of input.source_evidence_snippets) {
+    catalog.add(`${row.section_key}\u0000${row.source_span}`);
+  }
+  return [...output.programs, ...output.goals].some((item) =>
+    item.evidence_refs.some((ref) => !catalog.has(`${ref.section_key}\u0000${ref.source_span}`))
+  );
+};
+
 const trim = (value: string, max: number): string => {
   if (value.length <= max) {
     return value;
@@ -304,8 +590,20 @@ Generation requirements:
 - Make each goal clinically specific, measurable, and implementation-ready.
 - Avoid duplicate goals across programs.
 - For weakly supported content, draft conservatively and add review_flags.
+- Copy evidence_refs section_key and source_span exactly from the supplied evidence catalog.
 - Return only valid JSON matching the required schema.`;
 };
+
+const buildCompletionRequest = (userPrompt: string, ledgerBound: boolean) => ({
+  model: ledgerBound ? CALOPTIMA_LEDGER_MODEL_SNAPSHOT.model : "gpt-4o",
+  temperature: ledgerBound ? CALOPTIMA_LEDGER_MODEL_SNAPSHOT.temperature : 0.1,
+  max_tokens: 3200,
+  messages: [
+    { role: "system" as const, content: SYSTEM_PROMPT },
+    { role: "user" as const, content: userPrompt },
+  ],
+  ...(ledgerBound ? { tools: [] } : {}),
+});
 
 const stripCodeFences = (value: string): string => {
   const trimmed = value.trim();
@@ -337,6 +635,8 @@ const buildFallbackResponse = (payload: RequestPayload, reason: string): Respons
   const learnerName = payload.client_display_name || "the learner";
   const snippet = trim(payload.source_evidence_snippets[0]?.snippet || payload.assessment_summary, 180);
   const sectionKey = payload.source_evidence_snippets[0]?.section_key || "assessment_summary";
+  const sourceSpan = payload.source_evidence_snippets[0]?.source_span ||
+    payload.approved_checklist_rows[0]?.source_span || "unbound-source";
   const programName = "FBA Draft Program - Clinician Review Required";
   const programs = [
     {
@@ -344,7 +644,7 @@ const buildFallbackResponse = (payload: RequestPayload, reason: string): Respons
       description: "Conservative fallback draft generated after model timeout for BCBA review and revision.",
       rationale:
         "Fallback content is intentionally conservative and flagged for clinician confirmation before any promotion step.",
-      evidence_refs: [{ section_key: sectionKey, source_span: snippet }],
+      evidence_refs: [{ section_key: sectionKey, source_span: sourceSpan }],
       review_flags: ["clinician_confirmation_needed", "evidence_gap"] as Array<(typeof REVIEW_FLAGS)[number]>,
     },
   ];
@@ -373,7 +673,7 @@ const buildFallbackResponse = (payload: RequestPayload, reason: string): Respons
         "Track trend over time and confirm operational definition with BCBA.",
       ],
       rationale: "Conservative fallback target created to preserve draft workflow continuity.",
-      evidence_refs: [{ section_key: sectionKey, source_span: snippet }],
+      evidence_refs: [{ section_key: sectionKey, source_span: sourceSpan }],
       review_flags: ["clinician_confirmation_needed", "evidence_gap"],
     },
   ];
@@ -397,7 +697,7 @@ const buildFallbackResponse = (payload: RequestPayload, reason: string): Respons
         "Track independent caregiver step completion across routines.",
       ],
       rationale: "Conservative fallback caregiver target to preserve staged drafting without publishing.",
-      evidence_refs: [{ section_key: sectionKey, source_span: snippet }],
+      evidence_refs: [{ section_key: sectionKey, source_span: sourceSpan }],
       review_flags: ["clinician_confirmation_needed", "evidence_gap"],
     });
   }
@@ -412,6 +712,7 @@ const buildFallbackResponse = (payload: RequestPayload, reason: string): Respons
 
 const parseAndValidateCandidate = (
   rawContent: string,
+  authoritativeInput?: RequestPayload,
 ): { ok: true; payload: ResponsePayload } | { ok: false; reason: AttemptFailureReason } => {
   let candidate: unknown;
   try {
@@ -438,6 +739,9 @@ const parseAndValidateCandidate = (
   if (hasMissingEvidenceRefs(payload)) {
     return { ok: false, reason: "missing_evidence_refs" };
   }
+  if (authoritativeInput && hasUnboundEvidenceRef(payload, authoritativeInput)) {
+    return { ok: false, reason: "unbound_evidence_ref" };
+  }
   if (hasWeakEvidenceWithoutFlags(payload)) {
     return { ok: false, reason: "weak_evidence_missing_flags" };
   }
@@ -462,6 +766,8 @@ const buildRetryHint = (reason: AttemptFailureReason): string => {
       return "Each goal.program_name must match one programs[].name value after trim/case normalization.";
     case "missing_evidence_refs":
       return "Every program and goal must include non-empty evidence_refs.";
+    case "unbound_evidence_ref":
+      return "Every evidence ref must copy an exact section_key and source_span token from the supplied evidence.";
     case "weak_evidence_missing_flags":
       return "Weakly supported items must include evidence_gap or clinician_confirmation_needed in review_flags.";
   }
@@ -473,6 +779,9 @@ const json = (req: Request, payload: unknown, status = 200): Response =>
     headers: { "Content-Type": "application/json", ...corsHeaders(req) },
   });
 
+const deriveStableLedgerRequestId = (workItemId: string): string =>
+  `caloptima-ledger.${workItemId}`;
+
 export async function handleGenerateProgramGoals(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req) });
@@ -482,19 +791,124 @@ export async function handleGenerateProgramGoals(req: Request): Promise<Response
     return json(req, { error: "Method not allowed" }, 405);
   }
 
+  let ledgerResultContext: {
+    correlation: LedgerGenerationCorrelation;
+    actorUserId: string;
+    stepId: string;
+    attemptId: string;
+    payload: RequestPayload;
+  } | null = null;
+  let ledgerResultRecorded = false;
+  let ledgerInputTokens = 0;
+  let ledgerOutputTokens = 0;
   try {
     const db = createRequestClient(req);
-    await getUserOrThrow(db);
-    await requireOrg(db);
+    const user = await getUserOrThrow(db);
+    const organizationId = await requireOrg(db);
 
     const body = await req.json();
-    const parsed = requestSchema.safeParse(body);
-    if (!parsed.success) {
-      return json(req, { error: "Invalid request body" }, 400);
+    const ledgerParsed = ledgerGenerationSchema.safeParse(body);
+    let payload: RequestPayload;
+    if (ledgerParsed.success) {
+      if (ledgerParsed.data.organizationId !== organizationId) {
+        return json(req, { error: "Ledger scope denied" }, 403);
+      }
+      const requestId = deriveStableLedgerRequestId(ledgerParsed.data.workItemId);
+      const requestIdCandidate = req.headers.get("x-request-id")?.trim() ?? "";
+      if (
+        (requestIdCandidate && requestIdCandidate !== requestId) ||
+        ledgerParsed.data.correlationId !== requestId
+      ) {
+        return json(req, { error: "stable_request_id_mismatch" }, 409);
+      }
+      await requireLedgerAdvisoryRuntime();
+      const prepared = await prepareLedgerGeneration({
+        actorUserId: user.id,
+        requestId,
+        correlation: ledgerParsed.data,
+      }, {
+        loadAuthoritativePayload: ({ assessmentDocumentId, organizationId, clientId }) =>
+          loadAuthoritativeCalOptimaPayload(db, { assessmentDocumentId, organizationId, clientId }),
+        beginAttempt: async (input) => {
+          const { data, error } = await supabaseAdmin.rpc(
+            "begin_agent_work_caloptima_model_attempt",
+            {
+              p_actor_user_id: input.actorUserId,
+              p_organization_id: input.correlation.organizationId,
+              p_client_id: input.correlation.clientId,
+              p_work_item_id: input.correlation.workItemId,
+              p_correlation_id: input.correlation.correlationId,
+              p_request_id: input.requestId,
+            },
+          );
+          const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
+          const authoritative = !error && !!row &&
+            row.workflow_key === "assessment.caloptima.prepare_draft_review" &&
+            row.workflow_version === 1 && row.step_key === "suggest_draft_packet" &&
+            row.provider === input.provider && row.model === input.model &&
+            row.prompt_version === input.promptVersion && row.tool_version === input.toolVersion &&
+            row.model_request_schema_version === input.modelRequestSchemaVersion &&
+            row.pricing_version === input.pricingVersion && Number(row.temperature) === input.temperature &&
+            Array.isArray(row.allowed_tools) && row.allowed_tools.length === 0 &&
+            Array.isArray(row.guarded_tools) && row.guarded_tools.length === 0 &&
+            (row.attempt_status === "running" || row.attempt_status === "completed" ||
+              row.attempt_status === "failed");
+          return {
+            authoritative,
+            stepId: typeof row?.step_id === "string" ? row.step_id : "",
+            attemptId: typeof row?.attempt_id === "string" ? row.attempt_id : "",
+            attemptStatus: row?.attempt_status === "running" || row?.attempt_status === "completed" ||
+                row?.attempt_status === "failed"
+              ? row.attempt_status
+              : "running",
+            outputHash: typeof row?.output_hash === "string" ? row.output_hash : null,
+          };
+        },
+        settleAttemptFailure: async (input) => {
+          const { data, error } = await supabaseAdmin.rpc(
+            "fail_agent_work_caloptima_model_attempt",
+            {
+              p_actor_user_id: input.actorUserId,
+              p_organization_id: input.correlation.organizationId,
+              p_client_id: input.correlation.clientId,
+              p_work_item_id: input.correlation.workItemId,
+              p_step_id: input.stepId,
+              p_attempt_id: input.attemptId,
+              p_error_code: input.errorCode,
+            },
+          );
+          if (error || !data) {
+            throw new LedgerGenerationError("attempt_settlement_failed", 503);
+          }
+        },
+      });
+      if (prepared.replay) {
+        const replay = await loadPersistedCalOptimaDraftPacket(user.id, ledgerParsed.data);
+        return json(
+          req,
+          await verifyLedgerReplayPacket(
+            replay.packet,
+            replay.outputHash,
+            replay.packetHash,
+            prepared.replayOutputHash,
+          ),
+          200,
+        );
+      }
+      payload = prepared.payload;
+      ledgerResultContext = {
+        correlation: ledgerParsed.data,
+        actorUserId: user.id,
+        stepId: prepared.stepId,
+        attemptId: prepared.attemptId,
+        payload,
+      };
+    } else {
+      return json(req, { error: "ledger_correlation_required" }, 409);
     }
 
-    const payload = parsed.data;
     const attemptFailures: AttemptFailureReason[] = [];
+    const openai = createOpenAIClient();
     let retryHint: string | undefined;
     let lastFailureReason = "unknown";
     const userPromptBase = buildUserPrompt(payload);
@@ -505,15 +919,9 @@ export async function handleGenerateProgramGoals(req: Request): Promise<Response
         : userPromptBase;
 
       const completion = await withTimeout(
-        openai.chat.completions.create({
-          model: "gpt-4o",
-          temperature: 0.1,
-          max_tokens: 3200,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
-        }),
+        openai.chat.completions.create(
+          buildCompletionRequest(userPrompt, ledgerResultContext !== null),
+        ),
         OPENAI_ATTEMPT_TIMEOUT_MS,
       ) as Awaited<ReturnType<typeof openai.chat.completions.create>> | null;
 
@@ -533,6 +941,12 @@ export async function handleGenerateProgramGoals(req: Request): Promise<Response
         continue;
       }
 
+      if (ledgerResultContext) {
+        const usage = (completion as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage;
+        ledgerInputTokens += Math.max(0, Number(usage?.prompt_tokens ?? 0));
+        ledgerOutputTokens += Math.max(0, Number(usage?.completion_tokens ?? 0));
+      }
+
       const rawContent = completion.choices[0]?.message?.content;
       if (!rawContent) {
         const reason: AttemptFailureReason = "empty_content";
@@ -542,7 +956,7 @@ export async function handleGenerateProgramGoals(req: Request): Promise<Response
         continue;
       }
 
-      const candidate = parseAndValidateCandidate(rawContent);
+      const candidate = parseAndValidateCandidate(rawContent, payload);
       if (!candidate.ok) {
         attemptFailures.push(candidate.reason);
         lastFailureReason = `attempt ${attempt} failed with ${candidate.reason}`;
@@ -550,10 +964,37 @@ export async function handleGenerateProgramGoals(req: Request): Promise<Response
         continue;
       }
 
+      if (ledgerResultContext) {
+        await recordLedgerModelResult(
+          ledgerResultContext,
+          candidate.payload,
+          ledgerInputTokens,
+          ledgerOutputTokens,
+          null,
+          null,
+        );
+        ledgerResultRecorded = true;
+      }
+
       return json(req, candidate.payload, 200);
     }
 
     const allTimeouts = attemptFailures.length > 0 && attemptFailures.every((reason) => reason === "timeout");
+    if (ledgerResultContext) {
+      const finalReason = attemptFailures.at(-1) ?? "validation_failed";
+      const fallback = buildFallbackResponse(payload, `${finalReason} (${MAX_GENERATION_ATTEMPTS} attempts)`);
+      await recordLedgerModelResult(
+        ledgerResultContext,
+        fallback,
+        ledgerInputTokens,
+        ledgerOutputTokens,
+        allTimeouts ? "provider" : "model_output",
+        finalReason,
+      );
+      ledgerResultRecorded = true;
+      return json(req, fallback, 200);
+    }
+
     if (allTimeouts) {
       const fallback = buildFallbackResponse(payload, `timeout-only failure (${MAX_GENERATION_ATTEMPTS} attempts)`);
       return json(req, fallback, 200);
@@ -566,7 +1007,28 @@ export async function handleGenerateProgramGoals(req: Request): Promise<Response
         `Failure categories: ${failureSet || "none"}.`,
     }, 502);
   } catch (error) {
-    console.error("generate-program-goals error", error);
+    if (ledgerResultContext && !ledgerResultRecorded) {
+      try {
+        const fallback = buildFallbackResponse(ledgerResultContext.payload, "upstream_unavailable");
+        await recordLedgerModelResult(
+          ledgerResultContext,
+          fallback,
+          ledgerInputTokens,
+          ledgerOutputTokens,
+          "provider",
+          "upstream_unavailable",
+        );
+        ledgerResultRecorded = true;
+        return json(req, fallback, 200);
+      } catch {
+        // The original fail-closed error remains authoritative when finalization also fails.
+      }
+    }
+    if (error instanceof LedgerGenerationError || error instanceof LedgerPreparationError) {
+      console.error("generate-program-goals ledger error", error.code);
+      return json(req, { error: "Ledger-bound draft generation denied", code: error.code }, error.status);
+    }
+    console.error("generate-program-goals error", error instanceof Error ? error.name : "unknown");
     return json(req, { error: "Failed to generate draft" }, 500);
   }
 }
@@ -577,10 +1039,16 @@ export const __TESTING__ = {
   hasWeakEvidenceWithoutFlags,
   countGoalsByType,
   buildFallbackResponse,
+  deriveStableLedgerRequestId,
+  selectStructuredEvidenceContent,
   findDuplicateGoalTitles,
   requestSchema,
   responseSchema,
   REVIEW_FLAGS,
+  ledgerGenerationSchema,
+  prepareLedgerGeneration,
+  buildCompletionRequest,
+  verifyLedgerReplayPacket,
 };
 
 if (import.meta.main) {

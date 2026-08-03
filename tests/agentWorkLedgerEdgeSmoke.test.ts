@@ -12,6 +12,14 @@ const script = readFileSync(
   path.join(process.cwd(), "scripts", "agent-work-ledger-edge-smoke.mjs"),
   "utf8",
 );
+const generator = readFileSync(
+  path.join(process.cwd(), "supabase", "functions", "generate-program-goals", "index.ts"),
+  "utf8",
+);
+const itemsFunction = readFileSync(
+  path.join(process.cwd(), "supabase", "functions", "agent-work-items", "index.ts"),
+  "utf8",
+);
 
 const deferredBlock =
   script.match(/const deferredPaths = \[([\s\S]*?)\];/)?.[1] ?? "";
@@ -36,6 +44,50 @@ describe("agent work ledger Edge smoke contract", () => {
     expect(deferredBlock).toContain("/cancel");
     expect(deferredBlock).toContain("/resume");
     expect(deferredBlock).toContain("/reconcile");
+  });
+
+  it("keeps CalOptima provider invocation ledger-bound", () => {
+    expect(generator).toContain("ledger_correlation_required");
+    expect(generator).toContain("deriveStableLedgerRequestId");
+    expect(generator).not.toMatch(/else\s*\{[\s\S]{0,500}requestSchema\.safeParse\(body\)/);
+  });
+
+  it("resolves assessment scope through the actor-checked service RPC", () => {
+    const loader = itemsFunction.match(
+      /loadAssessmentDocumentScope:\s*async[\s\S]*?currentUserCanManage:/,
+    )?.[0] ?? "";
+
+    expect(loader).toContain("resolve_agent_work_assessment_scope");
+    expect(loader).toContain("p_actor_user_id");
+    expect(loader).toContain("p_assessment_document_id");
+    expect(loader).toContain("p_workflow_key");
+    expect(loader).toContain("p_workflow_version");
+    expect(loader).not.toMatch(/\.from\(["']assessment_documents["']\)/);
+  });
+
+  it("allows only the current sanitized approval confirmation fields", () => {
+    const approvalKeys = script.match(
+      /const APPROVAL_KEYS = \[([\s\S]*?)\];/,
+    )?.[1] ?? "";
+
+    expect(approvalKeys).toContain('"requestedAt"');
+    expect(approvalKeys).toContain('"evidenceCount"');
+    expect(approvalKeys).toContain('"evidenceHashSuffix"');
+    expect(approvalKeys).toContain('"canDecide"');
+    expect(approvalKeys).not.toMatch(/assignedTo|actorUserId|approvalHash|evidenceHash(?!Suffix)/);
+  });
+
+  it("waits for an authenticated function response instead of Kong's pre-runtime 401", () => {
+    expect(script).toMatch(/const waitForFunction = async \(url, headers, child = null\)/);
+    expect(script).toContain("request(url, { headers })");
+    expect(script).toContain("response.status === 200");
+
+    const signInOffset = script.indexOf("const [adminToken, btToken, crossTenantToken]");
+    const readinessOffset = script.indexOf(
+      "await waitForFunction(`${functionUrl}?assessment_document_id=${documentId}`, headersFor(adminToken), child)",
+    );
+    expect(signInOffset).toBeGreaterThan(-1);
+    expect(readinessOffset).toBeGreaterThan(signInOffset);
   });
 
   it("reuses the container items URL without spawning a JWT-bypassing local server", () => {

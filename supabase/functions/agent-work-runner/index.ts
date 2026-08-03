@@ -14,7 +14,8 @@ const UUID_PATTERN =
 const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
 const BIGINT_PATTERN = /^(0|[1-9][0-9]*)$/;
 const WORKER_ACTOR_ID = "00000000-0000-4000-8000-000000000001";
-const WORKFLOW_KEY = "assessment.iehp.prepare_for_clinical_review";
+const IEHP_WORKFLOW_KEY = "assessment.iehp.prepare_for_clinical_review";
+const CALOPTIMA_WORKFLOW_KEY = "assessment.caloptima.prepare_draft_review";
 const DEFAULT_VISIBILITY_TIMEOUT_SECONDS = 30;
 const DEFAULT_LEASE_SECONDS = 60;
 const RETRY_BASE_SECONDS = 30;
@@ -211,7 +212,7 @@ export class AgentWorkRunnerError extends Error {
 }
 
 const ADVISORY_IEHP_WORKFLOW: WorkflowDefinition = {
-  workflow: WORKFLOW_KEY,
+  workflow: IEHP_WORKFLOW_KEY,
   version: 1,
   actions: {
     claim_step: {
@@ -237,6 +238,16 @@ const ADVISORY_IEHP_WORKFLOW: WorkflowDefinition = {
     },
   },
 };
+
+const ADVISORY_CALOPTIMA_WORKFLOW: WorkflowDefinition = {
+  ...ADVISORY_IEHP_WORKFLOW,
+  workflow: CALOPTIMA_WORKFLOW_KEY,
+};
+
+const ADVISORY_WORKFLOWS = new Map<string, WorkflowDefinition>([
+  [IEHP_WORKFLOW_KEY, ADVISORY_IEHP_WORKFLOW],
+  [CALOPTIMA_WORKFLOW_KEY, ADVISORY_CALOPTIMA_WORKFLOW],
+]);
 
 export function createAgentWorkRunnerHandler(
   deps: AgentWorkRunnerHandlerDependencies,
@@ -334,6 +345,18 @@ export function createAgentWorkRunnerHandler(
         return respond(200, {
           success: true,
           data: blockedResult(scope, earlyBlock),
+        });
+      }
+
+      if (
+        scope.workflowKey === CALOPTIMA_WORKFLOW_KEY &&
+        scope.stepKey === "snapshot_draft_packet"
+      ) {
+        const reasonCode = "dedicated_adapter_step";
+        await archiveSilently(deps, queueEnvelope.messageId, reasonCode);
+        return respond(200, {
+          success: true,
+          data: blockedResult(scope, reasonCode),
         });
       }
 
@@ -710,7 +733,7 @@ function matchesAuthoritativeScope(
 }
 
 function classifyBlockedScope(scope: AuthoritativeScope): string | null {
-  if (scope.workflowKey !== WORKFLOW_KEY || scope.workflowVersion !== 1) {
+  if (!ADVISORY_WORKFLOWS.has(scope.workflowKey) || scope.workflowVersion !== 1) {
     return "workflow_definition_not_found";
   }
   if (scope.itemStatus === "cancelled" || scope.stepStatus === "cancelled") {
@@ -718,6 +741,9 @@ function classifyBlockedScope(scope: AuthoritativeScope): string | null {
   }
   if (scope.executionMode === "human") {
     return "human_step_requires_manual_action";
+  }
+  if (scope.executionMode === "model_suggested") {
+    return "model_step_requires_guarded_provider";
   }
   if (scope.executionMode !== "deterministic") {
     return "workflow_definition_not_found";
@@ -744,6 +770,10 @@ function authorizeRunnerAction(
   tool: "claim_step" | "review_snapshot",
   now: Date,
 ) {
+  const workflow = ADVISORY_WORKFLOWS.get(scope.workflowKey);
+  if (!workflow) {
+    return { allowed: false as const, reasonCode: "workflow_definition_not_found" };
+  }
   return authorizeWorkAction({
     actor: {
       id: WORKER_ACTOR_ID,
@@ -771,11 +801,11 @@ function authorizeRunnerAction(
       validatedStepId: scope.stepId,
     },
     runtimeMode,
-    workflow: ADVISORY_IEHP_WORKFLOW,
+    workflow,
     killSwitchEnabled: false,
     action: {
       action,
-      workflow: WORKFLOW_KEY,
+      workflow: scope.workflowKey,
       tool,
       approval: null,
       clinicalEffect: false,

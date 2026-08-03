@@ -24,7 +24,7 @@ const createQueryRecorder = ({ cronEnabled = true } = {}) => {
       if (text.includes('enable_local_agent_work_queue_scheduler')) {
         return { rows: [{ result: { runnerJobId: 1, sweeperJobId: 2 } }] };
       }
-      if (text.includes('update cron.job')) return { rows: [], rowCount: 1 };
+      if (text.includes('cron.alter_job')) return { rows: [], rowCount: 1 };
       if (text.includes("extname = 'pg_cron'")) return { rows: [{ enabled: cronEnabled }] };
       return { rows: [], rowCount: 0 };
     },
@@ -216,6 +216,9 @@ describe('local Agent Work Ledger scheduler guard', () => {
         'http://agent-work-sweeper:8000/agent-work-sweeper',
       ],
     ]);
+    const rewriteSql = container.calls.map(({ text }) => text).join('\n');
+    expect(rewriteSql).toContain('cron.alter_job');
+    expect(rewriteSql).not.toContain('update cron.job');
   });
 
   it('commits container target rewrites inside the scheduler setup transaction', async () => {
@@ -230,7 +233,7 @@ describe('local Agent Work Ledger scheduler guard', () => {
     const beginIndex = statements.indexOf('begin');
     const commitIndex = statements.indexOf('commit');
     const rewriteIndexes = statements
-      .map((text, index) => text.includes('update cron.job') ? index : -1)
+      .map((text, index) => text.includes('cron.alter_job') ? index : -1)
       .filter((index) => index >= 0);
     expect(beginIndex).toBeGreaterThanOrEqual(0);
     expect(rewriteIndexes).toHaveLength(2);

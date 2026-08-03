@@ -115,10 +115,13 @@ const upsertVaultSecret = async (client, name, value) => {
 const replaceSchedulerTarget = async (client, jobName, expectedUrl, nextUrl) => {
   const { rowCount } = await client.query(
     `
-      update cron.job
-      set command = replace(command, $2::text, $3::text)
-      where jobname = $1::text
-        and position($2::text in command) > 0
+      select cron.alter_job(
+        job_id := job.jobid,
+        command := replace(job.command, $2::text, $3::text)
+      )
+      from cron.job as job
+      where job.jobname = $1::text
+        and position($2::text in job.command) > 0
     `,
     [jobName, expectedUrl, nextUrl],
   );

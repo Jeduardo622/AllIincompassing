@@ -217,6 +217,13 @@ describe("agent work ledger phase2 custom container roles", () => {
 
     expect(calls[0]).toBe("connect");
     expect(calls.at(-1)).toBe("end");
+    expect(calls).toContain("create extension if not exists pg_cron");
+    expect(calls).toContain(
+      "create extension if not exists pg_net with schema extensions",
+    );
+    expect(calls).toContain(
+      "create extension if not exists supabase_vault with schema vault",
+    );
     expect(calls.some((text) => text.includes("pgmq.q_agent_work_steps"))).toBe(true);
     expect(calls.some((text) => text.includes("seed-preview-org"))).toBe(true);
   });

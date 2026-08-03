@@ -128,6 +128,13 @@ const runSchemaSeed = async ({ env, ClientImpl }) => {
     if (ownerRows[0]?.current_user !== "postgres") {
       throw new Error("container_schema_requires_postgres_owner");
     }
+    await client.query("create extension if not exists pg_cron");
+    await client.query(
+      "create extension if not exists pg_net with schema extensions",
+    );
+    await client.query(
+      "create extension if not exists supabase_vault with schema vault",
+    );
     const { rows } = await client.query(`
       select
         to_regclass('public.agent_work_items') is not null as work_items,

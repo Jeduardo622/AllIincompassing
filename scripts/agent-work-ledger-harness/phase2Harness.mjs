@@ -509,7 +509,6 @@ const defaultPrepareArchiveContext = async ({ cwd, env, execute }) => {
 };
 
 const composePrefix = () => [
-  "compose",
   "-p",
   PHASE2_COMPOSE_PROJECT,
   "-f",
@@ -707,7 +706,7 @@ export const runPhase2Harness = async ({
     composeAttempted = true;
     await executeChecked(
       execute,
-      "docker",
+      "docker-compose",
       [
         ...composePrefix(),
         "down",
@@ -772,7 +771,7 @@ export const runPhase2Harness = async ({
     const composeEnv = { ...childEnv, ...runtimeEnv };
     await executeChecked(
       execute,
-      "docker",
+      "docker-compose",
       [
         ...composePrefix(),
         "up",
@@ -812,7 +811,7 @@ export const runPhase2Harness = async ({
           : `check_${check.id}_failed`;
         result = await executeChecked(
           execute,
-          "docker",
+          "docker-compose",
           [
             ...composePrefix(),
             "run",
@@ -888,7 +887,7 @@ export const runPhase2Harness = async ({
         const cleanupComposeEnv = { ...childEnv, ...cleanupRuntimeEnv };
         await executeChecked(
           execute,
-          "docker",
+          "docker-compose",
           [
             ...composePrefix(),
             "run",
@@ -916,7 +915,7 @@ export const runPhase2Harness = async ({
       await attempt("composeDown", "compose_down_failed", async () => {
         await executeChecked(
           execute,
-          "docker",
+          "docker-compose",
           [
             ...composePrefix(),
             "down",

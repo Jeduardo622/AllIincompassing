@@ -89,7 +89,7 @@ const makeExecutor = ({
     } = {},
   ) => {
     invocations.push({ command, args, env: { ...options.env } });
-    if (command === "docker" && args.includes("down") && !composeDownSeen) {
+    if (command === "docker-compose" && args.includes("down") && !composeDownSeen) {
       composeDownSeen = true;
       if (failPreflightComposeDown) {
         return { code: 1, stdout: "", stderr: "preflight down failed" };
@@ -104,7 +104,7 @@ const makeExecutor = ({
     if (
       interruptController &&
       !interruptDuringComposeDown &&
-      command === "docker" &&
+      command === "docker-compose" &&
       args.at(-1) === "stack-health"
     ) {
       interruptController.abort(new Error("phase2_signal_sigterm"));
@@ -113,7 +113,7 @@ const makeExecutor = ({
     if (
       interruptController &&
       interruptDuringComposeDown &&
-      command === "docker" &&
+      command === "docker-compose" &&
       args.includes("down")
     ) {
       interruptController.abort(new Error("phase2_signal_sigint"));
@@ -197,7 +197,7 @@ const makeExecutor = ({
     }
     if (
       failCleanupAudit &&
-      command === "docker" &&
+      command === "docker-compose" &&
       args.includes("scripts/agent-work-ledger-harness/cleanupAudit.mjs")
     ) {
       return {
@@ -324,7 +324,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       "stop", "--project-id", "AllIincompassing", "--no-backup", "--yes",
     ]);
     const preflightComposeDown = invocations.findIndex((entry) =>
-      entry.command === "docker" && entry.args.includes("down") &&
+      entry.command === "docker-compose" && entry.args.includes("down") &&
       entry.args.includes("--volumes") && entry.args.includes("--remove-orphans")
     );
     const preflightContainerProof = invocations.findIndex((entry, index) =>
@@ -364,7 +364,7 @@ describe("agent work ledger phase2 harness contracts", () => {
     )).toHaveLength(1);
 
     const tenantRun = invocations.find((entry) =>
-      entry.command === "docker" &&
+      entry.command === "docker-compose" &&
       entry.args.includes("scripts/agent-work-ledger-security-contract.mjs")
     );
     expect(tenantRun?.args.slice(-2)).toEqual([
@@ -373,13 +373,27 @@ describe("agent work ledger phase2 harness contracts", () => {
     ]);
 
     const customRun = invocations.find((entry) =>
-      entry.command === "docker" && entry.args.at(-1) === "stack-health"
+      entry.command === "docker-compose" && entry.args.at(-1) === "stack-health"
     );
     expect(customRun?.args.slice(-3)).toEqual([
       "node",
       "scripts/agent-work-ledger-harness/containerEntrypoint.mjs",
       "stack-health",
     ]);
+  });
+
+  it("uses the standalone Compose binary with the minimal child environment", async () => {
+    const fixture = await createHarnessFixture();
+    await fixture.run();
+
+    const composeInvocations = fixture.executor.invocations.filter((entry) =>
+      entry.command === "docker-compose"
+    );
+    expect(composeInvocations.length).toBeGreaterThan(0);
+    expect(composeInvocations.every((entry) => entry.args[0] === "-p")).toBe(true);
+    expect(fixture.executor.invocations.some((entry) =>
+      entry.command === "docker" && entry.args[0] === "compose"
+    )).toBe(false);
   });
 
   it.each([
@@ -448,7 +462,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       entry.args[1] === "create"
     )).toBe(false);
     const finalDown = fixture.executor.invocations.findLast((entry) =>
-      entry.command === "docker" && entry.args.includes("down")
+      entry.command === "docker-compose" && entry.args.includes("down")
     );
     expect(finalDown?.env).toMatchObject({
       COMPOSE_DISABLE_ENV_FILE: "1",
@@ -463,7 +477,7 @@ describe("agent work ledger phase2 harness contracts", () => {
     const fixture = await createHarnessFixture();
     const result = await fixture.run();
     const composeUp = fixture.executor.invocations.find((entry) =>
-      entry.command === "docker" && entry.args.includes("up")
+      entry.command === "docker-compose" && entry.args.includes("up")
     );
 
     expect(composeUp?.env).toMatchObject({
@@ -558,7 +572,7 @@ describe("agent work ledger phase2 harness contracts", () => {
     await expect(fixture.run()).rejects.toThrow(/supabase_status_failed/);
 
     const cleanupRun = fixture.executor.invocations.find((entry) =>
-      entry.command === "docker" &&
+      entry.command === "docker-compose" &&
       entry.args.includes("scripts/agent-work-ledger-harness/cleanupAudit.mjs")
     );
     expect(cleanupRun?.env).toMatchObject({
@@ -577,14 +591,14 @@ describe("agent work ledger phase2 harness contracts", () => {
 
     const { invocations } = fixture.executor;
     const interruptedCheck = invocations.findIndex((entry) =>
-      entry.command === "docker" && entry.args.at(-1) === "stack-health"
+      entry.command === "docker-compose" && entry.args.at(-1) === "stack-health"
     );
     const cleanupAudit = invocations.findIndex((entry) =>
-      entry.command === "docker" &&
+      entry.command === "docker-compose" &&
       entry.args.includes("scripts/agent-work-ledger-harness/cleanupAudit.mjs")
     );
     const composeDown = invocations.findLastIndex((entry) =>
-      entry.command === "docker" && entry.args.includes("down")
+      entry.command === "docker-compose" && entry.args.includes("down")
     );
     const finalStop = invocations.findLastIndex((entry) =>
       entry.command === "supabase" && entry.args[0] === "stop"
@@ -743,7 +757,7 @@ describe("agent work ledger phase2 harness contracts", () => {
     });
     expect(manifest.exitStatus).toBe("failed");
     expect(fixture.executor.invocations.some((entry) =>
-      entry.command === "docker" && entry.args.includes("down")
+      entry.command === "docker-compose" && entry.args.includes("down")
     )).toBe(true);
     expect(fixture.executor.invocations.some((entry) =>
       entry.command === "supabase" && entry.args[0] === "stop"

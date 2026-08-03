@@ -13,6 +13,10 @@ const migrationPath = path.join(
 const migrationExists = existsSync(migrationPath);
 const migrationSql = migrationExists ? readFileSync(migrationPath, "utf8") : "";
 const normalizedSql = migrationSql.replace(/\s+/g, " ");
+const retentionContract = readFileSync(
+  path.join(process.cwd(), "scripts", "agent-work-ledger-retention-contract.mjs"),
+  "utf8",
+);
 
 const exportDefinition =
   migrationSql.match(
@@ -231,5 +235,11 @@ describe("agent work ledger retention migration contract", () => {
       /references public\.agent_work_items\(id, organization_id\)[\s\S]*on delete restrict/i,
     );
     expect(normalizedSql).not.toMatch(/references public\.(assessment_documents|assessment_checklist_items|assessment_structured_sections|assessment_review_events)[\s\S]*on delete cascade/i);
+  });
+
+  it("restores the database owner before checking protected assessment-domain rows", () => {
+    expect(retentionContract).toMatch(
+      /prune_agent_work_retention_category[\s\S]*?reset role[\s\S]*?preservedRows/i,
+    );
   });
 });

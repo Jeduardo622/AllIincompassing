@@ -220,6 +220,7 @@ const main = async () => {
       "Unapproved prune did not return a fixed zero-delete denial.",
     );
 
+    await database.query("reset role");
     const { rows: preservedRows } = await database.query(
       "select (select count(*)::integer from public.agent_work_items where id = $1::uuid) as work_item_count, (select count(*)::integer from public.assessment_documents where id = $2::uuid) as document_count",
       [workItemId, DOCUMENT_ID],

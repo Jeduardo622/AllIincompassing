@@ -173,6 +173,36 @@ npm run test:agent-work:chaos
 
 Do not add hosted commands, deployment steps, or active-mode instructions to this doc. Any future retention enablement requires a new approved policy row and a fresh route.
 
+## Phase 1 Local Verification
+
+Task 15 closes the local Phase 1 verification path. Clear any hosted project variables for each process, use the complete local Supabase stack, and run stateful contracts from fresh database state so queue or fixture rows cannot leak between checks.
+
+```powershell
+npm run ci:check-focused
+npm run lint
+npm run typecheck
+npm run test:ci
+npm run validate:tenant
+npm run build
+npm run verify:local
+npm run agent-work:db:reset
+npm run agent-work:edge-smoke
+npm run agent-work:retention-contract
+npm run agent-work:trace-index-contract
+npm run agent-work:queue-scheduler:smoke
+npm run agent-work:shadow-parity
+npm run test:agent-work:chaos
+npm run test:agent-work:eval
+```
+
+Reset the database again before each destructive stateful contract when reproducing the release evidence. The current branch-level proof passed `test:ci` at 456 of 458 files and 3,763 of 3,768 tests; the remaining two files and five tests are explicitly skipped because their dedicated local Postgres URLs are not configured. `verify:local` passed in 460.9 seconds with the same suite, coverage policy, production build, and 220 of 220 Tier-0 route tests.
+
+The cached Agent Work Ledger Deno set passed 101 tests across the shared policy/state modules and the items, runner, and sweeper functions. `supabase/functions/ai-agent-optimized/persistence.test.ts` remains separately blocked because the local dependency tree does not contain the lock-pinned `npm:@supabase/supabase-js@2.50.0`; do not install it or modify `deno.lock` as part of this proof.
+
+The trace-index contract inserts 20,000 transaction-local synthetic rows into each report source, proves all 11 production report query shapes use their eight intended indexes, then rolls back the fixtures. This includes session-audit request, correlation, top-level operation-ID, and nested trace operation-ID containment. The Supabase CLI applies migrations through a SQL pipeline and rejects `CREATE INDEX CONCURRENTLY`; the additive indexes therefore use ordinary `CREATE INDEX`. A future hosted rollout must schedule the migration for a bounded low-write window and inspect table/index size and lock activity before and during application.
+
+The Edge smoke runs in `shadow`, proves create/list/detail/idempotency and tenant denial, rejects owner and approval-decision writes with `advisory_mode_required`, and confirms only cancel, resume, and reconcile remain deferred. Phase 1 does not authorize `active` mode, hosted assessment checks, deployment, or provider calls.
+
 ## Task 9 Local-Only Direction
 
 Task 9 extends the local-first ledger into a durable `pgmq` queue plus runner/sweeper coordination, but only within the local stack. Host-side Supabase/database configuration is loopback-only; Postgres uses fixed `host.docker.internal` callbacks to the loopback-bound host workers.
@@ -245,7 +275,7 @@ The following checks prove the local Task 9 implementation:
 
 `supabase functions serve` is not used for the Task 9 proof on this Windows Docker setup. The CLI stops the stack-managed Edge Runtime and leaves Kong with stale container DNS. The stack was rebuilt cleanly afterward, and both functions are instead imported as host Deno handlers with process-injected loopback-only values and generated synthetic invocation secrets.
 
-`npm run ci:check-focused` and therefore `npm run verify:local` remain blocked by nine unrelated API-convergence exceptions that expired on 2026-07-31.
+The nine API-convergence exceptions that originally blocked the Task 9 policy gate were repaired without weakening the gate. The current Task 15 `npm run ci:check-focused` and `npm run verify:local` results are green; use the Phase 1 evidence above rather than the historical Task 9 checkpoint.
 
 ## Task 14 Retention Documentation Guardrails
 

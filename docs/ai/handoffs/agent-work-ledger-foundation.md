@@ -734,3 +734,157 @@ Stop and re-route if the work would:
 - reviewer: completed; final code, security, Supabase, and performance dispositions are recorded above
 - required follow-up: create the focused Task 14 local commit, update `WIN-271`, route Task 15 fresh, and keep all GitHub/hosted actions blocked
 - handoff summary: Task 14 adds a service-role-only, tenant-tight, PHI-free deterministic recovery export plus hold/receipt metadata and a fixed zero-delete prune gate. No retention period or deletion path exists; category-specific policy approval and protected-path human review remain mandatory.
+
+## Task 15 Route
+
+- date: `2026-08-02`
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- intent: initially run the complete branch-level local verification and produce review-ready evidence and exact future commands without changing production behavior or crossing any GitHub/hosted boundary
+- triggering paths: the branch contains protected `supabase/migrations/**` and `supabase/functions/**` changes plus tenant-sensitive RLS, grants, RPCs, queues, schedulers, and runners; Task 15 itself is limited to `docs/ops/agent-work-ledger.md` and this handoff
+- initial allowed scope: local checks; deterministic synthetic/redacted fixtures; specialist read-only review; verification/pr-hygiene evidence; exact future GitHub and hosted rollout commands; the two Task 15 documentation files
+- non-goals: production/config/test-runner behavior changes, new migrations/functions, active runtime mode, hosted assessment checks, browser access, external providers, push, PR, merge, deploy, hosted migration/function/configuration, or secret access
+- initial stop conditions: any check requiring `.env*`, a non-loopback URL, hosted credential, browser/GitHub/deployment connector, production/config edit, policy exception, active mode, clinical mutation, or scope outside the two documentation files
+- required agents: specification, software architecture, code review, test, security, Supabase, documentation, DevOps, performance, and clinical/product/privacy review; unavailable human clinical/product/privacy approval remains an explicit merge blocker rather than an inferred pass
+- reviewer required: yes; protected-path human review remains mandatory
+- verify-change required: yes
+- mandatory checks: `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `npm run test:agent-work:chaos`; Agent Work Ledger Deno Function tests; security contract; shadow parity; queue/scheduler smoke; fresh local DB reset; pre-commit hook; targeted edge smoke; `git diff --check`
+- route/auth checks: `npm run test:routes:tier0` remains required through `verify:local`; `npm run ci:playwright` is not meaningful for this final docs-only slice because no Task 10-15 change altered application route/auth/session behavior, subject to reviewer agreement
+- linear required: yes (`WIN-271`)
+- route transition: the stale Edge smoke expectation hit the initial file-scope stop condition; no script edit occurred until the separate `standard` Edge Smoke Reroute below defined its allowed files, non-goals, stop conditions, TDD evidence, and verification
+
+## Task 15 Edge Smoke Reroute
+
+- classification: `low-risk autonomous`
+- lane: `standard`
+- why: the local smoke script still classified Task 12 owner and approval-decision routes as deferred, while the protected Edge implementation and focused Deno tests prove those routes are implemented and must fail closed in `shadow`
+- allowed files: `scripts/agent-work-ledger-edge-smoke.mjs`; `tests/agentWorkLedgerEdgeSmoke.test.ts`; this handoff
+- non-goals: migrations, Supabase Functions, runtime policy, queue behavior, application behavior, hosted access, provider calls, or deployment
+- stop conditions: any production behavior change, protected-path edit, non-loopback dependency, or need to weaken the `shadow` mutation denial
+- required agents: specification, implementation, code review, and test
+- reviewer required: yes
+- verify-change required: yes
+- red evidence: focused Vitest failed `1/2` because the script had no `shadowMutationProbes` contract and still included owner and approval decision in `deferredPaths`
+- green evidence: focused Vitest passed `2/2`; after a fresh database reset, `npm run agent-work:edge-smoke` passed its embedded security contract plus authenticated create/list/detail/idempotency, cross-tenant denial, exact `advisory_mode_required` mutation denial, and deferred cancel/resume/reconcile probes
+
+## Task 13 Performance Repair Reroute
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- why: final Task 15 performance review proved that Task 13's bounded result sets do not prevent full scans for JSONB containment selectors or for orchestration request/correlation selectors whose earlier indexes were removed
+- triggering path: a new additive `supabase/migrations/20260801101500_agent_trace_report_selector_indexes.sql` migration supporting protected Edge report queries
+- allowed files: the new migration; a focused static migration test; a focused local query-plan contract and package command only if required; `docs/ops/agent-work-ledger.md`; this handoff
+- tenant boundary: indexes must preserve the existing organization predicate and cannot change RLS, grants, RPC exposure, service-role authority, or query result semantics
+- non-goals: changes to `agent-trace-report` behavior, table columns, payload shape, retention, queue behavior, application UI, hosted systems, or deployment
+- stop conditions: any need for a new extension, generated column, payload rewrite, RLS/grant/function change, unbounded fixture, non-loopback connection, or index outside the exact report selector predicates
+- required agents: specification, software architecture, implementation, code review, test, security, performance, and Supabase
+- reviewer required: yes; human protected-path review remains mandatory
+- verify-change required: yes
+- mandatory checks: focused RED/GREEN migration contract; fresh local database reset; local index/query-plan proof; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`
+- linear required: yes (`WIN-271`)
+
+## Task 15 Org-Admin Alias Repair Reroute
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- why: final security review found the unreleased core migration's shared actor-management helper narrower than the repository's established admin role-alias contract, which can deny legitimate `org_admin` and `org_super_admin` actors after the helper wrappers are replaced
+- triggering path: protected tenant-sensitive authorization logic in `supabase/migrations/20260801090000_agent_work_ledger_core.sql`
+- allowed files: the unreleased core migration; one narrowly focused static role-alias contract test; existing live Agent Work Ledger security-contract fixtures only if required to prove both aliases; this handoff
+- acceptance criteria: `org_admin` must be equivalent to `admin` and `org_super_admin` equivalent to `super_admin` only inside the existing organization/profile/client-access boundary; inactive, expired, wrong-organization, unsupported-role, and inaccessible-client actors must remain denied
+- non-goals: new roles, capability changes, UI/function behavior, RLS/grant changes, approval-policy changes, hosted migration history, active runtime mode, or any broader role-matrix refactor
+- stop conditions: any evidence the aliases are not currently supported, any need to alter grants/RLS/functions outside the helper definition, any cross-organization widening, or any scope beyond the exact alias parity defect
+- required agents: specification, software architecture, implementation, code review, test, security, and Supabase
+- reviewer required: yes; human protected-path review remains mandatory
+- verify-change required: yes
+- mandatory checks: focused RED/GREEN role-alias contract; fresh local database reset; live security contract; Agent Work Ledger items/approval tests; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`; normal pre-commit hook
+- linear required: yes (`WIN-271`)
+
+## Task 15 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: branch-level protected migration/function/RLS/RPC/queue verification; local smoke-harness correction; release and rollback documentation
+- required checks: `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `npm run test:agent-work:chaos`; Agent Work Ledger Deno tests; `npm run agent-work:security-contract`; `npm run agent-work:shadow-parity`; `npm run agent-work:queue-scheduler:smoke`; `npm run agent-work:retention-contract`; `npm run agent-work:trace-index-contract`; `npm run test:agent-work:eval`; fresh `npm run agent-work:db:reset`; `npm run agent-work:edge-smoke`; pre-commit hook; `git diff --check`
+- executed checks:
+  - focused Edge smoke contract: RED `1/2`, then GREEN `2/2`
+  - fresh `npm run agent-work:db:reset`: pass repeatedly; all migrations through `20260801101500_agent_trace_report_selector_indexes.sql` applied from empty local state
+  - `npm run agent-work:edge-smoke`: pass after fresh reset; embedded security contract and live local authenticated Edge smoke passed
+  - cached Agent Work Ledger Deno set: pass at `101/101`
+  - `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build`: pass
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: pass at `456/458` files and `3763/3768` tests; two files and five tests skipped only because their dedicated local Postgres URLs were not configured
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`: pass in `460.9s`; includes the same full suite, coverage policy, production build, and `220/220` Tier-0 route tests
+  - final-suite diagnostic: the first post-index exact run had one existing `ProgramsGoalsTab` interaction timeout under parallel load; the complete `115/115` file passed with one worker in `43.44s`, the exact required command then passed on retry, and the same exact suite passed again inside `verify:local`; no production or unrelated test change was made
+  - broad-suite diagnostic history: two earlier exact parallel runs completed every assertion but exited on Vitest worker `onTaskUpdate` timeouts; the bounded serialized equivalent passed `3754/3759` tests before the two smoke-contract tests were added, and the final branch then passed the exact parallel suite twice through `test:ci` and embedded `verify:local`
+  - `npm run agent-work:retention-contract`: pass after isolated reset; stable PHI-free export and fixed zero-delete `policy_unapproved` prune result
+  - `npm run agent-work:queue-scheduler:smoke`: pass after isolated reset; direct runner/sweeper evidence and Cron callbacks `200/200`
+  - `npm run agent-work:shadow-parity`: pass after isolated reset at `6/6` fixtures and `7/7` negative probes with zero mismatches
+  - `npm run test:agent-work:chaos`: pass after isolated reset at `10/10` with seed `task10-default-seed`
+  - `npm run test:agent-work:eval`: pass at six deterministic fixtures, zero across all seven safety gates, and `100%` readiness evidence coverage
+  - trace-index TDD: the static contract first failed on the missing migration; the live contract then exposed redundant composite-index expectations and was narrowed to existing request/correlation indexes plus six necessary indexes; final security and Supabase review removed an unsupported organization-only audit index/probe so the contract maps one-to-one to production selectors; a database-client error test failed before the sanitized error guard was added and now passes
+  - concurrency experiment: the focused assertion passed after switching all selector statements to `CREATE INDEX CONCURRENTLY`, but fresh reset failed with SQLSTATE `25001` because the Supabase CLI migration pipeline cannot execute concurrent index creation; the incompatible change was reverted and the reproducible ordinary-index migration passed fresh reset
+  - `npm run agent-work:trace-index-contract`: pass after the final-review correction with 20,000 transaction-local synthetic rows per report source, `8/8` catalog entries, and `11/11` query-plan checks covering every production request, correlation, operation-ID, and nested audit selector shape; fixtures rolled back and disconnect failures are sanitized
+  - org-admin alias TDD: focused migration contract failed only because `app.actor_can_manage_agent_work_row` omitted the repository-supported legacy storage aliases, then passed `2/2` after the unreleased core migration added `org_admin` and `org_super_admin` without changing exact approval-role matching
+  - live alias proof: fresh reset passed; `npm run agent-work:security-contract` passed after rollback-only synthetic legacy-role probes proved both aliases across the actor helper and authenticated wrappers while existing wrong-org, inactive/expired, unsupported-role, and client-access denials remained green
+  - final Edge smoke state boundary: an intentionally non-fresh attempt failed on queue scope reuse; after the required fresh reset, `npm run agent-work:edge-smoke` passed its embedded security contract and all live Edge probes
+  - `git diff --check`: pass
+- blocked checks:
+  - `deno test --cached-only --frozen supabase/functions/ai-agent-optimized/persistence.test.ts`: blocked because local `node_modules` lacks lock-pinned `npm:@supabase/supabase-js@2.50.0`; no install, network fetch, or Task 15 `deno.lock` mutation was authorized, and the pre-existing unrelated `deno.lock` drift remains unstaged and excluded
+  - `npm run ci:playwright`: not meaningful for the Task 15 smoke/docs-only delta because it does not alter application route, auth, redirect, or session behavior; Tier-0 route coverage passed and final reviewer disposition remains required
+  - `npm run playwright:iehp-assessment-import-smoke` and `npm run playwright:assessment-pdf-smoke`: blocked by the local-only, no-browser, no-hosted-secrets authorization boundary
+  - branch-protection, preview drift, hosted function-auth parity, and live required checks: CI/hosted-only and intentionally not run
+- result: `pass-with-blocked-checks`
+- residual risk: human review remains mandatory for the protected migrations/functions and clinical/product/privacy boundaries; actual retention deletion remains blocked on approved periods for `ledger_history`, `queue_archive`, and `execution_trace`; the selector indexes are proven at 20,000 synthetic rows but hosted table size and write load remain unmeasured; because the local migration pipeline rejects concurrent index creation, hosted application must use a reviewed low-write window with lock monitoring
+
+### Task 15 PR Hygiene
+
+- pr-ready: `yes` for local human review; `no` for merge until protected-path and clinical/product/privacy review is recorded
+- lane: `critical`
+- branch-ready: `yes` on `codex/agent-work-ledger-foundation`
+- linear-ready: `yes` under `WIN-271`; Task 15 start comment `77449234-f40a-4204-ad48-9aae9be46adf`
+- single-purpose: `yes`; Task 15 adds the local smoke correction, the separately rerouted trace-selector performance repair, and release evidence required to close Phase 1
+- unrelated changes: `deno.lock` and `reports/test-reliability-latest.json` remain unstaged and excluded
+- generated artifact drift: the pre-existing reliability report drift remains unstaged; no Agent Work Ledger generated artifact is missing
+- protected-path drift: none outside the explicitly rerouted additive trace-selector migration; all other branch protected paths are the routed and committed Task 10-14 surfaces
+- change summary: present
+- verification summary: present above
+- PR handoff: locally ready; GitHub actions remain authorization-gated and were not performed
+- reviewer: code and test review were clean; final security and Supabase review found one shared selector-evidence mismatch, which was corrected by removing the unsupported organization-only audit index/probe and reproved from fresh state; both correction-only re-reviews are clean
+- Task 15 implementation commit: `5b4673ca test(agent-work): complete local release verification`; normal pre-commit hook passed `ci:check-focused` without bypass
+- required follow-up: commit this evidence checkpoint, update `WIN-271`, then route Phase 2 separately
+
+## Future GitHub Commands - Not Authorized
+
+Run only after explicit GitHub authorization and after required human review:
+
+```powershell
+git fetch origin
+git rebase origin/main
+npm run verify:local
+git push -u origin codex/agent-work-ledger-foundation
+gh pr create --base main --head codex/agent-work-ledger-foundation --title "feat(agent-work): add goal-directed stateful work ledger" --body-file docs/ai/handoffs/agent-work-ledger-foundation.md
+gh pr checks --watch
+gh pr view --json reviewDecision,mergeStateStatus,statusCheckRollup
+```
+
+Do not merge until required human protected-path, Supabase, security, clinical, product, and privacy review is complete and live required checks pass.
+
+## Future Hosted Supabase Commands - Not Authorized
+
+Run only after a new hosted route, explicit authorization, approved process-injected credentials, and confirmation of the intended project reference:
+
+```powershell
+supabase link --project-ref $env:SUPABASE_PROJECT_REF
+supabase migration list --linked
+supabase db push --linked --dry-run
+supabase db push --linked
+supabase functions deploy agent-work-items --project-ref $env:SUPABASE_PROJECT_REF
+supabase functions deploy agent-work-runner --project-ref $env:SUPABASE_PROJECT_REF
+supabase functions deploy agent-work-sweeper --project-ref $env:SUPABASE_PROJECT_REF
+supabase functions deploy agent-trace-report --project-ref $env:SUPABASE_PROJECT_REF
+```
+
+Before any function deployment, configure the reviewed invocation secrets and runtime policy through the authorized hosted secret/configuration path without writing `.env*`; start only in `disabled`. Review Queue, Cron, Vault, JWT policy, grants, and tenant-scoped synthetic health evidence before any later `shadow` or `advisory` decision. No `active` stage is authorized.
+
+## Task 16 Disposition
+
+Task 16 is not required for Phase 1 completion. It remains the next separately routed increment after the IEHP ledger is stable and is not started by this branch.

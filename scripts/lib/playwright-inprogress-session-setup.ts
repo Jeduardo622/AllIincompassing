@@ -419,8 +419,12 @@ export const restrictTherapistIdsToActorLinks = (
   linkedTherapistIds: readonly string[],
   canUseOrganizationTherapists = false,
 ): Set<string> => {
+  if (canUseOrganizationTherapists) {
+    return organizationTherapistIds;
+  }
+
   if (linkedTherapistIds.length === 0) {
-    return canUseOrganizationTherapists ? organizationTherapistIds : new Set<string>();
+    return new Set<string>();
   }
   const linkedIds = new Set(linkedTherapistIds);
   return new Set([...organizationTherapistIds].filter((therapistId) => linkedIds.has(therapistId)));

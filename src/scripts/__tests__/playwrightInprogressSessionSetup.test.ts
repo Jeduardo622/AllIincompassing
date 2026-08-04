@@ -39,6 +39,14 @@ describe("playwright in-progress session setup", () => {
     )).toEqual(new Set(["org-a", "org-b"]));
   });
 
+  it("keeps the organization pool when an org-wide scheduling actor also has therapist links", () => {
+    expect(restrictTherapistIdsToActorLinks(
+      new Set(["org-linked", "org-unlinked"]),
+      ["org-linked"],
+      true,
+    )).toEqual(new Set(["org-linked", "org-unlinked"]));
+  });
+
   it("rejects a non-super-admin whose authoritative profile is outside the active organization", () => {
     expect(() => resolveEligibleTherapistIdsForActor({
       organizationTherapistIds: new Set(["org-a"]),

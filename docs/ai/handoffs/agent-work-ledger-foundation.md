@@ -1122,3 +1122,27 @@ Failed attempts remain part of the record:
 - change summary and verification card: present in this handoff and `docs/ops/agent-work-ledger.md`
 - reviewer: final correctness, security, and DevOps re-reviews approve with no actionable findings
 - PR handoff: exact future push, PR, check, merge, hosted Supabase, and deployment sequencing is present above; none was executed
+
+## Post-Merge Disabled Hosted Rollout
+
+- issue: `WIN-271`
+- route: `classification: high-risk human-reviewed`; `lane: critical`
+- user gate decision: the user explicitly superseded the six-role approval requirement and authorized the disabled hosted rollout after manual merge; all technical, tenant, secret, runtime, clinical, and retention controls remained in force
+- PR: `#886`, merged manually at `2026-08-04T12:48:49Z`
+- merge commit: `1f0390829d667909030e0d616d68f71803903c6e`; its tree is identical to verified feature head `2b242b2ac35ea8efa811392861ac7fa9763516b9`
+- production Supabase project: `wnnjeqheqxxyrgsjmygy` (`AllIncompassing`, `ACTIVE_HEALTHY`), independently matched by the hosted runtime-config endpoint
+- process-injected function configuration: `AGENT_WORK_LEDGER_RUNTIME_MODE=disabled` and `AGENT_WORK_HOSTED_PROJECT_REF=wnnjeqheqxxyrgsjmygy`; no `.env*` file was read or written
+- migration deployment: the exact six committed migrations were hash-checked and applied sequentially as `agent_work_ledger_core`, `agent_work_ledger_queue`, `agent_work_ledger_retention`, `agent_trace_report_selector_indexes`, `agent_work_ledger_caloptima_evidence_kinds`, and `agent_work_ledger_caloptima_draft_review`
+- migration safety: required tables and extension capabilities were present; the selector-index migration retained its `5s` lock timeout and `5min` statement timeout; the first core attempt failed before DDL because the shell result transport truncated the SQL, rolled back completely, and was retried through byte-preserving transfer
+- Edge Functions: `agent-work-items` v1, `agent-work-runner` v1, `agent-work-sweeper` v1, `agent-trace-report` v1, `ai-agent-optimized` v26, and `generate-program-goals` v25 are `ACTIVE` with `verify_jwt=true`
+- database verification: runtime policy resolves authoritatively to `disabled`; ledger, queue, and queue archive contain zero rows; Agent Work Cron is absent; local scheduler Vault secret names are absent; checked ledger tables have forced RLS; `anon` and `authenticated` have zero table grants; service-role grants are present
+- retention: no approved periods exist and no policy rows were inserted; a sanitized probe returned `success=false`, `reason_code=policy_unapproved`, and `deleted_count=0`
+- synthetic Edge smoke: unauthenticated POST returned `401` for all six functions; active publishable-key CORS preflight reached all six bundles with `200/204`; no ledger, assessment, or clinical row was created
+- Netlify: production deploy `6a71dfb3b102840008e94278` published the exact WIN-271 merge commit and was `ready` with zero secret-scan matches; current production subsequently advanced to unrelated WIN-272 deploy `6a71efdd230a0100080eb177`, also `ready`, so no rollback or redundant release was triggered
+- redacted hosted smoke: root, clients route, assessments route, health, and runtime-config returned `200`; unauthenticated assessment-checklist returned `401`; runtime-config exposed the expected project ref and no Agent Work runtime field
+- GitHub post-merge gates: the failed runtime migration parity jobs in Supabase Validate run `30910783690` and CI run `30910783723` were rerun after migration application; final conclusions are recorded in the closing Linear update
+- blocked/unrun evidence: preview migration relisting timed out and was not counted as a fresh pass; Supabase Edge log retrieval failed through the connector and was not counted as passed; no external model, customer fixture, PHI, autonomous approval, clinical mutation, scheduler activation, shadow, advisory, or active execution occurred
+- specialist findings: direct client table grants are zero, while intentional authenticated helper-RPC execute grants remain and are governed by caller-bound tenant checks; the narrower table-grant wording is authoritative
+- promotion blockers: a future `advisory` decision must explicitly review CalOptima draft-domain writes before human review; the Agent Work runtime flag does not govern the pre-existing non-ledger legacy branch of `generate-program-goals`, so it must not be described as a global external-model kill switch
+- residual privacy risk: execution-trace retention remains fail-closed but unapproved, so approved visibility and retention periods are required before any deletion or broader promotion claim
+- recovery: both Task 9 stashes remain untouched; the original worktree's unrelated `deno.lock`, `reports/test-reliability-latest.json`, and local rollout-plan drift remain unstaged and unchanged

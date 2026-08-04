@@ -85,3 +85,39 @@ Self-review:
 Concerns:
 - No external model calls, hosted actions, or provider-backed smoke were performed, per round constraints.
 - Broader local Docker verification was intentionally not repeated in this bounded review-fix round.
+
+## Review-Fix Round 2
+
+Status: DONE_WITH_CONCERNS
+
+Commit SHA: `85cb5ad0`
+
+Files changed:
+- `supabase/functions/generate-program-goals/index.ts`
+- `supabase/functions/generate-program-goals/index.test.ts`
+- `.superpowers/sdd/2026-08-03-agent-work-ledger-finalization-and-disabled-hosted-rollout/task-2-report.md`
+
+RED command and expected failure:
+- `deno test --allow-env supabase/functions/generate-program-goals/index.test.ts supabase/functions/generate-program-goals/ledger.test.ts`
+  - Failed as expected: 1 failed, 31 passed.
+  - The regression modeled an invalid completion reporting 17 input and 9 output tokens followed by a provider exception.
+  - Ledger fallback settlement recorded `p_input_token_count: 0` instead of `17`, proving accumulated usage was lost before catch settlement.
+
+GREEN commands/results:
+- `npx vitest run src/lib/__tests__/ai-auth-fetch.test.ts`
+  - Passed: 10/10.
+- `deno test --allow-env supabase/functions/generate-program-goals/index.test.ts supabase/functions/generate-program-goals/ledger.test.ts`
+  - Passed: 32/32.
+- Pre-commit hook `npm run ci:check-focused`
+  - Passed. Database/CI-only checks reported their environment-based skips.
+
+Self-review:
+- The retry helper reports cumulative nonnegative usage after each completion response, before output validation can trigger another attempt.
+- The handler installs the observer only for ledger-bound generation, so legacy invocation, retries, structured `502`, timeout fallback, and no-ledger semantics are unchanged.
+- A later provider exception now settles the ledger fallback with the usage accumulated from earlier invalid completions.
+- Ledger parsing, advisory gating, authoritative evidence loading, replay, and attempt ordering are unchanged.
+- Tenant scope and fail-closed behavior are unchanged.
+- Unrelated `deno.lock` and `reports/test-reliability-latest.json` drift was neither edited nor staged.
+
+Concerns:
+- No Docker, hosted, provider-backed, external-model, or external-network verification was performed, per round constraints.

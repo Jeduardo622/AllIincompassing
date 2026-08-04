@@ -232,6 +232,40 @@ type ResponsePayload = {
   confidence: "low" | "medium" | "high";
 };
 
+type RequestClient = ReturnType<typeof createRequestClient>;
+type LegacyAssessmentLookupInput = {
+  assessmentDocumentId: string;
+  organizationId: string;
+  clientId: string;
+};
+type CompletionInvocationResult =
+  | ResponsePayload
+  | {
+    response: ResponsePayload;
+    inputTokens?: number;
+    outputTokens?: number;
+    errorClass?: string | null;
+    errorCode?: string | null;
+  };
+type GenerateProgramGoalsDependencies = {
+  createRequestClient: typeof createRequestClient;
+  getUserOrThrow: typeof getUserOrThrow;
+  requireOrg: typeof requireOrg;
+  lookupLegacyAssessment: (
+    db: RequestClient,
+    input: LegacyAssessmentLookupInput,
+  ) => Promise<Record<string, unknown> | null>;
+  invokeCompletion: (
+    payload: RequestPayload,
+    ledgerBound: boolean,
+  ) => Promise<CompletionInvocationResult>;
+  requireLedgerAdvisoryRuntime: () => Promise<void>;
+};
+type RequestResolution =
+  | { kind: "ledger"; payload: LedgerGenerationCorrelation }
+  | { kind: "legacy"; payload: RequestPayload }
+  | { kind: "error"; status: number; code: "generation_scope_denied" | "invalid_request_body" };
+
 const CALOPTIMA_GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
   "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
@@ -370,6 +404,25 @@ async function loadAuthoritativeCalOptimaPayload(
     assessment_summary: assessmentSummary.length >= 20 ? assessmentSummary : fallbackSummary,
     source_evidence_snippets: sourceEvidenceSnippets,
   });
+}
+
+async function lookupLegacyAssessmentDocument(
+  db: RequestClient,
+  input: LegacyAssessmentLookupInput,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await db
+    .from("assessment_documents")
+    .select("id")
+    .eq("id", input.assessmentDocumentId)
+    .eq("organization_id", input.organizationId)
+    .eq("client_id", input.clientId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as Record<string, unknown>;
 }
 
 async function loadPersistedCalOptimaDraftPacket(
@@ -773,6 +826,48 @@ const buildRetryHint = (reason: AttemptFailureReason): string => {
   }
 };
 
+const normalizeCompletionResult = (
+  result: CompletionInvocationResult,
+): { response: ResponsePayload; inputTokens: number; outputTokens: number; errorClass: string | null; errorCode: string | null } => {
+  if ("programs" in result && "goals" in result && "summary_rationale" in result && "confidence" in result) {
+    return {
+      response: result,
+      inputTokens: 0,
+      outputTokens: 0,
+      errorClass: null,
+      errorCode: null,
+    };
+  }
+
+  return {
+    response: result.response,
+    inputTokens: Math.max(0, Number(result.inputTokens ?? 0)),
+    outputTokens: Math.max(0, Number(result.outputTokens ?? 0)),
+    errorClass: result.errorClass ?? null,
+    errorCode: result.errorCode ?? null,
+  };
+};
+
+const resolveGenerationRequest = (body: unknown, organizationId: string): RequestResolution => {
+  const ledgerParsed = ledgerGenerationSchema.safeParse(body);
+  if (ledgerParsed.success) {
+    if (ledgerParsed.data.organizationId !== organizationId) {
+      return { kind: "error", status: 403, code: "generation_scope_denied" };
+    }
+    return { kind: "ledger", payload: ledgerParsed.data };
+  }
+
+  const legacyParsed = requestSchema.safeParse(body);
+  if (legacyParsed.success) {
+    if (legacyParsed.data.organization_id !== organizationId) {
+      return { kind: "error", status: 403, code: "generation_scope_denied" };
+    }
+    return { kind: "legacy", payload: legacyParsed.data };
+  }
+
+  return { kind: "error", status: 400, code: "invalid_request_body" };
+};
+
 const json = (req: Request, payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
     status,
@@ -782,260 +877,299 @@ const json = (req: Request, payload: unknown, status = 200): Response =>
 const deriveStableLedgerRequestId = (workItemId: string): string =>
   `caloptima-ledger.${workItemId}`;
 
-export async function handleGenerateProgramGoals(req: Request): Promise<Response> {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders(req) });
-  }
-
-  if (req.method !== "POST") {
-    return json(req, { error: "Method not allowed" }, 405);
-  }
-
-  let ledgerResultContext: {
-    correlation: LedgerGenerationCorrelation;
-    actorUserId: string;
-    stepId: string;
-    attemptId: string;
-    payload: RequestPayload;
-  } | null = null;
-  let ledgerResultRecorded = false;
+async function invokeCompletionWithRetries(
+  payload: RequestPayload,
+  ledgerBound: boolean,
+): Promise<CompletionInvocationResult> {
+  const attemptFailures: AttemptFailureReason[] = [];
+  const openai = createOpenAIClient();
+  let retryHint: string | undefined;
   let ledgerInputTokens = 0;
   let ledgerOutputTokens = 0;
-  try {
-    const db = createRequestClient(req);
-    const user = await getUserOrThrow(db);
-    const organizationId = await requireOrg(db);
+  const userPromptBase = buildUserPrompt(payload);
 
-    const body = await req.json();
-    const ledgerParsed = ledgerGenerationSchema.safeParse(body);
-    let payload: RequestPayload;
-    if (ledgerParsed.success) {
-      if (ledgerParsed.data.organizationId !== organizationId) {
-        return json(req, { error: "Ledger scope denied" }, 403);
-      }
-      const requestId = deriveStableLedgerRequestId(ledgerParsed.data.workItemId);
-      const requestIdCandidate = req.headers.get("x-request-id")?.trim() ?? "";
-      if (
-        (requestIdCandidate && requestIdCandidate !== requestId) ||
-        ledgerParsed.data.correlationId !== requestId
-      ) {
-        return json(req, { error: "stable_request_id_mismatch" }, 409);
-      }
-      await requireLedgerAdvisoryRuntime();
-      const prepared = await prepareLedgerGeneration({
-        actorUserId: user.id,
-        requestId,
-        correlation: ledgerParsed.data,
-      }, {
-        loadAuthoritativePayload: ({ assessmentDocumentId, organizationId, clientId }) =>
-          loadAuthoritativeCalOptimaPayload(db, { assessmentDocumentId, organizationId, clientId }),
-        beginAttempt: async (input) => {
-          const { data, error } = await supabaseAdmin.rpc(
-            "begin_agent_work_caloptima_model_attempt",
-            {
-              p_actor_user_id: input.actorUserId,
-              p_organization_id: input.correlation.organizationId,
-              p_client_id: input.correlation.clientId,
-              p_work_item_id: input.correlation.workItemId,
-              p_correlation_id: input.correlation.correlationId,
-              p_request_id: input.requestId,
-            },
-          );
-          const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
-          const authoritative = !error && !!row &&
-            row.workflow_key === "assessment.caloptima.prepare_draft_review" &&
-            row.workflow_version === 1 && row.step_key === "suggest_draft_packet" &&
-            row.provider === input.provider && row.model === input.model &&
-            row.prompt_version === input.promptVersion && row.tool_version === input.toolVersion &&
-            row.model_request_schema_version === input.modelRequestSchemaVersion &&
-            row.pricing_version === input.pricingVersion && Number(row.temperature) === input.temperature &&
-            Array.isArray(row.allowed_tools) && row.allowed_tools.length === 0 &&
-            Array.isArray(row.guarded_tools) && row.guarded_tools.length === 0 &&
-            (row.attempt_status === "running" || row.attempt_status === "completed" ||
-              row.attempt_status === "failed");
-          return {
-            authoritative,
-            stepId: typeof row?.step_id === "string" ? row.step_id : "",
-            attemptId: typeof row?.attempt_id === "string" ? row.attempt_id : "",
-            attemptStatus: row?.attempt_status === "running" || row?.attempt_status === "completed" ||
-                row?.attempt_status === "failed"
-              ? row.attempt_status
-              : "running",
-            outputHash: typeof row?.output_hash === "string" ? row.output_hash : null,
-          };
-        },
-        settleAttemptFailure: async (input) => {
-          const { data, error } = await supabaseAdmin.rpc(
-            "fail_agent_work_caloptima_model_attempt",
-            {
-              p_actor_user_id: input.actorUserId,
-              p_organization_id: input.correlation.organizationId,
-              p_client_id: input.correlation.clientId,
-              p_work_item_id: input.correlation.workItemId,
-              p_step_id: input.stepId,
-              p_attempt_id: input.attemptId,
-              p_error_code: input.errorCode,
-            },
-          );
-          if (error || !data) {
-            throw new LedgerGenerationError("attempt_settlement_failed", 503);
-          }
-        },
-      });
-      if (prepared.replay) {
-        const replay = await loadPersistedCalOptimaDraftPacket(user.id, ledgerParsed.data);
-        return json(
-          req,
-          await verifyLedgerReplayPacket(
-            replay.packet,
-            replay.outputHash,
-            replay.packetHash,
-            prepared.replayOutputHash,
-          ),
-          200,
-        );
-      }
-      payload = prepared.payload;
-      ledgerResultContext = {
-        correlation: ledgerParsed.data,
-        actorUserId: user.id,
-        stepId: prepared.stepId,
-        attemptId: prepared.attemptId,
-        payload,
-      };
-    } else {
-      return json(req, { error: "ledger_correlation_required" }, 409);
+  for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const userPrompt = retryHint
+      ? `${userPromptBase}\n\nIMPORTANT RETRY FIX:\n${retryHint}`
+      : userPromptBase;
+
+    const completion = await withTimeout(
+      openai.chat.completions.create(
+        buildCompletionRequest(userPrompt, ledgerBound),
+      ),
+      OPENAI_ATTEMPT_TIMEOUT_MS,
+    ) as Awaited<ReturnType<typeof openai.chat.completions.create>> | null;
+
+    if (!completion) {
+      const reason: AttemptFailureReason = "timeout";
+      attemptFailures.push(reason);
+      retryHint = buildRetryHint(reason);
+      continue;
     }
 
-    const attemptFailures: AttemptFailureReason[] = [];
-    const openai = createOpenAIClient();
-    let retryHint: string | undefined;
-    let lastFailureReason = "unknown";
-    const userPromptBase = buildUserPrompt(payload);
-
-    for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
-      const userPrompt = retryHint
-        ? `${userPromptBase}\n\nIMPORTANT RETRY FIX:\n${retryHint}`
-        : userPromptBase;
-
-      const completion = await withTimeout(
-        openai.chat.completions.create(
-          buildCompletionRequest(userPrompt, ledgerResultContext !== null),
-        ),
-        OPENAI_ATTEMPT_TIMEOUT_MS,
-      ) as Awaited<ReturnType<typeof openai.chat.completions.create>> | null;
-
-      if (!completion) {
-        const reason: AttemptFailureReason = "timeout";
-        attemptFailures.push(reason);
-        lastFailureReason = `attempt ${attempt} timed out after ${OPENAI_ATTEMPT_TIMEOUT_MS}ms`;
-        retryHint = buildRetryHint(reason);
-        continue;
-      }
-
-      if (!("choices" in completion)) {
-        const reason: AttemptFailureReason = "empty_content";
-        attemptFailures.push(reason);
-        lastFailureReason = `attempt ${attempt} returned an unsupported streaming response`;
-        retryHint = buildRetryHint(reason);
-        continue;
-      }
-
-      if (ledgerResultContext) {
-        const usage = (completion as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage;
-        ledgerInputTokens += Math.max(0, Number(usage?.prompt_tokens ?? 0));
-        ledgerOutputTokens += Math.max(0, Number(usage?.completion_tokens ?? 0));
-      }
-
-      const rawContent = completion.choices[0]?.message?.content;
-      if (!rawContent) {
-        const reason: AttemptFailureReason = "empty_content";
-        attemptFailures.push(reason);
-        lastFailureReason = `attempt ${attempt} returned empty content`;
-        retryHint = buildRetryHint(reason);
-        continue;
-      }
-
-      const candidate = parseAndValidateCandidate(rawContent, payload);
-      if (!candidate.ok) {
-        attemptFailures.push(candidate.reason);
-        lastFailureReason = `attempt ${attempt} failed with ${candidate.reason}`;
-        retryHint = buildRetryHint(candidate.reason);
-        continue;
-      }
-
-      if (ledgerResultContext) {
-        await recordLedgerModelResult(
-          ledgerResultContext,
-          candidate.payload,
-          ledgerInputTokens,
-          ledgerOutputTokens,
-          null,
-          null,
-        );
-        ledgerResultRecorded = true;
-      }
-
-      return json(req, candidate.payload, 200);
+    if (!("choices" in completion)) {
+      const reason: AttemptFailureReason = "empty_content";
+      attemptFailures.push(reason);
+      retryHint = buildRetryHint(reason);
+      continue;
     }
 
-    const allTimeouts = attemptFailures.length > 0 && attemptFailures.every((reason) => reason === "timeout");
-    if (ledgerResultContext) {
-      const finalReason = attemptFailures.at(-1) ?? "validation_failed";
-      const fallback = buildFallbackResponse(payload, `${finalReason} (${MAX_GENERATION_ATTEMPTS} attempts)`);
-      await recordLedgerModelResult(
-        ledgerResultContext,
-        fallback,
-        ledgerInputTokens,
-        ledgerOutputTokens,
-        allTimeouts ? "provider" : "model_output",
-        finalReason,
-      );
-      ledgerResultRecorded = true;
-      return json(req, fallback, 200);
+    const usage = (completion as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage;
+    ledgerInputTokens += Math.max(0, Number(usage?.prompt_tokens ?? 0));
+    ledgerOutputTokens += Math.max(0, Number(usage?.completion_tokens ?? 0));
+
+    const rawContent = completion.choices[0]?.message?.content;
+    if (!rawContent) {
+      const reason: AttemptFailureReason = "empty_content";
+      attemptFailures.push(reason);
+      retryHint = buildRetryHint(reason);
+      continue;
     }
 
-    if (allTimeouts) {
-      const fallback = buildFallbackResponse(payload, `timeout-only failure (${MAX_GENERATION_ATTEMPTS} attempts)`);
-      return json(req, fallback, 200);
+    const candidate = parseAndValidateCandidate(rawContent, payload);
+    if (!candidate.ok) {
+      attemptFailures.push(candidate.reason);
+      retryHint = buildRetryHint(candidate.reason);
+      continue;
     }
 
-    const failureSet = Array.from(new Set(attemptFailures.values())).join(",");
-    return json(req, {
-      error:
-        `Generated draft failed after ${MAX_GENERATION_ATTEMPTS} attempts. Last failure: ${lastFailureReason}. ` +
-        `Failure categories: ${failureSet || "none"}.`,
-    }, 502);
-  } catch (error) {
-    if (ledgerResultContext && !ledgerResultRecorded) {
-      try {
-        const fallback = buildFallbackResponse(ledgerResultContext.payload, "upstream_unavailable");
-        await recordLedgerModelResult(
-          ledgerResultContext,
-          fallback,
-          ledgerInputTokens,
-          ledgerOutputTokens,
-          "provider",
-          "upstream_unavailable",
-        );
-        ledgerResultRecorded = true;
-        return json(req, fallback, 200);
-      } catch {
-        // The original fail-closed error remains authoritative when finalization also fails.
-      }
-    }
-    if (error instanceof LedgerGenerationError || error instanceof LedgerPreparationError) {
-      console.error("generate-program-goals ledger error", error.code);
-      return json(req, { error: "Ledger-bound draft generation denied", code: error.code }, error.status);
-    }
-    console.error("generate-program-goals error", error instanceof Error ? error.name : "unknown");
-    return json(req, { error: "Failed to generate draft" }, 500);
+    return {
+      response: candidate.payload,
+      inputTokens: ledgerInputTokens,
+      outputTokens: ledgerOutputTokens,
+      errorClass: null,
+      errorCode: null,
+    };
   }
+
+  const finalReason = attemptFailures.at(-1) ?? "validation_failed";
+  const allTimeouts = attemptFailures.length > 0 && attemptFailures.every((reason) => reason === "timeout");
+  if (ledgerBound || allTimeouts) {
+    return {
+      response: buildFallbackResponse(
+        payload,
+        allTimeouts ? `timeout-only failure (${MAX_GENERATION_ATTEMPTS} attempts)` : `${finalReason} (${MAX_GENERATION_ATTEMPTS} attempts)`,
+      ),
+      inputTokens: ledgerInputTokens,
+      outputTokens: ledgerOutputTokens,
+      errorClass: allTimeouts ? "provider" : ledgerBound ? "model_output" : null,
+      errorCode: ledgerBound || allTimeouts ? finalReason : null,
+    };
+  }
+
+  const failureSet = Array.from(new Set(attemptFailures.values())).join(",");
+  throw new Error(
+    `Generated draft failed after ${MAX_GENERATION_ATTEMPTS} attempts. Last failure: ${finalReason}. ` +
+      `Failure categories: ${failureSet || "none"}.`,
+  );
 }
+
+const productionDependencies: GenerateProgramGoalsDependencies = {
+  createRequestClient,
+  getUserOrThrow,
+  requireOrg,
+  lookupLegacyAssessment: lookupLegacyAssessmentDocument,
+  invokeCompletion: invokeCompletionWithRetries,
+  requireLedgerAdvisoryRuntime,
+};
+
+export function createGenerateProgramGoalsHandler(
+  dependencies: GenerateProgramGoalsDependencies = productionDependencies,
+): (req: Request) => Promise<Response> {
+  return async function handleGenerateProgramGoals(req: Request): Promise<Response> {
+    if (req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders(req) });
+    }
+
+    if (req.method !== "POST") {
+      return json(req, { error: "Method not allowed" }, 405);
+    }
+
+    let ledgerResultContext: {
+      correlation: LedgerGenerationCorrelation;
+      actorUserId: string;
+      stepId: string;
+      attemptId: string;
+      payload: RequestPayload;
+    } | null = null;
+    let ledgerResultRecorded = false;
+    let ledgerInputTokens = 0;
+    let ledgerOutputTokens = 0;
+
+    try {
+      const db = dependencies.createRequestClient(req);
+      const user = await dependencies.getUserOrThrow(db);
+      const organizationId = await dependencies.requireOrg(db);
+      const body = await req.json();
+      const resolved = resolveGenerationRequest(body, organizationId);
+
+      if (resolved.kind === "error") {
+        if (resolved.code === "generation_scope_denied") {
+          return json(req, { error: "Legacy-bound draft generation denied", code: resolved.code }, resolved.status);
+        }
+        return json(req, { error: resolved.code }, resolved.status);
+      }
+
+      let payload: RequestPayload;
+      let ledgerBound = false;
+
+      if (resolved.kind === "ledger") {
+        ledgerBound = true;
+        const requestId = deriveStableLedgerRequestId(resolved.payload.workItemId);
+        const requestIdCandidate = req.headers.get("x-request-id")?.trim() ?? "";
+        if (
+          (requestIdCandidate && requestIdCandidate !== requestId) ||
+          resolved.payload.correlationId !== requestId
+        ) {
+          return json(req, { error: "stable_request_id_mismatch" }, 409);
+        }
+        await dependencies.requireLedgerAdvisoryRuntime();
+        const prepared = await prepareLedgerGeneration({
+          actorUserId: user.id,
+          requestId,
+          correlation: resolved.payload,
+        }, {
+          loadAuthoritativePayload: ({ assessmentDocumentId, organizationId, clientId }) =>
+            loadAuthoritativeCalOptimaPayload(db, { assessmentDocumentId, organizationId, clientId }),
+          beginAttempt: async (input) => {
+            const { data, error } = await supabaseAdmin.rpc(
+              "begin_agent_work_caloptima_model_attempt",
+              {
+                p_actor_user_id: input.actorUserId,
+                p_organization_id: input.correlation.organizationId,
+                p_client_id: input.correlation.clientId,
+                p_work_item_id: input.correlation.workItemId,
+                p_correlation_id: input.correlation.correlationId,
+                p_request_id: input.requestId,
+              },
+            );
+            const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
+            const authoritative = !error && !!row &&
+              row.workflow_key === "assessment.caloptima.prepare_draft_review" &&
+              row.workflow_version === 1 && row.step_key === "suggest_draft_packet" &&
+              row.provider === input.provider && row.model === input.model &&
+              row.prompt_version === input.promptVersion && row.tool_version === input.toolVersion &&
+              row.model_request_schema_version === input.modelRequestSchemaVersion &&
+              row.pricing_version === input.pricingVersion && Number(row.temperature) === input.temperature &&
+              Array.isArray(row.allowed_tools) && row.allowed_tools.length === 0 &&
+              Array.isArray(row.guarded_tools) && row.guarded_tools.length === 0 &&
+              (row.attempt_status === "running" || row.attempt_status === "completed" ||
+                row.attempt_status === "failed");
+            return {
+              authoritative,
+              stepId: typeof row?.step_id === "string" ? row.step_id : "",
+              attemptId: typeof row?.attempt_id === "string" ? row.attempt_id : "",
+              attemptStatus: row?.attempt_status === "running" || row?.attempt_status === "completed" ||
+                  row?.attempt_status === "failed"
+                ? row.attempt_status
+                : "running",
+              outputHash: typeof row?.output_hash === "string" ? row.output_hash : null,
+            };
+          },
+          settleAttemptFailure: async (input) => {
+            const { data, error } = await supabaseAdmin.rpc(
+              "fail_agent_work_caloptima_model_attempt",
+              {
+                p_actor_user_id: input.actorUserId,
+                p_organization_id: input.correlation.organizationId,
+                p_client_id: input.correlation.clientId,
+                p_work_item_id: input.correlation.workItemId,
+                p_step_id: input.stepId,
+                p_attempt_id: input.attemptId,
+                p_error_code: input.errorCode,
+              },
+            );
+            if (error || !data) {
+              throw new LedgerGenerationError("attempt_settlement_failed", 503);
+            }
+          },
+        });
+        if (prepared.replay) {
+          const replay = await loadPersistedCalOptimaDraftPacket(user.id, resolved.payload);
+          return json(
+            req,
+            await verifyLedgerReplayPacket(
+              replay.packet,
+              replay.outputHash,
+              replay.packetHash,
+              prepared.replayOutputHash,
+            ),
+            200,
+          );
+        }
+        payload = prepared.payload;
+        ledgerResultContext = {
+          correlation: resolved.payload,
+          actorUserId: user.id,
+          stepId: prepared.stepId,
+          attemptId: prepared.attemptId,
+          payload,
+        };
+      } else {
+        const legacyAssessment = await dependencies.lookupLegacyAssessment(db, {
+          assessmentDocumentId: resolved.payload.assessment_document_id,
+          organizationId: resolved.payload.organization_id,
+          clientId: resolved.payload.client_id,
+        });
+        if (!legacyAssessment) {
+          return json(req, { error: "Legacy-bound draft generation denied", code: "generation_scope_denied" }, 403);
+        }
+        payload = resolved.payload;
+      }
+
+      const completion = normalizeCompletionResult(
+        await dependencies.invokeCompletion(payload, ledgerBound),
+      );
+
+      if (ledgerResultContext) {
+        ledgerInputTokens = completion.inputTokens;
+        ledgerOutputTokens = completion.outputTokens;
+        await recordLedgerModelResult(
+          ledgerResultContext,
+          completion.response,
+          ledgerInputTokens,
+          ledgerOutputTokens,
+          completion.errorClass,
+          completion.errorCode,
+        );
+        ledgerResultRecorded = true;
+      }
+
+      return json(req, completion.response, 200);
+    } catch (error) {
+      if (ledgerResultContext && !ledgerResultRecorded) {
+        try {
+          const fallback = buildFallbackResponse(ledgerResultContext.payload, "upstream_unavailable");
+          await recordLedgerModelResult(
+            ledgerResultContext,
+            fallback,
+            ledgerInputTokens,
+            ledgerOutputTokens,
+            "provider",
+            "upstream_unavailable",
+          );
+          ledgerResultRecorded = true;
+          return json(req, fallback, 200);
+        } catch {
+          // The original fail-closed error remains authoritative when finalization also fails.
+        }
+      }
+      if (error instanceof LedgerGenerationError || error instanceof LedgerPreparationError) {
+        console.error("generate-program-goals ledger error", error.code);
+        return json(req, { error: "Ledger-bound draft generation denied", code: error.code }, error.status);
+      }
+      console.error("generate-program-goals error", error instanceof Error ? error.name : "unknown");
+      return json(req, { error: "Failed to generate draft" }, 500);
+    }
+  };
+}
+
+export const handleGenerateProgramGoals = createGenerateProgramGoalsHandler();
 
 export const __TESTING__ = {
   buildUserPrompt,
   parseAndValidateCandidate,
+  resolveGenerationRequest,
   hasWeakEvidenceWithoutFlags,
   countGoalsByType,
   buildFallbackResponse,

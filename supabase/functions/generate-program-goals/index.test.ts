@@ -1,5 +1,6 @@
 import {
   assertEquals,
+  assertExists,
   assertRejects,
 } from "https://deno.land/std@0.224.0/testing/asserts.ts";
 
@@ -8,7 +9,43 @@ Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-key");
 Deno.env.set("SUPABASE_ANON_KEY", "test-anon-key");
 Deno.env.set("OPENAI_API_KEY", "test-openai-key");
 
-const { __TESTING__ } = await import("./index.ts");
+const generationModule = await import("./index.ts");
+const { __TESTING__ } = generationModule;
+const createGenerateProgramGoalsHandler = (generationModule as Record<string, unknown>).createGenerateProgramGoalsHandler as
+  | ((dependencies?: Record<string, unknown>) => (req: Request) => Promise<Response>)
+  | undefined;
+
+const ASSESSMENT_ID = "11111111-1111-4111-8111-111111111111";
+const CLIENT_ID = "22222222-2222-4222-8222-222222222222";
+const ORG_ID = "33333333-3333-4333-8333-333333333333";
+const OTHER_ORG_ID = "99999999-9999-4999-8999-999999999999";
+
+const buildLegacyRequest = (overrides: Partial<Record<string, unknown>> = {}) => ({
+  assessment_document_id: ASSESSMENT_ID,
+  client_id: CLIENT_ID,
+  organization_id: ORG_ID,
+  client_display_name: "Client One",
+  organization_guidance: "Use objective ABA language.",
+  approved_checklist_rows: [
+    {
+      section_key: "assessment_summary",
+      label: "Summary",
+      placeholder_key: "assessment_summary",
+      value_text: "Approved summary text.",
+    },
+  ],
+  extracted_canonical_fields: {
+    CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS: "Replacement goals",
+  },
+  assessment_summary: "Synthetic assessment text with sufficient detail.",
+  source_evidence_snippets: [
+    {
+      section_key: "assessment_summary",
+      snippet: "Approved evidence snippet.",
+    },
+  ],
+  ...overrides,
+});
 
 const buildValidResponse = () => {
   const programs = [
@@ -329,6 +366,58 @@ Deno.test("ledger generation accepts only fixed server-issued correlation fields
   }).success, false);
 });
 
+Deno.test("resolveGenerationRequest classifies valid legacy input", () => {
+  const resolveGenerationRequest = (__TESTING__ as Record<string, unknown>).resolveGenerationRequest as
+    | ((body: unknown, organizationId: string) => unknown)
+    | undefined;
+  assertExists(resolveGenerationRequest);
+  assertEquals(resolveGenerationRequest(buildLegacyRequest(), ORG_ID), {
+    kind: "legacy",
+    payload: {
+      ...buildLegacyRequest(),
+      approved_checklist_rows: [
+        {
+          ...buildLegacyRequest().approved_checklist_rows[0],
+          source_span: "unbound-source",
+        },
+      ],
+      source_evidence_snippets: [
+        {
+          ...buildLegacyRequest().source_evidence_snippets[0],
+          source_span: "unbound-source",
+        },
+      ],
+    },
+  });
+});
+
+Deno.test("resolveGenerationRequest denies cross-tenant legacy input", () => {
+  const resolveGenerationRequest = (__TESTING__ as Record<string, unknown>).resolveGenerationRequest as
+    | ((body: unknown, organizationId: string) => unknown)
+    | undefined;
+  assertExists(resolveGenerationRequest);
+  assertEquals(
+    resolveGenerationRequest({ ...buildLegacyRequest(), organization_id: OTHER_ORG_ID }, ORG_ID),
+    {
+      kind: "error",
+      status: 403,
+      code: "generation_scope_denied",
+    },
+  );
+});
+
+Deno.test("resolveGenerationRequest rejects malformed request bodies", () => {
+  const resolveGenerationRequest = (__TESTING__ as Record<string, unknown>).resolveGenerationRequest as
+    | ((body: unknown, organizationId: string) => unknown)
+    | undefined;
+  assertExists(resolveGenerationRequest);
+  assertEquals(resolveGenerationRequest({ unexpected: true }, ORG_ID), {
+    kind: "error",
+    status: 400,
+    code: "invalid_request_body",
+  });
+});
+
 Deno.test("ledger model completion request explicitly disables every tool", () => {
   const request = __TESTING__.buildCompletionRequest("Synthetic prompt", true);
   assertEquals(request.model, "gpt-4o");
@@ -489,4 +578,95 @@ Deno.test("structured evidence uses approved payload content instead of locator 
     }),
     { approved: "content" },
   );
+});
+
+Deno.test("legacy handler accepts same-tenant authenticated requests without ledger RPCs", async () => {
+  assertExists(createGenerateProgramGoalsHandler);
+
+  let invokeCompletionCalls = 0;
+  let legacyLookupCalls = 0;
+  const requestClientRpcCalls: string[] = [];
+  const handler = createGenerateProgramGoalsHandler({
+    createRequestClient: () => ({
+      rpc: (name: string) => {
+        requestClientRpcCalls.push(name);
+        throw new Error("legacy path should not call request client RPCs");
+      },
+    }),
+    getUserOrThrow: async () => ({ id: "77777777-7777-4777-8777-777777777777" }),
+    requireOrg: async () => ORG_ID,
+    lookupLegacyAssessment: async (_db: unknown, input: Record<string, string>) => {
+      legacyLookupCalls += 1;
+      assertEquals(input, {
+        assessmentDocumentId: ASSESSMENT_ID,
+        organizationId: ORG_ID,
+        clientId: CLIENT_ID,
+      });
+      return { id: ASSESSMENT_ID };
+    },
+    invokeCompletion: async (payload: Record<string, unknown>, ledgerBound: boolean) => {
+      invokeCompletionCalls += 1;
+      assertEquals(ledgerBound, false);
+      const prompt = (__TESTING__ as Record<string, unknown>).buildUserPrompt as (input: Record<string, unknown>) => string;
+      const promptText = prompt(payload);
+      assertEquals(promptText.includes("ASSESSMENT_DOCUMENT_ID: 11111111-1111-4111-8111-111111111111"), true);
+      assertEquals(promptText.includes("CLIENT_DISPLAY_NAME: Client One"), true);
+      assertEquals(promptText.includes("Use objective ABA language."), true);
+      return buildValidResponse();
+    },
+  });
+
+  const response = await handler(
+    new Request("https://example.supabase.co/functions/v1/generate-program-goals", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer token",
+      },
+      body: JSON.stringify(buildLegacyRequest()),
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(legacyLookupCalls, 1);
+  assertEquals(invokeCompletionCalls, 1);
+  assertEquals(requestClientRpcCalls, []);
+});
+
+Deno.test("legacy handler denies cross-tenant requests before completion invocation", async () => {
+  assertExists(createGenerateProgramGoalsHandler);
+
+  let invokeCompletionCalls = 0;
+  const handler = createGenerateProgramGoalsHandler({
+    createRequestClient: () => ({
+      rpc: () => {
+        throw new Error("legacy path should not call request client RPCs");
+      },
+    }),
+    getUserOrThrow: async () => ({ id: "77777777-7777-4777-8777-777777777777" }),
+    requireOrg: async () => ORG_ID,
+    lookupLegacyAssessment: async () => null,
+    invokeCompletion: async () => {
+      invokeCompletionCalls += 1;
+      return buildValidResponse();
+    },
+  });
+
+  const response = await handler(
+    new Request("https://example.supabase.co/functions/v1/generate-program-goals", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer token",
+      },
+      body: JSON.stringify({ ...buildLegacyRequest(), organization_id: OTHER_ORG_ID }),
+    }),
+  );
+
+  assertEquals(response.status, 403);
+  assertEquals(await response.json(), {
+    error: "Legacy-bound draft generation denied",
+    code: "generation_scope_denied",
+  });
+  assertEquals(invokeCompletionCalls, 0);
 });

@@ -300,27 +300,45 @@ export async function generateProgramGoalDraft(
     throw new Error('Assessment text must be at least 20 characters');
   }
 
-  const requestId = options?.ledgerWorkItemId
-    ? `caloptima-ledger.${options.ledgerWorkItemId.trim()}`
-    : '';
+  const trimmedAssessmentText = assessmentText.trim();
+  const hasLedgerWorkItemId = typeof options?.ledgerWorkItemId === 'string' && options.ledgerWorkItemId.trim().length > 0;
+  const requestId = hasLedgerWorkItemId ? `caloptima-ledger.${options!.ledgerWorkItemId!.trim()}` : '';
   const correlationId = requestId;
 
-  if (
-    !options?.ledgerWorkItemId ||
-    !options.assessmentDocumentId ||
-    !options.clientId ||
-    !options.organizationId
-  ) {
-    throw new Error('Ledger-bound generation requires assessment, client, and organization scope');
-  }
+  let payload: Record<string, unknown>;
 
-  const payload = {
-    assessmentDocumentId: options.assessmentDocumentId.trim(),
-    clientId: options.clientId.trim(),
-    organizationId: options.organizationId.trim(),
-    workItemId: options.ledgerWorkItemId.trim(),
-    correlationId,
-  };
+  if (hasLedgerWorkItemId) {
+    if (!options?.assessmentDocumentId || !options.clientId || !options.organizationId) {
+      throw new Error('Ledger-bound generation requires assessment, client, and organization scope');
+    }
+
+    payload = {
+      assessmentDocumentId: options.assessmentDocumentId.trim(),
+      clientId: options.clientId.trim(),
+      organizationId: options.organizationId.trim(),
+      workItemId: options.ledgerWorkItemId!.trim(),
+      correlationId,
+    };
+  } else {
+    if (!options?.assessmentDocumentId || !options.clientId || !options.organizationId) {
+      throw new Error('Legacy generation requires assessment, client, and organization scope');
+    }
+
+    payload = {
+      assessment_document_id: options.assessmentDocumentId.trim(),
+      client_id: options.clientId.trim(),
+      organization_id: options.organizationId.trim(),
+      client_display_name: options.clientName?.trim() ?? '',
+      organization_guidance: options.organizationGuidance?.trim() ?? '',
+      approved_checklist_rows: options.approvedChecklistRows ?? [],
+      extracted_canonical_fields: options.extractedCanonicalFields ?? {},
+      assessment_summary: trimmedAssessmentText,
+      source_evidence_snippets:
+        options.sourceEvidenceSnippets && options.sourceEvidenceSnippets.length > 0
+          ? options.sourceEvidenceSnippets
+          : [{ section_key: 'assessment_summary', snippet: trimmedAssessmentText }],
+    };
+  }
 
   const response = await fetch(
     buildSupabaseEdgeUrl('generate-program-goals'),

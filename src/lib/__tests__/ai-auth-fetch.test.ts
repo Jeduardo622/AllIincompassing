@@ -13,6 +13,9 @@ import {
 
 const anonKey = 'anon-key';
 const accessToken = 'mock-user-jwt';
+const ASSESSMENT_ID = '11111111-1111-4111-8111-111111111111';
+const CLIENT_ID = '22222222-2222-4222-8222-222222222222';
+const ORG_ID = '33333333-3333-4333-8333-333333333333';
 
 const buildFetchResponse = (payload: unknown, ok = true, status = 200) => ({
   ok,
@@ -169,7 +172,7 @@ describe('AI edge function authentication', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('rejects the legacy unbound generate-program-goals request', async () => {
+  it('posts the established snake_case payload for authenticated legacy generate-program-goals requests', async () => {
     fetchMock.mockResolvedValueOnce(
       buildFetchResponse({
         programs: [
@@ -206,11 +209,90 @@ describe('AI edge function authentication', () => {
       })
     );
 
-    await expect(generateProgramGoalDraft(
-      'Assessment text with sufficient detail for generation.',
+    await generateProgramGoalDraft(
+      'Synthetic assessment text with sufficient detail.',
       { accessToken },
-      { clientName: 'Client One' },
-    )).rejects.toThrow('Ledger-bound generation requires assessment, client, and organization scope');
+      {
+        assessmentDocumentId: ASSESSMENT_ID,
+        clientId: CLIENT_ID,
+        organizationId: ORG_ID,
+        clientName: 'Client One',
+        organizationGuidance: 'Use objective ABA language.',
+        approvedChecklistRows: [
+          {
+            section_key: 'assessment_summary',
+            label: 'Summary',
+            placeholder_key: 'assessment_summary',
+            value_text: 'Approved summary text.',
+          },
+        ],
+        extractedCanonicalFields: {
+          CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS: 'Replacement goals',
+        },
+        sourceEvidenceSnippets: [
+          {
+            section_key: 'assessment_summary',
+            snippet: 'Approved evidence snippet.',
+          },
+        ],
+      },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [requestUrl, init] = fetchMock.mock.calls[0];
+    expect(requestUrl).toBe(`${edgeBase}generate-program-goals`);
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      assessment_document_id: ASSESSMENT_ID,
+      client_id: CLIENT_ID,
+      organization_id: ORG_ID,
+      client_display_name: 'Client One',
+      organization_guidance: 'Use objective ABA language.',
+      approved_checklist_rows: [
+        {
+          section_key: 'assessment_summary',
+          label: 'Summary',
+          placeholder_key: 'assessment_summary',
+          value_text: 'Approved summary text.',
+        },
+      ],
+      extracted_canonical_fields: {
+        CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS: 'Replacement goals',
+      },
+      assessment_summary: 'Synthetic assessment text with sufficient detail.',
+      source_evidence_snippets: [
+        {
+          section_key: 'assessment_summary',
+          snippet: 'Approved evidence snippet.',
+        },
+      ],
+    });
+  });
+
+  it('rejects legacy generate-program-goals requests missing assessment, client, or organization scope before fetch', async () => {
+    await expect(
+      generateProgramGoalDraft(
+        'Synthetic assessment text with sufficient detail.',
+        { accessToken },
+        { assessmentDocumentId: ASSESSMENT_ID, clientId: CLIENT_ID },
+      ),
+    ).rejects.toThrow('Legacy generation requires assessment, client, and organization scope');
+
+    await expect(
+      generateProgramGoalDraft(
+        'Synthetic assessment text with sufficient detail.',
+        { accessToken },
+        { assessmentDocumentId: ASSESSMENT_ID, organizationId: ORG_ID },
+      ),
+    ).rejects.toThrow('Legacy generation requires assessment, client, and organization scope');
+
+    await expect(
+      generateProgramGoalDraft(
+        'Synthetic assessment text with sufficient detail.',
+        { accessToken },
+        { clientId: CLIENT_ID, organizationId: ORG_ID },
+      ),
+    ).rejects.toThrow('Legacy generation requires assessment, client, and organization scope');
+
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

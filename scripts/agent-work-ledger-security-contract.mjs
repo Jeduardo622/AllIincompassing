@@ -84,6 +84,11 @@ const FUNCTION_CONTRACTS = [
     execute: { public: false, anon: false, authenticated: true, service_role: true },
   },
   {
+    signature: "current_user_visible_agent_work_approval_ids(uuid)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: true, service_role: true },
+  },
+  {
     signature: "app.current_user_can_read_agent_work_item_endpoint(uuid)",
     searchPath: "public, pg_temp",
     execute: { public: false, anon: false, authenticated: true, service_role: true },
@@ -2596,6 +2601,14 @@ const assertParentEndpointReadPolicy = async (client, assignedWorkItemId, unassi
     ]);
     await client.query("select set_config('request.jwt.claim.sub', $1, true)", [FIXTURES.btA]);
 
+    const { rows: endpointRows } = await client.query(
+      "select public.current_user_can_read_agent_work_item_endpoint($1::uuid) as allowed",
+      [assignedWorkItemId],
+    );
+    assert(
+      endpointRows[0]?.allowed === false,
+      "Parent-hidden child remained visible through the Edge authority RPC",
+    );
     await expectFailure(
       "authenticated parent base-table read",
       () => client.query(

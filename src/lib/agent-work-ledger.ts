@@ -59,7 +59,7 @@ const workItemSchema = z.object({
   objective: z.string().min(1),
   status: workItemStatusSchema,
   risk: z.enum(["low", "moderate", "high", "clinical"]),
-  ownerUserId: z.string().nullable(),
+  hasOwner: z.boolean(),
   dueAt: z.string().datetime().nullable(),
   blockers: z.array(blockerSchema),
   steps: z.array(stepSchema),

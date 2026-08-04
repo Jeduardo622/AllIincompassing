@@ -4352,7 +4352,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
           objective: "Prepare this assessment for clinical review",
           status: "queued",
           risk: "clinical",
-          ownerUserId: "therapist-user-id",
+          hasOwner: true,
           dueAt: null,
           blockers: [],
           steps: [

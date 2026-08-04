@@ -1190,6 +1190,29 @@ as $$
   );
 $$;
 
+create or replace function public.current_user_visible_agent_work_approval_ids(p_work_item_id uuid)
+returns table (approval_id uuid)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select approval.id
+  from public.agent_work_approvals approval
+  where approval.work_item_id = p_work_item_id
+    and (
+      app.current_user_can_manage_agent_work_row(
+        approval.organization_id,
+        approval.client_id
+      )
+      or (
+        approval.assigned_to = auth.uid()
+        and public.current_user_can_decide_agent_work_approval(approval.id)
+      )
+    )
+  order by approval.requested_at asc, approval.id asc;
+$$;
+
 create or replace function public.current_user_can_read_agent_work_item_endpoint(p_work_item_id uuid)
 returns boolean
 language sql
@@ -1197,7 +1220,21 @@ stable
 security definer
 set search_path = ''
 as $$
-  select app.current_user_can_read_agent_work_item_endpoint(p_work_item_id);
+  select exists (
+    select 1
+    from public.agent_work_items item
+    where item.id = p_work_item_id
+      and app.current_user_can_read_agent_work_row(
+        item.organization_id,
+        item.client_id
+      )
+      and (
+        item.parent_work_item_id is null
+        or app.current_user_can_read_agent_work_item_endpoint(
+          item.parent_work_item_id
+        )
+      )
+  );
 $$;
 
 create or replace function public.current_user_can_read_agent_work_assessment_endpoint(
@@ -2248,7 +2285,6 @@ begin
     p_actor_user_id::text,
     jsonb_build_object(
       'approval_id', v_approval.id::text,
-      'assigned_to', p_assigned_owner_user_id::text,
       'request_reason_code', btrim(p_reason_code),
       'clinical_review_handoff', true
     )
@@ -3032,6 +3068,7 @@ revoke all on function public.agent_work_compute_evidence_hash(uuid) from public
 revoke all on function public.agent_work_compute_approval_hash(uuid, uuid, integer, text, uuid, text, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.current_user_can_decide_agent_work_approval(uuid) from public, anon;
 revoke all on function public.current_user_decidable_agent_work_approval_ids(uuid) from public, anon;
+revoke all on function public.current_user_visible_agent_work_approval_ids(uuid) from public, anon;
 revoke all on function public.agent_work_recompute_item_status(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.create_agent_assessment_work_item(uuid, uuid, uuid, uuid, integer, text) from public, anon, authenticated;
 revoke all on function public.claim_agent_work_step(uuid, text, integer) from public, anon, authenticated;
@@ -3049,6 +3086,7 @@ grant execute on function public.current_user_can_read_agent_work_item_endpoint(
 grant execute on function public.current_user_can_read_agent_work_assessment_endpoint(uuid, text, integer) to authenticated, service_role;
 grant execute on function public.current_user_can_decide_agent_work_approval(uuid) to authenticated, service_role;
 grant execute on function public.current_user_decidable_agent_work_approval_ids(uuid) to authenticated, service_role;
+grant execute on function public.current_user_visible_agent_work_approval_ids(uuid) to authenticated, service_role;
 grant execute on function public.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
 grant execute on function public.request_agent_work_approval_handoff(uuid, uuid, uuid, uuid, text, timestamptz) to service_role;
 grant execute on function public.decide_agent_work_approval(uuid, uuid, uuid, text, text) to service_role;

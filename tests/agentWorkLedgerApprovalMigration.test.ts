@@ -30,6 +30,10 @@ describe("agent work approval migration contract", () => {
     expect(coreSql).toContain("extensions.digest");
     expect(coreSql).toContain("approval.requested");
     expect(coreSql).toContain("clinical_review_handoff");
+    const requestedEvent = coreSql.match(
+      /'approval\.requested'[\s\S]+?jsonb_build_object\([\s\S]+?\)\s*\n\s*\);/,
+    )?.[0];
+    expect(requestedEvent).not.toContain("'assigned_to'");
   });
 
   it("re-reads role and tenant authority and handles stale state atomically", () => {
@@ -95,9 +99,13 @@ describe("agent work approval migration contract", () => {
 
   it("batches decision authority and omits approval owner identities from browser DTOs", () => {
     expect(coreSql).toContain("current_user_decidable_agent_work_approval_ids");
+    expect(coreSql).toContain("current_user_visible_agent_work_approval_ids");
     expect(itemFunctionSource).toContain('"current_user_decidable_agent_work_approval_ids"');
+    expect(itemFunctionSource).toContain('"current_user_visible_agent_work_approval_ids"');
     expect(itemFunctionSource).not.toContain('"current_user_can_decide_agent_work_approval"');
     expect(itemFunctionSource).not.toContain("assignedOwnerUserId: approval.assigned_to");
+    expect(itemFunctionSource).not.toContain("ownerUserId:");
+    expect(itemFunctionSource).toContain("hasOwner:");
   });
 
   it("keeps ledger base tables behind the sanitized Edge authority", () => {
@@ -121,6 +129,12 @@ describe("agent work approval migration contract", () => {
     expect(itemFunctionSource).toMatch(
       /if \(!await currentUserCanReadWorkItem\(workItemId\)\) return null;[\s\S]+?serviceClient\s*\.from\("agent_work_items"\)/,
     );
+    expect(coreSql).toMatch(
+      /current_user_can_read_agent_work_item_endpoint[\s\S]+?parent_work_item_id is null[\s\S]+?app\.current_user_can_read_agent_work_item_endpoint/i,
+    );
+    expect(itemFunctionSource).toMatch(
+      /current_user_visible_agent_work_approval_ids[\s\S]+?visibleApprovalIds[\s\S]+?serviceClient\s*\.from\("agent_work_approvals"\)[\s\S]+?\.in\("id", visibleApprovalIds\)/,
+    );
     expect(itemFunctionSource).toMatch(
       /current_user_can_read_agent_work_assessment_endpoint[\s\S]+?if \(canRead !== true\) return \[\];[\s\S]+?serviceClient\s*\.from\("agent_work_assessment_links"\)/,
     );
@@ -137,6 +151,15 @@ describe("agent work approval migration contract", () => {
     expect(decisionRuntime).toContain('.eq("work_item_id", input.workItemId)');
     expect(decisionRuntime).toContain('.eq("id", input.approvalId)');
     expect(decisionRuntime).not.toContain("getDetail(input.workItemId)");
+  });
+
+  it("does not require manager-only evidence refresh before an assigned approver decision", () => {
+    const decisionRoute = itemFunctionSource.match(
+      /if \(request\.method === "POST" && decisionMatch\)[\s\S]+?const result = await deps\.decideApproval/,
+    )?.[0];
+
+    expect(decisionRoute).toBeDefined();
+    expect(decisionRoute).not.toContain("refreshCalOptimaEvidence");
   });
 
   it("keeps direct DML closed and IEHP outcomes advisory", () => {

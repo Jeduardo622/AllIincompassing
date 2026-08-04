@@ -83,7 +83,7 @@ export function AssessmentWorkLedgerPanel({
       {stale && <p className="mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 p-2 text-xs text-amber-100">Status may be stale. Refresh before acting on it.</p>}
 
       <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-        <p><span className="font-semibold text-slate-100">Owner:</span> {item.ownerUserId ? "Owner assigned" : "No owner assigned"}</p>
+        <p><span className="font-semibold text-slate-100">Owner:</span> {item.hasOwner ? "Owner assigned" : "No owner assigned"}</p>
         <p><span className="font-semibold text-slate-100">Last update:</span> {new Date(item.updatedAt).toLocaleString()}</p>
       </div>
 

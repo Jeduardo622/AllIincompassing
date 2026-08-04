@@ -26,7 +26,7 @@ const buildEnvelope = (overrides: Record<string, unknown> = {}) => ({
       objective: "Prepare this assessment for clinical review",
       status: "waiting",
       risk: "clinical",
-      ownerUserId: "11111111-1111-4111-8111-111111111111",
+      hasOwner: true,
       dueAt: null,
       blockers: [
         {

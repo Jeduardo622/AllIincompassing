@@ -110,6 +110,24 @@ Deno.test("validateStoredEventMetadata accepts Task 2 system-emitted metadata sh
       to_status: "completed",
       reason_code: "step_completed",
     },
+    {
+      approval_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      request_reason_code: "clinical_review_handoff",
+      clinical_review_handoff: true,
+    },
+    {
+      approval_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      reason_code: "clinical_review_accepted",
+      decision: "approve",
+    },
+    {
+      msg_id: 42,
+      retry_scheduled: true,
+      workflow_version: 1,
+      correlation_id: "ledger.item-1",
+      delay_seconds: 30,
+      poison: false,
+    },
   ];
 
   for (const row of rows) {
@@ -130,6 +148,7 @@ Deno.test("event metadata validators reject sensitive keys, narratives, URLs, an
     "authorization",
     "secret_key",
     "signed_url",
+    "assigned_to",
   ];
 
   for (const key of sensitiveKeys) {

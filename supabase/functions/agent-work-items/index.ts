@@ -63,7 +63,7 @@ export interface AgentWorkItemView {
   objective: string;
   status: WorkItemStatus;
   risk: WorkRisk;
-  ownerUserId: string | null;
+  hasOwner: boolean;
   dueAt: string | null;
   blockers: AgentWorkItemBlockerView[];
   steps: AgentWorkItemStepView[];
@@ -200,7 +200,7 @@ function strictView(view: AgentWorkItemView): AgentWorkItemView {
     objective: view.objective,
     status: view.status,
     risk: view.risk,
-    ownerUserId: view.ownerUserId,
+    hasOwner: view.hasOwner,
     dueAt: view.dueAt,
     blockers: view.blockers.map((blocker) => ({
       code: blocker.code,
@@ -429,10 +429,6 @@ export function createAgentWorkItemsHandler(
       const input = body ? validateDecisionBody(body) : null;
       if (!input) return reject(400, "Invalid request body");
       try {
-        await deps.refreshCalOptimaEvidence({
-          actorUserId: user.id,
-          workItemId: decisionMatch[1],
-        });
         const result = await deps.decideApproval({
           actorUserId: user.id,
           workItemId: decisionMatch[1],
@@ -781,19 +777,49 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         return null;
       }
 
+      const [visibleAuthority, decisionAuthority] = await Promise.all([
+        requestClient.rpc(
+          "current_user_visible_agent_work_approval_ids",
+          { p_work_item_id: workItemId },
+        ),
+        requestClient.rpc(
+          "current_user_decidable_agent_work_approval_ids",
+          { p_work_item_id: workItemId },
+        ),
+      ]);
+      if (visibleAuthority.error || decisionAuthority.error) {
+        console.error(
+          "agent-work-items approval authority read failed",
+          visibleAuthority.error?.code ?? decisionAuthority.error?.code ??
+            "unknown",
+        );
+        throw visibleAuthority.error ?? decisionAuthority.error;
+      }
+      const visibleApprovalIds = (visibleAuthority.data ?? []).map((
+        row: any,
+      ) => row.approval_id);
+      const decidableApprovalIds = new Set(
+        (decisionAuthority.data ?? []).map((row: any) => row.approval_id),
+      );
+
+      const approvalRead = visibleApprovalIds.length > 0
+        ? serviceClient
+          .from("agent_work_approvals")
+          .select(
+            "id,step_id,status,required_role,expires_at,requested_at,evidence_hash",
+          )
+          .eq("work_item_id", workItemId)
+          .in("id", visibleApprovalIds)
+          .order("requested_at", { ascending: true })
+        : Promise.resolve({ data: [], error: null });
+
       const [stepsResult, approvalsResult, evidenceResult] = await Promise.all([
         serviceClient
           .from("agent_work_steps")
           .select("id,step_key,status,execution_mode,last_error_code,ordinal")
           .eq("work_item_id", workItemId)
           .order("ordinal", { ascending: true }),
-        serviceClient
-          .from("agent_work_approvals")
-          .select(
-            "id,step_id,status,required_role,expires_at,requested_at,evidence_hash",
-          )
-          .eq("work_item_id", workItemId)
-          .order("requested_at", { ascending: true }),
+        approvalRead,
         serviceClient
           .from("agent_work_evidence")
           .select("step_id")
@@ -820,22 +846,6 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         );
         throw evidenceResult.error;
       }
-
-      const { data: decidableRows, error: authorityError } = await requestClient
-        .rpc(
-          "current_user_decidable_agent_work_approval_ids",
-          { p_work_item_id: workItemId },
-        );
-      if (authorityError) {
-        console.error(
-          "agent-work-items approval authority read failed",
-          authorityError.code ?? "unknown",
-        );
-        throw authorityError;
-      }
-      const decidableApprovalIds = new Set(
-        (decidableRows ?? []).map((row: any) => row.approval_id),
-      );
 
       const evidenceCounts = new Map<string, number>();
       for (const evidence of evidenceResult.data ?? []) {
@@ -885,7 +895,7 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         objective: item.objective,
         status: item.status,
         risk: item.risk,
-        ownerUserId: item.owner_user_id,
+        hasOwner: typeof item.owner_user_id === "string",
         dueAt: item.due_at,
         blockers: (stepsResult.data ?? []).map(blockerForStep).filter((
           value,

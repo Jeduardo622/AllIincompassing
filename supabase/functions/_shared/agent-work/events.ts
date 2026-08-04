@@ -1,10 +1,17 @@
 import { WORK_STEP_STATUSES } from "./contracts.ts";
 
-export type SanitizedEventPrimitive = string | number;
+export type SanitizedEventPrimitive = string | number | boolean;
 export type SanitizedEventMetadata = Record<string, SanitizedEventPrimitive>;
 
 type MetadataValidator = {
-  readonly kind: "uuid" | "sha256" | "machine" | "workflow" | "enum" | "count";
+  readonly kind:
+    | "uuid"
+    | "sha256"
+    | "machine"
+    | "workflow"
+    | "enum"
+    | "count"
+    | "boolean";
   readonly min?: number;
   readonly max?: number;
   readonly values?: readonly string[];
@@ -35,6 +42,17 @@ const STORED_METADATA_KEYS: Readonly<Record<string, MetadataValidator>> = {
   approval_id: { kind: "uuid" },
   to_status: { kind: "enum", values: WORK_STEP_STATUSES },
   reason_code: { kind: "machine", max: 63 },
+  request_reason_code: { kind: "machine", max: 63 },
+  decision: {
+    kind: "enum",
+    values: ["approve", "approved", "reject", "rejected"],
+  },
+  clinical_review_handoff: { kind: "boolean" },
+  msg_id: { kind: "count", min: 1, max: Number.MAX_SAFE_INTEGER },
+  retry_scheduled: { kind: "boolean" },
+  poison: { kind: "boolean" },
+  delay_seconds: { kind: "count", min: 0, max: 86_400 },
+  correlation_id: { kind: "machine" },
 };
 
 export class EventMetadataError extends Error {
@@ -85,7 +103,10 @@ function validateMetadataObject(
       );
     }
 
-    if (typeof rawValue !== "string" && typeof rawValue !== "number") {
+    if (
+      typeof rawValue !== "string" && typeof rawValue !== "number" &&
+      typeof rawValue !== "boolean"
+    ) {
       throw new EventMetadataError(
         "event_metadata_type_forbidden",
         `Event metadata key "${key}" must use a primitive PHI-free value.`,
@@ -144,6 +165,11 @@ function validateMetadataValue(
         value < (validator.min ?? 0) ||
         value > (validator.max ?? Number.MAX_SAFE_INTEGER)
       ) {
+        throw forbiddenValue(key);
+      }
+      return;
+    case "boolean":
+      if (typeof value !== "boolean") {
         throw forbiddenValue(key);
       }
       return;

@@ -74,7 +74,7 @@ function createView(
     objective: "Prepare this IEHP assessment for clinical review.",
     status: "needs_review",
     risk: "clinical",
-    ownerUserId: USER_ID,
+    hasOwner: true,
     dueAt: null,
     blockers: [createBlocker()],
     steps: [createStep()],
@@ -884,10 +884,7 @@ Deno.test("POST approval decision delegates current authority and CAS to the RPC
   ));
 
   assertEquals(response.status, 200);
-  assertEquals(deps.calls.refreshArgs, [{
-    actorUserId: USER_ID,
-    workItemId: WORK_ITEM_ID,
-  }]);
+  assertEquals(deps.calls.refreshArgs, []);
   assertEquals(deps.calls.decisionArgs, [{
     actorUserId: USER_ID,
     workItemId: WORK_ITEM_ID,

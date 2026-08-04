@@ -41,9 +41,9 @@ const ITEM_KEYS = [
   "approvals",
   "blockers",
   "dueAt",
+  "hasOwner",
   "id",
   "objective",
-  "ownerUserId",
   "risk",
   "status",
   "steps",
@@ -344,6 +344,15 @@ const main = async () => {
       calOptimaList.body.data.length === 1 &&
         calOptimaList.body.data[0].id === calOptimaFirst.body.data.id,
       "CalOptima workflow-scoped list drifted.",
+    );
+    assert(
+      calOptimaList.body.data[0].approvals.length === 0,
+      "Read-only clinician received approval governance metadata.",
+    );
+    assert(
+      typeof calOptimaList.body.data[0].hasOwner === "boolean" &&
+        !("ownerUserId" in calOptimaList.body.data[0]),
+      "Work-item owner identity was not reduced to presence.",
     );
 
     const calOptimaCrossTenant = await request(`${functionUrl}/${calOptimaFirst.body.data.id}`, {

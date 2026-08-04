@@ -3,6 +3,7 @@
 - Date: 2026-08-01
 - Linear issue: `WIN-271`
 - Plan: `C:\Users\test\Desktop\AllIincompassing\docs\superpowers\plans\2026-08-01-goal-directed-stateful-agent-work-ledger.md`
+- Finalization plan: `docs/superpowers/plans/2026-08-03-agent-work-ledger-finalization-and-disabled-hosted-rollout.md`
 - Branch: `codex/agent-work-ledger-foundation`
 - Rollout mode: local-only, `disabled` / `shadow` / `advisory` only
 
@@ -961,7 +962,8 @@ Human protected-path, Supabase, security, clinical, product, and privacy review 
 - lane: `critical`
 - issue: `WIN-271`
 - branch: `codex/agent-work-ledger-foundation`
-- final committed implementation snapshot: `1fc70a7a7a5b156c17770ca2b1051cda0d4453d2`
+- final implementation-proof commit: `1fc70a7a7a5b156c17770ca2b1051cda0d4453d2`
+- current branch HEAD for PR/rollout follow-through: `c0b5c5c2f810fab287b805bcff315cf8cd9dc430` (`d83c966a` and `c0b5c5c2` are docs-only evidence/pr-hygiene updates after the final local implementation proof)
 - one command: `npm run test:agent-work:phase2`
 - architecture: host lifecycle orchestration only; complete CLI-managed Supabase Docker stack plus containerized app, items function, runner, sweeper, and all verification workloads on the isolated `agent-work-phase2` network
 - runtime boundary: only `disabled`, `shadow`, and `advisory`; no provider calls, clinical effects, autonomous approval, publication, billing, submission, final-record creation, or hosted action
@@ -1037,7 +1039,7 @@ The retention policy exception was not used. No approved retention periods were 
 - lane: `critical`
 - branch-ready: `yes` on `codex/agent-work-ledger-foundation`; push remains authorization-gated
 - linear-ready: `yes` under `WIN-271`; final local evidence comment `93c3b983-c637-46ea-8769-b7fbcc614271`
-- single-purpose: `yes`; the 98-file branch is large but remains the task-committed Agent Work Ledger Tasks 10-16 plus its required Phase 2 local harness, tests, and evidence
+- single-purpose: `yes`; the 126-file branch is large but remains the task-committed Agent Work Ledger Tasks 10-16 plus its required Phase 2 local harness, tests, and evidence
 - unrelated changes: pre-existing `deno.lock` and `reports/test-reliability-latest.json` remain unstaged and excluded; both Task 9 recovery stashes remain untouched
 - generated artifact drift: none in committed scope; Phase 2 manifests are ignored local evidence and both final runs are recorded by hash
 - protected-path drift: none outside the separately routed critical migration, function, tenant, queue, scheduler, runner, and local runtime surfaces

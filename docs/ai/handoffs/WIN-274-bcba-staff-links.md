@@ -35,6 +35,13 @@
 - The configured `PW_SUPERADMIN` credential is stale; verification used the valid `PW_ADMIN` account that resolves to `super_admin`.
 - The branch requires human review before migration or merge.
 
+## PR Review Follow-up
+
+- Codex P1 `discussion_r3716230635` was validated against Supabase Preview: the legacy self-read policy checked `therapist_id = auth.uid()` and could not expose canonical links whose therapist row ID differs from the Auth user ID.
+- Added a forward migration granting authenticated users `SELECT` visibility only for `user_therapist_links.user_id = auth.uid()`; write grants and admin management authority are unchanged.
+- Reworked the tsx page-context regression fixture to serialize and execute the evaluated callback without launching Chromium, because ordinary unit-test and tenant-safety jobs intentionally do not install Playwright browsers.
+- Supabase Preview should apply the new forward migration through the PR pipeline after the follow-up commit; no production migration was applied manually.
+
 ## Tracking
 
 - Linear: [WIN-274](https://linear.app/winningedgeai/issue/WIN-274/link-bcba-staff-roles-to-therapist-records-safely)

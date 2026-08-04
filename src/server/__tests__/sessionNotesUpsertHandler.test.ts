@@ -2338,6 +2338,60 @@ describe("sessionNotesUpsertHandler", () => {
     expect(response.status).toBe(200);
   });
 
+  it("rejects a noteId that is not linked to the submitted session", async () => {
+    const noteId = "66666666-6666-4666-8666-666666666666";
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        const boundToSubmittedSession = requestUrl.includes(
+          `session_id=eq.${encodeURIComponent(basePayload.sessionId)}`,
+        );
+        return {
+          ok: true,
+          status: 200,
+          data: boundToSubmittedSession ? [] : [{ id: noteId, is_locked: false }],
+        };
+      }
+      if (requestUrl.includes(`/rest/v1/client_session_notes?id=eq.${noteId}`)) {
+        return { ok: true, status: 200, data: [{ id: noteId }] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes(`id=eq.${noteId}`)) {
+        return { ok: true, status: 200, data: [buildSessionNoteRow(noteId)] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({ ...basePayload, noteId }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "not_found",
+      error: "Session note not found.",
+    });
+  });
+
   it("rejects updates for locked notes", async () => {
     const fetchJsonMock = vi.mocked(fetchJson);
     fetchJsonMock.mockImplementation(async (url) => {

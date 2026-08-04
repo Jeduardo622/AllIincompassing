@@ -251,6 +251,7 @@ export interface CreateClientSessionNoteInput {
 }
 
 export interface UpsertClientSessionNoteForSessionInput {
+  readonly noteId?: string;
   readonly sessionId: string;
   readonly clientId: string;
   readonly authorizationId: string;
@@ -452,6 +453,7 @@ export const upsertClientSessionNoteForSession = async (
   }
 
   return invokeSessionNoteUpsertApi({
+    noteId: payload.noteId,
     sessionId: payload.sessionId,
     clientId: payload.clientId,
     authorizationId: payload.authorizationId,

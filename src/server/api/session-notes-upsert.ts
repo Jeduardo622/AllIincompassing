@@ -711,7 +711,9 @@ const fetchExistingNote = async (
     const url =
       `${supabaseUrl}/rest/v1/client_session_notes?select=id,is_locked` +
       `&organization_id=eq.${encodeURIComponent(organizationId)}` +
-      `&id=eq.${encodeURIComponent(options.noteId)}&limit=1`;
+      `&id=eq.${encodeURIComponent(options.noteId)}` +
+      (options.sessionId ? `&session_id=eq.${encodeURIComponent(options.sessionId)}` : "") +
+      `&limit=1`;
     const result = await fetchJson<Array<{ id: string; is_locked: boolean }>>(url, {
       method: "GET",
       headers,
@@ -1433,7 +1435,7 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
 
   const existingNote = await fetchExistingNote(supabaseUrl, headers, organizationId, {
     noteId: payload.noteId,
-    sessionId: payload.noteId ? null : payload.sessionId,
+    sessionId: payload.sessionId,
   });
 
   if (payload.noteId && !existingNote) {

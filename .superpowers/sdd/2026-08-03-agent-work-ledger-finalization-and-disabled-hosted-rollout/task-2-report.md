@@ -43,3 +43,45 @@ Self-review:
 
 Concerns:
 - The task-specific local reset and edge smoke commands are currently blocked by the missing local Supabase container `supabase_db_AllIincompassing`, so hosted finalization still needs that environment restored before those commands can be proven green.
+
+## Review-Fix Round 1
+
+Status: DONE_WITH_CONCERNS
+
+Commit SHA: `4d794692`
+
+Files changed:
+- `src/lib/ai.ts`
+- `src/lib/__tests__/ai-auth-fetch.test.ts`
+- `supabase/functions/generate-program-goals/index.ts`
+- `supabase/functions/generate-program-goals/index.test.ts`
+- `.superpowers/sdd/2026-08-03-agent-work-ledger-finalization-and-disabled-hosted-rollout/task-2-report.md`
+
+RED commands and expected failures:
+- `npx vitest run src/lib/__tests__/ai-auth-fetch.test.ts`
+  - Failed as expected: 1 failed, 9 passed.
+  - The legacy request forwarded empty/default payload fragments instead of deriving the full contract through the authoritative builder.
+- `deno test --allow-env supabase/functions/generate-program-goals/index.test.ts supabase/functions/generate-program-goals/ledger.test.ts`
+  - Failed as expected: 2 failed, 29 passed.
+  - Exhausted non-timeout legacy generation returned generic `500` instead of structured `502`.
+  - A ledger organization mismatch returned the legacy-bound denial message instead of the ledger-bound denial message.
+
+GREEN commands/results:
+- `npx vitest run src/lib/__tests__/ai-auth-fetch.test.ts`
+  - Passed: 10/10.
+- `deno test --allow-env supabase/functions/generate-program-goals/index.test.ts supabase/functions/generate-program-goals/ledger.test.ts`
+  - Passed: 31/31.
+- Pre-commit hook `npm run ci:check-focused`
+  - Passed. Database/CI-only checks reported their environment-based skips.
+
+Self-review:
+- `src/lib/ai.ts` now calls `buildGenerateProgramGoalsPayload`; its only transitive local dependency is the browser-safe pure assessment text composer, and the API-boundary hook passed.
+- Legacy scope remains fail-closed through exact authenticated request-client assessment visibility checks and does not invoke ledger RPCs.
+- Ledger parsing remains first; attempt, replay, authoritative evidence, and settlement paths are unchanged.
+- Exhausted legacy validation failures restore the prior structured `502` response without changing timeout fallback behavior.
+- Ledger and legacy organization mismatches retain their respective sanitized denial surfaces.
+- Unrelated `deno.lock` and `reports/test-reliability-latest.json` drift was neither edited nor staged.
+
+Concerns:
+- No external model calls, hosted actions, or provider-backed smoke were performed, per round constraints.
+- Broader local Docker verification was intentionally not repeated in this bounded review-fix round.

@@ -2,10 +2,8 @@ import {
   assertEquals,
   assertObjectMatch,
 } from "https://deno.land/std@0.224.0/testing/asserts.ts";
-import {
-  assertLocalSupabaseUrl,
-  createAgentWorkSweeperHandler,
-} from "./index.ts";
+import { assertAgentWorkSupabaseUrl } from "../_shared/agent-work/runtime-url.ts";
+import { createAgentWorkSweeperHandler } from "./index.ts";
 
 const INVOCATION_SECRET_HEADER = "x-agent-work-sweeper-secret";
 const INVOCATION_SECRET = "sweeper-secret";
@@ -173,12 +171,26 @@ Deno.test("POST requires the dedicated sweeper invocation secret", async () => {
   }
 });
 
-Deno.test("sweeper runtime accepts loopback by default and only exact Kong in phase2", () => {
-  assertEquals(assertLocalSupabaseUrl("http://127.0.0.1:54321"), "http://127.0.0.1:54321");
-  assertEquals(assertLocalSupabaseUrl("http://localhost:54321"), "http://localhost:54321");
+Deno.test("sweeper runtime URL guard accepts only exact local, phase2, or explicit hosted origins", () => {
   assertEquals(
-    assertLocalSupabaseUrl("http://SUPABASE_KONG_AllIincompassing:8000", true),
+    assertAgentWorkSupabaseUrl("http://127.0.0.1:54321"),
+    "http://127.0.0.1:54321",
+  );
+  assertEquals(
+    assertAgentWorkSupabaseUrl("http://localhost:54321"),
+    "http://localhost:54321",
+  );
+  assertEquals(
+    assertAgentWorkSupabaseUrl("http://SUPABASE_KONG_AllIincompassing:8000", {
+      phase2Container: true,
+    }),
     "http://supabase_kong_alliincompassing:8000",
+  );
+  assertEquals(
+    assertAgentWorkSupabaseUrl("https://abcdefghijklmnopqrst.supabase.co", {
+      hostedProjectRef: "abcdefghijklmnopqrst",
+    }),
+    "https://abcdefghijklmnopqrst.supabase.co",
   );
   for (const value of [
     "https://supabase_kong_alliincompassing:8000",
@@ -188,6 +200,7 @@ Deno.test("sweeper runtime accepts loopback by default and only exact Kong in ph
     "http://supabase_kong_alliincompassing:8000/#fragment",
     "http://supabase_kong_alliincompassing:54321",
     "https://example.supabase.co",
+    "https://abcdefghijklmnopqrst.supabase.co.evil.example",
     "http://host.docker.internal:54321",
     "http://kong:8000",
     "http://172.18.0.2:8000",
@@ -195,7 +208,10 @@ Deno.test("sweeper runtime accepts loopback by default and only exact Kong in ph
   ]) {
     let rejected = false;
     try {
-      assertLocalSupabaseUrl(value, true);
+      assertAgentWorkSupabaseUrl(value, {
+        phase2Container: true,
+        hostedProjectRef: "abcdefghijklmnopqrst",
+      });
     } catch {
       rejected = true;
     }
@@ -203,7 +219,7 @@ Deno.test("sweeper runtime accepts loopback by default and only exact Kong in ph
   }
   let rejectedWithoutFlag = false;
   try {
-    assertLocalSupabaseUrl("http://supabase_kong_alliincompassing:8000", false);
+    assertAgentWorkSupabaseUrl("http://supabase_kong_alliincompassing:8000");
   } catch {
     rejectedWithoutFlag = true;
   }

@@ -8,6 +8,7 @@ import {
   authorizeWorkAction,
   type WorkflowDefinition,
 } from "../_shared/agent-work/policy.ts";
+import { assertAgentWorkSupabaseUrl } from "../_shared/agent-work/runtime-url.ts";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -887,31 +888,6 @@ async function recoverExecutionError(
   };
 }
 
-export function assertLocalSupabaseUrl(
-  value: string,
-  phase2Container = Deno.env.get("AGENT_WORK_PHASE2_CONTAINER")?.trim() === "1",
-): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("SUPABASE_URL must be a valid local URL");
-  }
-  const cleanOrigin = url.protocol === "http:" &&
-    url.username === "" &&
-    url.password === "" &&
-    url.search === "" &&
-    url.hash === "" &&
-    url.pathname === "/";
-  const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost";
-  const exactPhase2Kong = phase2Container &&
-    url.origin === "http://supabase_kong_alliincompassing:8000";
-  if (!cleanOrigin || (!loopback && !exactPhase2Kong)) {
-    throw new Error("SUPABASE_URL must target the loopback local stack");
-  }
-  return url.origin;
-}
-
 function completedResult(
   scope: Pick<AuthoritativeScope, "workItemId" | "stepId">,
   reasonCode: string,
@@ -1172,8 +1148,14 @@ function runtimeMode(): RuntimeMode {
 }
 
 function createServiceClient(): SupabaseClient {
-  const supabaseUrl = assertLocalSupabaseUrl(
+  const supabaseUrl = assertAgentWorkSupabaseUrl(
     Deno.env.get("SUPABASE_URL")?.trim() ?? "",
+    {
+      phase2Container:
+        Deno.env.get("AGENT_WORK_PHASE2_CONTAINER")?.trim() === "1",
+      hostedProjectRef:
+        Deno.env.get("AGENT_WORK_HOSTED_PROJECT_REF")?.trim(),
+    },
   );
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ??
     "";

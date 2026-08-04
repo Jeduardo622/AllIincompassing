@@ -213,6 +213,8 @@ npm run test:agent-work:phase2
 
 The command fails closed before startup when it detects a hosted project reference, non-loopback host URL, remote-capable credential, relevant uncommitted image input, stale Compose resource, or stale Supabase resource. It builds `agent-work-ledger-phase2:local` from `git archive HEAD`, creates the dedicated `agent-work-phase2` network, starts the complete CLI-managed Supabase Docker stack, and starts the app plus the items, runner, and sweeper services from the committed image.
 
+Phase 2 remains local-only. Remote-capable worker configuration is excluded from these local commands.
+
 The fixed check order is:
 
 1. stack health
@@ -282,6 +284,7 @@ Task 9 extends the local-first ledger into a durable `pgmq` queue plus runner/sw
 - allowed runtime modes remain `disabled`, `shadow`, and `advisory`
 - no clinical mutations are allowed
 - no hosted Supabase, Netlify, or remote queue/scheduler access is allowed
+- `enable_local_agent_work_queue_scheduler` remains local-only
 - scheduler/Vault setup must stay local, with fixed container-to-host callback targets
 - any worker or scheduler proof must remain local-only until a fresh route says otherwise
 

@@ -3,6 +3,7 @@ import {
   type SupabaseClient,
 } from "npm:@supabase/supabase-js@2.99.0";
 import { corsHeadersForRequest } from "../_shared/cors.ts";
+import { assertAgentWorkSupabaseUrl } from "../_shared/agent-work/runtime-url.ts";
 
 const INVOCATION_SECRET_HEADER = "x-agent-work-sweeper-secret";
 const DEFAULT_MAX_ITEMS_PER_PASS = 25;
@@ -254,35 +255,18 @@ function requireEnv(name: string): string {
   return value;
 }
 
-export function assertLocalSupabaseUrl(
-  value: string,
-  phase2Container = Deno.env.get("AGENT_WORK_PHASE2_CONTAINER")?.trim() === "1",
-): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("SUPABASE_URL must be a valid local URL");
-  }
-  const cleanOrigin = url.protocol === "http:" &&
-    url.username === "" &&
-    url.password === "" &&
-    url.search === "" &&
-    url.hash === "" &&
-    url.pathname === "/";
-  const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost";
-  const exactPhase2Kong = phase2Container &&
-    url.origin === "http://supabase_kong_alliincompassing:8000";
-  if (!cleanOrigin || (!loopback && !exactPhase2Kong)) {
-    throw new Error("SUPABASE_URL must target the loopback local stack");
-  }
-  return url.origin;
-}
-
 type RpcClient = Pick<SupabaseClient, "rpc" | "from">;
 
 function createServiceClient(): RpcClient {
-  const supabaseUrl = assertLocalSupabaseUrl(requireEnv("SUPABASE_URL"));
+  const supabaseUrl = assertAgentWorkSupabaseUrl(
+    requireEnv("SUPABASE_URL"),
+    {
+      phase2Container:
+        Deno.env.get("AGENT_WORK_PHASE2_CONTAINER")?.trim() === "1",
+      hostedProjectRef:
+        Deno.env.get("AGENT_WORK_HOSTED_PROJECT_REF")?.trim(),
+    },
+  );
   const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },

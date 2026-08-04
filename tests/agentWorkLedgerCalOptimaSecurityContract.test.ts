@@ -22,6 +22,8 @@ describe("CalOptima Agent Work Ledger security lifecycle contract", () => {
     expect(lifecycle).toMatch(/finalize_agent_work_advisory_projection_effect/i);
     expect(lifecycle).toMatch(/begin_agent_work_caloptima_model_attempt/i);
     expect(lifecycle).toMatch(/complete_agent_work_caloptima_model_attempt/i);
+    expect(lifecycle).toMatch(/runtime kill switch/i);
+    expect(lifecycle).toMatch(/actions_disabled = true/i);
     expect(lifecycle).toMatch(/fail_agent_work_caloptima_model_attempt/i);
     expect(lifecycle).toMatch(/authoritative_payload_unavailable/i);
     expect(lifecycle).toMatch(/packet_hash/i);

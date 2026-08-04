@@ -741,6 +741,7 @@ Deno.test("ledger settlement preserves usage from an invalid completion before a
   const { CALOPTIMA_LEDGER_MODEL_SNAPSHOT } = await import("./ledger.ts");
   const originalRpc = supabaseAdmin.rpc;
   let completionRpcArgs: Record<string, unknown> | null = null;
+  let runtimePolicyChecks = 0;
 
   supabaseAdmin.rpc = ((name: string, args: Record<string, unknown>) => {
     if (name === "begin_agent_work_caloptima_model_attempt") {
@@ -821,7 +822,9 @@ Deno.test("ledger settlement preserves usage from an invalid completion before a
     getUserOrThrow: async () => ({ id: "77777777-7777-4777-8777-777777777777" }),
     requireOrg: async () => ORG_ID,
     lookupLegacyAssessment: async () => null,
-    requireLedgerAdvisoryRuntime: async () => {},
+    requireLedgerAdvisoryRuntime: async () => {
+      runtimePolicyChecks += 1;
+    },
     invokeCompletion: async (
       _payload: Record<string, unknown>,
       _ledgerBound: boolean,
@@ -856,6 +859,7 @@ Deno.test("ledger settlement preserves usage from an invalid completion before a
     assertExists(settled);
     assertEquals(settled.p_input_token_count, 17);
     assertEquals(settled.p_output_token_count, 9);
+    assertEquals(runtimePolicyChecks, 2);
   } finally {
     supabaseAdmin.rpc = originalRpc;
   }

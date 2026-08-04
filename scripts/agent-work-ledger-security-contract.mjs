@@ -1602,6 +1602,33 @@ const assertCalOptimaDraftReviewLifecycle = async (client) => {
       return rows[0];
     }, { commit: true });
 
+  await withOwnerTransaction(client, async () => {
+    await client.query(
+      "update public.agent_runtime_config set actions_disabled = true where config_key = 'global'",
+    );
+  }, { commit: true });
+  await expectFailure(
+    "CalOptima draft snapshot after runtime kill switch",
+    () => completeModelAttempt(),
+    /runtime policy disabled/i,
+  );
+  const disabledDraftCount = await client.query(
+    `
+      select (
+        select count(*)::integer from public.assessment_draft_programs where assessment_document_id = $1::uuid
+      ) + (
+        select count(*)::integer from public.assessment_draft_goals where assessment_document_id = $1::uuid
+      ) as count
+    `,
+    [documentId],
+  );
+  assert(disabledDraftCount.rows[0]?.count === 0, "Runtime kill switch allowed CalOptima draft persistence");
+  await withOwnerTransaction(client, async () => {
+    await client.query(
+      "update public.agent_runtime_config set actions_disabled = false where config_key = 'global'",
+    );
+  }, { commit: true });
+
   await expectFailure(
     "CalOptima draft snapshot with unapproved evidence reference",
     () => completeModelAttempt({

@@ -276,6 +276,10 @@ describe("agent work ledger CalOptima draft review migration contract", () => {
 
     expect(snapshotDraftPacketSql).toMatch(/security definer/i);
     expect(snapshotDraftPacketSql).toMatch(/set search_path = ''/i);
+    expect(snapshotDraftPacketSql).toMatch(/public\.agent_runtime_config/i);
+    expect(snapshotDraftPacketSql).toMatch(/actions_disabled/i);
+    expect(snapshotDraftPacketSql).toMatch(/for share/i);
+    expect(snapshotDraftPacketSql).toMatch(/runtime policy disabled/i);
     expect(snapshotDraftPacketSql).toMatch(/snapshot_draft_packet/i);
     expect(snapshotDraftPacketSql).toMatch(/p_draft_packet\s+jsonb/i);
     expect(snapshotDraftPacketSql).not.toMatch(/p_output_hash\s+text/i);

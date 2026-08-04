@@ -1143,6 +1143,7 @@ export function createGenerateProgramGoalsHandler(
       );
 
       if (ledgerResultContext) {
+        await dependencies.requireLedgerAdvisoryRuntime();
         ledgerInputTokens = completion.inputTokens;
         ledgerOutputTokens = completion.outputTokens;
         await recordLedgerModelResult(
@@ -1160,6 +1161,7 @@ export function createGenerateProgramGoalsHandler(
     } catch (error) {
       if (ledgerResultContext && !ledgerResultRecorded) {
         try {
+          await dependencies.requireLedgerAdvisoryRuntime();
           const fallback = buildFallbackResponse(ledgerResultContext.payload, "upstream_unavailable");
           await recordLedgerModelResult(
             ledgerResultContext,

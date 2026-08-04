@@ -1918,6 +1918,7 @@ declare
   v_verified_program_count integer;
   v_verified_goal_count integer;
   v_output_hash text;
+  v_actions_disabled boolean;
   v_worker_id text := format('caloptima.snapshot.%s', p_work_item_id::text);
   v_allowed_review_flags constant text[] := array[
     'missing_baseline',
@@ -1944,6 +1945,16 @@ begin
     or nullif(btrim(p_draft_packet->>'summary_rationale'), '') is null
     or p_draft_packet->>'confidence' not in ('low', 'medium', 'high') then
     raise exception 'Invalid CalOptima draft snapshot request';
+  end if;
+
+  select config.actions_disabled
+  into v_actions_disabled
+  from public.agent_runtime_config config
+  where config.config_key = 'global'
+  for share;
+
+  if not found or v_actions_disabled then
+    raise exception 'Agent work runtime policy disabled';
   end if;
 
   v_output_hash := encode(

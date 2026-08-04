@@ -64,3 +64,12 @@
 - `unrelated changes`: none
 - `generated artifact drift`: none
 - `protected-path drift`: no production, schema, workflow, or deploy paths changed
+
+## Trusted-Main Browser Selector Follow-Up
+- Current-main CI run `30926840449` attempt 2 concluded `success`, but its `auth-browser-smoke` job took the explicit no-op path because `scripts/lib/playwright-inprogress-session-setup.ts` was not classified as an auth/session browser surface. That run is not counted as the required hosted browser proof.
+- Follow-up scope is limited to `scripts/ci/select-browser-checks.mjs` and its focused regression in `tests/scripts/select-browser-checks.test.ts`; production booking, auth policy, RLS, schema, migrations, secrets, and runtime configuration remain unchanged.
+- TDD evidence: focused selector test RED at `1 failed, 16 passed`, then GREEN at `17/17` after adding the exact helper path to the existing auth/session matcher.
+- Verification: `npm run ci:check-focused`, `npm run lint`, and `npm run typecheck` passed; `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local` passed in 285.5 seconds, including full tests and coverage, build, and Tier-0 routes `220/220`.
+- Local skips: branch protection, live privileged-function grants, Supabase preview drift, and function-auth parity require CI or hosted credentials and were reported as skipped rather than passed.
+- Review: fresh code, security, and DevOps reviews found no blocking issue. The selector now requires auth/schedule Tier-0, hosted readiness, and hosted auth smoke for the exact helper path.
+- Remaining gate: human review and a trusted post-merge main run where `auth-browser-smoke` actually executes Playwright and `ci-gate` succeeds.

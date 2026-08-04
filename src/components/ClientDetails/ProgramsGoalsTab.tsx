@@ -2091,6 +2091,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       : calOptimaLedgerQuery.isLoading
         ? { kind: "loading" }
         : calOptimaLedgerQuery.data ?? { kind: "unavailable" };
+  const calOptimaLedgerVisible = calOptimaLedgerState.kind !== "disabled" &&
+    calOptimaLedgerState.kind !== "aborted";
   const calOptimaApprovalDecision = useMutation({
     mutationFn: decideAgentWorkApproval,
     onSuccess: async () => {
@@ -3829,7 +3831,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               ) : checklistBySection.length === 0 && structuredSectionsBySection.length === 0 ? (
                 <p className="text-sm text-gray-500">Checklist not available yet for this assessment.</p>
               ) : (
-                <div className={selectedAssessmentIsCalOptima ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]" : "space-y-4"}>
+                <div className={selectedAssessmentIsCalOptima && calOptimaLedgerVisible ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]" : "space-y-4"}>
                   <div id="caloptima-current-review-section" className="space-y-4">
                     {checklistBySection.map(([section, rows]) => (
                       <div key={section} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
@@ -4042,7 +4044,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       )}
                     </div>
                   </div>
-                  {selectedAssessmentIsCalOptima && (
+                  {selectedAssessmentIsCalOptima && calOptimaLedgerVisible && (
                     <div className="space-y-3 xl:sticky xl:top-4 xl:self-start">
                       <AssessmentWorkLedgerPanel
                         state={calOptimaLedgerState}

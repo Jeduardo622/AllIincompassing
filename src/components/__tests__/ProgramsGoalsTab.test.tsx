@@ -4597,6 +4597,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     await waitFor(() => {
       expect(screen.queryByText(/work ledger/i)).not.toBeInTheDocument();
     });
+    expect(document.getElementById("caloptima-current-review-section")?.parentElement).not.toHaveClass(
+      "xl:grid-cols-[minmax(0,1fr)_20rem]",
+    );
     view.unmount();
 
     configureCalOptimaLedgerMocks("forbidden");

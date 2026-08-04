@@ -264,7 +264,12 @@ type GenerateProgramGoalsDependencies = {
 type RequestResolution =
   | { kind: "ledger"; payload: LedgerGenerationCorrelation }
   | { kind: "legacy"; payload: RequestPayload }
-  | { kind: "error"; status: number; code: "generation_scope_denied" | "invalid_request_body" };
+  | { kind: "error"; status: number; code: "generation_scope_denied"; binding: "ledger" | "legacy" }
+  | { kind: "error"; status: number; code: "invalid_request_body" };
+
+class GenerationAttemptsExhaustedError extends Error {
+  override name = "GenerationAttemptsExhaustedError";
+}
 
 const CALOPTIMA_GOAL_FIELD_KEYS = new Set([
   "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
@@ -852,7 +857,7 @@ const resolveGenerationRequest = (body: unknown, organizationId: string): Reques
   const ledgerParsed = ledgerGenerationSchema.safeParse(body);
   if (ledgerParsed.success) {
     if (ledgerParsed.data.organizationId !== organizationId) {
-      return { kind: "error", status: 403, code: "generation_scope_denied" };
+      return { kind: "error", status: 403, code: "generation_scope_denied", binding: "ledger" };
     }
     return { kind: "ledger", payload: ledgerParsed.data };
   }
@@ -860,7 +865,7 @@ const resolveGenerationRequest = (body: unknown, organizationId: string): Reques
   const legacyParsed = requestSchema.safeParse(body);
   if (legacyParsed.success) {
     if (legacyParsed.data.organization_id !== organizationId) {
-      return { kind: "error", status: 403, code: "generation_scope_denied" };
+      return { kind: "error", status: 403, code: "generation_scope_denied", binding: "legacy" };
     }
     return { kind: "legacy", payload: legacyParsed.data };
   }
@@ -958,7 +963,7 @@ async function invokeCompletionWithRetries(
   }
 
   const failureSet = Array.from(new Set(attemptFailures.values())).join(",");
-  throw new Error(
+  throw new GenerationAttemptsExhaustedError(
     `Generated draft failed after ${MAX_GENERATION_ATTEMPTS} attempts. Last failure: ${finalReason}. ` +
       `Failure categories: ${failureSet || "none"}.`,
   );
@@ -1005,7 +1010,10 @@ export function createGenerateProgramGoalsHandler(
 
       if (resolved.kind === "error") {
         if (resolved.code === "generation_scope_denied") {
-          return json(req, { error: "Legacy-bound draft generation denied", code: resolved.code }, resolved.status);
+          const error = resolved.binding === "ledger"
+            ? "Ledger-bound draft generation denied"
+            : "Legacy-bound draft generation denied";
+          return json(req, { error, code: resolved.code }, resolved.status);
         }
         return json(req, { error: resolved.code }, resolved.status);
       }
@@ -1157,6 +1165,9 @@ export function createGenerateProgramGoalsHandler(
       if (error instanceof LedgerGenerationError || error instanceof LedgerPreparationError) {
         console.error("generate-program-goals ledger error", error.code);
         return json(req, { error: "Ledger-bound draft generation denied", code: error.code }, error.status);
+      }
+      if (!ledgerResultContext && error instanceof Error && error.name === "GenerationAttemptsExhaustedError") {
+        return json(req, { error: error.message }, 502);
       }
       console.error("generate-program-goals error", error instanceof Error ? error.name : "unknown");
       return json(req, { error: "Failed to generate draft" }, 500);

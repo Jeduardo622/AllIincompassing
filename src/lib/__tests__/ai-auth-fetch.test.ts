@@ -218,21 +218,33 @@ describe('AI edge function authentication', () => {
         organizationId: ORG_ID,
         clientName: 'Client One',
         organizationGuidance: 'Use objective ABA language.',
-        approvedChecklistRows: [
+        checklistRows: [
+          {
+            section_key: 'treatment_planning',
+            label: 'Replacement goals',
+            placeholder_key: 'CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS',
+            value_text: 'Replacement goals',
+            value_json: null,
+            status: 'approved',
+          },
           {
             section_key: 'assessment_summary',
-            label: 'Summary',
-            placeholder_key: 'assessment_summary',
-            value_text: 'Approved summary text.',
+            label: 'Empty approved row',
+            placeholder_key: 'EMPTY_APPROVED',
+            value_text: '   ',
+            value_json: null,
+            status: 'approved',
           },
         ],
-        extractedCanonicalFields: {
-          CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS: 'Replacement goals',
-        },
-        sourceEvidenceSnippets: [
+        extractionRows: [
           {
             section_key: 'assessment_summary',
-            snippet: 'Approved evidence snippet.',
+            field_key: 'CALOPTIMA_FBA_BASELINE',
+            label: 'Baseline',
+            value_text: 'Observed in synthetic sessions.',
+            value_json: null,
+            source_span: { page: 2 },
+            status: 'verified',
           },
         ],
       },
@@ -249,20 +261,22 @@ describe('AI edge function authentication', () => {
       organization_guidance: 'Use objective ABA language.',
       approved_checklist_rows: [
         {
-          section_key: 'assessment_summary',
-          label: 'Summary',
-          placeholder_key: 'assessment_summary',
-          value_text: 'Approved summary text.',
+          section_key: 'treatment_planning',
+          label: 'Replacement goals',
+          placeholder_key: 'CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS',
+          value_text: 'Replacement goals',
         },
       ],
       extracted_canonical_fields: {
+        CALOPTIMA_FBA_BASELINE: 'Observed in synthetic sessions.',
         CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS: 'Replacement goals',
+        EMPTY_APPROVED: '',
       },
-      assessment_summary: 'Synthetic assessment text with sufficient detail.',
+      assessment_summary: 'TREATMENT PLANNING\n- Replacement goals: Replacement goals',
       source_evidence_snippets: [
         {
           section_key: 'assessment_summary',
-          snippet: 'Approved evidence snippet.',
+          snippet: 'Baseline | Observed in synthetic sessions. | {"page":2}',
         },
       ],
     });

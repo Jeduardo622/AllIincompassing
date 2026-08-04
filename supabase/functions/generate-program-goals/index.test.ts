@@ -402,6 +402,7 @@ Deno.test("resolveGenerationRequest denies cross-tenant legacy input", () => {
       kind: "error",
       status: 403,
       code: "generation_scope_denied",
+      binding: "legacy",
     },
   );
 });
@@ -669,4 +670,66 @@ Deno.test("legacy handler denies cross-tenant requests before completion invocat
     code: "generation_scope_denied",
   });
   assertEquals(invokeCompletionCalls, 0);
+});
+
+Deno.test("legacy handler preserves structured 502 output after exhausted non-timeout failures", async () => {
+  assertExists(createGenerateProgramGoalsHandler);
+
+  const handler = createGenerateProgramGoalsHandler({
+    createRequestClient: () => ({ rpc: () => Promise.resolve({ data: null, error: null }) }),
+    getUserOrThrow: async () => ({ id: "77777777-7777-4777-8777-777777777777" }),
+    requireOrg: async () => ORG_ID,
+    lookupLegacyAssessment: async () => ({ id: ASSESSMENT_ID }),
+    invokeCompletion: async () => {
+      const error = new Error(
+        "Generated draft failed after 3 attempts. Last failure: schema_validation. " +
+          "Failure categories: invalid_json,schema_validation.",
+      );
+      error.name = "GenerationAttemptsExhaustedError";
+      throw error;
+    },
+  });
+
+  const response = await handler(new Request("https://example.supabase.co/functions/v1/generate-program-goals", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer token" },
+    body: JSON.stringify(buildLegacyRequest()),
+  }));
+
+  assertEquals(response.status, 502);
+  assertEquals(await response.json(), {
+    error:
+      "Generated draft failed after 3 attempts. Last failure: schema_validation. " +
+      "Failure categories: invalid_json,schema_validation.",
+  });
+});
+
+Deno.test("ledger organization mismatch preserves ledger-specific denial semantics", async () => {
+  assertExists(createGenerateProgramGoalsHandler);
+
+  const handler = createGenerateProgramGoalsHandler({
+    createRequestClient: () => ({ rpc: () => Promise.resolve({ data: null, error: null }) }),
+    getUserOrThrow: async () => ({ id: "77777777-7777-4777-8777-777777777777" }),
+    requireOrg: async () => ORG_ID,
+    lookupLegacyAssessment: async () => null,
+    invokeCompletion: async () => buildValidResponse(),
+  });
+
+  const response = await handler(new Request("https://example.supabase.co/functions/v1/generate-program-goals", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer token" },
+    body: JSON.stringify({
+      assessmentDocumentId: ASSESSMENT_ID,
+      clientId: CLIENT_ID,
+      organizationId: OTHER_ORG_ID,
+      workItemId: "44444444-4444-4444-8444-444444444444",
+      correlationId: "caloptima-ledger.44444444-4444-4444-8444-444444444444",
+    }),
+  }));
+
+  assertEquals(response.status, 403);
+  assertEquals(await response.json(), {
+    error: "Ledger-bound draft generation denied",
+    code: "generation_scope_denied",
+  });
 });

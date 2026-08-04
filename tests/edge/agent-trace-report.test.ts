@@ -54,6 +54,24 @@ describe("agent-trace-report utility", () => {
     );
   });
 
+  it("intersects every supplied selector in each service-role query", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "supabase", "functions", "agent-trace-report", "index.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("if (!selector.agentOperationId)");
+    expect(source).toMatch(
+      /if \(selector\.correlationId\) \{\s*query = query\.eq\("correlation_id", selector\.correlationId\);\s*\}\s*if \(selector\.requestId\)/,
+    );
+    expect(source).toMatch(
+      /if \(selector\.correlationId\) \{\s*payloadQuery = payloadQuery\.eq[\s\S]+?replayQuery = replayQuery\.eq[\s\S]+?if \(selector\.requestId\)/,
+    );
+    expect(source).toContain("const auditTraceSelector = {");
+    expect(source).toContain("...(selector.correlationId");
+    expect(source).toContain("...(selector.requestId");
+  });
+
   it("scopes trace rows to the current organization", () => {
     const rows = __TESTING__.scopeRowsToOrganization(
       [

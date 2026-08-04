@@ -563,7 +563,7 @@ const loadTraceRows = async (
   const columns =
     "id,request_id,correlation_id,conversation_id,user_id,organization_id,work_item_id,step_id,attempt_id,step_name,step_index,status,payload,replay_payload,created_at";
 
-  if (selector.correlationId || selector.requestId) {
+  if (!selector.agentOperationId) {
     let query = supabaseAdmin
       .from("agent_execution_traces")
       .select(columns, failOnTruncation ? { count: "exact" } : undefined)
@@ -573,7 +573,8 @@ const loadTraceRows = async (
 
     if (selector.correlationId) {
       query = query.eq("correlation_id", selector.correlationId);
-    } else if (selector.requestId) {
+    }
+    if (selector.requestId) {
       query = query.eq("request_id", selector.requestId);
     }
 
@@ -589,21 +590,31 @@ const loadTraceRows = async (
   }
 
   const agentOperationId = selector.agentOperationId as string;
+  let payloadQuery = supabaseAdmin
+    .from("agent_execution_traces")
+    .select(columns, failOnTruncation ? { count: "exact" } : undefined)
+    .eq("organization_id", organizationId)
+    .contains("payload", { agentOperationId })
+    .order("created_at", { ascending: true })
+    .limit(failOnTruncation ? 501 : 500);
+  let replayQuery = supabaseAdmin
+    .from("agent_execution_traces")
+    .select(columns, failOnTruncation ? { count: "exact" } : undefined)
+    .eq("organization_id", organizationId)
+    .contains("replay_payload", { agentOperationId })
+    .order("created_at", { ascending: true })
+    .limit(failOnTruncation ? 501 : 500);
+  if (selector.correlationId) {
+    payloadQuery = payloadQuery.eq("correlation_id", selector.correlationId);
+    replayQuery = replayQuery.eq("correlation_id", selector.correlationId);
+  }
+  if (selector.requestId) {
+    payloadQuery = payloadQuery.eq("request_id", selector.requestId);
+    replayQuery = replayQuery.eq("request_id", selector.requestId);
+  }
   const [payloadMatch, replayMatch] = await Promise.all([
-    supabaseAdmin
-      .from("agent_execution_traces")
-      .select(columns, failOnTruncation ? { count: "exact" } : undefined)
-      .eq("organization_id", organizationId)
-      .contains("payload", { agentOperationId })
-      .order("created_at", { ascending: true })
-      .limit(failOnTruncation ? 501 : 500),
-    supabaseAdmin
-      .from("agent_execution_traces")
-      .select(columns, failOnTruncation ? { count: "exact" } : undefined)
-      .eq("organization_id", organizationId)
-      .contains("replay_payload", { agentOperationId })
-      .order("created_at", { ascending: true })
-      .limit(failOnTruncation ? 501 : 500),
+    payloadQuery,
+    replayQuery,
   ]);
 
   if (payloadMatch.error || replayMatch.error) {
@@ -643,35 +654,24 @@ const loadOrchestrationRows = async (
   const columns =
     "id,organization_id,request_id,correlation_id,workflow,status,inputs,outputs,rollback_plan,created_at";
 
-  if (selector.correlationId || selector.requestId) {
-    let query = supabaseAdmin
-      .from("scheduling_orchestration_runs")
-      .select(columns)
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: true })
-      .limit(500);
-
-    if (selector.correlationId) {
-      query = query.eq("correlation_id", selector.correlationId);
-    } else if (selector.requestId) {
-      query = query.eq("request_id", selector.requestId);
-    }
-
-    const { data, error } = await query;
-    if (error) throw new Error("orchestration_query_failed");
-    return scopeRowsToOrganization(
-      (data ?? []) as OrchestrationRow[],
-      organizationId,
-    );
-  }
-
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("scheduling_orchestration_runs")
     .select(columns)
     .eq("organization_id", organizationId)
-    .contains("inputs", { agentOperationId: selector.agentOperationId })
     .order("created_at", { ascending: true })
     .limit(500);
+  if (selector.correlationId) {
+    query = query.eq("correlation_id", selector.correlationId);
+  }
+  if (selector.requestId) {
+    query = query.eq("request_id", selector.requestId);
+  }
+  if (selector.agentOperationId) {
+    query = query.contains("inputs", {
+      agentOperationId: selector.agentOperationId,
+    });
+  }
+  const { data, error } = await query;
 
   if (error) throw new Error("orchestration_query_failed");
   return scopeRowsToOrganization(
@@ -687,30 +687,21 @@ const loadSessionAuditRows = async (
   const columns =
     "id,session_id,event_type,event_payload,actor_id,organization_id,therapist_id,created_at";
 
-  if (selector.correlationId) {
+  const auditTraceSelector = {
+    ...(selector.correlationId
+      ? { correlationId: selector.correlationId }
+      : {}),
+    ...(selector.requestId ? { requestId: selector.requestId } : {}),
+  };
+
+  if (!selector.agentOperationId) {
     const { data, error } = await supabaseAdmin
       .from("session_audit_logs")
       .select(columns)
       .eq("organization_id", organizationId)
       .contains("event_payload", {
-        trace: { correlationId: selector.correlationId },
+        trace: auditTraceSelector,
       })
-      .order("created_at", { ascending: true })
-      .limit(500);
-
-    if (error) throw new Error("session_audit_query_failed");
-    return scopeRowsToOrganization(
-      (data ?? []) as SessionAuditRow[],
-      organizationId,
-    );
-  }
-
-  if (selector.requestId) {
-    const { data, error } = await supabaseAdmin
-      .from("session_audit_logs")
-      .select(columns)
-      .eq("organization_id", organizationId)
-      .contains("event_payload", { trace: { requestId: selector.requestId } })
       .order("created_at", { ascending: true })
       .limit(500);
 
@@ -727,14 +718,21 @@ const loadSessionAuditRows = async (
       .from("session_audit_logs")
       .select(columns)
       .eq("organization_id", organizationId)
-      .contains("event_payload", { agentOperationId })
+      .contains("event_payload", {
+        agentOperationId,
+        ...(Object.keys(auditTraceSelector).length > 0
+          ? { trace: auditTraceSelector }
+          : {}),
+      })
       .order("created_at", { ascending: true })
       .limit(500),
     supabaseAdmin
       .from("session_audit_logs")
       .select(columns)
       .eq("organization_id", organizationId)
-      .contains("event_payload", { trace: { agentOperationId } })
+      .contains("event_payload", {
+        trace: { ...auditTraceSelector, agentOperationId },
+      })
       .order("created_at", { ascending: true })
       .limit(500),
   ]);

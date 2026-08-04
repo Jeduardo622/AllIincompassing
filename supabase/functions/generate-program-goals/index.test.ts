@@ -733,3 +733,130 @@ Deno.test("ledger organization mismatch preserves ledger-specific denial semanti
     code: "generation_scope_denied",
   });
 });
+
+Deno.test("ledger settlement preserves usage from an invalid completion before a provider exception", async () => {
+  assertExists(createGenerateProgramGoalsHandler);
+
+  const { supabaseAdmin } = await import("../_shared/database.ts");
+  const { CALOPTIMA_LEDGER_MODEL_SNAPSHOT } = await import("./ledger.ts");
+  const originalRpc = supabaseAdmin.rpc;
+  let completionRpcArgs: Record<string, unknown> | null = null;
+
+  supabaseAdmin.rpc = ((name: string, args: Record<string, unknown>) => {
+    if (name === "begin_agent_work_caloptima_model_attempt") {
+      return Promise.resolve({
+        data: [{
+          workflow_key: "assessment.caloptima.prepare_draft_review",
+          workflow_version: 1,
+          step_key: "suggest_draft_packet",
+          provider: CALOPTIMA_LEDGER_MODEL_SNAPSHOT.provider,
+          model: CALOPTIMA_LEDGER_MODEL_SNAPSHOT.model,
+          prompt_version: CALOPTIMA_LEDGER_MODEL_SNAPSHOT.promptVersion,
+          tool_version: CALOPTIMA_LEDGER_MODEL_SNAPSHOT.toolVersion,
+          model_request_schema_version: CALOPTIMA_LEDGER_MODEL_SNAPSHOT.modelRequestSchemaVersion,
+          pricing_version: CALOPTIMA_LEDGER_MODEL_SNAPSHOT.pricingVersion,
+          temperature: CALOPTIMA_LEDGER_MODEL_SNAPSHOT.temperature,
+          allowed_tools: [],
+          guarded_tools: [],
+          attempt_status: "running",
+          step_id: "55555555-5555-4555-8555-555555555555",
+          attempt_id: "66666666-6666-4666-8666-666666666666",
+          output_hash: null,
+        }],
+        error: null,
+      });
+    }
+    if (name === "complete_agent_work_caloptima_model_attempt") {
+      completionRpcArgs = args;
+      return Promise.resolve({ data: true, error: null });
+    }
+    throw new Error(`unexpected admin RPC: ${name}`);
+  }) as unknown as typeof supabaseAdmin.rpc;
+
+  const queryResults: Record<string, { data: unknown; error: null }> = {
+    assessment_documents: {
+      data: { id: ASSESSMENT_ID, organization_id: ORG_ID, client_id: CLIENT_ID, template_type: "caloptima_fba" },
+      error: null,
+    },
+    assessment_checklist_items: {
+      data: [{
+        id: "88888888-8888-4888-8888-888888888888",
+        section_key: "assessment_summary",
+        label: "Synthetic summary",
+        placeholder_key: "assessment_summary",
+        value_text: "Synthetic approved assessment evidence with sufficient detail.",
+        value_json: null,
+        status: "approved",
+        required: true,
+      }],
+      error: null,
+    },
+    assessment_structured_sections: {
+      data: [{
+        id: "99999999-9999-4999-8999-999999999999",
+        section_key: "goals_treatment_planning",
+        field_key: "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+        payload: { title: "Synthetic replacement goal" },
+        source_span: { page: 1 },
+        status: "approved",
+        required: true,
+      }],
+      error: null,
+    },
+  };
+
+  const createQuery = (table: string) => {
+    const result = queryResults[table];
+    const query = {
+      select: () => query,
+      eq: () => query,
+      maybeSingle: () => Promise.resolve(result),
+      then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve),
+    };
+    return query;
+  };
+
+  const handler = createGenerateProgramGoalsHandler({
+    createRequestClient: () => ({ from: (table: string) => createQuery(table) }),
+    getUserOrThrow: async () => ({ id: "77777777-7777-4777-8777-777777777777" }),
+    requireOrg: async () => ORG_ID,
+    lookupLegacyAssessment: async () => null,
+    requireLedgerAdvisoryRuntime: async () => {},
+    invokeCompletion: async (
+      _payload: Record<string, unknown>,
+      _ledgerBound: boolean,
+      onUsage: (inputTokens: number, outputTokens: number) => void,
+    ) => {
+      onUsage(17, 9);
+      throw new Error("synthetic provider exception after invalid completion");
+    },
+  });
+
+  try {
+    const workItemId = "44444444-4444-4444-8444-444444444444";
+    const requestId = `caloptima-ledger.${workItemId}`;
+    const response = await handler(new Request("https://example.supabase.co/functions/v1/generate-program-goals", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer token",
+        "x-request-id": requestId,
+      },
+      body: JSON.stringify({
+        assessmentDocumentId: ASSESSMENT_ID,
+        clientId: CLIENT_ID,
+        organizationId: ORG_ID,
+        workItemId,
+        correlationId: requestId,
+      }),
+    }));
+
+    assertEquals(response.status, 200);
+    const settled = completionRpcArgs as Record<string, unknown> | null;
+    assertExists(settled);
+    assertEquals(settled.p_input_token_count, 17);
+    assertEquals(settled.p_output_token_count, 9);
+  } finally {
+    supabaseAdmin.rpc = originalRpc;
+  }
+});

@@ -247,6 +247,7 @@ type CompletionInvocationResult =
     errorClass?: string | null;
     errorCode?: string | null;
   };
+type CompletionUsageObserver = (inputTokens: number, outputTokens: number) => void;
 type GenerateProgramGoalsDependencies = {
   createRequestClient: typeof createRequestClient;
   getUserOrThrow: typeof getUserOrThrow;
@@ -258,6 +259,7 @@ type GenerateProgramGoalsDependencies = {
   invokeCompletion: (
     payload: RequestPayload,
     ledgerBound: boolean,
+    onUsage?: CompletionUsageObserver,
   ) => Promise<CompletionInvocationResult>;
   requireLedgerAdvisoryRuntime: () => Promise<void>;
 };
@@ -885,6 +887,7 @@ const deriveStableLedgerRequestId = (workItemId: string): string =>
 async function invokeCompletionWithRetries(
   payload: RequestPayload,
   ledgerBound: boolean,
+  onUsage?: CompletionUsageObserver,
 ): Promise<CompletionInvocationResult> {
   const attemptFailures: AttemptFailureReason[] = [];
   const openai = createOpenAIClient();
@@ -922,6 +925,7 @@ async function invokeCompletionWithRetries(
     const usage = (completion as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage;
     ledgerInputTokens += Math.max(0, Number(usage?.prompt_tokens ?? 0));
     ledgerOutputTokens += Math.max(0, Number(usage?.completion_tokens ?? 0));
+    onUsage?.(ledgerInputTokens, ledgerOutputTokens);
 
     const rawContent = completion.choices[0]?.message?.content;
     if (!rawContent) {
@@ -1126,7 +1130,16 @@ export function createGenerateProgramGoalsHandler(
       }
 
       const completion = normalizeCompletionResult(
-        await dependencies.invokeCompletion(payload, ledgerBound),
+        await dependencies.invokeCompletion(
+          payload,
+          ledgerBound,
+          ledgerBound
+            ? (inputTokens, outputTokens) => {
+              ledgerInputTokens = inputTokens;
+              ledgerOutputTokens = outputTokens;
+            }
+            : undefined,
+        ),
       );
 
       if (ledgerResultContext) {

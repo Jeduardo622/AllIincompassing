@@ -164,7 +164,7 @@ const classifyFile = (file) => {
   if (matchAny(file, [
     /^cypress\/e2e\/routes_auth\.cy\.ts$/,
     /^scripts\/playwright-/,
-    /^scripts\/lib\/playwright-smoke\.ts$/,
+    /^scripts\/lib\/playwright-(?:smoke|inprogress-session-setup|session-plan-controls)\.ts$/,
     /^supabase\/functions\/(sessions-|session-|auth-|programs|goals|program-notes)/,
   ])) {
     return { specs: ["auth", "schedule"], authSmoke: true, reason: "auth/session browser flow" };

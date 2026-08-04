@@ -1149,7 +1149,7 @@ Failed attempts remain part of the record:
 
 ## WIN-275 Operational Activation
 
-- issue: `WIN-275`; status `In Progress`
+- issue: `WIN-275`; status `In Review`
 - route: `classification: high-risk human-reviewed`; `lane: critical`
 - branch/worktree: `codex/agent-work-ledger-activation` at `C:\Users\test\.codex\worktrees\AllIincompassing\agent-work-ledger-activation`, based on trusted main `926edf63a80c2967144f2f7719c22b17edb928b6`
 - plan checkpoint: `659cd698 docs(agent-work): plan operational activation`
@@ -1206,9 +1206,10 @@ The branch was synchronized with trusted main `63e52880c6abe7acce25319dd9db9368d
 ### WIN-275 PR Hygiene
 
 - pr-ready: `yes` for publication; `no` for merge until live checks and submitted human review pass
+- ready PR: `#894` at `https://github.com/Jeduardo622/AllIincompassing/pull/894`; published head before this docs-only metadata commit: `91a88dc`
 - lane: `critical`; branch-ready: `yes`; Linear-ready: `yes` under `WIN-275`
 - single-purpose: `yes`; the diff is limited to the hosted Ledger scheduler, legacy provider fence, deterministic recovery semantics, Phase 2 integration, focused tests, and docs
 - unrelated/generated drift: none in the worktree; ignored sanitized Phase 2 manifests remain local evidence; both Task 9 recovery stashes remain untouched
 - protected-path drift: only the explicitly routed migration and Edge Function surfaces; specialist review is complete and human review remains mandatory
 - change and verification summaries: present here and in `docs/ops/agent-work-ledger.md`
-- follow-up: update Linear, publish the branch and ready PR, inspect checks/reviews with bounded polling, and stop before merge or hosted action until the mandatory gates pass
+- follow-up: inspect PR `#894` checks/reviews with bounded polling and stop before merge or hosted action until the mandatory gates pass

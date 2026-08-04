@@ -72,7 +72,7 @@
 - [x] Run `verify-change` and record its verification card in the handoff.
 - [x] Run `pr-hygiene`; require `pr-ready: yes` before publication.
 - [x] Commit each coherent implementation task separately and update the handoff with final local evidence.
-- [ ] Update `WIN-275`, push, and open a ready PR.
+- [x] Update `WIN-275`, push, and open ready PR `#894`.
 - [ ] Stop before merge until submitted human protected-path/Supabase/security review exists and required checks pass.
 
 ## Task 6: Hosted Rollout Gates

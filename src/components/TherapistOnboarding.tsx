@@ -244,15 +244,18 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
 
       let inviteSent = false;
       try {
-        const { error: inviteError } = await supabase.functions.invoke('admin-invite', {
-          body: {
-            email: therapist.email,
-            organizationId: activeOrganizationId,
-            role: 'bt',
-            reason: `Invite ${therapist.full_name} to access their therapist profile.`,
-            targetTherapistId: therapist.id,
-          },
-        });
+        const { error: inviteError } = await withMutationTimeout(
+          supabase.functions.invoke('admin-invite', {
+            body: {
+              email: therapist.email,
+              organizationId: activeOrganizationId,
+              role: 'bt',
+              reason: `Invite ${therapist.full_name} to access their therapist profile.`,
+              targetTherapistId: therapist.id,
+            },
+          }),
+          'sending therapist invite',
+        );
 
         if (inviteError) {
           throw inviteError;

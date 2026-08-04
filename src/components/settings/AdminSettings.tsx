@@ -629,7 +629,7 @@ export function AdminSettings() {
   const linkAdminTherapistMutation = useMutation({
     mutationFn: async ({ userId, therapistId }: { userId: string; therapistId: string }) => {
       if (!activeOrganizationId) {
-        throw new Error('Select an organization before linking admins to therapists.');
+        throw new Error('Select an organization before linking staff members to therapists.');
       }
 
       const { error } = await supabase.rpc('set_admin_therapist_link', {
@@ -645,7 +645,7 @@ export function AdminSettings() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin-therapist-links', activeOrganizationId ?? 'ALL'] });
       setSelectedTherapistByAdmin((previous) => ({ ...previous, [variables.userId]: '' }));
-      showSuccess('Admin linked to therapist');
+      showSuccess('Staff member linked to therapist');
     },
     onError: (error) => {
       showError(error);
@@ -655,7 +655,7 @@ export function AdminSettings() {
   const unlinkAdminTherapistMutation = useMutation({
     mutationFn: async ({ userId, therapistId }: { userId: string; therapistId: string }) => {
       if (!activeOrganizationId) {
-        throw new Error('Select an organization before unlinking admins from therapists.');
+        throw new Error('Select an organization before unlinking staff members from therapists.');
       }
 
       const { error } = await supabase.rpc('delete_admin_therapist_link', {
@@ -670,7 +670,7 @@ export function AdminSettings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-therapist-links', activeOrganizationId ?? 'ALL'] });
-      showSuccess('Admin unlinked from therapist');
+      showSuccess('Staff member unlinked from therapist');
     },
     onError: (error) => {
       showError(error);
@@ -771,7 +771,7 @@ export function AdminSettings() {
   };
 
   const handleUnlinkAdminTherapist = async (userId: string, therapistId: string, therapistName: string) => {
-    const shouldUnlink = window.confirm(`Unlink this admin from ${therapistName}?`);
+    const shouldUnlink = window.confirm(`Unlink this staff member from ${therapistName}?`);
     if (!shouldUnlink) {
       return;
     }
@@ -947,6 +947,7 @@ export function AdminSettings() {
                     <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Organization</th>
                     <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Role</th>
                     <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Status</th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Therapist Links</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -996,6 +997,71 @@ export function AdminSettings() {
                           }`}>
                             {employee.is_active === false ? 'Inactive' : 'Active'}
                           </span>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          {!activeOrganizationId ? (
+                            <span className="text-xs text-amber-600 dark:text-amber-300">
+                              Select an organization to manage therapist links.
+                            </span>
+                          ) : isTherapistOptionsLoading || isAdminTherapistLinksLoading ? (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">Loading therapist links…</span>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap gap-2">
+                                {(adminTherapistLinksByUser.get(employee.id) ?? []).length === 0 ? (
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">No therapists linked</span>
+                                ) : (
+                                  (adminTherapistLinksByUser.get(employee.id) ?? []).map((link) => {
+                                    const therapistName = link.therapist_name ?? link.therapist_id;
+                                    return (
+                                      <span
+                                        key={`${employee.id}-${link.therapist_id}`}
+                                        className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/20 dark:text-blue-200"
+                                      >
+                                        {therapistName}
+                                        <button
+                                          type="button"
+                                          className="text-blue-500 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                          disabled={unlinkAdminTherapistMutation.isPending}
+                                          onClick={() => handleUnlinkAdminTherapist(employee.id, link.therapist_id, therapistName)}
+                                          aria-label={`Unlink ${therapistName} from ${employee.email}`}
+                                        >
+                                          ×
+                                        </button>
+                                      </span>
+                                    );
+                                  })
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                <select
+                                  className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1 text-xs dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                  value={selectedTherapistByAdmin[employee.id] ?? ''}
+                                  onChange={(event) => updateSelectedAdminTherapist(employee.id, event.target.value)}
+                                  aria-label={`Select therapist for ${employee.email}`}
+                                >
+                                  <option value="">Select therapist</option>
+                                  {therapistOptions.map((therapist) => (
+                                    <option key={therapist.id} value={therapist.id}>
+                                      {therapist.full_name ?? therapist.email ?? therapist.id}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  disabled={
+                                    linkAdminTherapistMutation.isPending ||
+                                    !selectedTherapistByAdmin[employee.id] ||
+                                    therapistOptions.length === 0
+                                  }
+                                  onClick={() => handleLinkAdminTherapist(employee.id)}
+                                >
+                                  Link
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );

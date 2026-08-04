@@ -612,7 +612,7 @@ describe('Admin therapist links', () => {
         }
       );
     });
-    expect(showSuccess).toHaveBeenCalledWith('Admin linked to therapist');
+    expect(showSuccess).toHaveBeenCalledWith('Staff member linked to therapist');
   });
 
   it('unlinks an existing admin therapist relationship through the scoped RPC', async () => {
@@ -657,8 +657,8 @@ describe('Admin therapist links', () => {
         }
       );
     });
-    expect(confirmSpy).toHaveBeenCalledWith(`Unlink this admin from ${mockTherapist.full_name}?`);
-    expect(showSuccess).toHaveBeenCalledWith('Admin unlinked from therapist');
+    expect(confirmSpy).toHaveBeenCalledWith(`Unlink this staff member from ${mockTherapist.full_name}?`);
+    expect(showSuccess).toHaveBeenCalledWith('Staff member unlinked from therapist');
   });
 
   it('surfaces scoped RPC denial without falling back to direct table writes', async () => {
@@ -878,6 +878,65 @@ describe('AdminSettings super admin access', () => {
     expect(showSuccess).toHaveBeenCalledWith('Employee role updated successfully');
   });
 
+  it('allows super admins to link an employee-role BCBA or midtier user to a therapist from the employee table', async () => {
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users_paged') {
+        return { data: [mockAdminUser], error: null };
+      }
+      if (functionName === 'get_employee_users_paged') {
+        return {
+          data: [{ ...mockEmployeeUser, role: 'bcba', email: 'bcba.employee@example.com' }],
+          error: null,
+        };
+      }
+      if (functionName === 'get_admin_linkable_therapists') {
+        return { data: [mockTherapist], error: null };
+      }
+      if (functionName === 'get_admin_therapist_links') {
+        return { data: [], error: null };
+      }
+      if (functionName === 'guardian_link_queue_admin_view') {
+        return { data: [], error: null };
+      }
+      if (functionName === 'set_admin_therapist_link') {
+        return {
+          data: [{
+            user_id: mockEmployeeUser.id,
+            therapist_id: mockTherapist.id,
+            therapist_name: mockTherapist.full_name,
+          }],
+          error: null,
+        };
+      }
+
+      if (defaultRpcImplementation) {
+        return defaultRpcImplementation(functionName, params as never);
+      }
+      return fallbackRpc(functionName, params);
+    });
+
+    renderWithProviders(<AdminSettings />);
+
+    await screen.findByRole('option', { name: 'Acme Behavioral' });
+    const filterSelect = await screen.findByDisplayValue('All organizations');
+    await userEvent.selectOptions(filterSelect, 'org-1');
+
+    const therapistSelect = await screen.findByLabelText('Select therapist for bcba.employee@example.com');
+    await userEvent.selectOptions(therapistSelect, mockTherapist.id);
+    const employeeRow = therapistSelect.closest('tr');
+    expect(employeeRow).not.toBeNull();
+    await userEvent.click(within(employeeRow as HTMLTableRowElement).getByRole('button', { name: 'Link' }));
+
+    await waitFor(() => {
+      expect(rpcMock).toHaveBeenCalledWith('set_admin_therapist_link', {
+        target_user_id: mockEmployeeUser.id,
+        target_therapist_id: mockTherapist.id,
+        p_organization_id: 'org-1',
+      });
+    });
+    expect(showSuccess).toHaveBeenCalledWith('Staff member linked to therapist');
+  });
+
   it('shows row-level saving feedback while an employee role update is pending', async () => {
     callEdgeSpy?.mockReturnValue(new Promise<Response>(() => {}));
     renderWithProviders(<AdminSettings />);
@@ -905,7 +964,8 @@ describe('AdminSettings super admin access', () => {
     renderWithProviders(<AdminSettings />);
 
     const filterSelect = await screen.findByDisplayValue('All organizations');
-    await screen.findByText('Select an organization to manage therapist links.');
+    const placeholders = await screen.findAllByText('Select an organization to manage therapist links.');
+    expect(placeholders.length).toBeGreaterThan(0);
 
     expect(rpcMock.mock.calls.some(([fnName]) => fnName === 'get_admin_linkable_therapists')).toBe(false);
     expect(rpcMock.mock.calls.some(([fnName]) => fnName === 'get_admin_therapist_links')).toBe(false);

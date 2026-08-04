@@ -17,6 +17,12 @@
 - The shared measurement helper restricted only by organization, selected an unrelated therapist-client pair, and exhausted repeated HTTP 409 responses.
 - The helper now validates the token, uses authenticated org-bound authority RPCs plus `user_therapist_links`, and intersects linked therapists with the active organization.
 
+## Post-Merge Review Follow-Up
+- PR `#889` merged the actor-scoped booking fix.
+- Codex review found that the helper still narrowed verified `admin`, `admin_schedule`, and `super_admin` actors when optional therapist links existed.
+- The follow-up makes verified organization-wide scheduling authority take precedence over link-based narrowing while keeping linkless clinical actors fail-closed.
+- Scope remains limited to the session-proof fixture helper and its focused regression coverage.
+
 ## Verification Card
 - Classification: `high-risk human-reviewed`
 - Lane: `critical`
@@ -31,11 +37,11 @@
   - `npm run test:routes:tier0`
   - trusted `auth-browser-smoke` / BCBA acceptance proof
 - Executed checks:
-  - focused Vitest -> pass, 13 tests
+  - focused Vitest -> pass, 14 tests
   - `npm run ci:check-focused` -> pass
   - `npm run lint` -> pass
   - `npm run typecheck` -> pass
-  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci` -> pass, 466 files and 3,967 tests; 2 files and 5 tests skipped
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci` -> pass, 466 files and 3,968 tests; 2 files and 5 tests skipped
   - `npm run ci:verify-coverage` -> pass, 92.92% line coverage
   - `npm run build` -> pass
   - `npm run test:routes:tier0` -> pass, 220 tests

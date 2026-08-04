@@ -85,18 +85,23 @@ export const waitForSessionPlanControlIds = async (
 export const readSelectedSessionPlanIds = async (
   page: Page,
 ): Promise<{ programIds: string[]; goalIds: string[] }> => page.evaluate(() => {
-  const selectedIds = (attribute: "data-program-id" | "data-goal-id") =>
-    Array.from(new Set(
-      Array.from(document.querySelectorAll<HTMLElement>(`[${attribute}]`))
-        .filter((element) =>
-          element instanceof HTMLInputElement
-            ? element.checked
-            : element.getAttribute("aria-pressed") === "true")
-        .map((element) => element.getAttribute(attribute))
-        .filter((value): value is string => Boolean(value)),
-    ));
+  const selectedElements = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-program-id], [data-goal-id]"),
+  ).filter((element) =>
+    element instanceof HTMLInputElement
+      ? element.checked
+      : element.getAttribute("aria-pressed") === "true");
+
   return {
-    programIds: selectedIds("data-program-id"),
-    goalIds: selectedIds("data-goal-id"),
+    programIds: Array.from(new Set(
+      selectedElements
+        .map((element) => element.getAttribute("data-program-id"))
+        .filter((value): value is string => Boolean(value)),
+    )),
+    goalIds: Array.from(new Set(
+      selectedElements
+        .map((element) => element.getAttribute("data-goal-id"))
+        .filter((value): value is string => Boolean(value)),
+    )),
   };
 });

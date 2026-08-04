@@ -233,5 +233,6 @@ describe('select-browser-checks', () => {
     const runCypressSource = readFileSync('scripts/run-cypress.ts', 'utf8');
 
     expect(runCypressSource).toContain("'cypress/e2e/preauth_workflow.cy.ts'");
+    expect(runCypressSource).toContain("cypressArgs.push('--browser', 'electron')");
   });
 });

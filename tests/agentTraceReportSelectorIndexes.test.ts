@@ -63,6 +63,13 @@ describe("agent trace report selector indexes", () => {
     expect(migrationSql).not.toMatch(/\b(?:grant|revoke|insert|update|delete|truncate)\b/i);
   });
 
+  it("bounds execution inside a transaction with local timeouts", () => {
+    expect(migration).toContain("set local lock_timeout = '5s'");
+    expect(migration).toContain("set local statement_timeout = '5min'");
+    expect(migration).toMatch(/^begin;/im);
+    expect(migration).toMatch(/commit;\s*$/i);
+  });
+
   it("provides a rollback-only local query-plan contract", () => {
     expect(packageJson.scripts?.["agent-work:trace-index-contract"]).toBe(
       "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-trace-index-contract.mjs",

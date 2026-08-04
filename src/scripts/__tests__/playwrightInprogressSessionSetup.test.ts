@@ -8,12 +8,59 @@ import {
   buildInProgressSessionBookingBaseStart,
   buildVisibleScheduleBookingAttemptStart,
   buildVisibleScheduleBookingBaseStart,
+  resolveEligibleTherapistIdsForActor,
+  restrictTherapistIdsToActorLinks,
   resolveBrowserScheduleTimeZone,
 } from "../../../scripts/lib/playwright-inprogress-session-setup";
 
 const VISIBLE_HOURS = [8, 10, 12, 14, 16] as const;
 
 describe("playwright in-progress session setup", () => {
+  it("restricts organization therapists to the authenticated actor's links", () => {
+    expect(restrictTherapistIdsToActorLinks(
+      new Set(["org-linked", "org-unlinked"]),
+      ["org-linked", "other-org-linked"],
+    )).toEqual(new Set(["org-linked"]));
+  });
+
+  it("fails closed for actors without therapist links or org-wide scheduling authority", () => {
+    expect(restrictTherapistIdsToActorLinks(
+      new Set(["org-a", "org-b"]),
+      [],
+      false,
+    )).toEqual(new Set());
+  });
+
+  it("preserves organization-scoped booking for verified org-wide scheduling roles", () => {
+    expect(restrictTherapistIdsToActorLinks(
+      new Set(["org-a", "org-b"]),
+      [],
+      true,
+    )).toEqual(new Set(["org-a", "org-b"]));
+  });
+
+  it("rejects a non-super-admin whose authoritative profile is outside the active organization", () => {
+    expect(() => resolveEligibleTherapistIdsForActor({
+      organizationTherapistIds: new Set(["org-a"]),
+      linkedTherapistIds: ["org-a"],
+      canUseOrganizationTherapists: false,
+      isSuperAdmin: false,
+      actorOrganizationId: "other-org",
+      activeOrganizationId: "active-org",
+    })).toThrow("does not belong to the active organization");
+  });
+
+  it("allows a verified super-admin to use the active organization's therapist pool", () => {
+    expect(resolveEligibleTherapistIdsForActor({
+      organizationTherapistIds: new Set(["org-a", "org-b"]),
+      linkedTherapistIds: [],
+      canUseOrganizationTherapists: true,
+      isSuperAdmin: true,
+      actorOrganizationId: "other-org",
+      activeOrganizationId: "active-org",
+    })).toEqual(new Set(["org-a", "org-b"]));
+  });
+
   it("chooses a visible hour in the browser's current Schedule week", () => {
     const now = new Date("2026-06-22T01:30:00.000Z");
     const timeZone = "America/Los_Angeles";

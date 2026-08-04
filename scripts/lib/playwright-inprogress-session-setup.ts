@@ -414,6 +414,118 @@ export async function fetchTherapistIdsForOrganization(organizationId: string): 
   );
 }
 
+export const restrictTherapistIdsToActorLinks = (
+  organizationTherapistIds: Set<string>,
+  linkedTherapistIds: readonly string[],
+  canUseOrganizationTherapists = false,
+): Set<string> => {
+  if (linkedTherapistIds.length === 0) {
+    return canUseOrganizationTherapists ? organizationTherapistIds : new Set<string>();
+  }
+  const linkedIds = new Set(linkedTherapistIds);
+  return new Set([...organizationTherapistIds].filter((therapistId) => linkedIds.has(therapistId)));
+};
+
+export const resolveEligibleTherapistIdsForActor = (params: {
+  organizationTherapistIds: Set<string>;
+  linkedTherapistIds: readonly string[];
+  canUseOrganizationTherapists: boolean;
+  isSuperAdmin: boolean;
+  actorOrganizationId: string;
+  activeOrganizationId: string;
+}): Set<string> => {
+  if (!params.isSuperAdmin && params.actorOrganizationId !== params.activeOrganizationId) {
+    throw new Error("Authenticated booking actor does not belong to the active organization.");
+  }
+  return restrictTherapistIdsToActorLinks(
+    params.organizationTherapistIds,
+    params.linkedTherapistIds,
+    params.canUseOrganizationTherapists,
+  );
+};
+
+const fetchActorBookingScope = async (
+  token: string,
+  organizationId: string,
+): Promise<{
+  linkedTherapistIds: string[];
+  canUseOrganizationTherapists: boolean;
+  isSuperAdmin: boolean;
+  actorOrganizationId: string;
+}> => {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const anonKey = getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY);
+  const authResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
+  });
+  if (!authResponse.ok) {
+    throw new Error(`Unable to validate in-progress booking actor (${authResponse.status}).`);
+  }
+  const authPayload = (await authResponse.json()) as {
+    id?: string;
+    user?: { id?: string };
+  };
+  const actorUserId = authPayload.id ?? authPayload.user?.id;
+  if (!actorUserId) {
+    throw new Error("Unable to resolve authenticated actor for in-progress booking.");
+  }
+
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const rpcHeaders = {
+    "Content-Type": "application/json",
+    apikey: anonKey,
+    Authorization: `Bearer ${token}`,
+  };
+  const fetchRpc = async <T>(name: string, body: Record<string, unknown>): Promise<T> => {
+    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${name}`, {
+      method: "POST",
+      headers: rpcHeaders,
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(`Unable to resolve in-progress booking authority via ${name} (${response.status}).`);
+    }
+    return (await response.json()) as T;
+  };
+  const [linksResult, isSuperAdmin, actorOrganizationId, isAdmin, isScheduleAdmin] = await Promise.all([
+    adminClient
+      .from("user_therapist_links")
+      .select("therapist_id")
+      .eq("user_id", actorUserId)
+      .limit(500),
+    fetchRpc<boolean>("current_user_is_super_admin", {}),
+    fetchRpc<string | null>("current_user_organization_id", {}),
+    fetchRpc<boolean>("user_has_role_for_org", {
+      role_name: "admin",
+      target_organization_id: organizationId,
+    }),
+    fetchRpc<boolean>("user_has_role_for_org", {
+      role_name: "admin_schedule",
+      target_organization_id: organizationId,
+    }),
+  ]);
+  if (linksResult.error) {
+    throw new Error(`Unable to query linked therapists for in-progress booking actor: ${linksResult.error.message}`);
+  }
+  return {
+    linkedTherapistIds: Array.from(new Set(
+      (linksResult.data ?? [])
+      .map((row) => row.therapist_id)
+      .filter((therapistId): therapistId is string => typeof therapistId === "string" && therapistId.length > 0),
+    )),
+    canUseOrganizationTherapists: isSuperAdmin || isAdmin || isScheduleAdmin,
+    isSuperAdmin,
+    actorOrganizationId: actorOrganizationId?.trim() ?? "",
+  };
+};
+
 export const fetchAccessTokenForCredentials = async (email: string, password: string): Promise<string> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const anonKey = getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY);
@@ -755,6 +867,24 @@ export async function bookSession(
     allowedTherapistIds = await fetchTherapistIdsForOrganization(orgId);
     if (allowedTherapistIds.size === 0) {
       throw new Error(`No therapists found for organization ${orgId}; cannot align booking with active org.`);
+    }
+    const actorScope = await fetchActorBookingScope(token, orgId);
+    allowedTherapistIds = resolveEligibleTherapistIdsForActor({
+      organizationTherapistIds: allowedTherapistIds,
+      linkedTherapistIds: actorScope.linkedTherapistIds,
+      canUseOrganizationTherapists: actorScope.canUseOrganizationTherapists,
+      isSuperAdmin: actorScope.isSuperAdmin,
+      actorOrganizationId: actorScope.actorOrganizationId,
+      activeOrganizationId: orgId,
+    });
+    console.log("[in-progress-setup] actor therapist links", {
+      linkedTherapistCount: actorScope.linkedTherapistIds.length,
+      allowedTherapistCount: allowedTherapistIds.size,
+      restrictTargetsToLinkedTherapists: actorScope.linkedTherapistIds.length > 0,
+      canUseOrganizationTherapists: actorScope.canUseOrganizationTherapists,
+    });
+    if (allowedTherapistIds.size === 0) {
+      throw new Error(`Authenticated booking actor has no eligible therapists in organization ${orgId}.`);
     }
   }
 

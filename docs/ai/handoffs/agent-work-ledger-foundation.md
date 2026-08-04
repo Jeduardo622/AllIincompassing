@@ -1146,3 +1146,31 @@ Failed attempts remain part of the record:
 - promotion blockers: a future `advisory` decision must explicitly review CalOptima draft-domain writes before human review; the Agent Work runtime flag does not govern the pre-existing non-ledger legacy branch of `generate-program-goals`, so it must not be described as a global external-model kill switch
 - residual privacy risk: execution-trace retention remains fail-closed but unapproved, so approved visibility and retention periods are required before any deletion or broader promotion claim
 - recovery: both Task 9 stashes remain untouched; the original worktree's unrelated `deno.lock`, `reports/test-reliability-latest.json`, and local rollout-plan drift remain unstaged and unchanged
+
+## WIN-275 Operational Activation
+
+- issue: `WIN-275`; status `In Progress`
+- route: `classification: high-risk human-reviewed`; `lane: critical`
+- branch/worktree: `codex/agent-work-ledger-activation` at `C:\Users\test\.codex\worktrees\AllIincompassing\agent-work-ledger-activation`, based on trusted main `926edf63a80c2967144f2f7719c22b17edb928b6`
+- plan checkpoint: `659cd698 docs(agent-work): plan operational activation`
+- live entry baseline: six Ledger migrations and six functions present; functions active with JWT verification; runtime process configuration disabled; zero Ledger, Queue, archive, Cron, or Agent Work Vault rows; forced RLS and zero direct `PUBLIC`/`anon`/`authenticated` Ledger table grants
+- implementation: a forward migration adds operator-only hosted enable/disable/sanitized-status controllers for exactly two deterministic runner/sweeper jobs and four fixed Vault names, including a deployment-owned project identity; it does not create extensions, secrets, jobs, or grants during migration application
+- provider boundary: Ledger-bound CalOptima model calls remain explicit no-tools advisory calls and are not Cron-owned; the restored authenticated legacy API remains outside Ledger mode, with default behavior preserved and a separate `AGENT_WORK_LEGACY_GENERATION_DISABLED=true` fence required for provider-isolated Ledger promotion
+- draft boundary: successful Ledger-bound CalOptima completion stages editable assessment draft programs/goals and stops at human review; advisory promotion requires explicit clinical/product/privacy acceptance of those draft-table writes
+- retention: no approved periods were found for `ledger_history`, `queue_archive`, or `execution_trace`; deletion remains fail-closed as `policy_unapproved`, and production advisory promotion is blocked pending that exact policy decision
+- TDD evidence so far: legacy provider fence RED `26 passed / 1 failed` then GREEN `27/27`; hosted migration RED `10/10 failed` before the migration then GREEN `10/10`, followed by security-review RED `5 failed / 21 passed` and GREEN `26/26` for fixed project identity, serialization, aggregate status, and guarded cleanup; Phase 2 integration RED `4 failed / 71 passed` then GREEN `98/98` across the final four-file harness slice; live local hosted-scheduler transaction contract passed with two jobs, four synthetic Vault entries, invalid-project denial, and zero fixed residue
+- environment workaround: Deno's first focused test could not resolve pinned `openai@5.5.1` from npm's tree; the rerun used `--no-lock --node-modules-dir=auto`, reached the expected RED, and left `deno.lock` unchanged
+- specialist disposition: architecture confirms legacy compatibility must not be silently removed and model steps must stay explicit; security/DevOps require the separate provider fence and hosted scheduler proof before promotion; Supabase/security review findings for arbitrary project targeting, concurrent duplicate jobs, secret-readiness drift, and reset-failure cleanup were resolved through a fixed Vault project identity, advisory locking, aggregate status, and guarded cleanup; performance requires an owner-chosen cadence based on measured queue/lease/Cron behavior rather than copying the local minute fixture
+- current stop gates: human protected-path/Supabase/security review and CI before merge; approved retention plus explicit CalOptima draft-write and cadence decisions before advisory; `active` remains forbidden
+
+### WIN-275 Phase 1 Verification Card
+
+- lane: `critical`; result: local Phase 1 pass, pending Phase 2 and human-reviewed PR gates
+- focused implementation: `98/98` Vitest assertions across hosted migration and Phase 2 harness/entrypoint/cleanup; `58/58` Deno assertions across generator, runner, sweeper, and runtime URL; `deno.lock` unchanged
+- fresh database/runtime: full local migration reset passed with hosted linkage variables cleared; hosted scheduler contract passed with `2` jobs, `4` fixed Vault entries, invalid-project denial, API-role denial, and zero fixed residue
+- Agent Work contracts: chaos `10/10`; retention `policy_unapproved` with deletion count `0`; trace index `11` plan checks; security contract passed; shadow parity `7/7` with mismatch rate `0`, coverage `1`, and negative probes `7/7`; Edge/API smoke passed; queue scheduler direct and Cron evidence passed with `200/200`
+- critical lane: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build` passed
+- full suite: `npm run test:ci` passed under `NODE_OPTIONS=--max-old-space-size=6144` in `212.5s` with `467` files / `3,983` tests passed and `2` files / `5` tests environment-gated
+- aggregate: `npm run verify:local` passed under the same bounded heap in `354.5s`, including policy, coverage, build, and Tier-0 `220/220`
+- local-only skips: branch-protection, database grant overlap, preview drift, and hosted auth parity were not applicable without CI/hosted credentials; no check is counted as passed when skipped
+- remaining: normal pre-commit hook on the implementation commit, two clean Phase 2 container runs from committed state, final specialist review, `verify-change`, `pr-hygiene`, CI, and submitted human protected-path/Supabase/security review

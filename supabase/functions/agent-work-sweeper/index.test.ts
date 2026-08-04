@@ -90,7 +90,7 @@ function createDeps(
     }),
     getInvocationSecret: () => INVOCATION_SECRET,
     getServiceRoleKey: () => SERVICE_ROLE_KEY,
-    getRuntimeMode: () => "shadow",
+    getRuntimeMode: () => "advisory",
     getNow: () => new Date("2026-08-02T12:00:00.000Z"),
     getMaxItemsPerPass: () => 25,
     requeueExpiredLeases: async (invocation: SweepInvocation) => {
@@ -231,6 +231,10 @@ Deno.test("POST fails closed when runtime mode is disabled, unreadable, or unsup
     {
       name: "disabled",
       deps: createDeps({ getRuntimeMode: () => "disabled" }),
+    },
+    {
+      name: "shadow",
+      deps: createDeps({ getRuntimeMode: () => "shadow" }),
     },
     {
       name: "policy unreadable",

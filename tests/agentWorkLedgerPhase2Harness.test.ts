@@ -700,7 +700,7 @@ describe("agent work ledger phase2 harness contracts", () => {
     });
     expect(manifest.endedAtUtc).toMatch(/^2026-08-03T/);
     expect(manifest.durationMs).toBeGreaterThan(0);
-    expect(manifest.checks).toHaveLength(11);
+    expect(manifest.checks).toHaveLength(12);
     expect(manifest.checks.map((check: { id: string }) => check.id)).toEqual(
       PHASE2_CHECKS.map(({ id }) => id),
     );
@@ -860,7 +860,7 @@ describe("agent work ledger phase2 harness contracts", () => {
     )).toBe(true);
   });
 
-  it("keeps the fixed 11-check matrix and hard wall-clock budgets", () => {
+  it("keeps the fixed 12-check matrix and hard wall-clock budgets", () => {
     expect(PHASE2_COMMAND).toBe("test:agent-work:phase2");
     expect(PHASE2_CHECKS.map(({ id }) => id)).toEqual([
       "stack-health",
@@ -870,6 +870,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       "chaos",
       "shadow-parity",
       "retention-trace",
+      "hosted-scheduler-contract",
       "queue-scheduler",
       "app-api-unit-build",
       "deno-cached-tests",
@@ -908,6 +909,7 @@ describe("agent work ledger phase2 harness contracts", () => {
         "SUPABASE_DB_URL",
         "SUPABASE_URL",
       ],
+      "hosted-scheduler-contract": ["SUPABASE_DB_URL"],
       "queue-scheduler": [
         "AGENT_WORK_RUNNER_SECRET",
         "AGENT_WORK_SWEEPER_SECRET",
@@ -1063,6 +1065,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       ["chaos", [database]],
       ["shadow-parity", [http, database]],
       ["retention-trace", [database]],
+      ["hosted-scheduler-contract", [database]],
       ["queue-scheduler", [http, database, service("http://agent-work-runner:8000/agent-work-runner"), service("http://agent-work-sweeper:8000/agent-work-sweeper")]],
       ["app-api-unit-build", [http]],
       ["deno-cached-tests", [http]],

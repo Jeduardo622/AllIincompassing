@@ -257,7 +257,7 @@ Task 16 is the separately routed critical CalOptima adapter. It prepares approve
 Runtime contract:
 
 - Manager roles may initiate and manage the bounded workflow through the existing actor predicate, but v1 clinical ownership and approval decisions require an exact active `bcba` assignment with current client access. Role expansion is a human governance gate under plan Section 9 and is not authorized here.
-- The client and Edge function require the exact stable `caloptima-ledger.<work-item-id>` request/correlation identity. Legacy caller-supplied generation bodies are rejected.
+- The client and Edge function require the exact stable `caloptima-ledger.<work-item-id>` request/correlation identity for Ledger-bound generation. The separately authenticated same-tenant legacy request contract remains outside the Ledger runtime switch; a staged Ledger rollout must set `AGENT_WORK_LEGACY_GENERATION_DISABLED=true` before claiming provider-path isolation.
 - The model step is advisory, no-tools, version-snapshotted, and unable to author graph, scope, approval, execution mode, or completion policy.
 - The SQL snapshot transaction validates the packet, computes its canonical SHA-256 hash, stores one immutable tenant-scoped replay packet, stages only `assessment_draft_*` rows, records/verifies the effect, and completes the deterministic snapshot step atomically.
 - A preparation failure after a valid model claim is recorded through a service-only actor/tenant-bound RPC and atomically transitions the step `running -> failed -> ready`; the next request claims a fresh attempt instead of inheriting a stranded lease.
@@ -449,3 +449,60 @@ npx tsx scripts/agent-replay.ts --packet-url http://127.0.0.1:54321/functions/v1
 Pass a local operator token through the process-only `EDGE_REPLAY_ACCESS_TOKEN` variable when required. The CLI rejects non-loopback URLs, URL credentials, multiple packets, unknown fields, malformed hashes/timestamps, and any executable packet. It never reads `.env*`, contacts a model provider, executes a tool, or mutates ledger/domain state.
 
 Alert and triage ownership is recorded in `docs/OBSERVABILITY_RUNBOOK.md`. On a release-gate violation, stop local scheduler/worker activity, set ledger runtime policy to `disabled`, preserve sanitized evidence, quarantine or drain messages, and reconcile with authoritative domain records. `active` mode is not authorized; only `disabled`, `shadow`, and `advisory` are valid for this increment.
+
+## Hosted Callable Operation
+
+WIN-275 adds an operator-only hosted scheduler controller without enabling it. The callable boundary remains the authenticated `agent-work-items` function:
+
+1. A manager creates an assessment-preparation or CalOptima draft-review work item through the existing tenant-scoped route.
+2. The database enqueues only deterministic ready steps. In `advisory`, the hosted runner may claim and verify those steps; the sweeper recovers leases, waits, approvals, and poison messages.
+3. The CalOptima `model_suggested` step is not Cron-owned. An authenticated caller must explicitly invoke `generate-program-goals` with the stable Ledger envelope. That no-tools call can stage editable `assessment_draft_programs` and `assessment_draft_goals`, then stops at human review. It never publishes, signs, bills, submits, or creates a final clinical record.
+4. Human handoff and approval remain Ledger decisions only. Assessment-domain records remain authoritative.
+
+Runtime modes are deliberately asymmetric:
+
+| Mode | Work-item API | Runner/sweeper | Ledger model call | Domain draft staging |
+| --- | --- | --- | --- | --- |
+| `disabled` | fails closed | inert | denied | none |
+| `shadow` | tenant-scoped create/read observation | inert | denied | none |
+| `advisory` | tenant-scoped management | deterministic recovery only | explicit authenticated call | editable drafts for human review only |
+
+`active` is forbidden. Runtime-policy lookup failure resolves to disabled behavior. The Ledger runtime switch is not a global model-provider switch: the separately authenticated legacy `generate-program-goals` contract is controlled by `AGENT_WORK_LEGACY_GENERATION_DISABLED`. Keep that value `true` for any rollout claiming that only Ledger-bound generation can contact the provider.
+
+### Hosted Scheduler Setup
+
+The migration creates, but does not grant or call, these operator-only SQL functions:
+
+- `public.enable_hosted_agent_work_queue_scheduler(text, integer, integer)`
+- `public.disable_hosted_agent_work_queue_scheduler()`
+- `public.hosted_agent_work_queue_scheduler_status()`
+
+Before enablement, a reviewed operator must enable `pg_cron`, `pg_net`, and Vault; generate independent runner and sweeper invocation secrets; inject `AGENT_WORK_RUNNER_SECRET`, `AGENT_WORK_SWEEPER_SECRET`, and the deployment-owned `AGENT_WORK_HOSTED_PROJECT_REF` into the matching Edge Functions; and store the matching values under exactly these Vault names:
+
+- `agent_work_hosted_project_ref`
+- `agent_work_hosted_service_role_key`
+- `agent_work_hosted_runner_secret`
+- `agent_work_hosted_sweeper_secret`
+
+The controller does not accept a caller-selected project ref. It reads `agent_work_hosted_project_ref` from Vault, requires the same 20-character lowercase deployment identity configured on the Edge Functions, and derives exact `https://<project-ref>.supabase.co/functions/v1/...` targets. It accepts only a five-field Cron expression, bounds timeout to 1-30,000 ms and sweeper pass size to 1-100, serializes enable/disable operations, and replaces exactly `agent-work-runner-hosted` and `agent-work-sweeper-hosted`. Stored Cron commands query fixed Vault names at execution time; they do not contain plaintext secret values. Status aggregates duplicate job rows defensively and reports only extension readiness, a boolean secret-ready signal, and job presence/active/schedule/count metadata.
+
+No hosted cadence is approved by this repository. The local scheduler smoke uses `* * * * *`; the hosted transactional contract uses `0 0 1 1 *` so its jobs cannot fire during command inspection. Both use 5,000 ms and a 25-item sweep bound. These are test fixtures, not production defaults. The owner must choose cadence after measuring queue depth, runner/sweeper latency, lease expiry, retries, poison archives, Cron overlap, and database lock/write activity.
+
+Local proof from a fresh migrated stack:
+
+```powershell
+npm run agent-work:hosted-scheduler:contract
+```
+
+The command rejects non-local database URLs, enables the three scheduler extensions late in the isolated local stack, uses synthetic generated values, and creates the four fixed secrets plus two jobs inside an uncommitted transaction. It proves invalid deployment identity fails closed, exact project binding, secret-free command storage, service-role execution denial, sanitized status, disablement, rollback, and zero fixed job/Vault residue. Extension installation is intentionally outside that transaction and can remain until the isolated local stack is destroyed. The Phase 2 harness runs the same contract before the existing local scheduler smoke and audits both local and hosted fixed names during cleanup.
+
+### Promotion And Rollback
+
+Deploy code and migrations with runtime `disabled`, zero hosted jobs, and zero hosted Vault names. Promote to `shadow` only after a recorded owner decision and prove synthetic tenant/auth/create/list/detail parity with no runner, model, or draft write. Production `advisory` is additionally blocked until:
+
+- retention periods are approved for `ledger_history`, `queue_archive`, and `execution_trace`; current status is `policy_unapproved` and deletion remains zero
+- human protected-path, Supabase, security, privacy, product, and clinical reviewers approve the rollout
+- CalOptima editable draft-table writes are explicitly accepted for advisory mode
+- an authenticated synthetic legacy-shaped request returns `503 legacy_generation_disabled` before assessment lookup/provider execution, and scheduler cadence is owner-approved
+
+On any gate, policy, tenant, secret, queue, or postcondition failure: set Ledger mode to `disabled` first, call the hosted disable function, preserve sanitized PHI-free counts/hashes/reason codes, and verify both fixed jobs are absent. Do not silently drain or delete queued work; reconcile it against authoritative domain state. Remove the four hosted Vault names only after the disabled state and evidence are recorded. The operator-only scheduler functions are configuration controls, not promotion authority: do not enable hosted jobs while retention remains `policy_unapproved` or before draft-write and cadence approvals. Logs, Cron bodies, queue messages, events, traces, and exported artifacts must contain no PHI, prompts, source evidence, or secret material.

@@ -7,7 +7,7 @@ import { assertAgentWorkSupabaseUrl } from "../_shared/agent-work/runtime-url.ts
 
 const INVOCATION_SECRET_HEADER = "x-agent-work-sweeper-secret";
 const DEFAULT_MAX_ITEMS_PER_PASS = 25;
-const ALLOWED_RUNTIME_MODES = new Set(["shadow", "advisory"]);
+const ALLOWED_RUNTIME_MODES = new Set(["advisory"]);
 const SAFE_REASON_CODE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 
 type AgentWorkRuntimeMode = "disabled" | "shadow" | "advisory" | string;

@@ -14,7 +14,7 @@
 - Allowed surfaces: Ledger Edge Functions and focused tests; one forward scheduler migration and focused contract; Phase 2 harness integration only if needed; `package.json` only if a command is required; Ledger ops, plan, and handoff docs.
 - Non-goals: UI redesign, unrelated AI refactors, global provider-policy changes, `active`, domain assessment authority changes, approval/promotion/publication/signature/billing/submission/final-record automation, or customer/PHI fixtures.
 - Stop and re-route if safe completion requires broader auth, shared runtime config, CI workflow, Netlify config, or non-Ledger provider behavior changes.
-- The authenticated legacy `generate-program-goals` contract was intentionally restored by the prior rollout and remains outside the Ledger runtime switch. Correct contradictory documentation; do not remove that product API without a separate product decision and route.
+- The authenticated legacy `generate-program-goals` contract was intentionally restored by the prior rollout and remains outside the Ledger runtime switch. Preserve default behavior, add a separately named opt-in disable fence for provider-isolated Ledger promotion, and do not remove that product API without a separate product decision and route.
 - Runtime-policy failure must fail closed. Queue messages, Cron bodies, events, traces, logs, and artifacts must remain PHI-free.
 - Retention deletion remains `policy_unapproved`; do not invent periods or delete rows. This is a production advisory-promotion blocker unless an approved policy is found.
 - No `.env*` access. No external model call. Use synthetic fixtures and dependency-injected fakes.
@@ -25,21 +25,24 @@
 - [x] Read `AGENTS.md`, inspect clean worktree state, and create `WIN-275`.
 - [x] Verify hosted disabled baseline, six migrations/functions, forced RLS, zero Ledger/Cron/Vault rows, and retention `policy_unapproved` through connectors.
 - [x] Route `critical` and define allowed files, non-goals, and stop conditions.
-- [ ] Reconcile specification, architecture, security, Supabase, test, DevOps, performance, and documentation findings.
-- [ ] Update `WIN-275` and commit this plan as a focused planning checkpoint.
+- [x] Reconcile specification, architecture, security, Supabase, test, DevOps, performance, and documentation findings.
+- [x] Update `WIN-275` and commit this plan as a focused planning checkpoint.
 
 ## Task 2: Hosted Scheduler TDD
 
 **Files:**
 - Add: `tests/agentWorkLedgerHostedSchedulerMigration.test.ts`
 - Add: `supabase/migrations/<generated>_agent_work_ledger_hosted_scheduler.sql`
-- Modify only if needed: `scripts/agent-work-ledger-local-scheduler.mjs`, Phase 2 harness manifest/check list, `package.json`
+- Add: `scripts/agent-work-ledger-hosted-scheduler-contract.mjs`
+- Modify: Phase 2 harness manifest/check list and cleanup audit, `package.json`
+- Modify: `supabase/functions/generate-program-goals/index.ts` and its focused test for the separately named legacy provider fence
 
-- [ ] RED: add a static migration contract proving fixed hosted job/Vault names, project-ref validation, extension preconditions, bounded schedule/timeout/pass inputs, `cron.schedule`/`cron.unschedule`, secret indirection, sanitized status, and revoked execution.
-- [ ] RED: add a local transactional runtime contract that enables extensions late, stores synthetic secrets, creates jobs without executing network calls, inspects commands/status, disables jobs, removes secrets, rolls back, and proves no residue.
-- [ ] Generate the migration with `supabase migration new`; implement hosted enable/disable/status functions without altering the local scheduler.
-- [ ] GREEN: run focused Vitest and database contract from fresh local state.
-- [ ] Integrate the contract into Phase 2 only if it can preserve the existing late-extension ordering and cleanup guarantees.
+- [x] RED: add a static migration contract proving fixed hosted job/Vault names, project-ref validation, extension preconditions, bounded schedule/timeout/pass inputs, `cron.schedule`/`cron.unschedule`, secret indirection, sanitized status, and revoked execution.
+- [x] RED: add a local runtime contract that enables extensions late, stores four synthetic fixed Vault entries transactionally, creates jobs without executing network calls, inspects commands/status, disables jobs, rolls back fixed state, and proves no fixed-name residue.
+- [x] Generate the migration with the governed repository tool; implement hosted enable/disable/status functions without altering the local scheduler.
+- [x] GREEN: run focused Vitest and database contract from fresh local state.
+- [x] Integrate the contract into Phase 2 while preserving late-extension ordering and cleanup guarantees.
+- [x] Resolve review RED for arbitrary project targeting, concurrent enable/disable, duplicate-tolerant status, decrypted-secret readiness, and cleanup after an early migration failure.
 
 ## Task 3: Callable Contract And Documentation
 
@@ -49,17 +52,17 @@
 - Modify: this plan
 - Focused function tests/docs only if a behavior defect is confirmed
 
-- [ ] Document the exact callable sequence: create/list/detail through `agent-work-items`; explicit ledger-bound model invocation in advisory; deterministic queue recovery through runner/sweeper Cron; human review handoff; no autonomous domain promotion.
-- [ ] Correct the legacy-contract contradiction and state that Ledger mode is not a global provider kill switch.
-- [ ] Document hosted secret names, extension setup, enable/status/disable SQL, cadence ownership, bounded defaults, monitoring, rollback, PHI-free evidence, and zero-residue checks.
-- [ ] Record `shadow` as observation/create only with workers inert; record `advisory` as the only runner/model mode; forbid `active`.
-- [ ] Record retention as an exact advisory-promotion blocker unless approved repository policy is discovered.
+- [x] Document the exact callable sequence: create/list/detail through `agent-work-items`; explicit ledger-bound model invocation in advisory; deterministic queue recovery through runner/sweeper Cron; human review handoff; no autonomous domain promotion.
+- [x] Correct the legacy-contract contradiction and state that Ledger mode is not a global provider kill switch.
+- [x] Document hosted secret names, extension setup, enable/status/disable SQL, cadence ownership, bounded defaults, monitoring, rollback, PHI-free evidence, and zero-residue checks.
+- [x] Record `shadow` as observation/create only with workers inert; record `advisory` as the only runner/model mode; forbid `active`.
+- [x] Record retention as an exact advisory-promotion blocker unless approved repository policy is discovered.
 
 ## Task 4: Local Verification
 
-- [ ] Run focused migration/function tests and Deno Ledger tests.
-- [ ] Run queue/scheduler smoke, security contract, shadow parity, fresh database reset, and migration application.
-- [ ] Run `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run validate:tenant`, `npm run build`, and `npm run verify:local` with bounded Node heap if required.
+- [x] Run focused migration/function tests and Deno Ledger tests.
+- [x] Run queue/scheduler smoke, security contract, shadow parity, fresh database reset, and migration application.
+- [x] Run `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run validate:tenant`, `npm run build`, and `npm run verify:local` with bounded Node heap if required.
 - [ ] Run `npm run test:agent-work:phase2` twice serially from clean state; record timings, statuses, hashes, and cleanup proof.
 - [ ] Run pre-commit hooks normally and do not bypass them.
 

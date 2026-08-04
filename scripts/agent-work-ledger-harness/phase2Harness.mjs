@@ -109,6 +109,11 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
     command: customCheckCommand("retention-trace"),
   },
   {
+    id: "hosted-scheduler-contract",
+    destructive: true,
+    command: ["node", "scripts/agent-work-ledger-hosted-scheduler-contract.mjs"],
+  },
+  {
     id: "queue-scheduler",
     destructive: true,
     command: ["node", "scripts/agent-work-ledger-local-scheduler.mjs", "smoke"],
@@ -183,6 +188,7 @@ const PHASE2_CHECK_ENVIRONMENT_NAMES = Object.freeze({
     "SUPABASE_URL",
   ],
   "retention-trace": ["SUPABASE_DB_URL"],
+  "hosted-scheduler-contract": ["SUPABASE_DB_URL"],
   "app-api-unit-build": [
     "SUPABASE_ANON_KEY",
     "SUPABASE_URL",

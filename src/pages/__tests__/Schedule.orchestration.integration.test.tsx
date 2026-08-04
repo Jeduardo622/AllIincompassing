@@ -13,6 +13,7 @@ const buildBookSessionApiPayloadMock = vi.fn((session: unknown) => session);
 const upsertClientSessionNoteForSessionMock = vi.fn();
 const invalidateSessionNoteCachesAfterSessionWriteMock = vi.fn();
 const completeSessionFromModalMock = vi.fn();
+const checkInProgressSessionCloseReadinessMock = vi.fn();
 const formatSessionNoteTimingMock = vi.fn(() => ({
   sessionDate: "2026-07-23",
   startTime: "14:00:00",
@@ -125,11 +126,8 @@ vi.mock("../../features/scheduling/domain/sessionNoteQueryInvalidation", () => (
 
 vi.mock("../../features/scheduling/domain/sessionComplete", () => ({
   completeSessionFromModal: (...args: unknown[]) => completeSessionFromModalMock(...args),
-  checkInProgressSessionCloseReadiness: vi.fn(async () => ({
-    ready: true,
-    requiredGoalIds: ["goal-1"],
-    missingGoalIds: [],
-  })),
+  checkInProgressSessionCloseReadiness: (...args: unknown[]) =>
+    checkInProgressSessionCloseReadinessMock(...args),
   IN_PROGRESS_CLOSE_NOT_READY_MESSAGE:
     "You must complete the linked session documentation with per-goal notes before closing this in-progress session.",
 }));
@@ -190,6 +188,23 @@ vi.mock("../../components/SessionModal", () => ({
             if (result && typeof (result as Promise<unknown>).catch === "function") void (result as Promise<unknown>).catch(() => undefined);
           }}
         >complete stale</button>
+        <button
+          aria-label="submit-complete-with-new-trial"
+          onClick={() => {
+            const result = onSubmit({
+              id: "session-1", therapist_id: "therapist-1", client_id: "client-1", program_id: "program-1", goal_id: "goal-1",
+              start_time: originalSessionWindow.start_time, end_time: originalSessionWindow.end_time, status: "completed",
+              session_note_goal_ids: ["goal-1"], session_note_goals_addressed: ["Goal 1"],
+              session_note_goal_notes: { "goal-1": "Keep this note" }, session_note_goal_measurements: {},
+              session_note_authorization_id: "auth-1", session_note_service_code: "97153", session_note_persist_requested: true,
+              session_note_trial_events: [
+                { target_id: "88888888-8888-4888-8888-888888888888", trial_number: 1, response: "correct", expected_progression_version: 1 },
+                { target_id: "88888888-8888-4888-8888-888888888888", trial_number: 2, response: "incorrect", expected_progression_version: 1 },
+              ],
+            });
+            if (result && typeof (result as Promise<unknown>).catch === "function") void (result as Promise<unknown>).catch(() => undefined);
+          }}
+        >complete with new trial</button>
         <button
           aria-label="submit-complete-after-discard"
           onClick={() => {
@@ -512,6 +527,11 @@ describe("Schedule orchestration integration hardening", () => {
       id: "linked-note-1",
     });
     completeSessionFromModalMock.mockResolvedValue(undefined);
+    checkInProgressSessionCloseReadinessMock.mockResolvedValue({
+      ready: true,
+      requiredGoalIds: ["goal-1"],
+      missingGoalIds: [],
+    });
     reactivateSessionMock.mockReset();
     bookSessionViaApiMock.mockResolvedValue({
       session: {
@@ -529,22 +549,182 @@ describe("Schedule orchestration integration hardening", () => {
 
   it("does not repeat session completion when stale trials are explicitly discarded and finalization is retried", async () => {
     const stale = Object.assign(new Error("stale"), { status: 409 });
-    upsertClientSessionNoteForSessionMock.mockRejectedValueOnce(stale).mockResolvedValueOnce({ id: "linked-note-1", progression_results: [] });
+    scheduleFixtures.sessions[0].status = "in_progress";
+    upsertClientSessionNoteForSessionMock
+      .mockResolvedValueOnce({ id: "linked-note-1" })
+      .mockRejectedValueOnce(stale)
+      .mockResolvedValueOnce({ id: "linked-note-1", progression_results: [] });
     renderWithProviders(<Schedule />);
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
     await openExistingSessionForEdit();
     await screen.findByTestId("session-modal");
     fireEvent.click(screen.getByLabelText("submit-complete-with-stale-trial"));
-    await waitFor(() => expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1));
-    expect(completeSessionFromModalMock).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByLabelText("submit-complete-after-discard"));
     await waitFor(() => expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(2));
     expect(completeSessionFromModalMock).toHaveBeenCalledTimes(1);
+    expect(checkInProgressSessionCloseReadinessMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByLabelText("submit-complete-after-discard"));
+    await waitFor(() => expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(3));
+    expect(completeSessionFromModalMock).toHaveBeenCalledTimes(1);
+    expect(checkInProgressSessionCloseReadinessMock).toHaveBeenCalledTimes(1);
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0]).toMatchObject({
+      noteId: "linked-note-1",
+      isLocked: true,
+    });
     expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0]).not.toHaveProperty("trialEvents");
-    expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0].goalNotes).toEqual({ "goal-1": "Keep this note" });
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[2][0]).toMatchObject({
+      noteId: "linked-note-1",
+      isLocked: true,
+    });
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[2][0]).not.toHaveProperty("trialEvents");
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[2][0].goalNotes).toEqual({ "goal-1": "Keep this note" });
     await waitFor(() => expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed"));
     await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
+  });
+
+  it("persists an unlocked draft before readiness and completion, then finalizes with the returned note id and without replaying trial events", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    upsertClientSessionNoteForSessionMock
+      .mockResolvedValueOnce({ id: "linked-note-1" })
+      .mockResolvedValueOnce({ id: "linked-note-1", progression_results: [] });
+
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("submit-complete-with-stale-trial"));
+
+    await waitFor(() => {
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(2);
+      expect(checkInProgressSessionCloseReadinessMock).toHaveBeenCalledTimes(1);
+      expect(completeSessionFromModalMock).toHaveBeenCalledTimes(1);
+    });
+
+    const draftCall = upsertClientSessionNoteForSessionMock.mock.calls[0][0];
+    const finalizationCall = upsertClientSessionNoteForSessionMock.mock.calls[1][0];
+    expect(draftCall.isLocked).toBeUndefined();
+    expect(draftCall.noteId).toBeUndefined();
+    expect(draftCall.trialEvents).toEqual([{
+      target_id: "88888888-8888-4888-8888-888888888888",
+      trial_number: 1,
+      response: "correct",
+      expected_progression_version: 1,
+    }]);
+    expect(finalizationCall.isLocked).toBe(true);
+    expect(finalizationCall.noteId).toBe("linked-note-1");
+    expect(finalizationCall).not.toHaveProperty("trialEvents");
+    expect(
+      upsertClientSessionNoteForSessionMock.mock.invocationCallOrder[0],
+    ).toBeLessThan(checkInProgressSessionCloseReadinessMock.mock.invocationCallOrder[0]);
+    expect(
+      checkInProgressSessionCloseReadinessMock.mock.invocationCallOrder[0],
+    ).toBeLessThan(completeSessionFromModalMock.mock.invocationCallOrder[0]);
+    expect(
+      completeSessionFromModalMock.mock.invocationCallOrder[0],
+    ).toBeLessThan(upsertClientSessionNoteForSessionMock.mock.invocationCallOrder[1]);
+    await waitFor(() => expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed"));
+  });
+
+  it("stops before readiness and completion when draft persistence fails", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    upsertClientSessionNoteForSessionMock.mockRejectedValueOnce(new Error("draft failed"));
+
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("submit-complete-with-stale-trial"));
+
+    await waitFor(() => {
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
+    });
+    expect(checkInProgressSessionCloseReadinessMock).not.toHaveBeenCalled();
+    expect(completeSessionFromModalMock).not.toHaveBeenCalled();
+  });
+
+  it("reuses the saved draft note id and avoids replaying trial events when completion fails before finalization", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    completeSessionFromModalMock
+      .mockRejectedValueOnce(new Error("completion failed"))
+      .mockResolvedValueOnce(undefined);
+    upsertClientSessionNoteForSessionMock
+      .mockResolvedValueOnce({ id: "linked-note-1" })
+      .mockResolvedValueOnce({ id: "linked-note-1" })
+      .mockResolvedValueOnce({ id: "linked-note-1", progression_results: [] });
+
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("submit-complete-with-stale-trial"));
+
+    await waitFor(() => {
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(1);
+      expect(completeSessionFromModalMock).toHaveBeenCalledTimes(1);
+      expect(showErrorMock).toHaveBeenCalled();
+    });
+    expect(checkInProgressSessionCloseReadinessMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByLabelText("submit-complete-after-discard"));
+
+    await waitFor(() => {
+      expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(3);
+      expect(completeSessionFromModalMock).toHaveBeenCalledTimes(2);
+    });
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0]).toMatchObject({
+      noteId: "linked-note-1",
+    });
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0]).not.toHaveProperty("trialEvents");
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[2][0]).toMatchObject({
+      noteId: "linked-note-1",
+      isLocked: true,
+    });
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[2][0]).not.toHaveProperty("trialEvents");
+    await waitFor(() => expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed"));
+  });
+
+  it("persists only trials added after an earlier draft save when completion is retried", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    completeSessionFromModalMock
+      .mockRejectedValueOnce(new Error("completion failed"))
+      .mockResolvedValueOnce(undefined);
+    upsertClientSessionNoteForSessionMock
+      .mockResolvedValueOnce({ id: "linked-note-1" })
+      .mockResolvedValueOnce({ id: "linked-note-1" })
+      .mockResolvedValueOnce({ id: "linked-note-1", progression_results: [] });
+
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("submit-complete-with-stale-trial"));
+    await waitFor(() => expect(completeSessionFromModalMock).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByLabelText("submit-complete-with-new-trial"));
+    await waitFor(() => expect(upsertClientSessionNoteForSessionMock).toHaveBeenCalledTimes(3));
+
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[1][0]).toMatchObject({
+      noteId: "linked-note-1",
+      trialEvents: [{
+        target_id: "88888888-8888-4888-8888-888888888888",
+        trial_number: 2,
+        response: "incorrect",
+        expected_progression_version: 1,
+      }],
+    });
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[2][0]).toMatchObject({
+      noteId: "linked-note-1",
+      isLocked: true,
+    });
+    expect(upsertClientSessionNoteForSessionMock.mock.calls[2][0]).not.toHaveProperty("trialEvents");
   });
 
   it("pending-schedule create forwards metadata and does not reuse it on next manual create", async () => {

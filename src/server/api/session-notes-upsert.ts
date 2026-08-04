@@ -706,13 +706,28 @@ const fetchExistingNote = async (
   headers: Record<string, string>,
   organizationId: string,
   options: { noteId?: string; sessionId?: string | null },
-): Promise<{ id: string; is_locked: boolean } | null> => {
+): Promise<{
+  id: string;
+  is_locked: boolean;
+  session_id: string | null;
+  client_id: string;
+  therapist_id: string;
+  authorization_id: string;
+} | null> => {
   if (options.noteId) {
     const url =
-      `${supabaseUrl}/rest/v1/client_session_notes?select=id,is_locked` +
+      `${supabaseUrl}/rest/v1/client_session_notes?select=id,is_locked,session_id,client_id,therapist_id,authorization_id` +
       `&organization_id=eq.${encodeURIComponent(organizationId)}` +
-      `&id=eq.${encodeURIComponent(options.noteId)}&limit=1`;
-    const result = await fetchJson<Array<{ id: string; is_locked: boolean }>>(url, {
+      `&id=eq.${encodeURIComponent(options.noteId)}` +
+      `&limit=1`;
+    const result = await fetchJson<Array<{
+      id: string;
+      is_locked: boolean;
+      session_id: string | null;
+      client_id: string;
+      therapist_id: string;
+      authorization_id: string;
+    }>>(url, {
       method: "GET",
       headers,
     });
@@ -721,10 +736,17 @@ const fetchExistingNote = async (
 
   if (options.sessionId) {
     const url =
-      `${supabaseUrl}/rest/v1/client_session_notes?select=id,is_locked` +
+      `${supabaseUrl}/rest/v1/client_session_notes?select=id,is_locked,session_id,client_id,therapist_id,authorization_id` +
       `&organization_id=eq.${encodeURIComponent(organizationId)}` +
       `&session_id=eq.${encodeURIComponent(options.sessionId)}&limit=1`;
-    const result = await fetchJson<Array<{ id: string; is_locked: boolean }>>(url, {
+    const result = await fetchJson<Array<{
+      id: string;
+      is_locked: boolean;
+      session_id: string | null;
+      client_id: string;
+      therapist_id: string;
+      authorization_id: string;
+    }>>(url, {
       method: "GET",
       headers,
     });
@@ -1433,10 +1455,30 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
 
   const existingNote = await fetchExistingNote(supabaseUrl, headers, organizationId, {
     noteId: payload.noteId,
-    sessionId: payload.noteId ? null : payload.sessionId,
+    sessionId: payload.sessionId,
   });
 
   if (payload.noteId && !existingNote) {
+    return errorResponse(request, "not_found", "Session note not found.");
+  }
+
+  if (
+    payload.noteId &&
+    existingNote?.session_id != null &&
+    existingNote.session_id !== payload.sessionId
+  ) {
+    return errorResponse(request, "not_found", "Session note not found.");
+  }
+
+  if (
+    payload.noteId &&
+    existingNote?.session_id === null &&
+    (
+      existingNote.client_id !== payload.clientId ||
+      existingNote.therapist_id !== payload.therapistId ||
+      existingNote.authorization_id !== effectiveAuthorizationId
+    )
+  ) {
     return errorResponse(request, "not_found", "Session note not found.");
   }
 

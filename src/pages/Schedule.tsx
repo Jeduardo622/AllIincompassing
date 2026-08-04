@@ -146,6 +146,13 @@ const LazyScheduleDayView = React.lazy(() =>
 );
 
 type ScheduleSubmitData = SessionModalSubmitData;
+type InProgressClinicalNoteDraftState = {
+  noteId: string | null;
+  persistedTrialEventKeys: Set<string>;
+};
+
+const sessionTrialEventKey = (event: { target_id: string; trial_number: number }): string =>
+  `${event.target_id}:${event.trial_number}`;
 
 const stripClinicalNoteFields = (data: ScheduleSubmitData): Partial<Session> => {
   const {
@@ -401,6 +408,7 @@ export const Schedule = React.memo(() => {
   const attemptedUrlSessionLookupRef = useRef<Set<string>>(new Set());
   const wasModalOpenRef = useRef(false);
   const completedAwaitingFinalizationRef = useRef<Set<string>>(new Set());
+  const inProgressClinicalNoteDraftRef = useRef<Map<string, InProgressClinicalNoteDraftState>>(new Map());
   const btAbaCompletedSessionsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -1652,7 +1660,14 @@ export const Schedule = React.memo(() => {
         data: sessionPayload,
       });
       const isBtDataCollectionOnlySession = effectiveRole === "bt" && Boolean(effectiveSelectedSession?.id);
-      const persistClinicalNoteDraftForSession = async (sessionToPersist: Session) => {
+      const persistClinicalNoteDraftForSession = async (
+        sessionToPersist: Session,
+        options?: {
+          noteId?: string;
+          isLocked?: boolean;
+          trialEvents?: typeof clinicalNoteDraft.trialEvents;
+        },
+      ) => {
         if (!clinicalNoteDraft) {
           return false;
         }
@@ -1688,8 +1703,12 @@ export const Schedule = React.memo(() => {
           goalMeasurements: clinicalNoteDraft.goalMeasurements,
           goalNotes: clinicalNoteDraft.goalNotes,
           narrative: clinicalNoteDraft.narrative,
+          ...(options?.noteId ? { noteId: options.noteId } : {}),
+          ...(options?.isLocked ? { isLocked: true } : {}),
           ...(mergeCaptureIds?.length ? { captureMergeGoalIds: mergeCaptureIds } : {}),
-          ...(clinicalNoteDraft.trialEvents.length ? { trialEvents: clinicalNoteDraft.trialEvents } : {}),
+          ...((options?.trialEvents ?? clinicalNoteDraft.trialEvents).length
+            ? { trialEvents: options?.trialEvents ?? clinicalNoteDraft.trialEvents }
+            : {}),
         });
       };
 
@@ -1728,6 +1747,9 @@ export const Schedule = React.memo(() => {
             showError('Complete the required ABA Session Note before closing this session.');
             return;
           }
+          const retryingLockedFinalization =
+            completedAwaitingFinalizationRef.current.has(decision.selectedSessionId);
+          const existingDraftState = inProgressClinicalNoteDraftRef.current.get(decision.selectedSessionId);
           let liveInProgress = effectiveSelectedSession?.status === "in_progress";
           if (!liveInProgress) {
             const { data: liveRow, error: liveError } = await supabase
@@ -1746,7 +1768,27 @@ export const Schedule = React.memo(() => {
               liveInProgress = liveRow?.status === "in_progress";
             }
           }
-          if (liveInProgress) {
+          if (!retryingLockedFinalization && clinicalNoteDraft && effectiveSelectedSession && liveInProgress) {
+            const persistedTrialEventKeys = existingDraftState?.persistedTrialEventKeys ?? new Set<string>();
+            const unpersistedTrialEvents = clinicalNoteDraft.trialEvents.filter(
+              (event) => !persistedTrialEventKeys.has(sessionTrialEventKey(event)),
+            );
+            const draftResult = await persistClinicalNoteDraftForSession(effectiveSelectedSession, {
+              noteId: existingDraftState?.noteId ?? undefined,
+              trialEvents: unpersistedTrialEvents,
+            });
+            inProgressClinicalNoteDraftRef.current.set(decision.selectedSessionId, {
+              noteId:
+                draftResult && typeof draftResult === "object" && "id" in draftResult && typeof draftResult.id === "string"
+                  ? draftResult.id
+                  : existingDraftState?.noteId ?? null,
+              persistedTrialEventKeys: new Set([
+                ...persistedTrialEventKeys,
+                ...unpersistedTrialEvents.map(sessionTrialEventKey),
+              ]),
+            });
+          }
+          if (!retryingLockedFinalization && liveInProgress) {
             try {
               const readiness = await checkInProgressSessionCloseReadiness({
                 sessionId: decision.selectedSessionId,
@@ -1768,7 +1810,7 @@ export const Schedule = React.memo(() => {
             }
           }
 
-          if (!completedAwaitingFinalizationRef.current.has(decision.selectedSessionId)) {
+          if (!retryingLockedFinalization) {
             await completeSessionMutation.mutateAsync({
               sessionId: decision.selectedSessionId,
               outcome: "completed",
@@ -1778,32 +1820,17 @@ export const Schedule = React.memo(() => {
           }
           let progressionResult;
           if (clinicalNoteDraft && effectiveSelectedSession && activeOrganizationId && user?.id) {
-            const sessionTiming = formatSessionNoteTiming({
-              startTimeIso: sessionPayload.start_time ?? effectiveSelectedSession.start_time,
-              endTimeIso: sessionPayload.end_time ?? effectiveSelectedSession.end_time,
-              resolvedTimeZone: userTimeZone,
-            });
-            progressionResult = await upsertClientSessionNoteForSession({
-              sessionId: effectiveSelectedSession.id,
-              clientId: sessionPayload.client_id ?? effectiveSelectedSession.client_id,
-              authorizationId: clinicalNoteDraft.authorizationId,
-              therapistId: sessionPayload.therapist_id ?? effectiveSelectedSession.therapist_id,
-              organizationId: activeOrganizationId,
-              actorUserId: user.id,
-              serviceCode: clinicalNoteDraft.serviceCode,
-              sessionDate: sessionTiming.sessionDate,
-              startTime: sessionTiming.startTime,
-              endTime: sessionTiming.endTime,
-              goalsAddressed: clinicalNoteDraft.goalsAddressed,
-              goalIds: clinicalNoteDraft.goalIds,
-              goalMeasurements: clinicalNoteDraft.goalMeasurements,
-              goalNotes: clinicalNoteDraft.goalNotes,
-              narrative: clinicalNoteDraft.narrative,
+            const latestDraftState = inProgressClinicalNoteDraftRef.current.get(decision.selectedSessionId);
+            const persistedTrialEventKeys = latestDraftState?.persistedTrialEventKeys ?? new Set<string>();
+            progressionResult = await persistClinicalNoteDraftForSession(effectiveSelectedSession, {
+              noteId: latestDraftState?.noteId ?? undefined,
               isLocked: true,
-              ...(mergeCaptureIds?.length ? { captureMergeGoalIds: mergeCaptureIds } : {}),
-              ...(clinicalNoteDraft.trialEvents.length ? { trialEvents: clinicalNoteDraft.trialEvents } : {}),
+              trialEvents: clinicalNoteDraft.trialEvents.filter(
+                (event) => !persistedTrialEventKeys.has(sessionTrialEventKey(event)),
+              ),
             });
             completedAwaitingFinalizationRef.current.delete(decision.selectedSessionId);
+            inProgressClinicalNoteDraftRef.current.delete(decision.selectedSessionId);
           }
           showSuccess("Session marked as completed");
           applyScheduleResetBranch({ kind: "submit-cancel" }, scheduleResetSetters);

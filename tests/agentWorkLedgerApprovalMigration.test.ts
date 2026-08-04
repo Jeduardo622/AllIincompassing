@@ -130,7 +130,10 @@ describe("agent work approval migration contract", () => {
       /if \(!await currentUserCanReadWorkItem\(workItemId\)\) return null;[\s\S]+?serviceClient\s*\.from\("agent_work_items"\)/,
     );
     expect(coreSql).toMatch(
-      /current_user_can_read_agent_work_item_endpoint[\s\S]+?parent_work_item_id is null[\s\S]+?app\.current_user_can_read_agent_work_item_endpoint/i,
+      /create or replace function app\.current_user_can_read_agent_work_item_endpoint[\s\S]+?parent_work_item_id is null[\s\S]+?app\.current_user_can_read_agent_work_item_endpoint/i,
+    );
+    expect(coreSql).toMatch(
+      /create or replace function public\.current_user_can_read_agent_work_item_endpoint[\s\S]+?select app\.current_user_can_read_agent_work_item_endpoint\(p_work_item_id\)/i,
     );
     expect(itemFunctionSource).toMatch(
       /current_user_visible_agent_work_approval_ids[\s\S]+?visibleApprovalIds[\s\S]+?serviceClient\s*\.from\("agent_work_approvals"\)[\s\S]+?\.in\("id", visibleApprovalIds\)/,

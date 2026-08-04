@@ -1187,6 +1187,12 @@ as $$
     from public.agent_work_items item
     where item.id = p_work_item_id
       and app.current_user_can_read_agent_work_row(item.organization_id, item.client_id)
+      and (
+        item.parent_work_item_id is null
+        or app.current_user_can_read_agent_work_item_endpoint(
+          item.parent_work_item_id
+        )
+      )
   );
 $$;
 
@@ -1220,21 +1226,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select exists (
-    select 1
-    from public.agent_work_items item
-    where item.id = p_work_item_id
-      and app.current_user_can_read_agent_work_row(
-        item.organization_id,
-        item.client_id
-      )
-      and (
-        item.parent_work_item_id is null
-        or app.current_user_can_read_agent_work_item_endpoint(
-          item.parent_work_item_id
-        )
-      )
-  );
+  select app.current_user_can_read_agent_work_item_endpoint(p_work_item_id);
 $$;
 
 create or replace function public.current_user_can_read_agent_work_assessment_endpoint(

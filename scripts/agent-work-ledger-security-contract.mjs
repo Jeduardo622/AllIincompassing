@@ -2588,11 +2588,41 @@ const assertParentEndpointReadPolicy = async (client, assignedWorkItemId, unassi
 
   try {
     await client.query("alter table public.agent_work_items disable trigger agent_work_items_enforce_parent_scope");
+    const { rows: parentRows } = await client.query(
+      `
+        insert into public.agent_work_items (
+          organization_id,
+          client_id,
+          workflow_key,
+          workflow_version,
+          objective,
+          status,
+          dedupe_key
+        ) values (
+          $1::uuid,
+          $2::uuid,
+          'contract.parent.endpoint',
+          1,
+          'Synthetic nested parent visibility fixture.',
+          'queued',
+          $3::text
+        )
+        returning id
+      `,
+      [FIXTURES.orgA, FIXTURES.clientAssigned, `parent-endpoint-${RUN_TOKEN}`],
+    );
+    const parentWorkItemId = parentRows[0]?.id;
+    assert(parentWorkItemId, "Nested parent visibility fixture was not created");
     await client.query(
       "update public.agent_work_items set parent_work_item_id = $1::uuid where id = $2::uuid",
-      [unassignedWorkItemId, assignedWorkItemId],
+      [unassignedWorkItemId, parentWorkItemId],
+    );
+    await client.query(
+      "update public.agent_work_items set parent_work_item_id = $1::uuid where id = $2::uuid",
+      [parentWorkItemId, assignedWorkItemId],
     );
     await client.query("alter table public.agent_work_items enable trigger agent_work_items_enforce_parent_scope");
+    await client.query("grant usage on schema app to authenticated");
 
     await client.query("set local role authenticated");
     await client.query("select set_config('request.jwt.claim.role', 'authenticated', true)");
@@ -2601,13 +2631,29 @@ const assertParentEndpointReadPolicy = async (client, assignedWorkItemId, unassi
     ]);
     await client.query("select set_config('request.jwt.claim.sub', $1, true)", [FIXTURES.btA]);
 
+    const { rows: parentEndpointRows } = await client.query(
+      "select public.current_user_can_read_agent_work_item_endpoint($1::uuid) as allowed",
+      [parentWorkItemId],
+    );
+    assert(
+      parentEndpointRows[0]?.allowed === false,
+      "Parent with a hidden ancestor remained visible through the Edge authority RPC",
+    );
+    const { rows: rlsHelperRows } = await client.query(
+      "select app.current_user_can_read_agent_work_item_endpoint($1::uuid) as allowed",
+      [assignedWorkItemId],
+    );
+    assert(
+      rlsHelperRows[0]?.allowed === false,
+      "Descendant with a hidden ancestor remained visible through the RLS authority helper",
+    );
     const { rows: endpointRows } = await client.query(
       "select public.current_user_can_read_agent_work_item_endpoint($1::uuid) as allowed",
       [assignedWorkItemId],
     );
     assert(
       endpointRows[0]?.allowed === false,
-      "Parent-hidden child remained visible through the Edge authority RPC",
+      "Descendant with a hidden ancestor remained visible through the Edge authority RPC",
     );
     await expectFailure(
       "authenticated parent base-table read",

@@ -1033,6 +1033,82 @@ Architecture, specification, implementation, test, code review, security, Supaba
 
 The retention policy exception was not used. No approved retention periods were found, so deletion stays disabled and returns `policy_unapproved`; privacy, security, product, and operations owners must approve explicit periods for `ledger_history`, `queue_archive`, and `execution_trace` before any deletion path can be implemented. Task 16 is complete for the authorized local scope and remains subject to mandatory human protected-path and clinical review before GitHub or hosted action.
 
+## Final Completion-Slice Checkpoint
+
+- route: `classification: high-risk human-reviewed`; `lane: critical`
+- issue: `WIN-271`
+- branch: `codex/agent-work-ledger-foundation`
+- current verified HEAD: `8583f83d7caef92112539fdeee3cab117a5de3bf`
+- current `origin/main`: `1636abcf7786e6f985022ce05ca30650fdaf9e4b`; branch is `0` behind and `74` ahead after a fresh fetch
+- completion-plan commit: `51d3e8d4 docs(agent-work): plan final completion slice`
+- final review corrections:
+  - `4beb9c12 fix(agent-work): preserve bounded review visibility`
+  - `7f09f2a8 fix(agent-work): intersect trace report selectors`
+  - `a45b1612 fix(agent-work): recurse parent visibility authority`
+  - `8583f83d fix(agent-work): allow phase2 CORS config reads`
+
+The final Phase 2 defect was reproduced and corrected through TDD. The current `generate-program-goals` tests evaluate the shared CORS helper, but the cached Deno test command did not permit reads of `CORS_ALLOWED_ORIGINS` or `API_ALLOWED_ORIGINS`. The focused harness test proved RED at `60/61`; the minimal exact-name correction proved GREEN at `61/61`. The five-file Phase 2 suite then passed `91/91`, and the exact immutable-image Deno command passed `112/112` under `--network none`. Code review, security, test, and DevOps reviewers found no functional or security issue in the two-line fix. Two reviewers correctly flagged the unrelated `deno.lock` and reliability-report worktree drift; the commit staged only the harness and exact-command test, so neither drift file entered the commit.
+
+### Final Phase 2 Runs
+
+Two consecutive local-only runs passed on the same committed source and image:
+
+- `20260804T053537Z-196242`: commit `8583f83d7caef92112539fdeee3cab117a5de3bf`; image `sha256:b0223f71b9ee6b74a265041b44dff7ba0505c757e288ed0a390bfb9d0926d9a3`; `11/11`; cleanup passed; exit `0`; 561,649 ms; summary hash `162339b9e14f8b006d32aa347de7da2aea8eebe8c0c9d608b68d5e06c027c209`; content hash `b335b8c8a094a7621f35629995b54b4026317bacac74756e310999dc3b40d331`
+- `20260804T054612Z-76363a`: same commit and image; `11/11`; cleanup passed; exit `0`; 522,423 ms; summary hash `26a92977426d6c11e6cc05ba70336ba692b76e9576671e69665ee6dec886732b`; content hash `a129d3f3ea29593b83904128d2c35f5ac89659d8037f384c6f6be3797c826e19`
+- post-run residue for each counted run: zero Phase 2 Compose containers/volumes, zero local Supabase project containers/volumes, and no `agent-work-phase2` network
+- the harness, Compose topology, and scheduler remained local-only; no GitHub, hosted Supabase, Netlify, model-provider, or customer-data action occurred during these runs
+
+Failed attempts remain part of the record:
+
+- the first foreground attempt failed before artifacts because the Codex process inherited `SUPABASE_ACCESS_TOKEN`; only name/presence was inspected, its value was never read, and later child processes removed remote-capable names process-locally
+- a foreground scrubbed attempt was terminated by the shell tool's approximately ten-minute ceiling before harness cleanup; exact labeled local resources were then cleaned and zero residue was proved
+- the first detached child was terminated with its launching shell job; exact labeled resources were again cleaned with zero residue
+- `20260804T045759Z-6264f2` reached the harness and failed `deno-cached-tests` at `107` passed and `5` failed due the missing CORS env-read permissions; harness cleanup passed
+- `20260804T052725Z-9c2991` passed four reset-backed stages, then failed `reset_chaos_failed`; its cleanup audit reported failure, but Compose down, Supabase stop, residue checks, archive cleanup, and the external zero-residue proof all completed. A single controlled rerun passed beyond that boundary; no unbounded retry loop or reliability code change was used.
+
+### Final Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: local runtime configuration; Docker/Deno test isolation; server/API/Edge integration; database/RLS/migration/tenant isolation; docs/process
+- required checks: focused Phase 2 Vitest; exact cached Deno test command; complete Agent Work Deno tests; fresh reset/security/Edge/queue/shadow/retention/trace contracts; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; two serial Phase 2 runs; `git diff --check`; normal pre-commit hook
+- executed checks:
+  - focused CORS permission TDD: RED `60/61`; GREEN `61/61`
+  - Phase 2 focused suite: pass at `91/91` across five files
+  - immutable image Deno reproduction: pass at `112/112` with `--cached-only`, frozen image lock, no node modules, explicit env names, and `--network none`
+  - prior final focused ledger proof remains green: Vitest `189/189`; Deno `36/36`; migration static `13/13`; fresh reset, security contract, and served Edge smoke
+  - all ledger contracts remain green: shadow parity `7/7`; chaos `10/10`; retention zero-delete `policy_unapproved`; trace `20,000` fixtures, eight indexes, and 11 plan checks; queue/scheduler HTTP `200/200`; eval `6/6` with every safety counter zero
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`: pass in 439.9 seconds, including policy, lint, typecheck, full tests and coverage, build, and Tier-0 routes `220/220`
+  - full Node suite within that gate: `466` files passed and `2` skipped; `3,950` tests passed and `5` skipped
+  - two consecutive Phase 2 lifecycles: pass at `11/11` with complete cleanup and exact source/image identity, as recorded above
+  - `git diff --check`: pass
+  - normal pre-commit hook for `8583f83d`: policy checks passed without bypass
+- blocked/skipped checks:
+  - branch-protection inspection: skipped locally, required from live GitHub
+  - privileged live DB grant, sensitive-table overlap, and Supabase preview drift: skipped without `SUPABASE_DB_URL` / `DATABASE_URL`; required from hosted Supabase before rollout
+  - Supabase function auth parity: skipped because `CI_SUPABASE_AUTH_PARITY_REQUIRED` is disabled locally; required from live deployment metadata
+  - five tests in two files: skipped because dedicated `WIN224_POSTGRES_URL` and `WIN211_POSTGRES_URL` are not configured
+  - handled AI-documentation tests logged local `ECONNREFUSED` and a null-transcript follow-on while still passing; no provider response or external model call occurred
+  - the earlier default-heap `npm run test:ci` attempt failed from Node OOM; the required 8 GB rerun passed and the final 8 GB `verify:local` passed
+- result: `pass-with-blocked-checks` for PR publication; merge and hosted rollout remain gated on live checks and required human approvals
+- residual risk: normal-mode trace reads remain capped at 500 rows without a completeness marker; workflow version constants remain duplicated; one transient local `reset_chaos_failed` occurred between clean runs; hosted size/lock/write-load behavior is unmeasured; retention deletion remains `policy_unapproved`
+
+### Final PR Hygiene Checkpoint
+
+- pr-ready: `yes` for push and ready-for-review PR; `no` for merge until live checks and all mandatory human roles approve
+- lane: `critical`
+- branch-ready: `yes`; dedicated `codex/` branch, current with `origin/main`, normal hooks used
+- linear-ready: `yes`; `WIN-271` is the required tracking issue
+- single-purpose: `yes`; 131 files comprise the bounded Agent Work Ledger Tasks 10-16, local Phase 2 harness, required tests, and evidence
+- unrelated changes: `deno.lock` and `reports/test-reliability-latest.json` remain unstaged at their authorized hashes and are excluded from commits
+- generated artifact drift: none in committed scope; ignored Phase 2 manifests are local evidence only
+- protected-path drift: present only in the separately routed critical migration, function, RLS/RPC, tenant, runner/sweeper, and local runtime scope
+- change summary: present in this handoff and `docs/ops/agent-work-ledger.md`
+- verification summary: present above
+- reviewer: code, security, Supabase, architecture/performance, test, DevOps/documentation, clinical, product, and privacy specialist lanes completed with no remaining actionable code finding
+- PR handoff: ready; use this handoff as the PR body, poll GitHub every three minutes for at most 45 minutes, and never merge without recorded human protected-path, Supabase, security, clinical, product, and privacy approvals
+- required follow-up: update Linear, commit this handoff, push, open the PR, inspect live checks/reviews, and stop before merge if any mandatory human role or branch-protection gate remains missing
+
 ### Final PR Hygiene
 
 - pr-ready: `yes` for local human review; `no` for merge until mandatory protected-path, Supabase, security, clinical, product, and privacy review and live required checks are complete

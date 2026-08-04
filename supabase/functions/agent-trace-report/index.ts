@@ -1728,8 +1728,6 @@ Deno.serve(async (req) => {
     if (mode === "operations") {
       const operations = await loadAgentWorkOperations(organizationId);
       logger.info("operations_report.requested", {
-        userId: user.id,
-        organizationId,
         truncated: operations.sample.truncated,
       });
       return jsonResponse({
@@ -1745,8 +1743,6 @@ Deno.serve(async (req) => {
         traces.map(sanitizeTraceRow),
       );
       logger.info("replay_packet.requested", {
-        userId: user.id,
-        organizationId,
         packetCount: replayPackets.length,
       });
       return jsonResponse({
@@ -1759,19 +1755,13 @@ Deno.serve(async (req) => {
     }
     const selector = parseSelector(req, body);
 
-    logger.info("report.requested", {
-      userId: user.id,
-      organizationId,
-      selector,
-    });
+    logger.info("report.requested");
 
-    const traces = await loadTraceRows(selector, organizationId);
-    const orchestrations = await loadOrchestrationRows(
-      selector,
-      organizationId,
-    );
-
-    const auditRows = await loadSessionAuditRows(selector, organizationId);
+    const [traces, orchestrations, auditRows] = await Promise.all([
+      loadTraceRows(selector, organizationId),
+      loadOrchestrationRows(selector, organizationId),
+      loadSessionAuditRows(selector, organizationId),
+    ]);
 
     const sanitizedTraces = traces.map(sanitizeTraceRow);
     const sanitizedOrchestrations = orchestrations.map(

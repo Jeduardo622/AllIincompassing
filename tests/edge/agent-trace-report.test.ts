@@ -40,6 +40,20 @@ describe("agent-trace-report utility", () => {
     expect(source).not.toContain("function_idempotency_keys");
   });
 
+  it("keeps platform logs identifier-free and overlaps independent report reads", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "supabase", "functions", "agent-trace-report", "index.ts"),
+      "utf8",
+    );
+    const handler = source.slice(source.indexOf('logger.info("operations_report.requested"'));
+    const infoCalls = [...handler.matchAll(/logger\.info\([^;]*\);/g)].map(([call]) => call).join("\n");
+
+    expect(infoCalls).not.toMatch(/\b(?:userId|organizationId|selector)\s*:/);
+    expect(handler).toMatch(
+      /Promise\.all\(\[\s*loadTraceRows\([^]*?loadOrchestrationRows\([^]*?loadSessionAuditRows\(/,
+    );
+  });
+
   it("scopes trace rows to the current organization", () => {
     const rows = __TESTING__.scopeRowsToOrganization(
       [

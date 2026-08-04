@@ -964,7 +964,7 @@ describe("IehpFbaLayoutReview", () => {
       <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
     );
 
-    expect((await screen.findAllByText("Signature Block")).length).toBeGreaterThan(0);
+    fireEvent.click(await screen.findByRole("button", { name: /Page 30/i }));
     expect(screen.getByText("Signature summary")).toBeInTheDocument();
     expect(screen.getByText("1 extracted section")).toBeInTheDocument();
     expect(screen.queryByLabelText("Signature Block")).not.toBeInTheDocument();

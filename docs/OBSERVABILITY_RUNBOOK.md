@@ -34,13 +34,14 @@ This runbook defines production monitoring signals, initial SLO thresholds, and 
 ## Agent trace pipeline
 - **Trace store**: `public.agent_execution_traces` (admin/monitoring read-only via RLS).
 - **Correlation IDs**: edge functions emit `x-request-id` and `x-correlation-id`; use these to join step-level traces across retries or fallbacks.
-- **Replay hooks**: traces capture sanitized inputs + tool call payloads in `replay_payload` for controlled replays.
+- **Ledger trace payloads**: Agent Work traces expose only allowlisted operational diagnostics and ledger IDs. Raw prompts, model output, source content, tool arguments, and replay payloads are not returned by the trace report.
 - **Expected steps**: `request.received`, `execution.gate.allowed|denied`, `llm.response.received`, `tool.execution.allowed|blocked`, `response.sent`.
 
 ## Deterministic replay tooling
-- **Replay script**: `npx tsx scripts/agent-replay.ts --correlation-id <id> --seed <int>`
-- **Auth**: requires `EDGE_REPLAY_ACCESS_TOKEN` (admin JWT), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY`.
-- **Seeded runs**: pass `--seed` to re-run with a fixed LLM seed (logged in trace payloads).
+- **Replay script**: `npx tsx scripts/agent-replay.ts --packet-url http://127.0.0.1:54321/functions/v1/agent-trace-report --request-id <safe-id>`.
+- **Auth**: pass a local operator JWT only through process variable `EDGE_REPLAY_ACCESS_TOKEN`. The packet URL must be loopback and must not contain credentials.
+- **Behavior**: this is diagnostic reconstruction only. The CLI requests explicit `{ "mode": "replay" }`, validates one `agent-work-replay.v1` packet, and prints sanitized JSON. It has no seed, provider call, tool execution, mutation, or response-body logging path.
+- **Limitation**: a selector that resolves to zero or multiple work items, lacks a step/attempt binding, or exceeds any bounded replay surface fails closed. Inspect the sanitized dashboard summary and narrow the selector instead of guessing.
 
 ## Agent trace report utility (Phase 5)
 - **Edge function**: `agent-trace-report` (developer-facing replay/debug report).
@@ -48,13 +49,24 @@ This runbook defines production monitoring signals, initial SLO thresholds, and 
 - **Aggregated sources**:
   - `public.agent_execution_traces`
   - `public.scheduling_orchestration_runs`
-  - `public.function_idempotency_keys`
   - `public.session_audit_logs`
-- **Output**: merged timeline + per-source records + discovered request/correlation/operation IDs.
+- **Ledger replay**: POST `{ "mode": "replay", "requestId": "<safe-id>" }` (or another supported selector). Replay loading is not part of ordinary trace reports. The function emits only selector-bound organization-scoped step/attempt rows and fails closed rather than returning a partial packet when any bounded surface is incomplete.
+- **Operations mode**: POST `{ "mode": "operations" }` for `agent-work-operations.v1`. Every ledger query is organization-scoped and limited to 500 rows. When `sample.truncated` is true, `sample.releaseGateStatus` is `blocked_incomplete_sample` and every live release signal is unavailable rather than falsely green.
+- **Output**: merged allowlisted timeline fields and sanitized per-source records for ordinary trace mode; explicitly sampled ledger metrics for operations mode; and inert selector-bound ledger packets only for replay mode.
 - **AuthZ**: requires authenticated user with `admin`, `super_admin`, or `monitoring` role.
-- **Monitoring UI**: `/monitoring` now includes an **Agent Trace Replay** tab for querying and viewing summary + timeline without using curl.
+- **Monitoring UI**: `/monitoring` includes an **Agent Trace Replay** tab with operator-triggered sampled operations loading, fail-closed release gates, sanitized ID/reason-code drill-downs, and allowlisted timeline fields. It does not poll JSONB selectors.
 - **Example query**:
   - `curl -X POST "$SUPABASE_URL/functions/v1/agent-trace-report" -H "Authorization: Bearer <admin_jwt>" -H "apikey: $SUPABASE_ANON_KEY" -H "Content-Type: application/json" -d '{"correlationId":"<id>"}'`
+
+## Agent Work release gates and triage
+
+- **Primary owner**: Platform/DevOps owns queue, lease, worker, scheduler, and function health.
+- **Security owner**: Security/Privacy owns tenant, PHI-sanitizer, approval-authority, and replay-boundary incidents.
+- **Clinical/product owner**: Clinical/Product owns unexplained IEHP parity and readiness-evidence findings; domain assessment tables remain authoritative.
+- **Release-blocking thresholds**: cross-tenant access `0`; false completion `0`; unverified mutation effects `0`; PHI payload violations `0`; approval bypass/stale acceptance `0`; unknown transitions `0`; stale running beyond the sweeper SLO `0`; readiness evidence coverage `100%`.
+- **First response**: stop local schedulers/workers, set ledger policy to `disabled`, preserve only sanitized IDs/reason codes and command output, drain or quarantine queue messages, and reconcile ledger projections against authoritative domain rows.
+- **Replay triage**: use a single loopback selector and the inert packet CLI. Never re-execute a provider or tool from a packet.
+- **Promotion boundary**: `active` is not authorized. Local and future reviewed operation is limited to `disabled`, `shadow`, or `advisory`; any proposal for bounded effects is a separate routed increment requiring human approval.
 
 ## Session flow trace propagation
 - Agent-driven scheduling now propagates `x-request-id`, `x-correlation-id`, and `x-agent-operation-id` through:

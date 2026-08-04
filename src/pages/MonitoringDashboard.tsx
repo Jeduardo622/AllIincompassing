@@ -29,10 +29,23 @@ import { useQueryPerformanceTracking } from '../lib/queryPerformanceTracker';
 import { useAuth } from '../lib/authContext';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
-import { fetchAgentTraceReport, type AgentTraceReportData } from '../lib/agentTraceReport';
+import {
+  fetchAgentTraceReport,
+  fetchAgentWorkOperations,
+  type AgentTraceReportData,
+  type AgentTraceTimelineEvent,
+  type AgentWorkOperationsData,
+} from '../lib/agentTraceReport';
 
 type TabType = 'ai' | 'database' | 'system' | 'overview' | 'cache' | 'queries' | 'trace_replay';
 type TraceSelectorMode = 'correlationId' | 'requestId' | 'agentOperationId';
+
+const formatDurationSeconds = (value: number | null): string => {
+  if (value === null) return 'not available';
+  if (value < 60) return `${value}s`;
+  if (value < 3600) return `${Math.round(value / 60)}m`;
+  return `${Math.round(value / 360) / 10}h`;
+};
 
 export function MonitoringDashboard() {
   const { loading: authLoading, hasCapability, session } = useAuth();
@@ -48,6 +61,9 @@ export function MonitoringDashboard() {
   const [traceReport, setTraceReport] = useState<AgentTraceReportData | null>(null);
   const [traceLoading, setTraceLoading] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
+  const [operations, setOperations] = useState<AgentWorkOperationsData | null>(null);
+  const [operationsLoading, setOperationsLoading] = useState(false);
+  const [operationsError, setOperationsError] = useState<string | null>(null);
 
   // Real-time monitoring hooks
   const {
@@ -113,6 +129,25 @@ export function MonitoringDashboard() {
       setTraceLoading(false);
     }
   }, [traceSelectorMode, traceSelectorValue, session?.access_token]);
+
+  const loadAgentWorkOperations = useCallback(async () => {
+    setOperationsLoading(true);
+    setOperationsError(null);
+    try {
+      const data = await fetchAgentWorkOperations({
+        accessToken: session?.access_token,
+      });
+      setOperations(data);
+    } catch (error) {
+      logger.error('Failed to load agent work operations', {
+        error: toError(error, 'Agent work operations fetch failed'),
+      });
+      setOperations(null);
+      setOperationsError(error instanceof Error ? error.message : 'Unable to load agent work operations');
+    } finally {
+      setOperationsLoading(false);
+    }
+  }, [session?.access_token]);
 
   // Analyze performance when metrics change
   useEffect(() => {
@@ -666,8 +701,150 @@ export function MonitoringDashboard() {
     );
   };
 
+  const TimelineDetails = ({ event }: { event: AgentTraceTimelineEvent }) => {
+    const detailFields = ['stepName', 'stepIndex', 'status', 'workflow', 'sessionId', 'eventType'] as const;
+    const diagnostics =
+      typeof event.detail.diagnostics === 'object' && event.detail.diagnostics !== null
+        ? (event.detail.diagnostics as Record<string, unknown>)
+        : {};
+    const diagnosticFields = [
+      'latencyMs',
+      'computedCost',
+      'attemptNumber',
+      'retryCount',
+      'outcome',
+      'guardrailResult',
+      'errorClass',
+      'errorCode',
+      'provider',
+      'model',
+      'promptVersion',
+      'toolVersion',
+      'modelRequestSchemaVersion',
+      'pricingVersion',
+    ] as const;
+    const fields = [
+      ...detailFields.map((key) => [key, event.detail[key]] as const),
+      ...diagnosticFields.map((key) => [key, diagnostics[key]] as const),
+    ].filter((entry): entry is readonly [string, string | number | boolean] =>
+      typeof entry[1] === 'string' || typeof entry[1] === 'number' || typeof entry[1] === 'boolean',
+    );
+
+    return fields.length === 0 ? (
+      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">No allowlisted diagnostics.</p>
+    ) : (
+      <dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        {fields.map(([key, value]) => (
+          <div key={key} className="flex gap-2">
+            <dt className="font-medium text-gray-600 dark:text-gray-400">{key}</dt>
+            <dd className="text-gray-800 dark:text-gray-200 break-all">{String(value)}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+  };
+
   const TraceReplayTab = () => (
     <div className="space-y-6">
+      <section className="bg-white dark:bg-dark-lighter p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white">Agent Work Operations</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Organization-scoped bounded samples, fail-closed release gates, and sanitized reason-code drill-downs.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadAgentWorkOperations}
+            disabled={operationsLoading}
+            className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50"
+          >
+            {operationsLoading ? 'Loading operations…' : 'Load Agent Work Operations'}
+          </button>
+        </div>
+        {operationsError && <p className="mt-3 text-sm text-red-600" role="alert">{operationsError}</p>}
+        {operations && (
+          <div className="mt-5 space-y-5">
+            {operations.sample.truncated && (
+              <p className="text-sm text-amber-700 dark:text-amber-300" role="status">
+                Results are truncated to {operations.sample.limit} rows per ledger surface. Release-gate evaluation is blocked.
+              </p>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                ['Sampled work items', operations.summary.totalWorkItems],
+                ['Sampled blocked work items', operations.summary.blockedWorkItems],
+                ['Sampled waiting steps', operations.summary.waitingSteps],
+                ['Sampled stale leases', operations.summary.staleLeases],
+                ['Sampled retry exhausted', operations.summary.retryExhaustedSteps],
+                ['Sampled pending approvals', operations.summary.pendingApprovals],
+                ['Sampled parity mismatches', operations.summary.parityMismatches],
+                ['Sampled duplicates prevented', operations.summary.duplicateEffectsPrevented],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="rounded-lg bg-slate-50 dark:bg-gray-800 p-3">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+                  <p className="text-xl font-semibold text-gray-900 dark:text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Operational rates</h4>
+              <dl className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+                {[
+                  ['Oldest waiting', formatDurationSeconds(operations.summary.oldestWaitingAgeSeconds)],
+                  ['Oldest approval', formatDurationSeconds(operations.summary.oldestApprovalAgeSeconds)],
+                  ['Retry exhaustion rate', `${operations.rates.retryExhaustionPercent}%`],
+                  ['Abort rate', `${operations.rates.abortPercent}%`],
+                  ['Median to needs review', formatDurationSeconds(operations.nonBlocking.medianTimeToNeedsReviewSeconds)],
+                  ['Human override rate', `${operations.nonBlocking.humanOverrideRatePercent}%`],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-3 rounded border border-gray-200 dark:border-gray-700 px-3 py-2">
+                    <dt className="text-gray-600 dark:text-gray-300">{label}</dt>
+                    <dd className="font-semibold text-gray-900 dark:text-white">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Release gates</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
+                {[
+                  ['Cross-tenant access', operations.releaseSignals.crossTenantAccess],
+                  ['False completion', operations.releaseSignals.falseCompletion],
+                  ['Unverified effects', operations.releaseSignals.unverifiedMutationEffects],
+                  ['PHI payload violations', operations.releaseSignals.phiPayloadViolations],
+                  ['Approval violations', operations.releaseSignals.approvalBypassOrStaleAcceptance],
+                  ['Unknown transitions', operations.releaseSignals.unknownStateTransitions],
+                  ['Stale running', operations.releaseSignals.staleRunningBeyondSlo],
+                  ['Readiness evidence', operations.releaseSignals.readinessEvidenceCoveragePercent === null
+                    ? 'Unavailable'
+                    : `${operations.releaseSignals.readinessEvidenceCoveragePercent}%`],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="flex justify-between gap-3 rounded border border-gray-200 dark:border-gray-700 px-3 py-2">
+                    <span className="text-gray-600 dark:text-gray-300">{label}</span>
+                    <span className="font-semibold text-gray-900 dark:text-white">{value ?? 'Unavailable'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {operations.drilldown.blocked.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Blocked work</h4>
+                <div className="space-y-2">
+                  {operations.drilldown.blocked.map((row) => (
+                    <div key={row.workItemId} className="flex flex-col sm:flex-row sm:justify-between rounded bg-slate-50 dark:bg-gray-800 px-3 py-2 text-xs">
+                      <span className="font-mono text-gray-800 dark:text-gray-200">{row.workItemId}</span>
+                      <span className="text-gray-600 dark:text-gray-400">{row.reasonCode}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
       <div className="bg-white dark:bg-dark-lighter p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
         <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Agent Trace Replay</h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -707,7 +884,7 @@ export function MonitoringDashboard() {
 
       {traceReport && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white dark:bg-dark-lighter p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <p className="text-xs text-gray-500 dark:text-gray-400">Traces</p>
               <p className="text-xl font-semibold text-gray-900 dark:text-white">{traceReport.summary.traces}</p>
@@ -715,10 +892,6 @@ export function MonitoringDashboard() {
             <div className="bg-white dark:bg-dark-lighter p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <p className="text-xs text-gray-500 dark:text-gray-400">Orchestration</p>
               <p className="text-xl font-semibold text-gray-900 dark:text-white">{traceReport.summary.orchestrationRuns}</p>
-            </div>
-            <div className="bg-white dark:bg-dark-lighter p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Idempotency</p>
-              <p className="text-xl font-semibold text-gray-900 dark:text-white">{traceReport.summary.idempotencyRows}</p>
             </div>
             <div className="bg-white dark:bg-dark-lighter p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <p className="text-xs text-gray-500 dark:text-gray-400">Session Audit</p>
@@ -748,9 +921,7 @@ export function MonitoringDashboard() {
                       request: {event.requestId ?? 'n/a'} | correlation: {event.correlationId ?? 'n/a'} | op:{' '}
                       {event.agentOperationId ?? 'n/a'}
                     </p>
-                    <pre className="mt-2 text-xs text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap">
-                      {JSON.stringify(event.detail, null, 2)}
-                    </pre>
+                    <TimelineDetails event={event} />
                   </div>
                 ))}
               </div>

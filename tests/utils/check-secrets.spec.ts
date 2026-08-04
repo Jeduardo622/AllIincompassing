@@ -6,7 +6,14 @@ vi.mock('node:child_process', () => ({
   execSync: vi.fn(() => ''),
 }));
 
-import { checkSecretsAndReport, collectMissingEnvVars, formatMissingMessage, REQUIRED_ENV_GROUPS } from '../../scripts/check-secrets';
+import {
+  checkSecretsAndReport,
+  collectMissingEnvVars,
+  containsForbiddenCommittedSecretPattern,
+  formatMissingMessage,
+  isAllowedSyntheticCredentialedPostgresUrl,
+  REQUIRED_ENV_GROUPS,
+} from '../../scripts/check-secrets';
 
 describe('check-secrets script', () => {
   const allKeys = REQUIRED_ENV_GROUPS.flatMap((group) => group.keys);
@@ -60,5 +67,35 @@ describe('check-secrets script', () => {
     const missing = collectMissingEnvVars(env);
 
     expect(missing).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
+  });
+
+  it('allows only exact path-bound local synthetic Postgres URLs', () => {
+    const path = 'scripts/agent-work-ledger-harness/phase2Harness.mjs';
+    const localUrl =
+      'postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres';
+
+    expect(isAllowedSyntheticCredentialedPostgresUrl(path, localUrl)).toBe(true);
+    expect(isAllowedSyntheticCredentialedPostgresUrl(
+      path,
+      localUrl.replace(':postgres@', ':changed@'),
+    )).toBe(false);
+    expect(isAllowedSyntheticCredentialedPostgresUrl(
+      path,
+      `${localUrl}?ssl=true`,
+    )).toBe(false);
+    expect(isAllowedSyntheticCredentialedPostgresUrl(
+      'scripts/other.mjs',
+      localUrl,
+    )).toBe(false);
+
+    expect(containsForbiddenCommittedSecretPattern(path, localUrl)).toBe(false);
+    expect(containsForbiddenCommittedSecretPattern(
+      'scripts/other.mjs',
+      localUrl,
+    )).toBe(true);
+    expect(containsForbiddenCommittedSecretPattern(
+      path,
+      `${localUrl}?ssl=true`,
+    )).toBe(true);
   });
 });

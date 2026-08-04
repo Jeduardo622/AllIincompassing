@@ -13,6 +13,7 @@ type AuthRole = UserProfile['role'];
 
 export interface AuthStubConfig {
   role?: AuthRole;
+  roleAssignments?: AuthRole[];
   organizationId?: string | null;
   userId?: string;
   email?: string;
@@ -68,6 +69,7 @@ const seedStubAuthState = (config?: AuthStubConfig | false) => {
         last_name: fullName.split(' ').slice(1).join(' ') || 'User',
       },
       role,
+      roleAssignments: config?.roleAssignments,
       accessToken,
       refreshToken,
       expiresAt: now.getTime() + 60 * 60 * 1000,
@@ -195,4 +197,4 @@ export const mockSupabaseClient = {
 // Re-export testing library utilities
 export * from '@testing-library/react';
 export { userEvent };
-export { renderWithProviders }; 
+export { renderWithProviders };

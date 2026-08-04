@@ -13,6 +13,9 @@ import {
 
 const anonKey = 'anon-key';
 const accessToken = 'mock-user-jwt';
+const ASSESSMENT_ID = '11111111-1111-4111-8111-111111111111';
+const CLIENT_ID = '22222222-2222-4222-8222-222222222222';
+const ORG_ID = '33333333-3333-4333-8333-333333333333';
 
 const buildFetchResponse = (payload: unknown, ok = true, status = 200) => ({
   ok,
@@ -169,7 +172,7 @@ describe('AI edge function authentication', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('calls generate-program-goals with authenticated headers', async () => {
+  it('posts the established snake_case payload for authenticated legacy generate-program-goals requests', async () => {
     fetchMock.mockResolvedValueOnce(
       buildFetchResponse({
         programs: [
@@ -206,25 +209,105 @@ describe('AI edge function authentication', () => {
       })
     );
 
-    const result = await generateProgramGoalDraft(
-      'Assessment text with sufficient detail for generation.',
+    await generateProgramGoalDraft(
+      'Synthetic assessment text with sufficient detail.',
       { accessToken },
-      { clientName: 'Client One' }
+      {
+        assessmentDocumentId: ASSESSMENT_ID,
+        clientId: CLIENT_ID,
+        organizationId: ORG_ID,
+        clientName: 'Client One',
+        organizationGuidance: 'Use objective ABA language.',
+        checklistRows: [
+          {
+            section_key: 'treatment_planning',
+            label: 'Replacement goals',
+            placeholder_key: 'CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS',
+            value_text: 'Replacement goals',
+            value_json: null,
+            status: 'approved',
+          },
+          {
+            section_key: 'assessment_summary',
+            label: 'Empty approved row',
+            placeholder_key: 'EMPTY_APPROVED',
+            value_text: '   ',
+            value_json: null,
+            status: 'approved',
+          },
+        ],
+        extractionRows: [
+          {
+            section_key: 'assessment_summary',
+            field_key: 'CALOPTIMA_FBA_BASELINE',
+            label: 'Baseline',
+            value_text: 'Observed in synthetic sessions.',
+            value_json: null,
+            source_span: { page: 2 },
+            status: 'verified',
+          },
+        ],
+      },
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${edgeBase}generate-program-goals`,
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          apikey: anonKey,
-          Authorization: `Bearer ${accessToken}`,
-          'x-request-id': expect.any(String),
-          'x-correlation-id': expect.any(String),
-        }),
-      })
-    );
-    expect(result.programs[0]?.name).toBe('Communication Program');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [requestUrl, init] = fetchMock.mock.calls[0];
+    expect(requestUrl).toBe(`${edgeBase}generate-program-goals`);
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      assessment_document_id: ASSESSMENT_ID,
+      client_id: CLIENT_ID,
+      organization_id: ORG_ID,
+      client_display_name: 'Client One',
+      organization_guidance: 'Use objective ABA language.',
+      approved_checklist_rows: [
+        {
+          section_key: 'treatment_planning',
+          label: 'Replacement goals',
+          placeholder_key: 'CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS',
+          value_text: 'Replacement goals',
+        },
+      ],
+      extracted_canonical_fields: {
+        CALOPTIMA_FBA_BASELINE: 'Observed in synthetic sessions.',
+        CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS: 'Replacement goals',
+        EMPTY_APPROVED: '',
+      },
+      assessment_summary: 'TREATMENT PLANNING\n- Replacement goals: Replacement goals',
+      source_evidence_snippets: [
+        {
+          section_key: 'assessment_summary',
+          snippet: 'Baseline | Observed in synthetic sessions. | {"page":2}',
+        },
+      ],
+    });
+  });
+
+  it('rejects legacy generate-program-goals requests missing assessment, client, or organization scope before fetch', async () => {
+    await expect(
+      generateProgramGoalDraft(
+        'Synthetic assessment text with sufficient detail.',
+        { accessToken },
+        { assessmentDocumentId: ASSESSMENT_ID, clientId: CLIENT_ID },
+      ),
+    ).rejects.toThrow('Legacy generation requires assessment, client, and organization scope');
+
+    await expect(
+      generateProgramGoalDraft(
+        'Synthetic assessment text with sufficient detail.',
+        { accessToken },
+        { assessmentDocumentId: ASSESSMENT_ID, organizationId: ORG_ID },
+      ),
+    ).rejects.toThrow('Legacy generation requires assessment, client, and organization scope');
+
+    await expect(
+      generateProgramGoalDraft(
+        'Synthetic assessment text with sufficient detail.',
+        { accessToken },
+        { clientId: CLIENT_ID, organizationId: ORG_ID },
+      ),
+    ).rejects.toThrow('Legacy generation requires assessment, client, and organization scope');
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('rejects generateProgramGoalDraft when assessment text is too short', async () => {
@@ -232,5 +315,39 @@ describe('AI edge function authentication', () => {
       generateProgramGoalDraft('Too short', { accessToken })
     ).rejects.toThrow('Assessment text must be at least 20 characters');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the strict ledger correlation envelope without caller-supplied evidence or attempt authority', async () => {
+    fetchMock.mockResolvedValueOnce(buildFetchResponse({
+      programs: [],
+      goals: [],
+      summary_rationale: 'Synthetic ledger response',
+      confidence: 'low',
+    }));
+
+    await generateProgramGoalDraft(
+      'Assessment text is ignored for ledger-bound authoritative loading.',
+      { accessToken },
+      {
+        assessmentDocumentId: '11111111-1111-4111-8111-111111111111',
+        organizationId: '33333333-3333-4333-8333-333333333333',
+        clientId: '22222222-2222-4222-8222-222222222222',
+        ledgerWorkItemId: '44444444-4444-4444-8444-444444444444',
+      },
+    );
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    expect(headers['x-request-id']).toBe(
+      'caloptima-ledger.44444444-4444-4444-8444-444444444444',
+    );
+    expect(headers['x-correlation-id']).toBe(headers['x-request-id']);
+    expect(JSON.parse(init.body as string)).toEqual({
+      assessmentDocumentId: '11111111-1111-4111-8111-111111111111',
+      organizationId: '33333333-3333-4333-8333-333333333333',
+      clientId: '22222222-2222-4222-8222-222222222222',
+      workItemId: '44444444-4444-4444-8444-444444444444',
+      correlationId: headers['x-correlation-id'],
+    });
   });
 });

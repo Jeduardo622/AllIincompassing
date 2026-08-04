@@ -4300,6 +4300,334 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(screen.getAllByText("Extracted preview").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("renders CalOptima ledger states and exposes only explicit advisory actions", async () => {
+    const caloptimaDocument = {
+      id: ASSESSMENT_ID,
+      organization_id: ORG_ID,
+      client_id: "client-1",
+      template_type: "caloptima_fba",
+      file_name: "caloptima-ledger.pdf",
+      mime_type: "application/pdf",
+      file_size: 4321,
+      bucket_id: "client-documents",
+      object_path: "clients/client-1/assessments/caloptima-ledger.pdf",
+      status: "extracted",
+      extraction_error: null,
+      created_at: "2026-08-03T00:00:00.000Z",
+    };
+    const checklistPayload = {
+      items: [
+        {
+          id: "checklist-required-1",
+          section_key: "goals_treatment_planning",
+          label: "Treatment recommendation",
+          placeholder_key: "CALOPTIMA_FBA_TREATMENT_RECOMMENDATION",
+          required: true,
+          mode: "ASSISTED",
+          status: "approved",
+          review_notes: null,
+          value_text: "Synthetic recommendation",
+        },
+      ],
+      structured_sections: [
+        {
+          id: "structured-goal-1",
+          section_key: "goals_treatment_planning",
+          field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+          section_index: 0,
+          payload: { title: "Synthetic child goal", goal_type: "child", raw_text: "Synthetic child goal narrative." },
+          status: "approved",
+          required: true,
+          review_notes: null,
+        },
+      ],
+    };
+    const availableLedgerPayload = {
+      success: true,
+      data: [
+        {
+          id: "work-item-1",
+          workflowKey: "assessment.caloptima.prepare_draft_review",
+          workflowVersion: 1,
+          objective: "Prepare this assessment for clinical review",
+          status: "queued",
+          risk: "clinical",
+          hasOwner: true,
+          dueAt: null,
+          blockers: [],
+          steps: [
+            {
+              id: "step-model-1",
+              key: "suggest_draft_packet",
+              status: "ready",
+              executionMode: "model_suggested",
+              evidenceCount: 2,
+              lastReasonCode: null,
+            },
+            {
+              id: "step-snapshot-1",
+              key: "snapshot_draft_packet",
+              status: "pending",
+              executionMode: "deterministic",
+              evidenceCount: 0,
+              lastReasonCode: null,
+            },
+            {
+              id: "step-owner-1",
+              key: "assign_clinical_owner",
+              status: "pending",
+              executionMode: "human",
+              evidenceCount: 0,
+              lastReasonCode: null,
+            },
+            {
+              id: "step-1",
+              key: "request_clinical_review",
+              status: "pending",
+              executionMode: "human",
+              evidenceCount: 0,
+              lastReasonCode: null,
+            },
+          ],
+          approvals: [],
+          updatedAt: "2026-08-03T00:00:00.000Z",
+        },
+      ],
+      meta: { runtimeMode: "advisory" },
+    };
+
+    const ownerReadyLedgerPayload = {
+      ...availableLedgerPayload,
+      data: [{
+        ...availableLedgerPayload.data[0],
+        steps: availableLedgerPayload.data[0].steps.map((step) => ({
+          ...step,
+          status: step.key === "assign_clinical_owner"
+            ? "ready"
+            : step.key === "request_clinical_review"
+              ? "pending"
+              : "completed",
+          evidenceCount: 2,
+        })),
+      }],
+    };
+
+    const reviewReadyLedgerPayload = {
+      ...ownerReadyLedgerPayload,
+      data: [{
+        ...ownerReadyLedgerPayload.data[0],
+        status: "needs_review",
+        steps: ownerReadyLedgerPayload.data[0].steps.map((step) => ({
+          ...step,
+          status: step.key === "request_clinical_review" ? "needs_approval" : "completed",
+          lastReasonCode: step.key === "request_clinical_review" ? "clinical_review_required" : null,
+        })),
+        approvals: [{
+          id: "approval-1",
+          stepId: "step-1",
+          status: "pending",
+          requiredRole: "bcba",
+          expiresAt: null,
+          requestedAt: "2026-08-03T00:00:00.000Z",
+          evidenceCount: 2,
+          evidenceHashSuffix: "89abcdef",
+          canDecide: true,
+        }],
+      }],
+    };
+
+    const configureCalOptimaLedgerMocks = (
+      mode: "loading" | "no-ledger" | "available-model" | "available-owner" | "available-review" | "disabled" | "forbidden",
+    ) => {
+      vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+        if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+        if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+        if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+          return new Response(JSON.stringify([caloptimaDocument]), { status: 200 });
+        }
+        if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+          return new Response(JSON.stringify(checklistPayload), { status: 200 });
+        }
+        if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+          return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+        }
+        if (method === "POST" && path === "/api/assessment-drafts") {
+          return new Response(JSON.stringify({ error: "Ledger generation must persist atomically" }), { status: 500 });
+        }
+        if (method === "POST" && path === "/api/assessment-promote") {
+          return new Response(JSON.stringify({ error: "Unexpected promote call" }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ error: `Not handled in test: ${method} ${path}` }), { status: 500 });
+      });
+
+      vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (method === "GET" && path.startsWith("agent-work-items?")) {
+          if (mode === "loading") {
+            return new Promise<Response>(() => {});
+          }
+          if (mode === "no-ledger") {
+            return new Response(JSON.stringify({ success: true, data: [], meta: { runtimeMode: "advisory" } }), { status: 200 });
+          }
+          if (mode.startsWith("available-")) {
+            const payload = mode === "available-owner"
+              ? ownerReadyLedgerPayload
+              : mode === "available-review"
+                ? reviewReadyLedgerPayload
+                : availableLedgerPayload;
+            return new Response(JSON.stringify(payload), { status: 200 });
+          }
+          if (mode === "disabled") {
+            return new Response(JSON.stringify({ success: false, error: "Runtime disabled", code: "runtime_mode_disabled" }), { status: 403 });
+          }
+          return new Response(JSON.stringify({ success: false, error: "Forbidden" }), { status: 403 });
+        }
+        if (method === "POST" && path === "agent-work-items/caloptima-draft-review") {
+          return new Response(JSON.stringify({
+            success: true,
+            data: availableLedgerPayload.data[0],
+            meta: { runtimeMode: "advisory" },
+          }), { status: 201 });
+        }
+        if (method === "POST" && path === "agent-work-items/work-item-1/owner") {
+          return new Response(JSON.stringify({
+            success: true,
+            data: reviewReadyLedgerPayload.data[0].approvals[0],
+          }), { status: 201 });
+        }
+
+        const apiPath = path.startsWith("programs")
+          ? `/api/${path}`
+          : path.startsWith("/api/")
+            ? path
+            : `/api/${path}`;
+        const callApiImpl = vi.mocked(callApi).getMockImplementation();
+        if (!callApiImpl) {
+          return new Response(JSON.stringify({ error: "API mock missing" }), { status: 500 });
+        }
+        return callApiImpl(apiPath, init);
+      });
+    };
+
+    const renderAndSelectAssessment = async (auth: {
+      role: "bcba" | "super_admin";
+      roleAssignments?: Array<"bcba" | "super_admin">;
+    } = { role: "bcba" }) => {
+      const rendered = renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+        auth: {
+          ...auth,
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      });
+
+      expect(await screen.findByText("caloptima-ledger.pdf")).toBeInTheDocument();
+      await user.click(screen.getAllByRole("button", { name: /caloptima-ledger\.pdf/i })[0]);
+      expect(await screen.findByRole("heading", { name: "CalOptima FBA Checklist Review" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Structured CalOptima FBA Sections" })).toBeInTheDocument();
+      return rendered;
+    };
+
+    configureCalOptimaLedgerMocks("loading");
+    let view = await renderAndSelectAssessment();
+    expect(screen.getByRole("status")).toHaveTextContent(/Loading work ledger/i);
+    view.unmount();
+
+    configureCalOptimaLedgerMocks("no-ledger");
+    view = await renderAndSelectAssessment();
+    expect(await screen.findByText(/No read-only advisory work item is available yet/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create advisory work item" }));
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "agent-work-items/caloptima-draft-review",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    view.unmount();
+
+    configureCalOptimaLedgerMocks("available-model");
+    view = await renderAndSelectAssessment();
+    expect(await screen.findByText("Prepare this assessment for clinical review")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Generate advisory draft packet" }));
+    await waitFor(() => {
+      expect(generateProgramGoalDraft).toHaveBeenCalledWith(
+        expect.stringMatching(/approved assessment evidence/i),
+        { accessToken: "test-access-token" },
+        expect.objectContaining({
+          assessmentDocumentId: ASSESSMENT_ID,
+          clientId: "client-1",
+          organizationId: ORG_ID,
+          ledgerWorkItemId: "work-item-1",
+        }),
+      );
+    });
+    view.unmount();
+
+    configureCalOptimaLedgerMocks("available-owner");
+    view = await renderAndSelectAssessment();
+    await user.click(screen.getByRole("button", { name: "Assign clinical review to me" }));
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "agent-work-items/work-item-1/owner",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"stepId":"step-owner-1"'),
+        }),
+      );
+    });
+    view.unmount();
+
+    configureCalOptimaLedgerMocks("available-owner");
+    view = await renderAndSelectAssessment({
+      role: "super_admin",
+      roleAssignments: ["super_admin", "bcba"],
+    });
+    expect(screen.getByRole("button", { name: "Assign clinical review to me" })).toBeInTheDocument();
+    view.unmount();
+
+    configureCalOptimaLedgerMocks("available-review");
+    view = await renderAndSelectAssessment();
+    expect(screen.getByRole("button", { name: "Approve clinical review handoff" })).toBeInTheDocument();
+    view.unmount();
+
+    configureCalOptimaLedgerMocks("disabled");
+    view = await renderAndSelectAssessment();
+    await waitFor(() => {
+      expect(screen.queryByText(/work ledger/i)).not.toBeInTheDocument();
+    });
+    expect(document.getElementById("caloptima-current-review-section")?.parentElement).not.toHaveClass(
+      "xl:grid-cols-[minmax(0,1fr)_20rem]",
+    );
+    view.unmount();
+
+    configureCalOptimaLedgerMocks("forbidden");
+    view = await renderAndSelectAssessment();
+    expect(await screen.findByText(/You do not have access to this advisory ledger/i)).toBeInTheDocument();
+    expect(screen.getByText(/The current review remains available/i)).toBeInTheDocument();
+    view.unmount();
+
+    expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(callApi).mock.calls.some(
+        ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
+      ),
+    ).toBe(false);
+    expect(
+      vi.mocked(callApi).mock.calls.some(
+        ([path, init]) => path === "/api/assessment-promote" && (init?.method ?? "").toUpperCase() === "POST",
+      ),
+    ).toBe(false);
+    const ledgerPaths = vi.mocked(callEdgeFunctionHttp).mock.calls
+      .map(([path]) => path)
+      .filter((path) => path.startsWith("agent-work-items?"));
+    expect(ledgerPaths.length).toBeGreaterThan(0);
+    expect(ledgerPaths.every((path) =>
+      path.includes("workflow_key=assessment.caloptima.prepare_draft_review")
+    )).toBe(true);
+  });
+
   it("limits accepted upload types to pdf and docx", async () => {
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {

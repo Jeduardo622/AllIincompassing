@@ -3,6 +3,11 @@ import { errorTracker } from './errorTracking';
 import { buildSupabaseEdgeUrl, getSupabaseAnonKey } from './runtimeConfig';
 import { fetchWithRetry } from './retry';
 import {
+  buildGenerateProgramGoalsPayload,
+  type AssessmentChecklistGenerationRow,
+  type AssessmentExtractionGenerationRow,
+} from '../server/api/assessment-generation-payload';
+import {
   evaluateAssistantGuardrails,
   AssistantGuardrailError,
   type GuardrailActor,
@@ -283,53 +288,57 @@ export async function generateProgramGoalDraft(
     assessmentDocumentId?: string;
     clientId?: string;
     organizationId?: string;
+    ledgerWorkItemId?: string;
     organizationGuidance?: string;
-    approvedChecklistRows?: Array<{
-      section_key: string;
-      label: string;
-      placeholder_key: string;
-      value_text?: string;
-      value_json?: Record<string, unknown>;
-    }>;
-    extractedCanonicalFields?: Record<string, unknown>;
-    sourceEvidenceSnippets?: Array<{ section_key: string; snippet: string }>;
+    checklistRows?: AssessmentChecklistGenerationRow[];
+    extractionRows?: AssessmentExtractionGenerationRow[];
   },
 ): Promise<ProgramGoalDraftResponse> {
   if (typeof assessmentText !== 'string' || assessmentText.trim().length < 20) {
     throw new Error('Assessment text must be at least 20 characters');
   }
 
-  const requestId =
-    typeof globalThis.crypto?.randomUUID === 'function'
-      ? globalThis.crypto.randomUUID()
-      : `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const trimmedAssessmentText = assessmentText.trim();
+  const hasLedgerWorkItemId = typeof options?.ledgerWorkItemId === 'string' && options.ledgerWorkItemId.trim().length > 0;
+  const requestId = hasLedgerWorkItemId ? `caloptima-ledger.${options!.ledgerWorkItemId!.trim()}` : '';
   const correlationId = requestId;
 
-  const payload = {
-    assessment_document_id:
-      options?.assessmentDocumentId?.trim() ||
-      (typeof globalThis.crypto?.randomUUID === 'function'
-        ? globalThis.crypto.randomUUID()
-        : '00000000-0000-4000-8000-000000000000'),
-    client_id:
-      options?.clientId?.trim() ||
-      (typeof globalThis.crypto?.randomUUID === 'function'
-        ? globalThis.crypto.randomUUID()
-        : '00000000-0000-4000-8000-000000000001'),
-    organization_id:
-      options?.organizationId?.trim() ||
-      (typeof globalThis.crypto?.randomUUID === 'function'
-        ? globalThis.crypto.randomUUID()
-        : '00000000-0000-4000-8000-000000000002'),
-    client_display_name: options?.clientName?.trim() || '',
-    organization_guidance: options?.organizationGuidance?.trim() || '',
-    approved_checklist_rows: options?.approvedChecklistRows ?? [],
-    extracted_canonical_fields: options?.extractedCanonicalFields ?? {},
-    assessment_summary: assessmentText.trim(),
-    source_evidence_snippets: options?.sourceEvidenceSnippets ?? [
-      { section_key: 'assessment_summary', snippet: assessmentText.trim() },
-    ],
-  };
+  let payload: Record<string, unknown>;
+
+  if (hasLedgerWorkItemId) {
+    if (!options?.assessmentDocumentId || !options.clientId || !options.organizationId) {
+      throw new Error('Ledger-bound generation requires assessment, client, and organization scope');
+    }
+
+    payload = {
+      assessmentDocumentId: options.assessmentDocumentId.trim(),
+      clientId: options.clientId.trim(),
+      organizationId: options.organizationId.trim(),
+      workItemId: options.ledgerWorkItemId!.trim(),
+      correlationId,
+    };
+  } else {
+    if (!options?.assessmentDocumentId || !options.clientId || !options.organizationId) {
+      throw new Error('Legacy generation requires assessment, client, and organization scope');
+    }
+
+    payload = buildGenerateProgramGoalsPayload({
+      assessmentDocumentId: options.assessmentDocumentId.trim(),
+      clientId: options.clientId.trim(),
+      organizationId: options.organizationId.trim(),
+      clientDisplayName: options.clientName,
+      organizationGuidance: options.organizationGuidance,
+      checklistRows: options.checklistRows ?? [{
+        section_key: 'assessment_summary',
+        label: 'Assessment summary',
+        placeholder_key: 'assessment_summary',
+        value_text: trimmedAssessmentText,
+        value_json: null,
+        status: 'drafted',
+      }],
+      extractionRows: options.extractionRows ?? [],
+    });
+  }
 
   const response = await fetch(
     buildSupabaseEdgeUrl('generate-program-goals'),

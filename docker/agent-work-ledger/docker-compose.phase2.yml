@@ -1,0 +1,112 @@
+x-phase2-public-environment: &phase2-public-environment
+  AGENT_WORK_PHASE2_CONTAINER: "1"
+  SUPABASE_URL: ${PHASE2_CONTAINER_SUPABASE_URL:?required}
+  SUPABASE_ANON_KEY: ${PHASE2_SUPABASE_ANON_KEY:?required}
+  VITE_SUPABASE_URL: ${PHASE2_CONTAINER_SUPABASE_URL:?required}
+  VITE_SUPABASE_EDGE_URL: ${PHASE2_CONTAINER_SUPABASE_URL:?required}
+  VITE_SUPABASE_ANON_KEY: ${PHASE2_SUPABASE_ANON_KEY:?required}
+
+x-phase2-function-environment: &phase2-function-environment
+  AGENT_WORK_PHASE2_CONTAINER: "1"
+  SUPABASE_URL: ${PHASE2_CONTAINER_SUPABASE_URL:?required}
+  SUPABASE_SERVICE_ROLE_KEY: ${PHASE2_SUPABASE_SERVICE_ROLE_KEY:?required}
+
+x-function-healthcheck: &function-healthcheck
+  interval: 2s
+  timeout: 2s
+  retries: 60
+  start_period: 5s
+
+services:
+  agent-work-app:
+    image: ${AGENT_WORK_PHASE2_IMAGE:?required}
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "4173"]
+    environment:
+      <<: *phase2-public-environment
+      AGENT_WORK_APP_RUNTIME_MODE: shadow
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "agent-work-app"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--max-time", "2", "http://localhost:4173/"]
+      <<: *function-healthcheck
+    networks: ["agent-work-phase2"]
+
+  agent-work-items:
+    image: ${AGENT_WORK_PHASE2_IMAGE:?required}
+    command:
+      - deno
+      - run
+      - --cached-only
+      - --frozen
+      - --node-modules-dir=none
+      - --lock=/opt/agent-work-ledger-deno.lock
+      - --allow-all
+      - supabase/functions/agent-work-items/index.ts
+    environment:
+      <<: *phase2-function-environment
+      AGENT_WORK_LEDGER_RUNTIME_MODE: shadow
+      SUPABASE_ANON_KEY: ${PHASE2_SUPABASE_ANON_KEY:?required}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          status=$$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -X OPTIONS http://localhost:8000/agent-work-items) && [ "$$status" = "204" ]
+      <<: *function-healthcheck
+    networks: ["agent-work-phase2"]
+
+  agent-work-runner:
+    image: ${AGENT_WORK_PHASE2_IMAGE:?required}
+    command:
+      - deno
+      - run
+      - --cached-only
+      - --frozen
+      - --node-modules-dir=none
+      - --lock=/opt/agent-work-ledger-deno.lock
+      - --allow-all
+      - supabase/functions/agent-work-runner/index.ts
+    environment:
+      <<: *phase2-function-environment
+      AGENT_WORK_LEDGER_RUNTIME_MODE: advisory
+      AGENT_WORK_RUNNER_SECRET: ${PHASE2_RUNNER_SECRET:?required}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          status=$$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -X OPTIONS http://localhost:8000/agent-work-runner) && [ "$$status" = "204" ]
+      <<: *function-healthcheck
+    networks: ["agent-work-phase2"]
+
+  agent-work-sweeper:
+    image: ${AGENT_WORK_PHASE2_IMAGE:?required}
+    command:
+      - deno
+      - run
+      - --cached-only
+      - --frozen
+      - --node-modules-dir=none
+      - --lock=/opt/agent-work-ledger-deno.lock
+      - --allow-all
+      - supabase/functions/agent-work-sweeper/index.ts
+    environment:
+      <<: *phase2-function-environment
+      AGENT_WORK_LEDGER_RUNTIME_MODE: advisory
+      AGENT_WORK_SWEEPER_SECRET: ${PHASE2_SWEEPER_SECRET:?required}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          status=$$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -X OPTIONS http://localhost:8000/agent-work-sweeper) && [ "$$status" = "204" ]
+      <<: *function-healthcheck
+    networks: ["agent-work-phase2"]
+
+  agent-work-harness:
+    image: ${AGENT_WORK_PHASE2_IMAGE:?required}
+    command: ["node", "scripts/agent-work-ledger-harness/containerEntrypoint.mjs", "stack-health"]
+    environment:
+      AGENT_WORK_PHASE2_CONTAINER: "1"
+    networks: ["agent-work-phase2"]
+
+networks:
+  agent-work-phase2:
+    external: true
+    name: agent-work-phase2

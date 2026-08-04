@@ -205,7 +205,10 @@ export function orgScopedQuery(
   });
 
   return {
+    // Supabase's dynamic-table overload exceeds Deno's instantiation depth here.
+    // The wrapper preserves the original builder and adds only the org predicate.
     select: (...args: Parameters<ReturnType<SupabaseClient["from"]>["select"]>) =>
+      // @ts-expect-error Dynamic table names cannot select a finite generated overload.
       scoped(db.from(table).select(...args)),
     update: (...args: Parameters<ReturnType<SupabaseClient["from"]>["update"]>) =>
       scoped(db.from(table).update(...args)),
@@ -215,12 +218,11 @@ export function orgScopedQuery(
       values:
         | Record<string, unknown>
         | Array<Record<string, unknown>>,
-      ...args: Parameters<ReturnType<SupabaseClient["from"]>["insert"]> extends [unknown, ...infer Rest] ? Rest : never
     ) => {
       const scopedValues = Array.isArray(values)
         ? values.map(withOrg)
         : withOrg(values);
-      return db.from(table).insert(scopedValues, ...args);
+      return db.from(table).insert(scopedValues as never);
     },
   };
 }

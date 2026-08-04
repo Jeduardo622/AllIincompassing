@@ -1,6 +1,6 @@
 # Endpoint Ownership Matrix
 
-Last verified: `2026-07-31 (runtime exception review)`
+Last verified: `2026-08-02 (runtime exception review)`
 Machine-readable source: `docs/api/endpoint-convergence-status.json`
 
 | Public API path | Current runtime | Authoritative target | Wave | Status | Owner | Exception expiry |
@@ -9,12 +9,12 @@ Machine-readable source: `docs/api/endpoint-convergence-status.json`
 | `/api/dashboard` | Netlify `dashboard` transport adapter | Supabase edge `get-dashboard-data` | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/book` | Netlify `book` transport adapter | Supabase edge `sessions-book` (delegates to hold/confirm authority paths) | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/sessions-start` | Netlify `sessions-start` transport adapter | Supabase edge `sessions-start` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
-| `/api/assessment-documents` | Netlify `assessment-documents` | Supabase edge `extract-assessment-fields` + assessment storage domain | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
-| `/api/assessment-checklist` | Netlify `assessment-checklist` | Supabase edge `extract-assessment-fields` checklist domain | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/assessment-documents` | Netlify `assessment-documents` | Legacy server `assessment-documents` handler | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/assessment-checklist` | Netlify `assessment-checklist` | Legacy server `assessment-checklist` handler | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/assessment-template-layout` | Netlify `assessment-template-layout` | Supabase edge `assessment_template_versions` | A | legacy_shim | Backend Platform | 2026-09-01T23:59:59.999Z |
-| `/api/assessment-drafts` | Netlify `assessment-drafts` | Supabase edge `generate-program-goals` drafts domain | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
-| `/api/assessment-promote` | Netlify `assessment-promote` | Supabase edge `generate-assessment-plan-pdf` promote domain | B | legacy_shim | Backend Platform | 2026-09-01T23:59:59.999Z |
-| `/api/assessment-plan-pdf` | Netlify `assessment-plan-pdf` | Supabase edge `generate-assessment-plan-pdf` | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/assessment-drafts` | Netlify `assessment-drafts` | Legacy server `assessment-drafts` handler | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/assessment-promote` | Netlify `assessment-promote` | Legacy server `assessment-promote` handler | B | legacy_shim | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/assessment-plan-pdf` | Netlify `assessment-plan-pdf` | Legacy server `assessment-plan-pdf` handler | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/programs` | Retired Netlify shim | Supabase edge `programs` | B | retired | Backend Platform | N/A |
 | `/api/goals` | Retired Netlify shim | Supabase edge `goals` | B | retired | Backend Platform | N/A |
 | `/api/program-notes` | Retired Netlify shim | Supabase edge `program-notes` | B | retired | Backend Platform | N/A |

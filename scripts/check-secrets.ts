@@ -200,6 +200,54 @@ const FORBIDDEN_TRACKED_FILES = new Set([
   'artifacts/api-keys.json',
 ]);
 
+const LOCAL_SYNTHETIC_POSTGRES_URLS_BY_PATH = new Map<string, ReadonlySet<string>>([
+  ['scripts/check-secrets.ts', new Set([
+    'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+    'postgresql://postgres:postgres@SUPABASE_DB_AllIincompassing:5432/postgres',
+    'postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres',
+    'postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres',
+  ])],
+  ['scripts/agent-work-ledger-harness/phase2Harness.mjs', new Set([
+    'postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres',
+  ])],
+  ['scripts/agent-work-ledger-shadow-parity.mjs', new Set([
+    'postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres',
+  ])],
+  ['src/scripts/__tests__/agentWorkLedgerLocal.test.ts', new Set([
+    'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+  ])],
+  ['tests/agentWorkLedgerHarnessLocalRuntime.test.ts', new Set([
+    'postgresql://postgres:postgres@SUPABASE_DB_AllIincompassing:5432/postgres',
+    'postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres',
+  ])],
+  ['tests/agentWorkLedgerPhase2CleanupAudit.test.ts', new Set([
+    'postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres',
+  ])],
+  ['tests/agentWorkLedgerPhase2ContainerEntrypoint.test.ts', new Set([
+    'postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres',
+  ])],
+  ['tests/agentWorkLedgerPhase2Harness.test.ts', new Set([
+    'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+    'postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres',
+  ])],
+  ['tests/agentWorkLedgerPhase2Static.test.ts', new Set([
+    'postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres',
+  ])],
+  ['tests/agentWorkLedgerShadowParityLocalRuntime.test.ts', new Set([
+    'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+    'postgresql://postgres:postgres@SUPABASE_DB_AllIincompassing:5432/postgres',
+    'postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres',
+  ])],
+  ['tests/utils/check-secrets.spec.ts', new Set([
+    'postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres',
+  ])],
+]);
+
+export const isAllowedSyntheticCredentialedPostgresUrl = (
+  normalizedPath: string,
+  value: string,
+): boolean => LOCAL_SYNTHETIC_POSTGRES_URLS_BY_PATH.get(normalizedPath)?.has(value) ?? false;
+
 const COMMITTED_SECRET_PATTERNS: ReadonlyArray<{ readonly label: string; readonly regex: RegExp }> = [
   { label: 'Supabase access token', regex: /\bsbp_[A-Za-z0-9]{20,}\b/g },
   { label: 'Supabase secret key', regex: /\bsb_secret_[A-Za-z0-9_-]{12,}\b/g },
@@ -212,10 +260,32 @@ const COMMITTED_SECRET_PATTERNS: ReadonlyArray<{ readonly label: string; readonl
     regex: /\b(?:const|let|var)\s+TEST_USER_EMAIL\s*=\s*['"`][^'"`\r\n]+@[^'"`\r\n]+['"`]/g,
   },
   { label: 'JWT token literal', regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
-  { label: 'Credentialed Postgres URL', regex: /\bpostgres(?:ql)?:\/\/[^:\s"'`]+:[^@\s"'`]+@[^/\s"'`]+/g },
+  { label: 'Credentialed Postgres URL', regex: /\bpostgres(?:ql)?:\/\/[^:\s"'`]+:[^@\s"'`]+@[^\s"'`]+/g },
   { label: 'Slack webhook URL', regex: /\bhttps:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]{20,}\b/g },
   { label: 'Private key block', regex: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
 ];
+
+const hasForbiddenCommittedSecretMatch = (
+  normalizedPath: string,
+  content: string,
+  label: string,
+  regex: RegExp,
+): boolean => {
+  const matches = [...content.matchAll(regex)];
+  regex.lastIndex = 0;
+  return label === 'Credentialed Postgres URL'
+    ? matches.some((match) => !isAllowedSyntheticCredentialedPostgresUrl(
+        normalizedPath,
+        match[0],
+      ))
+    : matches.length > 0;
+};
+
+export const containsForbiddenCommittedSecretPattern = (
+  normalizedPath: string,
+  content: string,
+): boolean => COMMITTED_SECRET_PATTERNS.some(({ label, regex }) =>
+  hasForbiddenCommittedSecretMatch(normalizedPath, content, label, regex));
 
 const SCAN_FILE_EXTENSIONS = new Set([
   '.ts',
@@ -298,9 +368,7 @@ const collectCommittedSecretFindings = (): string[] => {
     }
 
     for (const { label, regex } of COMMITTED_SECRET_PATTERNS) {
-      const matched = regex.test(content);
-      regex.lastIndex = 0;
-      if (matched) {
+      if (hasForbiddenCommittedSecretMatch(normalizedPath, content, label, regex)) {
         findings.push(`${normalizedPath} contains potential ${label}.`);
       }
     }

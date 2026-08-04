@@ -53,6 +53,7 @@ WHITE BIBLE.pdf
 # Generated local analysis/security artifacts (may include sensitive output)
 .reports/*.json
 .reports/*.md
+.reports/agent-work-ledger-phase2/
 
 # Cursor hook volatile state and local audit logs (never ship)
 .cursor/hooks/state/

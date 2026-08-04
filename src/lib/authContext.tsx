@@ -216,6 +216,7 @@ interface AuthContextType {
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: Error | null }>;
   hasRole: (role: AppRole) => boolean;
   hasAnyRole: (roles: AppRole[]) => boolean;
+  hasExactRole?: (role: AppRole) => boolean;
   hasCapability: (capability: AppCapability) => boolean;
   hasAnyCapability: (capabilities: AppCapability[]) => boolean;
   isAdmin: () => boolean;
@@ -284,16 +285,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return 'client';
   }, [profileRole, roleFromAssignments]);
 
-  const isExactBt = useMemo(() => {
+  const resolvedExactRoleNames = useMemo(() => {
+    if (roleAssignmentNames !== null) {
+      return roleAssignmentNames;
+    }
     const profileExactRole = toExactRoleName(profile?.role);
-    const exactRoles = roleAssignmentNames !== null
-      ? roleAssignmentNames
-      : profileExactRole
-        ? [profileExactRole]
-        : [];
-    return exactRoles.includes('bt')
-      && !exactRoles.some((role) => ['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'].includes(role));
+    return profileExactRole ? [profileExactRole] : [];
   }, [profile?.role, roleAssignmentNames]);
+
+  const isExactBt = useMemo(() => {
+    return resolvedExactRoleNames.includes('bt')
+      && !resolvedExactRoleNames.some((role) => ['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'].includes(role));
+  }, [resolvedExactRoleNames]);
 
   const roleMismatch = useMemo(
     () =>
@@ -571,7 +574,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(stubAuthState.session);
       setProfile(stubAuthState.profile);
       setRoleFromAssignments(null);
-      setRoleAssignmentNames(null);
+      setRoleAssignmentNames(stubAuthState.exactRoleNames);
       setProfileLoading(false);
       return;
     }
@@ -802,7 +805,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(stubAuthState.session);
             setProfile(stubAuthState.profile);
             setRoleFromAssignments(null);
-            setRoleAssignmentNames(null);
+            setRoleAssignmentNames(stubAuthState.exactRoleNames);
             setProfileLoading(false);
           } else {
             setProfile(null);
@@ -1067,6 +1070,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return roles.some((r) => roleMeetsOrExceeds(currentRole, r));
   }, [resolveRoleForComparison]);
 
+  const hasExactRole = useCallback((role: Role) => {
+    const exactRoleName = toExactRoleName(role);
+    return exactRoleName !== null && resolvedExactRoleNames.includes(exactRoleName);
+  }, [resolvedExactRoleNames]);
+
   const hasCapability = useCallback((capability: AppCapability) => {
     return roleHasCapability(effectiveRole, capability);
   }, [effectiveRole]);
@@ -1102,6 +1110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateProfile,
     hasRole,
     hasAnyRole,
+    hasExactRole,
     hasCapability,
     hasAnyCapability,
     isAdmin,

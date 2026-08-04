@@ -1,12 +1,12 @@
 {
   "targetAuthority": "supabase-edge",
-  "quarter": "2026-Q2",
+  "quarter": "2026-Q3",
   "ownerGroup": "Platform Engineering",
   "entries": [
     {
       "functionFile": "assessment-checklist.ts",
       "publicApiPath": "/api/assessment-checklist",
-      "edgeTarget": "extract-assessment-fields",
+      "edgeTarget": "legacy-server-assessment-checklist-handler",
       "wave": "A",
       "status": "migrating",
       "owner": "Backend Platform"
@@ -22,7 +22,7 @@
     {
       "functionFile": "assessment-documents.ts",
       "publicApiPath": "/api/assessment-documents",
-      "edgeTarget": "extract-assessment-fields",
+      "edgeTarget": "legacy-server-assessment-documents-handler",
       "wave": "A",
       "status": "migrating",
       "owner": "Backend Platform"
@@ -30,7 +30,7 @@
     {
       "functionFile": "assessment-drafts.ts",
       "publicApiPath": "/api/assessment-drafts",
-      "edgeTarget": "generate-program-goals",
+      "edgeTarget": "legacy-server-assessment-drafts-handler",
       "wave": "A",
       "status": "migrating",
       "owner": "Backend Platform"
@@ -38,7 +38,7 @@
     {
       "functionFile": "assessment-plan-pdf.ts",
       "publicApiPath": "/api/assessment-plan-pdf",
-      "edgeTarget": "generate-assessment-plan-pdf",
+      "edgeTarget": "legacy-server-assessment-plan-pdf-handler",
       "wave": "A",
       "status": "migrating",
       "owner": "Backend Platform"
@@ -46,7 +46,7 @@
     {
       "functionFile": "assessment-promote.ts",
       "publicApiPath": "/api/assessment-promote",
-      "edgeTarget": "generate-assessment-plan-pdf",
+      "edgeTarget": "legacy-server-assessment-promote-handler",
       "wave": "B",
       "status": "legacy_shim",
       "owner": "Backend Platform"

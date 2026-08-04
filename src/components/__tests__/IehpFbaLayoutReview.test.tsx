@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderWithProviders, screen, waitFor, within } from "../../test/utils";
-import { callApi } from "../../lib/api";
+import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { __TESTING__, IehpFbaLayoutReview } from "../ClientDetails/IehpFbaLayoutReview";
 import type { AssessmentDocumentRecord } from "../../lib/assessment-documents";
 
 vi.mock("../../lib/api", () => ({
   callApi: vi.fn(),
+  callEdgeFunctionHttp: vi.fn(),
 }));
 
 vi.mock("../../lib/toast", () => ({
@@ -58,6 +59,153 @@ describe("IehpFbaLayoutReview", () => {
         writeText: vi.fn().mockResolvedValue(undefined),
       },
     });
+  });
+
+  it("preserves the existing IEHP review and hides the ledger panel when runtime mode is disabled", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 1, title: "General Information", layout_json: {} }],
+          fields: [],
+          values: {
+            checklist_items: [],
+            structured_sections: [],
+          },
+          unresolved_required_count: 0,
+          extracted_value_count: 0,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+    vi.mocked(callEdgeFunctionHttp).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: "Runtime mode disabled",
+          code: "runtime_mode_disabled",
+        }),
+        { status: 403 },
+      ),
+    );
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    expect(await screen.findByText("IEHP FBA document-style review")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("Advisory work ledger")).not.toBeInTheDocument();
+    });
+  });
+
+  it("preserves the existing IEHP review when the advisory ledger API is unavailable", async () => {
+    vi.mocked(callApi).mockResolvedValue(
+      new Response(JSON.stringify({
+        template_version: {
+          version_key: "iehp_fba_updated_fba_11_2026_05",
+          source_document_name: "Updated FBA -IEHP (11).docx",
+          page_count: 30,
+        },
+        pages: [{ page_number: 1, title: "General Information", layout_json: {} }],
+        fields: [],
+        values: {
+          checklist_items: [],
+          structured_sections: [],
+        },
+        unresolved_required_count: 0,
+        extracted_value_count: 0,
+      }), { status: 200 }),
+    );
+    vi.mocked(callEdgeFunctionHttp).mockRejectedValue(new TypeError("local edge unavailable"));
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    expect(await screen.findByText(/Advisory work ledger is currently unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText("IEHP FBA document-style review")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "IEHP FBA page navigation" })).toBeInTheDocument();
+  });
+
+  it("renders the advisory work ledger above the existing IEHP review when read-only data is available", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/assessment-template-layout?")) {
+        return new Response(JSON.stringify({
+          template_version: {
+            version_key: "iehp_fba_updated_fba_11_2026_05",
+            source_document_name: "Updated FBA -IEHP (11).docx",
+            page_count: 30,
+          },
+          pages: [{ page_number: 1, title: "General Information", layout_json: {} }],
+          fields: [],
+          values: {
+            checklist_items: [],
+            structured_sections: [],
+          },
+          unresolved_required_count: 0,
+          extracted_value_count: 0,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected request" }), { status: 500 });
+    });
+    vi.mocked(callEdgeFunctionHttp).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: [
+            {
+              id: "55555555-5555-4555-8555-555555555555",
+              workflowKey: "assessment.iehp.prepare_for_clinical_review",
+              workflowVersion: 1,
+              objective: "Prepare this assessment for clinical review",
+              status: "waiting",
+              risk: "clinical",
+              hasOwner: true,
+              dueAt: null,
+              blockers: [
+                {
+                  code: "missing_required_evidence",
+                  stepKey: "request_clinical_review",
+                  action: "resolve_required_evidence",
+                },
+              ],
+              steps: [
+                {
+                  id: "66666666-6666-4666-8666-666666666666",
+                  key: "await_extraction",
+                  status: "waiting",
+                  executionMode: "deterministic",
+                  evidenceCount: 2,
+                  lastReasonCode: "waiting_for_extraction",
+                },
+              ],
+              approvals: [],
+              updatedAt: "2026-08-02T12:00:00.000Z",
+            },
+          ],
+          meta: { runtimeMode: "advisory" },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    renderWithProviders(
+      <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
+    );
+
+    expect(await screen.findByText("Prepare this assessment for clinical review")).toBeInTheDocument();
+    expect(screen.getByText("Advisory work ledger")).toBeInTheDocument();
+    expect(screen.getByText("IEHP FBA document-style review")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open current IEHP review section/i })).toHaveAttribute(
+      "href",
+      "#iehp-current-review-section",
+    );
+    expect(document.querySelector("#iehp-current-review-section")).toBeInTheDocument();
   });
 
   it("renders IEHP page layout metadata without CalOptima copy and saves checklist values", async () => {
@@ -816,7 +964,7 @@ describe("IehpFbaLayoutReview", () => {
       <IehpFbaLayoutReview assessmentDocument={assessmentDocument} organizationId="org-1" />,
     );
 
-    expect((await screen.findAllByText("Signature Block")).length).toBeGreaterThan(0);
+    fireEvent.click(await screen.findByRole("button", { name: /Page 30/i }));
     expect(screen.getByText("Signature summary")).toBeInTheDocument();
     expect(screen.getByText("1 extracted section")).toBeInTheDocument();
     expect(screen.queryByLabelText("Signature Block")).not.toBeInTheDocument();

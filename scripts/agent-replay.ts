@@ -1,16 +1,11 @@
-import process from 'node:process';
-import { randomUUID } from 'node:crypto';
-import { createClient } from '@supabase/supabase-js';
+import process from "node:process";
 
-import { buildReplayHeaders, parseReplaySeed } from '../src/lib/agentReplay';
-
-type TraceRow = {
-  step_name: string;
-  replay_payload: { message?: string; context?: Record<string, unknown> } | null;
-  correlation_id: string;
-  request_id: string;
-  created_at: string;
-};
+import {
+  assertLoopbackUrl,
+  extractAuthoritativeReplayPacket,
+  formatAuthoritativeReplayPacket,
+  validateReplayPacketSelector,
+} from "../src/lib/agentReplay";
 
 const getArg = (flag: string): string | undefined => {
   const index = process.argv.indexOf(flag);
@@ -20,89 +15,55 @@ const getArg = (flag: string): string | undefined => {
   return process.argv[index + 1];
 };
 
-const requireEnv = (key: string): string => {
-  const value = process.env[key];
+const requirePacketUrl = (): URL => {
+  const value = getArg("--packet-url") ?? process.env.AGENT_REPLAY_PACKET_URL;
   if (!value) {
-    throw new Error(`Missing ${key}`);
+    throw new Error("Provide --packet-url or AGENT_REPLAY_PACKET_URL");
   }
-  return value;
+  return assertLoopbackUrl(value);
 };
 
-const resolveEdgeBaseUrl = (supabaseUrl: string): string => {
-  const explicit = process.env.SUPABASE_EDGE_URL;
-  if (explicit && explicit.trim().length > 0) {
-    return explicit.replace(/\/$/, '');
+const buildHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  const accessToken = process.env.EDGE_REPLAY_ACCESS_TOKEN?.trim();
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
   }
-  return `${supabaseUrl.replace(/\/$/, '')}/functions/v1`;
+
+  return headers;
 };
 
 const main = async (): Promise<void> => {
-  const correlationId = getArg('--correlation-id');
-  const requestId = getArg('--request-id');
-  const seedArg = getArg('--seed');
-  if (!correlationId && !requestId) {
-    throw new Error('Provide --correlation-id or --request-id');
-  }
-
-  const supabaseUrl = requireEnv('SUPABASE_URL');
-  const supabaseAnonKey = requireEnv('SUPABASE_ANON_KEY');
-  const accessToken = requireEnv('EDGE_REPLAY_ACCESS_TOKEN');
-  const edgeBaseUrl = resolveEdgeBaseUrl(supabaseUrl);
-
-  const client = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, detectSessionInUrl: false },
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  const packetUrl = requirePacketUrl();
+  const selector = validateReplayPacketSelector({
+    correlationId: getArg("--correlation-id"),
+    requestId: getArg("--request-id"),
+    agentOperationId: getArg("--agent-operation-id"),
   });
 
-  let query = client
-    .from('agent_execution_traces')
-    .select('step_name,replay_payload,correlation_id,request_id,created_at')
-    .order('created_at', { ascending: true });
-  if (correlationId) {
-    query = query.eq('correlation_id', correlationId);
-  } else if (requestId) {
-    query = query.eq('request_id', requestId);
-  }
-  const { data, error } = await query;
-  if (error) {
-    throw new Error(`Failed to load traces: ${error.message}`);
-  }
-
-  const requestStep = (data as TraceRow[]).find((row) => row.step_name === 'request.received');
-  if (!requestStep?.replay_payload?.message) {
-    throw new Error('No replay payload found on request.received step');
-  }
-
-  const replaySeed = parseReplaySeed(seedArg);
-  const replayContext = {
-    ...(requestStep.replay_payload.context ?? {}),
-    replaySeed,
-  };
-
-  const payload = {
-    message: requestStep.replay_payload.message,
-    context: replayContext,
-  };
-
-  const newRequestId = randomUUID();
-  const replayCorrelationId = correlationId ?? requestStep.correlation_id;
-  const response = await fetch(`${edgeBaseUrl}/ai-agent-optimized`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${accessToken}`,
-      ...buildReplayHeaders(replayCorrelationId, newRequestId),
-    },
-    body: JSON.stringify(payload),
+  const response = await fetch(packetUrl, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({ mode: "replay", ...selector }),
   });
 
-  const body = await response.text();
-  console.log('[replay] status', response.status);
-  console.log('[replay] body', body.slice(0, 2000));
+  if (!response.ok) {
+    throw new Error(`Replay packet request failed (${response.status})`);
+  }
+
+  const payload = await response.json();
+  const packet = extractAuthoritativeReplayPacket(payload);
+
+  process.stdout.write(`${formatAuthoritativeReplayPacket(packet)}\n`);
 };
 
 main().catch((error) => {
-  console.error('[replay] FAIL', error instanceof Error ? error.message : error);
+  console.error(
+    "[replay] FAIL",
+    error instanceof Error ? error.message : error,
+  );
   process.exitCode = 1;
 });

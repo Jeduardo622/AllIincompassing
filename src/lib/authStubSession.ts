@@ -21,6 +21,7 @@ type StubPayload = {
     readonly lastName?: unknown;
   };
   readonly role?: unknown;
+  readonly roleAssignments?: unknown;
   readonly accessToken?: unknown;
   readonly refreshToken?: unknown;
   readonly expiresAt?: unknown;
@@ -143,7 +144,19 @@ export interface StubAuthState {
   user: User;
   session: Session;
   profile: UserProfile;
+  exactRoleNames: AppRole[] | null;
 }
+
+const normaliseRoleAssignments = (value: unknown): AppRole[] | null => {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  return [...new Set(value.flatMap((candidate) => {
+    const normalized = normalizeRole(candidate);
+    return normalized && VALID_ROLES.has(normalized) ? [normalized] : [];
+  }))];
+};
 
 const normaliseRole = (payload: StubPayload): Role | null => {
   const exactUserRole = toOptionalString(payload.user?.role)?.trim().toLowerCase().replace(/[\s-]+/g, '_') ?? null;
@@ -183,6 +196,7 @@ const normaliseStubPayload = (payload: StubPayload, now: number): StubAuthState 
     user: supabaseUser,
     session,
     profile,
+    exactRoleNames: normaliseRoleAssignments(payload.roleAssignments),
   };
 };
 

@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Worktree: `C:\Users\test\.codex\worktrees\AllIincompassing\agent-work-ledger-activation`; branch: `codex/agent-work-ledger-activation`; base: `926edf63a80c2967144f2f7719c22b17edb928b6`.
+- Worktree: `C:\Users\test\.codex\worktrees\AllIincompassing\agent-work-ledger-activation`; branch: `codex/agent-work-ledger-activation`; original base: `926edf63a80c2967144f2f7719c22b17edb928b6`; synchronized review base: `63e52880c6abe7acce25319dd9db9368df2bb3f1`.
 - Allowed surfaces: Ledger Edge Functions and focused tests; one forward scheduler migration and focused contract; Phase 2 harness integration only if needed; `package.json` only if a command is required; Ledger ops, plan, and handoff docs.
 - Non-goals: UI redesign, unrelated AI refactors, global provider-policy changes, `active`, domain assessment authority changes, approval/promotion/publication/signature/billing/submission/final-record automation, or customer/PHI fixtures.
 - Stop and re-route if safe completion requires broader auth, shared runtime config, CI workflow, Netlify config, or non-Ledger provider behavior changes.
@@ -63,15 +63,16 @@
 - [x] Run focused migration/function tests and Deno Ledger tests.
 - [x] Run queue/scheduler smoke, security contract, shadow parity, fresh database reset, and migration application.
 - [x] Run `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run validate:tenant`, `npm run build`, and `npm run verify:local` with bounded Node heap if required.
-- [ ] Run `npm run test:agent-work:phase2` twice serially from clean state; record timings, statuses, hashes, and cleanup proof.
-- [ ] Run pre-commit hooks normally and do not bypass them.
+- [x] Run `npm run test:agent-work:phase2` twice serially from clean state; record timings, statuses, hashes, and cleanup proof.
+- [x] Run pre-commit hooks normally and do not bypass them.
 
 ## Task 5: Review And PR
 
-- [ ] Run fresh code, security, Supabase, architecture, test, DevOps, performance, and documentation review on the final diff; resolve only in-scope findings through RED/GREEN fixes.
-- [ ] Run `verify-change` and record its verification card in the handoff.
-- [ ] Run `pr-hygiene`; require `pr-ready: yes` before publication.
-- [ ] Commit each coherent task separately, update `WIN-275` and the handoff, push, and open a ready PR.
+- [x] Run fresh code, security, Supabase, architecture, test, DevOps, performance, and documentation review on the final diff; resolve only in-scope findings through RED/GREEN fixes.
+- [x] Run `verify-change` and record its verification card in the handoff.
+- [x] Run `pr-hygiene`; require `pr-ready: yes` before publication.
+- [x] Commit each coherent implementation task separately and update the handoff with final local evidence.
+- [ ] Update `WIN-275`, push, and open a ready PR.
 - [ ] Stop before merge until submitted human protected-path/Supabase/security review exists and required checks pass.
 
 ## Task 6: Hosted Rollout Gates

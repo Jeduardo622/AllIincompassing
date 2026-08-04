@@ -1165,7 +1165,7 @@ Failed attempts remain part of the record:
 
 ### WIN-275 Phase 1 Verification Card
 
-- lane: `critical`; result: local Phase 1 pass, pending Phase 2 and human-reviewed PR gates
+- lane: `critical`; result: local Phase 1 and Phase 2 pass, pending live CI and submitted human review
 - focused implementation: `98/98` Vitest assertions across hosted migration and Phase 2 harness/entrypoint/cleanup; `58/58` Deno assertions across generator, runner, sweeper, and runtime URL; `deno.lock` unchanged
 - fresh database/runtime: full local migration reset passed with hosted linkage variables cleared; hosted scheduler contract passed with `2` jobs, `4` fixed Vault entries, invalid-project denial, API-role denial, and zero fixed residue
 - Agent Work contracts: chaos `10/10`; retention `policy_unapproved` with deletion count `0`; trace index `11` plan checks; security contract passed; shadow parity `7/7` with mismatch rate `0`, coverage `1`, and negative probes `7/7`; Edge/API smoke passed; queue scheduler direct and Cron evidence passed with `200/200`
@@ -1173,4 +1173,42 @@ Failed attempts remain part of the record:
 - full suite: `npm run test:ci` passed under `NODE_OPTIONS=--max-old-space-size=6144` in `212.5s` with `467` files / `3,983` tests passed and `2` files / `5` tests environment-gated
 - aggregate: `npm run verify:local` passed under the same bounded heap in `354.5s`, including policy, coverage, build, and Tier-0 `220/220`
 - local-only skips: branch-protection, database grant overlap, preview drift, and hosted auth parity were not applicable without CI/hosted credentials; no check is counted as passed when skipped
-- remaining: normal pre-commit hook on the implementation commit, two clean Phase 2 container runs from committed state, final specialist review, `verify-change`, `pr-hygiene`, CI, and submitted human protected-path/Supabase/security review
+- remaining: publish the ready PR, pass live CI, and obtain submitted human protected-path/Supabase/security review before merge
+
+### WIN-275 Synchronized Implementation Evidence
+
+The branch was synchronized with trusted main `63e52880c6abe7acce25319dd9db9368df2bb3f1` in merge commit `6a1881df219820cf634abe14d65ba2fbfd6db5f6`. The synchronized `NODE_OPTIONS=--max-old-space-size=6144 npm run verify:local` passed in `340.2s`, including policy, lint, typecheck, full tests and coverage, build, and Tier-0 routes `220/220`.
+
+- `20260804T232319Z-8f408e`: commit `6a1881df219820cf634abe14d65ba2fbfd6db5f6`; image `sha256:f4fa84af2b73529e605d28324e4a6a12e6450f8102bd9e4289d5aff351fc7216`; `12/12`; cleanup passed; exit `0`; `636,838ms`; summary hash `d5882a2beef7d6543d46e27784a439699280df54e87e8e16aa01ee0d8261ab32`; content evidence hash `c945b612c1ede7fae91ba6e0ed16e83084a437a724f7bed0f968fab4f0790343`
+- `20260804T233409Z-d832dc`: same commit and image; `12/12`; cleanup passed; exit `0`; `646,977ms`; summary hash `e4b5f434fcfd139a890094649cb9bfdeabd474a0254977d13296b98f8b47d108`; content evidence hash `ac881c4d6362689dccc95274d526509cb81703be68d7cd4b57afc40246042efa`
+- independent residue proof after run 2 found no labeled Phase 2 containers, volumes, `agent-work-phase2` network, or local listeners on the harness ports
+- two uncounted preflight attempts failed closed before startup: the first followed `verify:local` rewriting only the tracked reliability-report timestamp, which was restored exactly; the second detected an inherited `SUPABASE_PROJECT_REF`. No value was read or printed. Both counted commands cleared every documented remote-capable variable only in their process environments.
+
+### WIN-275 Verify-Change Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: protected Supabase migration and Edge Functions; operator scheduler configuration; queue/recovery behavior; local container harness; operations documentation
+- required checks: focused TDD suites; fresh database reset and migration application; hosted scheduler transaction contract; Agent Work Deno tests; chaos, security, shadow-parity, retention, trace, Edge/API, and queue/scheduler contracts; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; two clean Phase 2 runs; normal pre-commit hook; `git diff --check`
+- executed checks: focused Vitest `98/98`; Deno `58/58` and immutable-image Deno `113/113`; fresh reset/migrations passed; hosted scheduler contract passed with two jobs, four synthetic secrets, denials, and zero fixed residue; chaos `10/10`; retention zero-delete `policy_unapproved`; trace 11 plan checks; security passed; shadow parity `7/7` with zero mismatch; Edge/API passed; queue/scheduler direct and Cron `200/200`; full Node suite `467` files and `3,983` tests; synchronized final-head `verify:local` passed in `340.2s`; Phase 2 passed twice at `12/12`; implementation and fix commits passed normal hooks; `git diff --check` passed
+- blocked checks: live branch protection, database grant overlap, Supabase preview drift, deployed function-auth parity, and GitHub CI await PR publication; hosted rollout awaits merge and a fresh route; advisory additionally awaits approved retention periods, CalOptima draft-write acceptance, and owner cadence
+- result: `pass-with-blocked-checks`; locally ready for a critical-lane human-review PR, not ready to merge or activate hosted advisory
+- residual risk: the fixed Vault project identity is operator supplied rather than independently attested; hosted queue/lease/Cron load is unmeasured; retention deletion remains `policy_unapproved`; the legacy provider fence must be explicitly enabled before any provider-isolated Ledger rollout; `active` remains forbidden
+
+### WIN-275 Specialist Disposition
+
+- specification/implementation: bounded callable-operation scope complete; default legacy compatibility preserved; no unauthorized global provider-policy change
+- code/security/Supabase: no blocking final findings after TDD fixes for shadow sweeper inertness, arbitrary project targeting, concurrent enable/disable, duplicate-tolerant status, exact distinct secret readiness, least-privilege execution, and guarded cleanup
+- architecture: approved after confirming Vault enforces unique secret names and strengthening status to require both exact count and distinct count; model work remains explicit and non-Cron-owned
+- test/DevOps/documentation: two final-head clean harness runs now close the only test gap; local versus hosted schedules are explicitly distinguished; no deployment action occurred
+- performance: no code blocker; owner cadence must be selected from measured queue, lease, retry, poison, overlap, and database-write behavior
+
+### WIN-275 PR Hygiene
+
+- pr-ready: `yes` for publication; `no` for merge until live checks and submitted human review pass
+- lane: `critical`; branch-ready: `yes`; Linear-ready: `yes` under `WIN-275`
+- single-purpose: `yes`; the diff is limited to the hosted Ledger scheduler, legacy provider fence, deterministic recovery semantics, Phase 2 integration, focused tests, and docs
+- unrelated/generated drift: none in the worktree; ignored sanitized Phase 2 manifests remain local evidence; both Task 9 recovery stashes remain untouched
+- protected-path drift: only the explicitly routed migration and Edge Function surfaces; specialist review is complete and human review remains mandatory
+- change and verification summaries: present here and in `docs/ops/agent-work-ledger.md`
+- follow-up: update Linear, publish the branch and ready PR, inspect checks/reviews with bounded polling, and stop before merge or hosted action until the mandatory gates pass

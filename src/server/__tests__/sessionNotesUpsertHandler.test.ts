@@ -2340,8 +2340,9 @@ describe("sessionNotesUpsertHandler", () => {
 
   it("rejects a noteId that is not linked to the submitted session", async () => {
     const noteId = "66666666-6666-4666-8666-666666666666";
+    let wroteNote = false;
     const fetchJsonMock = vi.mocked(fetchJson);
-    fetchJsonMock.mockImplementation(async (url) => {
+    fetchJsonMock.mockImplementation(async (url, init) => {
       const requestUrl = String(url);
       if (requestUrl.includes("/rest/v1/authorizations?")) {
         return {
@@ -2359,16 +2360,14 @@ describe("sessionNotesUpsertHandler", () => {
         };
       }
       if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
-        const boundToSubmittedSession = requestUrl.includes(
-          `session_id=eq.${encodeURIComponent(basePayload.sessionId)}`,
-        );
         return {
           ok: true,
           status: 200,
-          data: boundToSubmittedSession ? [] : [{ id: noteId, is_locked: false }],
+          data: [{ id: noteId, is_locked: false, session_id: "88888888-8888-4888-8888-888888888888" }],
         };
       }
       if (requestUrl.includes(`/rest/v1/client_session_notes?id=eq.${noteId}`)) {
+        wroteNote = init?.method === "PATCH";
         return { ok: true, status: 200, data: [{ id: noteId }] };
       }
       if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes(`id=eq.${noteId}`)) {
@@ -2390,6 +2389,164 @@ describe("sessionNotesUpsertHandler", () => {
       code: "not_found",
       error: "Session note not found.",
     });
+    expect(wroteNote).toBe(false);
+  });
+
+  it("links an existing unlinked note to the submitted session", async () => {
+    const noteId = "66666666-6666-4666-8666-666666666666";
+    let linkedSessionId: string | null = null;
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked,session_id,client_id,therapist_id,authorization_id")) {
+        expect(requestUrl).not.toContain("session_id=eq.");
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: noteId,
+            is_locked: false,
+            session_id: null,
+            client_id: basePayload.clientId,
+            therapist_id: basePayload.therapistId,
+            authorization_id: basePayload.authorizationId,
+          }],
+        };
+      }
+      if (requestUrl.includes(`/rest/v1/client_session_notes?id=eq.${noteId}`) && init?.method === "PATCH") {
+        linkedSessionId = (JSON.parse(String(init.body)) as { session_id: string | null }).session_id;
+        return { ok: true, status: 200, data: [{ id: noteId }] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes(`id=eq.${noteId}`)) {
+        return { ok: true, status: 200, data: [buildSessionNoteRow(noteId)] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({ ...basePayload, noteId }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(linkedSessionId).toBe(basePayload.sessionId);
+  });
+
+  it("rejects unlinking a bound note when sessionId is omitted", async () => {
+    const noteId = "66666666-6666-4666-8666-666666666666";
+    let wroteNote = false;
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [{ id: noteId, is_locked: false, session_id: basePayload.sessionId }] };
+      }
+      if (requestUrl.includes(`/rest/v1/client_session_notes?id=eq.${noteId}`)) {
+        wroteNote = init?.method === "PATCH";
+        return { ok: true, status: 200, data: [{ id: noteId }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({ ...basePayload, noteId, sessionId: undefined }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(wroteNote).toBe(false);
+  });
+
+  it.each([
+    ["client", { client_id: "99999999-9999-4999-8999-999999999999" }],
+    ["therapist", { therapist_id: "99999999-9999-4999-8999-999999999999" }],
+    ["authorization", { authorization_id: "99999999-9999-4999-8999-999999999999" }],
+  ])("rejects linking an unlinked note owned by a different %s", async (_field, ownershipOverride) => {
+    const noteId = "66666666-6666-4666-8666-666666666666";
+    let wroteNote = false;
+    vi.mocked(fetchJson).mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: noteId,
+            is_locked: false,
+            session_id: null,
+            client_id: basePayload.clientId,
+            therapist_id: basePayload.therapistId,
+            authorization_id: basePayload.authorizationId,
+            ...ownershipOverride,
+          }],
+        };
+      }
+      if (requestUrl.includes(`/rest/v1/client_session_notes?id=eq.${noteId}`)) {
+        wroteNote = init?.method === "PATCH";
+        return { ok: true, status: 200, data: [{ id: noteId }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({ ...basePayload, noteId }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(wroteNote).toBe(false);
   });
 
   it("rejects updates for locked notes", async () => {

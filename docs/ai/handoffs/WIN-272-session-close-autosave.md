@@ -39,7 +39,7 @@
   - `npm run verify:local` -> pass on `origin/main` commit `1f039082`
   - `npm run ci:check-focused` -> pass after syncing to `origin/main` with merged PR #879
   - focused schedule and client-helper Vitest suite with one worker and 8 GB Node heap -> pass, 70 tests
-  - session-note API handler suite -> pass, 69 tests
+  - session-note API handler suite -> pass, 74 tests, including ownership-matched unlinked-note linking, all ownership mismatch branches, conflicting session-binding rejection, and omitted-session bound-note unlink rejection
   - `npm run lint` -> pass
   - `npm run typecheck` -> pass
   - `npm run test:ci` -> pass, 437 files and 3,627 tests; 2 files and 5 tests skipped
@@ -60,6 +60,7 @@
 - `code-review-engineer`: approved after incremental trial retry fix
 - `test-engineer`: focused coverage approved; required repository and browser checks identified
 - `security-engineer`: approved after same-org cross-session `noteId` retargeting was made fail-closed
+- PR review follow-up: persisted session and ownership fields are checked after the tenant-scoped note lookup, allowing only ownership-matched unlinked notes to be linked while rejecting conflicting bindings and bound-note unlinking
 
 ## PR Hygiene
 - `pr-ready`: yes, pending human review and hosted checks
@@ -69,4 +70,4 @@
 - `unrelated changes`: pre-existing worktree changes excluded from this slice
 - `protected-path drift`: contained to `src/server/api/session-notes-upsert.ts`; no migration, auth, CI, or deploy files changed
 - `baseline sync`: current `origin/main` includes merged PR #879 and passes the required policy hook
-- `required follow-up`: commit, push, and open the WIN-272 PR for human review; rerun the authenticated hosted smoke after its credential is repaired
+- `required follow-up`: push the PR review fix, resolve the review thread, and rerun the authenticated hosted smoke after its credential is repaired

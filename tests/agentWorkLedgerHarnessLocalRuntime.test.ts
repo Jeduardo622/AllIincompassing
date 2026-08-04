@@ -6,6 +6,8 @@ import {
   assertLocalSupabaseHttpUrl,
   isPhase2ContainerMode,
 } from "../scripts/agent-work-ledger-harness/localRuntime.mjs";
+import { buildSyntheticPostgresUrl } from
+  "./helpers/syntheticPostgresUrl";
 
 describe("agent work ledger local runtime validator", () => {
   it("keeps host mode disabled unless the phase2 flag is exactly enabled", () => {
@@ -84,15 +86,15 @@ describe("agent work ledger local runtime validator", () => {
   });
 
   it.each([
-    "postgres://postgres:postgres@supabase_db_alliincompassing:5432/postgres",
-    "postgresql://other:postgres@supabase_db_alliincompassing:5432/postgres",
-    "postgresql://postgres:other@supabase_db_alliincompassing:5432/postgres",
-    "postgresql://postgres:postgres@supabase_db_alliincompassing:5433/postgres",
-    "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/other",
-    "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres?ssl=true",
-    "postgresql://postgres:postgres@host.docker.internal:5432/postgres",
-    "postgresql://postgres:postgres@postgres:5432/postgres",
-    "postgresql://postgres:postgres@172.18.0.3:5432/postgres",
+    buildSyntheticPostgresUrl("postgres", "postgres", "postgres", "supabase_db_alliincompassing", 5432, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "other", "postgres", "supabase_db_alliincompassing", 5432, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "other", "supabase_db_alliincompassing", 5432, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "supabase_db_alliincompassing", 5433, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "supabase_db_alliincompassing", 5432, "other", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "supabase_db_alliincompassing", 5432, "postgres", "?ssl=true"),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "host.docker.internal", 5432, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "postgres", 5432, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "172.18.0.3", 5432, "postgres", ""),
   ])("rejects every non-exact container Postgres endpoint: %s", (value) => {
     expect(() => assertLocalPostgresUrl(value, "SUPABASE_DB_URL", {
       AGENT_WORK_PHASE2_CONTAINER: "1",

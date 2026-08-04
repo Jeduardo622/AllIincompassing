@@ -26,15 +26,21 @@ import {
   assertLocalPostgresUrl,
   assertLocalSupabaseHttpUrl,
 } from "../scripts/agent-work-ledger-harness/localRuntime.mjs";
+import { buildSyntheticPostgresUrl } from
+  "./helpers/syntheticPostgresUrl";
 
 const tempRoots: string[] = [];
 const committedSha = "b".repeat(40);
 const imageId = `sha256:${"a".repeat(64)}`;
 const anonKey = "local-anon-key-not-for-artifacts";
 const serviceRoleKey = "local-service-role-key-not-for-artifacts";
+const loopbackPostgresUrl =
+  "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+const containerPostgresUrl =
+  "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres";
 const statusOutput = [
   'API_URL="http://127.0.0.1:54321"',
-  'DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"',
+  `DB_URL="${loopbackPostgresUrl}"`,
   `ANON_KEY="${anonKey}"`,
   `SERVICE_ROLE_KEY="${serviceRoleKey}"`,
 ].join("\n");
@@ -328,7 +334,15 @@ describe("agent work ledger phase2 harness contracts", () => {
       VITE_SUPABASE_URL: "http://127.0.0.1:54321/functions/v1?token=secret",
     })).toThrow(/exact local/i);
     expect(() => validatePhase2HostEnv({
-      SUPABASE_DB_URL: "postgresql://postgres:postgres@127.0.0.1:54322/not-postgres",
+      SUPABASE_DB_URL: buildSyntheticPostgresUrl(
+        "postgresql",
+        "postgres",
+        "postgres",
+        "127.0.0.1",
+        54322,
+        "not-postgres",
+        "",
+      ),
     })).toThrow(/exact local/i);
   });
 
@@ -343,7 +357,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       PHASE2_CONTAINER_SUPABASE_URL:
         "http://supabase_kong_AllIincompassing:8000",
       PHASE2_CONTAINER_SUPABASE_DB_URL:
-        "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres",
+        containerPostgresUrl,
       PHASE2_SUPABASE_ANON_KEY: anonKey,
       PHASE2_SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
       PHASE2_RUNNER_SECRET: "runner-secret",
@@ -359,7 +373,15 @@ describe("agent work ledger phase2 harness contracts", () => {
     })).toThrow(/status_api_url_not_loopback/);
     expect(() => derivePhase2RuntimeEnv({
       ...status,
-      DB_URL: "postgresql://postgres:postgres@db.project.supabase.co/postgres",
+      DB_URL: buildSyntheticPostgresUrl(
+        "postgresql",
+        "postgres",
+        "postgres",
+        "db.project.supabase.co",
+        null,
+        "postgres",
+        "",
+      ),
     }, {
       runnerSecret: "runner-secret",
       sweeperSecret: "sweeper-secret",
@@ -644,7 +666,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       PHASE2_CONTAINER_SUPABASE_URL:
         "http://supabase_kong_AllIincompassing:8000",
       PHASE2_CONTAINER_SUPABASE_DB_URL:
-        "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres",
+        containerPostgresUrl,
       PHASE2_SUPABASE_ANON_KEY: anonKey,
       PHASE2_SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
     });
@@ -766,7 +788,7 @@ describe("agent work ledger phase2 harness contracts", () => {
     );
     expect(cleanupRun?.env).toMatchObject({
       PHASE2_CONTAINER_SUPABASE_DB_URL:
-        "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres",
+        containerPostgresUrl,
     });
     expect(cleanupRun?.env.PHASE2_SUPABASE_SERVICE_ROLE_KEY).not.toBe(
       serviceRoleKey,
@@ -1024,7 +1046,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       env,
     );
     const database = () => assertLocalPostgresUrl(
-      "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres",
+      containerPostgresUrl,
       "SUPABASE_DB_URL",
       env,
     );

@@ -2,10 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import { assertMatchesRunningLocalStack } from
   "../scripts/agent-work-ledger-shadow-parity.mjs";
+import { buildSyntheticPostgresUrl } from
+  "./helpers/syntheticPostgresUrl";
+
+const loopbackPostgresUrl =
+  "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+const containerPostgresUrl =
+  "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres";
 
 const loopbackStatus = [
   'API_URL="http://127.0.0.1:54321"',
-  'DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"',
+  `DB_URL="${loopbackPostgresUrl}"`,
 ].join("\n");
 
 const statusRunner = (stdout = loopbackStatus) => vi.fn(() => ({
@@ -20,7 +27,7 @@ describe("agent work ledger shadow parity local stack identity", () => {
 
     expect(() => assertMatchesRunningLocalStack(
       "http://127.0.0.1:54321",
-      "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      loopbackPostgresUrl,
       { env: {}, spawnImpl },
     )).not.toThrow();
     expect(spawnImpl).toHaveBeenCalledOnce();
@@ -50,19 +57,27 @@ describe("agent work ledger shadow parity local stack identity", () => {
   it.each([
     [
       "http://kong:8000",
-      "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres",
+      containerPostgresUrl,
     ],
     [
       "https://project.supabase.co",
-      "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres",
+      containerPostgresUrl,
     ],
     [
       "http://172.18.0.2:8000",
-      "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres",
+      containerPostgresUrl,
     ],
     [
       "http://supabase_kong_alliincompassing:8000",
-      "postgresql://postgres:postgres@postgres:5432/postgres",
+      buildSyntheticPostgresUrl(
+        "postgresql",
+        "postgres",
+        "postgres",
+        "postgres",
+        5432,
+        "postgres",
+        "",
+      ),
     ],
   ])("rejects non-exact container endpoint pair %#", (supabaseUrl, databaseUrl) => {
     expect(() => assertMatchesRunningLocalStack(
@@ -81,12 +96,20 @@ describe("agent work ledger shadow parity local stack identity", () => {
   it("rejects a non-loopback status identity in host mode", () => {
     const nonLocalStatus = [
       'API_URL="https://project.supabase.co"',
-      'DB_URL="postgresql://postgres:postgres@db.project.supabase.co:5432/postgres"',
+      `DB_URL="${buildSyntheticPostgresUrl(
+        "postgresql",
+        "postgres",
+        "postgres",
+        "db.project.supabase.co",
+        5432,
+        "postgres",
+        "",
+      )}"`,
     ].join("\n");
 
     expect(() => assertMatchesRunningLocalStack(
       "http://127.0.0.1:54321",
-      "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      loopbackPostgresUrl,
       {
         env: {},
         spawnImpl: statusRunner(nonLocalStatus),
@@ -101,7 +124,7 @@ describe("agent work ledger shadow parity local stack identity", () => {
   ])("rejects container identity without the exact fixed project mapping: %#", (extraEnv) => {
     expect(() => assertMatchesRunningLocalStack(
       "http://supabase_kong_alliincompassing:8000",
-      "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres",
+      containerPostgresUrl,
       {
         env: {
           AGENT_WORK_PHASE2_CONTAINER: "1",
@@ -115,7 +138,7 @@ describe("agent work ledger shadow parity local stack identity", () => {
   it("compares supplied container endpoints to the fixed project translation", () => {
     expect(() => assertMatchesRunningLocalStack(
       "http://supabase_kong_alliincompassing:8001",
-      "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres",
+      containerPostgresUrl,
       {
         env: {
           AGENT_WORK_PHASE2_CONTAINER: "1",

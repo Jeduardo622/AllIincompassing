@@ -6,6 +6,11 @@ import {
   FIXED_SECRET_NAMES,
   runCleanupAudit,
 } from "../scripts/agent-work-ledger-harness/cleanupAudit.mjs";
+import { buildSyntheticPostgresUrl } from
+  "./helpers/syntheticPostgresUrl";
+
+const containerPostgresUrl =
+  "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres";
 
 const createClient = ({
   currentUser = "postgres",
@@ -52,7 +57,7 @@ describe("agent work ledger phase2 cleanup audit", () => {
     const { calls, ClientImpl } = createClient();
     const summary = await runCleanupAudit({
       connectionString:
-        "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres",
+        containerPostgresUrl,
       env: { AGENT_WORK_PHASE2_CONTAINER: "1" },
       ClientImpl,
     });
@@ -93,7 +98,7 @@ describe("agent work ledger phase2 cleanup audit", () => {
     });
     await expect(runCleanupAudit({
       connectionString:
-        "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres",
+        containerPostgresUrl,
       env: { AGENT_WORK_PHASE2_CONTAINER: "1" },
       ClientImpl,
     })).rejects.toThrow(/cleanup_assertion_protected_extensions_failed/);
@@ -106,7 +111,7 @@ describe("agent work ledger phase2 cleanup audit", () => {
     });
     await expect(runCleanupAudit({
       connectionString:
-        "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres",
+        containerPostgresUrl,
       env: { AGENT_WORK_PHASE2_CONTAINER: "1" },
       ClientImpl,
     })).rejects.toThrow(/cleanup_assertion_archive_queue_rows_failed/);
@@ -118,7 +123,7 @@ describe("agent work ledger phase2 cleanup audit", () => {
     const { ClientImpl } = createClient({ currentUser: "service_role" });
     await expect(runCleanupAudit({
       connectionString:
-        "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres",
+        containerPostgresUrl,
       env: { AGENT_WORK_PHASE2_CONTAINER: "1" },
       ClientImpl,
     })).rejects.toThrow(/cleanup_requires_postgres_owner/);
@@ -128,21 +133,21 @@ describe("agent work ledger phase2 cleanup audit", () => {
     const { ClientImpl } = createClient();
     await expect(runCleanupAudit({
       connectionString:
-        "postgresql://postgres:postgres@supabase_db_AllIincompassing:5432/postgres",
+        containerPostgresUrl,
       env: { AGENT_WORK_PHASE2_CONTAINER: "true" },
       ClientImpl,
     })).rejects.toThrow(/cleanup_database_url_not_exact_phase2/);
   });
 
   it.each([
-    "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
-    "postgresql://postgres:postgres@localhost:54322/postgres",
-    "postgresql://other:postgres@supabase_db_alliincompassing:5432/postgres",
-    "postgresql://postgres:other@supabase_db_alliincompassing:5432/postgres",
-    "postgresql://postgres:postgres@supabase_db_alliincompassing:5433/postgres",
-    "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/other",
-    "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres?ssl=true",
-    "postgresql://postgres:postgres@supabase_db_alliincompassing:5432/postgres#fragment",
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "127.0.0.1", 54322, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "localhost", 54322, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "other", "postgres", "supabase_db_alliincompassing", 5432, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "other", "supabase_db_alliincompassing", 5432, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "supabase_db_alliincompassing", 5433, "postgres", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "supabase_db_alliincompassing", 5432, "other", ""),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "supabase_db_alliincompassing", 5432, "postgres", "?ssl=true"),
+    buildSyntheticPostgresUrl("postgresql", "postgres", "postgres", "supabase_db_alliincompassing", 5432, "postgres", "#fragment"),
   ])("rejects every non-exact destructive cleanup DSN: %s", async (connectionString) => {
     const { ClientImpl } = createClient();
     await expect(runCleanupAudit({

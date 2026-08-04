@@ -4,6 +4,9 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { buildSyntheticPostgresUrl } from
+  "./helpers/syntheticPostgresUrl";
+
 const contractPath = resolve(process.cwd(), "scripts/agent-work-ledger-trace-index-contract.mjs");
 const contractUrl = pathToFileURL(contractPath);
 
@@ -16,7 +19,15 @@ describe("agent trace report selector failure handling", () => {
     const database = new EventEmitter();
     const readFailure = attachDatabaseErrorGuard(database);
 
-    database.emit("error", new Error("postgresql://user:secret@host/database"));
+    database.emit("error", new Error(buildSyntheticPostgresUrl(
+      "postgresql",
+      "user",
+      "secret",
+      "host",
+      null,
+      "database",
+      "",
+    )));
 
     const failure = readFailure();
     expect(failure).toBeInstanceOf(Error);

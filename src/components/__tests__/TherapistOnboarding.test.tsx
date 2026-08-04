@@ -183,6 +183,21 @@ describe('TherapistOnboarding validation', () => {
     expect(mockShowSuccess).not.toHaveBeenCalledWith('Therapist created successfully');
   }, 20000);
 
+  it('completes onboarding when the invite request does not settle', async () => {
+    invokeMock.mockReturnValueOnce(new Promise(() => undefined));
+    const { handleComplete } = renderOnboarding();
+
+    await advanceToFinalStep();
+    await userEvent.click(screen.getByRole('button', { name: /complete onboarding/i }));
+
+    await waitFor(() => {
+      expect(handleComplete).toHaveBeenCalledWith({
+        therapist: createdTherapist,
+        inviteSent: false,
+      });
+    }, { timeout: 17_000 });
+  }, 20000);
+
   it('shows an error when organization context is unavailable', async () => {
     mockUseActiveOrganizationId.mockReturnValue(null);
     renderOnboarding();

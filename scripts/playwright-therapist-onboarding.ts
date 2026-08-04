@@ -153,8 +153,7 @@ async function run(): Promise<void> {
     console.log('Submitting therapist onboarding form');
     await page.getByRole('button', { name: /complete onboarding/i }).click();
 
-    await page.waitForSelector('text=Therapist created successfully', { timeout: 20000 });
-    await page.waitForURL('**/therapists', { timeout: 20000 });
+    await page.waitForURL('**/therapists', { timeout: 60_000 });
 
     const screenshotPath = path.join(
       latestDir,

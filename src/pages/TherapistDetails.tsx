@@ -15,7 +15,34 @@ export function TherapistDetails() {
   const { therapistId } = useParams<{ therapistId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
-  const { profile, effectiveRole } = useAuth();
+  const { user, profile, effectiveRole } = useAuth();
+  const isSelfScopedRole = effectiveRole === 'bt' || effectiveRole === 'therapist';
+  const directlyOwnedTherapistIds = new Set(
+    [user?.id, profile?.id].filter((id): id is string => Boolean(id)),
+  );
+  const directlyOwnsTarget = Boolean(therapistId && directlyOwnedTherapistIds.has(therapistId));
+
+  const { data: linkedTherapistIds = [], isLoading: isAuthorizationLoading } = useQuery({
+    queryKey: ['therapist-record-access', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+
+      const { data, error } = await supabase
+        .from('user_therapist_links')
+        .select('therapist_id')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      return (data ?? [])
+        .map((row) => row.therapist_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    },
+    enabled: isSelfScopedRole && Boolean(user?.id) && !directlyOwnsTarget,
+  });
+
+  const canViewTarget = !isSelfScopedRole
+    || directlyOwnsTarget
+    || Boolean(therapistId && linkedTherapistIds.includes(therapistId));
 
   const { data: therapist, isLoading } = useQuery({
     queryKey: ['therapist', therapistId],
@@ -31,7 +58,7 @@ export function TherapistDetails() {
       if (error) throw error;
       return data;
     },
-    enabled: !!therapistId,
+    enabled: Boolean(therapistId) && canViewTarget && !isAuthorizationLoading,
   });
 
   const tabs = [
@@ -41,10 +68,27 @@ export function TherapistDetails() {
     { id: 'clients' as TabType, name: 'Assigned Clients', icon: FileText },
   ];
 
-  if (isLoading) {
+  if (isAuthorizationLoading || isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!canViewTarget) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg shadow p-8 text-red-700 dark:text-red-200">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+          You can only view your own therapist profile
+        </h2>
+        <button
+          onClick={() => navigate('/therapists')}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Back to Therapist List
+        </button>
       </div>
     );
   }
@@ -62,23 +106,6 @@ export function TherapistDetails() {
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Return to Therapists
-        </button>
-      </div>
-    );
-  }
-
-  if (effectiveRole === 'therapist' && profile?.id !== therapist.id) {
-    return (
-      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg shadow p-8 text-red-700 dark:text-red-200">
-        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-          You can only view your own therapist profile
-        </h2>
-        <button
-          onClick={() => navigate('/therapists')}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          Back to Therapist List
         </button>
       </div>
     );

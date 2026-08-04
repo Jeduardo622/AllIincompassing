@@ -1190,6 +1190,44 @@ as $$
   );
 $$;
 
+create or replace function public.current_user_can_read_agent_work_item_endpoint(p_work_item_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select app.current_user_can_read_agent_work_item_endpoint(p_work_item_id);
+$$;
+
+create or replace function public.current_user_can_read_agent_work_assessment_endpoint(
+  p_assessment_document_id uuid,
+  p_workflow_key text,
+  p_workflow_version integer
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.assessment_documents document
+    where document.id = p_assessment_document_id
+      and p_workflow_version = 1
+      and document.template_type = case p_workflow_key
+        when 'assessment.iehp.prepare_for_clinical_review' then 'iehp_fba'
+        when 'assessment.caloptima.prepare_draft_review' then 'caloptima_fba'
+        else null
+      end
+      and app.current_user_can_read_agent_work_row(
+        document.organization_id,
+        document.client_id
+      )
+  );
+$$;
+
 create or replace function public.agent_work_recompute_item_status(p_work_item_id uuid)
 returns public.agent_work_item_status
 language plpgsql
@@ -2984,6 +3022,8 @@ revoke all on function app.current_user_can_read_agent_work_row(uuid, uuid) from
 revoke all on function app.current_user_can_manage_agent_work_row(uuid, uuid) from public, anon;
 revoke all on function app.actor_can_manage_agent_work_row(uuid, uuid, uuid) from public, anon, authenticated;
 revoke all on function app.current_user_can_read_agent_work_item_endpoint(uuid) from public, anon;
+revoke all on function public.current_user_can_read_agent_work_item_endpoint(uuid) from public, anon;
+revoke all on function public.current_user_can_read_agent_work_assessment_endpoint(uuid, text, integer) from public, anon;
 revoke all on function public.current_user_can_manage_agent_work_row(uuid, uuid) from public, anon;
 revoke all on function public.agent_work_user_has_exact_role(uuid, uuid, text, timestamptz) from public, anon, authenticated, service_role;
 revoke all on function public.agent_work_user_has_client_access(uuid, uuid, uuid, timestamptz) from public, anon, authenticated, service_role;
@@ -3005,6 +3045,8 @@ grant execute on function app.current_user_can_read_agent_work_row(uuid, uuid) t
 grant execute on function app.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
 grant execute on function app.actor_can_manage_agent_work_row(uuid, uuid, uuid) to service_role;
 grant execute on function app.current_user_can_read_agent_work_item_endpoint(uuid) to authenticated, service_role;
+grant execute on function public.current_user_can_read_agent_work_item_endpoint(uuid) to authenticated, service_role;
+grant execute on function public.current_user_can_read_agent_work_assessment_endpoint(uuid, text, integer) to authenticated, service_role;
 grant execute on function public.current_user_can_decide_agent_work_approval(uuid) to authenticated, service_role;
 grant execute on function public.current_user_decidable_agent_work_approval_ids(uuid) to authenticated, service_role;
 grant execute on function public.current_user_can_manage_agent_work_row(uuid, uuid) to authenticated, service_role;
@@ -3215,17 +3257,6 @@ revoke all on public.agent_work_approvals from public, anon, authenticated;
 revoke all on public.agent_work_attempts from public, anon, authenticated;
 revoke all on public.agent_work_effects from public, anon, authenticated;
 revoke all on public.agent_work_events from public, anon, authenticated;
-
-grant select on public.agent_work_items to authenticated;
-grant select on public.agent_work_item_dependencies to authenticated;
-grant select on public.agent_work_assessment_links to authenticated;
-grant select on public.agent_work_steps to authenticated;
-grant select on public.agent_work_step_dependencies to authenticated;
-grant select on public.agent_work_evidence to authenticated;
-grant select on public.agent_work_approvals to authenticated;
-grant select on public.agent_work_attempts to authenticated;
-grant select on public.agent_work_effects to authenticated;
-grant select on public.agent_work_events to authenticated;
 
 revoke all on public.agent_work_items from service_role;
 revoke all on public.agent_work_item_dependencies from service_role;

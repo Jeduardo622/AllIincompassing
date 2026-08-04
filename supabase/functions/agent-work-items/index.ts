@@ -740,10 +740,29 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    const currentUserCanReadWorkItem = async (
+      workItemId: string,
+    ): Promise<boolean> => {
+      const { data, error } = await requestClient.rpc(
+        "current_user_can_read_agent_work_item_endpoint",
+        { p_work_item_id: workItemId },
+      );
+      if (error) {
+        console.error(
+          "agent-work-items visibility check failed",
+          error.code ?? "unknown",
+        );
+        throw error;
+      }
+      return data === true;
+    };
+
     const getDetail = async (
       workItemId: string,
     ): Promise<AgentWorkItemView | null> => {
-      const { data: item, error: itemError } = await requestClient
+      if (!await currentUserCanReadWorkItem(workItemId)) return null;
+
+      const { data: item, error: itemError } = await serviceClient
         .from("agent_work_items")
         .select(
           "id,workflow_key,workflow_version,objective,status,risk,owner_user_id,due_at,updated_at",
@@ -751,7 +770,10 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         .eq("id", workItemId)
         .maybeSingle();
       if (itemError) {
-        console.error("agent-work-items detail read failed", itemError.code ?? "unknown");
+        console.error(
+          "agent-work-items detail read failed",
+          itemError.code ?? "unknown",
+        );
         throw itemError;
       }
       if (!item) {
@@ -760,33 +782,42 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
       }
 
       const [stepsResult, approvalsResult, evidenceResult] = await Promise.all([
-        requestClient
+        serviceClient
           .from("agent_work_steps")
           .select("id,step_key,status,execution_mode,last_error_code,ordinal")
           .eq("work_item_id", workItemId)
           .order("ordinal", { ascending: true }),
-        requestClient
+        serviceClient
           .from("agent_work_approvals")
           .select(
             "id,step_id,status,required_role,expires_at,requested_at,evidence_hash",
           )
           .eq("work_item_id", workItemId)
           .order("requested_at", { ascending: true }),
-        requestClient
+        serviceClient
           .from("agent_work_evidence")
           .select("step_id")
           .eq("work_item_id", workItemId),
       ]);
       if (stepsResult.error) {
-        console.error("agent-work-items step read failed", stepsResult.error.code ?? "unknown");
+        console.error(
+          "agent-work-items step read failed",
+          stepsResult.error.code ?? "unknown",
+        );
         throw stepsResult.error;
       }
       if (approvalsResult.error) {
-        console.error("agent-work-items approval read failed", approvalsResult.error.code ?? "unknown");
+        console.error(
+          "agent-work-items approval read failed",
+          approvalsResult.error.code ?? "unknown",
+        );
         throw approvalsResult.error;
       }
       if (evidenceResult.error) {
-        console.error("agent-work-items evidence read failed", evidenceResult.error.code ?? "unknown");
+        console.error(
+          "agent-work-items evidence read failed",
+          evidenceResult.error.code ?? "unknown",
+        );
         throw evidenceResult.error;
       }
 
@@ -796,7 +827,10 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
           { p_work_item_id: workItemId },
         );
       if (authorityError) {
-        console.error("agent-work-items approval authority read failed", authorityError.code ?? "unknown");
+        console.error(
+          "agent-work-items approval authority read failed",
+          authorityError.code ?? "unknown",
+        );
         throw authorityError;
       }
       const decidableApprovalIds = new Set(
@@ -832,10 +866,13 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
             requiredRole: approval.required_role,
             expiresAt: approval.expires_at,
             requestedAt: approval.requested_at,
-            evidenceCount: isPending ? (evidenceResult.data ?? []).length : null,
-            evidenceHashSuffix: isPending && typeof approval.evidence_hash === "string"
-              ? approval.evidence_hash.slice(-8)
+            evidenceCount: isPending
+              ? (evidenceResult.data ?? []).length
               : null,
+            evidenceHashSuffix:
+              isPending && typeof approval.evidence_hash === "string"
+                ? approval.evidence_hash.slice(-8)
+                : null,
             canDecide: isPending && decidableApprovalIds.has(approval.id),
           };
         },
@@ -940,7 +977,10 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
           },
         );
         if (error) {
-          console.error("agent-work-items IEHP create RPC failed", error.code ?? "unknown");
+          console.error(
+            "agent-work-items IEHP create RPC failed",
+            error.code ?? "unknown",
+          );
           const message = error.message.toLowerCase();
           if (message.includes("forbidden")) {
             throw new AgentWorkRequestError(403, "Forbidden", "forbidden");
@@ -975,7 +1015,10 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
           },
         );
         if (error) {
-          console.error("agent-work-items CalOptima create RPC failed", error.code ?? "unknown");
+          console.error(
+            "agent-work-items CalOptima create RPC failed",
+            error.code ?? "unknown",
+          );
           const message = error.message.toLowerCase();
           if (message.includes("forbidden")) {
             throw new AgentWorkRequestError(403, "Forbidden", "forbidden");
@@ -1007,7 +1050,19 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
         assessmentDocumentId,
         workflowKey,
       ) => {
-        const { data, error } = await requestClient
+        const { data: canRead, error: visibilityError } = await requestClient
+          .rpc(
+            "current_user_can_read_agent_work_assessment_endpoint",
+            {
+              p_assessment_document_id: assessmentDocumentId,
+              p_workflow_key: workflowKey,
+              p_workflow_version: WORKFLOW_VERSION,
+            },
+          );
+        if (visibilityError) throw visibilityError;
+        if (canRead !== true) return [];
+
+        const { data, error } = await serviceClient
           .from("agent_work_assessment_links")
           .select("work_item_id")
           .eq("assessment_document_id", assessmentDocumentId)
@@ -1024,7 +1079,10 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
       },
       getWorkItemDetail: getDetail,
       refreshCalOptimaEvidence: async (input) => {
-        const { data: item, error: itemError } = await requestClient
+        if (!await currentUserCanReadWorkItem(input.workItemId)) {
+          throw new AgentWorkRequestError(404, "Not found", "not_found");
+        }
+        const { data: item, error: itemError } = await serviceClient
           .from("agent_work_items")
           .select("organization_id,client_id,workflow_key")
           .eq("id", input.workItemId)

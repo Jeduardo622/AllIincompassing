@@ -131,7 +131,8 @@ function createDeps(
       calls.calOptimaCreateArgs.push({ ...input });
       return createView({
         workflowKey: CALOPTIMA_WORKFLOW_KEY,
-        objective: "Prepare approved CalOptima assessment evidence as a draft program/goal packet for human review.",
+        objective:
+          "Prepare approved CalOptima assessment evidence as a draft program/goal packet for human review.",
       });
     },
     listWorkItemsByAssessmentDocument: async (
@@ -582,14 +583,18 @@ Deno.test("GET list constrains workflow_key to IEHP or CalOptima and preserves t
 
   const explicitCalOptima = await handler(
     createRequest(
-      `/agent-work-items?assessment_document_id=${ASSESSMENT_DOCUMENT_ID}&workflow_key=${encodeURIComponent(CALOPTIMA_WORKFLOW_KEY)}`,
+      `/agent-work-items?assessment_document_id=${ASSESSMENT_DOCUMENT_ID}&workflow_key=${
+        encodeURIComponent(CALOPTIMA_WORKFLOW_KEY)
+      }`,
     ),
   );
   assertEquals(explicitCalOptima.status, 200);
 
   const invalidWorkflow = await handler(
     createRequest(
-      `/agent-work-items?assessment_document_id=${ASSESSMENT_DOCUMENT_ID}&workflow_key=${encodeURIComponent("assessment.other.workflow")}`,
+      `/agent-work-items?assessment_document_id=${ASSESSMENT_DOCUMENT_ID}&workflow_key=${
+        encodeURIComponent("assessment.other.workflow")
+      }`,
     ),
   );
   assertEquals(invalidWorkflow.status, 400);
@@ -654,7 +659,9 @@ Deno.test("OPTIONS is public and unsupported methods remain non-disclosing", asy
 
 Deno.test("POST assessment-prep fails closed when authoritative runtime policy lookup fails", async () => {
   const handler = createAgentWorkItemsHandler(createDeps({
-    loadRuntimePolicy: async () => { throw new Error("policy unavailable"); },
+    loadRuntimePolicy: async () => {
+      throw new Error("policy unavailable");
+    },
   }));
 
   const response = await handler(
@@ -965,7 +972,10 @@ Deno.test("POST CalOptima reconcile fails closed before detail disclosure when t
   ));
 
   assertEquals(response.status, 404);
-  assertEquals(deps.calls.refreshArgs, [{ actorUserId: USER_ID, workItemId: WORK_ITEM_ID }]);
+  assertEquals(deps.calls.refreshArgs, [{
+    actorUserId: USER_ID,
+    workItemId: WORK_ITEM_ID,
+  }]);
   assertEquals(deps.calls.detailArgs, []);
 });
 

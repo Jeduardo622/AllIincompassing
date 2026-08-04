@@ -100,6 +100,32 @@ describe("agent work approval migration contract", () => {
     expect(itemFunctionSource).not.toContain("assignedOwnerUserId: approval.assigned_to");
   });
 
+  it("keeps ledger base tables behind the sanitized Edge authority", () => {
+    expect(coreSql).not.toMatch(/grant select on public\.agent_work_[a-z_]+ to authenticated/i);
+    expect(coreSql).toMatch(/revoke all on public\.agent_work_evidence from public, anon, authenticated/i);
+  });
+
+  it("authorizes caller visibility before bounded service-role reads", () => {
+    expect(coreSql).toContain(
+      "public.current_user_can_read_agent_work_item_endpoint",
+    );
+    expect(coreSql).toMatch(
+      /grant execute on function public\.current_user_can_read_agent_work_item_endpoint\(uuid\) to authenticated, service_role/i,
+    );
+    expect(coreSql).toMatch(
+      /grant execute on function public\.current_user_can_read_agent_work_assessment_endpoint\(uuid, text, integer\) to authenticated, service_role/i,
+    );
+    expect(itemFunctionSource).toMatch(
+      /requestClient\.rpc\(\s*"current_user_can_read_agent_work_item_endpoint"/,
+    );
+    expect(itemFunctionSource).toMatch(
+      /if \(!await currentUserCanReadWorkItem\(workItemId\)\) return null;[\s\S]+?serviceClient\s*\.from\("agent_work_items"\)/,
+    );
+    expect(itemFunctionSource).toMatch(
+      /current_user_can_read_agent_work_assessment_endpoint[\s\S]+?if \(canRead !== true\) return \[\];[\s\S]+?serviceClient\s*\.from\("agent_work_assessment_links"\)/,
+    );
+  });
+
   it("builds decision responses from a bounded service reread after the service-only RPC", () => {
     const decisionRuntime = itemFunctionSource.match(
       /decideApproval: async \(input\) => \{[\s\S]+?\r?\n\s*\},\r?\n\s*\}\)\(request\)/,

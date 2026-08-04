@@ -89,6 +89,16 @@ const FUNCTION_CONTRACTS = [
     execute: { public: false, anon: false, authenticated: true, service_role: true },
   },
   {
+    signature: "current_user_can_read_agent_work_item_endpoint(uuid)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: true, service_role: true },
+  },
+  {
+    signature: "current_user_can_read_agent_work_assessment_endpoint(uuid,text,integer)",
+    searchPath: "\"\"",
+    execute: { public: false, anon: false, authenticated: true, service_role: true },
+  },
+  {
     signature: "create_agent_assessment_work_item(uuid,uuid,uuid,uuid,integer,text)",
     searchPath: "public, pg_temp",
     execute: { public: false, anon: false, authenticated: false, service_role: true },
@@ -600,6 +610,14 @@ const assertTableGrants = async (client) => {
     unsafeGrants.length === 0,
     `Broad ledger table grants detected: ${unsafeGrants
       .map((row) => `${row.grantee}:${row.table_name}:${toPrivilegeList(row.privileges).join(",")}`)
+      .join("; ")}`,
+  );
+
+  const authenticatedGrants = rows.filter((row) => row.grantee === "authenticated");
+  assert(
+    authenticatedGrants.length === 0,
+    `Ledger base tables must remain behind sanitized Edge DTOs: ${authenticatedGrants
+      .map((row) => `${row.table_name}:${toPrivilegeList(row.privileges).join(",")}`)
       .join("; ")}`,
   );
 
@@ -1612,6 +1630,7 @@ const assertCalOptimaDraftReviewLifecycle = async (client) => {
     () => completeModelAttempt(),
     /runtime policy disabled/i,
   );
+
   const disabledDraftCount = await client.query(
     `
       select (
@@ -2370,31 +2389,18 @@ const assertOrganizationAndClientIsolation = async (client, assignedWorkItemId, 
     /forbidden/i,
   );
 
-  const btReadableCount = await withActor(client, "authenticated", "authenticated", FIXTURES.btA, async () => {
-    const { rows } = await client.query(
-      `
-        select count(*)::integer as count
-        from public.agent_work_items
-        where id in ($1::uuid, $2::uuid)
-      `,
-      [assignedWorkItemId, unassignedWorkItemId],
+  for (const [label, actorId] of [["assigned BT", FIXTURES.btA], ["cross-org admin", FIXTURES.adminB]]) {
+    await expectFailure(
+      `${label} direct ledger base-table read`,
+      () => withActor(client, "authenticated", "authenticated", actorId, async () => {
+        await client.query(
+          "select count(*) from public.agent_work_items where id in ($1::uuid, $2::uuid)",
+          [assignedWorkItemId, unassignedWorkItemId],
+        );
+      }),
+      /permission denied/i,
     );
-    return rows[0]?.count ?? 0;
-  });
-  assert(btReadableCount === 1, `BT should only read the assigned client's work item, found ${btReadableCount}`);
-
-  const foreignReadableCount = await withActor(client, "authenticated", "authenticated", FIXTURES.adminB, async () => {
-    const { rows } = await client.query(
-      `
-        select count(*)::integer as count
-        from public.agent_work_items
-        where id in ($1::uuid, $2::uuid)
-      `,
-      [assignedWorkItemId, unassignedWorkItemId],
-    );
-    return rows[0]?.count ?? 0;
-  });
-  assert(foreignReadableCount === 0, `Cross-org admin should not read foreign-org work items, found ${foreignReadableCount}`);
+  }
 };
 
 const assertDependencyTenantScope = async (client, assignedWorkItemId, unassignedWorkItemId) => {
@@ -2557,16 +2563,15 @@ const assertDependencyEndpointReadPolicy = async (client, assignedWorkItemId, un
     ]);
     await client.query("select set_config('request.jwt.claim.sub', $1, true)", [FIXTURES.btA]);
 
-    const { rows: visibleRows } = await client.query(
-      "select count(*)::integer as count from public.agent_work_item_dependencies where id = $1::uuid",
-      [dependencyId],
+    await expectFailure(
+      "authenticated dependency base-table read",
+      () => client.query(
+        "select count(*) from public.agent_work_item_dependencies where id = $1::uuid",
+        [dependencyId],
+      ),
+      /permission denied/i,
     );
     await client.query("rollback");
-
-    assert(
-      visibleRows[0]?.count === 0,
-      `Dependency read policy must authorize both endpoints, found ${visibleRows[0]?.count ?? 0} visible edge(s)`,
-    );
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -2591,16 +2596,15 @@ const assertParentEndpointReadPolicy = async (client, assignedWorkItemId, unassi
     ]);
     await client.query("select set_config('request.jwt.claim.sub', $1, true)", [FIXTURES.btA]);
 
-    const { rows } = await client.query(
-      "select count(*)::integer as count from public.agent_work_items where id = $1::uuid",
-      [assignedWorkItemId],
+    await expectFailure(
+      "authenticated parent base-table read",
+      () => client.query(
+        "select count(*) from public.agent_work_items where id = $1::uuid",
+        [assignedWorkItemId],
+      ),
+      /permission denied/i,
     );
     await client.query("rollback");
-
-    assert(
-      rows[0]?.count === 0,
-      `Parent read policy must authorize both endpoints, found ${rows[0]?.count ?? 0} visible child row(s)`,
-    );
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -2660,32 +2664,22 @@ const assertApprovalRoleEnforcement = async (client, assignedWorkItemId) => {
     ],
   );
 
-  const btVisibleCount = await withActor(client, "authenticated", "authenticated", FIXTURES.btA, async () => {
-    const { rows } = await client.query(
-      "select count(*)::integer as count from public.agent_work_approvals where id = $1::uuid",
-      [FIXTURES.approvalAssigned],
+  for (const [label, actorId] of [
+    ["BT", FIXTURES.btA],
+    ["admin", FIXTURES.adminA],
+    ["BCBA", FIXTURES.bcbaA],
+  ]) {
+    await expectFailure(
+      `${label} direct approval base-table read`,
+      () => withActor(client, "authenticated", "authenticated", actorId, async () => {
+        await client.query(
+          "select count(*) from public.agent_work_approvals where id = $1::uuid",
+          [FIXTURES.approvalAssigned],
+        );
+      }),
+      /permission denied/i,
     );
-    return rows[0]?.count ?? 0;
-  });
-  assert(btVisibleCount === 0, `BT should not read BCBA approvals, found ${btVisibleCount}`);
-
-  const adminVisibleCount = await withActor(client, "authenticated", "authenticated", FIXTURES.adminA, async () => {
-    const { rows } = await client.query(
-      "select count(*)::integer as count from public.agent_work_approvals where id = $1::uuid",
-      [FIXTURES.approvalAssigned],
-    );
-    return rows[0]?.count ?? 0;
-  });
-  assert(adminVisibleCount === 1, `Admin should read same-org approvals, found ${adminVisibleCount}`);
-
-  const bcbaVisibleCount = await withActor(client, "authenticated", "authenticated", FIXTURES.bcbaA, async () => {
-    const { rows } = await client.query(
-      "select count(*)::integer as count from public.agent_work_approvals where id = $1::uuid",
-      [FIXTURES.approvalAssigned],
-    );
-    return rows[0]?.count ?? 0;
-  });
-  assert(bcbaVisibleCount === 1, `BCBA should read required-role approvals, found ${bcbaVisibleCount}`);
+  }
 };
 
 const assertClaimEligibility = async (client) => {
@@ -3759,20 +3753,20 @@ const assertApprovalHandoffAndDecisionContract = async (client, connectionString
     { requiredRole: "bt" },
   );
   const revokedClientAccessHandoff = await requestHandoff(revokedClientAccessFixture, FIXTURES.btA);
-  const assignedBtApprovalCount = await withActor(
+  const assignedBtCanDecide = await withActor(
     client,
     "authenticated",
     "authenticated",
     FIXTURES.btA,
     async () => {
       const { rows } = await client.query(
-        "select count(*)::integer as count from public.agent_work_approvals where id = $1::uuid",
+        "select public.current_user_can_decide_agent_work_approval($1::uuid) as allowed",
         [revokedClientAccessHandoff.approval_id],
       );
-      return rows[0]?.count ?? 0;
+      return rows[0]?.allowed;
     },
   );
-  assert(assignedBtApprovalCount === 1, "Current assigned approver could not read the approval row");
+  assert(assignedBtCanDecide === true, "Current assigned approver lacked decision authority");
   await client.query(
     "delete from public.client_therapist_links where client_id = $1::uuid and therapist_id = $2::uuid",
     [FIXTURES.clientAssigned, FIXTURES.btA],
@@ -3796,20 +3790,20 @@ const assertApprovalHandoffAndDecisionContract = async (client, connectionString
       [revokedClientAccessHandoff.approval_id],
     );
     assert(pendingAccessApproval.rows[0]?.status === "pending", "Forbidden client-access decision mutated approval");
-    const revokedBtApprovalCount = await withActor(
+    const revokedBtCanDecide = await withActor(
       client,
       "authenticated",
       "authenticated",
       FIXTURES.btA,
       async () => {
         const { rows } = await client.query(
-          "select count(*)::integer as count from public.agent_work_approvals where id = $1::uuid",
+          "select public.current_user_can_decide_agent_work_approval($1::uuid) as allowed",
           [revokedClientAccessHandoff.approval_id],
         );
-        return rows[0]?.count ?? 0;
+        return rows[0]?.allowed;
       },
     );
-    assert(revokedBtApprovalCount === 0, "Approver retained approval visibility after client access loss");
+    assert(revokedBtCanDecide === false, "Approver retained decision authority after client access loss");
     const sweptAccess = await client.query(
       "select public.revoke_stale_agent_work_approvals(now(), 500) as result",
     );
@@ -4153,19 +4147,13 @@ const assertApprovalHandoffAndDecisionContract = async (client, connectionString
   assert(!auditText.includes(HASH_A) && !auditText.includes(HASH_B), "Approval audit disclosed a full hash");
   assert(!auditText.includes("example.invalid"), "Approval audit disclosed an email-like fixture value");
 
-  const btApprovalEventCount = await withActor(
-    client,
-    "authenticated",
-    "authenticated",
-    FIXTURES.btA,
-    async () => {
-      const { rows } = await client.query(
-        "select count(*)::integer as count from public.agent_work_events where event_type like 'approval.%'",
-      );
-      return rows[0]?.count ?? 0;
-    },
+  await expectFailure(
+    "authenticated approval governance event read",
+    () => withActor(client, "authenticated", "authenticated", FIXTURES.btA, async () => {
+      await client.query("select count(*) from public.agent_work_events where event_type like 'approval.%'");
+    }),
+    /permission denied/i,
   );
-  assert(btApprovalEventCount === 0, "Read-only client viewer could read approval governance events");
 };
 
 const main = async () => {

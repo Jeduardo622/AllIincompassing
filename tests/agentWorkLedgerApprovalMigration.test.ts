@@ -102,7 +102,7 @@ describe("agent work approval migration contract", () => {
 
   it("builds decision responses from a bounded service reread after the service-only RPC", () => {
     const decisionRuntime = itemFunctionSource.match(
-      /decideApproval: async \(input\) => \{[\s\S]+?\n\s*\},\n\s*\}\)\(request\)/,
+      /decideApproval: async \(input\) => \{[\s\S]+?\r?\n\s*\},\r?\n\s*\}\)\(request\)/,
     )?.[0];
 
     expect(decisionRuntime).toMatch(

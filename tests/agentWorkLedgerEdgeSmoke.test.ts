@@ -46,10 +46,21 @@ describe("agent work ledger Edge smoke contract", () => {
     expect(deferredBlock).toContain("/reconcile");
   });
 
-  it("keeps CalOptima provider invocation ledger-bound", () => {
-    expect(generator).toContain("ledger_correlation_required");
+  it("keeps CalOptima provider invocation tenant-bound across ledger and legacy requests", () => {
+    const ledgerParseOffset = generator.indexOf("ledgerGenerationSchema.safeParse(body)");
+    const legacyParseOffset = generator.indexOf("requestSchema.safeParse(body)");
+    const legacyScopeOffset = generator.indexOf("dependencies.lookupLegacyAssessment(db");
+    const completionOffset = generator.indexOf("dependencies.invokeCompletion(");
+
+    expect(ledgerParseOffset).toBeGreaterThan(-1);
+    expect(legacyParseOffset).toBeGreaterThan(ledgerParseOffset);
     expect(generator).toContain("deriveStableLedgerRequestId");
-    expect(generator).not.toMatch(/else\s*\{[\s\S]{0,500}requestSchema\.safeParse\(body\)/);
+    expect(generator).toContain('return { kind: "error", status: 403, code: "generation_scope_denied", binding: "legacy" }');
+    expect(legacyScopeOffset).toBeGreaterThan(legacyParseOffset);
+    expect(completionOffset).toBeGreaterThan(legacyScopeOffset);
+    expect(generator).toContain("assessmentDocumentId: resolved.payload.assessment_document_id");
+    expect(generator).toContain("organizationId: resolved.payload.organization_id");
+    expect(generator).toContain("clientId: resolved.payload.client_id");
   });
 
   it("resolves assessment scope through the actor-checked service RPC", () => {

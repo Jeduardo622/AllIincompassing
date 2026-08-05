@@ -62,11 +62,11 @@ const zeroSummary = () => ({
       "agent_work_retention_holds",
       "agent_work_retention_receipts",
       "agent_work_caloptima_draft_packets",
-      "agent_execution_traces",
       "q_agent_work_steps",
       "a_agent_work_steps",
     ].map((key) => [key, 0]),
   ),
+  scoped_counts: { agent_execution_traces: 0 },
   fixture_counts: { organizations: 0, clients: 0, assessments: 0, users: 0 },
   vault_extension_present: false,
   session_replication_role: "origin",
@@ -149,7 +149,7 @@ describe("agent work hosted shadow proof contract", () => {
   });
 
   it("keeps hosted credentials step-scoped and uses repository secret fallbacks", () => {
-    const workflowHeader = workflow.split(/\njobs:\n/s)[0] ?? workflow;
+    const workflowHeader = workflow.split(/\r?\njobs:\r?\n/s)[0] ?? workflow;
     expect(workflowHeader).not.toMatch(
       /SUPABASE_(?:ACCESS_TOKEN|SERVICE_ROLE_KEY|PUBLISHABLE_KEY):/,
     );
@@ -288,14 +288,34 @@ describe("agent work hosted shadow proof contract", () => {
           parsed: { success: true, data: structuredClone(itemA) },
         };
       },
-      managementRead: async () => ({
-        forbidden_counts: {
-          attempts: 0,
-          effects: 0,
-          traces: 0,
-          draft_packets: 0,
-        },
-      }),
+      managementRead: async (query: string, parameters: string[]) => {
+        expect(query).toMatch(
+          /from public\.agent_work_attempts\s+where organization_id in \(\$1::uuid, \$2::uuid\)/,
+        );
+        expect(query).toMatch(
+          /from public\.agent_work_effects\s+where organization_id in \(\$1::uuid, \$2::uuid\)/,
+        );
+        expect(query).toMatch(
+          /from public\.agent_execution_traces\s+where organization_id in \(\$1::uuid, \$2::uuid\)\s+or work_item_id in \(\$3::uuid, \$4::uuid\)/,
+        );
+        expect(query).toMatch(
+          /from public\.agent_work_caloptima_draft_packets\s+where organization_id in \(\$1::uuid, \$2::uuid\)/,
+        );
+        expect(parameters).toEqual([
+          initialState.fixture.organizationAId,
+          initialState.fixture.organizationBId,
+          itemA.id,
+          itemB.id,
+        ]);
+        return {
+          forbidden_counts: {
+            attempts: 0,
+            effects: 0,
+            traces: 0,
+            draft_packets: 0,
+          },
+        };
+      },
       assertSanitizedItem,
       buildCleanupBatch,
       managementWrite: async (query: string) => {
@@ -328,6 +348,40 @@ describe("agent work hosted shadow proof contract", () => {
       "cleanup:organizations",
       "artifact:final",
     ]);
+  });
+
+  it("persists the first work-item cleanup scope before a later create fails", async () => {
+    const state = deriveState("partial-proof", "1");
+    state.fixturesCreated = true;
+    state.shadowRequested = true;
+    const itemA = sanitizedItem(
+      "10000000-0000-4000-8000-000000000021",
+      "10000000-0000-4000-8000-000000000022",
+    );
+    let createCount = 0;
+    const writes: (typeof state)[] = [];
+
+    await expect(
+      executePhase("proof", {
+        declaredRuntimeMode: () => "shadow",
+        readState: async () => structuredClone(state),
+        signIn: async () => "synthetic-token",
+        createWorkItem: async () => {
+          createCount += 1;
+          if (createCount === 1) return structuredClone(itemA);
+          throw new Error("injected_second_create_failure");
+        },
+        writeState: async (nextState: typeof state) => {
+          writes.push(structuredClone(nextState));
+        },
+      }),
+    ).rejects.toThrow("injected_second_create_failure");
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0].proof).toEqual({
+      workItemAId: itemA.id,
+      workItemBId: null,
+    });
   });
 
   it("uses real auth, tenant fixtures, and real create/list/detail requests", () => {
@@ -387,6 +441,15 @@ describe("agent work hosted shadow proof contract", () => {
       assertPreflightSummary(
         {
           ...summary,
+          scoped_counts: { agent_execution_traces: 1 },
+        },
+        { final: true },
+      ),
+    ).toThrow("Expected synthetic-scope zero for agent_execution_traces.");
+    expect(() =>
+      assertPreflightSummary(
+        {
+          ...summary,
           event_trigger_enabled: false,
         },
         { final: true },
@@ -394,10 +457,22 @@ describe("agent work hosted shadow proof contract", () => {
     ).toThrow("Append-only event trigger is not enabled.");
   });
 
+  it("scopes shared trace residue checks to synthetic organizations and work items", () => {
+    expect(script).toMatch(
+      /'agent_execution_traces', \(\s*select count\(\*\)::integer from public\.agent_execution_traces\s+where organization_id in \(\$1::uuid, \$2::uuid\)\s+or work_item_id in \(\$9::uuid, \$10::uuid\)\s*\)/,
+    );
+    expect(script).not.toContain(
+      "'agent_execution_traces', (select count(*)::integer from public.agent_execution_traces),",
+    );
+  });
+
   it("builds one crash-atomic FK-enforced exact-scope cleanup batch", () => {
+    expect(() => buildCleanupBatch(deriveState("777", "1"))).not.toThrow();
     const state = deriveState("777", "1");
     state.users[0].id = "10000000-0000-4000-8000-000000000001";
     state.users[1].id = "10000000-0000-4000-8000-000000000002";
+    state.proof.workItemAId = "10000000-0000-4000-8000-000000000003";
+    state.proof.workItemBId = "10000000-0000-4000-8000-000000000004";
     const cleanup = buildCleanupBatch(state);
     expect(cleanup).toContain("begin;");
     expect(cleanup).not.toContain("session_replication_role = replica");
@@ -412,6 +487,12 @@ describe("agent work hosted shadow proof contract", () => {
     expect(cleanup).toContain("synthetic_agent_work_cleanup_incomplete");
     expect(cleanup).toContain("public.agent_work_caloptima_draft_packets");
     expect(cleanup).toContain("public.agent_work_retention_receipts");
+    expect(cleanup).toMatch(
+      /delete from public\.agent_execution_traces where organization_id in \([^)]+\)\s+or work_item_id in \([^)]+\);/,
+    );
+    expect(cleanup).toMatch(
+      /exists \(\s*select 1 from public\.agent_execution_traces\s+where organization_id in \([^)]+\)\s+or work_item_id in \([^)]+\)\s*\)/,
+    );
     expect(cleanup).not.toContain("metadata");
     expect(cleanup).not.toContain(" like ");
     expect(cleanup).not.toContain("%");

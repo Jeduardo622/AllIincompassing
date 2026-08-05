@@ -69,10 +69,10 @@ const LEDGER_COUNT_KEYS = Object.freeze([
   "agent_work_retention_holds",
   "agent_work_retention_receipts",
   "agent_work_caloptima_draft_packets",
-  "agent_execution_traces",
   "q_agent_work_steps",
   "a_agent_work_steps",
 ]);
+const SYNTHETIC_SCOPE_COUNT_KEYS = Object.freeze(["agent_execution_traces"]);
 
 const stateDir = path.join(
   process.env.RUNNER_TEMP ?? os.tmpdir(),
@@ -110,6 +110,9 @@ const validateUuidLiteral = (value) => {
   );
   return value.toLowerCase();
 };
+
+const validateUuidOrNilLiteral = (value) =>
+  value === NIL_UUID ? NIL_UUID : validateUuidLiteral(value);
 
 const uuidFromSeed = (seed) => {
   const hex = sha256(seed).slice(0, 32).split("");
@@ -462,9 +465,15 @@ select jsonb_build_object(
     'agent_work_retention_holds', (select count(*)::integer from public.agent_work_retention_holds),
     'agent_work_retention_receipts', (select count(*)::integer from public.agent_work_retention_receipts),
     'agent_work_caloptima_draft_packets', (select count(*)::integer from public.agent_work_caloptima_draft_packets),
-    'agent_execution_traces', (select count(*)::integer from public.agent_execution_traces),
     'q_agent_work_steps', (select count(*)::integer from pgmq.q_agent_work_steps),
     'a_agent_work_steps', (select count(*)::integer from pgmq.a_agent_work_steps)
+  ),
+  'scoped_counts', jsonb_build_object(
+    'agent_execution_traces', (
+      select count(*)::integer from public.agent_execution_traces
+      where organization_id in ($1::uuid, $2::uuid)
+        or work_item_id in ($9::uuid, $10::uuid)
+    )
   ),
   'fixture_counts', jsonb_build_object(
     'organizations', (select count(*)::integer from public.organizations where id in ($1::uuid, $2::uuid)),
@@ -491,6 +500,8 @@ const preflightParameters = (state) => [
   state.fixture.assessmentBId,
   state.users[0].email,
   state.users[1].email,
+  state.proof?.workItemAId ?? NIL_UUID,
+  state.proof?.workItemBId ?? NIL_UUID,
 ];
 
 export const assertPreflightSummary = (summary, { final = false } = {}) => {
@@ -546,6 +557,12 @@ export const assertPreflightSummary = (summary, { final = false } = {}) => {
     assert(
       summary?.ledger_counts?.[key] === 0,
       `Expected global zero for ${key}.`,
+    );
+  }
+  for (const key of SYNTHETIC_SCOPE_COUNT_KEYS) {
+    assert(
+      summary?.scoped_counts?.[key] === 0,
+      `Expected synthetic-scope zero for ${key}.`,
     );
   }
   if (final) {
@@ -740,14 +757,21 @@ const createWorkItem = async (token, assessmentDocumentId) => {
 export const buildCleanupBatch = (state) => {
   const orgA = validateUuidLiteral(state.fixture.organizationAId);
   const orgB = validateUuidLiteral(state.fixture.organizationBId);
-  const userA = validateUuidLiteral(state.users[0].id || NIL_UUID);
-  const userB = validateUuidLiteral(state.users[1].id || NIL_UUID);
+  const userA = validateUuidOrNilLiteral(state.users[0].id || NIL_UUID);
+  const userB = validateUuidOrNilLiteral(state.users[1].id || NIL_UUID);
   const clientA = validateUuidLiteral(state.fixture.clientAId);
   const clientB = validateUuidLiteral(state.fixture.clientBId);
   const assessmentA = validateUuidLiteral(state.fixture.assessmentAId);
   const assessmentB = validateUuidLiteral(state.fixture.assessmentBId);
+  const workItemA = validateUuidOrNilLiteral(
+    state.proof?.workItemAId || NIL_UUID,
+  );
+  const workItemB = validateUuidOrNilLiteral(
+    state.proof?.workItemBId || NIL_UUID,
+  );
   const orgScope = `'${orgA}'::uuid, '${orgB}'::uuid`;
   const userScope = `'${userA}'::uuid, '${userB}'::uuid`;
+  const workItemScope = `'${workItemA}'::uuid, '${workItemB}'::uuid`;
   return `
 begin;
 select pg_advisory_xact_lock(2750805);
@@ -772,7 +796,8 @@ $guard$;
 delete from pgmq.a_agent_work_steps where message->>'organizationId' in ('${orgA}', '${orgB}');
 delete from pgmq.q_agent_work_steps where message->>'organizationId' in ('${orgA}', '${orgB}');
 delete from public.agent_work_caloptima_draft_packets where organization_id in (${orgScope});
-delete from public.agent_execution_traces where organization_id in (${orgScope});
+delete from public.agent_execution_traces where organization_id in (${orgScope})
+  or work_item_id in (${workItemScope});
 delete from public.agent_work_effects where organization_id in (${orgScope});
 alter table public.agent_work_events disable trigger agent_work_events_prevent_update;
 delete from public.agent_work_events where organization_id in (${orgScope});
@@ -798,6 +823,11 @@ begin
   if exists (select 1 from public.agent_work_items where organization_id in (${orgScope}))
     or exists (select 1 from public.agent_work_events where organization_id in (${orgScope}))
     or exists (select 1 from public.agent_work_steps where organization_id in (${orgScope}))
+    or exists (
+      select 1 from public.agent_execution_traces
+      where organization_id in (${orgScope})
+        or work_item_id in (${workItemScope})
+    )
     or exists (select 1 from pgmq.q_agent_work_steps where message->>'organizationId' in ('${orgA}', '${orgB}'))
     or exists (select 1 from pgmq.a_agent_work_steps where message->>'organizationId' in ('${orgA}', '${orgB}')) then
     raise exception 'synthetic_agent_work_cleanup_incomplete';
@@ -892,7 +922,8 @@ const preflightSetupPhase = async (overrides) => {
       users: 2,
       clients: 2,
       assessments: 2,
-      zero_surfaces_verified: LEDGER_COUNT_KEYS.length,
+      zero_surfaces_verified:
+        LEDGER_COUNT_KEYS.length + SYNTHETIC_SCOPE_COUNT_KEYS.length,
     },
     timingsMs: { preflight_setup: Date.now() - startedAt },
   });
@@ -917,25 +948,26 @@ const proofPhase = async (overrides) => {
     tokenA,
     state.fixture.assessmentAId,
   );
+  state.proof.workItemAId = validateUuidLiteral(itemA.id);
+  await operations.writeState(state);
   const repeatedA = await operations.createWorkItem(
     tokenA,
     state.fixture.assessmentAId,
-  );
-  const itemB = await operations.createWorkItem(
-    tokenB,
-    state.fixture.assessmentBId,
   );
   assert(
     itemA.id === repeatedA.id,
     "Idempotent create returned a different work item.",
   );
+  const itemB = await operations.createWorkItem(
+    tokenB,
+    state.fixture.assessmentBId,
+  );
+  state.proof.workItemBId = validateUuidLiteral(itemB.id);
+  await operations.writeState(state);
   assert(
     itemA.id !== itemB.id,
     "Different tenant target returned the same work item.",
   );
-  state.proof.workItemAId = validateUuidLiteral(itemA.id);
-  state.proof.workItemBId = validateUuidLiteral(itemB.id);
-  await operations.writeState(state);
 
   const listA = await operations.requestAgentWork(
     tokenA,
@@ -1003,14 +1035,35 @@ const proofPhase = async (overrides) => {
   );
 
   const proofRow = firstRow(
-    await operations.managementRead(`
+    await operations.managementRead(
+      `
     select jsonb_build_object(
-      'attempts', (select count(*)::integer from public.agent_work_attempts),
-      'effects', (select count(*)::integer from public.agent_work_effects),
-      'traces', (select count(*)::integer from public.agent_execution_traces),
-      'draft_packets', (select count(*)::integer from public.agent_work_caloptima_draft_packets)
+      'attempts', (
+        select count(*)::integer from public.agent_work_attempts
+        where organization_id in ($1::uuid, $2::uuid)
+      ),
+      'effects', (
+        select count(*)::integer from public.agent_work_effects
+        where organization_id in ($1::uuid, $2::uuid)
+      ),
+      'traces', (
+        select count(*)::integer from public.agent_execution_traces
+        where organization_id in ($1::uuid, $2::uuid)
+          or work_item_id in ($3::uuid, $4::uuid)
+      ),
+      'draft_packets', (
+        select count(*)::integer from public.agent_work_caloptima_draft_packets
+        where organization_id in ($1::uuid, $2::uuid)
+      )
     ) as forbidden_counts
-  `),
+  `,
+      [
+        state.fixture.organizationAId,
+        state.fixture.organizationBId,
+        itemA.id,
+        itemB.id,
+      ],
+    ),
   );
   const forbiddenCounts = proofRow.forbidden_counts ?? {};
   assert(

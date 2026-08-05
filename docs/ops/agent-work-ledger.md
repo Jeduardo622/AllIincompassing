@@ -520,6 +520,8 @@ On any gate, policy, tenant, secret, queue, or postcondition failure: set Ledger
 
 The hosted shadow proof is owner-dispatched, shadow-only, and human review gated. It starts in `disabled`, temporarily sets only `shadow`, then restores `disabled` before cleanup. It must not enter `advisory` or `active`.
 
+`agent_execution_traces` is a shared observability table, not a Ledger-owned zero-baseline table. Every hosted trace check matches either deterministic synthetic organization ID or either exact synthetic work-item ID; preflight uses NIL work-item placeholders before creation. Cleanup deletes that same exact synthetic trace scope and final verification requires it to be empty, so a malformed trace cannot evade cleanup through missing or incorrect organization attribution. Historical traces unrelated to those synthetic identities do not block the proof and are never read into artifacts or deleted. Ledger-owned tables, Queue, and archive retain their global-zero preflight requirement; any synthetic-scope attempt, effect, trace, or draft-packet row still fails the shadow proof.
+
 The protected workflow uses `workflow_dispatch` with exact acknowledgement `I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF`, validates the immutable current `main` SHA, checks out only that SHA, and keeps secrets step-scoped. Dispatch must use the `main` workflow ref and identify the merged WIN-275 PR whose merge commit is the current `main` head. The workflow fails unless that PR has a current-head `APPROVED` review from an independent human GitHub user. It runs one job so private temp state never crosses artifacts.
 
 The workflow owns these internal phases; operators must not invoke them directly:

@@ -1,0 +1,43 @@
+# WIN-275 Hosted Shadow Proof Review Attestation
+
+## Purpose
+
+PR `#897` merged as `f053fa4562e8d51a2d984ee2627bd7a8a863005f` without a submitted independent human `APPROVED` review. It is therefore a process exception and must never be supplied to the hosted shadow proof workflow.
+
+This document binds a successor review to the exact protected implementation already on `main`. Approval of the successor PR means the reviewer inspected the files and invariants below, not merely this documentation diff.
+
+## Review Target
+
+- implementation PR: `#897`
+- implementation head: `326c6828fadb686af3b64e76ea2333bf0e5773f4`
+- implementation merge: `f053fa4562e8d51a2d984ee2627bd7a8a863005f`
+- exact-head CI: `31028802198` (`success`, including real auth/session browser smoke and `ci-gate`)
+- tenant safety: `31028801903` (`success`)
+- Lighthouse: `31028801878` (`success`)
+
+| Review surface | SHA-256 at implementation merge |
+| --- | --- |
+| `.github/workflows/agent-work-ledger-hosted-shadow-proof.yml` | `522f9adc62e3e4012425137f4a192020d9631a2d02d2dde036979a1b50774080` |
+| `scripts/agent-work-ledger-hosted-shadow-proof.mjs` | `3973247ceb17fdd3f7738c69bb3e5377e01c9e0d720106163388aade3a078b0b` |
+| `tests/agentWorkLedgerHostedShadowProof.test.ts` | `e9a80a2e714e518138716e768fa56e96666a9c979cc3fed17a2e85aa260bf6fb` |
+| `tests/workflows/github-actions-node24-runtime.test.ts` | `b39b6c2857cee68ad9c8ddcfdb531e9b7bc90ecd506487ebb2721f82d5ea139a` |
+| `package.json` | `b88298eafedf50bdbd95e85a7ea59afd51d9228405a51e87a85dbd3baa85f42f` |
+| `docs/ops/agent-work-ledger.md` | `53a01487ee93897a1b542d5307def546fbc6fd301c3900d791de3372d20505ed` |
+
+## Required Human Review
+
+The independent reviewer must confirm:
+
+1. Dispatch is owner-only, bound to the immutable current `main` SHA and a merged WIN-275 PR, and fails closed without an independent current-head human approval.
+2. Execution can enter only `shadow`; `advisory` and `active` are rejected.
+3. Fixtures are deterministic and synthetic, tenant isolation and idempotency are proved, and no model/provider or clinical mutation path runs.
+4. Runtime mode is restored to `disabled` by redundant workflow and script paths.
+5. Cleanup is exact-scope, FK-enforced, trigger-specific, transactional, and followed by zero-residue verification.
+6. Uploaded evidence is sanitized and PHI-free; private temporary state and credentials are not uploaded.
+7. Retention remains `policy_unapproved`, deletion remains zero, and this proof does not authorize advisory promotion.
+
+## Dispatch Rule
+
+The successor attestation PR must receive a current-head `APPROVED` review from an independent human GitHub user before merge. After it merges, its merge commit must remain the current `main` head. The owner may then dispatch `agent-work-ledger-hosted-shadow-proof.yml` using the successor PR number and that exact merge SHA.
+
+If `main` advances first, approval is dismissed, any listed hash changes, or any required invariant cannot be confirmed, do not dispatch. Route a new review checkpoint instead.

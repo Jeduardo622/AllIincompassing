@@ -1,0 +1,211 @@
+name: Agent Work Ledger Hosted Shadow Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact approved main SHA
+        required: true
+        type: string
+      pull_request_number:
+        description: Merged human-approved WIN-275 pull request
+        required: true
+        type: string
+      approval_acknowledgement:
+        description: Exact owner approval acknowledgement
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-work-ledger-hosted-shadow-proof-main
+  cancel-in-progress: false
+
+jobs:
+  proof:
+    name: Hosted shadow proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Validate owner approval and immutable main SHA
+        id: approval
+        env:
+          APPROVAL_ACKNOWLEDGEMENT: ${{ inputs.approval_acknowledgement }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ inputs.pull_request_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+
+          const commitSha = process.env.COMMIT_SHA ?? '';
+          const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
+          const repository = process.env.REPOSITORY ?? '';
+          if (!/^[0-9a-f]{40}$/.test(commitSha)) {
+            throw new Error('commit_sha must be exactly 40 lowercase hexadecimal characters.');
+          }
+          if (process.env.APPROVAL_ACKNOWLEDGEMENT !== 'I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF') {
+            throw new Error('Exact protected execution approval acknowledgement is required.');
+          }
+          if (process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) {
+            throw new Error('Only the repository owner may approve this protected proof.');
+          }
+          if (process.env.GITHUB_REF !== 'refs/heads/main') {
+            throw new Error('Protected proof dispatch must use the main workflow ref.');
+          }
+          if (!/^[1-9][0-9]*$/.test(pullRequestNumber)) {
+            throw new Error('pull_request_number must be a positive integer.');
+          }
+          if (!/^[^/]+\/[^/]+$/.test(repository)) {
+            throw new Error('Repository identity is invalid.');
+          }
+
+          const githubHeaders = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+          };
+          const response = await fetch(`https://api.github.com/repos/${repository}/git/ref/heads/main`, {
+            headers: githubHeaders,
+          });
+          if (!response.ok) {
+            throw new Error(`Unable to validate main ref: HTTP ${response.status}.`);
+          }
+          const mainRef = await response.json();
+          if (mainRef.ref !== 'refs/heads/main') {
+            throw new Error('Validated ref must be main.');
+          }
+          const mainHeadSha = mainRef.object?.sha ?? '';
+          if (mainHeadSha !== commitSha) {
+            throw new Error('commit_sha must equal the immutable current main head SHA.');
+          }
+
+          const pullResponse = await fetch(
+            `https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}`,
+            { headers: githubHeaders },
+          );
+          if (!pullResponse.ok) {
+            throw new Error(`Unable to validate pull request: HTTP ${pullResponse.status}.`);
+          }
+          const pull = await pullResponse.json();
+          if (pull.state !== 'closed' || pull.merged !== true || !pull.merged_at) {
+            throw new Error('Approval pull request must be merged.');
+          }
+          if (pull.base?.ref !== 'main' || pull.head?.repo?.full_name !== repository) {
+            throw new Error('Approval pull request repository boundary is invalid.');
+          }
+          if (pull.merge_commit_sha !== commitSha) {
+            throw new Error('Current main SHA is not the approval pull request merge commit.');
+          }
+          if (!/(^|[^A-Z0-9])WIN-275([^A-Z0-9]|$)/i.test(`${pull.title ?? ''}\n${pull.body ?? ''}`)) {
+            throw new Error('Approval pull request must reference WIN-275.');
+          }
+
+          const reviewsResponse = await fetch(
+            `https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}/reviews?per_page=100`,
+            { headers: githubHeaders },
+          );
+          if (!reviewsResponse.ok) {
+            throw new Error(`Unable to validate pull request reviews: HTTP ${reviewsResponse.status}.`);
+          }
+          const latestByReviewer = new Map();
+          for (const review of await reviewsResponse.json()) {
+            const login = review.user?.login;
+            if (login) latestByReviewer.set(login, review);
+          }
+          const approved = [...latestByReviewer.values()].some((review) =>
+            review.state === 'APPROVED' &&
+            review.commit_id === pull.head?.sha &&
+            review.user?.login !== process.env.GITHUB_REPOSITORY_OWNER &&
+            review.user?.type === 'User',
+          );
+          if (!approved) {
+            throw new Error('A current-head approval from an independent human reviewer is required.');
+          }
+
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\n`, { encoding: 'utf8' });
+          NODE
+
+      - name: Checkout validated commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ steps.approval.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Verify immutable checkout
+        env:
+          EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize artifact directories
+        run: |
+          mkdir -p "$RUNNER_TEMP/agent-work-ledger-hosted-shadow-proof-private"
+          mkdir -p "$RUNNER_TEMP/agent-work-ledger-hosted-shadow-proof-public"
+
+      - name: Preflight and setup synthetic shadow proof
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: node scripts/agent-work-ledger-hosted-shadow-proof.mjs preflight/setup
+
+      - name: Execute hosted shadow proof
+        env:
+          AGENT_WORK_LEDGER_RUNTIME_MODE: shadow
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: AGENT_WORK_LEDGER_RUNTIME_MODE=shadow node scripts/agent-work-ledger-hosted-shadow-proof.mjs proof
+
+      - name: Restore disabled runtime mode
+        if: always()
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase secrets set AGENT_WORK_LEDGER_RUNTIME_MODE=disabled --project-ref wnnjeqheqxxyrgsjmygy
+
+      - name: Verify disabled mode and cleanup
+        if: always()
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: node scripts/agent-work-ledger-hosted-shadow-proof.mjs cleanup/verify
+
+      - name: Final disabled fallback
+        if: always()
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase secrets set AGENT_WORK_LEDGER_RUNTIME_MODE=disabled --project-ref wnnjeqheqxxyrgsjmygy
+
+      - name: Upload sanitized artifact
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: agent-work-ledger-hosted-shadow-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/agent-work-ledger-hosted-shadow-proof-public/**
+          if-no-files-found: error
+          retention-days: 3

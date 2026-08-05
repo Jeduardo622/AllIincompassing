@@ -515,3 +515,25 @@ Deploy code and migrations with runtime `disabled`, zero hosted jobs, and zero h
 - an authenticated synthetic legacy-shaped request returns `503 legacy_generation_disabled` before assessment lookup/provider execution, and scheduler cadence is owner-approved
 
 On any gate, policy, tenant, secret, queue, or postcondition failure: set Ledger mode to `disabled` first, call the hosted disable function, preserve sanitized PHI-free counts/hashes/reason codes, and verify both fixed jobs are absent. Do not silently drain or delete queued work; reconcile it against authoritative domain state. Remove the four hosted Vault names only after the disabled state and evidence are recorded. The operator-only scheduler functions are configuration controls, not promotion authority: do not enable hosted jobs while retention remains `policy_unapproved` or before draft-write and cadence approvals. Logs, Cron bodies, queue messages, events, traces, and exported artifacts must contain no PHI, prompts, source evidence, or secret material.
+
+## Hosted Shadow Proof
+
+The hosted shadow proof is owner-dispatched, shadow-only, and human review gated. It starts in `disabled`, temporarily sets only `shadow`, then restores `disabled` before cleanup. It must not enter `advisory` or `active`.
+
+The protected workflow uses `workflow_dispatch` with exact acknowledgement `I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF`, validates the immutable current `main` SHA, checks out only that SHA, and keeps secrets step-scoped. Dispatch must use the `main` workflow ref and identify the merged WIN-275 PR whose merge commit is the current `main` head. The workflow fails unless that PR has a current-head `APPROVED` review from an independent human GitHub user. It runs one job so private temp state never crosses artifacts.
+
+The workflow owns these internal phases; operators must not invoke them directly:
+
+```powershell
+node scripts/agent-work-ledger-hosted-shadow-proof.mjs preflight/setup
+node scripts/agent-work-ledger-hosted-shadow-proof.mjs proof
+node scripts/agent-work-ledger-hosted-shadow-proof.mjs cleanup/verify
+```
+
+After disabled restoration, Ledger and queue cleanup runs as one atomic Management API transaction scoped to strictly validated synthetic UUIDs. Foreign keys remain enforced; only the append-only event trigger is disabled around the exact synthetic event delete and re-enabled before commit. A failed transaction rolls that trigger change back. Parameterized queries then remove only the two synthetic auth identities and organizations. Direct disabled-mode restore steps run both before and after cleanup as independent fallbacks. Optional Vault access is guarded by extension detection. This is not a reusable cleanup API or retention deletion path. Sanitized evidence remains PHI-free and limited to fixed booleans, counts, timings, and hashes.
+
+Validate the workflow/script contract locally with `npm run agent-work:hosted-shadow-proof:contract`. After the reviewed PR is merged and remains the current `main` head, the repository owner may dispatch the protected workflow with:
+
+```powershell
+gh workflow run agent-work-ledger-hosted-shadow-proof.yml --ref main -f commit_sha=<40-character-main-sha> -f pull_request_number=<merged-pr-number> -f approval_acknowledgement=I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF
+```

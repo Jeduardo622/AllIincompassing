@@ -13,6 +13,7 @@ type ActionStep = {
 const workflowDir = path.join(process.cwd(), '.github', 'workflows');
 
 const expectedWorkflowFiles = [
+  'agent-work-ledger-hosted-shadow-proof.yml',
   'auth-verification.yml',
   'bcba-smoke-janitor.yml',
   'bt-aba-disposable-browser-proof.yml',

@@ -1,4 +1,13 @@
-import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -25,13 +34,131 @@ const activationPlanPath = path.resolve(
 const handoffPath = path.resolve(
   "docs/ai/handoffs/agent-work-ledger-foundation.md",
 );
+const laneContractPath = path.resolve("docs/ai/cto-lane-contract.md");
+const highRiskPathsPath = path.resolve("docs/ai/high-risk-paths.md");
+const soloAttestationPath = path.resolve(
+  "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
+);
 
 const workflow = readFileSync(workflowPath, "utf8");
 const script = readFileSync(scriptPath, "utf8");
 const packageJson = readFileSync(packageJsonPath, "utf8");
-const docs = [opsDocPath, activationPlanPath, handoffPath].map((filePath) =>
+const proofDocs = [opsDocPath, activationPlanPath, handoffPath].map((filePath) =>
   readFileSync(filePath, "utf8"),
 );
+const policyDocs = [laneContractPath, highRiskPathsPath].map((filePath) =>
+  readFileSync(filePath, "utf8"),
+);
+const docs = [...proofDocs, ...policyDocs];
+const requiredCiChecks = [
+  "policy",
+  "lint-typecheck",
+  "unit-tests",
+  "build",
+  "tier0-browser",
+  "auth-browser-smoke",
+  "ci-gate",
+];
+
+const extractWorkflowNodeScript = (stepName: string) => {
+  const stepStart = workflow.indexOf(`- name: ${stepName}`);
+  expect(stepStart).toBeGreaterThanOrEqual(0);
+  const nextStep = workflow.indexOf("\n      - name:", stepStart + 1);
+  const step = workflow.slice(stepStart, nextStep < 0 ? undefined : nextStep);
+  const match = step.match(
+    /node --input-type=module <<'NODE'\r?\n([\s\S]*?)\r?\n\s+NODE/,
+  );
+  expect(match).not.toBeNull();
+  return (match?.[1] ?? "").replace(/^ {10}/gm, "");
+};
+
+type MockResponse = { body: unknown; status?: number };
+
+const runApprovalValidator = (
+  acknowledgement: string,
+  responses: Record<string, MockResponse>,
+) => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "ledger-approval-"));
+  const outputPath = path.join(tempDir, "github-output.txt");
+  writeFileSync(outputPath, "", "utf8");
+  const prelude = `
+    const responses = JSON.parse(Buffer.from(process.env.MOCK_RESPONSES_B64, 'base64').toString('utf8'));
+    globalThis.fetch = async (input) => {
+      const response = responses[String(input)];
+      if (!response) return new Response(JSON.stringify({ message: 'not mocked' }), { status: 404 });
+      return new Response(JSON.stringify(response.body), { status: response.status ?? 200 });
+    };
+  `;
+  const preludeUrl = `data:text/javascript;base64,${Buffer.from(prelude).toString("base64")}`;
+  const result = spawnSync(
+    process.execPath,
+    [`--import=${preludeUrl}`, "--input-type=module"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        APPROVAL_ACKNOWLEDGEMENT: acknowledgement,
+        COMMIT_SHA: "a".repeat(40),
+        GITHUB_ACTOR: "Jeduardo622",
+        GITHUB_ACTOR_ID: "42",
+        GITHUB_OUTPUT: outputPath,
+        GITHUB_REF: "refs/heads/main",
+        GITHUB_REPOSITORY_OWNER: "Jeduardo622",
+        GITHUB_TOKEN: "synthetic-token",
+        MOCK_RESPONSES_B64: Buffer.from(JSON.stringify(responses)).toString(
+          "base64",
+        ),
+        PULL_REQUEST_NUMBER: "900",
+        REPOSITORY: "Jeduardo622/AllIincompassing",
+      },
+      input: extractWorkflowNodeScript(
+        "Validate owner approval and immutable main SHA",
+      ),
+    },
+  );
+  const output = readFileSync(outputPath, "utf8");
+  rmSync(tempDir, { recursive: true, force: true });
+  return { ...result, output };
+};
+
+const baseApprovalResponses = () => {
+  const repository = "Jeduardo622/AllIincompassing";
+  const api = `https://api.github.com/repos/${repository}`;
+  const headSha = "b".repeat(40);
+  return {
+    api,
+    headSha,
+    responses: {
+      [`${api}/git/ref/heads/main`]: {
+        body: { ref: "refs/heads/main", object: { sha: "a".repeat(40) } },
+      },
+      [`${api}/pulls/900`]: {
+        body: {
+          base: { ref: "main" },
+          body: "WIN-275",
+          head: { repo: { full_name: repository }, sha: headSha },
+          merge_commit_sha: "a".repeat(40),
+          merged: true,
+          merged_at: "2026-08-05T20:00:00Z",
+          state: "closed",
+          title: "WIN-275 solo attestation",
+        },
+      },
+      [`${api}/commits/${headSha}/check-runs?per_page=100&page=1`]: {
+        body: {
+          check_runs: requiredCiChecks.map((name) => ({
+              app: { slug: "github-actions" },
+              conclusion: "success",
+              head_sha: headSha,
+              name,
+              status: "completed",
+            })),
+        },
+      },
+    } as Record<string, MockResponse>,
+  };
+};
 
 const zeroSummary = () => ({
   runtime_config: { present: true, actions_disabled: false },
@@ -134,7 +261,7 @@ describe("agent work hosted shadow proof contract", () => {
     expect(workflow).toContain("timeout-minutes: 45");
   });
 
-  it("binds execution to the merged WIN-275 PR and current independent approval", () => {
+  it("binds execution to the merged WIN-275 PR and preserves independent approval", () => {
     expect(workflow).toContain("pull.merged !== true");
     expect(workflow).toContain("pull.merge_commit_sha !== commitSha");
     expect(workflow).toContain("Approval pull request must reference WIN-275.");
@@ -146,6 +273,283 @@ describe("agent work hosted shadow proof contract", () => {
     expect(workflow).toContain("review.user?.type === 'User'");
     expect(workflow).toContain("headers: githubHeaders");
     expect(workflow).not.toContain("headers: response.headers");
+  });
+
+  it("requires exact-head CI and a fail-closed solo-maintainer owner attestation", () => {
+    expect(workflow).toContain("checks: read");
+    expect(workflow).toContain("GITHUB_ACTOR_ID: ${{ github.actor_id }}");
+    expect(workflow).toContain(
+      "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF",
+    );
+    expect(workflow).toContain("/check-runs");
+    expect(workflow).toContain("per_page=100&page=");
+    expect(workflow).toContain("check.name === requiredName");
+    expect(workflow).toContain("check.head_sha === pull.head?.sha");
+    expect(workflow).toContain("check.app?.slug === 'github-actions'");
+    expect(workflow).toContain("check.status === 'completed'");
+    expect(workflow).toContain("check.conclusion === 'success'");
+    for (const requiredCheck of requiredCiChecks) {
+      expect(workflow).toContain(`'${requiredCheck}'`);
+    }
+    expect(workflow).toContain("/collaborators?affiliation=direct");
+    expect(workflow).toContain("repositoryDetails.owner?.type !== 'User'");
+    expect(workflow).toContain("String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID");
+    expect(workflow).toContain("collaborator.type === 'User'");
+    expect(workflow).toContain(
+      "collaborator.permissions?.admin || collaborator.permissions?.maintain || collaborator.permissions?.push",
+    );
+    expect(workflow).toContain("eligibleMaintainers.length !== 1");
+    expect(workflow).toContain("reviewRoute = 'solo_owner_attestation'");
+    expect(workflow).toContain("reviewRoute = 'independent_human'");
+  });
+
+  it("requires a commit-bound machine-readable specialist review attestation", () => {
+    expect(existsSync(soloAttestationPath)).toBe(true);
+    if (!existsSync(soloAttestationPath)) return;
+    const attestation = JSON.parse(
+      readFileSync(soloAttestationPath, "utf8"),
+    ) as {
+      protectedSurfaceHashes: Record<string, string>;
+      specialistReviews: Record<string, { agentId: string; verdict: string }>;
+    };
+    for (const specialist of [
+      "code-review-engineer",
+      "security-engineer",
+      "test-engineer",
+      "supabase-reviewer",
+    ]) {
+      expect(attestation.specialistReviews[specialist]?.verdict).toBe("PASS");
+      expect(attestation.specialistReviews[specialist]?.agentId).toMatch(
+        /^[0-9a-f-]{36}$/,
+      );
+    }
+    expect(
+      attestation.protectedSurfaceHashes[
+        "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md"
+      ],
+    ).toMatch(/^[0-9a-f]{64}$/);
+    expect(workflow).toContain(
+      "const attestationPath = 'docs/ai/reviews/WIN-275-solo-maintainer-attestation.json'",
+    );
+    expect(workflow).toContain("getRepositoryContent(attestationPath)");
+    expect(workflow).toContain("protectedSurfaceHashes");
+    expect(workflow).toContain("createHash('sha256')");
+    expect(workflow).toContain("code-review-engineer");
+    expect(workflow).toContain("security-engineer");
+    expect(workflow).toContain("test-engineer");
+    expect(workflow).toContain("supabase-reviewer");
+  });
+
+  it("paginates GitHub authority evidence and revalidates it before hosted access", () => {
+    expect(workflow).toContain("const fetchAllPages = async");
+    expect(workflow).toContain("page <= 20");
+    expect(workflow).toContain("GitHub pagination exceeded the fail-closed page limit.");
+    expect(workflow).toMatch(
+      /Revalidate approval immediately before hosted access[\s\S]*?\/git\/ref\/heads\/main/,
+    );
+    expect(workflow).toMatch(
+      /Revalidate approval immediately before hosted access[\s\S]*?REVIEW_ROUTE:/,
+    );
+    expect(workflow).toMatch(
+      /Revalidate approval immediately before hosted access[\s\S]*?collaborators\?affiliation=direct/,
+    );
+    expect(workflow).toMatch(
+      /Revalidate approval immediately before hosted access[\s\S]*?check-runs\?per_page=100&page=/,
+    );
+    expect(workflow).toMatch(
+      /Revalidate approval immediately before hosted access[\s\S]*?Required ci-gate changed after initial validation\./,
+    );
+  });
+
+  it("documents the narrow solo-maintainer policy without weakening critical routing", () => {
+    for (const doc of docs) {
+      expect(doc).toContain("solo-maintainer owner-attested critical lane");
+    }
+    expect(docs.join("\n").toLowerCase()).toContain(
+      "independent-human approval remains the default",
+    );
+    expect(docs.join("\n")).toContain(
+      "exactly one GitHub human maintainer with write-or-higher access",
+    );
+  });
+
+  it("executes the independent-human route with paginated current-head review evidence", () => {
+    const { api, headSha, responses } = baseApprovalResponses();
+    responses[`${api}/pulls/900/reviews?per_page=100&page=1`] = {
+      body: Array.from({ length: 100 }, (_, id) => ({ id })),
+    };
+    responses[`${api}/pulls/900/reviews?per_page=100&page=2`] = {
+      body: [
+        {
+          commit_id: headSha,
+          id: 101,
+          state: "APPROVED",
+          submitted_at: "2026-08-05T20:01:00Z",
+          user: { login: "independent-reviewer", type: "User" },
+        },
+      ],
+    };
+
+    const result = runApprovalValidator(
+      "I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF",
+      responses,
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output).toContain("review_route=independent_human");
+    expect(result.output).toContain(`validated_pr_head_sha=${headSha}`);
+  });
+
+  it("executes the solo-owner route only with matching identity and hash-bound specialist evidence", () => {
+    const { api, responses } = baseApprovalResponses();
+    responses[`${api}/pulls/900/reviews?per_page=100&page=1`] = { body: [] };
+    responses[api] = {
+      body: { owner: { id: 42, login: "Jeduardo622", type: "User" } },
+    };
+    responses[`${api}/collaborators?affiliation=direct&per_page=100&page=1`] = {
+      body: [
+        {
+          id: 42,
+          login: "Jeduardo622",
+          permissions: { admin: true, maintain: true, push: true },
+          type: "User",
+        },
+      ],
+    };
+
+    const protectedSurfaces = [
+      ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml",
+      "tests/agentWorkLedgerHostedShadowProof.test.ts",
+      "AGENTS.md",
+      ".agents/skills/route-task/SKILL.md",
+      "docs/ai/cto-lane-contract.md",
+      "docs/ai/high-risk-paths.md",
+      "docs/ops/agent-work-ledger.md",
+      "docs/superpowers/plans/2026-08-04-agent-work-ledger-operational-activation.md",
+      "docs/ai/handoffs/agent-work-ledger-foundation.md",
+      "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md",
+    ];
+    const protectedSurfaceHashes = Object.fromEntries(
+      protectedSurfaces.map((repositoryPath) => [
+        repositoryPath,
+        createHash("sha256").update(`content:${repositoryPath}`).digest("hex"),
+      ]),
+    );
+    const attestation = {
+      schemaVersion: 1,
+      issue: "WIN-275",
+      reviewMode: "solo-maintainer-owner-attestation",
+      repository: "Jeduardo622/AllIincompassing",
+      specialistReviews: {
+        "code-review-engineer": {
+          agentId: "11111111-1111-4111-8111-111111111111",
+          verdict: "PASS",
+        },
+        "security-engineer": {
+          agentId: "22222222-2222-4222-8222-222222222222",
+          verdict: "PASS",
+        },
+        "test-engineer": {
+          agentId: "33333333-3333-4333-8333-333333333333",
+          verdict: "PASS",
+        },
+        "supabase-reviewer": {
+          agentId: "44444444-4444-4444-8444-444444444444",
+          verdict: "PASS",
+        },
+      },
+      invariants: {
+        exactMainAndCi: true,
+        shadowOnly: true,
+        disabledRestoreRequired: true,
+        sanitizedEvidenceOnly: true,
+        zeroProviderCalls: true,
+        retentionPolicyUnapproved: true,
+      },
+      protectedSurfaceHashes,
+    };
+    responses[`${api}/contents/docs/ai/reviews/WIN-275-solo-maintainer-attestation.json?ref=${"a".repeat(40)}`] = {
+      body: {
+        content: Buffer.from(JSON.stringify(attestation)).toString("base64"),
+        encoding: "base64",
+        type: "file",
+      },
+    };
+    for (const repositoryPath of protectedSurfaces) {
+      responses[`${api}/contents/${repositoryPath}?ref=${"a".repeat(40)}`] = {
+        body: {
+          content: Buffer.from(`content:${repositoryPath}`).toString("base64"),
+          encoding: "base64",
+          type: "file",
+        },
+      };
+    }
+
+    const result = runApprovalValidator(
+      "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF",
+      responses,
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output).toContain("review_route=solo_owner_attestation");
+    expect(result.output).toMatch(/attestation_sha256=[0-9a-f]{64}/);
+  });
+
+  it("rejects solo-owner attestation when another human has write access", () => {
+    const { api, responses } = baseApprovalResponses();
+    responses[`${api}/pulls/900/reviews?per_page=100&page=1`] = { body: [] };
+    responses[api] = {
+      body: { owner: { id: 42, login: "Jeduardo622", type: "User" } },
+    };
+    responses[`${api}/collaborators?affiliation=direct&per_page=100&page=1`] = {
+      body: [
+        {
+          id: 42,
+          login: "Jeduardo622",
+          permissions: { admin: true },
+          type: "User",
+        },
+        {
+          id: 43,
+          login: "second-maintainer",
+          permissions: { push: true },
+          type: "User",
+        },
+      ],
+    };
+
+    const result = runApprovalValidator(
+      "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF",
+      responses,
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "exactly one matching human maintainer with write-or-higher access",
+    );
+  });
+
+  it("rejects approval when any exact-head required CI check is missing", () => {
+    const { api, headSha, responses } = baseApprovalResponses();
+    responses[`${api}/commits/${headSha}/check-runs?per_page=100&page=1`] = {
+      body: {
+        check_runs: requiredCiChecks
+          .filter((name) => name !== "auth-browser-smoke")
+          .map((name) => ({
+            app: { slug: "github-actions" },
+            conclusion: "success",
+            head_sha: headSha,
+            name,
+            status: "completed",
+          })),
+      },
+    };
+
+    const result = runApprovalValidator(
+      "I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF",
+      responses,
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "missing successful required CI: auth-browser-smoke",
+    );
   });
 
   it("keeps hosted credentials step-scoped and uses repository secret fallbacks", () => {
@@ -573,7 +977,7 @@ describe("agent work hosted shadow proof contract", () => {
   });
 
   it("documents the owner-dispatched shadow-only boundary", () => {
-    for (const doc of docs) {
+    for (const doc of proofDocs) {
       expect(doc).toContain("hosted shadow proof");
       expect(doc).toContain("owner-dispatched");
       expect(doc).toContain("shadow-only");

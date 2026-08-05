@@ -522,7 +522,9 @@ The hosted shadow proof is owner-dispatched, shadow-only, and human review gated
 
 `agent_execution_traces` is a shared observability table, not a Ledger-owned zero-baseline table. Every hosted trace check matches either deterministic synthetic organization ID or either exact synthetic work-item ID; preflight uses NIL work-item placeholders before creation. Cleanup deletes that same exact synthetic trace scope and final verification requires it to be empty, so a malformed trace cannot evade cleanup through missing or incorrect organization attribution. Historical traces unrelated to those synthetic identities do not block the proof and are never read into artifacts or deleted. Ledger-owned tables, Queue, and archive retain their global-zero preflight requirement; any synthetic-scope attempt, effect, trace, or draft-packet row still fails the shadow proof.
 
-The protected workflow uses `workflow_dispatch` with exact acknowledgement `I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF`, validates the immutable current `main` SHA, checks out only that SHA, and keeps secrets step-scoped. Dispatch must use the `main` workflow ref and identify the merged WIN-275 PR whose merge commit is the current `main` head. The workflow fails unless that PR has a current-head `APPROVED` review from an independent human GitHub user. It runs one job so private temp state never crosses artifacts.
+The protected workflow validates the immutable current `main` SHA, checks out only that SHA, requires a successful GitHub Actions `ci-gate` on the exact PR head, and keeps secrets step-scoped. Dispatch must use the `main` workflow ref and identify the merged WIN-275 PR whose merge commit is current `main`. Independent-human approval remains the default and uses acknowledgement `I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF`.
+
+This personal repository may instead use the `solo-maintainer owner-attested critical lane` with acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF`. That path requires live personal-owner login and numeric-ID matching, exactly one GitHub human maintainer with write-or-higher access, paginated authority checks, and a committed manifest whose SHA-256 inventory binds passing code, security, test, and Supabase agent reviews to the protected surfaces. Authority is revalidated immediately before hosted access. Any ambiguity fails closed; if another eligible human exists, use independent approval. The single job uploads only sanitized approval and proof evidence, and private temp state never crosses artifacts.
 
 The workflow owns these internal phases; operators must not invoke them directly:
 
@@ -534,8 +536,11 @@ node scripts/agent-work-ledger-hosted-shadow-proof.mjs cleanup/verify
 
 After disabled restoration, Ledger and queue cleanup runs as one atomic Management API transaction scoped to strictly validated synthetic UUIDs. Foreign keys remain enforced; only the append-only event trigger is disabled around the exact synthetic event delete and re-enabled before commit. A failed transaction rolls that trigger change back. Parameterized queries then remove only the two synthetic auth identities and organizations. Direct disabled-mode restore steps run both before and after cleanup as independent fallbacks. Optional Vault access is guarded by extension detection. This is not a reusable cleanup API or retention deletion path. Sanitized evidence remains PHI-free and limited to fixed booleans, counts, timings, and hashes.
 
-Validate the workflow/script contract locally with `npm run agent-work:hosted-shadow-proof:contract`. After the reviewed PR is merged and remains the current `main` head, the repository owner may dispatch the protected workflow with:
+Validate the workflow/script contract locally with `npm run agent-work:hosted-shadow-proof:contract`. After the reviewed PR is merged and remains the current `main` head, the repository owner may dispatch the protected workflow through the applicable review route:
 
 ```powershell
 gh workflow run agent-work-ledger-hosted-shadow-proof.yml --ref main -f commit_sha=<40-character-main-sha> -f pull_request_number=<merged-pr-number> -f approval_acknowledgement=I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF
+
+# Solo-maintainer route only after the workflow proves eligibility and the owner separately merged the PR.
+gh workflow run agent-work-ledger-hosted-shadow-proof.yml --ref main -f commit_sha=<40-character-main-sha> -f pull_request_number=<merged-pr-number> -f approval_acknowledgement=I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF
 ```

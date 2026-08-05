@@ -76,15 +76,32 @@
 - [x] Close the all-whitespace follow-up through RED/GREEN, spaces plus tab/newline runtime proof, fresh aggregate verification, and two final Phase 2 runs; record the unrelated aggregate Vitest worker failures without claiming a pass.
 - [x] Close the `pg_net` credential-queue review finding through RED/GREEN: replace the queued service-role bearer with a project publishable `apikey` plus endpoint-specific invocation secret, set only the runner/sweeper to handler-owned auth, reject bearer-only and malformed configuration, and prove unauthenticated gateway requests return handler 401 before privileged client construction.
 - [x] Re-run the complete local matrix and two clean Phase 2 runs from the credential-queue fix commits; record exact code-head evidence and cleanup hashes. The default aggregate Node worker remained nondeterministic, so the unhandled worker timeout is recorded alongside the passing bounded four-worker workload rather than misreported as a pass.
-- [ ] Stop before merge until submitted human protected-path/Supabase/security review exists and required checks pass.
+- [x] PR `#894` merged as `cc8bbf62` after required checks passed, but without a submitted `APPROVED` human review. Record this as a process exception; it does not authorize runtime promotion.
 
 ## Task 6: Hosted Rollout Gates
 
-- [ ] After merge only, re-route hosted configuration and verify exact project/migration/function identities.
-- [ ] Deploy the reviewed migration/function changes with runtime still `disabled`; verify forced RLS, grants, JWT policy, zero rows, zero jobs, and zero hosted Vault names.
+- [x] After merge, re-route hosted configuration and verify exact project/migration/function identities for project `wnnjeqheqxxyrgsjmygy`.
+- [x] Deploy the reviewed migration/function changes without activating workers; verify forced RLS, grants, function auth policy, zero rows, zero jobs, and zero hosted Vault names.
 - [ ] Promote to `shadow` only after recorded owner decision; run synthetic tenant/auth/create/list/detail parity with no worker/model call, then disable and verify cleanup.
 - [ ] Do not promote to `advisory` while retention is `policy_unapproved`. Record the exact policy-owner decision required and finish every independent safe slice.
 - [ ] If retention is later approved, separately re-route advisory, provision generated secrets through the connector, use an owner-approved cadence, verify deterministic recovery and one explicit stubbed/synthetic advisory call, then disable and clean up.
 - [ ] Never use or introduce `active`.
 
 Completion for this run is a review-ready, fully locally verified PR plus exact external blockers. Hosted shadow/advisory evidence is conditional on merge, human review, CI, and the retention gate above.
+
+## Hosted Disabled-Parity Evidence - 2026-08-05
+
+- route: `classification: high-risk human-reviewed`; `lane: critical`; issue `WIN-275`; exact target project `wnnjeqheqxxyrgsjmygy`
+- migration: the merged file `20260804214731_agent_work_ledger_hosted_scheduler.sql` was applied through the Supabase connector and recorded as hosted logical migration `20260805143942 agent_work_ledger_hosted_scheduler`; repository SQL SHA-256 `8f1ddf6aa86cb10ff4928610531a7a337ff7bca95c4c251e70cf39a5afbf7ba1`
+- functions: `agent-work-runner` v2, `ACTIVE`, `verify_jwt=false`, source SHA-256 `0aad728121276136ef7d91334687f38ef0a9ee03bd0fa8feb8835818be591989`; `agent-work-sweeper` v2, `ACTIVE`, `verify_jwt=false`, `88a201859e491991aa21664b97fce8553ea200665e2346dc08bd6767a47e51a5`; `generate-program-goals` v26, `ACTIVE`, `verify_jwt=true`, `bcd470c88f4ad2657d05b844a14ce59bb92a945390a7955ba7ee568365ac2e1f`
+- authentication: runner and sweeper returned handler-owned `401` for missing credentials, publishable-key-only requests, and synthetic invalid invocation secrets; the provider returned gateway `401` without bearer authentication
+- inert post-state: `14/14` Ledger tables force RLS; direct `PUBLIC`, `anon`, and `authenticated` table grants are zero; Ledger items, steps, events, effects, attempts, approvals, evidence, Queue, and archive are empty; Agent Work Vault names and Cron jobs are zero
+- scheduler status: `pg_net=true`, `vault=true`, `pg_cron=false`, `secretsReady=false`; runner and sweeper jobs are absent. No invocation secrets were provisioned, so the scheduler cannot call either worker.
+- runtime configuration: no Edge secret was changed. The deployed functions default a missing mode to `disabled`, but the exact hosted secret value could not be read because the CLI token was invalid and Supabase Studio required interactive credentials. No credential was entered, copied, or read.
+- CI: Supabase Validate run `30974965582`, attempt 2, passed after hosted migration parity was restored. CI run `30974965607`, attempt 2, completed successfully at `2026-08-05T15:22:55Z`; `runtime-migration-parity`, real `auth-browser-smoke`, and `ci-gate` all passed.
+- retention: no active policy row exists; deletion remains fail-closed as `policy_unapproved` with zero deletion. Advisory promotion remains blocked pending explicit periods approved by privacy, security, product, and operations owners.
+- advisors: six existing authenticated `SECURITY DEFINER` Ledger helper functions remain advisor warnings and are intentionally scoped RLS helpers; no scheduler-controller warning was introduced. Performance advisors retain an `auth_rls_initplan` warning and unindexed-FK/unused-index backlog; these do not justify scope expansion during an inert rollout.
+- prohibited actions: no shadow, advisory, or active promotion; no external model call; no customer data, PHI, clinical mutation, publication, approval, or domain promotion
+- process exception: PR `#894` had `COMMENTED` owner and automated reviews but no submitted `APPROVED` human review. Future protected promotion must not treat that merge as satisfying the human-review gate.
+
+The Ledger is deployed but intentionally inoperable. The next separately routed slice may run synthetic shadow create/list/detail parity only after an explicit owner decision. Advisory requires an approved retention policy, verified hosted runtime configuration, generated runner/sweeper invocation secrets, `pg_cron`, an owner-approved cadence, and a new protected-path review. `active` remains forbidden.

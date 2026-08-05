@@ -913,6 +913,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       "queue-scheduler": [
         "AGENT_WORK_RUNNER_SECRET",
         "AGENT_WORK_SWEEPER_SECRET",
+        "SUPABASE_ANON_KEY",
         "SUPABASE_DB_URL",
         "SUPABASE_SERVICE_ROLE_KEY",
         "SUPABASE_URL",
@@ -1016,7 +1017,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       "queued_payload_org_parity",
     ]);
     expect(getCheckDefinition("queue-scheduler").auth).toEqual({
-      bearer: "service-role",
+      projectKey: "publishable",
       invocationSecrets: [
         "x-agent-work-runner-secret",
         "x-agent-work-sweeper-secret",

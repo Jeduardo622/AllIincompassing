@@ -118,7 +118,7 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
     destructive: true,
     command: ["node", "scripts/agent-work-ledger-local-scheduler.mjs", "smoke"],
     auth: {
-      bearer: "service-role",
+      projectKey: "publishable",
       invocationSecrets: [
         "x-agent-work-runner-secret",
         "x-agent-work-sweeper-secret",
@@ -177,6 +177,7 @@ const PHASE2_CHECK_ENVIRONMENT_NAMES = Object.freeze({
   "queue-scheduler": [
     "AGENT_WORK_RUNNER_SECRET",
     "AGENT_WORK_SWEEPER_SECRET",
+    "SUPABASE_ANON_KEY",
     "SUPABASE_DB_URL",
     "SUPABASE_SERVICE_ROLE_KEY",
     "SUPABASE_URL",

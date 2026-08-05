@@ -269,6 +269,7 @@ jobs:
             }
             const requiredProtectedSurfaces = [
               '.github/workflows/agent-work-ledger-hosted-shadow-proof.yml',
+              'scripts/agent-work-ledger-hosted-shadow-proof.mjs',
               'tests/agentWorkLedgerHostedShadowProof.test.ts',
               'AGENTS.md',
               '.agents/skills/route-task/SKILL.md',

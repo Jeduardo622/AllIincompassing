@@ -163,6 +163,7 @@ const baseApprovalResponses = () => {
 const zeroSummary = () => ({
   runtime_config: { present: true, actions_disabled: false },
   scheduler: {
+    extensions: { pgCron: false, pgNet: true, vault: true },
     secretsReady: false,
     runnerJob: { present: false },
     sweeperJob: { present: false },
@@ -328,6 +329,11 @@ describe("agent work hosted shadow proof contract", () => {
         "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md"
       ],
     ).toMatch(/^[0-9a-f]{64}$/);
+    expect(
+      attestation.protectedSurfaceHashes[
+        "scripts/agent-work-ledger-hosted-shadow-proof.mjs"
+      ],
+    ).toMatch(/^[0-9a-f]{64}$/);
     expect(workflow).toContain(
       "const attestationPath = 'docs/ai/reviews/WIN-275-solo-maintainer-attestation.json'",
     );
@@ -338,6 +344,9 @@ describe("agent work hosted shadow proof contract", () => {
     expect(workflow).toContain("security-engineer");
     expect(workflow).toContain("test-engineer");
     expect(workflow).toContain("supabase-reviewer");
+    expect(workflow).toContain(
+      "'scripts/agent-work-ledger-hosted-shadow-proof.mjs'",
+    );
   });
 
   it("paginates GitHub authority evidence and revalidates it before hosted access", () => {
@@ -418,6 +427,7 @@ describe("agent work hosted shadow proof contract", () => {
 
     const protectedSurfaces = [
       ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml",
+      "scripts/agent-work-ledger-hosted-shadow-proof.mjs",
       "tests/agentWorkLedgerHostedShadowProof.test.ts",
       "AGENTS.md",
       ".agents/skills/route-task/SKILL.md",
@@ -854,11 +864,36 @@ describe("agent work hosted shadow proof contract", () => {
       assertPreflightSummary(
         {
           ...summary,
+          scheduler: {
+            ...summary.scheduler,
+            extensions: { ...summary.scheduler.extensions, pgCron: true },
+          },
+        },
+        { final: true },
+      ),
+    ).toThrow("Hosted pg_cron extension must remain absent.");
+    expect(() =>
+      assertPreflightSummary(
+        {
+          ...summary,
           event_trigger_enabled: false,
         },
         { final: true },
       ),
     ).toThrow("Append-only event trigger is not enabled.");
+  });
+
+  it("keeps read-only preflight free of privileged control functions", () => {
+    const preflightSql =
+      script.match(/const preflightQuery = `([\s\S]*?)`;/)?.[1] ?? "";
+
+    expect(preflightSql).toContain("'scheduler_extensions'");
+    expect(preflightSql).not.toContain(
+      "public.hosted_agent_work_queue_scheduler_status()",
+    );
+    expect(preflightSql).not.toContain(
+      "public.prune_agent_work_retention_category",
+    );
   });
 
   it("scopes shared trace residue checks to synthetic organizations and work items", () => {

@@ -87,8 +87,8 @@ describe('agent work hosted scheduler migration contract', () => {
     expect(statusSql).not.toMatch(/jsonb_build_object\([^;]*decrypted_secret/i);
     expect(statusSql).toMatch(/count\(distinct name\)\s*=\s*4/i);
     expect(enableSql).toMatch(/count\(distinct name\)\s*=\s*4/i);
-    expect(statusSql).toMatch(/btrim\(decrypted_secret\)\s*<>\s*''/i);
-    expect(enableSql).toMatch(/btrim\(decrypted_secret\)\s*<>\s*''/i);
+    expect(statusSql).toContain("decrypted_secret !~ '^[[:space:]]*$'");
+    expect(enableSql).toContain("decrypted_secret !~ '^[[:space:]]*$'");
   });
 
   it('serializes enable and disable operations and tolerates pre-existing duplicate rows in status', () => {

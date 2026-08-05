@@ -28,6 +28,7 @@ const OUTPUT_HASH =
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const EFFECT_KEY = "effect:assessment:review-ready";
 const INVOCATION_SECRET = "runner-secret-value";
+const GATEWAY_API_KEY = "sb_publishable_local_gateway";
 const SERVICE_ROLE_KEY = "local-service-role-jwt";
 const NOW_ISO = "2026-08-02T16:00:00.000Z";
 const RETRY_DELAY_SECONDS = 68;
@@ -131,7 +132,7 @@ type HandlerDeps = {
   now: () => Date;
   getCorsHeaders: () => HeadersInit;
   getInvocationSecret: () => string;
-  getServiceRoleKey: () => string;
+  getGatewayApiKeys: () => string[];
   getWorkerId: () => string;
   readQueueMessage: () => Promise<QueueEnvelope | null>;
   archiveQueueMessage: (messageId: string, reasonCode: string) => Promise<void>;
@@ -266,7 +267,7 @@ function createDeps(
       Vary: "Origin",
     }),
     getInvocationSecret: () => INVOCATION_SECRET,
-    getServiceRoleKey: () => SERVICE_ROLE_KEY,
+    getGatewayApiKeys: () => [GATEWAY_API_KEY],
     getWorkerId: () => WORKER_ID,
     readQueueMessage: async () => {
       calls.readQueueCount += 1;
@@ -345,7 +346,7 @@ function createDeps(
 
 function createRequest(headers: HeadersInit = {}): Request {
   const requestHeaders = new Headers({
-    Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+    apikey: GATEWAY_API_KEY,
   });
   new Headers(headers).forEach((value, key) => requestHeaders.set(key, value));
   return new Request("http://localhost/agent-work-runner", {
@@ -354,7 +355,7 @@ function createRequest(headers: HeadersInit = {}): Request {
   });
 }
 
-Deno.test("runner rejects missing or incorrect dedicated invocation secret before queue access", async () => {
+Deno.test("runner requires the project gateway key and dedicated invocation secret before queue access", async () => {
   const deps = createDeps();
   const handler = createAgentWorkRunnerHandler(deps);
 
@@ -363,11 +364,20 @@ Deno.test("runner rejects missing or incorrect dedicated invocation secret befor
       new Headers(),
       new Headers({ "x-agent-work-runner-secret": "wrong-secret" }),
       new Headers({
-        Authorization: "",
+        apikey: "",
         "x-agent-work-runner-secret": INVOCATION_SECRET,
       }),
       new Headers({
-        Authorization: "Bearer wrong-service-role",
+        apikey: "wrong-gateway-key",
+        "x-agent-work-runner-secret": INVOCATION_SECRET,
+      }),
+      new Headers({
+        apikey: SERVICE_ROLE_KEY,
+        "x-agent-work-runner-secret": INVOCATION_SECRET,
+      }),
+      new Headers({
+        apikey: "",
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
         "x-agent-work-runner-secret": INVOCATION_SECRET,
       }),
     ]

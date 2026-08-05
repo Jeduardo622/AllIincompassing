@@ -262,6 +262,7 @@ type GenerateProgramGoalsDependencies = {
     onUsage?: CompletionUsageObserver,
   ) => Promise<CompletionInvocationResult>;
   requireLedgerAdvisoryRuntime: () => Promise<void>;
+  isLegacyGenerationDisabled?: () => boolean;
 };
 type RequestResolution =
   | { kind: "ledger"; payload: LedgerGenerationCorrelation }
@@ -290,6 +291,9 @@ const configuredLedgerRuntimeMode = (): "disabled" | "shadow" | "advisory" => {
   const configured = (Deno.env.get("AGENT_WORK_LEDGER_RUNTIME_MODE") ?? "disabled").trim().toLowerCase();
   return configured === "shadow" || configured === "advisory" ? configured : "disabled";
 };
+
+const legacyGenerationDisabled = (): boolean =>
+  (Deno.env.get("AGENT_WORK_LEGACY_GENERATION_DISABLED") ?? "").trim().toLowerCase() === "true";
 
 async function requireLedgerAdvisoryRuntime(): Promise<void> {
   const { data, error } = await supabaseAdmin.rpc("load_agent_work_runtime_policy", {
@@ -980,6 +984,7 @@ const productionDependencies: GenerateProgramGoalsDependencies = {
   lookupLegacyAssessment: lookupLegacyAssessmentDocument,
   invokeCompletion: invokeCompletionWithRetries,
   requireLedgerAdvisoryRuntime,
+  isLegacyGenerationDisabled: legacyGenerationDisabled,
 };
 
 export function createGenerateProgramGoalsHandler(
@@ -1118,6 +1123,12 @@ export function createGenerateProgramGoalsHandler(
           payload,
         };
       } else {
+        if (dependencies.isLegacyGenerationDisabled?.() ?? legacyGenerationDisabled()) {
+          return json(req, {
+            error: "Legacy program/goal generation is disabled",
+            code: "legacy_generation_disabled",
+          }, 503);
+        }
         const legacyAssessment = await dependencies.lookupLegacyAssessment(db, {
           assessmentDocumentId: resolved.payload.assessment_document_id,
           organizationId: resolved.payload.organization_id,

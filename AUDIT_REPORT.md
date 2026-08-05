@@ -26,7 +26,7 @@ Last updated: 2026-01-05
 - RLS hardening migration (hosted DB version): `supabase/migrations/20260102183410_rls_policy_cleanup_20260102123000.sql`.
 - Follow-up RLS hardening migration applied in hosted DB (2026-01-04): `supabase/migrations/20260104172512_drop_consolidated_authorizations_policies.sql`.
 - Added/expanded RLS integration tests in `src/tests/security/rls.spec.ts` to cover same-org overread and cross-provider write paths.
-- Standardized Edge Function auth config: added `function.toml` files and a repo test (`src/tests/security/edgeFunctionConfig.test.ts`) asserting `verify_jwt = true` for non-public functions.
+- Standardized Edge Function auth config: added `function.toml` files and a repo test (`src/tests/security/edgeFunctionConfig.test.ts`) asserting `verify_jwt = true` for user-authenticated functions and explicit handler-owned project-key plus endpoint-secret auth for narrowly allowlisted machine-only functions.
 - Reduced over-posting risk for authorizations by moving critical writes behind allowlisted RPCs:
   - `supabase/migrations/20260105120500_create_authorization_rpc_allowlist.sql` (`create_authorization_with_services`)
   - `supabase/migrations/20260105121500_authorization_update_rpc_allowlist.sql` (`update_authorization_with_services`, `update_authorization_documents`)
@@ -205,7 +205,7 @@ Date established: 2026-01-02
    - Roles: `client`, `guardian`, `therapist`, `admin`, `super_admin`, `dashboard_consumer`.
    - Verify client/guardian cannot read org-wide data.
 3. **Edge functions**
-   - Ensure `verify_jwt = true` for non-public functions.
+   - Ensure user-authenticated functions keep `verify_jwt = true`; machine-only exceptions must be named and statically prove project `apikey` plus endpoint-secret validation before privileged work.
    - Confirm function handlers call auth guard (e.g., `getUserOrThrow`).
 4. **Storage**
    - Buckets: `client-documents`, `therapist-documents`.
@@ -269,8 +269,8 @@ Date established: 2026-01-02
 ### 2) Edge function auth config — **Pass (Repo-level)**
 **Evidence**
 - `supabase/functions/*/function.toml` explicitly sets `verify_jwt` for each function.
-- Non-public functions require `verify_jwt = true`; public endpoints are explicitly allowlisted (e.g., `auth-login`, `auth-signup`, `mcp`).
-- Repo test: `src/tests/security/edgeFunctionConfig.test.ts` enforces expected `verify_jwt` coverage.
+- User-authenticated functions require `verify_jwt = true`; public endpoints and machine-only service endpoints are separately allowlisted. Machine-only exceptions must validate a project publishable `apikey` plus a distinct endpoint secret before privileged work.
+- Repo test: `src/tests/security/edgeFunctionConfig.test.ts` enforces JWT coverage and the named machine-service auth contract.
 
 **Note**
 - This is a repo-level guarantee; confirm Supabase deploy pipeline does not override `verify_jwt` settings.

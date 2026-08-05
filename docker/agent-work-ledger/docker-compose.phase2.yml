@@ -68,6 +68,7 @@ services:
       <<: *phase2-function-environment
       AGENT_WORK_LEDGER_RUNTIME_MODE: advisory
       AGENT_WORK_RUNNER_SECRET: ${PHASE2_RUNNER_SECRET:?required}
+      SUPABASE_PUBLISHABLE_KEY: ${PHASE2_SUPABASE_ANON_KEY:?required}
     healthcheck:
       test:
         - CMD-SHELL
@@ -91,6 +92,7 @@ services:
       <<: *phase2-function-environment
       AGENT_WORK_LEDGER_RUNTIME_MODE: advisory
       AGENT_WORK_SWEEPER_SECRET: ${PHASE2_SWEEPER_SECRET:?required}
+      SUPABASE_PUBLISHABLE_KEY: ${PHASE2_SUPABASE_ANON_KEY:?required}
     healthcheck:
       test:
         - CMD-SHELL

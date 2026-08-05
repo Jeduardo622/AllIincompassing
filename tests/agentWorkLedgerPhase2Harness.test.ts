@@ -700,7 +700,7 @@ describe("agent work ledger phase2 harness contracts", () => {
     });
     expect(manifest.endedAtUtc).toMatch(/^2026-08-03T/);
     expect(manifest.durationMs).toBeGreaterThan(0);
-    expect(manifest.checks).toHaveLength(11);
+    expect(manifest.checks).toHaveLength(12);
     expect(manifest.checks.map((check: { id: string }) => check.id)).toEqual(
       PHASE2_CHECKS.map(({ id }) => id),
     );
@@ -860,7 +860,7 @@ describe("agent work ledger phase2 harness contracts", () => {
     )).toBe(true);
   });
 
-  it("keeps the fixed 11-check matrix and hard wall-clock budgets", () => {
+  it("keeps the fixed 12-check matrix and hard wall-clock budgets", () => {
     expect(PHASE2_COMMAND).toBe("test:agent-work:phase2");
     expect(PHASE2_CHECKS.map(({ id }) => id)).toEqual([
       "stack-health",
@@ -870,6 +870,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       "chaos",
       "shadow-parity",
       "retention-trace",
+      "hosted-scheduler-contract",
       "queue-scheduler",
       "app-api-unit-build",
       "deno-cached-tests",
@@ -908,9 +909,11 @@ describe("agent work ledger phase2 harness contracts", () => {
         "SUPABASE_DB_URL",
         "SUPABASE_URL",
       ],
+      "hosted-scheduler-contract": ["SUPABASE_DB_URL"],
       "queue-scheduler": [
         "AGENT_WORK_RUNNER_SECRET",
         "AGENT_WORK_SWEEPER_SECRET",
+        "SUPABASE_ANON_KEY",
         "SUPABASE_DB_URL",
         "SUPABASE_SERVICE_ROLE_KEY",
         "SUPABASE_URL",
@@ -1014,7 +1017,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       "queued_payload_org_parity",
     ]);
     expect(getCheckDefinition("queue-scheduler").auth).toEqual({
-      bearer: "service-role",
+      projectKey: "publishable",
       invocationSecrets: [
         "x-agent-work-runner-secret",
         "x-agent-work-sweeper-secret",
@@ -1027,7 +1030,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       "--frozen",
       "--node-modules-dir=none",
       "--lock=/opt/agent-work-ledger-deno.lock",
-      "--allow-env=AGENT_WORK_PHASE2_CONTAINER,SUPABASE_URL,VITE_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_ANON_KEY,VITE_SUPABASE_ANON_KEY,SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_PUBLISHABLE_KEY,SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,OPENAI_API_KEY,CORS_ALLOWED_ORIGINS,API_ALLOWED_ORIGINS,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE",
+      "--allow-env=AGENT_WORK_PHASE2_CONTAINER,AGENT_WORK_LEGACY_GENERATION_DISABLED,SUPABASE_URL,VITE_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_ANON_KEY,VITE_SUPABASE_ANON_KEY,SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_PUBLISHABLE_KEY,SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,OPENAI_API_KEY,CORS_ALLOWED_ORIGINS,API_ALLOWED_ORIGINS,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE",
       "supabase/functions/_shared/agent-work/caloptima-draft-review.test.ts",
       "supabase/functions/agent-work-items/index.test.ts",
       "supabase/functions/agent-work-runner/index.test.ts",
@@ -1063,6 +1066,7 @@ describe("agent work ledger phase2 harness contracts", () => {
       ["chaos", [database]],
       ["shadow-parity", [http, database]],
       ["retention-trace", [database]],
+      ["hosted-scheduler-contract", [database]],
       ["queue-scheduler", [http, database, service("http://agent-work-runner:8000/agent-work-runner"), service("http://agent-work-sweeper:8000/agent-work-sweeper")]],
       ["app-api-unit-build", [http]],
       ["deno-cached-tests", [http]],

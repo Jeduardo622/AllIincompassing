@@ -119,6 +119,7 @@ describe("agent work ledger phase2 container assets", () => {
       AGENT_WORK_LEDGER_RUNTIME_MODE: "advisory",
       AGENT_WORK_PHASE2_CONTAINER: "1",
       AGENT_WORK_RUNNER_SECRET: "synthetic-runner-secret",
+      SUPABASE_PUBLISHABLE_KEY: "synthetic-anon",
       SUPABASE_SERVICE_ROLE_KEY: "synthetic-service-role",
       SUPABASE_URL: "http://supabase_kong_AllIincompassing:8000",
     });
@@ -126,6 +127,7 @@ describe("agent work ledger phase2 container assets", () => {
       AGENT_WORK_LEDGER_RUNTIME_MODE: "advisory",
       AGENT_WORK_PHASE2_CONTAINER: "1",
       AGENT_WORK_SWEEPER_SECRET: "synthetic-sweeper-secret",
+      SUPABASE_PUBLISHABLE_KEY: "synthetic-anon",
       SUPABASE_SERVICE_ROLE_KEY: "synthetic-service-role",
       SUPABASE_URL: "http://supabase_kong_AllIincompassing:8000",
     });

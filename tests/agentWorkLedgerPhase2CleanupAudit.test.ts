@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CLEANUP_AUDIT_MUTATIONS,
   CLEANUP_AUDIT_PROTECTED_EXTENSIONS,
   FIXED_JOB_NAMES,
   FIXED_SECRET_NAMES,
@@ -53,6 +54,17 @@ const createClient = ({
 };
 
 describe("agent work ledger phase2 cleanup audit", () => {
+  it("guards scheduler cleanup when a reset failed before controller migrations installed", () => {
+    for (const id of [
+      "disable_local_agent_work_queue_scheduler",
+      "disable_hosted_agent_work_queue_scheduler",
+    ]) {
+      const mutation = CLEANUP_AUDIT_MUTATIONS.find((entry) => entry.id === id);
+      expect(mutation?.sql).toContain("to_regprocedure");
+      expect(mutation?.sql).toContain("execute");
+    }
+  });
+
   it("runs real owner cleanup and proves cron, Vault, live queue, and archive queue are empty", async () => {
     const { calls, ClientImpl } = createClient();
     const summary = await runCleanupAudit({
@@ -65,12 +77,30 @@ describe("agent work ledger phase2 cleanup audit", () => {
     expect(summary).toEqual({
       success: true,
       databaseUser: "postgres",
-      mutationsApplied: 4,
+      mutationsApplied: 5,
       assertionsPassed: 5,
     });
     expect(calls.some(({ text }) =>
       text.includes("disable_local_agent_work_queue_scheduler")
     )).toBe(true);
+    expect(calls.some(({ text }) =>
+      text.includes("disable_hosted_agent_work_queue_scheduler")
+    )).toBe(true);
+    expect(FIXED_JOB_NAMES).toEqual([
+      "agent-work-runner-local",
+      "agent-work-sweeper-local",
+      "agent-work-runner-hosted",
+      "agent-work-sweeper-hosted",
+    ]);
+    expect(FIXED_SECRET_NAMES).toEqual([
+      "agent_work_local_service_role_key",
+      "agent_work_local_runner_invocation_secret",
+      "agent_work_local_sweeper_invocation_secret",
+      "agent_work_hosted_project_ref",
+      "agent_work_hosted_publishable_key",
+      "agent_work_hosted_runner_secret",
+      "agent_work_hosted_sweeper_secret",
+    ]);
     expect(calls.find(({ text }) =>
       text.includes("delete from vault.secrets")
     )?.params).toEqual([FIXED_SECRET_NAMES]);

@@ -109,11 +109,16 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
     command: customCheckCommand("retention-trace"),
   },
   {
+    id: "hosted-scheduler-contract",
+    destructive: true,
+    command: ["node", "scripts/agent-work-ledger-hosted-scheduler-contract.mjs"],
+  },
+  {
     id: "queue-scheduler",
     destructive: true,
     command: ["node", "scripts/agent-work-ledger-local-scheduler.mjs", "smoke"],
     auth: {
-      bearer: "service-role",
+      projectKey: "publishable",
       invocationSecrets: [
         "x-agent-work-runner-secret",
         "x-agent-work-sweeper-secret",
@@ -135,7 +140,7 @@ const PHASE2_CHECK_DEFINITIONS = Object.freeze([
       "--frozen",
       "--node-modules-dir=none",
       "--lock=/opt/agent-work-ledger-deno.lock",
-      "--allow-env=AGENT_WORK_PHASE2_CONTAINER,SUPABASE_URL,VITE_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_ANON_KEY,VITE_SUPABASE_ANON_KEY,SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_PUBLISHABLE_KEY,SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,OPENAI_API_KEY,CORS_ALLOWED_ORIGINS,API_ALLOWED_ORIGINS,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE",
+      "--allow-env=AGENT_WORK_PHASE2_CONTAINER,AGENT_WORK_LEGACY_GENERATION_DISABLED,SUPABASE_URL,VITE_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_ANON_KEY,VITE_SUPABASE_ANON_KEY,SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_PUBLISHABLE_KEY,SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,OPENAI_API_KEY,CORS_ALLOWED_ORIGINS,API_ALLOWED_ORIGINS,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE",
       "supabase/functions/_shared/agent-work/caloptima-draft-review.test.ts",
       "supabase/functions/agent-work-items/index.test.ts",
       "supabase/functions/agent-work-runner/index.test.ts",
@@ -172,6 +177,7 @@ const PHASE2_CHECK_ENVIRONMENT_NAMES = Object.freeze({
   "queue-scheduler": [
     "AGENT_WORK_RUNNER_SECRET",
     "AGENT_WORK_SWEEPER_SECRET",
+    "SUPABASE_ANON_KEY",
     "SUPABASE_DB_URL",
     "SUPABASE_SERVICE_ROLE_KEY",
     "SUPABASE_URL",
@@ -183,6 +189,7 @@ const PHASE2_CHECK_ENVIRONMENT_NAMES = Object.freeze({
     "SUPABASE_URL",
   ],
   "retention-trace": ["SUPABASE_DB_URL"],
+  "hosted-scheduler-contract": ["SUPABASE_DB_URL"],
   "app-api-unit-build": [
     "SUPABASE_ANON_KEY",
     "SUPABASE_URL",

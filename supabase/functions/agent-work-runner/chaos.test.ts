@@ -21,7 +21,7 @@ const CLIENT_ID = "44444444-4444-4444-8444-444444444444";
 const ACTOR_USER_ID = "55555555-5555-4555-8555-555555555555";
 const ATTEMPT_ID = "77777777-7777-4777-8777-777777777777";
 const INVOCATION_SECRET = "runner-secret-value";
-const SERVICE_ROLE_KEY = "local-service-role-jwt";
+const GATEWAY_API_KEY = "sb_publishable_local_gateway";
 
 const CRASH_POINTS = [
   "before_claim",
@@ -156,7 +156,7 @@ type HandlerDeps = {
   now: () => Date;
   getCorsHeaders: () => HeadersInit;
   getInvocationSecret: () => string;
-  getServiceRoleKey: () => string;
+  getGatewayApiKeys: () => string[];
   getWorkerId: () => string;
   readQueueMessage: () => Promise<QueueEnvelope | null>;
   archiveQueueMessage: (messageId: string, reasonCode: string) => Promise<void>;
@@ -280,7 +280,7 @@ function createRequest(): Request {
   return new Request("http://localhost/agent-work-runner", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      apikey: GATEWAY_API_KEY,
       "x-agent-work-runner-secret": INVOCATION_SECRET,
     },
   });
@@ -317,7 +317,7 @@ function createChaosHarness(
     now: () => new Date(state.nowIso),
     getCorsHeaders: () => ({ "Access-Control-Allow-Origin": "http://localhost:5173" }),
     getInvocationSecret: () => INVOCATION_SECRET,
-    getServiceRoleKey: () => SERVICE_ROLE_KEY,
+    getGatewayApiKeys: () => [GATEWAY_API_KEY],
     getWorkerId: () => WORKER_ID,
     readQueueMessage: async () =>
       state.messagePresent ? { messageId: MESSAGE_ID, payload: createQueueMessage() } : null,
@@ -577,7 +577,7 @@ Deno.test(
       now: () => new Date("2026-08-02T18:30:00.000Z"),
       getCorsHeaders: () => ({}),
       getInvocationSecret: () => INVOCATION_SECRET,
-      getServiceRoleKey: () => SERVICE_ROLE_KEY,
+      getGatewayApiKeys: () => [GATEWAY_API_KEY],
       getWorkerId: () => WORKER_ID,
       readQueueMessage: async () => ({
         messageId: MESSAGE_ID,
@@ -668,7 +668,7 @@ Deno.test(
       now: () => new Date("2026-08-02T18:30:00.000Z"),
       getCorsHeaders: () => ({}),
       getInvocationSecret: () => INVOCATION_SECRET,
-      getServiceRoleKey: () => SERVICE_ROLE_KEY,
+      getGatewayApiKeys: () => [GATEWAY_API_KEY],
       getWorkerId: () => WORKER_ID,
       readQueueMessage: async () => ({
         messageId: MESSAGE_ID,

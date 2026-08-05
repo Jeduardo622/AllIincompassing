@@ -581,6 +581,47 @@ Deno.test("structured evidence uses approved payload content instead of locator 
   );
 });
 
+Deno.test("legacy handler fails closed before lookup or provider invocation when its rollout fence is enabled", async () => {
+  assertExists(createGenerateProgramGoalsHandler);
+
+  let legacyLookupCalls = 0;
+  let invokeCompletionCalls = 0;
+  const handler = createGenerateProgramGoalsHandler({
+    createRequestClient: () => ({}),
+    getUserOrThrow: async () => ({ id: "77777777-7777-4777-8777-777777777777" }),
+    requireOrg: async () => ORG_ID,
+    isLegacyGenerationDisabled: () => true,
+    lookupLegacyAssessment: async () => {
+      legacyLookupCalls += 1;
+      return { id: ASSESSMENT_ID };
+    },
+    invokeCompletion: async () => {
+      invokeCompletionCalls += 1;
+      return buildValidResponse();
+    },
+    requireLedgerAdvisoryRuntime: async () => {},
+  });
+
+  const response = await handler(
+    new Request("https://example.supabase.co/functions/v1/generate-program-goals", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer token",
+      },
+      body: JSON.stringify(buildLegacyRequest()),
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(await response.json(), {
+    error: "Legacy program/goal generation is disabled",
+    code: "legacy_generation_disabled",
+  });
+  assertEquals(legacyLookupCalls, 0);
+  assertEquals(invokeCompletionCalls, 0);
+});
+
 Deno.test("legacy handler accepts same-tenant authenticated requests without ledger RPCs", async () => {
   assertExists(createGenerateProgramGoalsHandler);
 

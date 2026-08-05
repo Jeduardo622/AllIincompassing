@@ -7,18 +7,45 @@ const { Client } = pg;
 export const FIXED_JOB_NAMES = Object.freeze([
   "agent-work-runner-local",
   "agent-work-sweeper-local",
+  "agent-work-runner-hosted",
+  "agent-work-sweeper-hosted",
 ]);
 
 export const FIXED_SECRET_NAMES = Object.freeze([
   "agent_work_local_service_role_key",
   "agent_work_local_runner_invocation_secret",
   "agent_work_local_sweeper_invocation_secret",
+  "agent_work_hosted_project_ref",
+  "agent_work_hosted_publishable_key",
+  "agent_work_hosted_runner_secret",
+  "agent_work_hosted_sweeper_secret",
 ]);
 
 export const CLEANUP_AUDIT_MUTATIONS = Object.freeze([
   {
     id: "disable_local_agent_work_queue_scheduler",
-    sql: "select public.disable_local_agent_work_queue_scheduler()",
+    sql: `
+      do $cleanup$
+      begin
+        if pg_catalog.to_regprocedure('public.disable_local_agent_work_queue_scheduler()') is not null then
+          execute 'select public.disable_local_agent_work_queue_scheduler()';
+        end if;
+      end
+      $cleanup$
+    `,
+    params: [],
+  },
+  {
+    id: "disable_hosted_agent_work_queue_scheduler",
+    sql: `
+      do $cleanup$
+      begin
+        if pg_catalog.to_regprocedure('public.disable_hosted_agent_work_queue_scheduler()') is not null then
+          execute 'select public.disable_hosted_agent_work_queue_scheduler()';
+        end if;
+      end
+      $cleanup$
+    `,
     params: [],
   },
   {

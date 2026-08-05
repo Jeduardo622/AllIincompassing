@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   createClient,
   type SupabaseClient,
@@ -9,6 +9,10 @@ import {
   type WorkflowDefinition,
 } from "../_shared/agent-work/policy.ts";
 import { assertAgentWorkSupabaseUrl } from "../_shared/agent-work/runtime-url.ts";
+import {
+  isAgentWorkServiceRequestAuthorized,
+  resolveAgentWorkGatewayApiKeys,
+} from "../_shared/agent-work/service-auth.ts";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -171,7 +175,7 @@ export type AgentWorkRunnerHandlerDependencies = {
   now: () => Date;
   getCorsHeaders: () => HeadersInit;
   getInvocationSecret: () => string;
-  getServiceRoleKey: () => string;
+  getGatewayApiKeys: () => string[];
   getWorkerId: () => string;
   readQueueMessage: () => Promise<QueueEnvelope | null>;
   archiveQueueMessage: (messageId: string, reasonCode: string) => Promise<void>;
@@ -274,10 +278,11 @@ export function createAgentWorkRunnerHandler(
       return reject(405, "Method not allowed", "method_not_allowed");
     }
     if (
-      !isAuthorizedInvocation(
+      !isAgentWorkServiceRequestAuthorized(
         request,
+        "x-agent-work-runner-secret",
         deps.getInvocationSecret(),
-        deps.getServiceRoleKey(),
+        deps.getGatewayApiKeys(),
       )
     ) {
       return reject(
@@ -642,38 +647,12 @@ function headersRecord(value: HeadersInit): Record<string, string> {
   return Object.fromEntries(headers.entries());
 }
 
-function isAuthorizedInvocation(
-  request: Request,
-  secret: string,
-  serviceRoleKey: string,
-): boolean {
-  const authorization = request.headers.get("authorization")?.trim() ?? "";
-  const expectedAuthorization = serviceRoleKey
-    ? `Bearer ${serviceRoleKey}`
-    : "";
-  const providedSecret = request.headers.get("x-agent-work-runner-secret") ??
-    "";
-  if (
-    !secret || !providedSecret || !expectedAuthorization ||
-    !authorization
-  ) {
-    return false;
-  }
-  return constantTimeEqual(expectedAuthorization, authorization) &&
-    constantTimeEqual(secret, providedSecret);
-}
-
-function constantTimeEqual(left: string, right: string): boolean {
-  const encoder = new TextEncoder();
-  const leftBytes = encoder.encode(left);
-  const rightBytes = encoder.encode(right);
-  const length = Math.max(leftBytes.length, rightBytes.length, 1);
-  const paddedLeft = new Uint8Array(length);
-  const paddedRight = new Uint8Array(length);
-  paddedLeft.set(leftBytes);
-  paddedRight.set(rightBytes);
-  const matched = timingSafeEqual(paddedLeft, paddedRight);
-  return matched && leftBytes.length === rightBytes.length;
+function configuredGatewayApiKeys(): string[] {
+  return resolveAgentWorkGatewayApiKeys({
+    SUPABASE_PUBLISHABLE_KEYS: Deno.env.get("SUPABASE_PUBLISHABLE_KEYS"),
+    SUPABASE_PUBLISHABLE_KEY: Deno.env.get("SUPABASE_PUBLISHABLE_KEY"),
+    SUPABASE_ANON_KEY: Deno.env.get("SUPABASE_ANON_KEY"),
+  });
 }
 
 function strictQueueMessage(
@@ -1173,7 +1152,8 @@ function createServiceClient(): SupabaseClient {
 }
 
 function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
-  const serviceClient = createServiceClient();
+  let serviceClient: SupabaseClient | null = null;
+  const getServiceClient = () => serviceClient ??= createServiceClient();
   const stepToWorkItem = new Map<string, string>();
 
   return {
@@ -1184,11 +1164,10 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
       ),
     getInvocationSecret: () =>
       Deno.env.get("AGENT_WORK_RUNNER_SECRET")?.trim() ?? "",
-    getServiceRoleKey: () =>
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ?? "",
+    getGatewayApiKeys: configuredGatewayApiKeys,
     getWorkerId: () => "agent_work_runner",
     readQueueMessage: async () => {
-      const { data, error } = await serviceClient.rpc(
+      const { data, error } = await getServiceClient().rpc(
         "read_agent_work_messages",
         {
           p_visibility_timeout_seconds: DEFAULT_VISIBILITY_TIMEOUT_SECONDS,
@@ -1204,14 +1183,14 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
       };
     },
     archiveQueueMessage: async (messageId: string) => {
-      const { error } = await serviceClient.rpc(
+      const { error } = await getServiceClient().rpc(
         "archive_agent_work_message",
         { p_msg_id: messageId },
       );
       if (error) throw new Error("archive_agent_work_message_failed");
     },
     loadRuntimePolicy: async () => {
-      const { data, error } = await serviceClient.rpc(
+      const { data, error } = await getServiceClient().rpc(
         "load_agent_work_runtime_policy",
         { p_mode_input: runtimeMode() },
       );
@@ -1236,7 +1215,7 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
       return row.runtimeMode;
     },
     rereadAuthoritativeScope: async (input) => {
-      const { data, error } = await serviceClient.rpc(
+      const { data, error } = await getServiceClient().rpc(
         "read_agent_work_runner_scope",
         {
           p_work_item_id: input.workItemId,
@@ -1299,7 +1278,7 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
       };
     },
     loadProjectionDescriptor: async (scope) => {
-      const { data, error } = await serviceClient.rpc(
+      const { data, error } = await getServiceClient().rpc(
         "read_agent_work_advisory_projection_descriptor",
         { p_step_id: scope.stepId },
       );
@@ -1321,7 +1300,7 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
     claimStepLease: async (stepId: string) => {
       const workItemId = stepToWorkItem.get(stepId);
       if (!workItemId) throw new Error("claim_agent_work_step_failed");
-      const { data, error } = await serviceClient.rpc(
+      const { data, error } = await getServiceClient().rpc(
         "claim_queued_agent_work_step",
         {
           p_work_item_id: workItemId,
@@ -1349,7 +1328,7 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
       };
     },
     executeStep: async (_scope, lease, expectedEffect) => {
-      const { data, error } = await serviceClient.rpc(
+      const { data, error } = await getServiceClient().rpc(
         "record_agent_work_advisory_projection_effect",
         {
           p_step_id: lease.stepId,
@@ -1377,7 +1356,7 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
       };
     },
     verifyPostcondition: async (scope, expectedEffect) => {
-      const { data, error } = await serviceClient.rpc(
+      const { data, error } = await getServiceClient().rpc(
         "read_agent_work_advisory_projection_effect",
         {
           p_step_id: scope.stepId,
@@ -1405,7 +1384,7 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
     },
     findRecordedEffect: async (stepId: string, effectKey: string) => {
       if (!effectKey) return null;
-      const { data, error } = await serviceClient.rpc(
+      const { data, error } = await getServiceClient().rpc(
         "read_agent_work_advisory_projection_effect",
         { p_step_id: stepId, p_effect_key: effectKey },
       );
@@ -1430,7 +1409,7 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
       };
     },
     transitionStep: async (input) => {
-      const { error } = await serviceClient.rpc(
+      const { error } = await getServiceClient().rpc(
         "finalize_agent_work_advisory_projection_effect",
         {
           p_step_id: input.stepId,
@@ -1450,7 +1429,7 @@ function createRuntimeDependencies(): AgentWorkRunnerHandlerDependencies {
       }
     },
     scheduleRetry: async (input) => {
-      const { data, error } = await serviceClient.rpc(
+      const { data, error } = await getServiceClient().rpc(
         "schedule_agent_work_step_retry",
         {
           p_step_id: input.stepId,

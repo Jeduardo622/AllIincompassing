@@ -224,12 +224,13 @@ The fixed check order is:
 5. deterministic chaos
 6. shadow parity
 7. retention and trace contracts
-8. queue, scheduler, runner, and sweeper smoke
-9. app/API unit tests and production build
-10. cached Agent Work Ledger Deno tests
-11. cleanup audit
+8. hosted scheduler transaction contract
+9. queue, local scheduler, runner, and sweeper smoke
+10. app/API unit tests and production build
+11. cached Agent Work Ledger Deno tests
+12. cleanup audit
 
-Every destructive check begins with a fresh database reset on the isolated network. The scheduler check runs last among destructive checks because it enables `pg_cron`; this prevents extension worker activity from racing later resets while still making cleanup audit the terminal database-state check. All waits and retries are bounded. Cleanup removes Compose containers and volumes, the local Supabase stack and volumes, the dedicated network, Cron jobs, Vault entries, queue fixtures, temporary archive context, and listeners, then fails if residue remains.
+Every destructive check begins with a fresh database reset on the isolated network. The two scheduler checks run last among destructive checks because they enable `pg_cron`; this prevents extension worker activity from racing later resets while still making cleanup audit the terminal database-state check. All waits and retries are bounded. Cleanup removes Compose containers and volumes, the local Supabase stack and volumes, the dedicated network, Cron jobs, Vault entries, queue fixtures, temporary archive context, and listeners, then fails if residue remains.
 
 Sanitized manifests and summary logs are written under `.reports/agent-work-ledger-phase2/<run-id>/`. They contain command status, timing, commit and image identities, SHA-256 fingerprints of redacted PHI-free command output, and cleanup results, but no credentials or command output payloads. The directory is ignored and is not a release artifact.
 
@@ -497,6 +498,8 @@ npm run agent-work:hosted-scheduler:contract
 The command rejects non-local database URLs, enables the three scheduler extensions late in the isolated local stack, uses synthetic generated values, and creates the four fixed secrets plus two jobs inside an uncommitted transaction. It proves invalid deployment identity fails closed, exact project binding, secret-free command storage, service-role execution denial, sanitized status, disablement, rollback, and zero fixed job/Vault residue. Extension installation is intentionally outside that transaction and can remain until the isolated local stack is destroyed. The Phase 2 harness runs the same contract before the existing local scheduler smoke and audits both local and hosted fixed names during cleanup.
 
 Intermediate WIN-275 evidence used one command, `npm run test:agent-work:phase2`, from commit `0f5e5ef8c7d9f85756c99486b7381090f5e62d18` and image `sha256:82c380cc0e1539716c593a45d1f785a5eecd1c535fb02a3f915a2b1095609388`. Runs `20260805T001342Z-6a9cc6` and `20260805T002520Z-139f82` each passed all 12 checks and cleanup in `683,030ms` and `640,994ms`; their summary hashes are `873b5edeb7454bfa787e4bb758aed875944a917ba870e183ea7cfffd9d4226f1` and `c3d3e2e3343751ae8a185152aab8ca195568eab085a1376c0692557df6cc74d2`. Final review then found that PostgreSQL `btrim(text)` is space-specific, so these runs are diagnostic rather than final. Commit `ed12965a` replaces that predicate with a POSIX all-whitespace rejection and adds space plus tab/newline cases; final evidence must use that corrected committed source.
+
+Final corrected evidence used commit `3aa56cf7b8b6bfb7de48c3eb506e49116c9a37aa` and image `sha256:96958caa3677f5b71ff1bdcd8e18c170e4ab9cf02c573ae372b61881ebf1ea7f`. Runs `20260805T010300Z-fbf490` and `20260805T011742Z-1fb3a9` each passed all 12 checks and cleanup in `738,736ms` and `763,918ms`. Their summary hashes are `b6bf59bcd826ae28c34efc50af26ab29df0e286c4ebfc89020f5050ff4e00118` and `14cc3d841f8388b78b855a5ce466a8c2d3167332070aa08a6221d65397f33fe9`; their evidence hashes are `cb4b9da961c43046d2a95b3e435d85546a38eef52490a282d81c005b83a84dd2` and `d606504fd11595db88d55e72d7a086b776eee8faa55dba2aae72e53a8571c951`. An independent post-run audit found no labeled containers, volumes, dedicated network, or listeners on ports 54321, 54322, 4173, 8787, or 8788.
 
 ### Promotion And Rollback
 

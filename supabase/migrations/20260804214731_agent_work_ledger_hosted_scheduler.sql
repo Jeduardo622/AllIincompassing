@@ -37,7 +37,8 @@ begin
       'agent_work_hosted_service_role_key',
       'agent_work_hosted_runner_secret',
       'agent_work_hosted_sweeper_secret'
-    ) and decrypted_secret is not null;
+    ) and decrypted_secret is not null
+      and btrim(decrypted_secret) <> '';
   end if;
 
   if v_pg_cron_enabled then
@@ -172,6 +173,7 @@ begin
       'agent_work_hosted_runner_secret',
       'agent_work_hosted_sweeper_secret'
     ) and decrypted_secret is not null
+      and btrim(decrypted_secret) <> ''
   ) then
     raise exception 'Fixed hosted scheduler secrets are unavailable';
   end if;

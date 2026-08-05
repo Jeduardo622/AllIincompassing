@@ -112,6 +112,48 @@ const main = async () => {
         ],
       );
 
+      const { rows: runnerSecretRows } = await database.query(
+        "select id from vault.secrets where name = 'agent_work_hosted_runner_secret'",
+      );
+      assert(runnerSecretRows.length === 1, "Hosted runner Vault entry is missing or duplicated.");
+      await database.query(
+        "select vault.update_secret($1::uuid, $2::text, $3::text, $4::text)",
+        [
+          runnerSecretRows[0].id,
+          "   ",
+          "agent_work_hosted_runner_secret",
+          "Synthetic Agent Work hosted scheduler contract",
+        ],
+      );
+
+      const { rows: blankSecretStatusRows } = await database.query(
+        "select public.hosted_agent_work_queue_scheduler_status() as status",
+      );
+      assert(blankSecretStatusRows[0]?.status?.secretsReady === false, "Whitespace-only hosted secrets must not be ready.");
+
+      await database.query("savepoint blank_secret_denial");
+      let blankSecretDenied = false;
+      try {
+        await database.query(
+          "select public.enable_hosted_agent_work_queue_scheduler($1::text, 5000, 25)",
+          [SCHEDULE],
+        );
+      } catch (error) {
+        blankSecretDenied = String(error?.message ?? error).includes("secrets are unavailable");
+        await database.query("rollback to savepoint blank_secret_denial");
+      }
+      assert(blankSecretDenied, "Hosted scheduler accepted a whitespace-only invocation secret.");
+
+      await database.query(
+        "select vault.update_secret($1::uuid, $2::text, $3::text, $4::text)",
+        [
+          runnerSecretRows[0].id,
+          syntheticSecrets[2],
+          "agent_work_hosted_runner_secret",
+          "Synthetic Agent Work hosted scheduler contract",
+        ],
+      );
+
       await database.query(
         "select public.enable_hosted_agent_work_queue_scheduler($1::text, 5000, 25)",
         [SCHEDULE],

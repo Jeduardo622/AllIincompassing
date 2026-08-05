@@ -28,11 +28,11 @@ The current trace-scope repair PR is the review target. Approval means the revie
 
 These hashes are immutable historical evidence for the original implementation. They do not attest the changed script or focused test in the current repair; the repair PR's exact diff and head SHA are the review anchor. If that reviewed head changes, stop and obtain a fresh approval instead of dispatching.
 
-## Required Human Review
+## Required Critical Review
 
-The independent reviewer must confirm:
+The reviewer must confirm:
 
-1. Dispatch is owner-only, bound to the immutable current `main` SHA and a merged WIN-275 PR, and fails closed without an independent current-head human approval.
+1. Dispatch is owner-only, bound to the immutable current `main` SHA and a merged WIN-275 PR, and requires exact-head passing `ci-gate` plus either independent current-head human approval or the eligible owner-attested route below.
 2. Execution can enter only `shadow`; `advisory` and `active` are rejected.
 3. Fixtures are deterministic and synthetic, tenant isolation and idempotency are proved, and no model/provider or clinical mutation path runs.
 4. Runtime mode is restored to `disabled` by redundant workflow and script paths.
@@ -42,6 +42,8 @@ The independent reviewer must confirm:
 
 ## Dispatch Rule
 
-The current trace-scope repair PR must receive a current-head `APPROVED` review from an independent human GitHub user before merge. After it merges, its merge commit must remain the current `main` head. The owner may then dispatch `agent-work-ledger-hosted-shadow-proof.yml` using that repair PR number and exact merge SHA.
+Independent-human approval remains the default. Because GitHub's live collaborator census currently identifies only the repository owner, a fresh successor PR may use the `solo-maintainer owner-attested critical lane`. Eligibility requires a personal-repository owner match by login and numeric account ID, exactly one GitHub human maintainer with write-or-higher access, successful GitHub Actions `ci-gate` on the exact PR head, and the machine-readable `WIN-275-solo-maintainer-attestation.json` manifest with passing code, security, test, and Supabase agent reviews plus matching protected-surface hashes.
 
-If `main` advances first, approval is dismissed, any listed hash changes, or any required invariant cannot be confirmed, do not dispatch. Route a new review checkpoint instead.
+The owner must inspect and merge the fresh successor PR as one action. Only afterward may the owner make a separate workflow dispatch with the exact solo acknowledgement. PRs `#897`, `#898`, and `#899` predate this contract and remain ineligible; the fallback does not retroactively validate them.
+
+If `main` advances first, approval is dismissed, repository ownership or the maintainer census changes, any listed hash changes, CI is stale, or any required invariant cannot be confirmed, do not dispatch. Route a new review checkpoint instead.

@@ -109,6 +109,12 @@ Add on demand:
 
 Add `performance-engineer` when query or runtime performance is part of the change.
 
+### Solo-Maintainer Critical Review
+
+Independent-human approval remains the default for `critical`. A user-owned repository may use the `solo-maintainer owner-attested critical lane` only when GitHub proves exactly one GitHub human maintainer with write-or-higher access and that account matches the repository owner and dispatch actor by login and numeric ID. The candidate must be a merged issue-linked PR at the immutable current `main`, its exact head must have successful required CI, and a committed SHA-256 manifest must record passing code, security, test, and applicable domain specialist reviews.
+
+This is not autonomous approval. The owner must explicitly inspect and merge the candidate, then perform any protected dispatch separately with the workflow's exact solo acknowledgement. Organizational ownership, incomplete pagination or permissions, another eligible human, stale `main`, stale CI, missing agent evidence, or hash drift disables the exception and restores the independent-human requirement.
+
 ## Mandatory Verification Commands
 
 Run the union required by `docs/ai/verification-matrix.md`.

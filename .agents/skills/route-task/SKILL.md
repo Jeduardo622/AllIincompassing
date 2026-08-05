@@ -107,6 +107,8 @@ Required output:
 - `mandatory checks` from `docs/ai/verification-matrix.md`
 - `linear required`: yes (must be linked before PR-ready state)
 
+Critical work normally requires independent-human approval. A personal repository that can prove exactly one GitHub human maintainer with write-or-higher access may instead use the `solo-maintainer owner-attested critical lane` defined in `AGENTS.md` and `docs/ai/cto-lane-contract.md`. Independent-human approval remains the default; the exception still requires the complete critical specialist sequence, exact-head CI, a hash-bound review manifest, explicit owner review/merge, and a separate owner dispatch. Never infer eligibility from a user statement alone.
+
 ### `blocked` (`blocked pending clarification`)
 
 Use when the task cannot be routed safely because scope, target files, expected behavior, or environment assumptions are unclear enough that implementation would be unsafe.
@@ -192,7 +194,7 @@ Required output:
   - `npm run verify:local` when local environment supports required checks
 - linear required: yes
 - blocking conditions:
-  - no human reviewer sign-off
+  - no human reviewer sign-off or eligible owner attestation under the fail-closed solo-maintainer contract
   - no Linear issue linkage
   - missing required check evidence
 

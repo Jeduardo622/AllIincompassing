@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       pull_request_number:
-        description: Merged human-approved WIN-275 pull request
+        description: Merged reviewed or solo-owner-attested WIN-275 pull request
         required: true
         type: string
       approval_acknowledgement:
@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
+      checks: read
       contents: read
       pull-requests: read
     steps:
@@ -38,6 +39,7 @@ jobs:
           APPROVAL_ACKNOWLEDGEMENT: ${{ inputs.approval_acknowledgement }}
           COMMIT_SHA: ${{ inputs.commit_sha }}
           GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
           GITHUB_REF: ${{ github.ref }}
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -45,15 +47,19 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
           import { appendFileSync } from 'node:fs';
 
           const commitSha = process.env.COMMIT_SHA ?? '';
           const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
           const repository = process.env.REPOSITORY ?? '';
+          const independentAcknowledgement = 'I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF';
+          const soloAcknowledgement = 'I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF';
+          const acknowledgement = process.env.APPROVAL_ACKNOWLEDGEMENT ?? '';
           if (!/^[0-9a-f]{40}$/.test(commitSha)) {
             throw new Error('commit_sha must be exactly 40 lowercase hexadecimal characters.');
           }
-          if (process.env.APPROVAL_ACKNOWLEDGEMENT !== 'I_APPROVE_AGENT_WORK_LEDGER_HOSTED_SHADOW_PROOF') {
+          if (![independentAcknowledgement, soloAcknowledgement].includes(acknowledgement)) {
             throw new Error('Exact protected execution approval acknowledgement is required.');
           }
           if (process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) {
@@ -68,19 +74,51 @@ jobs:
           if (!/^[^/]+\/[^/]+$/.test(repository)) {
             throw new Error('Repository identity is invalid.');
           }
+          if (!/^[1-9][0-9]*$/.test(process.env.GITHUB_ACTOR_ID ?? '')) {
+            throw new Error('GitHub actor numeric identity is invalid.');
+          }
 
           const githubHeaders = {
             Accept: 'application/vnd.github+json',
             Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
             'X-GitHub-Api-Version': '2022-11-28',
           };
-          const response = await fetch(`https://api.github.com/repos/${repository}/git/ref/heads/main`, {
-            headers: githubHeaders,
-          });
-          if (!response.ok) {
-            throw new Error(`Unable to validate main ref: HTTP ${response.status}.`);
-          }
-          const mainRef = await response.json();
+          const fetchJson = async (url, label) => {
+            const response = await fetch(url, { headers: githubHeaders });
+            if (!response.ok) {
+              throw new Error(`Unable to validate ${label}: HTTP ${response.status}.`);
+            }
+            return response.json();
+          };
+          const fetchAllPages = async (urlForPage, label, selectItems = (payload) => payload) => {
+            const collected = [];
+            for (let page = 1; page <= 20; page += 1) {
+              const payload = await fetchJson(urlForPage(page), label);
+              const items = selectItems(payload);
+              if (!Array.isArray(items)) {
+                throw new Error(`${label} response must contain an array.`);
+              }
+              collected.push(...items);
+              if (items.length < 100) return collected;
+            }
+            throw new Error('GitHub pagination exceeded the fail-closed page limit.');
+          };
+          const getRepositoryContent = async (repositoryPath) => {
+            const encodedPath = repositoryPath.split('/').map(encodeURIComponent).join('/');
+            const payload = await fetchJson(
+              `https://api.github.com/repos/${repository}/contents/${encodedPath}?ref=${commitSha}`,
+              `repository content ${repositoryPath}`,
+            );
+            if (Array.isArray(payload) || payload.type !== 'file' || payload.encoding !== 'base64') {
+              throw new Error(`Repository content ${repositoryPath} is not a base64 file.`);
+            }
+            return Buffer.from(String(payload.content ?? '').replace(/\s/g, ''), 'base64');
+          };
+
+          const mainRef = await fetchJson(
+            `https://api.github.com/repos/${repository}/git/ref/heads/main`,
+            'main ref',
+          );
           if (mainRef.ref !== 'refs/heads/main') {
             throw new Error('Validated ref must be main.');
           }
@@ -89,14 +127,10 @@ jobs:
             throw new Error('commit_sha must equal the immutable current main head SHA.');
           }
 
-          const pullResponse = await fetch(
+          const pull = await fetchJson(
             `https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}`,
-            { headers: githubHeaders },
+            'pull request',
           );
-          if (!pullResponse.ok) {
-            throw new Error(`Unable to validate pull request: HTTP ${pullResponse.status}.`);
-          }
-          const pull = await pullResponse.json();
           if (pull.state !== 'closed' || pull.merged !== true || !pull.merged_at) {
             throw new Error('Approval pull request must be merged.');
           }
@@ -109,18 +143,54 @@ jobs:
           if (!/(^|[^A-Z0-9])WIN-275([^A-Z0-9]|$)/i.test(`${pull.title ?? ''}\n${pull.body ?? ''}`)) {
             throw new Error('Approval pull request must reference WIN-275.');
           }
-
-          const reviewsResponse = await fetch(
-            `https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}/reviews?per_page=100`,
-            { headers: githubHeaders },
-          );
-          if (!reviewsResponse.ok) {
-            throw new Error(`Unable to validate pull request reviews: HTTP ${reviewsResponse.status}.`);
+          if (!/^[0-9a-f]{40}$/.test(pull.head?.sha ?? '')) {
+            throw new Error('Approval pull request head SHA is invalid.');
           }
+
+          const checkRuns = await fetchAllPages(
+            (page) => `https://api.github.com/repos/${repository}/commits/${pull.head.sha}/check-runs?per_page=100&page=${page}`,
+            'pull request check runs',
+            (payload) => payload.check_runs,
+          );
+          const requiredCiChecks = [
+            'policy',
+            'lint-typecheck',
+            'unit-tests',
+            'build',
+            'tier0-browser',
+            'auth-browser-smoke',
+            'ci-gate',
+          ];
+          const missingRequiredCi = requiredCiChecks.filter((requiredName) =>
+            !checkRuns.some((check) =>
+              check.name === requiredName &&
+              check.head_sha === pull.head?.sha &&
+              check.app?.slug === 'github-actions' &&
+              check.status === 'completed' &&
+              check.conclusion === 'success'
+            )
+          );
+          if (missingRequiredCi.length > 0) {
+            throw new Error(`The exact pull request head is missing successful required CI: ${missingRequiredCi.join(', ')}.`);
+          }
+
+          const reviews = await fetchAllPages(
+            (page) => `https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}/reviews?per_page=100&page=${page}`,
+            'pull request reviews',
+          );
           const latestByReviewer = new Map();
-          for (const review of await reviewsResponse.json()) {
+          for (const review of reviews) {
             const login = review.user?.login;
-            if (login) latestByReviewer.set(login, review);
+            if (!login) continue;
+            const previous = latestByReviewer.get(login);
+            const reviewOrder = [Date.parse(review.submitted_at ?? '') || 0, Number(review.id) || 0];
+            const previousOrder = previous
+              ? [Date.parse(previous.submitted_at ?? '') || 0, Number(previous.id) || 0]
+              : [-1, -1];
+            if (reviewOrder[0] > previousOrder[0] ||
+                (reviewOrder[0] === previousOrder[0] && reviewOrder[1] > previousOrder[1])) {
+              latestByReviewer.set(login, review);
+            }
           }
           const approved = [...latestByReviewer.values()].some((review) =>
             review.state === 'APPROVED' &&
@@ -128,11 +198,111 @@ jobs:
             review.user?.login !== process.env.GITHUB_REPOSITORY_OWNER &&
             review.user?.type === 'User',
           );
-          if (!approved) {
-            throw new Error('A current-head approval from an independent human reviewer is required.');
+          let reviewRoute = '';
+          let attestationSha256 = 'none';
+          if (acknowledgement === independentAcknowledgement) {
+            if (!approved) {
+              throw new Error('A current-head approval from an independent human reviewer is required.');
+            }
+            reviewRoute = 'independent_human';
+          } else {
+            const repositoryDetails = await fetchJson(
+              `https://api.github.com/repos/${repository}`,
+              'repository owner identity',
+            );
+            if (repositoryDetails.owner?.type !== 'User' ||
+                repositoryDetails.owner?.login !== process.env.GITHUB_REPOSITORY_OWNER ||
+                String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID) {
+              throw new Error('Solo-maintainer attestation requires an exact personal repository owner identity match.');
+            }
+            const collaborators = await fetchAllPages(
+              (page) => `https://api.github.com/repos/${repository}/collaborators?affiliation=direct&per_page=100&page=${page}`,
+              'direct repository collaborators',
+            );
+            const eligibleMaintainers = collaborators.filter((collaborator) =>
+              collaborator.type === 'User' &&
+              (collaborator.permissions?.admin || collaborator.permissions?.maintain || collaborator.permissions?.push)
+            );
+            if (eligibleMaintainers.length !== 1 ||
+                eligibleMaintainers[0]?.login !== process.env.GITHUB_REPOSITORY_OWNER ||
+                String(eligibleMaintainers[0]?.id) !== process.env.GITHUB_ACTOR_ID) {
+              throw new Error('Solo-maintainer attestation requires exactly one matching human maintainer with write-or-higher access.');
+            }
+
+            const attestationPath = 'docs/ai/reviews/WIN-275-solo-maintainer-attestation.json';
+            const attestationBytes = await getRepositoryContent(attestationPath);
+            attestationSha256 = createHash('sha256').update(attestationBytes).digest('hex');
+            let attestation;
+            try {
+              attestation = JSON.parse(attestationBytes.toString('utf8'));
+            } catch {
+              throw new Error('Solo-maintainer specialist review attestation must be valid JSON.');
+            }
+            if (attestation.schemaVersion !== 1 ||
+                attestation.issue !== 'WIN-275' ||
+                attestation.reviewMode !== 'solo-maintainer-owner-attestation' ||
+                attestation.repository !== repository) {
+              throw new Error('Solo-maintainer specialist review attestation identity is invalid.');
+            }
+            const requiredSpecialists = [
+              'code-review-engineer',
+              'security-engineer',
+              'test-engineer',
+              'supabase-reviewer',
+            ];
+            for (const specialist of requiredSpecialists) {
+              const review = attestation.specialistReviews?.[specialist];
+              if (review?.verdict !== 'PASS' || !/^[0-9a-f-]{36}$/.test(review?.agentId ?? '')) {
+                throw new Error(`Missing passing ${specialist} attestation.`);
+              }
+            }
+            const requiredInvariants = [
+              'exactMainAndCi',
+              'shadowOnly',
+              'disabledRestoreRequired',
+              'sanitizedEvidenceOnly',
+              'zeroProviderCalls',
+              'retentionPolicyUnapproved',
+            ];
+            if (requiredInvariants.some((key) => attestation.invariants?.[key] !== true)) {
+              throw new Error('Solo-maintainer specialist review attestation is missing required invariants.');
+            }
+            const requiredProtectedSurfaces = [
+              '.github/workflows/agent-work-ledger-hosted-shadow-proof.yml',
+              'tests/agentWorkLedgerHostedShadowProof.test.ts',
+              'AGENTS.md',
+              '.agents/skills/route-task/SKILL.md',
+              'docs/ai/cto-lane-contract.md',
+              'docs/ai/high-risk-paths.md',
+              'docs/ops/agent-work-ledger.md',
+              'docs/superpowers/plans/2026-08-04-agent-work-ledger-operational-activation.md',
+              'docs/ai/handoffs/agent-work-ledger-foundation.md',
+              'docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md',
+            ];
+            const protectedSurfaceHashes = attestation.protectedSurfaceHashes;
+            if (!protectedSurfaceHashes ||
+                Object.keys(protectedSurfaceHashes).sort().join('\n') !== requiredProtectedSurfaces.slice().sort().join('\n')) {
+              throw new Error('Solo-maintainer specialist review attestation surface inventory is invalid.');
+            }
+            for (const repositoryPath of requiredProtectedSurfaces) {
+              const expectedHash = protectedSurfaceHashes[repositoryPath];
+              if (!/^[0-9a-f]{64}$/.test(expectedHash ?? '')) {
+                throw new Error(`Invalid attested SHA-256 for ${repositoryPath}.`);
+              }
+              const actualHash = createHash('sha256')
+                .update(await getRepositoryContent(repositoryPath))
+                .digest('hex');
+              if (actualHash !== expectedHash) {
+                throw new Error(`Attested SHA-256 mismatch for ${repositoryPath}.`);
+              }
+            }
+            reviewRoute = 'solo_owner_attestation';
           }
 
           appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\n`, { encoding: 'utf8' });
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_pr_head_sha=${pull.head.sha}\n`, { encoding: 'utf8' });
+          appendFileSync(process.env.GITHUB_OUTPUT, `review_route=${reviewRoute}\n`, { encoding: 'utf8' });
+          appendFileSync(process.env.GITHUB_OUTPUT, `attestation_sha256=${attestationSha256}\n`, { encoding: 'utf8' });
           NODE
 
       - name: Checkout validated commit
@@ -162,6 +332,160 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/agent-work-ledger-hosted-shadow-proof-private"
           mkdir -p "$RUNNER_TEMP/agent-work-ledger-hosted-shadow-proof-public"
+
+      - name: Revalidate approval immediately before hosted access
+        env:
+          ATTESTATION_SHA256: ${{ steps.approval.outputs.attestation_sha256 }}
+          EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_HEAD_SHA: ${{ steps.approval.outputs.validated_pr_head_sha }}
+          PUBLIC_ARTIFACT_DIR: ${{ runner.temp }}/agent-work-ledger-hosted-shadow-proof-public
+          PULL_REQUEST_NUMBER: ${{ inputs.pull_request_number }}
+          REPOSITORY: ${{ github.repository }}
+          REVIEW_ROUTE: ${{ steps.approval.outputs.review_route }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+
+          const repository = process.env.REPOSITORY ?? '';
+          const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
+          const reviewRoute = process.env.REVIEW_ROUTE ?? '';
+          const githubHeaders = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+          };
+          const fetchJson = async (url, label) => {
+            const response = await fetch(url, { headers: githubHeaders });
+            if (!response.ok) {
+              throw new Error(`Unable to revalidate ${label}: HTTP ${response.status}.`);
+            }
+            return response.json();
+          };
+          const fetchAllPages = async (urlForPage, label, selectItems = (payload) => payload) => {
+            const collected = [];
+            for (let page = 1; page <= 20; page += 1) {
+              const payload = await fetchJson(urlForPage(page), label);
+              const items = selectItems(payload);
+              if (!Array.isArray(items)) throw new Error(`${label} response must be an array.`);
+              collected.push(...items);
+              if (items.length < 100) return collected;
+            }
+            throw new Error('GitHub pagination exceeded the fail-closed page limit.');
+          };
+
+          const mainRef = await fetchJson(
+            `https://api.github.com/repos/${repository}/git/ref/heads/main`,
+            'main ref',
+          );
+          if (mainRef.ref !== 'refs/heads/main' || mainRef.object?.sha !== process.env.EXPECTED_SHA) {
+            throw new Error('Current main changed after initial approval validation.');
+          }
+
+          const checkRuns = await fetchAllPages(
+            (page) => `https://api.github.com/repos/${repository}/commits/${process.env.PR_HEAD_SHA}/check-runs?per_page=100&page=${page}`,
+            'pull request check runs',
+            (payload) => payload.check_runs,
+          );
+          const requiredCiChecks = [
+            'policy',
+            'lint-typecheck',
+            'unit-tests',
+            'build',
+            'tier0-browser',
+            'auth-browser-smoke',
+            'ci-gate',
+          ];
+          const missingRequiredCi = requiredCiChecks.filter((requiredName) =>
+            !checkRuns.some((check) =>
+              check.name === requiredName &&
+              check.head_sha === process.env.PR_HEAD_SHA &&
+              check.app?.slug === 'github-actions' &&
+              check.status === 'completed' &&
+              check.conclusion === 'success'
+            )
+          );
+          if (missingRequiredCi.length > 0) {
+            throw new Error(`Required ci-gate changed after initial validation. Missing: ${missingRequiredCi.join(', ')}.`);
+          }
+
+          if (reviewRoute === 'solo_owner_attestation') {
+            const repositoryDetails = await fetchJson(
+              `https://api.github.com/repos/${repository}`,
+              'repository owner identity',
+            );
+            if (repositoryDetails.owner?.type !== 'User' ||
+                repositoryDetails.owner?.login !== process.env.GITHUB_REPOSITORY_OWNER ||
+                String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID ||
+                process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) {
+              throw new Error('Solo-maintainer repository ownership changed after initial validation.');
+            }
+            const collaborators = await fetchAllPages(
+              (page) => `https://api.github.com/repos/${repository}/collaborators?affiliation=direct&per_page=100&page=${page}`,
+              'direct repository collaborators',
+            );
+            const eligibleMaintainers = collaborators.filter((collaborator) =>
+              collaborator.type === 'User' &&
+              (collaborator.permissions?.admin || collaborator.permissions?.maintain || collaborator.permissions?.push)
+            );
+            if (eligibleMaintainers.length !== 1 ||
+                eligibleMaintainers[0]?.login !== process.env.GITHUB_REPOSITORY_OWNER ||
+                String(eligibleMaintainers[0]?.id) !== process.env.GITHUB_ACTOR_ID) {
+              throw new Error('Solo-maintainer topology changed after initial validation.');
+            }
+          } else if (reviewRoute === 'independent_human') {
+            const reviews = await fetchAllPages(
+              (page) => `https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}/reviews?per_page=100&page=${page}`,
+              'pull request reviews',
+            );
+            const latestByReviewer = new Map();
+            for (const review of reviews) {
+              const login = review.user?.login;
+              if (!login) continue;
+              const previous = latestByReviewer.get(login);
+              const currentOrder = [Date.parse(review.submitted_at ?? '') || 0, Number(review.id) || 0];
+              const previousOrder = previous
+                ? [Date.parse(previous.submitted_at ?? '') || 0, Number(previous.id) || 0]
+                : [-1, -1];
+              if (currentOrder[0] > previousOrder[0] ||
+                  (currentOrder[0] === previousOrder[0] && currentOrder[1] > previousOrder[1])) {
+                latestByReviewer.set(login, review);
+              }
+            }
+            const approved = [...latestByReviewer.values()].some((review) =>
+              review.state === 'APPROVED' &&
+              review.commit_id === process.env.PR_HEAD_SHA &&
+              review.user?.login !== process.env.GITHUB_REPOSITORY_OWNER &&
+              review.user?.type === 'User'
+            );
+            if (!approved) {
+              throw new Error('Independent human approval changed after initial validation.');
+            }
+          } else {
+            throw new Error('Unknown protected review route.');
+          }
+
+          const attestationSha256 = process.env.ATTESTATION_SHA256 ?? '';
+          if (reviewRoute === 'solo_owner_attestation' && !/^[0-9a-f]{64}$/.test(attestationSha256)) {
+            throw new Error('Solo-maintainer attestation hash is invalid.');
+          }
+          writeFileSync(
+            `${process.env.PUBLIC_ARTIFACT_DIR}/approval-evidence.json`,
+            `${JSON.stringify({
+              schemaVersion: 1,
+              issue: 'WIN-275',
+              commitSha: process.env.EXPECTED_SHA,
+              pullRequestHeadSha: process.env.PR_HEAD_SHA,
+              pullRequestNumber: Number(pullRequestNumber),
+              reviewRoute,
+              attestationSha256,
+            }, null, 2)}\n`,
+            { encoding: 'utf8', mode: 0o600 },
+          );
+          NODE
 
       - name: Preflight and setup synthetic shadow proof
         env:

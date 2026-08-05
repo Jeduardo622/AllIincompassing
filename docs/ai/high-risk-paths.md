@@ -13,6 +13,8 @@ Measured evidence:
 
 Treat protected-path review requirements in this document and `AGENTS.md` as mandatory operating policy, but do not claim that GitHub currently enforces non-author approval effectively for the repo owner.
 
+Independent-human approval remains the default. Because this is a personal single-owner repository, a protected workflow may implement the `solo-maintainer owner-attested critical lane` only when live GitHub evidence proves exactly one GitHub human maintainer with write-or-higher access, the owner login and numeric account ID match the dispatcher, exact-head required CI passes, and hash-bound independent agent reviews pass. The owner must review and merge before a separate dispatch. Any second eligible human or incomplete authority evidence disables the exception.
+
 ## `supabase/migrations/**`
 
 Why high risk:
@@ -113,7 +115,7 @@ Minimum human review:
 
 If a change touches any path above:
 
-- require human review before merge
+- require human review before merge, using independent approval by default or the fail-closed solo-maintainer owner-attested contract above when eligible
 - route the task as `critical` lane in `route-task`
 - use `reviewer` before finalizing
 - use the `verify-change` skill to select the required checks

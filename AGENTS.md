@@ -38,6 +38,8 @@ Tracking updates never override lane rules.
 - `critical`: no autonomy expansion. Human-reviewed flow remains required.
 - `blocked`: no implementation until the ambiguity is resolved.
 
+For a personal repository with one human maintainer, the human-reviewed requirement may use the `solo-maintainer owner-attested critical lane`. Independent-human approval remains the default. The exception is fail-closed and requires live proof of exactly one GitHub human maintainer with write-or-higher access, exact owner login and numeric account identity, a merged issue-linked PR at current `main`, passing exact-head required CI, independent code/security/test/domain agent reviews recorded in a hash-bound manifest, and an explicit owner acknowledgement in a separate dispatch action. If ownership is organizational, the census is incomplete, another eligible human exists, or any evidence drifts, the exception is unavailable.
+
 ### What counts as non-trivial
 
 Treat a slice as non-trivial if any of the following are true:
@@ -73,7 +75,7 @@ For any autonomous slice, Codex must:
    - `reviewer` for all non-trivial code/config work
    - `tester` for standard-lane implementation or when verification planning is non-obvious
    - security/perf/domain specialists when risk indicates
-   - human review remains mandatory for `critical`
+   - human review remains mandatory for `critical`; the narrowly defined solo-maintainer owner attestation above is the human decision when no independent human exists
 5. Maintain PR hygiene for non-trivial work:
 
    - isolated branch
@@ -111,6 +113,8 @@ For any autonomous slice, Codex must:
 Autonomous merge is allowed only when live branch protection and required checks allow it and no required human approval is missing.
 
 If approval or protection rules require a human, Codex must stop at review-ready closure and report the exact blocker.
+
+Codex must never merge or dispatch through the solo-maintainer exception. The repository owner must personally review and merge the PR, then make any later protected dispatch as a distinct action using the exact acknowledgement required by the workflow.
 
 ## Commands
 

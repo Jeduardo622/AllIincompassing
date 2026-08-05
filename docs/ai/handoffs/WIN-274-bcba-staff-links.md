@@ -46,3 +46,27 @@
 
 - Linear: [WIN-274](https://linear.app/winningedgeai/issue/WIN-274/link-bcba-staff-roles-to-therapist-records-safely)
 - Branch: `codex/win-274-bcba-staff-links`
+
+## Production Link-Mutation Follow-up
+
+- Production `set_admin_therapist_link` returned HTTP 400 after the original merge.
+- Live Postgres logs and the deployed function definition confirmed `column reference "user_id" is ambiguous` at the insert conflict target.
+- Cause: the RPC returns output columns named `user_id` and `therapist_id`, which collide with `on conflict (user_id, therapist_id)` inside PL/pgSQL.
+- Forward repair: redefine only `set_admin_therapist_link` and target the confirmed `user_therapist_links_user_id_therapist_id_key` constraint explicitly.
+- Migration application fails closed unless that named unique constraint covers exactly `(user_id, therapist_id)` in order.
+- Caller authentication, role allowlists, tenant checks, function signature, return shape, and execute grants remain unchanged.
+- Follow-up branch: `codex/win-274-link-rpc-followup`.
+- Local proof: focused contracts `5/5`, full suite `3999/3999`, policy checks, tenant safety, lint, typecheck, and production build pass.
+- Hosted read-only proof: the migration's exact constraint-shape guard evaluates true against the production schema.
+- Remaining closure proof: preview migration replay, human review, merge, production migration confirmation, and a successful hosted link mutation.
+
+### Verification Card
+
+- Classification: high-risk human-reviewed
+- Lane: critical
+- Change type: database migration, tenant-scoped security-definer RPC
+- Required checks: `npm run ci:check-focused`, `npm run test:ci`, `npm run validate:tenant`, `npm run build`, focused migration contracts, hosted schema-shape preflight, `npm run verify:local`
+- Executed checks: policy pass; full suite pass (`472` files, `3999` tests); tenant validation pass; build pass; focused contracts pass (`5/5`); hosted schema-shape preflight pass; aggregate `verify:local` pass, including `220/220` Tier-0 route checks
+- Blocked checks: local migration runtime replay unavailable because the local Supabase database container is not running; use the PR preview branch for runtime proof
+- Result: pass-with-blocked-checks pending preview runtime replay
+- Residual risk: the SQL has not yet executed on an isolated Supabase preview branch, and critical-lane human review remains mandatory before merge

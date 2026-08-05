@@ -58,7 +58,7 @@ describe('agent work hosted scheduler migration contract', () => {
 
   it('uses only fixed hosted Vault and Cron names', () => {
     expect(normalizedSql).toContain('agent_work_hosted_project_ref');
-    expect(normalizedSql).toContain('agent_work_hosted_service_role_key');
+    expect(normalizedSql).toContain('agent_work_hosted_publishable_key');
     expect(normalizedSql).toContain('agent_work_hosted_runner_secret');
     expect(normalizedSql).toContain('agent_work_hosted_sweeper_secret');
     expect(normalizedSql).toContain('agent-work-runner-hosted');
@@ -73,14 +73,15 @@ describe('agent work hosted scheduler migration contract', () => {
     expect(enableSql).toMatch(/https:\/\/%s\.supabase\.co\/functions\/v1\/agent-work-sweeper/i);
     expect(enableSql).toContain('x-agent-work-runner-secret');
     expect(enableSql).toContain('x-agent-work-sweeper-secret');
-    expect(enableSql).toContain('Authorization');
-    expect(enableSql).toContain('Bearer ');
+    expect(enableSql).not.toContain('Authorization');
+    expect(enableSql).not.toContain('Bearer ');
   });
 
   it('keeps secrets indirect in stored Cron commands and reports readiness without values', () => {
     const enableSql = functionBody('enable_hosted_agent_work_queue_scheduler');
     expect(enableSql).toMatch(/vault\.decrypted_secrets/i);
-    expect(enableSql).toMatch(/where name = 'agent_work_hosted_service_role_key'/i);
+    expect(enableSql).toMatch(/where name = 'agent_work_hosted_publishable_key'/i);
+    expect(enableSql).not.toContain('agent_work_hosted_service_role_key');
     expect(enableSql).not.toMatch(/p_service_role|p_runner_secret|p_sweeper_secret/i);
     const statusSql = functionBody('hosted_agent_work_queue_scheduler_status');
     expect(statusSql).toMatch(/vault\.decrypted_secrets/i);
@@ -89,6 +90,17 @@ describe('agent work hosted scheduler migration contract', () => {
     expect(enableSql).toMatch(/count\(distinct name\)\s*=\s*4/i);
     expect(statusSql).toContain("decrypted_secret !~ '^[[:space:]]*$'");
     expect(enableSql).toContain("decrypted_secret !~ '^[[:space:]]*$'");
+  });
+
+  it('uses handler-owned service authentication instead of platform JWT verification', () => {
+    expect(readFileSync(path.resolve('supabase/functions/agent-work-runner/function.toml'), 'utf8'))
+      .toMatch(/verify_jwt\s*=\s*false/i);
+    expect(readFileSync(path.resolve('supabase/functions/agent-work-sweeper/function.toml'), 'utf8'))
+      .toMatch(/verify_jwt\s*=\s*false/i);
+
+    const config = readFileSync(path.resolve('supabase/config.toml'), 'utf8');
+    expect(config).toMatch(/\[functions\.agent-work-runner\]\s*verify_jwt\s*=\s*false/i);
+    expect(config).toMatch(/\[functions\.agent-work-sweeper\]\s*verify_jwt\s*=\s*false/i);
   });
 
   it('serializes enable and disable operations and tolerates pre-existing duplicate rows in status', () => {

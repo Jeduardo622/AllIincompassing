@@ -34,7 +34,7 @@ begin
     from vault.decrypted_secrets
     where name in (
       'agent_work_hosted_project_ref',
-      'agent_work_hosted_service_role_key',
+      'agent_work_hosted_publishable_key',
       'agent_work_hosted_runner_secret',
       'agent_work_hosted_sweeper_secret'
     ) and decrypted_secret is not null
@@ -169,7 +169,7 @@ begin
     from vault.decrypted_secrets
     where name in (
       'agent_work_hosted_project_ref',
-      'agent_work_hosted_service_role_key',
+      'agent_work_hosted_publishable_key',
       'agent_work_hosted_runner_secret',
       'agent_work_hosted_sweeper_secret'
     ) and decrypted_secret is not null
@@ -202,8 +202,7 @@ begin
       url := %L,
       headers := jsonb_build_object(
         'Content-type', 'application/json',
-        'apikey', (select decrypted_secret from vault.decrypted_secrets where name = 'agent_work_hosted_service_role_key'),
-        'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'agent_work_hosted_service_role_key'),
+        'apikey', (select decrypted_secret from vault.decrypted_secrets where name = 'agent_work_hosted_publishable_key'),
         'x-agent-work-runner-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'agent_work_hosted_runner_secret')
       ),
       body := jsonb_build_object('source', 'pg_cron', 'job_name', 'agent-work-runner-hosted'),
@@ -220,8 +219,7 @@ begin
       url := %L,
       headers := jsonb_build_object(
         'Content-type', 'application/json',
-        'apikey', (select decrypted_secret from vault.decrypted_secrets where name = 'agent_work_hosted_service_role_key'),
-        'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'agent_work_hosted_service_role_key'),
+        'apikey', (select decrypted_secret from vault.decrypted_secrets where name = 'agent_work_hosted_publishable_key'),
         'x-agent-work-sweeper-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'agent_work_hosted_sweeper_secret')
       ),
       body := jsonb_build_object(

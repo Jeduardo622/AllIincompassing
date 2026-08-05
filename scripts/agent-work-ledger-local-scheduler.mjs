@@ -68,6 +68,13 @@ const requiredEnvFrom = (env, name) => {
 
 const requiredEnv = (name) => requiredEnvFrom(process.env, name);
 
+const requiredGatewayApiKeyFrom = (env) => {
+  const value = env.SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    env.SUPABASE_ANON_KEY?.trim();
+  if (!value) throw new Error("SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY is required.");
+  return value;
+};
+
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
@@ -155,7 +162,8 @@ export const setupScheduler = async (client, secrets, env = process.env) => {
   await client.query("begin");
   try {
     await withContext("store fixed local scheduler secrets", async () => {
-      await upsertVaultSecret(client, FIXED_SECRET_NAMES[0], secrets.serviceRoleKey);
+      // The legacy local migration name is fixed, but its value is deliberately low privilege.
+      await upsertVaultSecret(client, FIXED_SECRET_NAMES[0], secrets.gatewayApiKey);
       await upsertVaultSecret(client, FIXED_SECRET_NAMES[1], secrets.runnerSecret);
       await upsertVaultSecret(client, FIXED_SECRET_NAMES[2], secrets.sweeperSecret);
     });
@@ -192,7 +200,7 @@ const verifyScheduler = async (client, secrets) => {
   assert(combinedCommands.includes(cronTargets.sweeper), "Sweeper scheduler target drifted.");
   assert(combinedCommands.includes("x-agent-work-runner-secret"), "Runner invocation header is missing.");
   assert(combinedCommands.includes("x-agent-work-sweeper-secret"), "Sweeper invocation header is missing.");
-  assert(!combinedCommands.includes(secrets.serviceRoleKey), "Scheduler command contains a plaintext service-role key.");
+  assert(!combinedCommands.includes(secrets.gatewayApiKey), "Scheduler command contains a plaintext gateway API key.");
   assert(!combinedCommands.includes(secrets.runnerSecret), "Scheduler command contains a plaintext runner secret.");
   assert(!combinedCommands.includes(secrets.sweeperSecret), "Scheduler command contains a plaintext sweeper secret.");
 
@@ -296,8 +304,7 @@ export const buildSchedulerInvocationHeaders = (secrets, role) => {
   const sweeper = role === "sweeper";
   if (!runner && !sweeper) throw new Error("Unknown scheduler invocation role.");
   return {
-    apikey: secrets.serviceRoleKey,
-    authorization: `Bearer ${secrets.serviceRoleKey}`,
+    apikey: secrets.gatewayApiKey,
     "content-type": "application/json",
     [runner ? "x-agent-work-runner-secret" : "x-agent-work-sweeper-secret"]:
       runner ? secrets.runnerSecret : secrets.sweeperSecret,
@@ -366,7 +373,7 @@ export const resolveSchedulerSmokeSecrets = ({
 } = {}) => {
   const containerMode = isPhase2ContainerMode(env);
   return {
-    serviceRoleKey: requiredEnvFrom(env, "SUPABASE_SERVICE_ROLE_KEY"),
+    gatewayApiKey: requiredGatewayApiKeyFrom(env),
     runnerSecret: containerMode
       ? requiredEnvFrom(env, "AGENT_WORK_RUNNER_SECRET")
       : randomBytesImpl(32).toString("hex"),
@@ -377,7 +384,7 @@ export const resolveSchedulerSmokeSecrets = ({
 };
 
 const loadCommandSecrets = () => ({
-  serviceRoleKey: requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  gatewayApiKey: requiredGatewayApiKeyFrom(process.env),
   runnerSecret: requiredEnv("AGENT_WORK_RUNNER_SECRET"),
   sweeperSecret: requiredEnv("AGENT_WORK_SWEEPER_SECRET"),
 });

@@ -4,6 +4,10 @@ import {
 } from "npm:@supabase/supabase-js@2.99.0";
 import { corsHeadersForRequest } from "../_shared/cors.ts";
 import { assertAgentWorkSupabaseUrl } from "../_shared/agent-work/runtime-url.ts";
+import {
+  isAgentWorkServiceRequestAuthorized,
+  resolveAgentWorkGatewayApiKeys,
+} from "../_shared/agent-work/service-auth.ts";
 
 const INVOCATION_SECRET_HEADER = "x-agent-work-sweeper-secret";
 const DEFAULT_MAX_ITEMS_PER_PASS = 25;
@@ -34,7 +38,7 @@ type PoisonSweepResult = {
 export type AgentWorkSweeperHandlerDependencies = {
   getCorsHeaders: (request: Request) => HeadersInit;
   getInvocationSecret: () => string;
-  getServiceRoleKey: () => string;
+  getGatewayApiKeys: () => string[];
   getRuntimeMode: () => AgentWorkRuntimeMode | Promise<AgentWorkRuntimeMode>;
   getNow: () => Date;
   getMaxItemsPerPass: () => number;
@@ -53,19 +57,6 @@ export type AgentWorkSweeperHandlerDependencies = {
   emitSanitizedAlert: (alert: unknown) => Promise<void>;
   executeClinicalEffect: () => Promise<void>;
 };
-
-function timingSafeEqual(left: string, right: string): boolean {
-  const encoder = new TextEncoder();
-  const leftBytes = encoder.encode(left);
-  const rightBytes = encoder.encode(right);
-  if (leftBytes.length !== rightBytes.length) return false;
-
-  let diff = 0;
-  for (let index = 0; index < leftBytes.length; index += 1) {
-    diff |= leftBytes[index] ^ rightBytes[index];
-  }
-  return diff === 0;
-}
 
 function jsonResponse(
   headers: HeadersInit,
@@ -143,21 +134,12 @@ export function createAgentWorkSweeperHandler(
       });
     }
 
-    const configuredSecret = deps.getInvocationSecret().trim();
-    const configuredServiceRoleKey = deps.getServiceRoleKey().trim();
-    const authorization = request.headers.get("authorization")?.trim() ?? "";
-    const expectedAuthorization = configuredServiceRoleKey
-      ? `Bearer ${configuredServiceRoleKey}`
-      : "";
-    const requestSecret =
-      request.headers.get(INVOCATION_SECRET_HEADER)?.trim() ??
-        "";
-    if (
-      expectedAuthorization.length === 0 ||
-      !timingSafeEqual(authorization, expectedAuthorization) ||
-      configuredSecret.length === 0 ||
-      !timingSafeEqual(requestSecret, configuredSecret)
-    ) {
+    if (!isAgentWorkServiceRequestAuthorized(
+      request,
+      INVOCATION_SECRET_HEADER,
+      deps.getInvocationSecret().trim(),
+      deps.getGatewayApiKeys(),
+    )) {
       return createUnauthorizedResponse(responseHeaders);
     }
 
@@ -338,18 +320,18 @@ async function rpcPoisonSweep(
 }
 
 function createRuntimeHandler(): (request: Request) => Promise<Response> {
-  const client = createServiceClient();
+  let client: RpcClient | null = null;
+  const getClient = () => client ??= createServiceClient();
   return createAgentWorkSweeperHandler({
     getCorsHeaders: corsHeadersForRequest,
     getInvocationSecret: () =>
       Deno.env.get("AGENT_WORK_SWEEPER_SECRET")?.trim() ?? "",
-    getServiceRoleKey: () =>
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ?? "",
+    getGatewayApiKeys: configuredGatewayApiKeys,
     getRuntimeMode: async () => {
       const configuredMode = runtimeMode();
       if (!ALLOWED_RUNTIME_MODES.has(configuredMode)) return "disabled";
 
-      const { data, error } = await client.rpc(
+      const { data, error } = await getClient().rpc(
         "load_agent_work_runtime_policy",
         { p_mode_input: configuredMode },
       );
@@ -372,13 +354,26 @@ function createRuntimeHandler(): (request: Request) => Promise<Response> {
     getNow: () => new Date(),
     getMaxItemsPerPass: () => DEFAULT_MAX_ITEMS_PER_PASS,
     requeueExpiredLeases: (invocation) =>
-      rpcArray(client, "requeue_expired_agent_work_leases", invocation),
+      rpcArray(
+        getClient(),
+        "requeue_expired_agent_work_leases",
+        invocation,
+      ),
     wakeDueWaitingSteps: (invocation) =>
-      rpcArray(client, "wake_due_agent_work_steps", invocation),
-    expireApprovals: (invocation) => rpcApprovalSweep(client, invocation),
-    archivePoisonMessages: (invocation) => rpcPoisonSweep(client, invocation),
+      rpcArray(getClient(), "wake_due_agent_work_steps", invocation),
+    expireApprovals: (invocation) => rpcApprovalSweep(getClient(), invocation),
+    archivePoisonMessages: (invocation) =>
+      rpcPoisonSweep(getClient(), invocation),
     emitSanitizedAlert: async () => {},
     executeClinicalEffect: async () => {},
+  });
+}
+
+function configuredGatewayApiKeys(): string[] {
+  return resolveAgentWorkGatewayApiKeys({
+    SUPABASE_PUBLISHABLE_KEYS: Deno.env.get("SUPABASE_PUBLISHABLE_KEYS"),
+    SUPABASE_PUBLISHABLE_KEY: Deno.env.get("SUPABASE_PUBLISHABLE_KEY"),
+    SUPABASE_ANON_KEY: Deno.env.get("SUPABASE_ANON_KEY"),
   });
 }
 

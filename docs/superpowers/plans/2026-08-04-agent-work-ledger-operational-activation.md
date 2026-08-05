@@ -74,6 +74,8 @@
 - [x] Commit each coherent implementation task separately and update the handoff with final local evidence.
 - [x] Update `WIN-275`, push, and open ready PR `#894`.
 - [x] Close the all-whitespace follow-up through RED/GREEN, spaces plus tab/newline runtime proof, fresh aggregate verification, and two final Phase 2 runs; record the unrelated aggregate Vitest worker failures without claiming a pass.
+- [x] Close the `pg_net` credential-queue review finding through RED/GREEN: replace the queued service-role bearer with a project publishable `apikey` plus endpoint-specific invocation secret, set only the runner/sweeper to handler-owned auth, reject bearer-only and malformed configuration, and prove unauthenticated gateway requests return handler 401 before privileged client construction.
+- [ ] Re-run the complete local matrix and two clean Phase 2 runs from the credential-queue fix commit; record exact final-head evidence and cleanup hashes.
 - [ ] Stop before merge until submitted human protected-path/Supabase/security review exists and required checks pass.
 
 ## Task 6: Hosted Rollout Gates

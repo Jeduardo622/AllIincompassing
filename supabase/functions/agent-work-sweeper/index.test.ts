@@ -7,6 +7,7 @@ import { createAgentWorkSweeperHandler } from "./index.ts";
 
 const INVOCATION_SECRET_HEADER = "x-agent-work-sweeper-secret";
 const INVOCATION_SECRET = "sweeper-secret";
+const GATEWAY_API_KEY = "sb_publishable_local_gateway";
 const SERVICE_ROLE_KEY = "local-service-role-jwt";
 const WORK_ITEM_ID = "11111111-1111-4111-8111-111111111111";
 const STEP_ID = "22222222-2222-4222-8222-222222222222";
@@ -53,7 +54,7 @@ function createEntity(overrides: Partial<SweeperEntity> = {}): SweeperEntity {
 
 function createRequest(init: RequestInit = {}): Request {
   const headers = new Headers({
-    Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+    apikey: GATEWAY_API_KEY,
   });
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   return new Request("http://localhost/agent-work-sweeper", {
@@ -89,7 +90,7 @@ function createDeps(
       Vary: "Origin",
     }),
     getInvocationSecret: () => INVOCATION_SECRET,
-    getServiceRoleKey: () => SERVICE_ROLE_KEY,
+    getGatewayApiKeys: () => [GATEWAY_API_KEY],
     getRuntimeMode: () => "advisory",
     getNow: () => new Date("2026-08-02T12:00:00.000Z"),
     getMaxItemsPerPass: () => 25,
@@ -138,7 +139,7 @@ function createDeps(
   };
 }
 
-Deno.test("POST requires the dedicated sweeper invocation secret", async () => {
+Deno.test("POST requires the project gateway key and dedicated sweeper invocation secret", async () => {
   const handler = createAgentWorkSweeperHandler(createDeps());
 
   for (
@@ -146,11 +147,20 @@ Deno.test("POST requires the dedicated sweeper invocation secret", async () => {
       new Headers(),
       new Headers([[INVOCATION_SECRET_HEADER, "wrong-secret"]]),
       new Headers([
-        ["authorization", ""],
+        ["apikey", ""],
         [INVOCATION_SECRET_HEADER, INVOCATION_SECRET],
       ]),
       new Headers([
-        ["authorization", "Bearer wrong-service-role"],
+        ["apikey", "wrong-gateway-key"],
+        [INVOCATION_SECRET_HEADER, INVOCATION_SECRET],
+      ]),
+      new Headers([
+        ["apikey", SERVICE_ROLE_KEY],
+        [INVOCATION_SECRET_HEADER, INVOCATION_SECRET],
+      ]),
+      new Headers([
+        ["apikey", ""],
+        ["authorization", `Bearer ${SERVICE_ROLE_KEY}`],
         [INVOCATION_SECRET_HEADER, INVOCATION_SECRET],
       ]),
     ]

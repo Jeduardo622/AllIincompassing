@@ -8,7 +8,7 @@ const PROJECT_REF = "abcdefghijklmnopqrst";
 const SCHEDULE = "0 0 1 1 *";
 const FIXED_SECRET_NAMES = Object.freeze([
   "agent_work_hosted_project_ref",
-  "agent_work_hosted_service_role_key",
+  "agent_work_hosted_publishable_key",
   "agent_work_hosted_runner_secret",
   "agent_work_hosted_sweeper_secret",
 ]);
@@ -64,7 +64,7 @@ const main = async () => {
 
     const syntheticSecrets = [
       "not-a-project",
-      `local-service-${randomBytes(24).toString("hex")}`,
+      `sb_publishable_${randomBytes(24).toString("hex")}`,
       `local-runner-${randomBytes(24).toString("hex")}`,
       `local-sweeper-${randomBytes(24).toString("hex")}`,
     ];
@@ -177,6 +177,8 @@ const main = async () => {
       assert(commands.includes(`https://${PROJECT_REF}.supabase.co/functions/v1/agent-work-sweeper`), "Sweeper URL is not project-bound.");
       assert(commands.includes("x-agent-work-runner-secret"), "Runner invocation header is missing.");
       assert(commands.includes("x-agent-work-sweeper-secret"), "Sweeper invocation header is missing.");
+      assert(!commands.includes("Authorization"), "Hosted scheduler command contains an authorization bearer header.");
+      assert(!commands.includes("agent_work_hosted_service_role_key"), "Hosted scheduler command references a service-role Vault key.");
       assert(!commands.includes("host.docker.internal"), "Hosted scheduler reused a local callback target.");
       for (const secret of syntheticSecrets.slice(1)) {
         assert(!commands.includes(secret), "Hosted scheduler command contains plaintext secret material.");

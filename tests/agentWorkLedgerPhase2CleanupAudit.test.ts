@@ -97,7 +97,7 @@ describe("agent work ledger phase2 cleanup audit", () => {
       "agent_work_local_runner_invocation_secret",
       "agent_work_local_sweeper_invocation_secret",
       "agent_work_hosted_project_ref",
-      "agent_work_hosted_service_role_key",
+      "agent_work_hosted_publishable_key",
       "agent_work_hosted_runner_secret",
       "agent_work_hosted_sweeper_secret",
     ]);

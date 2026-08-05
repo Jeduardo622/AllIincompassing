@@ -102,7 +102,7 @@ describe('local Agent Work Ledger scheduler guard', () => {
   it('reuses the running container invocation secrets for direct and cron auth', async () => {
     const env = {
       AGENT_WORK_PHASE2_CONTAINER: '1',
-      SUPABASE_SERVICE_ROLE_KEY: 'service-role',
+      SUPABASE_PUBLISHABLE_KEY: 'publishable-key',
       AGENT_WORK_RUNNER_SECRET: 'running-runner-secret',
       AGENT_WORK_SWEEPER_SECRET: 'running-sweeper-secret',
     };
@@ -116,20 +116,18 @@ describe('local Agent Work Ledger scheduler guard', () => {
     });
 
     expect(secrets).toEqual({
-      serviceRoleKey: 'service-role',
+      gatewayApiKey: 'publishable-key',
       runnerSecret: 'running-runner-secret',
       sweeperSecret: 'running-sweeper-secret',
     });
     expect(generated).toBe(0);
     expect(buildSchedulerInvocationHeaders(secrets, 'runner')).toEqual({
-      apikey: 'service-role',
-      authorization: 'Bearer service-role',
+      apikey: 'publishable-key',
       'content-type': 'application/json',
       'x-agent-work-runner-secret': 'running-runner-secret',
     });
     expect(buildSchedulerInvocationHeaders(secrets, 'sweeper')).toEqual({
-      apikey: 'service-role',
-      authorization: 'Bearer service-role',
+      apikey: 'publishable-key',
       'content-type': 'application/json',
       'x-agent-work-sweeper-secret': 'running-sweeper-secret',
     });
@@ -140,7 +138,7 @@ describe('local Agent Work Ledger scheduler guard', () => {
       .filter(({ text }) => text.includes('vault.create_secret'))
       .map(({ params }) => params[0]);
     expect(storedValues).toEqual([
-      'service-role',
+      'publishable-key',
       'running-runner-secret',
       'running-sweeper-secret',
     ]);
@@ -149,13 +147,29 @@ describe('local Agent Work Ledger scheduler guard', () => {
   it('generates fresh invocation secrets only for host-spawn smoke mode', () => {
     let generated = 0;
     const secrets = resolveSchedulerSmokeSecrets({
-      env: { SUPABASE_SERVICE_ROLE_KEY: 'service-role' },
+      env: { SUPABASE_ANON_KEY: 'legacy-anon-key' },
       randomBytesImpl: () => Buffer.from(`generated-${++generated}`),
     });
 
-    expect(secrets.serviceRoleKey).toBe('service-role');
+    expect(secrets.gatewayApiKey).toBe('legacy-anon-key');
     expect(secrets.runnerSecret).not.toBe(secrets.sweeperSecret);
     expect(generated).toBe(2);
+  });
+
+  it('prefers the publishable key, falls back to legacy anon, and rejects missing gateway config', () => {
+    const preferred = resolveSchedulerSmokeSecrets({
+      env: {
+        SUPABASE_PUBLISHABLE_KEY: 'publishable-key',
+        SUPABASE_ANON_KEY: 'legacy-anon-key',
+      },
+      randomBytesImpl: () => Buffer.from('generated'),
+    });
+    expect(preferred.gatewayApiKey).toBe('publishable-key');
+
+    expect(() => resolveSchedulerSmokeSecrets({
+      env: {},
+      randomBytesImpl: () => Buffer.from('generated'),
+    })).toThrow(/PUBLISHABLE_KEY or SUPABASE_ANON_KEY is required/i);
   });
 
   it('polls already-running container services through the bounded startup wait', async () => {
@@ -225,7 +239,7 @@ describe('local Agent Work Ledger scheduler guard', () => {
     const { calls, client } = createQueryRecorder();
     await setupScheduler(
       client,
-      { serviceRoleKey: 'service', runnerSecret: 'runner', sweeperSecret: 'sweeper' },
+      { gatewayApiKey: 'publishable', runnerSecret: 'runner', sweeperSecret: 'sweeper' },
       { AGENT_WORK_PHASE2_CONTAINER: '1' },
     );
 

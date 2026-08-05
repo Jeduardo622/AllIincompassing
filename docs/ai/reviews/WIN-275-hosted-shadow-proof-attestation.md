@@ -4,7 +4,9 @@
 
 PR `#897` merged as `f053fa4562e8d51a2d984ee2627bd7a8a863005f` without a submitted independent human `APPROVED` review. It is therefore a process exception and must never be supplied to the hosted shadow proof workflow.
 
-This document binds a successor review to the exact protected implementation already on `main`. Approval of the successor PR means the reviewer inspected the files and invariants below, not merely this documentation diff.
+PR `#898` merged as `671c8dc80c3610f7924af9393e836291ca48c7f4` without that approval and must also never be supplied. The hashes below remain historical evidence for the original implementation; the trace-scope repair changes the script and focused test, so its critical PR must be reviewed and approved directly before dispatch.
+
+The current trace-scope repair PR is the review target. Approval means the reviewer inspected that PR's complete protected diff and the invariants below, not merely this document or the historical hashes.
 
 ## Review Target
 
@@ -24,6 +26,8 @@ This document binds a successor review to the exact protected implementation alr
 | `package.json` | `b88298eafedf50bdbd95e85a7ea59afd51d9228405a51e87a85dbd3baa85f42f` |
 | `docs/ops/agent-work-ledger.md` | `53a01487ee93897a1b542d5307def546fbc6fd301c3900d791de3372d20505ed` |
 
+These hashes are immutable historical evidence for the original implementation. They do not attest the changed script or focused test in the current repair; the repair PR's exact diff and head SHA are the review anchor. If that reviewed head changes, stop and obtain a fresh approval instead of dispatching.
+
 ## Required Human Review
 
 The independent reviewer must confirm:
@@ -38,6 +42,6 @@ The independent reviewer must confirm:
 
 ## Dispatch Rule
 
-The successor attestation PR must receive a current-head `APPROVED` review from an independent human GitHub user before merge. After it merges, its merge commit must remain the current `main` head. The owner may then dispatch `agent-work-ledger-hosted-shadow-proof.yml` using the successor PR number and that exact merge SHA.
+The current trace-scope repair PR must receive a current-head `APPROVED` review from an independent human GitHub user before merge. After it merges, its merge commit must remain the current `main` head. The owner may then dispatch `agent-work-ledger-hosted-shadow-proof.yml` using that repair PR number and exact merge SHA.
 
 If `main` advances first, approval is dismissed, any listed hash changes, or any required invariant cannot be confirmed, do not dispatch. Route a new review checkpoint instead.

@@ -105,3 +105,9 @@ Completion for this run is a review-ready, fully locally verified PR plus exact 
 - process exception: PR `#894` had `COMMENTED` owner and automated reviews but no submitted `APPROVED` human review. Future protected promotion must not treat that merge as satisfying the human-review gate.
 
 The Ledger is deployed but intentionally inoperable. The next separately routed slice may run synthetic shadow create/list/detail parity only after an explicit owner decision. Advisory requires an approved retention policy, verified hosted runtime configuration, generated runner/sweeper invocation secrets, `pg_cron`, an owner-approved cadence, and a new protected-path review. `active` remains forbidden.
+
+## Hosted Shadow Proof Follow-On
+
+The hosted shadow proof follow-on is owner-dispatched, shadow-only, and still requires human review. It uses an immutable current `main` SHA, a merged WIN-275 PR with a current-head approval from an independent human reviewer, synthetic fixtures, and mandatory cleanup with redundant `disabled` restoration.
+
+This slice does not authorize `advisory` or `active`. Its Ledger and queue cleanup uses one FK-enforced atomic Management API transaction scoped to validated synthetic UUIDs; only the append-only event trigger is transactionally suspended for the exact event delete. Parameterized auth/organization cleanup follows, and the public artifact remains sanitized. Local implementation and verification are complete; merge, independent approval, exact-main CI, and the protected hosted dispatch remain open gates.

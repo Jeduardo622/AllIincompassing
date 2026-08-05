@@ -1213,3 +1213,19 @@ The branch was synchronized with trusted main `63e52880c6abe7acce25319dd9db9368d
 - protected-path drift: only the explicitly routed migration and Edge Function surfaces; specialist review is complete and human review remains mandatory
 - change and verification summaries: present here and in `docs/ops/agent-work-ledger.md`
 - follow-up: inspect PR `#894` checks/reviews with bounded polling and stop before merge or hosted action until the mandatory gates pass
+
+### WIN-275 PR Review Fix
+
+- finding: automated review on PR `#894` identified that non-`NULL` but empty or whitespace-only hosted Vault values could make `secretsReady` true and allow unusable Cron jobs; the review was technically valid but was `COMMENTED`, not a human approval
+- route: fresh `classification: high-risk human-reviewed`; `lane: critical`; allowed migration, focused static/runtime contract, and evidence docs only; no RLS, grant, cadence, provider, tenant, or hosted scope expansion
+- TDD: static contract RED at `1 failed / 10 passed` for the missing trimmed-nonempty predicate, then GREEN at `11/11`; production commit `e2eca694` adds the predicate to status and enable preflight; test commit `0f5e5ef8` proves all four fixed Vault names independently
+- runtime proof: fresh local reset applied the corrected migration; the transaction contract set each project-ref, service-role, runner, and sweeper value to whitespace, required `secretsReady = false`, required enablement denial, restored the value, then proved the normal two-job/four-secret path, API-role denial, rollback, and zero residue
+- focused proof: six scheduler/Phase 2 files passed `105/105`; normal pre-commit hooks passed on both review-fix commits
+- aggregate: `NODE_OPTIONS=--max-old-space-size=6144 npm run verify:local` passed in `358.9s`, including policy, lint, typecheck, full tests/coverage, build, and Tier-0 `220/220`; the generated reliability-report timestamp was restored exactly and excluded
+- diagnostic Phase 2 run `20260805T001342Z-6a9cc6`: commit `0f5e5ef8c7d9f85756c99486b7381090f5e62d18`; image `sha256:82c380cc0e1539716c593a45d1f785a5eecd1c535fb02a3f915a2b1095609388`; `12/12`; cleanup passed; exit `0`; `683,030ms`; summary `873b5edeb7454bfa787e4bb758aed875944a917ba870e183ea7cfffd9d4226f1`; evidence `69db42f18050adfa4d7a27298656254f2bb153cc729bd31303667d23e7f8d6e3`
+- diagnostic Phase 2 run `20260805T002520Z-139f82`: same commit and image; `12/12`; cleanup passed; exit `0`; `640,994ms`; summary `c3d3e2e3343751ae8a185152aab8ca195568eab085a1376c0692557df6cc74d2`; evidence `0e84d490eb0e0495772340b677aca2820f5ee613b7c68f0ab3732e0e8428532d`
+- independent residue proof: no labeled Phase 2 containers, volumes, dedicated network, or harness listeners after run 2
+- diagnostic not counted: the first all-four contract attempt restored the intentionally invalid project seed after its whitespace case, so the next iteration failed the project-ref regex; the fixture was corrected to restore the established valid project ref and the fresh rerun passed
+- second review finding: PostgreSQL `btrim(text)` trims spaces by default, so tab/newline-only values remained possible; TDD RED/GREEN changed both gates to reject `^[[:space:]]*$`, and the runtime contract now covers spaces plus tab/newline for all four names in commit `ed12965a`
+- specialist disposition: specification and Supabase reviewers confirmed fixed-name/count/grant/tenant behavior; code and test reviewers correctly rejected the narrower `btrim` predicate; final re-review and committed Phase 2 evidence remain pending on `ed12965a`
+- result: all-whitespace code/runtime proof passes locally; final aggregate, two-run container evidence, PR update, CI, and submitted human review remain

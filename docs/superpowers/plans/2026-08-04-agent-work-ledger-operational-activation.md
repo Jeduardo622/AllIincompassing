@@ -73,6 +73,7 @@
 - [x] Run `pr-hygiene`; require `pr-ready: yes` before publication.
 - [x] Commit each coherent implementation task separately and update the handoff with final local evidence.
 - [x] Update `WIN-275`, push, and open ready PR `#894`.
+- [ ] Close the all-whitespace follow-up through RED/GREEN, spaces plus tab/newline runtime proof, fresh aggregate verification, and two final Phase 2 runs.
 - [ ] Stop before merge until submitted human protected-path/Supabase/security review exists and required checks pass.
 
 ## Task 6: Hosted Rollout Gates

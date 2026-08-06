@@ -206,9 +206,19 @@ export const classifyLayout = (
 
 export const sanitizeObserverFailures = (messages: string[]): string[] => {
   const codes: string[] = [];
+  const canonicalLayoutCodes = new Set([
+    'horizontal-overflow',
+    'clipped-fixed-control',
+    'undersized-mobile-touch-target',
+  ]);
 
   for (const message of messages) {
     const normalized = message.trim().toLowerCase();
+
+    if (canonicalLayoutCodes.has(normalized)) {
+      codes.push(normalized);
+      continue;
+    }
 
     if (normalized.includes('horizontal overflow')) {
       codes.push('horizontal-overflow');

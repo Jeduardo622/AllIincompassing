@@ -184,6 +184,20 @@ describe('responsive-ui-observer contract', () => {
   });
 
   describe('sanitizeObserverFailures', () => {
+    it('preserves only canonical codes produced by layout classification', () => {
+      const classified = classifyLayout({
+        horizontalOverflow: true,
+        clippedFixedControls: ['sticky-save'],
+        visibleTouchTargets: [{ width: 32, height: 32 }],
+      }, 'mobile');
+
+      expect(sanitizeObserverFailures(classified)).toEqual([
+        'horizontal-overflow',
+        'clipped-fixed-control',
+        'undersized-mobile-touch-target',
+      ]);
+    });
+
     it('collapses sensitive values into machine-safe codes', () => {
       const sanitized = sanitizeObserverFailures([
         'horizontal overflow with alice@example.com in the DOM text',

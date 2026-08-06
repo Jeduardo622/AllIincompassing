@@ -25,7 +25,7 @@ Every visible change under `src/components/**`, `src/pages/**`, or shared stylin
 npm run test:ui:responsive -- --base-url=http://127.0.0.1:4173 --route=/affected-route
 ```
 
-Pass one `--route` for every affected route. The command accepts only an explicit loopback HTTP URL, blocks mutation and external-origin requests, uses ephemeral Playwright contexts, and writes screenshots plus sanitized machine-readable evidence under `artifacts/responsive-ui-observer/`. It never reads `.env*`, records browser storage/HAR/trace/video, or captures network bodies or DOM text. Computer may be used to inspect those local screenshots after the deterministic run, but is supplemental and non-gating. Auth/session and tenant-sensitive changes still require their existing protected browser gates.
+Pass one `--route` for every affected route. The command accepts only an explicit loopback HTTP URL with an explicit port, blocks mutation and external-origin requests, uses ephemeral Playwright contexts, and writes layout-redacted screenshots plus sanitized machine-readable evidence under `artifacts/responsive-ui-observer/`. Text, carets, media, SVG/canvas content, and background imagery are hidden only after geometry is measured and before capture. Raw route text is replaced by an opaque SHA-256 route ID in filenames, JSON, and command output. It never reads `.env*`, records browser storage/HAR/trace/video, or captures network bodies or DOM text. Computer may be used to inspect those redacted local screenshots after the deterministic run, but is supplemental and non-gating. Auth/session and tenant-sensitive changes still require their existing protected browser gates.
 
 ## Vitest hang watchdog
 

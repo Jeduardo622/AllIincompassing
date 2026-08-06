@@ -58,9 +58,10 @@ The observer:
 - requires an explicit loopback HTTP base URL and local relative routes
 - aborts non-read methods and external-origin requests
 - applies bounded navigation, settle, and capture timeouts
-- records screenshots and sanitized layout metrics only
+- records layout-redacted screenshots and sanitized layout metrics only; rendered text, carets, media, canvas/SVG content, and background imagery are hidden after measurement and before capture
 - fails on page errors, error-level console events, failed same-origin requests, horizontal overflow, clipped fixed controls, or undersized visible mobile interactive targets
-- emits a deterministic JSON evidence card with route, viewport, checks, screenshot hash/path, result, and sanitized failure codes
+- emits a deterministic JSON evidence card with opaque route identity, viewport, checks, screenshot hash/path, result, and sanitized failure codes
+- replaces raw route text with an opaque SHA-256 route ID in every retained artifact and command result
 - never records cookies, storage state, HAR, video, trace, response/request bodies, query strings, DOM text, emails, UUIDs, tokens, or credentials
 
 Computer inspection may review already-generated local screenshots as a supplemental diagnostic step. It is never required for or authoritative over pass/fail.

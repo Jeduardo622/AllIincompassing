@@ -232,10 +232,14 @@ describe("agent-work local operator contract", () => {
     const runHarness = vi.fn()
       .mockResolvedValueOnce(buildValidHarnessResult())
       .mockResolvedValueOnce(buildFailureHarnessResult());
+    const readManifest = vi.fn()
+      .mockResolvedValueOnce(buildValidHarnessResult().manifest)
+      .mockResolvedValueOnce(buildFailureHarnessResult().manifest);
 
     const successCode = await mod.runLocalOperator({
       argv: [],
       runHarness,
+      readManifest,
       processImpl,
     });
 
@@ -252,6 +256,7 @@ describe("agent-work local operator contract", () => {
     const failureCode = await mod.runLocalOperator({
       argv: [],
       runHarness,
+      readManifest,
       processImpl,
     });
 
@@ -261,6 +266,7 @@ describe("agent-work local operator contract", () => {
     expect(processImpl.writes).toHaveLength(1);
     expect(processImpl.writes[0]).toMatch(MACHINE_SAFE_CODE);
     expect(processImpl.writes[0]).not.toContain("super-secret-token");
+    expect(readManifest).toHaveBeenCalledTimes(2);
   });
 
   it("rejects argv at the operator boundary with a machine-safe operator_arguments_forbidden code", async () => {
@@ -289,5 +295,24 @@ describe("agent-work local operator contract", () => {
 
     expect(await mod.runLocalOperator({ argv: [], runHarness, processImpl })).toBe(1);
     expect(processImpl.writes).toEqual(["operator_failed"]);
+  });
+
+  it("fails closed when the persisted manifest differs from the in-memory result", async () => {
+    const mod = await loadOperatorModule();
+    const processImpl = createProcessImpl();
+    const result = buildValidHarnessResult();
+    const readManifest = vi.fn().mockResolvedValue({
+      ...result.manifest,
+      commitSha: "f".repeat(40),
+    });
+
+    expect(await mod.runLocalOperator({
+      argv: [],
+      runHarness: vi.fn().mockResolvedValue(result),
+      readManifest,
+      processImpl,
+    })).toBe(1);
+    expect(readManifest).toHaveBeenCalledWith(result.artifacts.manifestPath);
+    expect(processImpl.writes).toEqual(["operator_manifest_mismatch"]);
   });
 });

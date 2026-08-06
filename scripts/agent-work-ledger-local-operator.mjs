@@ -1,4 +1,6 @@
 import { pathToFileURL } from "node:url";
+import { readFile } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   PHASE2_CHECKS,
@@ -79,6 +81,9 @@ const writeCode = (processImpl, code, { trailingNewline = false } = {}) => {
   processImpl.stdout.write(trailingNewline ? `${code}\n` : code);
 };
 
+const readPersistedManifest = async (manifestPath) =>
+  JSON.parse(await readFile(manifestPath, "utf8"));
+
 export const validateOperatorArgs = (argv) => {
   if (!Array.isArray(argv) || argv.length !== 0) fail("operator_arguments_forbidden");
 };
@@ -115,16 +120,25 @@ export const validateOperatorResult = (result) => {
   assertSha256(manifest.artifacts.checkEvidenceSha256, "operator_artifact_hash_invalid");
 };
 
+export const validatePersistedOperatorManifest = (result, persistedManifest) => {
+  if (!isRecord(persistedManifest) || !isDeepStrictEqual(result?.manifest, persistedManifest)) {
+    fail("operator_manifest_mismatch");
+  }
+};
+
 export const runLocalOperator = async ({
   argv = process.argv.slice(2),
   runHarness = runPhase2Harness,
+  readManifest = readPersistedManifest,
   processImpl = process,
 } = {}) => {
   try {
     validateOperatorArgs(argv);
 
     const result = await runHarness();
-    const manifest = getManifest(result);
+    const persistedManifest = await readManifest(result?.artifacts?.manifestPath);
+    validatePersistedOperatorManifest(result, persistedManifest);
+    const manifest = persistedManifest;
     if (manifest.exitStatus !== PASSED || manifest.exitCode !== 0) {
       const code = getFailureReason(result);
       const exitCode = getExitCode(result);
@@ -133,7 +147,7 @@ export const runLocalOperator = async ({
       return exitCode;
     }
 
-    validateOperatorResult(result);
+    validateOperatorResult({ ...result, manifest: persistedManifest });
     processImpl.exitCode = 0;
     writeCode(processImpl, "operator_passed");
     return 0;

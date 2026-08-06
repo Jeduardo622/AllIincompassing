@@ -61,31 +61,6 @@ const TOKEN_PATTERN =
   /\b(?:eyJ[A-Za-z0-9_-]+|token|bearer|api[_-]?key|secret|password|session[_-]?id)\b/i;
 const QUERY_VALUE_PATTERN = /(?:\?|&|^)[^=\s]+=[^&\s]+|[A-Za-z0-9_-]+=[A-Za-z0-9_%.-]+/;
 
-const sanitizeRouteForEvidence = (route: string): string => {
-  const segments = route.split('/').map((segment) => {
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(segment);
-    } catch {
-      return 'redacted';
-    }
-    if (EMAIL_PATTERN.test(decoded) || UUID_PATTERN.test(decoded) || TOKEN_PATTERN.test(decoded)) {
-      return 'redacted';
-    }
-    return decoded.replace(/[^a-zA-Z0-9._~-]/g, '-');
-  });
-  return segments.join('/');
-};
-
-const sanitizeRoutePath = (route: string): string =>
-  route
-    .split('/')
-    .filter(Boolean)
-    .join('-')
-    .replace(/[^a-zA-Z0-9-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '') || 'root';
-
 const viewportForName = (viewportName: ObserverViewportName): ObserverViewport => {
   const viewport = OBSERVER_VIEWPORTS.find((candidate) => candidate.name === viewportName);
   if (!viewport) {
@@ -127,6 +102,9 @@ export const assertLoopbackBaseUrl = (value: string): string => {
   }
   if (parsed.username || parsed.password) {
     throw new Error('Base URL credentials are not allowed.');
+  }
+  if (!parsed.port) {
+    throw new Error('Base URL must include an explicit port.');
   }
   if (parsed.search) {
     throw new Error('Base URL query strings are not allowed.');
@@ -292,8 +270,9 @@ export const sanitizeObserverFailures = (messages: string[]): string[] => {
 
 export const buildEvidenceCard = (input: EvidenceCardInput) => {
   const viewport = viewportForName(input.viewportName);
-  const evidenceRoute = sanitizeRouteForEvidence(input.route);
-  const routeSlug = sanitizeRoutePath(evidenceRoute);
+  const routeDigest = createHash('sha256').update(input.route).digest('hex');
+  const routeId = `sha256:${routeDigest}`;
+  const routeSlug = `route-${routeDigest.slice(0, 12)}`;
   const baseName = `${routeSlug}.${input.viewportName}.${viewport.width}x${viewport.height}`;
   const minTouchTarget = input.metrics.visibleTouchTargets.reduce<LayoutTouchTarget | null>(
     (smallest, target) => {
@@ -315,7 +294,7 @@ export const buildEvidenceCard = (input: EvidenceCardInput) => {
       : 'not-applicable';
 
   return {
-    route: evidenceRoute,
+    routeId,
     routeSlug,
     viewportName: input.viewportName,
     viewport: {
@@ -325,6 +304,7 @@ export const buildEvidenceCard = (input: EvidenceCardInput) => {
     screenshotPath: `${OBSERVER_ARTIFACT_DIR}/${baseName}.png`,
     evidencePath: `${OBSERVER_ARTIFACT_DIR}/${baseName}.json`,
     policy: OBSERVER_POLICY,
+    artifactMode: 'redacted-layout',
     result: input.result,
     failureCodes: sanitizeObserverFailures(input.failures),
     checks: {

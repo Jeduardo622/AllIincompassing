@@ -18,6 +18,7 @@ Make deterministic responsive observation mandatory for visible UI changes witho
 - Do not read `.env*` files.
 - Do not import the shared Playwright env loader.
 - Do not reuse browser sessions, cookies, storage state, HAR, trace, or video.
+- Persist only layout-redacted screenshots: text, carets, media, SVG/canvas content, and background imagery must be hidden before capture while measured geometry remains unchanged.
 - Do not capture DOM text, request or response bodies, query strings, emails, tokens, UUIDs, or credentials in artifacts.
 - Abort external-origin requests and methods other than `GET`, `HEAD`, or `OPTIONS`.
 - Computer inspection is supplemental only. It is never gating or authoritative for pass/fail.
@@ -39,7 +40,7 @@ Add one `--route` flag per affected route.
 
 For each route and viewport, the observer must write:
 
-- screenshot under `artifacts/responsive-ui-observer`
+- layout-redacted screenshot under `artifacts/responsive-ui-observer`
 - sanitized JSON evidence under `artifacts/responsive-ui-observer`
 - screenshot hash
 - evidence hash
@@ -67,7 +68,7 @@ Return a machine-safe JSON summary only:
 
 Each result must include only:
 
-- `route`
+- `routeId` (SHA-256 only; raw route text is never persisted or echoed)
 - `viewportName`
 - `result`
 - `failureCodes`

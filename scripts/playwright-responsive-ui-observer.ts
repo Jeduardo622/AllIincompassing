@@ -20,12 +20,39 @@ const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const NAVIGATION_TIMEOUT_MS = 15_000;
 const SETTLE_TIMEOUT_MS = 5_000;
 const EXTRA_SETTLE_MS = 250;
+const INTERACTIVE_CONTROL_SELECTOR = [
+  'button',
+  'a[href]',
+  'input:not([type="hidden"])',
+  'select',
+  'textarea',
+  '[role="button"]',
+  '[role="link"]',
+  '[role="checkbox"]',
+  '[role="radio"]',
+  '[role="switch"]',
+  '[role="menuitem"]',
+  '[role="tab"]',
+  '[contenteditable="true"]',
+].join(', ');
+
+export const RESPONSIVE_CAPTURE_REDACTION_CSS = `
+  *, *::before, *::after {
+    color: transparent !important;
+    caret-color: transparent !important;
+    text-shadow: none !important;
+    background-image: none !important;
+  }
+  img, picture, video, canvas, svg, iframe, object, embed {
+    visibility: hidden !important;
+  }
+`;
 
 type ObserverRunSummary = {
   ok: boolean;
   baseUrl: string;
   results: Array<{
-    route: string;
+    routeId: string;
     viewportName: ObserverViewport['name'];
     result: 'pass' | 'fail';
     failureCodes: string[];
@@ -42,7 +69,7 @@ type ObserverDependencies = {
 };
 
 type RouteObservation = {
-  route: string;
+  routeId: string;
   viewportName: ObserverViewport['name'];
   result: 'pass' | 'fail';
   failureCodes: string[];
@@ -68,7 +95,7 @@ const isSameOrigin = (value: string, origin: string): boolean => {
 };
 
 export const collectLayoutMetrics = async (page: Page): Promise<LayoutMetrics> =>
-  page.evaluate(() => {
+  page.evaluate((interactiveControlSelector) => {
     const horizontalOverflow = Math.ceil(
       Math.max(
         document.documentElement.scrollWidth,
@@ -78,7 +105,7 @@ export const collectLayoutMetrics = async (page: Page): Promise<LayoutMetrics> =
 
     const visibleControls = Array.from(
       document.querySelectorAll<HTMLElement>(
-        'button, a[href], input:not([type="hidden"]), select, textarea, [role="button"], [tabindex], [data-testid], [aria-label]',
+        interactiveControlSelector,
       ),
     )
       .filter((element) => {
@@ -117,7 +144,11 @@ export const collectLayoutMetrics = async (page: Page): Promise<LayoutMetrics> =
       clippedFixedControls,
       visibleTouchTargets,
     };
-  });
+  }, INTERACTIVE_CONTROL_SELECTOR);
+
+export const redactPageForCapture = async (page: Page): Promise<void> => {
+  await page.addStyleTag({ content: RESPONSIVE_CAPTURE_REDACTION_CSS });
+};
 
 const observeRouteAtViewport = async (
   browser: Browser,
@@ -201,6 +232,7 @@ const observeRouteAtViewport = async (
       failures.push('layout evaluation failed');
     }
 
+    await redactPageForCapture(page);
     const screenshotBuffer = await page.screenshot({
       fullPage: true,
       type: 'png',
@@ -233,7 +265,7 @@ const observeRouteAtViewport = async (
     await deps.writeText(evidencePath, `${JSON.stringify(evidenceCard, null, 2)}\n`);
 
     return {
-      route: evidenceCard.route,
+      routeId: evidenceCard.routeId,
       viewportName: viewport.name,
       result: failures.length > 0 ? 'fail' : 'pass',
       failureCodes: sanitizeObserverFailures(failures),
@@ -300,6 +332,8 @@ if (isMainModule()) {
       console.error(
         JSON.stringify({
           ok: false,
+          baseUrl: null,
+          results: [],
           failureCodes: failureCodes.length > 0 ? failureCodes : ['observer-failed'],
         }),
       );

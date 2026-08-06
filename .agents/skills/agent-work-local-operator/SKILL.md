@@ -30,6 +30,7 @@ Before execution:
 
 After execution:
 
+- reread `manifestPath` from disk and require exact equality with the in-memory harness result
 - require the exact current `PHASE2_CHECKS` ids
 - require every check to be `passed`
 - require every `sanitizedOutputSha256` to be a 64-character hex digest

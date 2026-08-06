@@ -34,6 +34,8 @@ describe('responsive-ui-observer contract', () => {
     expect(source).toContain("chromium.launch({ headless: true })");
     expect(source).toContain("serviceWorkers: 'block'");
     expect(source).toContain('pathToFileURL(process.argv[1])');
+    expect(source).toContain('RESPONSIVE_CAPTURE_REDACTION_CSS');
+    expect(source).toContain('redactPageForCapture(page)');
   });
 
   it('pins the exact desktop and mobile viewport pair', () => {
@@ -91,6 +93,8 @@ describe('responsive-ui-observer contract', () => {
 
     it('rejects non-loopback or decorated URLs', () => {
       for (const value of [
+        'http://localhost',
+        'http://127.0.0.1',
         'https://127.0.0.1:4173',
         'http://user:pass@127.0.0.1:4173',
         'http://127.0.0.1:4173/?token=abc',
@@ -231,13 +235,17 @@ describe('responsive-ui-observer contract', () => {
       } as any);
 
       expect(evidenceCard).toMatchObject({
-        route: '/desk/responsive-check',
-        routeSlug: 'desk-responsive-check',
+        routeId: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        routeSlug: expect.stringMatching(/^route-[0-9a-f]{12}$/),
         viewportName: 'desktop',
-        screenshotPath:
-          'artifacts/responsive-ui-observer/desk-responsive-check.desktop.1440x900.png',
-        evidencePath: 'artifacts/responsive-ui-observer/desk-responsive-check.desktop.1440x900.json',
+        screenshotPath: expect.stringMatching(
+          /^artifacts\/responsive-ui-observer\/route-[0-9a-f]{12}\.desktop\.1440x900\.png$/,
+        ),
+        evidencePath: expect.stringMatching(
+          /^artifacts\/responsive-ui-observer\/route-[0-9a-f]{12}\.desktop\.1440x900\.json$/,
+        ),
         policy: readOnlyPolicy,
+        artifactMode: 'redacted-layout',
         result: 'fail',
         hashes: {
           screenshot: 'sha256:1111111111111111111111111111111111111111111111111111111111111111',
@@ -273,9 +281,33 @@ describe('responsive-ui-observer contract', () => {
         evidenceHash: `sha256:${'2'.repeat(64)}`,
       });
 
-      expect(evidenceCard.route).toBe('/clients/redacted/redacted');
+      expect(evidenceCard).not.toHaveProperty('route');
       expect(JSON.stringify(evidenceCard)).not.toContain('550e8400');
       expect(JSON.stringify(evidenceCard)).not.toContain('alice@example.com');
+      expect(evidenceCard.routeSlug).toMatch(/^route-[0-9a-f]{12}$/);
+    });
+
+    it('keeps distinct redacted dynamic routes on distinct artifact paths', () => {
+      const makeCard = (route: string) => buildEvidenceCard({
+        route,
+        viewportName: 'desktop',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [],
+        },
+        screenshotHash: `sha256:${'1'.repeat(64)}`,
+        evidenceHash: `sha256:${'2'.repeat(64)}`,
+      });
+
+      const first = makeCard('/clients/550e8400-e29b-41d4-a716-446655440000');
+      const second = makeCard('/clients/6ba7b810-9dad-41d1-80b4-00c04fd430c8');
+      expect(first.screenshotPath).not.toBe(second.screenshotPath);
+      expect(first.evidencePath).not.toBe(second.evidencePath);
+      expect(JSON.stringify(first)).not.toContain('/clients/');
+      expect(JSON.stringify(second)).not.toContain('/clients/');
     });
   });
 });

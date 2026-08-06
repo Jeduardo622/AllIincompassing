@@ -263,7 +263,7 @@ const managementRead = (query, parameters = []) =>
 const managementWrite = (query, parameters = []) =>
   runDatabaseQuery({ query, parameters, readOnly: false });
 
-const firstRow = (result) => {
+export const firstRow = (result) => {
   if (Array.isArray(result)) return result[0] ?? {};
   return result?.result?.[0] ?? result ?? {};
 };
@@ -655,52 +655,59 @@ const setupUsers = async (state) => {
     state.fixture.organizationBId,
   );
   await writeState(state);
-  const row = firstRow(
+  const parameters = [
+    state.users[0].id,
+    state.users[0].email,
+    state.fixture.organizationAId,
+    state.users[1].id,
+    state.users[1].email,
+    state.fixture.organizationBId,
+  ];
+  const profileRow = firstRow(
     await managementWrite(
       `
     with guard as materialized (
       select set_config('app.bypass_profile_role_guard', 'on', true) as enabled
-    ), upsert_profiles as (
-      insert into public.profiles (id, email, role, first_name, last_name, full_name, organization_id, is_active)
-      select values_table.id, values_table.email, 'admin'::public.role_type,
-        'Synthetic', values_table.last_name, 'Synthetic Agent Work Admin', values_table.organization_id, true
-      from (values
+    ), values_table(id, email, last_name, organization_id) as (
+      values
         ($1::uuid, $2::text, 'Shadow A', $3::uuid),
         ($4::uuid, $5::text, 'Shadow B', $6::uuid)
-      ) as values_table(id, email, last_name, organization_id)
-      cross join guard
-      on conflict (id) do update set
-        email = excluded.email, role = excluded.role, first_name = excluded.first_name,
-        last_name = excluded.last_name, full_name = excluded.full_name,
-        organization_id = excluded.organization_id, is_active = true, updated_at = now()
-      returning id
-    ), upsert_roles as (
-      insert into public.user_roles (user_id, role_id, is_active)
-      select values_table.user_id, roles.id, true
-      from (values ($1::uuid), ($4::uuid)) as values_table(user_id)
-      join public.roles on roles.name = 'admin'
-      on conflict do nothing
-      returning user_id
+    ), updated_profiles as (
+    update public.profiles as profiles
+    set email = values_table.email,
+      role = 'admin'::public.role_type,
+      first_name = 'Synthetic',
+      last_name = values_table.last_name,
+      organization_id = values_table.organization_id,
+      is_active = true,
+      updated_at = now()
+    from values_table cross join guard
+    where profiles.id = values_table.id
+    returning profiles.id
     )
-    select jsonb_build_object(
-      'profiles', (select count(*)::integer from upsert_profiles),
-      'roles', (select count(*)::integer from upsert_roles)
-    ) as setup
+    select count(*)::integer as profiles from updated_profiles
   `,
-      [
-        state.users[0].id,
-        state.users[0].email,
-        state.fixture.organizationAId,
-        state.users[1].id,
-        state.users[1].email,
-        state.fixture.organizationBId,
-      ],
+      parameters,
     ),
   );
-  assert(
-    row?.setup?.profiles === 2 && row?.setup?.roles === 2,
-    "Synthetic tenant authority setup failed.",
+  assert(profileRow.profiles === 2, "Synthetic profile setup failed.");
+  const roleRow = firstRow(
+    await managementWrite(
+      `
+    with upsert_roles as (
+    insert into public.user_roles (user_id, role_id, is_active, expires_at)
+    select values_table.user_id, roles.id, true, null::timestamptz
+    from (values ($1::uuid), ($2::uuid)) as values_table(user_id)
+    join public.roles on roles.name = 'admin'
+    on conflict (user_id, role_id) do update set is_active = excluded.is_active, expires_at = null
+    returning user_id
+    )
+    select count(*)::integer as roles from upsert_roles
+  `,
+      [state.users[0].id, state.users[1].id],
+    ),
   );
+  assert(roleRow.roles === 2, "Synthetic role setup failed.");
 };
 
 const setupClientsAndAssessments = async (state) => {

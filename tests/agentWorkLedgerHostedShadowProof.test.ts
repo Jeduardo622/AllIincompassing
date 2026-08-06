@@ -18,6 +18,7 @@ import {
   buildCleanupBatch,
   deriveState,
   executePhase,
+  firstRow,
 } from "../scripts/agent-work-ledger-hosted-shadow-proof.mjs";
 
 const workflowPath = path.resolve(
@@ -233,6 +234,11 @@ const sanitizedItem = (id: string, stepId: string) => ({
 });
 
 describe("agent work hosted shadow proof contract", () => {
+  it("normalizes both Management API query response envelopes", () => {
+    expect(firstRow([{ profiles: 2 }])).toEqual({ profiles: 2 });
+    expect(firstRow({ result: [{ roles: 2 }] })).toEqual({ roles: 2 });
+  });
+
   it("adds a local-only contract command and protected workflow", () => {
     expect(existsSync(workflowPath)).toBe(true);
     expect(existsSync(scriptPath)).toBe(true);
@@ -919,7 +925,8 @@ describe("agent work hosted shadow proof contract", () => {
     expect(script).toContain("/admin/users");
     expect(script).toContain("/token?grant_type=password");
     expect(script).toContain("insert into public.organizations");
-    expect(script).toContain("insert into public.profiles");
+    expect(script).toContain("update public.profiles");
+    expect(script).not.toContain("insert into public.profiles");
     expect(script).toContain("insert into public.user_roles");
     expect(script).toContain("insert into public.clients");
     expect(script).toContain("insert into public.assessment_documents");
@@ -929,6 +936,24 @@ describe("agent work hosted shadow proof contract", () => {
     );
     expect(script).toContain("Cross-tenant detail did not fail closed.");
     expect(script).toContain("advisory_mode_required");
+  });
+
+  it("does not write the generated profiles full_name column", () => {
+    const setupUsers =
+      script.match(
+        /const setupUsers[\s\S]*?const setupClientsAndAssessments/,
+      )?.[0] ?? "";
+
+    expect(setupUsers).toContain("update public.profiles");
+    expect(setupUsers).not.toContain("full_name");
+    expect(setupUsers).toContain("where profiles.id = values_table.id");
+    expect(setupUsers).toContain("role = 'admin'::public.role_type");
+    expect(setupUsers).toContain("insert into public.user_roles");
+    expect(setupUsers).toContain(
+      "on conflict (user_id, role_id) do update set is_active = excluded.is_active, expires_at = null",
+    );
+    expect(setupUsers).toContain("profileRow.profiles === 2");
+    expect(setupUsers).toContain("roleRow.roles === 2");
   });
 
   it("uses only the approved runtime secret and only shadow/disabled values", () => {

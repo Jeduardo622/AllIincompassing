@@ -19,6 +19,8 @@ Make deterministic responsive observation mandatory for visible UI changes witho
 - Do not import the shared Playwright env loader.
 - Do not reuse browser sessions, cookies, storage state, HAR, trace, or video.
 - Persist only layout-redacted screenshots: text, carets, media, SVG/canvas content, and background imagery must be hidden before capture while measured geometry remains unchanged.
+- Use the full SHA-256 route digest in every artifact filename; never truncate route identity.
+- Treat artifact writes as one run: remove the current partial pair and every earlier pair from that invocation if any write or observation throws.
 - Do not capture DOM text, request or response bodies, query strings, emails, tokens, UUIDs, or credentials in artifacts.
 - Abort external-origin requests and methods other than `GET`, `HEAD`, or `OPTIONS`.
 - Computer inspection is supplemental only. It is never gating or authoritative for pass/fail.
@@ -74,3 +76,5 @@ Each result must include only:
 - `failureCodes`
 - `screenshotPath`
 - `evidencePath`
+
+Every failed result must contain at least one canonical machine-safe `failureCodes` entry. Raw failure text is never returned.

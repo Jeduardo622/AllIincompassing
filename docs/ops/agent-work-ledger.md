@@ -8,7 +8,7 @@ Run the fixed local operator from a committed snapshot:
 npm run agent-work:local:operator
 ```
 
-This no-argument command invokes the existing fully containerized Phase 2 harness and then verifies its exact check set, authoritative local evidence hashes, and complete cleanup result. It rejects caller-selected workflows, tenants, modes, URLs, credentials, and all other arguments. The operator is synthetic local verification tooling, not a Ledger application caller or engineering-task queue. It does not read `.env*`, contact hosted systems or model providers, permit `active`, or grant approval/publication authority.
+This no-argument command invokes the existing fully containerized Phase 2 harness and then verifies its exact check set, authoritative local evidence hashes, and complete cleanup result. Successful and failed harness exits both carry the sanitized in-memory result; the operator rereads the on-disk manifest, requires exact equality, and validates it before emitting a machine-safe status. It rejects caller-selected workflows, tenants, modes, URLs, credentials, and all other arguments. The operator is synthetic local verification tooling, not a Ledger application caller or engineering-task queue. It does not read `.env*`, contact hosted systems or model providers, permit `active`, or grant approval/publication authority.
 
 Run `npm run agent-work:shadow-parity`.
 

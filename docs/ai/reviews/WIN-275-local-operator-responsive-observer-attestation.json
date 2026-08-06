@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "issue": "WIN-275",
+  "reviewMode": "solo-maintainer-critical-local-operator-responsive-observer",
+  "repository": "Jeduardo622/AllIincompassing",
+  "createdAt": "2026-08-06T23:13:57Z",
+  "authorization": {
+    "localOnlyImplementation": true,
+    "hostedAction": false,
+    "runtimeActivation": false,
+    "activeMode": false,
+    "genericEngineeringIntake": false,
+    "providerCall": false,
+    "phiBearingFixture": false
+  },
+  "predecessorAttestation": {
+    "path": "docs/ai/reviews/WIN-275-agent-work-ledger-adoption-contract-attestation.json",
+    "sha256": "0d0c81bf5afd7dd46d91a46bccd7f41dc4052126bf20a4eca04f867a5599e426",
+    "hostedActionAuthorized": false
+  },
+  "specialistReviews": {
+    "code-review-engineer": {
+      "agentId": "019fd952-16b3-7962-b815-2fb5c12ca857",
+      "verdict": "PASS"
+    },
+    "security-engineer": {
+      "agentId": "019fd952-1814-7661-83f8-7ea4477f9430",
+      "verdict": "PASS"
+    },
+    "test-engineer": {
+      "agentId": "019fd952-1a55-7f00-b054-3684487eff8b",
+      "verdict": "PASS"
+    },
+    "software-architect": {
+      "agentId": "019fd952-1de1-7692-bc4a-a304048eab2c",
+      "verdict": "PASS"
+    },
+    "supabase-reviewer": {
+      "agentId": "019fd952-2304-7b41-930e-2e4a2f73b921",
+      "verdict": "PASS"
+    },
+    "performance-engineer": {
+      "agentId": "019fd952-2773-7b41-9c80-0bfb657dc60d",
+      "verdict": "PASS"
+    },
+    "documentation-engineer": {
+      "agentId": "019fd95b-6f55-7fe1-ab65-c3907bda8747",
+      "verdict": "PASS"
+    },
+    "devops-engineer": {
+      "agentId": "019fd95b-7086-76e3-8809-418e32460714",
+      "verdict": "PASS"
+    }
+  },
+  "verification": {
+    "focusedTests": "99/99",
+    "operatorRunId": "20260806T225600Z-5cdff9",
+    "operatorCommit": "0ed7d71dd3df8079ce24ef4b0e10e6a6a88b23c8",
+    "operatorChecks": "12/12",
+    "operatorCleanup": "passed",
+    "responsiveRouteId": "sha256:13b6902d199056c8c067ff3972db79f6d309fed7a8baf9db3231c12ed3001fae",
+    "responsiveViewports": "2/2",
+    "artifactMode": "redacted-layout",
+    "criticalMatrix": "passed",
+    "verifyLocal": "passed",
+    "tier0Routes": "220/220",
+    "fullSuiteHeapMb": 8192,
+    "hostedActionAuthorized": false
+  },
+  "invariants": {
+    "fixedNoArgumentOperator": true,
+    "persistedManifestRevalidated": true,
+    "failedManifestRevalidated": true,
+    "atomicObserverArtifacts": true,
+    "fullRouteDigestPaths": true,
+    "machineSafeFailureCodes": true,
+    "engineeringTrackingExternalToLedger": true,
+    "localOnlyUrls": true,
+    "phiFreeEvidence": true
+  },
+  "protectedSurfaceHashes": {
+    ".agents/skills/agent-work-local-operator/SKILL.md": "adf497695e4732e17af8b2870a7e096fc78f527765ff9083b428ecd4fb00ec2d",
+    ".agents/skills/agent-work-local-operator/agents/openai.yaml": "b35ae9587accac34a8d6243d000b9e45cd41e8619ad28e5f3b0ef525732fc582",
+    ".agents/skills/pr-hygiene/SKILL.md": "feb07e29c385a6e821f60dcade209eabf674794564bddbea7d9db273a7d0d09f",
+    ".agents/skills/responsive-ui-observer/SKILL.md": "d955ca11cbc701748ce325142460dff162b237a2ca64c6daf46b20f90cc167c6",
+    ".agents/skills/responsive-ui-observer/agents/openai.yaml": "8bfd7179559b0b8148f11a1280507b69bd9d5b4585f00c616b537fd89a1bc598",
+    ".agents/skills/verify-change/SKILL.md": "51fb6a9bb2c4683af55b4e52fa906ba9b7f9dcdd5ab5b2be1ea2a7ef2953d546",
+    ".codex/agents/agent-work-local-operator.toml": "654d3e607aa522435c9a83f092618a03f58d660ecafc77a0438dc502f731654a",
+    ".codex/agents/responsive-ui-observer.toml": "1c5705485bb6cfbc858092b4ed4017ba177985aa9b8006fc478fb32d04e0b005",
+    ".gitignore": "349d93a85f81e42bd0c46eaecc79db71d617441cadfa272f9108c81c2efe9c53",
+    "AGENTS.md": "1be8157897d395aee0ae78503a04b9d35203d5e07dc80149198afff2f1301c81",
+    "docs/TESTING.md": "9ee180ee5ab40a57b977e5da3e2a3f3dbe13900623a6dbd1167b977a68a6ad62",
+    "docs/ai/codex-agent-alignment.md": "f1c302914971e520436bec6a9a3b22b52045e8911873e5bfb91db5f95e7bb1a8",
+    "docs/ai/handoffs/agent-work-ledger-adoption-contract.md": "d200e34d9516117ea21c10a950de30bc8e3c8870552dff9382ab8fb38664fe62",
+    "docs/ai/repo-tech-agents-skills-workflow-memo.md": "cbca5e27c8aaa3371d3e243519e95f5148682235435202d4efb64aa921a1a2f8",
+    "docs/ai/verification-matrix.md": "28a136e264212ccb57d0c85fa36cbcbc955862817500d66889557fa4134d863f",
+    "docs/ops/agent-work-ledger-caller-adoption.md": "85a23906a650b0f8929dbae58096e3d688780fe27c6f25dbe5b3f49b68984a1e",
+    "docs/ops/agent-work-ledger.md": "a0beafe3398affaf7ecd73304823f1bbf40a85566ff86094f7914e107f75dc1b",
+    "docs/superpowers/plans/2026-08-06-agent-work-local-operator-responsive-observer.md": "c1ee91a357903359747d0a2b34ddd363184d9419589556f6e2a0512161131a4c",
+    "docs/superpowers/specs/2026-08-06-agent-work-local-operator-responsive-observer-design.md": "efcbebced31679c38a31cc493144d543dee3352565bd20b77b86b29800a51f64",
+    "package.json": "97df3d662eb8efe329272fb7f5b26a055e787c7a18be99a4625475eaff6e0eef",
+    "scripts/agent-work-ledger-harness/phase2Harness.mjs": "ef3f60ec6c4b09d0585324ca53c143c771c33ffa58ace11058ab24659850bda7",
+    "scripts/agent-work-ledger-local-operator.mjs": "f00e70ca194507eb0b1920ee7b3c8529bb54e6e45072562d2a27b5019ad49168",
+    "scripts/lib/responsive-ui-observer.ts": "bbe6a827ac3bb77b9d9cf4805f3a3db1e62a2b708e7c6a52fdda39e52d88abae",
+    "scripts/playwright-responsive-ui-observer.ts": "52cd179a0779b16527b742ad7d76d22c9cd5538ca197f28a2c0a3aec59f8d52d",
+    "tests/agentWorkLedgerLocalOperator.test.ts": "9574ca2748a715fc0a290c81b61e03e5794a3fb87ba171304acfd8a03fc69702",
+    "tests/agentWorkLedgerPhase2Harness.test.ts": "07f1473a8fa8fb2abc3dd6472b8c5fefe755693b05823c989c2f2110aee71092",
+    "tests/responsiveUiObserver.test.ts": "3ad08ba678c204089d20c964f57d8e5b31f663c5217063f633f15cdcdeb4586d",
+    "tests/responsiveUiObserverRuntime.test.ts": "5e71f472e7d088b2b29e9c775521bb70296624752a0e5e1df223c64c7e7b3fcd"
+  }
+}

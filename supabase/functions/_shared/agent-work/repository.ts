@@ -6,6 +6,7 @@ import {
   validateStoredEventMetadata,
 } from "./events.ts";
 import {
+  AGENT_WORK_RUNTIME_MODES,
   type AgentWorkActionName,
   type AgentWorkActor,
   type AgentWorkApprovalContext,
@@ -14,6 +15,7 @@ import {
   type AgentWorkScopeValidation,
   authorizeWorkAction,
   evaluateActorScope,
+  isAgentWorkRuntimeMode,
   validateActorScopeRequest,
   type WorkflowDefinition,
 } from "./policy.ts";
@@ -161,12 +163,7 @@ const CALLER_METADATA_KEYS = [
   "duration_ms",
   "retry_count",
 ] as const;
-const RUNTIME_MODES: readonly AgentWorkRuntimeMode[] = [
-  "disabled",
-  "shadow",
-  "advisory",
-  "active",
-];
+const RUNTIME_MODES: readonly AgentWorkRuntimeMode[] = AGENT_WORK_RUNTIME_MODES;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export class AgentWorkRepository {
@@ -535,7 +532,8 @@ function validateMutationAuthority(
     return failure("authority_context_invalid");
   }
   if (
-    !authority.runtimeMode || !RUNTIME_MODES.includes(authority.runtimeMode)
+    !isAgentWorkRuntimeMode(authority.runtimeMode) ||
+    !RUNTIME_MODES.includes(authority.runtimeMode)
   ) {
     return failure("runtime_mode_unavailable");
   }

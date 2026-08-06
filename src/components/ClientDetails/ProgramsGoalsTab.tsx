@@ -3793,6 +3793,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                   <IehpFbaLayoutReview
                     assessmentDocument={selectedAssessmentDocument}
                     organizationId={organizationId}
+                    canCreateWorkLedger={canManageProgramsGoals}
                   />
                   <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-900/60 dark:bg-emerald-950/20">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">

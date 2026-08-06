@@ -177,3 +177,10 @@ When no secrets/protected systems are needed, run `npm run verify:local`.
 - Do not complete non-trivial work without verification artifact + PR hygiene verdict.
 - Use bounded PR check polling; no indefinite waits.
 
+### Agent Work Ledger Boundary
+
+- Use Linear plus the relevant markdown handoff for engineering planning, execution evidence, and review state. Do not send engineering issues, prompts, code, or review content to the tenant-scoped Agent Work Ledger.
+- Application callers may invoke only the fixed IEHP assessment-preparation and CalOptima draft-review workflows documented in `docs/ops/agent-work-ledger-caller-adoption.md`.
+- The authenticated Edge boundary derives actor, organization, client, graph, approval, and runtime authority. Callers provide only the fixed route payload and stable identifiers defined by the contract.
+- `disabled`, `shadow`, and `advisory` are the complete runtime set; `active` is forbidden. Any Ledger boundary change routes `critical` and requires `supabase-tenant-safety` plus human review.
+

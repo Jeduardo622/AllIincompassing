@@ -1,18 +1,22 @@
 {
   "schemaVersion": 1,
   "issue": "WIN-275",
-  "reviewMode": "solo-maintainer-owner-attestation",
+  "reviewMode": "solo-maintainer-critical-agent-work-ledger-adoption-contract",
   "repository": "Jeduardo622/AllIincompassing",
-  "createdAt": "2026-08-06T05:43:22Z",
-  "requiredCiChecks": [
-    "policy",
-    "lint-typecheck",
-    "unit-tests",
-    "build",
-    "tier0-browser",
-    "auth-browser-smoke",
-    "ci-gate"
-  ],
+  "createdAt": "2026-08-06T19:34:29Z",
+  "authorization": {
+    "localOnlyImplementation": true,
+    "hostedAction": false,
+    "runtimeActivation": false,
+    "activeMode": false,
+    "genericEngineeringIntake": false,
+    "providerCall": false
+  },
+  "predecessorAttestation": {
+    "path": "docs/ai/reviews/WIN-275-retention-policy-encoding-attestation.json",
+    "sha256": "1f17c47fbd216ef37541cc77ae6dc3141957167cf397457b7206bacccb212f95",
+    "hostedActionAuthorized": false
+  },
   "specialistReviews": {
     "code-review-engineer": {
       "agentId": "019fd88c-289d-7523-8eb5-e5406fbb41f9",
@@ -26,12 +30,12 @@
       "agentId": "019fd88c-2b7a-79b0-a88e-4a314230965b",
       "verdict": "PASS"
     },
-    "software-architect": {
-      "agentId": "019fd88c-3126-75f1-868b-029e631775cb",
-      "verdict": "PASS"
-    },
     "supabase-reviewer": {
       "agentId": "019fd88c-2dbc-7670-befc-c0e03ee0d200",
+      "verdict": "PASS"
+    },
+    "software-architect": {
+      "agentId": "019fd88c-3126-75f1-868b-029e631775cb",
       "verdict": "PASS"
     },
     "documentation-engineer": {
@@ -39,36 +43,24 @@
       "verdict": "PASS"
     }
   },
+  "verification": {
+    "result": "local-pass-with-blocked-hosted-auth",
+    "verifyLocal": true,
+    "tier0Routes": "220/220",
+    "hostedAuthBrowser": "BLOCKED_NO_HOSTED_TARGET_OR_CREDENTIALS",
+    "hostedActionAuthorized": false
+  },
   "invariants": {
-    "exactMainAndCi": true,
-    "shadowOnly": true,
-    "disabledRestoreRequired": true,
-    "sanitizedEvidenceOnly": true,
-    "zeroProviderCalls": true,
-    "retentionPolicyUnapproved": true
-  },
-  "supplementalAttestation": {
-    "path": "docs/ai/reviews/WIN-275-retention-policy-encoding-attestation.json",
-    "sha256": "1f17c47fbd216ef37541cc77ae6dc3141957167cf397457b7206bacccb212f95",
-    "hostedActionAuthorized": false
-  },
-  "adoptionAttestation": {
-    "path": "docs/ai/reviews/WIN-275-agent-work-ledger-adoption-contract-attestation.json",
-    "sha256": "0d0c81bf5afd7dd46d91a46bccd7f41dc4052126bf20a4eca04f867a5599e426",
-    "hostedActionAuthorized": false
+    "engineeringTrackingExternalToLedger": true,
+    "fixedWorkflowKeys": true,
+    "manageCapabilityRequired": true,
+    "serverAuthorityRevalidated": true,
+    "runtimeClosedSet": true,
+    "assessmentDomainAuthoritative": true,
+    "phiFreeEvidence": true
   },
   "protectedSurfaceHashes": {
-    ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
-    "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
-    "tests/agentWorkLedgerHostedShadowProof.test.ts": "5bea82c55a0791214807d3e4a8ec5e1355e144c61e942f41d96b1b260439b3b4",
     "AGENTS.md": "88fc2c13963367cbfe196336f42ab8a3737c949994d9dcfc0863bcd673ec9903",
-    ".agents/skills/route-task/SKILL.md": "fbeb48b4131759168641f936abb86676a3f2b0fc856a949fdb14b36de20d8c15",
-    "docs/ai/cto-lane-contract.md": "53263ab6570deb1f863e2cdb87d10473a5cf0e3d0925a4ace0488fc68d6443d0",
-    "docs/ai/high-risk-paths.md": "6e4cb5d907542c31c177cf33312dad7bd62bf047c8f36cb23eb308102e452714",
-    "docs/ops/agent-work-ledger.md": "d0705acc81482bd859c3467b54aeb51dfa51a777b664f5840d0268ea958c7e9e",
-    "docs/superpowers/plans/2026-08-04-agent-work-ledger-operational-activation.md": "c790c3aaec29e2557bd6895b71371ca422321de8c21aedbc4fbce2409b66a2b5",
-    "docs/ai/handoffs/agent-work-ledger-foundation.md": "9b9d5c80267f34acc95fe586ead2a0e38605c3db74f1fe0509354c0d8f51cb94",
-    "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md": "e463e0cd355f9220204dc6498b208b46b6bb9995eb962f7032218c4615810c27",
     "README.md": "ba0fb1883502ce50904345b9917bafa59f7f189d2ae718d88a940f6e70e61be4",
     "docs/ai/codex-agent-alignment.md": "f31ed766f24efeb29db239dae4716f1b2f9f26cb1c0f4c0d10afbdcf67b388ce",
     "docs/ai/repo-tech-agents-skills-workflow-memo.md": "c3765e7082b6fc2f6e6747c8ed675ede57c8826fab6b8a6b48329f6f920d2eb2",

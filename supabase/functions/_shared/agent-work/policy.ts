@@ -1,8 +1,7 @@
 export type AgentWorkRuntimeMode =
   | "disabled"
   | "shadow"
-  | "advisory"
-  | "active";
+  | "advisory";
 export type AgentWorkActorKind = "user" | "worker" | "system" | "service_role";
 export type AgentWorkActionName =
   | "claim_step"
@@ -113,6 +112,11 @@ const REMEDIATION_SUGGESTION_KEYS = new Set([
   "confidence",
   "requiresHumanReview",
 ]);
+export const AGENT_WORK_RUNTIME_MODES = [
+  "disabled",
+  "shadow",
+  "advisory",
+] as const satisfies readonly AgentWorkRuntimeMode[];
 
 export type ModelPolicyDecision = {
   allowed: boolean;
@@ -246,7 +250,9 @@ export function authorizeWorkAction(
   );
   if (!identity.allowed) return deny(identity.reasonCode, input.runtimeMode);
 
-  if (input.runtimeMode == null) return deny("runtime_mode_unavailable", null);
+  if (!isAgentWorkRuntimeMode(input.runtimeMode)) {
+    return deny("runtime_mode_unavailable", null);
+  }
   if (input.killSwitchEnabled) {
     return deny("runtime_kill_switch_enabled", input.runtimeMode);
   }
@@ -435,6 +441,13 @@ function deny(
 
 function modelDeny(reasonCode: string): ModelPolicyDecision {
   return { allowed: false, reasonCode };
+}
+
+export function isAgentWorkRuntimeMode(
+  value: AgentWorkRuntimeMode | string | null | undefined,
+): value is AgentWorkRuntimeMode {
+  return typeof value === "string" &&
+    AGENT_WORK_RUNTIME_MODES.includes(value as AgentWorkRuntimeMode);
 }
 
 function isValidModelCorrelation(

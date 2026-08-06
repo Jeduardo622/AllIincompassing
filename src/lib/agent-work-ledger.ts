@@ -100,6 +100,7 @@ export const AGENT_WORKFLOW_KEYS = {
   iehpAssessmentPrep: "assessment.iehp.prepare_for_clinical_review",
   caloptimaDraftReview: "assessment.caloptima.prepare_draft_review",
 } as const;
+export const IEHP_ASSESSMENT_PREP_WORKFLOW_VERSION = 1 as const;
 
 export type AgentWorkRuntimeMode = z.infer<typeof runtimeModeSchema>;
 export type AgentWorkItem = z.infer<typeof workItemSchema>;
@@ -246,6 +247,26 @@ export async function createCalOptimaDraftReviewWorkLedger(input: {
   }
   const parsed = detailEnvelopeSchema.safeParse(payload);
   if (!parsed.success) throw new Error("Work item creation response was invalid");
+  return parsed.data.data;
+}
+
+export async function createIehpAssessmentPrepWorkLedger(input: {
+  assessmentDocumentId: string;
+}): Promise<AgentWorkItem> {
+  const response = await callEdgeFunctionHttp("agent-work-items/assessment-prep", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      assessmentDocumentId: input.assessmentDocumentId,
+      workflowVersion: IEHP_ASSESSMENT_PREP_WORKFLOW_VERSION,
+    }),
+  });
+  const payload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error("Assessment-prep work item creation failed");
+  }
+  const parsed = detailEnvelopeSchema.safeParse(payload);
+  if (!parsed.success) throw new Error("Assessment-prep work item creation failed");
   return parsed.data.data;
 }
 

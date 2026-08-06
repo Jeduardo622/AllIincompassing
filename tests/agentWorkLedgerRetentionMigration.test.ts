@@ -14,7 +14,11 @@ const migrationExists = existsSync(migrationPath);
 const migrationSql = migrationExists ? readFileSync(migrationPath, "utf8") : "";
 const normalizedSql = migrationSql.replace(/\s+/g, " ");
 const retentionContract = readFileSync(
-  path.join(process.cwd(), "scripts", "agent-work-ledger-retention-contract.mjs"),
+  path.join(
+    process.cwd(),
+    "scripts",
+    "agent-work-ledger-retention-contract.mjs",
+  ),
   "utf8",
 );
 
@@ -41,12 +45,24 @@ describe("agent work ledger retention migration contract", () => {
     expect(normalizedSql).toMatch(/'ledger_history'/i);
     expect(normalizedSql).toMatch(/'queue_archive'/i);
     expect(normalizedSql).toMatch(/'execution_trace'/i);
-    expect(new Set((normalizedSql.match(/'(ledger_history|queue_archive|execution_trace)'/gi) ?? []).map((value) => value.toLowerCase()))).toEqual(
+    expect(
+      new Set(
+        (
+          normalizedSql.match(
+            /'(ledger_history|queue_archive|execution_trace)'/gi,
+          ) ?? []
+        ).map((value) => value.toLowerCase()),
+      ),
+    ).toEqual(
       new Set(["'ledger_history'", "'queue_archive'", "'execution_trace'"]),
     );
-    expect(normalizedSql).not.toMatch(/insert into public\.agent_work_retention_(?:policies|holds|receipts)/i);
+    expect(normalizedSql).not.toMatch(
+      /insert into public\.agent_work_retention_(?:policies|holds|receipts)/i,
+    );
     expect(normalizedSql).not.toMatch(/retention_(?:days|period|cutoff)/i);
-    expect(normalizedSql).not.toMatch(/\b(?:7|14|30|60|90|180|365)\s*(?:days?|months?|years?)\b/i);
+    expect(normalizedSql).not.toMatch(
+      /\b(?:7|14|30|60|90|180|365)\s*(?:days?|months?|years?)\b/i,
+    );
   });
 
   it("keeps policy versions append-only with at most one active version per category", () => {
@@ -84,19 +100,48 @@ describe("agent work ledger retention migration contract", () => {
       "agent_work_retention_holds",
       "agent_work_retention_receipts",
     ]) {
-      expect(normalizedSql).toMatch(new RegExp(`alter table public\\.${tableName} enable row level security`, "i"));
-      expect(normalizedSql).toMatch(new RegExp(`alter table public\\.${tableName} force row level security`, "i"));
-      expect(normalizedSql).toMatch(new RegExp(`create policy ${tableName}_service_role_all`, "i"));
-      expect(normalizedSql).toMatch(new RegExp(`revoke all on public\\.${tableName} from public, anon, authenticated`, "i"));
-      expect(normalizedSql).toMatch(new RegExp(`revoke all on public\\.${tableName} from service_role`, "i"));
-      expect(normalizedSql).toMatch(new RegExp(`grant (?:select|insert|update)(?:,\\s*(?:select|insert|update))* on public\\.${tableName} to service_role`, "i"));
+      expect(normalizedSql).toMatch(
+        new RegExp(
+          `alter table public\\.${tableName} enable row level security`,
+          "i",
+        ),
+      );
+      expect(normalizedSql).toMatch(
+        new RegExp(
+          `alter table public\\.${tableName} force row level security`,
+          "i",
+        ),
+      );
+      expect(normalizedSql).toMatch(
+        new RegExp(`create policy ${tableName}_service_role_all`, "i"),
+      );
+      expect(normalizedSql).toMatch(
+        new RegExp(
+          `revoke all on public\\.${tableName} from public, anon, authenticated`,
+          "i",
+        ),
+      );
+      expect(normalizedSql).toMatch(
+        new RegExp(
+          `revoke all on public\\.${tableName} from service_role`,
+          "i",
+        ),
+      );
+      expect(normalizedSql).toMatch(
+        new RegExp(
+          `grant (?:select|insert|update)(?:,\\s*(?:select|insert|update))* on public\\.${tableName} to service_role`,
+          "i",
+        ),
+      );
     }
   });
 
   it("keeps export scoped to one org and one exact work item with a canonical hashed manifest", () => {
     expect(exportDefinition).toMatch(/p_organization_id uuid/i);
     expect(exportDefinition).toMatch(/p_work_item_id uuid/i);
-    expect(exportSql).toMatch(/where item\.organization_id = p_organization_id/i);
+    expect(exportSql).toMatch(
+      /where item\.organization_id = p_organization_id/i,
+    );
     expect(exportSql).toMatch(/and item\.id = p_work_item_id/i);
     expect(exportSql).toMatch(/jsonb_agg\(/i);
     expect(exportSql).toMatch(/order by/i);
@@ -179,8 +224,12 @@ describe("agent work ledger retention migration contract", () => {
       "tool_version",
       "step_name",
     ]) {
-      expect(exportSql).not.toMatch(new RegExp(`['\"]${hashedOnlyField}['\"]\\s*,`, "i"));
-      expect(exportSql).toMatch(new RegExp(`['\"]${hashedOnlyField}_hash['\"]`, "i"));
+      expect(exportSql).not.toMatch(
+        new RegExp(`['\"]${hashedOnlyField}['\"]\\s*,`, "i"),
+      );
+      expect(exportSql).toMatch(
+        new RegExp(`['\"]${hashedOnlyField}_hash['\"]`, "i"),
+      );
     }
   });
 
@@ -198,7 +247,9 @@ describe("agent work ledger retention migration contract", () => {
     expect(normalizedSql).toMatch(/provenance_code text/i);
     expect(normalizedSql).toMatch(/approved_by uuid/i);
     expect(normalizedSql).toMatch(/released_by uuid/i);
-    expect(normalizedSql).not.toMatch(/notes text|description text|comment text|free_form/i);
+    expect(normalizedSql).not.toMatch(
+      /notes text|description text|comment text|free_form/i,
+    );
   });
 
   it("binds hold and receipt metadata to the exact organization and work-item pair", () => {
@@ -222,7 +273,9 @@ describe("agent work ledger retention migration contract", () => {
 
   it("keeps prune permanently denied in this task with no delete path or caller cutoff", () => {
     expect(normalizedSql).not.toMatch(/\bdelete\s+from\b/i);
-    expect(pruneSql).not.toMatch(/p_cutoff|cutoff_at|retention_days|retention_period/i);
+    expect(pruneSql).not.toMatch(
+      /p_cutoff|cutoff_at|retention_days|retention_period/i,
+    );
     expect(pruneSql).toMatch(/policy_unapproved/i);
     expect(pruneSql).toMatch(/deleted_count/i);
     expect(pruneSql).toMatch(/0\b/);
@@ -234,12 +287,32 @@ describe("agent work ledger retention migration contract", () => {
     expect(normalizedSql).toMatch(
       /references public\.agent_work_items\(id, organization_id\)[\s\S]*on delete restrict/i,
     );
-    expect(normalizedSql).not.toMatch(/references public\.(assessment_documents|assessment_checklist_items|assessment_structured_sections|assessment_review_events)[\s\S]*on delete cascade/i);
+    expect(normalizedSql).not.toMatch(
+      /references public\.(assessment_documents|assessment_checklist_items|assessment_structured_sections|assessment_review_events)[\s\S]*on delete cascade/i,
+    );
   });
 
   it("restores the database owner before checking protected assessment-domain rows", () => {
     expect(retentionContract).toMatch(
       /prune_agent_work_retention_category[\s\S]*?reset role[\s\S]*?preservedRows/i,
+    );
+  });
+
+  it("probes authenticated decision-catalog access independently", () => {
+    const decisionCatalogProbe =
+      retentionContract.match(
+        /savepoint authenticated_policy_decision_probe[\s\S]*?assert\([\s\S]*?authenticatedPolicyDecisionDenied[\s\S]*?\);/i,
+      )?.[0] ?? "";
+
+    expect(decisionCatalogProbe).toMatch(
+      /select count\(\*\) from public\.agent_work_retention_policy_decisions/i,
+    );
+    expect(decisionCatalogProbe).not.toMatch(/agent_work_retention_holds/i);
+  });
+
+  it("rechecks the seeded execution trace after all prune denials", () => {
+    expect(retentionContract).toMatch(
+      /pruneResults[\s\S]*?reset role[\s\S]*?from public\.agent_execution_traces where id = \$3::uuid[\s\S]*?trace_count[\s\S]*?=== 1/i,
     );
   });
 });

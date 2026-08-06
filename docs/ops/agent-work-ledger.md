@@ -106,22 +106,24 @@ If local preconditions are not met, disable the proof by not running it. Do not 
 
 To disable the ledger locally without changing assessment behavior, run the application/Edge Function authority with ledger runtime policy `disabled` and do not run worker commands. Assessment domain tables and the existing upload/review/promotion workflow remain authoritative and independent of this parity command.
 
-## Retention Contract And Blocker
+## Retention Contract And Policy Encoding
 
-Task 14 remains unconfigured for retention enforcement until category-specific periods are approved and introduced by a separately reviewed policy migration. The current local surfaces prove only the fail-closed retention foundation, not a live retention policy:
+The solo maintainer approved non-destructive policy encoding in WIN-275. A forward migration records the decision without activating retention enforcement:
 
 - `supabase/migrations/20260801100000_agent_work_ledger_retention.sql`
+- `supabase/migrations/20260806110223_agent_work_retention_policy_encoding.sql`
 - `npm run agent-work:retention-contract`
-- no approved ledger retention periods exist
-- three distinct categories exist: `ledger_history`, `queue_archive`, and `execution_trace`
-- no policy rows are seeded
+- immutable decision periods are `ledger_history=365 days`, `queue_archive=90 days`, and `execution_trace=30 days`
+- decision provenance is bound to the WIN-275 owner-attestation reference and canonical approval SHA-256
+- the decision catalog is forced-RLS, service-role-readable, and rejects updates and deletes
+- no operational `agent_work_retention_policies` rows are seeded
 - service-role-only sanitized exact-work-item export returns the canonical hash
 - holds are machine-coded and org/work-item/category scoped
-- prune RPC has no deletion path and always denies with `policy_unapproved` and `deleted_count=0`
+- prune RPC has no deletion path and denies all three categories with `policy_unapproved` and `deleted_count=0`
 - no queue archive or trace deletion is implemented
 - no domain cascade exists
 
-Ownership for this slice is the policy-neutral migration, local contracts, documentation, and policy clarification. Do not infer production retention approval, prune authority, or deletion readiness from the foundation state.
+The encoded periods are governance input only. Do not infer operational policy activation, prune authority, deletion readiness, or hosted deployment from the decision catalog.
 
 ## Export, Prune, And Recovery Contract
 
@@ -353,20 +355,20 @@ The following checks prove the local Task 9 implementation:
 
 The nine API-convergence exceptions that originally blocked the Task 9 policy gate were repaired without weakening the gate. The current Task 15 `npm run ci:check-focused` and `npm run verify:local` results are green; use the Phase 1 evidence above rather than the historical Task 9 checkpoint.
 
-## Task 14 Retention Documentation Guardrails
+## Retention Policy Guardrails
 
-Task 14 implements only a fail-closed foundation until retention policy approval exists.
+WIN-275 records the owner-approved `365/90/30` periods as non-destructive governance metadata. Retention enforcement remains fail closed until a separately reviewed operational policy and deletion design are approved.
 
 - no active mode
 - no hosted action
-- no invented retention periods
+- no substitution or inference beyond the approved `ledger_history=365`, `queue_archive=90`, and `execution_trace=30` day periods
 - no claim of actual prune deletion
 - no claim of queue archive or trace deletion
 - no claim of domain cascade behavior
 - no claim of hosted backup/restore execution
 - no claim of production readiness beyond the scaffolded contract
 
-The docs should continue to state the blocking condition plainly: retention is unconfigured until category-specific periods are approved and introduced by a separately reviewed migration, and the assessment domain remains authoritative for reconciliation after any restore.
+The docs should continue to state the blocking condition plainly: approved periods are encoded, but deletion remains unconfigured while the operational policy registry is empty. The assessment domain remains authoritative for reconciliation after any restore.
 
 ## Task 10 Chaos Contract
 
@@ -462,11 +464,11 @@ WIN-275 adds an operator-only hosted scheduler controller without enabling it. T
 
 Runtime modes are deliberately asymmetric:
 
-| Mode | Work-item API | Runner/sweeper | Ledger model call | Domain draft staging |
-| --- | --- | --- | --- | --- |
-| `disabled` | fails closed | inert | denied | none |
-| `shadow` | tenant-scoped create/read observation | inert | denied | none |
-| `advisory` | tenant-scoped management | deterministic recovery only | explicit authenticated call | editable drafts for human review only |
+| Mode       | Work-item API                         | Runner/sweeper              | Ledger model call           | Domain draft staging                  |
+| ---------- | ------------------------------------- | --------------------------- | --------------------------- | ------------------------------------- |
+| `disabled` | fails closed                          | inert                       | denied                      | none                                  |
+| `shadow`   | tenant-scoped create/read observation | inert                       | denied                      | none                                  |
+| `advisory` | tenant-scoped management              | deterministic recovery only | explicit authenticated call | editable drafts for human review only |
 
 `active` is forbidden. Runtime-policy lookup failure resolves to disabled behavior. The Ledger runtime switch is not a global model-provider switch: the separately authenticated legacy `generate-program-goals` contract is controlled by `AGENT_WORK_LEGACY_GENERATION_DISABLED`. Keep that value `true` for any rollout claiming that only Ledger-bound generation can contact the provider.
 
@@ -509,7 +511,7 @@ The queued-credential review correction supersedes that evidence for the schedul
 
 Deploy code and migrations with runtime `disabled`, zero hosted jobs, and zero hosted Vault names. Promote to `shadow` only after a recorded owner decision and prove synthetic tenant/auth/create/list/detail parity with no runner, model, or draft write. Production `advisory` is additionally blocked until:
 
-- retention periods are approved for `ledger_history`, `queue_archive`, and `execution_trace`; current status is `policy_unapproved` and deletion remains zero
+- the encoded `365/90/30` periods receive a separately reviewed operational activation and deletion design; current prune status is `policy_unapproved` and deletion remains zero
 - human protected-path, Supabase, security, privacy, product, and clinical reviewers approve the rollout
 - CalOptima editable draft-table writes are explicitly accepted for advisory mode
 - an authenticated synthetic legacy-shaped request returns `503 legacy_generation_disabled` before assessment lookup/provider execution, and scheduler cadence is owner-approved

@@ -261,10 +261,10 @@ describe("agent-work local operator contract", () => {
     });
 
     expect(runHarness).toHaveBeenCalledTimes(2);
-    expect(failureCode).toBe(11);
-    expect(processImpl.exitCode).toBe(11);
+    expect(failureCode).toBe(1);
+    expect(processImpl.exitCode).toBe(1);
     expect(processImpl.writes).toHaveLength(1);
-    expect(processImpl.writes[0]).toMatch(MACHINE_SAFE_CODE);
+    expect(processImpl.writes[0]).toBe("operator_check_status_invalid");
     expect(processImpl.writes[0]).not.toContain("super-secret-token");
     expect(readManifest).toHaveBeenCalledTimes(2);
   });

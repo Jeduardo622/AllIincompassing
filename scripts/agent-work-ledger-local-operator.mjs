@@ -61,11 +61,6 @@ const getManifest = (result) => {
   return result.manifest;
 };
 
-const getExitCode = (result) => {
-  const exitCode = result?.manifest?.exitCode;
-  return Number.isInteger(exitCode) ? exitCode : 1;
-};
-
 const getFailureReason = (result, error) => {
   const manifestReason = result?.manifest?.failure?.reasonCode;
   if (typeof manifestReason === "string" && manifestReason.length > 0) {
@@ -138,15 +133,6 @@ export const runLocalOperator = async ({
     const result = await runHarness();
     const persistedManifest = await readManifest(result?.artifacts?.manifestPath);
     validatePersistedOperatorManifest(result, persistedManifest);
-    const manifest = persistedManifest;
-    if (manifest.exitStatus !== PASSED || manifest.exitCode !== 0) {
-      const code = getFailureReason(result);
-      const exitCode = getExitCode(result);
-      processImpl.exitCode = exitCode;
-      writeCode(processImpl, code);
-      return exitCode;
-    }
-
     validateOperatorResult({ ...result, manifest: persistedManifest });
     processImpl.exitCode = 0;
     writeCode(processImpl, "operator_passed");

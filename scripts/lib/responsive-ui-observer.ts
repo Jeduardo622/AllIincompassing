@@ -272,7 +272,7 @@ export const buildEvidenceCard = (input: EvidenceCardInput) => {
   const viewport = viewportForName(input.viewportName);
   const routeDigest = createHash('sha256').update(input.route).digest('hex');
   const routeId = `sha256:${routeDigest}`;
-  const routeSlug = `route-${routeDigest.slice(0, 12)}`;
+  const routeSlug = `route-${routeDigest}`;
   const baseName = `${routeSlug}.${input.viewportName}.${viewport.width}x${viewport.height}`;
   const minTouchTarget = input.metrics.visibleTouchTargets.reduce<LayoutTouchTarget | null>(
     (smallest, target) => {

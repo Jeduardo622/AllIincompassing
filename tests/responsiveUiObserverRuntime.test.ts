@@ -1,15 +1,22 @@
 // @vitest-environment node
 
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import http from 'node:http';
+import { promisify } from 'node:util';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { runResponsiveUiObserver } from '../scripts/playwright-responsive-ui-observer';
+import {
+  buildFatalObserverSummary,
+  runResponsiveUiObserver,
+} from '../scripts/playwright-responsive-ui-observer';
 
 let server: http.Server;
 let baseUrl: string;
+const artifactPaths = new Set<string>();
+const execFileAsync = promisify(execFile);
 
 const passHtml = `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -45,19 +52,38 @@ afterAll(async () => {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
   });
-  await Promise.all([
-    rm('artifacts/responsive-ui-observer/observer-runtime-pass.desktop.1440x900.png', { force: true }),
-    rm('artifacts/responsive-ui-observer/observer-runtime-pass.desktop.1440x900.json', { force: true }),
-    rm('artifacts/responsive-ui-observer/observer-runtime-pass.mobile.390x844.png', { force: true }),
-    rm('artifacts/responsive-ui-observer/observer-runtime-pass.mobile.390x844.json', { force: true }),
-    rm('artifacts/responsive-ui-observer/observer-runtime-blocked.desktop.1440x900.png', { force: true }),
-    rm('artifacts/responsive-ui-observer/observer-runtime-blocked.desktop.1440x900.json', { force: true }),
-    rm('artifacts/responsive-ui-observer/observer-runtime-blocked.mobile.390x844.png', { force: true }),
-    rm('artifacts/responsive-ui-observer/observer-runtime-blocked.mobile.390x844.json', { force: true }),
-  ]);
+  await Promise.all([...artifactPaths].map((artifactPath) => rm(artifactPath, { force: true })));
 });
 
 describe('responsive UI observer browser runtime', () => {
+  it.each([
+    new Error('token=super-secret-token'),
+    'https://hosted.example.invalid/private-route',
+  ])('keeps fatal output on the exact machine-safe summary schema', (failure) => {
+    const summary = buildFatalObserverSummary(failure);
+
+    expect(Object.keys(summary)).toEqual(['ok', 'baseUrl', 'results']);
+    expect(summary).toEqual({ ok: false, baseUrl: '', results: [] });
+    expect(JSON.stringify(summary)).not.toContain('super-secret-token');
+    expect(JSON.stringify(summary)).not.toContain('hosted.example.invalid');
+  });
+
+  it('emits the exact machine-safe schema from the fatal CLI path', async () => {
+    const invocation = execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'scripts/playwright-responsive-ui-observer.ts'],
+      { cwd: process.cwd() },
+    );
+
+    await expect(invocation).rejects.toMatchObject({ code: 1 });
+    try {
+      await invocation;
+    } catch (error) {
+      const stderr = String((error as { stderr?: string }).stderr ?? '').trim();
+      expect(JSON.parse(stderr)).toEqual({ ok: false, baseUrl: '', results: [] });
+    }
+  });
+
   it('captures passing sanitized evidence at both fixed viewports without treating labeled containers as touch targets', async () => {
     const summary = await runResponsiveUiObserver([
       'node',
@@ -70,6 +96,8 @@ describe('responsive UI observer browser runtime', () => {
     expect(summary.results).toHaveLength(2);
     expect(summary.results.map(({ viewportName }) => viewportName)).toEqual(['desktop', 'mobile']);
     for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
       expect(result.result).toBe('pass');
       expect(result.failureCodes).toEqual([]);
       expect(existsSync(result.screenshotPath)).toBe(true);
@@ -89,6 +117,8 @@ describe('responsive UI observer browser runtime', () => {
     expect(summary.ok).toBe(false);
     expect(summary.results).toHaveLength(2);
     for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
       expect(result.result).toBe('fail');
       expect(result.failureCodes).toContain('non-read-method');
       expect(JSON.stringify(result)).not.toContain('/mutate');

@@ -236,13 +236,13 @@ describe('responsive-ui-observer contract', () => {
 
       expect(evidenceCard).toMatchObject({
         routeId: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
-        routeSlug: expect.stringMatching(/^route-[0-9a-f]{12}$/),
+        routeSlug: expect.stringMatching(/^route-[0-9a-f]{64}$/),
         viewportName: 'desktop',
         screenshotPath: expect.stringMatching(
-          /^artifacts\/responsive-ui-observer\/route-[0-9a-f]{12}\.desktop\.1440x900\.png$/,
+          /^artifacts\/responsive-ui-observer\/route-[0-9a-f]{64}\.desktop\.1440x900\.png$/,
         ),
         evidencePath: expect.stringMatching(
-          /^artifacts\/responsive-ui-observer\/route-[0-9a-f]{12}\.desktop\.1440x900\.json$/,
+          /^artifacts\/responsive-ui-observer\/route-[0-9a-f]{64}\.desktop\.1440x900\.json$/,
         ),
         policy: readOnlyPolicy,
         artifactMode: 'redacted-layout',
@@ -284,7 +284,7 @@ describe('responsive-ui-observer contract', () => {
       expect(evidenceCard).not.toHaveProperty('route');
       expect(JSON.stringify(evidenceCard)).not.toContain('550e8400');
       expect(JSON.stringify(evidenceCard)).not.toContain('alice@example.com');
-      expect(evidenceCard.routeSlug).toMatch(/^route-[0-9a-f]{12}$/);
+      expect(evidenceCard.routeSlug).toMatch(/^route-[0-9a-f]{64}$/);
     });
 
     it('keeps distinct redacted dynamic routes on distinct artifact paths', () => {

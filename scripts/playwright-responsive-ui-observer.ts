@@ -61,6 +61,12 @@ type ObserverRunSummary = {
   }>;
 };
 
+export const buildFatalObserverSummary = (_error: unknown): ObserverRunSummary => ({
+  ok: false,
+  baseUrl: '',
+  results: [],
+});
+
 type ObserverDependencies = {
   launchBrowser: () => Promise<Browser>;
   ensureDir: (dirPath: string) => Promise<void>;
@@ -326,17 +332,7 @@ if (isMainModule()) {
       }
     },
     (error: unknown) => {
-      const failureCodes = sanitizeObserverFailures([
-        error instanceof Error ? error.message : String(error),
-      ]);
-      console.error(
-        JSON.stringify({
-          ok: false,
-          baseUrl: null,
-          results: [],
-          failureCodes: failureCodes.length > 0 ? failureCodes : ['observer-failed'],
-        }),
-      );
+      console.error(JSON.stringify(buildFatalObserverSummary(error)));
       process.exitCode = 1;
     },
   );

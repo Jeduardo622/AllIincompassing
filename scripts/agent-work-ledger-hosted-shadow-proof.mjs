@@ -846,6 +846,7 @@ delete from public.agent_work_assessment_links where organization_id in (${orgSc
 delete from public.agent_work_item_dependencies where organization_id in (${orgScope});
 delete from public.agent_work_retention_holds where organization_id in (${orgScope});
 delete from public.agent_work_retention_receipts where organization_id in (${orgScope});
+update public.agent_work_items set current_step_id = null where organization_id in (${orgScope});
 delete from public.agent_work_steps where organization_id in (${orgScope});
 delete from public.agent_work_items where organization_id in (${orgScope});
 delete from public.assessment_documents where id in ('${assessmentA}'::uuid, '${assessmentB}'::uuid);

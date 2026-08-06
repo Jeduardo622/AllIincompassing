@@ -1081,6 +1081,19 @@ describe("agent work hosted shadow proof contract", () => {
     expect(cleanup.trim().endsWith("commit;")).toBe(true);
   });
 
+  it("clears exact-scope current step references before deleting steps", () => {
+    const cleanup = buildCleanupBatch(deriveState("777", "1"));
+    const clearCurrentStep = cleanup.indexOf(
+      "update public.agent_work_items set current_step_id = null where organization_id in",
+    );
+    const deleteSteps = cleanup.indexOf(
+      "delete from public.agent_work_steps where organization_id in",
+    );
+
+    expect(clearCurrentStep).toBeGreaterThan(-1);
+    expect(deleteSteps).toBeGreaterThan(clearCurrentStep);
+  });
+
   it("rejects unsafe cleanup interpolation", () => {
     const state = deriveState("888", "1");
     state.fixture.organizationAId = "x'); drop table public.organizations; --";

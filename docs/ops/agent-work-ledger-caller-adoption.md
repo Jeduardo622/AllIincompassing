@@ -21,6 +21,6 @@ For both workflows:
 - errors shown to callers use sanitized machine-safe states; payloads, prompts, clinical text, secrets, and raw provider output must not enter logs, events, traces, queue messages, or exported artifacts
 - assessment-domain tables remain authoritative; no caller or model may approve, promote, publish, sign, bill, submit, or create a final clinical record
 
-Do not add a generic create route, caller-selected workflow key, caller-selected tenant scope, automatic model-triggered invocation, or engineering-agent Ledger skill. A new workflow requires a separately routed design, fixed graph, tenant authority, TDD, and critical-lane review.
+Do not add a generic create route, caller-selected workflow key, caller-selected tenant scope, automatic model-triggered invocation, or engineering-agent Ledger caller skill. The repo-local `agent-work-local-operator` is permitted only as synthetic local harness tooling over the existing fixed proof; it cannot submit engineering work or become an application authority surface. A new workflow requires a separately routed design, fixed graph, tenant authority, TDD, and critical-lane review.
 
 Use `docs/ops/agent-work-ledger.md` for the runtime, recovery, retention, and local verification runbook.

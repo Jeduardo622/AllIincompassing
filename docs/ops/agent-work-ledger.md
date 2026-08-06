@@ -2,6 +2,14 @@
 
 ## Local Command
 
+Run the fixed local operator from a committed snapshot:
+
+```powershell
+npm run agent-work:local:operator
+```
+
+This no-argument command invokes the existing fully containerized Phase 2 harness and then verifies its exact check set, authoritative local evidence hashes, and complete cleanup result. It rejects caller-selected workflows, tenants, modes, URLs, credentials, and all other arguments. The operator is synthetic local verification tooling, not a Ledger application caller or engineering-task queue. It does not read `.env*`, contact hosted systems or model providers, permit `active`, or grant approval/publication authority.
+
 Run `npm run agent-work:shadow-parity`.
 
 The package command always goes through `scripts/agent-work-ledger-local-env.ts run -- ...`, then launches `node scripts/agent-work-ledger-shadow-parity.mjs`. The script independently rejects non-loopback URLs, requires the URLs to exactly match the running stack discovered from the pinned local Supabase CLI, defaults the runtime to `shadow`, and fails if `AGENT_WORK_LEDGER_RUNTIME_MODE` is set to anything else.

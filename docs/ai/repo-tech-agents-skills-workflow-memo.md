@@ -94,6 +94,8 @@ Compatibility / repo-specific Codex agents:
 - `supabase-tenant-safety`
 - `playwright-regression-triage`
 - `clinical-data-parity-auditor`
+- `responsive-ui-observer`
+- `agent-work-local-operator`
 
 ### Cursor Skills In Repo (`.cursor/skills`)
 
@@ -173,6 +175,7 @@ When no secrets/protected systems are needed, run `npm run verify:local`.
 ### Hard Rules
 
 - Never bypass lint/typecheck/tests/policy checks.
+- Visible UI changes require the local `responsive-ui-observer` at desktop `1440x900` and mobile `390x844` for every affected route before verification closure.
 - Escalate immediately to `critical` if scope touches high-risk paths/behaviors.
 - Do not complete non-trivial work without verification artifact + PR hygiene verdict.
 - Use bounded PR check polling; no indefinite waits.

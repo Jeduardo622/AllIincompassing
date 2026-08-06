@@ -51,6 +51,8 @@ Domain skills:
 - `supabase-tenant-safety`
 - `playwright-regression-triage`
 - `clinical-data-parity-auditor`
+- `responsive-ui-observer` for mandatory local desktop/mobile evidence on visible UI changes
+- `agent-work-local-operator` for the fixed synthetic local Ledger proof only
 
 ## Agent Work Ledger alignment
 

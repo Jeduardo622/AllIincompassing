@@ -32,6 +32,9 @@ Use for changes limited to `src/components/**`, `src/pages/**`, styling, copy, o
 - `npm run typecheck`
 - Run targeted tests when they exist, otherwise `npm test`
 - `npm run build`
+- `npm run test:ui:responsive -- --base-url=http://127.0.0.1:<port> --route=/affected-route` for every affected route
+
+Responsive observation is mandatory for visible changes under `src/components/**`, `src/pages/**`, and shared styling/config. The command must use an explicit loopback URL and must pass at both fixed viewports: desktop `1440x900` and mobile `390x844`. Record the sanitized evidence-card path and result in the verification card. Computer review of generated screenshots is optional and non-gating.
 
 Browser/auth checks are not required unless the change affects routing, login, guards, session flows, or browser-only regressions.
 

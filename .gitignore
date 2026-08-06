@@ -54,6 +54,7 @@ WHITE BIBLE.pdf
 .reports/*.json
 .reports/*.md
 .reports/agent-work-ledger-phase2/
+artifacts/responsive-ui-observer/
 
 # Cursor hook volatile state and local audit logs (never ship)
 .cursor/hooks/state/

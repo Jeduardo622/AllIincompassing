@@ -17,6 +17,16 @@ Before final handoff, include a verification card with:
 
 Do not mark work complete when required checks are missing and not explicitly blocked.
 
+## Mandatory responsive UI observation
+
+Every visible change under `src/components/**`, `src/pages/**`, or shared styling/config must be observed locally at desktop `1440x900` and mobile `390x844` before `verify-change`:
+
+```powershell
+npm run test:ui:responsive -- --base-url=http://127.0.0.1:4173 --route=/affected-route
+```
+
+Pass one `--route` for every affected route. The command accepts only an explicit loopback HTTP URL, blocks mutation and external-origin requests, uses ephemeral Playwright contexts, and writes screenshots plus sanitized machine-readable evidence under `artifacts/responsive-ui-observer/`. It never reads `.env*`, records browser storage/HAR/trace/video, or captures network bodies or DOM text. Computer may be used to inspect those local screenshots after the deterministic run, but is supplemental and non-gating. Auth/session and tenant-sensitive changes still require their existing protected browser gates.
+
 ## Vitest hang watchdog
 
 We wrap Vitest through [`scripts/run-vitest.mjs`](../scripts/run-vitest.mjs) so that hung specs

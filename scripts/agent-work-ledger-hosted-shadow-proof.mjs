@@ -441,12 +441,19 @@ select jsonb_build_object(
     select jsonb_build_object('present', count(*) = 1, 'actions_disabled', coalesce(bool_or(actions_disabled), true))
     from public.agent_runtime_config where config_key = 'global'
   ),
-  'scheduler', public.hosted_agent_work_queue_scheduler_status(),
+  'scheduler_extensions', jsonb_build_object(
+    'pgCron', exists (
+      select 1 from pg_catalog.pg_extension where extname = 'pg_cron'
+    ),
+    'pgNet', exists (
+      select 1 from pg_catalog.pg_extension where extname = 'pg_net'
+    ),
+    'vault', exists (
+      select 1 from pg_catalog.pg_extension where extname = 'supabase_vault'
+    )
+  ),
   'vault_extension_present', exists (
     select 1 from pg_catalog.pg_extension where extname = 'supabase_vault'
-  ),
-  'retention', public.prune_agent_work_retention_category(
-    $1::uuid, 'ledger_history', repeat('0', 64)
   ),
   'active_retention_policy_count', (
     select count(*)::integer from public.agent_work_retention_policies where disabled_at is null
@@ -512,6 +519,10 @@ export const assertPreflightSummary = (summary, { final = false } = {}) => {
   assert(
     summary.runtime_config.actions_disabled === false,
     "Database runtime kill switch must remain unchanged.",
+  );
+  assert(
+    summary?.scheduler?.extensions?.pgCron === false,
+    "Hosted pg_cron extension must remain absent.",
   );
   assert(
     summary?.scheduler?.runnerJob?.present === false,
@@ -592,6 +603,22 @@ const readPreflightSummary = async (state) => {
   } else {
     summary.vault_name_count = 0;
   }
+  const pgCronPresent = summary?.scheduler_extensions?.pgCron === true;
+  summary.scheduler = {
+    extensions: summary.scheduler_extensions,
+    secretsReady: summary.vault_name_count === 4,
+    runnerJob: { present: pgCronPresent, active: false, schedule: null },
+    sweeperJob: { present: pgCronPresent, active: false, schedule: null },
+  };
+  summary.retention = {
+    success: false,
+    reason_code:
+      summary.active_retention_policy_count === 0
+        ? RETENTION_REASON
+        : "policy_configured",
+    category: "ledger_history",
+    deleted_count: 0,
+  };
   return summary;
 };
 

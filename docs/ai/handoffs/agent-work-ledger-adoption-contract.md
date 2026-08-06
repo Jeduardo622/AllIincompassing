@@ -77,3 +77,37 @@
 - GitHub push, PR creation, merge, deployment, hosted migration, hosted function update, and runtime activation are not authorized and were not performed
 - PR hygiene: `pr-ready: yes` for local review; `lane: critical`; branch, Linear linkage, single-purpose scope, change summary, verification card, handoff, and six specialist reviews are ready; unrelated changes and generated drift are absent; protected-path changes are expected and hash-bound
 - external PR handoff remains intentionally unperformed; a normal-hook local commit and local-stack teardown are the remaining local closure steps
+
+## Local Operator And Responsive Observer Addendum
+
+### Scope And Route
+
+- issue: `WIN-275`
+- branch: `codex/local-operator-responsive-observer`
+- route: `classification: high-risk human-reviewed`; `lane: critical`
+- commits: design/plan `8a24345f`, implementation `71a6a517`, and security/reliability hardening `59cbc580`
+- boundaries: local-only synthetic verification; no migration, Edge Function, RPC, RLS/grant, queue semantic, runtime policy, hosted action, provider call, `.env*` read, PHI/customer fixture, `active` mode, or generic engineering-task Ledger authority
+
+### Implementation
+
+- `npm run agent-work:local:operator` is a no-argument wrapper over the existing Phase 2 harness. It rejects caller-selected scope, requires the exact 12-check manifest and cleanup matrix, rereads the persisted manifest, and fails unless it exactly matches the in-memory result.
+- `npm run test:ui:responsive -- --base-url=http://127.0.0.1:<port> --route=/affected-route` requires an explicit loopback HTTP port and explicit routes, then observes desktop `1440x900` and mobile `390x844` in ephemeral Chromium contexts.
+- the observer blocks non-read methods and external origins, records no storage/HAR/trace/video or network bodies, persists only opaque SHA-256 route identities, and applies layout redaction after measurement and before screenshot capture so text, carets, media, SVG/canvas content, and background imagery cannot enter retained images
+- visible changes under `src/components/**`, `src/pages/**`, or shared styling/config now require observer evidence before `verify-change`; Computer inspection remains supplemental and non-gating
+
+### TDD And Local Evidence
+
+- RED: both initial contract suites failed import resolution because the operator and observer modules did not exist
+- GREEN: focused unit and real-browser suites pass `31/31`, including local URL/port rejection, traversal rejection, dynamic-route collision resistance, persisted-manifest mismatch denial, both fixed viewports, non-interactive label exclusion, artifact writes, and same-origin mutation blocking
+- first real observer run exposed an esbuild helper inside `page.evaluate`; the closure-free browser function fixed it, and a serialization guard plus real-browser test now cover the path
+- final synthetic observer command passed both viewports with opaque route ID `sha256:3273d98374f4350996fba67c4ca60b59443ce929bbcdcaba0f11406c06c3aed9`
+- redacted desktop screenshot hash: `sha256:e39f5cd16a12e96b0b0157ddc9920741acb317eba2a163bebe3a4349e097c670`
+- redacted mobile screenshot hash: `sha256:be98ac31e75b35b1eefc03bd6abc1be96c33e8e466981c0047165f85623ec666`
+- exact-head operator run `20260806T222344Z-1200d5` passed all 12 checks and cleanup from commit `59cbc580ac63d4a14700af7244ef453fc9d6378e` in `612455ms`; image `sha256:5e7b2edbdb5ef0c5f1237194d33dfb1a1120f4cb0d9a5f933477b77914cb7979`; summary hash `1de2f4c29b4ead32eb09e2369ad9b1d31c3f1299f15bd13e43b88063e8744810`; check-evidence hash `1822ea4d6cf7e9f00a48413b152cde9751999b0df38d5eee2893092ca0d59be2`
+- policy, lint, typecheck, build, and focused verification pass; the first full `test:ci` run reached `4074` passes and failed only the two expected protected-doc hash checks pending this additive attestation refresh
+
+### Review Dispositions
+
+- initial code/test/Supabase reviews found generic labeled containers incorrectly counted as touch targets and missing runner-level proof; selectors now include only semantic interactive controls and the real loopback browser suite covers both viewports, request blocking, and artifact emission
+- architecture/security reviews found raw screenshots, raw route text, possible redacted-path collision, and in-memory-only operator validation; screenshots are now layout-redacted, route identity is hash-only, paths are collision-resistant, fatal output is schema-stable, and the persisted manifest must exactly match
+- the existing adoption, retention, and hosted-shadow attestations remain predecessor evidence; this addendum uses a new supplemental local-operator/observer attestation and only refreshes the rolling protected-surface pointers required by existing contract tests

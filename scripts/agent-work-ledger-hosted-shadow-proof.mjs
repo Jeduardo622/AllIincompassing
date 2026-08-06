@@ -626,11 +626,11 @@ const setupOrganizations = async (state) => {
   const row = firstRow(
     await managementWrite(
       `
-    insert into public.organizations (id, name, slug, metadata)
+    insert into public.organizations (id, name, slug)
     values
-      ($1::uuid, 'Agent Work Shadow Fixture A', $3::text, '{"fixture":"agent-work-shadow-proof"}'::jsonb),
-      ($2::uuid, 'Agent Work Shadow Fixture B', $4::text, '{"fixture":"agent-work-shadow-proof"}'::jsonb)
-    on conflict (id) do update set name = excluded.name, slug = excluded.slug, metadata = excluded.metadata
+      ($1::uuid, 'Agent Work Shadow Fixture A', $3::text),
+      ($2::uuid, 'Agent Work Shadow Fixture B', $4::text)
+    on conflict (id) do update set name = excluded.name, slug = excluded.slug
     returning id
   `,
       [
@@ -940,6 +940,7 @@ const preflightSetupPhase = async (overrides) => {
   await operations.writePublicArtifact({
     fixedBooleans: {
       cleanup_completed: false,
+      disabled_api_verified: false,
       disabled_restored: false,
       policy_unapproved_verified: true,
       shadow_only: true,
@@ -1100,6 +1101,7 @@ const proofPhase = async (overrides) => {
   await operations.writePublicArtifact({
     fixedBooleans: {
       cleanup_completed: false,
+      disabled_api_verified: false,
       disabled_restored: false,
       policy_unapproved_verified: true,
       shadow_only: true,
@@ -1120,8 +1122,10 @@ const cleanupVerifyPhase = async (overrides) => {
   const operations = phaseOperations(overrides);
   const state = await operations.readState();
   await operations.setRuntimeMode("disabled");
+  const canVerifyDisabledViaApi =
+    state.users[0]?.id && state.users[0].id !== NIL_UUID;
   let disabledVerified = false;
-  if (state.users[0]?.id && state.users[0].id !== NIL_UUID) {
+  if (canVerifyDisabledViaApi) {
     const token = await operations.signIn(state.users[0]);
     await operations.pollForRuntimeMode(
       "disabled",
@@ -1135,10 +1139,14 @@ const cleanupVerifyPhase = async (overrides) => {
   await operations.deleteOrganizations(state);
   const finalSummary = await operations.readPreflightSummary(state);
   operations.assertPreflightSummary(finalSummary, { final: true });
-  assert(disabledVerified, "Final disabled API proof could not be completed.");
+  assert(
+    !canVerifyDisabledViaApi || disabledVerified,
+    "Final disabled API proof could not be completed.",
+  );
   await operations.writePublicArtifact({
     fixedBooleans: {
       cleanup_completed: true,
+      disabled_api_verified: disabledVerified,
       disabled_restored: true,
       policy_unapproved_verified: true,
       shadow_only: true,

@@ -15,23 +15,23 @@
   ],
   "specialistReviews": {
     "code-review-engineer": {
-      "agentId": "019fd43b-2d0a-79d2-b81a-7c77050e32ad",
+      "agentId": "019fd48f-582c-7dd0-bfe4-f585467aff3a",
       "verdict": "PASS"
     },
     "security-engineer": {
-      "agentId": "019fd43b-2df6-79d1-8d4e-ef5fdc258780",
+      "agentId": "019fd48f-5aff-71b2-a133-3face7a91784",
       "verdict": "PASS"
     },
     "test-engineer": {
-      "agentId": "019fd43b-2f96-7150-9bb1-049c2f1a7286",
+      "agentId": "019fd48f-606a-7d81-b366-c3a368d5f762",
       "verdict": "PASS"
     },
     "supabase-reviewer": {
-      "agentId": "019fd43b-338b-7663-9d44-0d412180150b",
+      "agentId": "019fd48f-74bc-79b3-8b8e-cd89876cb798",
       "verdict": "PASS"
     },
     "devops-engineer": {
-      "agentId": "019fd3b9-3a8e-7492-93a9-466743e6eadb",
+      "agentId": "019fd48f-6d61-7f40-88c8-a6445e93d1d4",
       "verdict": "PASS"
     }
   },
@@ -44,16 +44,16 @@
     "retentionPolicyUnapproved": true
   },
   "protectedSurfaceHashes": {
-    ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "b414abbbc0a13bef789dcc8dfbdd043490c14d1b3401a93097ef3426efe2db73",
-    "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "97c777151e170e049221d0a4a1222fe1f86cb873b1184515aa4cd520b0dbb33d",
-    "tests/agentWorkLedgerHostedShadowProof.test.ts": "f86f1c095bd0c6eb9e5d207f083fb462517b7a64d67feb0c47eaa0e68c9df1c3",
-    "AGENTS.md": "ec177c23d5be07825305fe174bc5c2e912029191e34beee02b3967a12389e082",
-    ".agents/skills/route-task/SKILL.md": "0a0d2ae3755adb27db3075877c41257998a6be301f61a120b7fb1bb2b70bff68",
-    "docs/ai/cto-lane-contract.md": "e821bc82fe1cff35a2f6979e6da54eb3bf2cb32d61a95be87d11b2f0d557271b",
-    "docs/ai/high-risk-paths.md": "484ab1d7d89577bef5e71fd8bb41331f31f6a3181c3e32f4407362ad8d5d4cf1",
-    "docs/ops/agent-work-ledger.md": "5a3056764c44dada20a38af8f33aeccbce10e20c2b5fe81a58f6ad329db9eed6",
-    "docs/superpowers/plans/2026-08-04-agent-work-ledger-operational-activation.md": "2513206c33901838f94c4efef09b37bc64e00621c8333f055f6c94e0062ae030",
-    "docs/ai/handoffs/agent-work-ledger-foundation.md": "468378e6c06aedc9ce507d89db0b97dfd3ae41c2b1d7e90c743b0d9ecee3155f",
-    "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md": "a0d32822e84ff03bdde9dfc029f3165e2fca90ee70db6d7e8934848f36c5186e"
+    ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
+    "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "8f3e224b0ee39a72a03cdcf1c4628e8e74859bb12b02b1ffe6980650aedb7d37",
+    "tests/agentWorkLedgerHostedShadowProof.test.ts": "f31ef7c5f8152e7664ee2fab668ff4ad3619671cd352068ff6b33f71acaef08e",
+    "AGENTS.md": "09286d5bc2e5729319b759603fff391a37a2f9e2a79ec2b767a636c1f287aab0",
+    ".agents/skills/route-task/SKILL.md": "fbeb48b4131759168641f936abb86676a3f2b0fc856a949fdb14b36de20d8c15",
+    "docs/ai/cto-lane-contract.md": "53263ab6570deb1f863e2cdb87d10473a5cf0e3d0925a4ace0488fc68d6443d0",
+    "docs/ai/high-risk-paths.md": "6e4cb5d907542c31c177cf33312dad7bd62bf047c8f36cb23eb308102e452714",
+    "docs/ops/agent-work-ledger.md": "1db4a6c579f54261bea5763619a14c5ea83e2d9af8096bfdc7d8ca6c7123153a",
+    "docs/superpowers/plans/2026-08-04-agent-work-ledger-operational-activation.md": "c790c3aaec29e2557bd6895b71371ca422321de8c21aedbc4fbce2409b66a2b5",
+    "docs/ai/handoffs/agent-work-ledger-foundation.md": "f0fa51710b18754ae636a8730e51c7cd42a63cd7ba7e595a737ea4e9cfb535e5",
+    "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md": "e463e0cd355f9220204dc6498b208b46b6bb9995eb962f7032218c4615810c27"
   }
 }

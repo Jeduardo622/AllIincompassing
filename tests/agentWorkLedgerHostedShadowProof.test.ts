@@ -43,8 +43,8 @@ const soloAttestationPath = path.resolve(
 const workflow = readFileSync(workflowPath, "utf8");
 const script = readFileSync(scriptPath, "utf8");
 const packageJson = readFileSync(packageJsonPath, "utf8");
-const proofDocs = [opsDocPath, activationPlanPath, handoffPath].map((filePath) =>
-  readFileSync(filePath, "utf8"),
+const proofDocs = [opsDocPath, activationPlanPath, handoffPath].map(
+  (filePath) => readFileSync(filePath, "utf8"),
 );
 const policyDocs = [laneContractPath, highRiskPathsPath].map((filePath) =>
   readFileSync(filePath, "utf8"),
@@ -59,6 +59,13 @@ const requiredCiChecks = [
   "auth-browser-smoke",
   "ci-gate",
 ];
+
+const canonicalRepositoryHash = (repositoryPath: string) =>
+  createHash("sha256")
+    .update(
+      readFileSync(path.resolve(repositoryPath), "utf8").replace(/\r\n/g, "\n"),
+    )
+    .digest("hex");
 
 const extractWorkflowNodeScript = (stepName: string) => {
   const stepStart = workflow.indexOf(`- name: ${stepName}`);
@@ -148,12 +155,12 @@ const baseApprovalResponses = () => {
       [`${api}/commits/${headSha}/check-runs?per_page=100&page=1`]: {
         body: {
           check_runs: requiredCiChecks.map((name) => ({
-              app: { slug: "github-actions" },
-              conclusion: "success",
-              head_sha: headSha,
-              name,
-              status: "completed",
-            })),
+            app: { slug: "github-actions" },
+            conclusion: "success",
+            head_sha: headSha,
+            name,
+            status: "completed",
+          })),
         },
       },
     } as Record<string, MockResponse>,
@@ -294,7 +301,9 @@ describe("agent work hosted shadow proof contract", () => {
     }
     expect(workflow).toContain("/collaborators?affiliation=direct");
     expect(workflow).toContain("repositoryDetails.owner?.type !== 'User'");
-    expect(workflow).toContain("String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID");
+    expect(workflow).toContain(
+      "String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID",
+    );
     expect(workflow).toContain("collaborator.type === 'User'");
     expect(workflow).toContain(
       "collaborator.permissions?.admin || collaborator.permissions?.maintain || collaborator.permissions?.push",
@@ -349,10 +358,51 @@ describe("agent work hosted shadow proof contract", () => {
     );
   });
 
+  it("binds every protected surface to canonical repository bytes", () => {
+    const attestation = JSON.parse(
+      readFileSync(soloAttestationPath, "utf8"),
+    ) as {
+      protectedSurfaceHashes: Record<string, string>;
+    };
+
+    for (const [repositoryPath, expectedHash] of Object.entries(
+      attestation.protectedSurfaceHashes,
+    )) {
+      expect(expectedHash, repositoryPath).toBe(
+        canonicalRepositoryHash(repositoryPath),
+      );
+    }
+  });
+
+  it("runs fallbacks only after hosted prerequisites exist", () => {
+    expect(workflow).toMatch(
+      /- name: Revalidate approval immediately before hosted access\r?\n\s+id: authority_revalidation/,
+    );
+    expect(workflow).toMatch(
+      /- name: Preflight and setup synthetic shadow proof\r?\n\s+id: preflight/,
+    );
+    for (const stepName of [
+      "Restore disabled runtime mode",
+      "Verify disabled mode and cleanup",
+      "Final disabled fallback",
+    ]) {
+      expect(workflow).toMatch(
+        new RegExp(
+          `- name: ${stepName}\\r?\\n\\s+if: always\\(\\) && steps\\.preflight\\.outcome != 'skipped'`,
+        ),
+      );
+    }
+    expect(workflow).toMatch(
+      /- name: Upload sanitized artifact\r?\n\s+if: always\(\) && steps\.authority_revalidation\.outcome == 'success'/,
+    );
+  });
+
   it("paginates GitHub authority evidence and revalidates it before hosted access", () => {
     expect(workflow).toContain("const fetchAllPages = async");
     expect(workflow).toContain("page <= 20");
-    expect(workflow).toContain("GitHub pagination exceeded the fail-closed page limit.");
+    expect(workflow).toContain(
+      "GitHub pagination exceeded the fail-closed page limit.",
+    );
     expect(workflow).toMatch(
       /Revalidate approval immediately before hosted access[\s\S]*?\/git\/ref\/heads\/main/,
     );
@@ -477,7 +527,9 @@ describe("agent work hosted shadow proof contract", () => {
       },
       protectedSurfaceHashes,
     };
-    responses[`${api}/contents/docs/ai/reviews/WIN-275-solo-maintainer-attestation.json?ref=${"a".repeat(40)}`] = {
+    responses[
+      `${api}/contents/docs/ai/reviews/WIN-275-solo-maintainer-attestation.json?ref=${"a".repeat(40)}`
+    ] = {
       body: {
         content: Buffer.from(JSON.stringify(attestation)).toString("base64"),
         encoding: "base64",

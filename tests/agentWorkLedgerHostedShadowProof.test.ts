@@ -671,6 +671,71 @@ describe("agent work hosted shadow proof contract", () => {
     expect(first.users[0].email).not.toBe(first.users[1].email);
   });
 
+  it("uses the validated default metadata for synthetic organizations", () => {
+    expect(script).toContain(
+      "insert into public.organizations (id, name, slug)",
+    );
+    expect(script).not.toContain(
+      `'\{"fixture":"agent-work-shadow-proof"\}'::jsonb`,
+    );
+  });
+
+  it("cleans up a pre-user setup failure without claiming an API proof", async () => {
+    const state = deriveState("pre-user-failure", "1");
+    const events: string[] = [];
+
+    await executePhase("cleanup/verify", {
+      readState: async () => structuredClone(state),
+      setRuntimeMode: async (mode: string) =>
+        events.push(`runtime:set:${mode}`),
+      signIn: async () => {
+        throw new Error("sign-in-must-not-run");
+      },
+      pollForRuntimeMode: async () => {
+        throw new Error("runtime-poll-must-not-run");
+      },
+      buildCleanupBatch,
+      managementWrite: async () => events.push("cleanup:database"),
+      deleteAuthUsers: async () => events.push("cleanup:auth"),
+      deleteOrganizations: async () => events.push("cleanup:organizations"),
+      readPreflightSummary: async () => zeroSummary(),
+      assertPreflightSummary,
+      writePublicArtifact: async ({
+        fixedBooleans,
+      }: {
+        fixedBooleans: Record<string, boolean>;
+      }) => {
+        expect(fixedBooleans.disabled_restored).toBe(true);
+        expect(fixedBooleans.disabled_api_verified).toBe(false);
+        events.push("artifact:final");
+      },
+    });
+
+    expect(events).toEqual([
+      "runtime:set:disabled",
+      "cleanup:database",
+      "cleanup:auth",
+      "cleanup:organizations",
+      "artifact:final",
+    ]);
+  });
+
+  it("requires disabled API verification after a synthetic user exists", async () => {
+    const state = deriveState("post-user-failure", "1");
+    state.users[0].id = "10000000-0000-4000-8000-000000000001";
+
+    await expect(
+      executePhase("cleanup/verify", {
+        readState: async () => structuredClone(state),
+        setRuntimeMode: async () => undefined,
+        signIn: async () => "synthetic-token",
+        pollForRuntimeMode: async () => {
+          throw new Error("injected-disabled-api-failure");
+        },
+      }),
+    ).rejects.toThrow("injected-disabled-api-failure");
+  });
+
   it("executes the real three-phase control flow through deterministic fakes", async () => {
     const initialState = deriveState("behavior-proof", "1");
     const itemA = sanitizedItem(

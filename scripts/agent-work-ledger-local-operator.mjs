@@ -121,6 +121,12 @@ export const validatePersistedOperatorManifest = (result, persistedManifest) => 
   }
 };
 
+const validatePersistedHarnessResult = async (result, readManifest) => {
+  const persistedManifest = await readManifest(result?.artifacts?.manifestPath);
+  validatePersistedOperatorManifest(result, persistedManifest);
+  validateOperatorResult({ ...result, manifest: persistedManifest });
+};
+
 export const runLocalOperator = async ({
   argv = process.argv.slice(2),
   runHarness = runPhase2Harness,
@@ -130,10 +136,16 @@ export const runLocalOperator = async ({
   try {
     validateOperatorArgs(argv);
 
-    const result = await runHarness();
-    const persistedManifest = await readManifest(result?.artifacts?.manifestPath);
-    validatePersistedOperatorManifest(result, persistedManifest);
-    validateOperatorResult({ ...result, manifest: persistedManifest });
+    let result;
+    try {
+      result = await runHarness();
+    } catch (error) {
+      const failedResult = isRecord(error) ? error.phase2Result : undefined;
+      if (!isRecord(failedResult)) throw error;
+      await validatePersistedHarnessResult(failedResult, readManifest);
+      throw error;
+    }
+    await validatePersistedHarnessResult(result, readManifest);
     processImpl.exitCode = 0;
     writeCode(processImpl, "operator_passed");
     return 0;

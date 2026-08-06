@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -72,6 +72,7 @@ type ObserverDependencies = {
   ensureDir: (dirPath: string) => Promise<void>;
   writeBinary: (filePath: string, payload: Uint8Array) => Promise<void>;
   writeText: (filePath: string, payload: string) => Promise<void>;
+  removeFile: (filePath: string) => Promise<void>;
 };
 
 type RouteObservation = {
@@ -88,6 +89,7 @@ const defaultDependencies: ObserverDependencies = {
   ensureDir: (dirPath) => mkdir(dirPath, { recursive: true }),
   writeBinary: (filePath, payload) => writeFile(filePath, payload),
   writeText: (filePath, payload) => writeFile(filePath, payload, 'utf8'),
+  removeFile: (filePath) => rm(filePath, { force: true }),
 };
 
 const artifactAbsolutePath = (relativePath: string): string => path.resolve(relativePath);
@@ -267,8 +269,16 @@ const observeRouteAtViewport = async (
 
     const screenshotPath = artifactAbsolutePath(evidenceCard.screenshotPath);
     const evidencePath = artifactAbsolutePath(evidenceCard.evidencePath);
-    await deps.writeBinary(screenshotPath, screenshotBuffer);
-    await deps.writeText(evidencePath, `${JSON.stringify(evidenceCard, null, 2)}\n`);
+    try {
+      await deps.writeBinary(screenshotPath, screenshotBuffer);
+      await deps.writeText(evidencePath, `${JSON.stringify(evidenceCard, null, 2)}\n`);
+    } catch (error) {
+      await Promise.allSettled([
+        deps.removeFile(screenshotPath),
+        deps.removeFile(evidencePath),
+      ]);
+      throw error;
+    }
 
     return {
       routeId: evidenceCard.routeId,
@@ -291,8 +301,8 @@ export const runResponsiveUiObserver = async (
   await deps.ensureDir(artifactAbsolutePath('artifacts/responsive-ui-observer'));
 
   const browser = await deps.launchBrowser();
+  const results: RouteObservation[] = [];
   try {
-    const results: RouteObservation[] = [];
     for (const route of parsedArgs.routes) {
       for (const viewport of OBSERVER_VIEWPORTS) {
         results.push(await observeRouteAtViewport(browser, parsedArgs, route, viewport, deps));
@@ -304,6 +314,12 @@ export const runResponsiveUiObserver = async (
       baseUrl: parsedArgs.baseUrl,
       results,
     };
+  } catch (error) {
+    await Promise.allSettled(results.flatMap((result) => [
+      deps.removeFile(artifactAbsolutePath(result.screenshotPath)),
+      deps.removeFile(artifactAbsolutePath(result.evidencePath)),
+    ]));
+    throw error;
   } finally {
     await browser.close();
   }

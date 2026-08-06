@@ -229,12 +229,16 @@ describe("agent-work local operator contract", () => {
   it("delegates once, writes only machine-safe output, propagates nonzero, and does not expose secrets", async () => {
     const mod = await loadOperatorModule();
     const processImpl = createProcessImpl();
+    const failedResult = buildFailureHarnessResult();
+    const failedRun = Object.assign(new Error('phase2_check_failed'), {
+      phase2Result: failedResult,
+    });
     const runHarness = vi.fn()
       .mockResolvedValueOnce(buildValidHarnessResult())
-      .mockResolvedValueOnce(buildFailureHarnessResult());
+      .mockRejectedValueOnce(failedRun);
     const readManifest = vi.fn()
       .mockResolvedValueOnce(buildValidHarnessResult().manifest)
-      .mockResolvedValueOnce(buildFailureHarnessResult().manifest);
+      .mockResolvedValueOnce(failedResult.manifest);
 
     const successCode = await mod.runLocalOperator({
       argv: [],

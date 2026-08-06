@@ -1,11 +1,13 @@
 // @vitest-environment node
 
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { promisify } from 'node:util';
 
+import { chromium } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -122,6 +124,41 @@ describe('responsive UI observer browser runtime', () => {
       expect(result.result).toBe('fail');
       expect(result.failureCodes).toContain('non-read-method');
       expect(JSON.stringify(result)).not.toContain('/mutate');
+    }
+  }, 60_000);
+
+  it('removes every artifact from a run that fails after writing partial evidence', async () => {
+    const route = '/observer-runtime-cleanup';
+    const routeDigest = createHash('sha256').update(route).digest('hex');
+    const paths = [
+      `artifacts/responsive-ui-observer/route-${routeDigest}.desktop.1440x900.png`,
+      `artifacts/responsive-ui-observer/route-${routeDigest}.desktop.1440x900.json`,
+      `artifacts/responsive-ui-observer/route-${routeDigest}.mobile.390x844.png`,
+      `artifacts/responsive-ui-observer/route-${routeDigest}.mobile.390x844.json`,
+    ];
+    paths.forEach((artifactPath) => artifactPaths.add(artifactPath));
+    await Promise.all(paths.map((artifactPath) => rm(artifactPath, { force: true })));
+
+    await expect(runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      `--route=${route}`,
+    ], {
+      launchBrowser: () => chromium.launch({ headless: true }),
+      ensureDir: (dirPath) => mkdir(dirPath, { recursive: true }),
+      writeBinary: (filePath, payload) => writeFile(filePath, payload),
+      writeText: async (filePath, payload) => {
+        await writeFile(filePath, payload, 'utf8');
+        if (filePath.includes('.mobile.390x844.json')) {
+          throw new Error('injected_artifact_write_failure');
+        }
+      },
+      removeFile: (filePath) => rm(filePath, { force: true }),
+    })).rejects.toThrow('injected_artifact_write_failure');
+
+    for (const artifactPath of paths) {
+      expect(existsSync(artifactPath)).toBe(false);
     }
   }, 60_000);
 });

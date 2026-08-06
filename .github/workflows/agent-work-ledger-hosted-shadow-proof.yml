@@ -335,6 +335,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/agent-work-ledger-hosted-shadow-proof-public"
 
       - name: Revalidate approval immediately before hosted access
+        id: authority_revalidation
         env:
           ATTESTATION_SHA256: ${{ steps.approval.outputs.attestation_sha256 }}
           EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
@@ -489,6 +490,7 @@ jobs:
           NODE
 
       - name: Preflight and setup synthetic shadow proof
+        id: preflight
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
@@ -506,13 +508,13 @@ jobs:
         run: AGENT_WORK_LEDGER_RUNTIME_MODE=shadow node scripts/agent-work-ledger-hosted-shadow-proof.mjs proof
 
       - name: Restore disabled runtime mode
-        if: always()
+        if: always() && steps.preflight.outcome != 'skipped'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase secrets set AGENT_WORK_LEDGER_RUNTIME_MODE=disabled --project-ref wnnjeqheqxxyrgsjmygy
 
       - name: Verify disabled mode and cleanup
-        if: always()
+        if: always() && steps.preflight.outcome != 'skipped'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
@@ -521,13 +523,13 @@ jobs:
         run: node scripts/agent-work-ledger-hosted-shadow-proof.mjs cleanup/verify
 
       - name: Final disabled fallback
-        if: always()
+        if: always() && steps.preflight.outcome != 'skipped'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase secrets set AGENT_WORK_LEDGER_RUNTIME_MODE=disabled --project-ref wnnjeqheqxxyrgsjmygy
 
       - name: Upload sanitized artifact
-        if: always()
+        if: always() && steps.authority_revalidation.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: agent-work-ledger-hosted-shadow-proof-${{ github.run_id }}-${{ github.run_attempt }}

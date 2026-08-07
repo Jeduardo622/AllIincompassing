@@ -919,8 +919,8 @@ describe("Schedule orchestration integration hardening", () => {
   });
 
   it("deletes only the appointment selected from an overlapping block", async () => {
-    const overlapWindowStart = new Date(2025, 6, 7, 10, 0, 0, 0);
-    const overlapWindowEnd = new Date(2025, 6, 7, 10, 30, 0, 0);
+    const overlapWindowStart = new Date(2025, 6, 2, 10, 0, 0, 0);
+    const overlapWindowEnd = new Date(2025, 6, 2, 10, 30, 0, 0);
     const overlapSession = {
       ...originalSessionFixture,
       id: "session-overlap",

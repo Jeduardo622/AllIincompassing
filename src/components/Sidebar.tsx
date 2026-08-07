@@ -17,6 +17,7 @@ import {
 } from '../lib/supervision-session-notes';
 import { useTheme } from '../lib/theme';
 import { preloadRouteModule } from '../lib/routeModulePrefetch';
+import { canAccessDashboardRoute } from '../lib/dashboardAccess';
 import type { AppRole } from '../lib/roles';
 // Theme is toggled directly via context; no hidden proxy button
 import { logger } from '../lib/logger/logger';
@@ -118,7 +119,7 @@ export function Sidebar() {
       icon: LayoutDashboard,
       label: 'Dashboard',
       path: '/',
-      roles: ['bt', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
+      roles: ['bt', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     { 
@@ -227,9 +228,10 @@ export function Sidebar() {
 
   const canAccessChatAssistant = hasCapability('viewSchedule') || hasCapability('dataTaking');
   const canAccessMessages = hasCapability('viewMessages');
+  const canViewStaffDashboard = canAccessDashboardRoute(effectiveRole);
   const canViewSupervisionNotifications =
-    hasCapability('staffDashboard') || isBtCorrectionDashboardRole(profile?.role);
-  const supervisionRoleBucket = hasCapability('staffDashboard') ? 'staff' : isBtCorrectionDashboardRole(profile?.role) ? 'bt' : 'other';
+    canViewStaffDashboard || isBtCorrectionDashboardRole(profile?.role);
+  const supervisionRoleBucket = canViewStaffDashboard ? 'staff' : isBtCorrectionDashboardRole(profile?.role) ? 'bt' : 'other';
 
   const { data: unreadMessagesData } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],

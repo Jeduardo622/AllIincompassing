@@ -158,6 +158,34 @@ describe("Sidebar navigation active styling", () => {
     expect(screen.getByRole("link", { name: /clients/i })).toBeInTheDocument();
   });
 
+  it("hides the dashboard link for admin_schedule while preserving schedule access", () => {
+    const hasRole = vi.fn((role: string) => role === "admin_schedule");
+
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole,
+      user: {
+        email: "admin-schedule@example.com",
+        user_metadata: {},
+      },
+      profile: {
+        id: "admin-schedule-user-1",
+        role: "admin_schedule",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn((roles: string[]) => roles.some(role => hasRole(role))),
+      effectiveRole: "admin_schedule",
+      hasCapability: vi.fn(capabilityForRole("admin_schedule")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("admin_schedule"))),
+    });
+
+    renderSidebar(["/schedule"]);
+
+    expect(screen.queryByRole("link", { name: /^dashboard$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /schedule/i })).toBeInTheDocument();
+    expect(mockFetchPendingSupervisionSessionNoteCount).not.toHaveBeenCalled();
+  });
+
   it("shows schedule and client links for canonical BT users", () => {
     const hasRole = vi.fn((role: string) => role === "bt");
 

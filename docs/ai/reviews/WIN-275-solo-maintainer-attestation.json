@@ -49,7 +49,7 @@
   },
   "supplementalAttestation": {
     "path": "docs/ai/reviews/WIN-275-retention-policy-encoding-attestation.json",
-    "sha256": "c9290b74bf24b8896d116ea818e34e8bf632acd06259a70bd33797ad116780b7",
+    "sha256": "a3abb27dcc9d42dced604ec67c0b566d707dbf46808846c8fc3ea25f1d059cf3",
     "hostedActionAuthorized": false
   },
   "adoptionAttestation": {
@@ -59,7 +59,7 @@
   },
   "localOperatorObserverAttestation": {
     "path": "docs/ai/reviews/WIN-275-local-operator-responsive-observer-attestation.json",
-    "sha256": "1601297de549df42a79d90e50c51b250644584c5f67ea11787aeb62694a73f66",
+    "sha256": "4757b1cf4d71009a30eba9b24ab385d40dc381c3f14abcf0b54a5d879e387c2b",
     "hostedActionAuthorized": false
   },
   "protectedSurfaceHashes": {

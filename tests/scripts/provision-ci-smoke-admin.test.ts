@@ -12,6 +12,7 @@ import {
   buildSmokeAdminOwnershipMetadata,
   buildSmokeAdminCleanupSteps,
   buildDefaultSmokeAdminEmail,
+  cleanupVerificationColumn,
   cleanupSmokeAdminRows,
   discoverSmokeAdminCleanupTargets,
   getMissingProvisionSecrets,
@@ -22,6 +23,11 @@ import {
 } from '../../scripts/provision-ci-smoke-admin';
 
 describe('provision-ci-smoke-admin safeguards', () => {
+  it('uses an existing key column when verifying cleanup', () => {
+    expect(cleanupVerificationColumn('session_goals')).toBe('session_id');
+    expect(cleanupVerificationColumn('sessions')).toBe('id');
+  });
+
   it('accepts only dedicated CI smoke account addresses', () => {
     expect(() => assertDedicatedSmokeEmail('playwright.ci.auth_browser_smoke.123.1@example.com')).not.toThrow();
     expect(() => assertDedicatedSmokeEmail('playwright.ci.iehp-assessment-import-smoke.123.1@example.com')).not.toThrow();
@@ -215,6 +221,7 @@ describe('provision-ci-smoke-admin safeguards', () => {
 
   it('executes and verifies every cleanup step in fail-closed order', async () => {
     const calls: string[] = [];
+    const selections: string[] = [];
     const query = (mode: 'delete' | 'verify', table: string) => ({
       eq: async (column: string, value: string) => {
         calls.push(`${mode}:${table}:eq:${column}:${value}`);
@@ -228,7 +235,10 @@ describe('provision-ci-smoke-admin safeguards', () => {
     const client = {
       from: (table: string) => ({
         delete: () => query('delete', table),
-        select: () => query('verify', table),
+        select: (columns: string) => {
+          selections.push(`${table}:${columns}`);
+          return query('verify', table);
+        },
       }),
     };
     const userId = 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395';
@@ -254,6 +264,8 @@ describe('provision-ci-smoke-admin safeguards', () => {
       `delete:profiles:eq:id:${userId}`,
       `verify:profiles:eq:id:${userId}`,
     ]);
+    expect(selections).toContain('session_goals:session_id');
+    expect(selections).not.toContain('session_goals:id');
   });
 
   it('stops before identity deletion when synthetic artifact cleanup fails', async () => {

@@ -33,6 +33,10 @@ type SmokeAdminOwnershipMetadata = {
   smoke_job: string;
 };
 
+export const cleanupVerificationColumn = (table: SmokeAdminCleanupStep['table']): string => (
+  table === 'session_goals' ? 'session_id' : 'id'
+);
+
 const getEnv = (name: string): string => {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -271,7 +275,9 @@ export const cleanupSmokeAdminRows = async (
       || step.table === 'goal_target_phase_evaluations'
       || step.table === 'goal_target_transitions';
     if (isReadOnlyDependency) {
-      const readOnlyQuery = client.from(step.table).select('id', { count: 'exact', head: true });
+      const readOnlyQuery = client
+        .from(step.table)
+        .select(cleanupVerificationColumn(step.table), { count: 'exact', head: true });
       const readOnlyVerification = step.filter.kind === 'eq'
         ? await readOnlyQuery.eq(step.filter.column, step.filter.value)
         : await readOnlyQuery.in(step.filter.column, step.filter.values);
@@ -294,7 +300,9 @@ export const cleanupSmokeAdminRows = async (
       throw new Error(`${step.table} cleanup failed: ${serializeError(error)}`);
     }
 
-    const verifyQuery = client.from(step.table).select('id', { count: 'exact', head: true });
+    const verifyQuery = client
+      .from(step.table)
+      .select(cleanupVerificationColumn(step.table), { count: 'exact', head: true });
     const verification = step.filter.kind === 'eq'
       ? await verifyQuery.eq(step.filter.column, step.filter.value)
       : await verifyQuery.in(step.filter.column, step.filter.values);

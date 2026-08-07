@@ -86,8 +86,8 @@
     "hostedActionAuthorized": false
   },
   "cleanupRepairVerification": {
-    "focusedTests": "53/53",
-    "ciDrivenFocusedTests": "14/14",
+    "focusedTests": "58/58",
+    "ciDrivenFocusedTests": "15/15",
     "typecheck": "passed",
     "review": "passed",
     "exactHeadCi": "required",
@@ -129,14 +129,14 @@
     "scripts/agent-work-ledger-local-operator.mjs": "f00e70ca194507eb0b1920ee7b3c8529bb54e6e45072562d2a27b5019ad49168",
     "scripts/lib/responsive-ui-observer.ts": "bbe6a827ac3bb77b9d9cf4805f3a3db1e62a2b708e7c6a52fdda39e52d88abae",
     "scripts/playwright-responsive-ui-observer.ts": "52cd179a0779b16527b742ad7d76d22c9cd5538ca197f28a2c0a3aec59f8d52d",
-    "scripts/provision-ci-smoke-admin.ts": "a50115cd0789cf32bfb450d188181c23c40919dbddcdca9d784a328a14468272",
+    "scripts/provision-ci-smoke-admin.ts": "889b0ca715c527811a99bbe8fa146456d8af4e4312d3578235c7eb635e4d9b75",
     "scripts/lib/playwright-inprogress-session-setup.ts": "d279f0fffc8cd40becde0dbe320459ac3e537bfba074dbc435d71b17ab211792",
     "scripts/playwright-session-lifecycle.ts": "1c76aca78013b08706050658e55be74fc4335875e8858ba35f839aa532e2b1f7",
     "tests/agentWorkLedgerLocalOperator.test.ts": "9574ca2748a715fc0a290c81b61e03e5794a3fb87ba171304acfd8a03fc69702",
     "tests/agentWorkLedgerPhase2Harness.test.ts": "07f1473a8fa8fb2abc3dd6472b8c5fefe755693b05823c989c2f2110aee71092",
     "tests/responsiveUiObserver.test.ts": "3ad08ba678c204089d20c964f57d8e5b31f663c5217063f633f15cdcdeb4586d",
     "tests/responsiveUiObserverRuntime.test.ts": "5e71f472e7d088b2b29e9c775521bb70296624752a0e5e1df223c64c7e7b3fcd",
-    "tests/scripts/provision-ci-smoke-admin.test.ts": "244cbfe6d24806500b4d6b5ec6626d5ac4b919d140e89c7e8fced1adfe92da4d",
+    "tests/scripts/provision-ci-smoke-admin.test.ts": "f32fcdd60e5dc283a4ab84794152375430f9810f6396f1e7b033f5aebc76f73c",
     "tests/scripts/playwright-schedule-session-modal.test.ts": "6da85a9b4cbc418dd85520f821277bf78fb797bda74562031ccb9cf01d2214d0",
     "tests/scripts/playwright-session-lifecycle.test.ts": "63c7defa78b4f7bfbfa9181c58403e79506a033c8f091f7bad34b50135718086"
   }

@@ -226,7 +226,17 @@ describe('App navigation landing', () => {
     expect(window.location.pathname).toBe('/');
   });
 
-  it.each(['admin_schedule', 'admin', 'bcba', 'super_admin'] as const)('keeps %s on the dashboard', async (role) => {
+  it('redirects admin_schedule users to schedule from dashboard landing', async () => {
+    authRole = 'admin_schedule';
+    window.history.pushState({}, '', '/');
+    renderApp();
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/schedule');
+    });
+  });
+
+  it.each(['admin', 'bcba', 'super_admin'] as const)('keeps %s on the dashboard', async (role) => {
     authRole = role;
     window.history.pushState({}, '', '/');
     const view = renderApp();

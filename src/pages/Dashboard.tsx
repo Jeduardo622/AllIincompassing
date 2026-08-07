@@ -26,7 +26,7 @@ import {
   type BtAbaSessionNoteResponses,
   validateBtAbaSessionNoteResponses,
 } from '../lib/bt-aba-session-note';
-import { canAccessStaffDashboard } from '../lib/dashboardAccess';
+import { canAccessDashboardRoute } from '../lib/dashboardAccess';
 import { showError, showSuccess } from '../lib/toast';
 import {
   type BtCorrectionTask,
@@ -2183,7 +2183,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 const Dashboard = () => {
   const queryClient = useQueryClient();
   const { effectiveRole, session, loading: authLoading, user, profile } = useAuth();
-  const canViewStaffDashboard = canAccessStaffDashboard(effectiveRole);
+  const canViewStaffDashboard = canAccessDashboardRoute(effectiveRole);
   const canViewCorrectionOnlyDashboard = isBtCorrectionDashboardRole(effectiveRole, profile?.role);
   const hasAccessToken = Boolean(session?.access_token && session.access_token.trim().length > 0);
   const organizationId = useActiveOrganizationId();

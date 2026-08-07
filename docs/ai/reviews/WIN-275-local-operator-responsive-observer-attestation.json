@@ -52,6 +52,24 @@
       "verdict": "PASS"
     }
   },
+  "cleanupRepairReviews": {
+    "code-review-engineer": {
+      "agentId": "019fda03-06b1-7711-8609-02866e31b70d",
+      "verdict": "PASS"
+    },
+    "security-engineer": {
+      "agentId": "019fda03-03f8-7ba3-8c38-903ae61a3bf5",
+      "verdict": "PASS"
+    },
+    "test-engineer": {
+      "agentId": "019fda03-050c-72c3-9189-99b72fefd4ad",
+      "verdict": "PASS"
+    },
+    "supabase-reviewer": {
+      "agentId": "019fd95b-7086-76e3-8809-418e32460714",
+      "verdict": "PASS"
+    }
+  },
   "verification": {
     "focusedTests": "99/99",
     "operatorRunId": "20260806T225600Z-5cdff9",
@@ -65,6 +83,13 @@
     "verifyLocal": "passed",
     "tier0Routes": "220/220",
     "fullSuiteHeapMb": 8192,
+    "hostedActionAuthorized": false
+  },
+  "cleanupRepairVerification": {
+    "focusedTests": "53/53",
+    "typecheck": "passed",
+    "review": "passed",
+    "exactHeadCi": "required",
     "hostedActionAuthorized": false
   },
   "invariants": {
@@ -103,9 +128,15 @@
     "scripts/agent-work-ledger-local-operator.mjs": "f00e70ca194507eb0b1920ee7b3c8529bb54e6e45072562d2a27b5019ad49168",
     "scripts/lib/responsive-ui-observer.ts": "bbe6a827ac3bb77b9d9cf4805f3a3db1e62a2b708e7c6a52fdda39e52d88abae",
     "scripts/playwright-responsive-ui-observer.ts": "52cd179a0779b16527b742ad7d76d22c9cd5538ca197f28a2c0a3aec59f8d52d",
+    "scripts/provision-ci-smoke-admin.ts": "c06fd58e824c6818bf950c4d9e03fdbbd7e6fc7a43ad3cfdeb165711a496fcca",
+    "scripts/lib/playwright-inprogress-session-setup.ts": "d279f0fffc8cd40becde0dbe320459ac3e537bfba074dbc435d71b17ab211792",
+    "scripts/playwright-session-lifecycle.ts": "1c76aca78013b08706050658e55be74fc4335875e8858ba35f839aa532e2b1f7",
     "tests/agentWorkLedgerLocalOperator.test.ts": "9574ca2748a715fc0a290c81b61e03e5794a3fb87ba171304acfd8a03fc69702",
     "tests/agentWorkLedgerPhase2Harness.test.ts": "07f1473a8fa8fb2abc3dd6472b8c5fefe755693b05823c989c2f2110aee71092",
     "tests/responsiveUiObserver.test.ts": "3ad08ba678c204089d20c964f57d8e5b31f663c5217063f633f15cdcdeb4586d",
-    "tests/responsiveUiObserverRuntime.test.ts": "5e71f472e7d088b2b29e9c775521bb70296624752a0e5e1df223c64c7e7b3fcd"
+    "tests/responsiveUiObserverRuntime.test.ts": "5e71f472e7d088b2b29e9c775521bb70296624752a0e5e1df223c64c7e7b3fcd",
+    "tests/scripts/provision-ci-smoke-admin.test.ts": "3d4816bd93e4a64ca2bbb9dca61df16853525237a34336cf1375ede6369aa893",
+    "tests/scripts/playwright-schedule-session-modal.test.ts": "6da85a9b4cbc418dd85520f821277bf78fb797bda74562031ccb9cf01d2214d0",
+    "tests/scripts/playwright-session-lifecycle.test.ts": "63c7defa78b4f7bfbfa9181c58403e79506a033c8f091f7bad34b50135718086"
   }
 }

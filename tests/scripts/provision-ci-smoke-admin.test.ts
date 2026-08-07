@@ -8,7 +8,12 @@ import path from 'node:path';
 
 import {
   assertDedicatedSmokeEmail,
+  assertSmokeAdminOwnership,
+  buildSmokeAdminOwnershipMetadata,
+  buildSmokeAdminCleanupSteps,
   buildDefaultSmokeAdminEmail,
+  cleanupSmokeAdminRows,
+  discoverSmokeAdminCleanupTargets,
   getMissingProvisionSecrets,
   resolveCleanupSmokeAdminEmail,
   serializeError,
@@ -108,6 +113,184 @@ describe('provision-ci-smoke-admin safeguards', () => {
     }
   });
 
+  it('removes only synthetic actor-owned session artifacts before identity mappings', () => {
+    const userId = 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395';
+    const sessionIds = ['63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0'];
+    const noteIds = ['c9e1fbca-220a-4c66-ab63-eecff7a31f6e'];
+
+    expect(buildSmokeAdminCleanupSteps(userId, { sessionIds, noteIds })).toEqual([
+      {
+        table: 'bt_session_note_amendments',
+        filter: { kind: 'in', column: 'original_bt_note_id', values: noteIds },
+      },
+      {
+        table: 'goal_target_phase_evaluations',
+        filter: { kind: 'in', column: 'note_id', values: noteIds },
+      },
+      {
+        table: 'goal_target_transitions',
+        filter: { kind: 'in', column: 'note_id', values: noteIds },
+      },
+      {
+        table: 'goal_target_phase_evaluations',
+        filter: { kind: 'in', column: 'session_id', values: sessionIds },
+      },
+      {
+        table: 'goal_target_transitions',
+        filter: { kind: 'in', column: 'session_id', values: sessionIds },
+      },
+      {
+        table: 'client_session_notes',
+        filter: { kind: 'in', column: 'id', values: noteIds },
+      },
+      {
+        table: 'session_goals',
+        filter: { kind: 'in', column: 'session_id', values: sessionIds },
+      },
+      {
+        table: 'sessions',
+        filter: { kind: 'in', column: 'id', values: sessionIds },
+      },
+      {
+        table: 'user_roles',
+        filter: { kind: 'eq', column: 'user_id', value: userId },
+      },
+      {
+        table: 'profiles',
+        filter: { kind: 'eq', column: 'id', value: userId },
+      },
+    ]);
+    expect(JSON.stringify(buildSmokeAdminCleanupSteps(userId, { sessionIds, noteIds }))).not.toContain('updated_by');
+  });
+
+  it('discovers exact actor-created session and note ids without treating updates as ownership', async () => {
+    const calls: string[] = [];
+    const userId = 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395';
+    const client = {
+      from: (table: string) => ({
+        select: (columns: string) => ({
+          eq: async (column: string, value: string) => {
+            calls.push(`${table}:select:${columns}:eq:${column}:${value}`);
+            return table === 'sessions'
+              ? { data: [{ id: '63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0' }], error: null }
+              : { data: [{ id: 'c9e1fbca-220a-4c66-ab63-eecff7a31f6e' }], error: null };
+          },
+        }),
+      }),
+    };
+
+    await expect(discoverSmokeAdminCleanupTargets(client as never, userId)).resolves.toEqual({
+      sessionIds: ['63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0'],
+      noteIds: ['c9e1fbca-220a-4c66-ab63-eecff7a31f6e'],
+    });
+    expect(calls).toEqual([
+      `sessions:select:id:eq:created_by:${userId}`,
+      `client_session_notes:select:id:eq:created_by:${userId}`,
+    ]);
+  });
+
+  it('binds cleanup authority to the exact run-owned auth user', () => {
+    const email = 'playwright.ci.auth_browser_smoke.31142226959.2@example.com';
+    const metadata = buildSmokeAdminOwnershipMetadata(email, {
+      GITHUB_RUN_ID: '31142226959',
+      GITHUB_RUN_ATTEMPT: '2',
+      GITHUB_JOB: 'auth_browser_smoke',
+    });
+
+    expect(metadata).toEqual({
+      smoke_actor: 'ci_super_admin',
+      smoke_email: email,
+      smoke_run_id: '31142226959',
+      smoke_run_attempt: '2',
+      smoke_job: 'auth_browser_smoke',
+    });
+    expect(() => assertSmokeAdminOwnership({ email, app_metadata: metadata }, email)).not.toThrow();
+    expect(() => assertSmokeAdminOwnership({ email, app_metadata: {} }, email)).toThrow(
+      'Refusing to delete an auth user without matching CI smoke ownership metadata.',
+    );
+    expect(() => assertSmokeAdminOwnership({ email: 'other@example.com', app_metadata: metadata }, email)).toThrow(
+      'Refusing to delete an auth user whose email does not match the cleanup target.',
+    );
+  });
+
+  it('executes and verifies every cleanup step in fail-closed order', async () => {
+    const calls: string[] = [];
+    const query = (mode: 'delete' | 'verify', table: string) => ({
+      eq: async (column: string, value: string) => {
+        calls.push(`${mode}:${table}:eq:${column}:${value}`);
+        return mode === 'delete' ? { error: null } : { error: null, count: 0 };
+      },
+      in: async (column: string, values: string[]) => {
+        calls.push(`${mode}:${table}:in:${column}:${values.join(',')}`);
+        return mode === 'delete' ? { error: null } : { error: null, count: 0 };
+      },
+    });
+    const client = {
+      from: (table: string) => ({
+        delete: () => query('delete', table),
+        select: () => query('verify', table),
+      }),
+    };
+    const userId = 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395';
+    const sessionId = '63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0';
+    const noteId = 'c9e1fbca-220a-4c66-ab63-eecff7a31f6e';
+
+    await cleanupSmokeAdminRows(client as never, userId, { sessionIds: [sessionId], noteIds: [noteId] });
+
+    expect(calls).toEqual([
+      `verify:bt_session_note_amendments:in:original_bt_note_id:${noteId}`,
+      `delete:goal_target_phase_evaluations:in:note_id:${noteId}`,
+      `verify:goal_target_phase_evaluations:in:note_id:${noteId}`,
+      `delete:goal_target_transitions:in:note_id:${noteId}`,
+      `verify:goal_target_transitions:in:note_id:${noteId}`,
+      `delete:goal_target_phase_evaluations:in:session_id:${sessionId}`,
+      `verify:goal_target_phase_evaluations:in:session_id:${sessionId}`,
+      `delete:goal_target_transitions:in:session_id:${sessionId}`,
+      `verify:goal_target_transitions:in:session_id:${sessionId}`,
+      `delete:client_session_notes:in:id:${noteId}`,
+      `verify:client_session_notes:in:id:${noteId}`,
+      `delete:session_goals:in:session_id:${sessionId}`,
+      `verify:session_goals:in:session_id:${sessionId}`,
+      `delete:sessions:in:id:${sessionId}`,
+      `verify:sessions:in:id:${sessionId}`,
+      `delete:user_roles:eq:user_id:${userId}`,
+      `verify:user_roles:eq:user_id:${userId}`,
+      `delete:profiles:eq:id:${userId}`,
+      `verify:profiles:eq:id:${userId}`,
+    ]);
+  });
+
+  it('stops before identity deletion when synthetic artifact cleanup fails', async () => {
+    const tables: string[] = [];
+    const client = {
+      from: (table: string) => {
+        tables.push(table);
+        return {
+          delete: () => ({
+            eq: async () => ({ error: { code: '23503', message: 'still referenced' } }),
+            in: async () => ({ error: { code: '23503', message: 'still referenced' } }),
+          }),
+          select: () => ({
+            eq: async () => ({ error: null, count: 0 }),
+            in: async () => ({ error: null, count: 0 }),
+          }),
+        };
+      },
+    };
+
+    await expect(
+      cleanupSmokeAdminRows(
+        client as never,
+        'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+        {
+          sessionIds: ['63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0'],
+          noteIds: ['c9e1fbca-220a-4c66-ab63-eecff7a31f6e'],
+        },
+      ),
+    ).rejects.toThrow('goal_target_phase_evaluations cleanup failed');
+    expect(tables).toEqual(['bt_session_note_amendments', 'goal_target_phase_evaluations']);
+  });
+
   it('masks the generated password before exporting it to GitHub env', () => {
     const originalGitHubEnv = process.env.GITHUB_ENV;
     const tmp = mkdtempSync(path.join(tmpdir(), 'smoke-admin-env-'));
@@ -121,10 +304,17 @@ describe('provision-ci-smoke-admin safeguards', () => {
     }) as typeof process.stdout.write;
 
     try {
-      writeGitHubEnv('playwright.ci.auth.1.1@example.com', 'C1-generated-secret!Aa');
+      writeGitHubEnv(
+        'playwright.ci.auth.1.1@example.com',
+        'C1-generated-secret!Aa',
+        'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      );
       expect(writes.join('')).toContain('::add-mask::C1-generated-secret!Aa');
       expect(readFileSync(envPath, 'utf8')).toContain('PW_SUPERADMIN_EMAIL=playwright.ci.auth.1.1@example.com');
       expect(readFileSync(envPath, 'utf8')).toContain('PW_SUPERADMIN_PASSWORD=C1-generated-secret!Aa');
+      expect(readFileSync(envPath, 'utf8')).toContain(
+        'PW_SUPERADMIN_USER_ID=d4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      );
     } finally {
       process.stdout.write = originalWrite;
       if (originalGitHubEnv === undefined) {

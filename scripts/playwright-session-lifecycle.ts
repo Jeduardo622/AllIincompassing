@@ -30,6 +30,7 @@ import {
   buildSessionPlanControlSelectors,
   selectSessionPlanControls,
 } from "./lib/playwright-session-plan-controls";
+import { buildServiceRoleFallbackSessionInsert } from "./lib/playwright-inprogress-session-setup";
 
 export { buildSessionPlanControlSelectors } from "./lib/playwright-session-plan-controls";
 
@@ -226,22 +227,22 @@ const createSessionViaServiceRole = async (params: {
   const baseEnd = new Date(params.endIso);
   const durationMs = Math.max(15 * 60 * 1000, baseEnd.getTime() - baseStart.getTime());
   const fallbackStarts = buildBookingCandidateStarts().filter((candidate) => candidate.getTime() >= baseStart.getTime());
+  const actorUserId = getEnv("PW_SUPERADMIN_USER_ID");
 
   for (const start of fallbackStarts) {
     const end = new Date(start.getTime() + durationMs);
     const { data, error } = await adminClient
       .from("sessions")
-      .insert({
-        organization_id: organizationId,
-        therapist_id: params.therapistId,
-        client_id: params.clientId,
-        program_id: params.programId,
-        goal_id: params.goalId,
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
-        status: "scheduled",
-        notes: "Playwright lifecycle fallback booking",
-      })
+      .insert(buildLifecycleServiceRoleFallbackSessionInsert({
+        organizationId,
+        therapistId: params.therapistId,
+        clientId: params.clientId,
+        programId: params.programId,
+        goalId: params.goalId,
+        actorUserId,
+        startIso: start.toISOString(),
+        endIso: end.toISOString(),
+      }))
       .select("id,start_time,end_time")
       .single();
 
@@ -260,6 +261,20 @@ const createSessionViaServiceRole = async (params: {
 
   throw new Error("Service-role session fallback insert failed: unable to find a non-overlapping slot.");
 };
+
+export const buildLifecycleServiceRoleFallbackSessionInsert = (params: {
+  organizationId: string;
+  therapistId: string;
+  clientId: string;
+  programId: string;
+  goalId: string;
+  actorUserId: string;
+  startIso: string;
+  endIso: string;
+}) => buildServiceRoleFallbackSessionInsert({
+  ...params,
+  notes: "Playwright lifecycle fallback booking",
+});
 
 export const filterNonOverlappingBookingStarts = (
   candidates: Date[],

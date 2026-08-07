@@ -11,7 +11,42 @@ import {
   BOOKING_ATTEMPTS_PER_TARGET_PAIR,
   buildInProgressSessionBookingAttemptStart,
   buildInProgressSessionBookingBaseStart,
+  buildServiceRoleFallbackSessionInsert,
 } from "../../scripts/lib/playwright-inprogress-session-setup";
+
+describe("service-role fallback booking ownership", () => {
+  it("binds fallback sessions to the exact provisioned smoke actor", () => {
+    const payload = buildServiceRoleFallbackSessionInsert({
+      organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      therapistId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      clientId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      programId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      goalId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      actorUserId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      startIso: "2026-08-07T16:00:00.000Z",
+      endIso: "2026-08-07T17:00:00.000Z",
+    });
+
+    expect(payload).toMatchObject({
+      created_by: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      updated_by: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      notes: "Playwright in-progress setup fallback booking",
+    });
+  });
+
+  it("fails closed when fallback ownership is absent", () => {
+    expect(() => buildServiceRoleFallbackSessionInsert({
+      organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      therapistId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      clientId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      programId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      goalId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      actorUserId: "",
+      startIso: "2026-08-07T16:00:00.000Z",
+      endIso: "2026-08-07T17:00:00.000Z",
+    })).toThrow("actorUserId is required for service-role fallback ownership");
+  });
+});
 
 describe("openScheduleSessionModalFromCalendar", () => {
   const target = {

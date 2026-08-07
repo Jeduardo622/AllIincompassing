@@ -205,7 +205,7 @@ function parseCancelPayload(input: unknown): {
   return { holdKey, sessionIds, dateRange, therapistId, reason, cancellationAttribution };
 }
 
-type CancellationRole = "super_admin" | "admin" | "therapist" | null;
+type CancellationRole = "super_admin" | "admin" | "admin_schedule" | "therapist" | null;
 
 async function resolveCancellationRole(
   db: SupabaseClient,
@@ -218,16 +218,30 @@ async function resolveCancellationRole(
   if (await assertUserHasOrgRole(db, orgId, "admin")) {
     return "admin";
   }
-  if (await assertUserHasOrgRole(db, orgId, "bcba")) {
-    return "admin";
-  }
   if (await assertUserHasOrgRole(db, orgId, "admin_schedule")) {
+    return "admin_schedule";
+  }
+  if (await assertUserHasOrgRole(db, orgId, "bcba")) {
     return "admin";
   }
   if (await assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId })) {
     return "therapist";
   }
   return null;
+}
+
+function isAdminScheduleExactSessionCancellationRequest(payload: {
+  holdKey: string | null;
+  sessionIds: string[];
+  dateRange: { start: string; end: string } | null;
+  therapistId: string | null;
+}): boolean {
+  return (
+    payload.holdKey === null &&
+    payload.sessionIds.length === 1 &&
+    payload.dateRange === null &&
+    payload.therapistId === null
+  );
 }
 
 async function currentUserIsSuperAdmin(db: SupabaseClient): Promise<boolean> {
@@ -700,6 +714,18 @@ Deno.serve(async (req) => {
       });
       throw new ForbiddenError("Forbidden");
     }
+    if (role === "admin_schedule" && !isAdminScheduleExactSessionCancellationRequest(payload)) {
+      const denialLogger = scopedLogger ?? userLogger;
+      denialLogger.warn("authorization.denied", {
+        reason: "admin-schedule-exact-session-only",
+      });
+      increment("tenant_denial_total", {
+        function: "sessions-cancel",
+        orgId,
+        reason: "admin-schedule-exact-session-only",
+      });
+      throw new ForbiddenError("Forbidden");
+    }
 
     const storageIdempotencyKey = normalizedKey
       ? buildScopedIdempotencyKey(normalizedKey, { organizationId: orgId, userId: user.id })
@@ -820,6 +846,7 @@ export const __TESTING__ = {
   parseCancelPayload,
   buildDateRange,
   resolveCancellationRole,
+  isAdminScheduleExactSessionCancellationRequest,
   resolveOrgForCancellationRequest,
   resolveOrgFromSessionIds,
   resolveOrgFromHoldKey,

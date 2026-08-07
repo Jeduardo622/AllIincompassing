@@ -2,6 +2,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { act, fireEvent } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
+import { format, parseISO } from 'date-fns';
 import {
   buildCloseoutDataPoints,
   SessionModal,
@@ -7466,7 +7467,7 @@ describe('SessionModal', () => {
     expect(planTargetButton).toHaveTextContent(planTarget);
     expect(screen.queryByRole('button', { name: /Plan target selected/i })).not.toBeInTheDocument();
     expect(screen.getAllByText(planTarget)).toHaveLength(1);
-    expect(screen.getByText('No target selected')).toBeInTheDocument();
+    expect(await screen.findByText('No target selected')).toBeInTheDocument();
     expect(screen.getByText(/\+4 · −1/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Prompts & reactions for target 1/i)).toHaveValue('Persisted blank target row note');
     expect(screen.getByRole('button', { name: /Increase correct trials for target 1/i })).toBeInTheDocument();
@@ -8190,5 +8191,124 @@ describe('SessionModal', () => {
     expect(defaultProps.onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(toastMocks.showError).toHaveBeenCalledWith('RPC failure');
+  });
+
+  it('hides appointment deletion when no authorized delete handler is provided', () => {
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={validScheduledSession}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /delete appointment/i })).not.toBeInTheDocument();
+  });
+
+  it('confirms appointment deletion with client, therapist, date, and time details', async () => {
+    const onDeleteAppointment = vi.fn().mockResolvedValue(undefined);
+    const expectedStartTime = format(parseISO(validScheduledSession.start_time), 'p');
+    const expectedEndTime = format(parseISO(validScheduledSession.end_time), 'p');
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={validScheduledSession}
+        canDeleteAppointments
+        onDeleteAppointment={onDeleteAppointment}
+      />,
+    );
+
+    const deleteButton = screen.getByRole('button', { name: /delete appointment/i });
+    await waitFor(() => expect(deleteButton).not.toBeDisabled());
+    await userEvent.click(deleteButton);
+
+    const confirmation = await screen.findByRole('alertdialog', { name: /delete appointment/i });
+    expect(confirmation).toHaveTextContent('Test Client 1');
+    expect(confirmation).toHaveTextContent('Test Therapist 1');
+    expect(confirmation).toHaveTextContent('March 1st, 2026');
+    expect(confirmation).toHaveTextContent(expectedStartTime);
+    expect(confirmation).toHaveTextContent(expectedEndTime);
+    expect(onDeleteAppointment).not.toHaveBeenCalled();
+  });
+
+  it('keeps deletion confirmation bound to the persisted appointment when edits are unsaved', async () => {
+    const onDeleteAppointment = vi.fn().mockResolvedValue(undefined);
+    const expectedStartTime = format(parseISO(validScheduledSession.start_time), 'p');
+    const expectedEndTime = format(parseISO(validScheduledSession.end_time), 'p');
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={validScheduledSession}
+        canDeleteAppointments
+        onDeleteAppointment={onDeleteAppointment}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T09:30' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T10:30' } });
+
+    const deleteButton = screen.getByRole('button', { name: /delete appointment/i });
+    await waitFor(() => expect(deleteButton).not.toBeDisabled());
+    await userEvent.click(deleteButton);
+
+    const confirmation = await screen.findByRole('alertdialog', { name: /delete appointment/i });
+    expect(confirmation).toHaveTextContent('March 1st, 2026');
+    expect(confirmation).toHaveTextContent(expectedStartTime);
+    expect(confirmation).toHaveTextContent(expectedEndTime);
+    expect(confirmation).not.toHaveTextContent('9:30 AM');
+    expect(confirmation).not.toHaveTextContent('10:30 AM');
+  });
+
+  it('disables repeated appointment deletion while the request is pending', async () => {
+    let resolveDelete: (() => void) | null = null;
+    const onDeleteAppointment = vi.fn(() => new Promise<void>((resolve) => {
+      resolveDelete = resolve;
+    }));
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={validScheduledSession}
+        canDeleteAppointments
+        onDeleteAppointment={onDeleteAppointment}
+      />,
+    );
+
+    const deleteButton = screen.getByRole('button', { name: /delete appointment/i });
+    await waitFor(() => expect(deleteButton).not.toBeDisabled());
+    await userEvent.click(deleteButton);
+    const confirmButton = await screen.findByRole('button', { name: /confirm delete appointment/i });
+    await userEvent.click(confirmButton);
+
+    expect(confirmButton).toBeDisabled();
+    expect(confirmButton).toHaveTextContent('Deleting...');
+    fireEvent.click(confirmButton);
+    expect(onDeleteAppointment).toHaveBeenCalledTimes(1);
+
+    resolveDelete?.();
+    await waitFor(() => expect(onDeleteAppointment).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps the confirmation open and shows a clear deletion error', async () => {
+    const onDeleteAppointment = vi.fn().mockRejectedValue(new Error('Cancellation service unavailable'));
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={validScheduledSession}
+        canDeleteAppointments
+        onDeleteAppointment={onDeleteAppointment}
+      />,
+    );
+
+    const deleteButton = screen.getByRole('button', { name: /delete appointment/i });
+    await waitFor(() => expect(deleteButton).not.toBeDisabled());
+    await userEvent.click(deleteButton);
+    await userEvent.click(await screen.findByRole('button', { name: /confirm delete appointment/i }));
+
+    const confirmation = await screen.findByRole('alertdialog', { name: /delete appointment/i });
+    expect(confirmation).toHaveTextContent('Unable to delete appointment. Cancellation service unavailable');
+    expect(screen.getByRole('button', { name: /confirm delete appointment/i })).not.toBeDisabled();
   });
 });

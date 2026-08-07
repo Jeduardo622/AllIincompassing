@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent } from "@testing-library/react";
+import { fireEvent, within } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { renderWithProviders, screen, waitFor } from "../../test/utils";
@@ -142,6 +142,7 @@ vi.mock("../../components/SessionModal", () => ({
     onClose,
     onSubmit,
     onReactivate,
+    onDeleteAppointment,
     session,
     retryHint,
     dataCollectionOnly,
@@ -155,6 +156,7 @@ vi.mock("../../components/SessionModal", () => ({
     onClose: () => void;
     onSubmit: (data: Record<string, unknown>) => unknown;
     onReactivate?: (input: { session: { id: string }; start_time: string; end_time: string }) => unknown;
+    onDeleteAppointment?: (input: { session: { id: string } }) => unknown;
     session?: { id: string };
     retryHint?: string | null;
     dataCollectionOnly?: boolean;
@@ -167,13 +169,29 @@ vi.mock("../../components/SessionModal", () => ({
     isOpen ? (
       <div data-testid="session-modal">
         <div data-testid="modal-mode">{session ? "edit" : "create"}</div>
+        <div data-testid="selected-session-id">{session?.id ?? ""}</div>
         <div data-testid="retry-hint">{retryHint ?? ""}</div>
         <div data-testid="data-collection-only">{dataCollectionOnly ? "true" : "false"}</div>
         <div data-testid="allow-start-session">{allowStartSession ? "true" : "false"}</div>
         <div data-testid="can-create-schedules">{canCreateSchedules ? "true" : "false"}</div>
         <div data-testid="reactivate-available">{session && onReactivate ? "true" : "false"}</div>
         <div data-testid="reactivating">{isReactivating ? "true" : "false"}</div>
+        <div data-testid="delete-available">{session && onDeleteAppointment ? "true" : "false"}</div>
         <div data-testid="hide-goal-capture-fields">{hideGoalCaptureFields ? "true" : "false"}</div>
+        <button
+          aria-label="delete-appointment"
+          disabled={!session || !onDeleteAppointment}
+          onClick={() => {
+            const result = session && onDeleteAppointment
+              ? onDeleteAppointment({ session: { id: session.id } })
+              : undefined;
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          delete-appointment
+        </button>
         <button
           aria-label="submit-complete-with-stale-trial"
           onClick={() => {
@@ -490,6 +508,7 @@ describe("Schedule orchestration integration hardening", () => {
   };
 
   const resetScheduleFixture = () => {
+    scheduleFixtures.sessions.splice(1);
     Object.assign(scheduleFixtures.sessions[0], originalSessionFixture);
   };
 
@@ -852,6 +871,90 @@ describe("Schedule orchestration integration hardening", () => {
     await screen.findByTestId("session-modal");
 
     expect(screen.getByTestId("can-create-schedules")).toHaveTextContent(expectedCanCreate);
+  });
+
+  it.each([
+    ["admin schedule", "admin_schedule", "true"],
+    ["admin", "admin", "true"],
+    ["bcba", "bcba", "true"],
+    ["super admin", "super_admin", "true"],
+    ["midtier", "midtier", "false"],
+    ["bt", "bt", "false"],
+    ["therapist", "therapist", "false"],
+  ] as const)("wires appointment deletion authority for %s", async (_label, role, expectedCanDelete) => {
+    renderWithProviders(<Schedule />, {
+      auth: { role, organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("delete-available")).toHaveTextContent(expectedCanDelete);
+  });
+
+  it("deletes the selected appointment, closes the modal, and refreshes schedule queries", async () => {
+    const invalidateQueriesSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "admin_schedule", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("delete-appointment"));
+
+    await waitFor(() => {
+      expect(cancelSessionsMock).toHaveBeenCalledWith({
+        sessionIds: ["session-1"],
+        cancellationAttribution: "staff",
+      });
+    });
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ["sessions"] });
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ["sessions-batch"] });
+    invalidateQueriesSpy.mockRestore();
+  });
+
+  it("deletes only the appointment selected from an overlapping block", async () => {
+    const overlapWindowStart = new Date(2025, 6, 2, 10, 0, 0, 0);
+    const overlapWindowEnd = new Date(2025, 6, 2, 10, 30, 0, 0);
+    const overlapSession = {
+      ...originalSessionFixture,
+      id: "session-overlap",
+      start_time: overlapWindowStart.toISOString(),
+      end_time: overlapWindowEnd.toISOString(),
+      client: { id: "client-1", full_name: "Overlap Client" },
+    };
+    Object.assign(scheduleFixtures.sessions[0], {
+      ...originalSessionFixture,
+      start_time: overlapWindowStart.toISOString(),
+      end_time: overlapWindowEnd.toISOString(),
+    });
+    scheduleFixtures.sessions.push(overlapSession);
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bcba", organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+
+    const overlapTrigger = await screen.findByRole("button", { name: /2 appointments/i });
+    fireEvent.click(overlapTrigger);
+    const overlapDialog = screen.getByRole("dialog", { name: /2 overlapping appointments/i });
+    fireEvent.click(within(overlapDialog).getByRole("button", { name: /Overlap Client/i }));
+
+    expect(await screen.findByTestId("selected-session-id")).toHaveTextContent("session-overlap");
+    fireEvent.click(screen.getByLabelText("delete-appointment"));
+
+    await waitFor(() => {
+      expect(cancelSessionsMock).toHaveBeenCalledWith({
+        sessionIds: ["session-overlap"],
+        cancellationAttribution: "staff",
+      });
+    });
+    expect(cancelSessionsMock).toHaveBeenCalledTimes(1);
   });
 
   it.each([

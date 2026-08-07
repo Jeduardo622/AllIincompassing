@@ -2816,6 +2816,7 @@ export const Schedule = React.memo(() => {
               onEditSession={handleEditSession}
               onRescheduleSession={handleRescheduleSession}
               allowCreateInEmptySlot={!therapistScopedView}
+              allowCreateInOccupiedSlot={useImprovedAppointmentLayout}
               allowDragAndDrop={!therapistScopedView}
             />
           ) : (
@@ -2829,6 +2830,7 @@ export const Schedule = React.memo(() => {
               onEditSession={handleEditSession}
               onRescheduleSession={handleRescheduleSession}
               allowCreateInEmptySlot={!therapistScopedView}
+              allowCreateInOccupiedSlot={useImprovedAppointmentLayout}
               allowDragAndDrop={!therapistScopedView}
             />
           )}

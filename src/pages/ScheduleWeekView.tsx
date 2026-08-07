@@ -20,6 +20,7 @@ interface ScheduleWeekViewProps {
   onEditSession: ScheduleEditSessionHandler;
   onRescheduleSession?: (session: Session, target: ScheduleSlotPosition) => void;
   allowCreateInEmptySlot?: boolean;
+  allowCreateInOccupiedSlot?: boolean;
   allowDragAndDrop?: boolean;
 }
 
@@ -33,6 +34,7 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
   onEditSession,
   onRescheduleSession,
   allowCreateInEmptySlot = true,
+  allowCreateInOccupiedSlot = false,
   allowDragAndDrop = false,
 }) => {
   const [draggedSession, setDraggedSession] = useState<Session | null>(null);
@@ -161,6 +163,7 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
             onCreateSession={onCreateSession}
             onEditSession={onEditSession}
             allowCreateInEmptySlot={allowCreateInEmptySlot}
+            allowCreateInOccupiedSlot={allowCreateInOccupiedSlot}
             allowDragAndDrop={allowDragAndDrop}
             activeDragSessionId={draggedSession?.id ?? null}
             activeDropSlotKey={dropSlotKey}

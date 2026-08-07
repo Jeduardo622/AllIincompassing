@@ -2,6 +2,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { act, fireEvent } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
+import { format, parseISO } from 'date-fns';
 import {
   buildCloseoutDataPoints,
   SessionModal,
@@ -8205,6 +8206,8 @@ describe('SessionModal', () => {
 
   it('confirms appointment deletion with client, therapist, date, and time details', async () => {
     const onDeleteAppointment = vi.fn().mockResolvedValue(undefined);
+    const expectedStartTime = format(parseISO(validScheduledSession.start_time), 'p');
+    const expectedEndTime = format(parseISO(validScheduledSession.end_time), 'p');
 
     renderWithProviders(
       <SessionModal
@@ -8223,13 +8226,15 @@ describe('SessionModal', () => {
     expect(confirmation).toHaveTextContent('Test Client 1');
     expect(confirmation).toHaveTextContent('Test Therapist 1');
     expect(confirmation).toHaveTextContent('March 1st, 2026');
-    expect(confirmation).toHaveTextContent('2:00 AM');
-    expect(confirmation).toHaveTextContent('3:00 AM');
+    expect(confirmation).toHaveTextContent(expectedStartTime);
+    expect(confirmation).toHaveTextContent(expectedEndTime);
     expect(onDeleteAppointment).not.toHaveBeenCalled();
   });
 
   it('keeps deletion confirmation bound to the persisted appointment when edits are unsaved', async () => {
     const onDeleteAppointment = vi.fn().mockResolvedValue(undefined);
+    const expectedStartTime = format(parseISO(validScheduledSession.start_time), 'p');
+    const expectedEndTime = format(parseISO(validScheduledSession.end_time), 'p');
 
     renderWithProviders(
       <SessionModal
@@ -8249,8 +8254,8 @@ describe('SessionModal', () => {
 
     const confirmation = await screen.findByRole('alertdialog', { name: /delete appointment/i });
     expect(confirmation).toHaveTextContent('March 1st, 2026');
-    expect(confirmation).toHaveTextContent('2:00 AM');
-    expect(confirmation).toHaveTextContent('3:00 AM');
+    expect(confirmation).toHaveTextContent(expectedStartTime);
+    expect(confirmation).toHaveTextContent(expectedEndTime);
     expect(confirmation).not.toHaveTextContent('9:30 AM');
     expect(confirmation).not.toHaveTextContent('10:30 AM');
   });

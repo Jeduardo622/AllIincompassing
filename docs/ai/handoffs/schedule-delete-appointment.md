@@ -82,12 +82,14 @@
   - `npm run verify:local` with an 8 GB Node heap -> fail during coverage collation with missing `coverage/.tmp/coverage-68.json` after the test execution phase
   - `npm run test:routes:tier0` -> fail; an initial run overlapped a production build and recorded five transient preview 404s, while the isolated rerun did not complete cleanly within the local wrapper run
   - `npm run ci:playwright` -> fail during `playwright:auth`; configured hosted smoke credentials returned `Invalid email or password`
+  - `npm run playwright:auth` after synchronizing the approved `.env*` super-admin smoke password with the hosted Supabase auth user -> pass
+  - `TZ=UTC npx vitest run src/components/__tests__/SessionModal.test.tsx -t "confirms appointment deletion|keeps deletion confirmation"` -> pass, 2 tests; the CI-only hard-coded timezone assertions were replaced with environment-derived date-fns formatting
   - `npm run test:ui:responsive -- --base-url=http://127.0.0.1:4174 --route=/schedule` -> fail with sanitized artifacts; desktop reported `console-error`, mobile reported `console-error` and `undersized-mobile-touch-target`
 - Blocked checks:
   - `npm run ci:verify-coverage` -> blocked because both coverage-producing runs failed before a trustworthy summary could be finalized
-  - hosted browser continuation after `playwright:auth` -> blocked by rejected configured credentials
+  - responsive observer feature-state proof -> blocked because the mandatory observer is intentionally unauthenticated and aborts the external Supabase requests required to leave the login/loading shell
 - Result: fail
-- Residual risk: targeted behavior, static checks, build, and tenant validation are green, but the required aggregate, responsive, route, and hosted-browser gates are not merge-clean.
+- Residual risk: targeted behavior, static checks, build, tenant validation, and hosted auth smoke are green, but the required aggregate, responsive, route, and CI gates are not yet merge-clean.
 
 Responsive evidence:
 
@@ -123,9 +125,9 @@ Responsive evidence:
 - `verification summary`: present and failing
 - `pr handoff`: branch pushed; PR may be opened for human review but is not merge-ready
 - `reviewer`: completed; code and security reviews found no remaining application defect, with verification blockers retained
-- `required follow-up`: restore Linear capacity/linkage, repair hosted smoke credentials, and obtain passing responsive, tier-0, full-coverage, and aggregate verification before merge
+- `required follow-up`: restore Linear capacity/linkage and obtain passing responsive, tier-0, full-coverage, and aggregate verification before merge
 
 ## Residual risk
 
 - Code-path risk is low and contained to the requested exact-appointment cancellation slice.
-- Merge readiness is blocked by repository verification failures outside this diff, failing responsive observer evidence on `/schedule`, and missing Linear linkage for critical-lane PR hygiene.
+- Merge readiness is blocked by the CI rerun needed for the timezone-deterministic test fix, repository verification failures outside this diff, failing unauthenticated responsive observer evidence on `/schedule`, and missing Linear linkage for critical-lane PR hygiene.

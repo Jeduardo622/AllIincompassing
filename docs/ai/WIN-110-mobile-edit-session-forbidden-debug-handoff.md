@@ -18,6 +18,7 @@ Non-goals:
 1. The hosted mobile route and close-readiness flow are operational: authenticated booking, start, database status confirmation, modal open, close attempt, policy guidance, and recovery navigation passed.
 2. `SessionModal` is a `100dvh` flex column, but its long scrollable content child lacked `min-h-0`. On phone-height viewports, intrinsic content height could push the sticky Save progress / Close Session footer outside the usable viewport.
 3. The existing browser booking helper assumed desktop-visible program and goal controls. Mobile renders those controls inside closed `details` disclosures, so mobile proof could not create its temporary session until the helper revealed those disclosures.
+4. The blocked-close smoke mislabeled a Save progress submit as a terminal close. The deploy-preview RED run exposed this false-positive path; the harness now clicks the exact Close Session control and suppresses identifier-bearing dependency diagnostics.
 
 ## Fix Summary
 
@@ -27,6 +28,7 @@ Non-goals:
 - Added sanitized proof artifacts containing only method, pathname, status, timestamp, and tightly scoped action-control screenshots.
 - Removed raw identifiers and full-page screenshots from the modified scripts' failure artifacts.
 - Updated the session-plan browser helper to reveal containing mobile disclosures before selecting controls.
+- Corrected the blocked-close smoke to exercise the actual Close Session handler.
 
 ## Verification Card
 
@@ -56,7 +58,7 @@ Non-goals:
   - `npm run build` -> pass
   - `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local` -> pass, including `test:ci`, coverage, build, and 220 tier-0 route tests
   - responsive observer -> pass at desktop `1440x900` and mobile `390x844`
-  - hosted mobile blocked-close proof -> pass
+  - authenticated mobile blocked-close proof against Netlify deploy preview for PR #909 -> pass on the actual Close Session control
   - forced mobile proof failures -> pass; stderr and JSON remained generic and identifier-free
   - independent code, test, and security reviews -> approve with no required fixes
   - `npm run ci:playwright` -> blocked at the existing `playwright:session-no-show` target-selection failure after preflight, auth, schedule-conflict, therapist-onboarding, and therapist-authorization passed

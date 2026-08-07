@@ -69,6 +69,19 @@ const withStepTimeout = async <T>(
   return result as T;
 };
 
+const withSuppressedDependencyDiagnostics = async <T>(operation: () => Promise<T>): Promise<T> => {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  console.log = () => undefined;
+  console.warn = () => undefined;
+  try {
+    return await operation();
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+};
+
 /**
  * `checkInProgressSessionCloseReadiness` keys off `session_goals` rows; if start_session did not
  * insert any (environment variance), close would incorrectly succeed. Seed one row via service role.
@@ -341,13 +354,15 @@ async function run(): Promise<void> {
     let booked: LifecycleIds;
     try {
       booked = await withStepTimeout("book-session", () =>
-        bookSession(activePage, token, strictParityMode, bookOpts), BOOK_SESSION_STEP_TIMEOUT_MS);
+        withSuppressedDependencyDiagnostics(() => bookSession(activePage, token, strictParityMode, bookOpts)),
+      BOOK_SESSION_STEP_TIMEOUT_MS);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (strictParityMode && message.includes("Organization context required") && authenticatedCredential) {
         token = await fetchAccessTokenForCredentials(authenticatedCredential.email, authenticatedCredential.password);
         booked = await withStepTimeout("book-session retry", () =>
-          bookSession(activePage, token, strictParityMode, bookOpts), BOOK_SESSION_STEP_TIMEOUT_MS);
+          withSuppressedDependencyDiagnostics(() => bookSession(activePage, token, strictParityMode, bookOpts)),
+        BOOK_SESSION_STEP_TIMEOUT_MS);
       } else {
         throw error;
       }
@@ -500,10 +515,11 @@ async function run(): Promise<void> {
         );
       }
       await activePage.locator("#status-select").selectOption("completed");
+      const closeSessionButton = activePage.getByRole("button", { name: /^Close Session$/i });
+      await closeSessionButton.waitFor({ state: "visible", timeout: 90_000 });
       await activePage.waitForFunction(() => {
-        const el = document.querySelector<HTMLButtonElement>(
-          'button[type="submit"][form="session-form"]',
-        );
+        const el = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+          .find((button) => button.textContent?.trim() === "Close Session");
         return Boolean(el && !el.disabled);
       }, { timeout: 90_000 });
       activePage.once("dialog", (dialog) => {
@@ -514,10 +530,7 @@ async function run(): Promise<void> {
       const edgeNotesGate = activePage.getByText(/Session notes with goal progress are required/i).first();
       const completedToast = activePage.getByText(/Session marked as completed/i).first();
 
-      const submitButton = activePage
-        .locator('form#session-form button[type="submit"], button[type="submit"][form="session-form"]')
-        .first();
-      await submitButton.click();
+      await closeSessionButton.click();
 
       // Poll: do not Promise.race locators that reject on timeout — a fast reject from one branch
       // can abort before the blocked-close panel (slower) becomes visible.
@@ -576,7 +589,7 @@ async function run(): Promise<void> {
         await edgeNotesGate.waitFor({ state: "visible", timeout: 5_000 });
         const screenshotPath = await captureSafeProofLocatorScreenshot("playwright-schedule-blocked-close-proof", [
           { name: "policy-toast", locator: edgeNotesGate },
-          { name: "modal-footer", locator: submitButton },
+          { name: "close-session-button", locator: closeSessionButton },
         ]);
         assert.ok(screenshotPath, "A cropped blocked-close proof screenshot is required.");
         proofArtifactPath = writeSafeProofArtifact("playwright-schedule-blocked-close-proof", {
@@ -612,7 +625,7 @@ async function run(): Promise<void> {
       const screenshotPath = await captureSafeProofLocatorScreenshot("playwright-schedule-blocked-close-proof", [
         { name: "retry-heading", locator: retryHeading },
         { name: "open-client-details", locator: activePage.getByRole("button", { name: "Open Client Details" }) },
-        { name: "modal-footer", locator: submitButton },
+        { name: "close-session-button", locator: closeSessionButton },
       ]);
       assert.ok(screenshotPath, "A cropped blocked-close proof screenshot is required.");
       proofArtifactPath = writeSafeProofArtifact("playwright-schedule-blocked-close-proof", {

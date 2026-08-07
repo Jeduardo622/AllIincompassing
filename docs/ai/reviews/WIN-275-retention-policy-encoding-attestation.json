@@ -61,7 +61,7 @@
   },
   "localOperatorObserverAttestation": {
     "path": "docs/ai/reviews/WIN-275-local-operator-responsive-observer-attestation.json",
-    "sha256": "b1252b7d098e443e65e1689b872db830986a669d6e1e4666c971c6cf03415362",
+    "sha256": "1601297de549df42a79d90e50c51b250644584c5f67ea11787aeb62694a73f66",
     "hostedActionAuthorized": false
   },
   "protectedSurfaceHashes": {
@@ -71,7 +71,7 @@
     "tests/agentWorkLedgerRetentionPolicyEncodingMigration.test.ts": "3528ac033b40632b21c28fc3b47eae6ed35ec69b030346a44184155888e65a52",
     "docs/ops/agent-work-ledger.md": "a0beafe3398affaf7ecd73304823f1bbf40a85566ff86094f7914e107f75dc1b",
     "docs/ai/verification-matrix.md": "28a136e264212ccb57d0c85fa36cbcbc955862817500d66889557fa4134d863f",
-    "docs/ai/handoffs/agent-work-ledger-foundation.md": "8f030eede9d310d2f9c37cc9af01919bedd849e903bf6a381f5c7d14b52c5563",
+    "docs/ai/handoffs/agent-work-ledger-foundation.md": "5fdec5facaa69fe4600b957f01d8438f59340db127c6b2c48279257d0af8d2e0",
     "docs/superpowers/plans/2026-08-06-agent-work-ledger-retention-policy-encoding.md": "7c5efd800ed4cfd207d354537249c9379a4cbc89f7272418c895be7ddf558822",
     "docs/superpowers/specs/2026-08-06-agent-work-ledger-retention-policy-encoding-design.md": "b9cee127f72ce52bc38c2b9a9f93433a2926bd60bcf6ed0f022c01ff05ed2f6e"
   }

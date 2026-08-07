@@ -239,13 +239,9 @@ describe('provision-ci-smoke-admin safeguards', () => {
 
     expect(calls).toEqual([
       `verify:bt_session_note_amendments:in:original_bt_note_id:${noteId}`,
-      `delete:goal_target_phase_evaluations:in:note_id:${noteId}`,
       `verify:goal_target_phase_evaluations:in:note_id:${noteId}`,
-      `delete:goal_target_transitions:in:note_id:${noteId}`,
       `verify:goal_target_transitions:in:note_id:${noteId}`,
-      `delete:goal_target_phase_evaluations:in:session_id:${sessionId}`,
       `verify:goal_target_phase_evaluations:in:session_id:${sessionId}`,
-      `delete:goal_target_transitions:in:session_id:${sessionId}`,
       `verify:goal_target_transitions:in:session_id:${sessionId}`,
       `delete:client_session_notes:in:id:${noteId}`,
       `verify:client_session_notes:in:id:${noteId}`,
@@ -271,8 +267,8 @@ describe('provision-ci-smoke-admin safeguards', () => {
             in: async () => ({ error: { code: '23503', message: 'still referenced' } }),
           }),
           select: () => ({
-            eq: async () => ({ error: null, count: 0 }),
-            in: async () => ({ error: null, count: 0 }),
+            eq: async () => ({ error: null, count: table === 'goal_target_phase_evaluations' ? 1 : 0 }),
+            in: async () => ({ error: null, count: table === 'goal_target_phase_evaluations' ? 1 : 0 }),
           }),
         };
       },
@@ -287,7 +283,7 @@ describe('provision-ci-smoke-admin safeguards', () => {
           noteIds: ['c9e1fbca-220a-4c66-ab63-eecff7a31f6e'],
         },
       ),
-    ).rejects.toThrow('goal_target_phase_evaluations cleanup failed');
+    ).rejects.toThrow('goal_target_phase_evaluations cleanup blocked by 1 read-only rows');
     expect(tables).toEqual(['bt_session_note_amendments', 'goal_target_phase_evaluations']);
   });
 

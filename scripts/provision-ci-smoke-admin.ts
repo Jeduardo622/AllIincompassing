@@ -267,16 +267,20 @@ export const cleanupSmokeAdminRows = async (
   targets: SmokeAdminCleanupTargets,
 ): Promise<void> => {
   for (const step of buildSmokeAdminCleanupSteps(userId, targets)) {
-    if (step.table === 'bt_session_note_amendments') {
-      const immutableQuery = client.from(step.table).select('id', { count: 'exact', head: true });
-      const immutableVerification = step.filter.kind === 'eq'
-        ? await immutableQuery.eq(step.filter.column, step.filter.value)
-        : await immutableQuery.in(step.filter.column, step.filter.values);
-      if (immutableVerification.error) {
-        throw new Error(`${step.table} cleanup verification failed: ${serializeError(immutableVerification.error)}`);
+    const isReadOnlyDependency = step.table === 'bt_session_note_amendments'
+      || step.table === 'goal_target_phase_evaluations'
+      || step.table === 'goal_target_transitions';
+    if (isReadOnlyDependency) {
+      const readOnlyQuery = client.from(step.table).select('id', { count: 'exact', head: true });
+      const readOnlyVerification = step.filter.kind === 'eq'
+        ? await readOnlyQuery.eq(step.filter.column, step.filter.value)
+        : await readOnlyQuery.in(step.filter.column, step.filter.values);
+      if (readOnlyVerification.error) {
+        throw new Error(`${step.table} cleanup verification failed: ${serializeError(readOnlyVerification.error)}`);
       }
-      if (immutableVerification.count !== 0) {
-        throw new Error(`${step.table} cleanup blocked by ${immutableVerification.count ?? 'unknown'} immutable rows.`);
+      if (readOnlyVerification.count !== 0) {
+        const protection = step.table === 'bt_session_note_amendments' ? 'immutable' : 'read-only';
+        throw new Error(`${step.table} cleanup blocked by ${readOnlyVerification.count ?? 'unknown'} ${protection} rows.`);
       }
       continue;
     }

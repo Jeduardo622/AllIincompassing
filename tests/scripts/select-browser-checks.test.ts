@@ -85,6 +85,22 @@ describe('select-browser-checks', () => {
     expect(selection.iehpAssessmentImportSmokeRequired).toBe(true);
   });
 
+  it('requires hosted auth smoke when the non-AI session credential contract changes', () => {
+    const selection = runSelector(
+      '--changed-file',
+      'scripts/lib/playwright-nonai-sessions-contract.ts',
+    );
+
+    expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.tier0Specs).toEqual([
+      'cypress/e2e/routes_auth.cy.ts',
+      'cypress/e2e/routes_schedule.cy.ts',
+    ]);
+    expect(selection.reasons).toEqual([
+      'scripts/lib/playwright-nonai-sessions-contract.ts: auth/session browser flow',
+    ]);
+  });
+
   it('requires IEHP assessment import smoke for API and provisioning surfaces', () => {
     for (const file of [
       'netlify/functions/assessment-documents.ts',

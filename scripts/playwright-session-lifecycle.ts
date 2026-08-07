@@ -1835,6 +1835,19 @@ async function markTerminalViaScheduleModal(
   await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
 }
 
+export const resolveLifecycleCredentialCandidates = (
+  flowLabel = "Session lifecycle Playwright regression",
+) =>
+  assertNonAiSessionsEnvContract(flowLabel)
+    .sort((left, right) => {
+      const priority = (label: string): number => {
+        if (label.startsWith("PW_ADMIN_")) return 0;
+        if (label.startsWith("PW_SUPERADMIN_")) return 1;
+        return 2;
+      };
+      return priority(left.label) - priority(right.label);
+    });
+
 export async function run() {
   loadPlaywrightEnv();
   const base = getEnv("PW_BASE_URL", "https://app.allincompassing.ai");
@@ -1845,16 +1858,9 @@ export async function run() {
     throw new Error("PW_LIFECYCLE_TERMINAL_STATUS must be either 'no-show' or 'completed'.");
   }
   const terminalStatus = terminalStatusRaw as TerminalStatus;
-  const credentialCandidates = assertNonAiSessionsEnvContract(
+  const credentialCandidates = resolveLifecycleCredentialCandidates(
     `Session lifecycle (${terminalStatus}) Playwright regression`,
-  ).sort((left, right) => {
-    const leftIsAdmin = left.label.startsWith("PW_ADMIN_");
-    const rightIsAdmin = right.label.startsWith("PW_ADMIN_");
-    if (leftIsAdmin === rightIsAdmin) {
-      return 0;
-    }
-    return leftIsAdmin ? -1 : 1;
-  });
+  );
   console.log(
     JSON.stringify({
       ok: true,

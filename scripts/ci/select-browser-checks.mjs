@@ -165,6 +165,7 @@ const classifyFile = (file) => {
     /^cypress\/e2e\/routes_auth\.cy\.ts$/,
     /^scripts\/playwright-/,
     /^scripts\/lib\/playwright-inprogress-session-setup\.ts$/,
+    /^scripts\/lib\/playwright-nonai-sessions-contract\.ts$/,
     /^scripts\/lib\/playwright-smoke\.ts$/,
     /^supabase\/functions\/(sessions-|session-|auth-|programs|goals|program-notes)/,
   ])) {

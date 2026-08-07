@@ -258,7 +258,7 @@ Fail-fast contract:
 
 - Run `npm run playwright:preflight` first.
 - Preflight now hard-fails when session-flow requirements are missing/placeholder:
-  - credential pair: `PW_SCHEDULE_EMAIL/PW_SCHEDULE_PASSWORD` **or** `PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD`
+  - credential pair: `PW_SUPERADMIN_EMAIL/PW_SUPERADMIN_PASSWORD`, `PW_SCHEDULE_EMAIL/PW_SCHEDULE_PASSWORD`, **or** `PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD`
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY` (or `SUPABASE_ANON_KEY`)
   - `SUPABASE_SERVICE_ROLE_KEY`

@@ -43,7 +43,7 @@ The readiness report treats these as required for the critical browser environme
 - `PW_ASSESSMENT_CLIENT_ID` / `PW_ASSESSMENT_SAMPLE_FILE`
 - Supabase runtime URL, anon/publishable key, and service-role key
 
-The dynamic `PW_SUPERADMIN_*` lifecycle account remains owned by `scripts/provision-ci-smoke-admin.ts`; readiness only reports whether a super-admin pair is already configured.
+The dynamic `PW_SUPERADMIN_*` lifecycle account remains owned by `scripts/provision-ci-smoke-admin.ts`. Shared blocked-close and measurement flows retain schedule/admin precedence; no-show and complete lifecycle flows attempt the provisioned superadmin before the schedule fallback when the durable admin pair cannot authenticate. Readiness only reports whether a super-admin pair is already configured.
 
 Dedicated `PW_CLINICAL_QA_*` credentials are optional in the readiness report but preferred for recurring staff upload/output parity. If they are absent, the report makes that visible without blocking normal CI. Browser artifact capture for clinical QA also requires `PW_CLINICAL_QA_TARGET_MARKER` with one of `redacted`, `synthetic`, `smoke`, or `test`.
 

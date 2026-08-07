@@ -855,6 +855,37 @@ describe("Schedule orchestration integration hardening", () => {
   });
 
   it.each([
+    ["admin schedule", "admin_schedule", true],
+    ["admin", "admin", true],
+    ["bcba", "bcba", true],
+    ["super admin", "super_admin", true],
+    ["therapist", "therapist", false],
+    ["BT", "bt", false],
+  ] as const)("gates occupied-block create actions for %s", async (_label, role, expectedVisible) => {
+    renderWithProviders(<Schedule />, {
+      auth: { role, organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+
+    const occupiedCreateButton = screen.queryByRole("button", {
+      name: /add session within occupied block/i,
+    });
+
+    if (!expectedVisible) {
+      expect(occupiedCreateButton).toBeNull();
+      return;
+    }
+
+    expect(occupiedCreateButton).toBeTruthy();
+    fireEvent.click(occupiedCreateButton!);
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("modal-mode")).toHaveTextContent("create");
+    expect(screen.getByTestId("can-create-schedules")).toHaveTextContent("true");
+  });
+
+  it.each([
     ["admin", "admin", "true"],
     ["admin schedule", "admin_schedule", "true"],
     ["bcba", "bcba", "true"],

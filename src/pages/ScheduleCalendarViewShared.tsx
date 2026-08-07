@@ -160,6 +160,23 @@ function getOverlayCardHeight(spanRows: number): number {
   return Math.max(unclampedHeight, MIN_OVERLAY_HEIGHT_PX);
 }
 
+function getOverlayCreatePosition(day: Date, topRows: number): ScheduleSlotPosition {
+  const slotStart = new Date(day);
+  slotStart.setHours(VISIBLE_GRID_START_HOUR, 0, 0, 0);
+  const createStart = addMinutes(slotStart, topRows * SLOT_DURATION_MINUTES);
+  return {
+    date: createStart,
+    time: format(createStart, 'HH:mm'),
+  };
+}
+
+function getCreateSessionLabel(position: ScheduleSlotPosition): string {
+  return `Add session within occupied block on ${format(position.date, 'EEEE, MMMM d, yyyy')} at ${format(
+    position.date,
+    'h:mm a',
+  )}`;
+}
+
 /**
  * True when a precise pointing device (mouse, trackpad, stylus) is available.
  * Use HTML5 drag/drop in that case — even on hybrid touch laptops where `(pointer: coarse)` can still match.
@@ -744,6 +761,36 @@ function OverlaySessionCard({
   );
 }
 
+function OccupiedBlockCreateButton({
+  createPosition,
+  onCreateSession,
+  touchOnly = false,
+}: {
+  createPosition: ScheduleSlotPosition;
+  onCreateSession: ScheduleTimeSlotHandler;
+  touchOnly?: boolean;
+}) {
+  const label = getCreateSessionLabel(createPosition);
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className={`absolute right-1 top-1 z-30 inline-flex items-center justify-center rounded-full bg-white/95 text-blue-700 shadow-sm ring-1 ring-slate-300 transition-opacity hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-slate-950/95 dark:text-blue-200 dark:ring-slate-600 ${
+        touchOnly ? 'h-8 w-8' : 'h-6 w-6'
+      }`}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onCreateSession(createPosition);
+      }}
+    >
+      <Plus className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 function InvalidSessionFallback({ session, top }: { session: Session; top: number }) {
   return (
     <div
@@ -762,19 +809,26 @@ function InvalidSessionFallback({ session, top }: { session: Session; top: numbe
 
 function ScheduleOverlayItem({
   item,
+  day,
+  onCreateSession,
   onEditSession,
+  allowCreateInOccupiedSlot = false,
   allowDragAndDrop = false,
   activeDragSessionId = null,
   onStartSessionDrag,
   onEndSessionDrag,
 }: {
   item: ScheduleLayoutItem;
+  day: Date;
+  onCreateSession: ScheduleTimeSlotHandler;
   onEditSession: ScheduleEditSessionHandler;
+  allowCreateInOccupiedSlot?: boolean;
   allowDragAndDrop?: boolean;
   activeDragSessionId?: string | null;
   onStartSessionDrag?: (session: Session, source: ScheduleSlotPosition) => void;
   onEndSessionDrag?: () => void;
 }) {
+  const hasFinePointer = useHasFinePointer();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -829,12 +883,16 @@ function ScheduleOverlayItem({
     left: OVERLAY_HORIZONTAL_INSET_PX,
     right: OVERLAY_HORIZONTAL_INSET_PX,
   };
+  const createPosition = useMemo(() => getOverlayCreatePosition(day, item.topRows), [day, item.topRows]);
+  const occupiedCreateVisibilityClasses = hasFinePointer
+    ? 'pointer-events-none opacity-0 transition-opacity group-hover/overlay:pointer-events-auto group-hover/overlay:opacity-100 group-focus-within/overlay:pointer-events-auto group-focus-within/overlay:opacity-100'
+    : 'pointer-events-auto opacity-100';
 
   if (item.kind === 'appointment') {
     const compact = item.spanRows <= 1;
     return (
       <div
-        className={`absolute ${activeDragSessionId !== null ? 'pointer-events-none' : 'pointer-events-auto'} ${
+        className={`group/overlay absolute ${activeDragSessionId !== null ? 'pointer-events-none' : 'pointer-events-auto'} ${
           compact ? 'overflow-hidden' : ''
         }`}
         data-layout-kind="appointment"
@@ -852,6 +910,15 @@ function ScheduleOverlayItem({
           className="h-full shadow-sm"
           compact={compact}
         />
+        {allowCreateInOccupiedSlot ? (
+          <div className={occupiedCreateVisibilityClasses}>
+            <OccupiedBlockCreateButton
+              createPosition={createPosition}
+              onCreateSession={onCreateSession}
+              touchOnly={!hasFinePointer}
+            />
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -861,7 +928,7 @@ function ScheduleOverlayItem({
 
   return (
     <div
-      className={`absolute z-20 ${activeDragSessionId !== null ? 'pointer-events-none' : 'pointer-events-auto'}`}
+      className={`group/overlay absolute z-20 ${activeDragSessionId !== null ? 'pointer-events-none' : 'pointer-events-auto'}`}
       data-layout-kind="cluster"
       style={style}
     >
@@ -886,6 +953,16 @@ function ScheduleOverlayItem({
         </div>
         <div className="truncate text-[11px]">{clusterLabel.replace(/^\d+ appointments, /i, '')}</div>
       </button>
+
+      {allowCreateInOccupiedSlot ? (
+        <div className={occupiedCreateVisibilityClasses}>
+          <OccupiedBlockCreateButton
+            createPosition={createPosition}
+            onCreateSession={onCreateSession}
+            touchOnly={!hasFinePointer}
+          />
+        </div>
+      ) : null}
 
       {open ? (
         <div
@@ -922,7 +999,9 @@ function ScheduleOverlayItem({
 function ScheduleOverlayColumn({
   day,
   scheduleSessions,
+  onCreateSession,
   onEditSession,
+  allowCreateInOccupiedSlot = false,
   allowDragAndDrop = false,
   activeDragSessionId = null,
   onStartSessionDrag,
@@ -931,7 +1010,9 @@ function ScheduleOverlayColumn({
 }: {
   day: Date;
   scheduleSessions: readonly Session[];
+  onCreateSession: ScheduleTimeSlotHandler;
   onEditSession: ScheduleEditSessionHandler;
+  allowCreateInOccupiedSlot?: boolean;
   allowDragAndDrop?: boolean;
   activeDragSessionId?: string | null;
   onStartSessionDrag?: (session: Session, source: ScheduleSlotPosition) => void;
@@ -949,7 +1030,10 @@ function ScheduleOverlayColumn({
         <ScheduleOverlayItem
           key={item.kind === 'appointment' ? item.session.id : item.sessions.map((session) => session.id).join('|')}
           item={item}
+          day={day}
+          onCreateSession={onCreateSession}
           onEditSession={onEditSession}
+          allowCreateInOccupiedSlot={allowCreateInOccupiedSlot}
           allowDragAndDrop={allowDragAndDrop}
           activeDragSessionId={activeDragSessionId}
           onStartSessionDrag={onStartSessionDrag}
@@ -974,6 +1058,7 @@ export const DayColumn = React.memo(
     onCreateSession,
     onEditSession,
     allowCreateInEmptySlot = true,
+    allowCreateInOccupiedSlot = false,
     allowDragAndDrop = false,
     activeDragSessionId = null,
     activeDropSlotKey = null,
@@ -995,6 +1080,7 @@ export const DayColumn = React.memo(
     onCreateSession: ScheduleTimeSlotHandler;
     onEditSession: ScheduleEditSessionHandler;
     allowCreateInEmptySlot?: boolean;
+    allowCreateInOccupiedSlot?: boolean;
     allowDragAndDrop?: boolean;
     activeDragSessionId?: string | null;
     activeDropSlotKey?: string | null;
@@ -1046,7 +1132,9 @@ export const DayColumn = React.memo(
           <ScheduleOverlayColumn
             day={day}
             scheduleSessions={scheduleSessions}
+            onCreateSession={onCreateSession}
             onEditSession={onEditSession}
+            allowCreateInOccupiedSlot={allowCreateInOccupiedSlot}
             allowDragAndDrop={allowDragAndDrop}
             activeDragSessionId={activeDragSessionId}
             onStartSessionDrag={onStartSessionDrag}

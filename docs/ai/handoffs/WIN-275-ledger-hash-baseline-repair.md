@@ -44,7 +44,7 @@
 - confirm the repaired file hashes back to git blob `05ed8641a4981187c175f2cb916795a100748c17`
 - confirm the working diff is limited to the two allowed docs files
 - do not refresh or mutate attestation JSON in this slice; any later attestation update must be separately routed
-- run the two focused hash-contract tests, `npm run agent-work:retention-contract`, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, `npm run test:ci`, `npm run build`, and `npm run verify:local`
+- run the focused hash-contract test command plus `npm run agent-work:retention-contract`, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, `npm run test:ci`, `npm run build`, and `npm run verify:local`
 - record exact pass, fail, or blocked results before the PR is marked review-ready
 
 ## Verification Results
@@ -52,7 +52,49 @@
 - normalized SHA-256 of `docs/ai/handoffs/agent-work-ledger-foundation.md`: `5fdec5facaa69fe4600b957f01d8438f59340db127c6b2c48279257d0af8d2e0`; matches both unchanged attestations
 - `npm test -- --run tests/agentWorkLedgerHostedShadowProof.test.ts tests/agentWorkLedgerRetentionPolicyEncodingMigration.test.ts`: pass, 43 tests
 - `npm run agent-work:retention-contract`: blocked before execution because local Supabase container `supabase_db_AllIincompassing` is unavailable
-- broader isolated-worktree checks: pending
+- `npm run ci:check-focused`: pass; database-backed parity and branch-protection checks reported their documented local skips
+- `npm run lint`: pass
+- `npm run typecheck`: pass
+- `npm run validate:tenant`: pass
+- `npm run build`: pass
+- default-heap `npm run test:ci`: process exhausted the Windows Node heap near 4 GB after the repaired Ledger assertion passed; no assertion failure preceded the process failure
+- `$env:NODE_OPTIONS='--max-old-space-size=6144'; npm run test:ci`: pass, 479 files passed, 2 skipped; 4,109 tests passed, 5 skipped
+- `$env:NODE_OPTIONS='--max-old-space-size=6144'; $env:PREVIEW_PORT='4185'; npm run verify:local`: pass in 353 seconds, including policy checks, lint, typecheck, full unit and coverage gates, build, and all 220 Tier-0 route tests
+- no generated test-reliability report change is included in the repair diff
+
+## Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: `docs/process only` on a protected, hash-bound approval-evidence surface
+- required checks: focused hash-contract tests; `npm run agent-work:retention-contract`; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run validate:tenant`; `npm run test:ci`; `npm run build`; `npm run verify:local`
+- executed checks: focused tests, policy checks, lint, typecheck, tenant validation, full unit/coverage, build, and aggregate local verification passed as recorded above
+- blocked checks: `npm run agent-work:retention-contract` could not start because local Supabase container `supabase_db_AllIincompassing` is unavailable
+- result: `pass-with-blocked-checks`
+- residual risk: the container-backed retention contract remains for hosted CI or an available local Supabase stack; owner review remains mandatory before merge
+
+## Specialist Review
+
+- specification review confirmed the exact one-line restoration scope and prohibited attestation regeneration
+- architecture review approved restoration over hash regeneration because regeneration would cascade across predecessor and supplemental evidence
+- test review selected the focused hash contracts plus the repository verification matrix
+- final code, security, and documentation review must inspect the complete two-file diff before publication
+
+## PR Hygiene
+
+- pr-ready: `no` pending final review of committed verification evidence
+- lane: `critical`
+- branch-ready: `yes`; dedicated `codex/` branch in an isolated worktree
+- linear-ready: `yes`; tracked by `WIN-275`, currently `In Review`
+- single-purpose: `yes`; restore the canonical attested handoff bytes and record proof
+- unrelated changes: none
+- generated artifact drift: none
+- protected-path drift: none outside the declared hash-bound evidence artifact
+- change summary: present
+- verification summary: present
+- pr handoff: ready after final reviewer disposition
+- reviewer: pending review of committed verification evidence
+- required follow-up: commit this evidence, obtain final specialist disposition, push, open the critical PR, and stop for owner review
 
 ## Human Review Requirement
 

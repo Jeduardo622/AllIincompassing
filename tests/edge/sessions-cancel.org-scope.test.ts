@@ -452,7 +452,7 @@ describe("sessions-cancel org scoping", () => {
     ).resolves.toBeNull();
   });
 
-  it("treats exact in-org bcba as admin-scoped without granting admin_schedule or midtier", async () => {
+  it("treats exact in-org bcba as admin-scoped without granting midtier", async () => {
     const assertUserHasOrgRoleSpy = vi
       .spyOn(orgHelpers, "assertUserHasOrgRole")
       .mockImplementation(async (_db, _orgId, role) => role === "bcba");
@@ -467,9 +467,77 @@ describe("sessions-cancel org scoping", () => {
 
     expect(assertUserHasOrgRoleSpy).toHaveBeenNthCalledWith(1, mockDb, "org-1", "super_admin");
     expect(assertUserHasOrgRoleSpy).toHaveBeenNthCalledWith(2, mockDb, "org-1", "admin");
-    expect(assertUserHasOrgRoleSpy).toHaveBeenNthCalledWith(3, mockDb, "org-1", "bcba");
-    expect(assertUserHasOrgRoleSpy).not.toHaveBeenCalledWith(mockDb, "org-1", "admin_schedule");
+    expect(assertUserHasOrgRoleSpy).toHaveBeenNthCalledWith(3, mockDb, "org-1", "admin_schedule");
+    expect(assertUserHasOrgRoleSpy).toHaveBeenNthCalledWith(4, mockDb, "org-1", "bcba");
     expect(assertUserHasOrgRoleSpy).not.toHaveBeenCalledWith(mockDb, "org-1", "midtier");
+  });
+
+  it("treats exact in-org admin_schedule as admin-scoped", async () => {
+    const assertUserHasOrgRoleSpy = vi
+      .spyOn(orgHelpers, "assertUserHasOrgRole")
+      .mockImplementation(async (_db, _orgId, role) => role === "admin_schedule");
+
+    const mockDb: any = {
+      rpc: vi.fn(),
+    };
+
+    await expect(
+      __TESTING__.resolveCancellationRole(mockDb, "org-1", "scheduler-user"),
+    ).resolves.toBe("admin_schedule");
+
+    expect(assertUserHasOrgRoleSpy).toHaveBeenCalledWith(
+      mockDb,
+      "org-1",
+      "admin_schedule",
+    );
+    expect(assertUserHasOrgRoleSpy).not.toHaveBeenCalledWith(mockDb, "org-1", "midtier");
+  });
+
+  it("does not grant cancellation authority to an exact in-org midtier role", async () => {
+    vi.spyOn(orgHelpers, "assertUserHasOrgRole")
+      .mockImplementation(async (_db, _orgId, role) => role === "midtier");
+
+    const mockDb: any = {
+      rpc: vi.fn(),
+    };
+
+    await expect(
+      __TESTING__.resolveCancellationRole(mockDb, "org-1", "midtier-user"),
+    ).resolves.toBeNull();
+  });
+
+  it("limits admin_schedule requests to one explicit session id", () => {
+    expect(__TESTING__.isAdminScheduleExactSessionCancellationRequest({
+      holdKey: null,
+      sessionIds: ["session-1"],
+      dateRange: null,
+      therapistId: null,
+    })).toBe(true);
+
+    expect(__TESTING__.isAdminScheduleExactSessionCancellationRequest({
+      holdKey: "hold-1",
+      sessionIds: [],
+      dateRange: null,
+      therapistId: null,
+    })).toBe(false);
+    expect(__TESTING__.isAdminScheduleExactSessionCancellationRequest({
+      holdKey: null,
+      sessionIds: ["session-1", "session-2"],
+      dateRange: null,
+      therapistId: null,
+    })).toBe(false);
+    expect(__TESTING__.isAdminScheduleExactSessionCancellationRequest({
+      holdKey: null,
+      sessionIds: ["session-1"],
+      dateRange: { start: "2026-03-01T00:00:00.000Z", end: "2026-03-02T00:00:00.000Z" },
+      therapistId: null,
+    })).toBe(false);
+    expect(__TESTING__.isAdminScheduleExactSessionCancellationRequest({
+      holdKey: null,
+      sessionIds: ["session-1"],
+      dateRange: null,
+      therapistId: "therapist-1",
+    })).toBe(false);
   });
 });
 

@@ -38,6 +38,7 @@ import {
 } from '../lib/bt-aba-session-note';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
 import { logger } from '../lib/logger/logger';
+import { toError } from '../lib/logger/normalizeError';
 import { AlternativeTimes } from './AlternativeTimes';
 import { supabase } from '../lib/supabase';
 import { fetchLinkedClientSessionNoteForSession } from '../lib/session-note-linked-fetch';
@@ -713,6 +714,7 @@ interface SessionModalProps {
   onClose: () => void;
   onSubmit: (data: SessionModalSubmitData) => Promise<void | SessionNoteUpsertResult>;
   onReactivate?: (input: { session: Session; start_time: string; end_time: string }) => Promise<void>;
+  onDeleteAppointment?: (input: { session: Session }) => Promise<void>;
   session?: Session;
   selectedDate?: Date;
   selectedTime?: string;
@@ -730,7 +732,9 @@ interface SessionModalProps {
   dataCollectionOnly?: boolean;
   allowStartSession?: boolean;
   canCreateSchedules?: boolean;
+  canDeleteAppointments?: boolean;
   isReactivating?: boolean;
+  isDeletingAppointment?: boolean;
   hideGoalCaptureFields?: boolean;
   onBtAbaSessionFinalized?: (result: BtAbaFinalizeResult & { sessionId: string }) => void | Promise<void>;
 }
@@ -740,6 +744,7 @@ export function SessionModal({
   onClose,
   onSubmit,
   onReactivate,
+  onDeleteAppointment,
   session,
   selectedDate,
   selectedTime,
@@ -757,7 +762,9 @@ export function SessionModal({
   dataCollectionOnly = false,
   allowStartSession = false,
   canCreateSchedules = true,
+  canDeleteAppointments = false,
   isReactivating = false,
+  isDeletingAppointment = false,
   hideGoalCaptureFields = false,
   onBtAbaSessionFinalized,
 }: SessionModalProps) {
@@ -813,6 +820,9 @@ export function SessionModal({
   const queryClient = useQueryClient();
   const [isEntered, setIsEntered] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [isDeleteSubmitting, setIsDeleteSubmitting] = useState(false);
+  const [isDeleteConfirmationOpen, setIsDeleteConfirmationOpen] = useState(false);
+  const [deleteAppointmentError, setDeleteAppointmentError] = useState<string | null>(null);
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
   const canUseStartSessionAction = !isDataCollectionOnly || allowStartSession;
   const canReactivateSession = Boolean(
@@ -820,6 +830,12 @@ export function SessionModal({
     session.status === 'cancelled' &&
     canCreateSchedules &&
     onReactivate,
+  );
+  const canDeleteAppointment = Boolean(
+    session?.id &&
+    (session.status === 'scheduled' || session.status === 'in_progress') &&
+    canDeleteAppointments &&
+    onDeleteAppointment,
   );
   const isBtClinicalCaptureSession = Boolean(
     isDataCollectionOnly && (session?.status === 'scheduled' || session?.status === 'in_progress'),
@@ -851,6 +867,17 @@ export function SessionModal({
     btAbaTransitionRef.current = 'idle';
     closeoutCaptureRef.current = null;
   }, [session?.id]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsDeleteSubmitting(false);
+      setIsDeleteConfirmationOpen(false);
+      setDeleteAppointmentError(null);
+      return;
+    }
+    setIsDeleteSubmitting(false);
+    setDeleteAppointmentError(null);
+  }, [isOpen, session?.id]);
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
 
@@ -3067,7 +3094,54 @@ export function SessionModal({
   ].join(' ');
   const isCloseInteractionDisabled = isSubmitting || btAbaBusy || btAbaFinalized || isClosing;
   const isReactivateDisabled =
-    isCloseInteractionDisabled || isDependentDataLoading || isLoadingAlternatives || isReactivating;
+    isCloseInteractionDisabled ||
+    isDependentDataLoading ||
+    isLoadingAlternatives ||
+    isReactivating ||
+    isDeletingAppointment ||
+    isDeleteSubmitting;
+  const isDeleteAppointmentBusy = isDeletingAppointment || isDeleteSubmitting;
+  const isDeleteAppointmentDisabled =
+    isCloseInteractionDisabled ||
+    isDependentDataLoading ||
+    isLoadingAlternatives ||
+    isReactivating ||
+    isDeleteAppointmentBusy;
+
+  const deleteAppointmentSummary = useMemo(() => {
+    const currentClientId = session?.client_id;
+    const currentTherapistId = session?.therapist_id;
+    const currentStartTime = session?.start_time || '';
+    const currentEndTime = session?.end_time || '';
+    const clientLabel =
+      clients.find((client) => client.id === currentClientId)?.full_name ??
+      session?.client?.full_name ??
+      'Unknown client';
+    const therapistLabel =
+      therapists.find((therapist) => therapist.id === currentTherapistId)?.full_name ??
+      session?.therapist?.full_name ??
+      'Unknown therapist';
+
+    const parsedStart = parseISO(currentStartTime);
+    const parsedEnd = parseISO(currentEndTime);
+    const appointmentDate = Number.isNaN(parsedStart.getTime())
+      ? currentStartTime
+      : format(parsedStart, 'PPP');
+    const startLabel = Number.isNaN(parsedStart.getTime())
+      ? currentStartTime
+      : format(parsedStart, 'p');
+    const endLabel = Number.isNaN(parsedEnd.getTime())
+      ? currentEndTime
+      : format(parsedEnd, 'p');
+
+    return {
+      clientLabel,
+      therapistLabel,
+      appointmentDate,
+      startLabel,
+      endLabel,
+    };
+  }, [clients, session?.client?.full_name, session?.client_id, session?.end_time, session?.start_time, session?.therapist?.full_name, session?.therapist_id, therapists]);
 
   const handleReactivateSession = useCallback(async () => {
     if (!session || !onReactivate) {
@@ -3095,6 +3169,31 @@ export function SessionModal({
       end_time: timeZone ? toUtcSessionIsoString(currentEndTime, resolvedTimeZone) : currentEndTime,
     });
   }, [getValues, onReactivate, resolvedTimeZone, session, timeZone]);
+
+  const handleDeleteAppointment = useCallback(async () => {
+    if (!session || !onDeleteAppointment) {
+      return;
+    }
+    setDeleteAppointmentError(null);
+    setIsDeleteConfirmationOpen(true);
+  }, [onDeleteAppointment, session]);
+
+  const handleConfirmDeleteAppointment = useCallback(async () => {
+    if (!session || !onDeleteAppointment || isDeleteAppointmentDisabled) {
+      return;
+    }
+
+    try {
+      setIsDeleteSubmitting(true);
+      await onDeleteAppointment({ session });
+      setIsDeleteConfirmationOpen(false);
+      setDeleteAppointmentError(null);
+    } catch (error) {
+      setDeleteAppointmentError(`Unable to delete appointment. ${toError(error, 'Appointment deletion failed').message}`);
+    } finally {
+      setIsDeleteSubmitting(false);
+    }
+  }, [isDeleteAppointmentDisabled, onDeleteAppointment, session]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -5355,6 +5454,16 @@ export function SessionModal({
                   {isReactivating ? 'Reactivating...' : 'Reactivate appointment'}
                 </button>
               ) : null}
+              {canDeleteAppointment ? (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteAppointment()}
+                  disabled={isDeleteAppointmentDisabled}
+                  className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-rose-300 dark:hover:bg-rose-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-rose-200 sm:bg-rose-50/90 sm:px-4 sm:font-medium sm:text-rose-800 sm:shadow-sm sm:hover:bg-rose-100"
+                >
+                  {isDeletingAppointment ? 'Deleting...' : 'Delete appointment'}
+                </button>
+              ) : null}
             </div>
             <div className="flex justify-center sm:justify-end">
               <button
@@ -5380,6 +5489,83 @@ export function SessionModal({
             </div>
           </div>
         </div>
+        ) : null}
+        {isDeleteConfirmationOpen && canDeleteAppointment ? (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-950/45 px-4 backdrop-blur-[1px]">
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-appointment-title"
+              aria-describedby="delete-appointment-description"
+              className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-5 shadow-2xl dark:border-rose-900/60 dark:bg-dark-lighter"
+            >
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-rose-100 p-2 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                  <Trash2 className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 id="delete-appointment-title" className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Delete appointment
+                  </h2>
+                  <p id="delete-appointment-description" className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                    This deletes only the selected appointment.
+                  </p>
+                </div>
+              </div>
+              <dl className="mt-4 space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm dark:border-gray-700 dark:bg-dark">
+                <div className="flex justify-between gap-4">
+                  <dt className="font-medium text-gray-600 dark:text-gray-300">Client</dt>
+                  <dd className="text-right text-gray-900 dark:text-white">{deleteAppointmentSummary.clientLabel}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="font-medium text-gray-600 dark:text-gray-300">Therapist</dt>
+                  <dd className="text-right text-gray-900 dark:text-white">{deleteAppointmentSummary.therapistLabel}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="font-medium text-gray-600 dark:text-gray-300">Date</dt>
+                  <dd className="text-right text-gray-900 dark:text-white">{deleteAppointmentSummary.appointmentDate}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="font-medium text-gray-600 dark:text-gray-300">Time</dt>
+                  <dd className="text-right text-gray-900 dark:text-white">
+                    {deleteAppointmentSummary.startLabel} - {deleteAppointmentSummary.endLabel}
+                  </dd>
+                </div>
+              </dl>
+              {deleteAppointmentError ? (
+                <div
+                  role="alert"
+                  className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200"
+                >
+                  {deleteAppointmentError}
+                </div>
+              ) : null}
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isDeleteAppointmentBusy) {
+                      return;
+                    }
+                    setDeleteAppointmentError(null);
+                    setIsDeleteConfirmationOpen(false);
+                  }}
+                  disabled={isDeleteAppointmentBusy}
+                  className="min-h-11 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  Keep appointment
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmDeleteAppointment()}
+                  disabled={isDeleteAppointmentBusy}
+                  className="min-h-11 rounded-md border border-transparent bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isDeleteAppointmentBusy ? 'Deleting...' : 'Confirm delete appointment'}
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>

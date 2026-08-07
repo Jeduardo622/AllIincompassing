@@ -778,6 +778,12 @@ export const Schedule = React.memo(() => {
     effectiveRole === "admin" ||
     effectiveRole === "bcba" ||
     effectiveRole === "super_admin";
+  const canDeleteAppointments = hasCapability("manageStaff") && (
+    effectiveRole === "admin_schedule" ||
+    effectiveRole === "admin" ||
+    effectiveRole === "bcba" ||
+    effectiveRole === "super_admin"
+  );
 
   const showOrgDirectoryEmpty =
     displayData.therapists.length === 0 && displayData.clients.length === 0;
@@ -1282,6 +1288,15 @@ export const Schedule = React.memo(() => {
     },
   });
 
+  const deleteAppointmentMutation = useMutation({
+    mutationFn: async ({ sessionId }: { sessionId: string }) => {
+      return cancelSessions({
+        sessionIds: [sessionId],
+        cancellationAttribution: "staff",
+      });
+    },
+  });
+
   const rescheduleSessionMutation = useMutation({
     mutationFn: async ({
       session,
@@ -1626,22 +1641,41 @@ export const Schedule = React.memo(() => {
     });
   }, [reactivateSessionMutation]);
 
-  const _handleDeleteSession = useCallback(
-    async (sessionId: string) => {
-      if (window.confirm("Are you sure you want to cancel this session?")) {
-        const result = await cancelSessionMutation.mutateAsync({
-          sessionId,
-        });
+  const handleDeleteAppointment = useCallback(async (
+    { session: targetSession }: { session: Session },
+  ) => {
+    const result = await deleteAppointmentMutation.mutateAsync({
+      sessionId: targetSession.id,
+    });
 
-        showSuccess(
-          result.cancelledCount > 0
-            ? "Session cancelled successfully"
-            : "Session was already cancelled",
-        );
-      }
-    },
-    [cancelSessionMutation],
-  );
+    if (result.cancelledCount === 0 && result.alreadyCancelledCount === 0) {
+      throw new Error("Appointment is no longer cancellable.");
+    }
+
+    handleCloseSessionModal();
+    showSuccess(
+      result.cancelledCount > 0
+        ? "Appointment deleted"
+        : "Appointment was already deleted",
+    );
+
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["sessions-batch"] }),
+        queryClient.refetchQueries({ queryKey: ["sessions"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["sessions-batch"], type: "active" }),
+      ]);
+    } catch (error) {
+      logger.warn("Appointment deleted but schedule refresh failed", {
+        metadata: {
+          sessionId: targetSession.id,
+          reason: toError(error, "Schedule refresh failed").message,
+        },
+      });
+      showError("Appointment deleted, but the schedule refresh failed. Refresh the page to see the latest schedule.");
+    }
+  }, [deleteAppointmentMutation, handleCloseSessionModal, queryClient]);
 
   const handleSubmit = useCallback(
     async (data: ScheduleSubmitData) => {
@@ -2081,8 +2115,11 @@ export const Schedule = React.memo(() => {
           !selectedSession.started_at
         }
         canCreateSchedules={!therapistScopedView}
+        canDeleteAppointments={canDeleteAppointments}
         onReactivate={!therapistScopedView ? handleReactivateSession : undefined}
+        onDeleteAppointment={canDeleteAppointments ? handleDeleteAppointment : undefined}
         isReactivating={reactivateSessionMutation.isPending}
+        isDeletingAppointment={deleteAppointmentMutation.isPending}
         hideGoalCaptureFields={effectiveRole === "admin" || effectiveRole === "admin_schedule"}
         defaultTherapistId={selectedTherapist}
         defaultClientId={selectedClient}

@@ -84,12 +84,16 @@
   - `npm run ci:playwright` -> fail during `playwright:auth`; configured hosted smoke credentials returned `Invalid email or password`
   - `npm run playwright:auth` after synchronizing the approved `.env*` super-admin smoke password with the hosted Supabase auth user -> pass
   - `TZ=UTC npx vitest run src/components/__tests__/SessionModal.test.tsx -t "confirms appointment deletion|keeps deletion confirmation"` -> pass, 2 tests; the CI-only hard-coded timezone assertions were replaced with environment-derived date-fns formatting
+  - GitHub Actions run `31215201119`, `unit-tests` -> fail; the blank persisted plan-target row assertion ran before that row's asynchronous form hydration completed
+  - `npx vitest run src/components/__tests__/SessionModal.test.tsx -t "keeps a blank persisted plan-target evidence row visible and bindable when legacy target strings are missing" --maxWorkers=1 --minWorkers=1` -> pass, 8/8 pre-fix isolation runs and one post-fix run; the assertion now awaits the intended persisted row
+  - `npx vitest run src/components/__tests__/SessionModal.test.tsx --maxWorkers=1 --minWorkers=1` after the synchronization fix -> pass, 165 tests
+  - GitHub Actions run `31215201119`, `tenant-safety` -> infrastructure failure during `npm ci`; Cypress 13.17.0 could not be downloaded, while the separate same-head tenant-safety workflow passed
   - `npm run test:ui:responsive -- --base-url=http://127.0.0.1:4174 --route=/schedule` -> fail with sanitized artifacts; desktop reported `console-error`, mobile reported `console-error` and `undersized-mobile-touch-target`
 - Blocked checks:
   - `npm run ci:verify-coverage` -> blocked because both coverage-producing runs failed before a trustworthy summary could be finalized
   - responsive observer feature-state proof -> blocked because the mandatory observer is intentionally unauthenticated and aborts the external Supabase requests required to leave the login/loading shell
 - Result: fail
-- Residual risk: targeted behavior, static checks, build, tenant validation, and hosted auth smoke are green, but the required aggregate, responsive, route, and CI gates are not yet merge-clean.
+- Residual risk: targeted behavior, static checks, build, tenant validation, hosted auth smoke, and the locally reproduced CI unit suite are green, but a fresh GitHub Actions head and the required responsive, route, and aggregate gates must still complete.
 
 Responsive evidence:
 

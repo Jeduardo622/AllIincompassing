@@ -7467,7 +7467,7 @@ describe('SessionModal', () => {
     expect(planTargetButton).toHaveTextContent(planTarget);
     expect(screen.queryByRole('button', { name: /Plan target selected/i })).not.toBeInTheDocument();
     expect(screen.getAllByText(planTarget)).toHaveLength(1);
-    expect(screen.getByText('No target selected')).toBeInTheDocument();
+    expect(await screen.findByText('No target selected')).toBeInTheDocument();
     expect(screen.getByText(/\+4 · −1/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Prompts & reactions for target 1/i)).toHaveValue('Persisted blank target row note');
     expect(screen.getByRole('button', { name: /Increase correct trials for target 1/i })).toBeInTheDocument();

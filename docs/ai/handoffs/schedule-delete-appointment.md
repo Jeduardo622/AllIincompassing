@@ -87,6 +87,9 @@
   - GitHub Actions run `31215201119`, `unit-tests` -> fail; the blank persisted plan-target row assertion ran before that row's asynchronous form hydration completed
   - `npx vitest run src/components/__tests__/SessionModal.test.tsx -t "keeps a blank persisted plan-target evidence row visible and bindable when legacy target strings are missing" --maxWorkers=1 --minWorkers=1` -> pass, 8/8 pre-fix isolation runs and one post-fix run; the assertion now awaits the intended persisted row
   - `npx vitest run src/components/__tests__/SessionModal.test.tsx --maxWorkers=1 --minWorkers=1` after the synchronization fix -> pass, 165 tests
+  - `npm run lint` -> pass
+  - `npm run typecheck` -> pass
+  - `npm run build` -> pass
   - GitHub Actions run `31215201119`, `tenant-safety` -> infrastructure failure during `npm ci`; Cypress 13.17.0 could not be downloaded, while the separate same-head tenant-safety workflow passed
   - `npm run test:ui:responsive -- --base-url=http://127.0.0.1:4174 --route=/schedule` -> fail with sanitized artifacts; desktop reported `console-error`, mobile reported `console-error` and `undersized-mobile-touch-target`
 - Blocked checks:

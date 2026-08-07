@@ -4,6 +4,7 @@ import { callApi } from "../../lib/api";
 import { useAuth } from "../../lib/authContext";
 import {
   createAssessmentWorkLedgerQueryOptions,
+  createIehpAssessmentPrepWorkLedger,
   decideAgentWorkApproval,
   type AssessmentWorkLedgerPanelState,
 } from "../../lib/agent-work-ledger";
@@ -645,9 +646,11 @@ const addStatusToPageReviewSummary = (summary: PageReviewSummary, status: Review
 export function IehpFbaLayoutReview({
   assessmentDocument,
   organizationId,
+  canCreateWorkLedger = false,
 }: {
   assessmentDocument: AssessmentDocumentRecord;
   organizationId: string | null | undefined;
+  canCreateWorkLedger?: boolean;
 }) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -659,6 +662,7 @@ export function IehpFbaLayoutReview({
   const [rawPreviewBySectionId, setRawPreviewBySectionId] = useState<Record<string, boolean>>({});
   const [expandedFieldByKey, setExpandedFieldByKey] = useState<Record<string, boolean>>({});
   const [expandedStructuredSectionById, setExpandedStructuredSectionById] = useState<Record<string, boolean>>({});
+  const [createLedgerError, setCreateLedgerError] = useState<string | null>(null);
 
   const ledgerEnabled = Boolean(
     assessmentDocument.id
@@ -688,6 +692,23 @@ export function IehpFbaLayoutReview({
     },
     onError: (error) => {
       showError(error instanceof Error ? error.message : "Failed to record handoff decision");
+    },
+  });
+  const createLedger = useMutation({
+    mutationFn: async () => createIehpAssessmentPrepWorkLedger({
+      assessmentDocumentId: assessmentDocument.id,
+    }),
+    onMutate: () => {
+      setCreateLedgerError(null);
+    },
+    onSuccess: async () => {
+      setCreateLedgerError(null);
+      await ledgerQuery.refetch();
+      showSuccess("Work item created.");
+    },
+    onError: () => {
+      setCreateLedgerError("Unable to create work item.");
+      showError("Unable to create work item.");
     },
   });
 
@@ -1038,18 +1059,43 @@ export function IehpFbaLayoutReview({
 
   return (
     <div id="iehp-layout-review" className="space-y-4 rounded-xl border border-slate-700 bg-slate-950 p-3 text-slate-100">
-      <AssessmentWorkLedgerPanel
-        state={ledgerState}
-        reviewHref="#iehp-current-review-section"
-        onApprovalDecision={(approval, decision) => approvalDecision.mutateAsync({
-          workItemId: ledgerState.kind === "available" ? ledgerState.item.id : "",
-          approvalId: approval.id,
-          decision,
-          reasonCode: decision === "approve"
-            ? "clinical_review_accepted"
-            : "clinical_review_rejected",
-        })}
-      />
+      {ledgerState.kind === "no-ledger" && canCreateWorkLedger
+        ? (
+          <section className="rounded-xl border border-slate-700 bg-slate-950 p-4 text-slate-100">
+            <h2 className="text-sm font-semibold">{ledgerState.runtimeMode === "shadow" ? "Shadow work ledger" : "Advisory work ledger"}</h2>
+            <p className="mt-2 text-sm text-slate-300">No work item is available yet.</p>
+            <p className="mt-2 text-xs text-slate-400">AI actions cannot approve or publish this assessment.</p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => createLedger.mutate()}
+                disabled={createLedger.isPending}
+                className="rounded-md bg-cyan-700 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-50"
+              >
+                {createLedger.isPending ? "Creating work item..." : "Create work item"}
+              </button>
+              {createLedgerError && (
+                <p className="text-xs font-medium text-rose-300" role="status" aria-live="polite">
+                  {createLedgerError}
+                </p>
+              )}
+            </div>
+          </section>
+        )
+        : (
+          <AssessmentWorkLedgerPanel
+            state={ledgerState}
+            reviewHref="#iehp-current-review-section"
+            onApprovalDecision={(approval, decision) => approvalDecision.mutateAsync({
+              workItemId: ledgerState.kind === "available" ? ledgerState.item.id : "",
+              approvalId: approval.id,
+              decision,
+              reasonCode: decision === "approve"
+                ? "clinical_review_accepted"
+                : "clinical_review_rejected",
+            })}
+          />
+        )}
 
       <div className="rounded-md border border-cyan-700/40 bg-cyan-950/40 p-3 text-xs text-cyan-100">
         <p className="font-semibold">IEHP FBA document-style review</p>

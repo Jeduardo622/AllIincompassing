@@ -94,6 +94,8 @@ Compatibility / repo-specific Codex agents:
 - `supabase-tenant-safety`
 - `playwright-regression-triage`
 - `clinical-data-parity-auditor`
+- `responsive-ui-observer`
+- `agent-work-local-operator`
 
 ### Cursor Skills In Repo (`.cursor/skills`)
 
@@ -173,7 +175,15 @@ When no secrets/protected systems are needed, run `npm run verify:local`.
 ### Hard Rules
 
 - Never bypass lint/typecheck/tests/policy checks.
+- Visible UI changes require the local `responsive-ui-observer` at desktop `1440x900` and mobile `390x844` for every affected route before verification closure.
 - Escalate immediately to `critical` if scope touches high-risk paths/behaviors.
 - Do not complete non-trivial work without verification artifact + PR hygiene verdict.
 - Use bounded PR check polling; no indefinite waits.
+
+### Agent Work Ledger Boundary
+
+- Use Linear plus the relevant markdown handoff for engineering planning, execution evidence, and review state. Do not send engineering issues, prompts, code, or review content to the tenant-scoped Agent Work Ledger.
+- Application callers may invoke only the fixed IEHP assessment-preparation and CalOptima draft-review workflows documented in `docs/ops/agent-work-ledger-caller-adoption.md`.
+- The authenticated Edge boundary derives actor, organization, client, graph, approval, and runtime authority. Callers provide only the fixed route payload and stable identifiers defined by the contract.
+- `disabled`, `shadow`, and `advisory` are the complete runtime set; `active` is forbidden. Any Ledger boundary change routes `critical` and requires `supabase-tenant-safety` plus human review.
 

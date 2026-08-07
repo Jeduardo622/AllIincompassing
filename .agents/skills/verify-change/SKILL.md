@@ -50,17 +50,19 @@ For non-trivial code/config work, this is a hard gate: no completion without the
    - `npm run build`
    - `npm run ci:check-focused`
    - `npm run verify:local`
-7. Run the smallest required set that satisfies lane and change-type obligations.
-8. If browser/auth checks are required, include:
+   - `npm run test:ui:responsive -- --base-url=http://127.0.0.1:<port> --route=/affected-route`
+7. For visible changes under `src/components/**`, `src/pages/**`, or shared styling/config, require explicit affected routes and the responsive observer result at desktop `1440x900` and mobile `390x844`. Missing observer evidence is a blocked check, not a pass.
+8. Run the smallest required set that satisfies lane and change-type obligations.
+9. If browser/auth checks are required, include:
    - `npm run test:routes:tier0`
    - `npm run ci:playwright`
-9. If tenant boundaries, RLS, grants, RPC exposure, migrations, or tenant-scoped writes are affected, include:
+10. If tenant boundaries, RLS, grants, RPC exposure, migrations, or tenant-scoped writes are affected, include:
    - `npm run validate:tenant`
-10. If the change touches `.github/workflows/**`, `scripts/ci/**`, Husky hooks, or verification policy docs, validate the affected workflow/script directly in addition to standard commands.
-11. When required checks do not need protected systems/secrets, include `npm run verify:local`.
-12. If a required check cannot run because secrets/services/environment are missing, keep it in required checks and record a blocked reason.
-13. Before finalizing any non-trivial change, use `reviewer`. Prioritize auth, org-scope, API-boundary, CI-policy, and security regressions.
-14. Produce the verification card in the required output format below.
+11. If the change touches `.github/workflows/**`, `scripts/ci/**`, Husky hooks, or verification policy docs, validate the affected workflow/script directly in addition to standard commands.
+12. When required checks do not need protected systems/secrets, include `npm run verify:local`.
+13. If a required check cannot run because secrets/services/environment are missing, keep it in required checks and record a blocked reason.
+14. Before finalizing any non-trivial change, use `reviewer`. Prioritize auth, org-scope, API-boundary, CI-policy, and security regressions.
+15. Produce the verification card in the required output format below.
 
 ## Hard Gate Rules
 

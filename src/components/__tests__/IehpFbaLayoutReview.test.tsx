@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderWithProviders, screen, waitFor, within } from "../../test/utils";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
+import { showError, showSuccess } from "../../lib/toast";
 import { __TESTING__, IehpFbaLayoutReview } from "../ClientDetails/IehpFbaLayoutReview";
 import type { AssessmentDocumentRecord } from "../../lib/assessment-documents";
 
@@ -206,6 +207,228 @@ describe("IehpFbaLayoutReview", () => {
       "#iehp-current-review-section",
     );
     expect(document.querySelector("#iehp-current-review-section")).toBeInTheDocument();
+  });
+
+  it("shows a no-ledger create action in advisory mode, prevents double submit, and refreshes ledger state after success", async () => {
+    vi.mocked(callApi).mockResolvedValue(
+      new Response(JSON.stringify({
+        template_version: {
+          version_key: "iehp_fba_updated_fba_11_2026_05",
+          source_document_name: "Updated FBA -IEHP (11).docx",
+          page_count: 30,
+        },
+        pages: [{ page_number: 1, title: "General Information", layout_json: {} }],
+        fields: [],
+        values: {
+          checklist_items: [],
+          structured_sections: [],
+        },
+        unresolved_required_count: 0,
+        extracted_value_count: 0,
+      }), { status: 200 }),
+    );
+
+    let resolveCreate: ((response: Response) => void) | null = null;
+    vi.mocked(callEdgeFunctionHttp).mockImplementation((path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("agent-work-items?")) {
+        const url = new URL(`https://example.test/${path}`);
+        const workflowKey = url.searchParams.get("workflow_key");
+        if (workflowKey !== "assessment.iehp.prepare_for_clinical_review") {
+          return Promise.resolve(new Response(JSON.stringify({ success: false, error: "unexpected workflow" }), { status: 500 }));
+        }
+        const created = vi.mocked(callEdgeFunctionHttp).mock.calls.some(
+          ([calledPath, calledInit]) =>
+            calledPath === "agent-work-items/assessment-prep" &&
+            ((calledInit as RequestInit | undefined)?.method ?? "POST").toUpperCase() === "POST",
+        );
+        return Promise.resolve(new Response(JSON.stringify({
+          success: true,
+          data: created
+            ? [{
+              id: "55555555-5555-4555-8555-555555555555",
+              workflowKey: "assessment.iehp.prepare_for_clinical_review",
+              workflowVersion: 1,
+              objective: "Prepare this assessment for clinical review",
+              status: "waiting",
+              risk: "clinical",
+              hasOwner: true,
+              dueAt: null,
+              blockers: [],
+              steps: [],
+              approvals: [],
+              updatedAt: "2026-08-02T12:00:00.000Z",
+            }]
+            : [],
+          meta: { runtimeMode: "advisory" },
+        }), { status: 200 }));
+      }
+
+      if (method === "POST" && path === "agent-work-items/assessment-prep") {
+        return new Promise<Response>((resolve) => {
+          resolveCreate = resolve;
+        });
+      }
+
+      return Promise.resolve(new Response(JSON.stringify({ error: `unexpected request: ${method} ${path}` }), { status: 500 }));
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview
+        assessmentDocument={assessmentDocument}
+        organizationId="org-1"
+        canCreateWorkLedger
+      />,
+    );
+
+    expect(await screen.findByText(/No work item is available yet/i)).toBeInTheDocument();
+    const createButton = screen.getByRole("button", { name: "Create work item" });
+    fireEvent.click(createButton);
+    expect(screen.getByRole("button", { name: "Creating work item..." })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Creating work item..." }));
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(callEdgeFunctionHttp).mock.calls.filter(
+          ([path, init]) =>
+            path === "agent-work-items/assessment-prep" &&
+            ((init as RequestInit | undefined)?.method ?? "POST").toUpperCase() === "POST",
+        ),
+      ).toHaveLength(1);
+    });
+
+    resolveCreate?.(
+      new Response(JSON.stringify({
+        success: true,
+        data: {
+          id: "55555555-5555-4555-8555-555555555555",
+          workflowKey: "assessment.iehp.prepare_for_clinical_review",
+          workflowVersion: 1,
+          objective: "Prepare this assessment for clinical review",
+          status: "waiting",
+          risk: "clinical",
+          hasOwner: true,
+          dueAt: null,
+          blockers: [],
+          steps: [],
+          approvals: [],
+          updatedAt: "2026-08-02T12:00:00.000Z",
+        },
+        meta: { runtimeMode: "advisory" },
+      }), { status: 201 }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Prepare this assessment for clinical review")).toBeInTheDocument();
+    });
+    expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+      "agent-work-items/assessment-prep",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          assessmentDocumentId: "11111111-1111-4111-8111-111111111111",
+          workflowVersion: 1,
+        }),
+      }),
+    );
+    expect(vi.mocked(showSuccess)).toHaveBeenCalledWith("Work item created.");
+  });
+
+  it("shows the same no-ledger create action in shadow mode and renders a sanitized failure message", async () => {
+    vi.mocked(callApi).mockResolvedValue(
+      new Response(JSON.stringify({
+        template_version: {
+          version_key: "iehp_fba_updated_fba_11_2026_05",
+          source_document_name: "Updated FBA -IEHP (11).docx",
+          page_count: 30,
+        },
+        pages: [{ page_number: 1, title: "General Information", layout_json: {} }],
+        fields: [],
+        values: {
+          checklist_items: [],
+          structured_sections: [],
+        },
+        unresolved_required_count: 0,
+        extracted_value_count: 0,
+      }), { status: 200 }),
+    );
+    vi.mocked(callEdgeFunctionHttp).mockImplementation((path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("agent-work-items?")) {
+        return Promise.resolve(new Response(JSON.stringify({
+          success: true,
+          data: [],
+          meta: { runtimeMode: "shadow" },
+        }), { status: 200 }));
+      }
+
+      if (method === "POST" && path === "agent-work-items/assessment-prep") {
+        return Promise.resolve(new Response(JSON.stringify({
+          success: false,
+          error: "Tenant scope mismatch: org-1/client-1/document-9",
+          code: "tenant_scope_mismatch",
+        }), { status: 403 }));
+      }
+
+      return Promise.resolve(new Response(JSON.stringify({ error: `unexpected request: ${method} ${path}` }), { status: 500 }));
+    });
+
+    renderWithProviders(
+      <IehpFbaLayoutReview
+        assessmentDocument={assessmentDocument}
+        organizationId="org-1"
+        canCreateWorkLedger
+      />,
+    );
+
+    expect(await screen.findByText(/No work item is available yet/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Shadow work ledger" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create work item" }));
+
+    expect(await screen.findByText("Unable to create work item.")).
+      toBeInTheDocument();
+    expect(screen.queryByText(/tenant scope mismatch/i)).not.toBeInTheDocument();
+    expect(vi.mocked(showError)).toHaveBeenCalledWith("Unable to create work item.");
+  });
+
+  it("does not expose or invoke the create action without the manage capability", async () => {
+    vi.mocked(callApi).mockResolvedValue(
+      new Response(JSON.stringify({
+        template_version: {
+          version_key: "iehp_fba_updated_fba_11_2026_05",
+          source_document_name: "Updated FBA -IEHP (11).docx",
+          page_count: 30,
+        },
+        pages: [{ page_number: 1, title: "General Information", layout_json: {} }],
+        fields: [],
+        values: { checklist_items: [], structured_sections: [] },
+        unresolved_required_count: 0,
+        extracted_value_count: 0,
+      }), { status: 200 }),
+    );
+    vi.mocked(callEdgeFunctionHttp).mockResolvedValue(
+      new Response(JSON.stringify({
+        success: true,
+        data: [],
+        meta: { runtimeMode: "advisory" },
+      }), { status: 200 }),
+    );
+
+    renderWithProviders(
+      <IehpFbaLayoutReview
+        assessmentDocument={assessmentDocument}
+        organizationId="org-1"
+        canCreateWorkLedger={false}
+      />,
+    );
+
+    expect(await screen.findByText(/No read-only advisory work item is available yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create work item" })).not.toBeInTheDocument();
+    expect(
+      vi.mocked(callEdgeFunctionHttp).mock.calls.some(
+        ([path, init]) => path === "agent-work-items/assessment-prep" && init?.method === "POST",
+      ),
+    ).toBe(false);
   });
 
   it("renders IEHP page layout metadata without CalOptima copy and saves checklist values", async () => {

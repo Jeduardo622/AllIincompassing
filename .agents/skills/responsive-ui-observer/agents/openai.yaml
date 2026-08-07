@@ -1,0 +1,4 @@
+interface:
+  display_name: "Responsive UI Observer"
+  short_description: "Run deterministic desktop and mobile responsive observation for visible UI changes."
+  default_prompt: "Use $responsive-ui-observer for visible UI changes. Require explicit loopback --base-url and one or more --route flags, run the observer at 1440x900 and 390x844, treat Computer as supplemental only, and return only machine-safe artifact results."

@@ -70,6 +70,36 @@ const buildEdgeAuthHeaders = (token: string): Record<string, string> => ({
   Authorization: `Bearer ${token}`,
 });
 
+export const buildServiceRoleFallbackSessionInsert = (params: {
+  organizationId: string;
+  therapistId: string;
+  clientId: string;
+  programId: string;
+  goalId: string;
+  actorUserId: string;
+  startIso: string;
+  endIso: string;
+  notes?: string;
+}) => {
+  const actorUserId = params.actorUserId.trim();
+  if (!actorUserId) {
+    throw new Error("actorUserId is required for service-role fallback ownership.");
+  }
+  return {
+    organization_id: params.organizationId,
+    therapist_id: params.therapistId,
+    client_id: params.clientId,
+    program_id: params.programId,
+    goal_id: params.goalId,
+    start_time: params.startIso,
+    end_time: params.endIso,
+    status: "scheduled",
+    notes: params.notes ?? "Playwright in-progress setup fallback booking",
+    created_by: actorUserId,
+    updated_by: actorUserId,
+  };
+};
+
 const createSessionViaServiceRole = async (params: {
   therapistId: string;
   clientId: string;
@@ -104,23 +134,23 @@ const createSessionViaServiceRole = async (params: {
   const baseStart = new Date(params.startIso);
   const baseEnd = new Date(params.endIso);
   const durationMs = Math.max(15 * 60 * 1000, baseEnd.getTime() - baseStart.getTime());
+  const actorUserId = getEnv("PW_SUPERADMIN_USER_ID");
 
   for (let attempt = 0; attempt < 48; attempt += 1) {
     const start = buildVisibleScheduleBookingAttemptStart(baseStart, attempt, params.timeZone);
     const end = new Date(start.getTime() + durationMs);
     const { data, error } = await adminClient
       .from("sessions")
-      .insert({
-        organization_id: organizationId,
-        therapist_id: params.therapistId,
-        client_id: params.clientId,
-        program_id: params.programId,
-        goal_id: params.goalId,
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
-        status: "scheduled",
-        notes: "Playwright in-progress setup fallback booking",
-      })
+      .insert(buildServiceRoleFallbackSessionInsert({
+        organizationId,
+        therapistId: params.therapistId,
+        clientId: params.clientId,
+        programId: params.programId,
+        goalId: params.goalId,
+        actorUserId,
+        startIso: start.toISOString(),
+        endIso: end.toISOString(),
+      }))
       .select("id")
       .single();
 

@@ -30,6 +30,7 @@ import {
   buildSessionPlanControlSelectors,
   selectSessionPlanControls,
 } from "./lib/playwright-session-plan-controls";
+import { buildServiceRoleFallbackSessionInsert } from "./lib/playwright-inprogress-session-setup";
 
 export { buildSessionPlanControlSelectors } from "./lib/playwright-session-plan-controls";
 
@@ -226,22 +227,22 @@ const createSessionViaServiceRole = async (params: {
   const baseEnd = new Date(params.endIso);
   const durationMs = Math.max(15 * 60 * 1000, baseEnd.getTime() - baseStart.getTime());
   const fallbackStarts = buildBookingCandidateStarts().filter((candidate) => candidate.getTime() >= baseStart.getTime());
+  const actorUserId = getEnv("PW_SUPERADMIN_USER_ID");
 
   for (const start of fallbackStarts) {
     const end = new Date(start.getTime() + durationMs);
     const { data, error } = await adminClient
       .from("sessions")
-      .insert({
-        organization_id: organizationId,
-        therapist_id: params.therapistId,
-        client_id: params.clientId,
-        program_id: params.programId,
-        goal_id: params.goalId,
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
-        status: "scheduled",
-        notes: "Playwright lifecycle fallback booking",
-      })
+      .insert(buildLifecycleServiceRoleFallbackSessionInsert({
+        organizationId,
+        therapistId: params.therapistId,
+        clientId: params.clientId,
+        programId: params.programId,
+        goalId: params.goalId,
+        actorUserId,
+        startIso: start.toISOString(),
+        endIso: end.toISOString(),
+      }))
       .select("id,start_time,end_time")
       .single();
 
@@ -260,6 +261,20 @@ const createSessionViaServiceRole = async (params: {
 
   throw new Error("Service-role session fallback insert failed: unable to find a non-overlapping slot.");
 };
+
+export const buildLifecycleServiceRoleFallbackSessionInsert = (params: {
+  organizationId: string;
+  therapistId: string;
+  clientId: string;
+  programId: string;
+  goalId: string;
+  actorUserId: string;
+  startIso: string;
+  endIso: string;
+}) => buildServiceRoleFallbackSessionInsert({
+  ...params,
+  notes: "Playwright lifecycle fallback booking",
+});
 
 export const filterNonOverlappingBookingStarts = (
   candidates: Date[],
@@ -1835,6 +1850,19 @@ async function markTerminalViaScheduleModal(
   await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
 }
 
+export const resolveLifecycleCredentialCandidates = (
+  flowLabel = "Session lifecycle Playwright regression",
+) =>
+  assertNonAiSessionsEnvContract(flowLabel)
+    .sort((left, right) => {
+      const priority = (label: string): number => {
+        if (label.startsWith("PW_ADMIN_")) return 0;
+        if (label.startsWith("PW_SUPERADMIN_")) return 1;
+        return 2;
+      };
+      return priority(left.label) - priority(right.label);
+    });
+
 export async function run() {
   loadPlaywrightEnv();
   const base = getEnv("PW_BASE_URL", "https://app.allincompassing.ai");
@@ -1845,16 +1873,9 @@ export async function run() {
     throw new Error("PW_LIFECYCLE_TERMINAL_STATUS must be either 'no-show' or 'completed'.");
   }
   const terminalStatus = terminalStatusRaw as TerminalStatus;
-  const credentialCandidates = assertNonAiSessionsEnvContract(
+  const credentialCandidates = resolveLifecycleCredentialCandidates(
     `Session lifecycle (${terminalStatus}) Playwright regression`,
-  ).sort((left, right) => {
-    const leftIsAdmin = left.label.startsWith("PW_ADMIN_");
-    const rightIsAdmin = right.label.startsWith("PW_ADMIN_");
-    if (leftIsAdmin === rightIsAdmin) {
-      return 0;
-    }
-    return leftIsAdmin ? -1 : 1;
-  });
+  );
   console.log(
     JSON.stringify({
       ok: true,

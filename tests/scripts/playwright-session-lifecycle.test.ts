@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   buildBookingCandidateStarts,
   buildBookingConflictWindowFilters,
+  buildLifecycleServiceRoleFallbackSessionInsert,
   buildSessionPlanControlSelectors,
   cleanupBeforeNoResponseFailure,
   filterNonOverlappingBookingStarts,
@@ -33,6 +34,23 @@ describe("playwright session lifecycle booking starts", () => {
     expect(noShowStarts[0].getHours()).toBe(13);
     expect(completedStarts[0].getHours()).toBe(15);
     expect(completedStarts[0].toISOString()).not.toBe(noShowStarts[0].toISOString());
+  });
+
+  it("binds lifecycle fallback sessions to the exact provisioned smoke actor", () => {
+    expect(buildLifecycleServiceRoleFallbackSessionInsert({
+      organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      therapistId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      clientId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      programId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      goalId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      actorUserId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      startIso: "2026-08-07T16:00:00.000Z",
+      endIso: "2026-08-07T17:00:00.000Z",
+    })).toMatchObject({
+      created_by: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      updated_by: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      notes: "Playwright lifecycle fallback booking",
+    });
   });
 
   it("starts in a seeded future window to avoid colliding with shared hosted sessions", () => {

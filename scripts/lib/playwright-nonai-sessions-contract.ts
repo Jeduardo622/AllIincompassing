@@ -49,6 +49,8 @@ const buildFailureMessage = (flowLabel: string, issues: EnvIssue[], extraGuidanc
 };
 
 export const resolveNonAiSessionCredentialCandidates = (): CredentialCandidate[] => {
+  const superadminEmail = normalizeEnvValue(process.env.PW_SUPERADMIN_EMAIL);
+  const superadminPassword = normalizeEnvValue(process.env.PW_SUPERADMIN_PASSWORD);
   const scheduleEmail = normalizeEnvValue(process.env.PW_SCHEDULE_EMAIL);
   const schedulePassword = normalizeEnvValue(process.env.PW_SCHEDULE_PASSWORD);
   const adminEmail = normalizeEnvValue(process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL);
@@ -67,6 +69,13 @@ export const resolveNonAiSessionCredentialCandidates = (): CredentialCandidate[]
       email: adminEmail,
       password: adminPassword,
       label: "PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD",
+    });
+  }
+  if (superadminEmail && superadminPassword) {
+    candidates.push({
+      email: superadminEmail,
+      password: superadminPassword,
+      label: "PW_SUPERADMIN_EMAIL + PW_SUPERADMIN_PASSWORD",
     });
   }
   return candidates;
@@ -92,9 +101,16 @@ export const assertNonAiSessionsEnvContract = (flowLabel: string): CredentialCan
   const serviceRole = normalizeEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY);
   collectIssue(issues, "SUPABASE_SERVICE_ROLE_KEY", serviceRole);
 
+  const superadminEmail = normalizeEnvValue(process.env.PW_SUPERADMIN_EMAIL);
+  const superadminPassword = normalizeEnvValue(process.env.PW_SUPERADMIN_PASSWORD);
+  if (superadminEmail || superadminPassword) {
+    collectIssue(issues, "PW_SUPERADMIN_EMAIL", superadminEmail);
+    collectIssue(issues, "PW_SUPERADMIN_PASSWORD", superadminPassword);
+  }
+
   const candidates = resolveNonAiSessionCredentialCandidates();
   if (candidates.length === 0) {
-    issues.push({ key: "PW_SCHEDULE_* or PW_ADMIN_* credential pair", reason: "missing" });
+    issues.push({ key: "PW_SUPERADMIN_*, PW_SCHEDULE_*, or PW_ADMIN_* credential pair", reason: "missing" });
   }
 
   if (issues.length > 0) {
@@ -102,7 +118,7 @@ export const assertNonAiSessionsEnvContract = (flowLabel: string): CredentialCan
       buildFailureMessage(
         flowLabel,
         issues,
-        "Set either PW_SCHEDULE_EMAIL/PW_SCHEDULE_PASSWORD or PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD.",
+        "Set PW_SUPERADMIN_EMAIL/PW_SUPERADMIN_PASSWORD, PW_SCHEDULE_EMAIL/PW_SCHEDULE_PASSWORD, or PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD.",
       ),
     );
   }

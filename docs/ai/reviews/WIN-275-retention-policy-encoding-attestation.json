@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "issue": "WIN-275",
+  "reviewMode": "solo-maintainer-critical-retention-policy-encoding",
+  "repository": "Jeduardo622/AllIincompassing",
+  "createdAt": "2026-08-06T11:56:43Z",
+  "decision": {
+    "reference": "LINEAR:WIN-275:COMMENT:556735C4-5D1D-4257-8ACA-261D99973992",
+    "sha256": "148b3b42e4b5dfb1bf5fb134bc09351409a1181b53e68d2d0e45ee8b36609e34",
+    "retentionDays": {
+      "ledger_history": 365,
+      "queue_archive": 90,
+      "execution_trace": 30
+    }
+  },
+  "authorization": {
+    "nonDestructivePolicyEncoding": true,
+    "operationalPolicyActivation": false,
+    "retentionDeletion": false,
+    "hostedAction": false,
+    "runtimeOrSchedulerChange": false
+  },
+  "specialistReviews": {
+    "code-review-engineer": {
+      "agentId": "019fd6eb-2270-7553-80e4-322ff6e61d35",
+      "verdict": "PASS"
+    },
+    "security-engineer": {
+      "agentId": "019fd6c5-8ea9-7ca3-a76a-82933cefa13c",
+      "verdict": "PASS"
+    },
+    "test-engineer": {
+      "agentId": "019fd6eb-243c-78f3-9d63-e79e458871db",
+      "verdict": "PASS"
+    },
+    "software-architect": {
+      "agentId": "019fd6c5-9700-71d1-9980-69278b8187a3",
+      "verdict": "PASS"
+    },
+    "supabase-reviewer": {
+      "agentId": "019fd6c6-9242-7542-b98b-872d8c5f98d2",
+      "verdict": "PASS"
+    },
+    "documentation-engineer": {
+      "agentId": "019fd6eb-214a-72c2-bc16-07336af42ac5",
+      "verdict": "PASS"
+    },
+    "devops-engineer": {
+      "agentId": "019fd6ee-b9fc-7021-9a20-6ff646f27f1d",
+      "verdict": "PASS"
+    }
+  },
+  "invariants": {
+    "operationalRegistryEmpty": true,
+    "prunePolicyUnapproved": true,
+    "deletedCountZero": true,
+    "serviceRoleReadOnly": true,
+    "forcedRls": true,
+    "assessmentDomainAuthoritative": true,
+    "phiFreeEvidence": true
+  },
+  "localOperatorObserverAttestation": {
+    "path": "docs/ai/reviews/WIN-275-local-operator-responsive-observer-attestation.json",
+    "sha256": "4757b1cf4d71009a30eba9b24ab385d40dc381c3f14abcf0b54a5d879e387c2b",
+    "hostedActionAuthorized": false
+  },
+  "protectedSurfaceHashes": {
+    "supabase/migrations/20260806110223_agent_work_retention_policy_encoding.sql": "e712277f563b47de52a5d82e4d55709d714d306a680d3a862ebab0754ec1da45",
+    "scripts/agent-work-ledger-retention-contract.mjs": "fa51e220835c8b4e2e852db40ebbf6188e85207ee70d27ed8ca1d75055e64f84",
+    "tests/agentWorkLedgerRetentionMigration.test.ts": "f5332f08308c1e195697dca081d054df299e436a56813d2961878d8dffa97938",
+    "tests/agentWorkLedgerRetentionPolicyEncodingMigration.test.ts": "3528ac033b40632b21c28fc3b47eae6ed35ec69b030346a44184155888e65a52",
+    "docs/ops/agent-work-ledger.md": "a0beafe3398affaf7ecd73304823f1bbf40a85566ff86094f7914e107f75dc1b",
+    "docs/ai/verification-matrix.md": "28a136e264212ccb57d0c85fa36cbcbc955862817500d66889557fa4134d863f",
+    "docs/ai/handoffs/agent-work-ledger-foundation.md": "5fdec5facaa69fe4600b957f01d8438f59340db127c6b2c48279257d0af8d2e0",
+    "docs/superpowers/plans/2026-08-06-agent-work-ledger-retention-policy-encoding.md": "7c5efd800ed4cfd207d354537249c9379a4cbc89f7272418c895be7ddf558822",
+    "docs/superpowers/specs/2026-08-06-agent-work-ledger-retention-policy-encoding-design.md": "b9cee127f72ce52bc38c2b9a9f93433a2926bd60bcf6ed0f022c01ff05ed2f6e"
+  }
+}

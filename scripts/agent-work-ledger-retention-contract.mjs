@@ -69,7 +69,15 @@ const main = async () => {
     );
     await database.query(
       "insert into public.agent_work_effects (id, work_item_id, step_id, attempt_id, organization_id, client_id, effect_kind, target_kind, target_id, payload_hash, unique_effect_key, status, verified_at) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, 'advisory_projection', 'assessment_document', $7::uuid, repeat('e', 64), repeat('f', 64), 'verified', now())",
-      [EFFECT_ID, WORK_ITEM_ID, STEP_ID, ATTEMPT_ID, ORG_A_ID, CLIENT_ID, DOCUMENT_ID],
+      [
+        EFFECT_ID,
+        WORK_ITEM_ID,
+        STEP_ID,
+        ATTEMPT_ID,
+        ORG_A_ID,
+        CLIENT_ID,
+        DOCUMENT_ID,
+      ],
     );
     await database.query(
       "insert into public.agent_work_events (id, work_item_id, step_id, attempt_id, organization_id, client_id, event_type, actor_kind, sanitized_metadata) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, 'retention.contract', 'system', '{\"secret\":\"event-marker\"}'::jsonb)",
@@ -92,30 +100,108 @@ const main = async () => {
       authenticatedRpcDenied = error?.code === "42501";
       await database.query("rollback to savepoint authenticated_rpc_probe");
     }
-    assert(authenticatedRpcDenied, "Authenticated export execution did not fail closed.");
+    assert(
+      authenticatedRpcDenied,
+      "Authenticated export execution did not fail closed.",
+    );
 
     let authenticatedTableDenied = false;
     await database.query("savepoint authenticated_table_probe");
     try {
       await database.query("set local role authenticated");
-      await database.query("select count(*) from public.agent_work_retention_holds");
+      await database.query(
+        "select count(*) from public.agent_work_retention_holds",
+      );
     } catch (error) {
       authenticatedTableDenied = error?.code === "42501";
       await database.query("rollback to savepoint authenticated_table_probe");
     }
-    assert(authenticatedTableDenied, "Authenticated retention table access did not fail closed.");
+    assert(
+      authenticatedTableDenied,
+      "Authenticated retention table access did not fail closed.",
+    );
+
+    let authenticatedPolicyDecisionDenied = false;
+    await database.query("savepoint authenticated_policy_decision_probe");
+    try {
+      await database.query("set local role authenticated");
+      await database.query(
+        "select count(*) from public.agent_work_retention_policy_decisions",
+      );
+    } catch (error) {
+      authenticatedPolicyDecisionDenied = error?.code === "42501";
+      await database.query(
+        "rollback to savepoint authenticated_policy_decision_probe",
+      );
+    }
+    assert(
+      authenticatedPolicyDecisionDenied,
+      "Authenticated retention policy decision access did not fail closed.",
+    );
 
     await database.query("set local role service_role");
-    await database.query("select set_config('request.jwt.claim.role', 'service_role', true)");
+    await database.query(
+      "select set_config('request.jwt.claim.role', 'service_role', true)",
+    );
     await database.query("select set_config('request.jwt.claims', $1, true)", [
       JSON.stringify({ role: "service_role", sub: ADMIN_A_ID }),
     ]);
-    await database.query("select set_config('request.jwt.claim.sub', $1, true)", [ADMIN_A_ID]);
+    await database.query(
+      "select set_config('request.jwt.claim.sub', $1, true)",
+      [ADMIN_A_ID],
+    );
 
     const { rows: policyRows } = await database.query(
       "select count(*)::integer as count from public.agent_work_retention_policies",
     );
-    assert(policyRows[0]?.count === 0, "Retention policy registry must start unconfigured.");
+    assert(
+      policyRows[0]?.count === 0,
+      "Retention policy registry must start unconfigured.",
+    );
+
+    const { rows: decisionRows } = await database.query(
+      "select category, policy_version, retention_days, attestation_kind, decision_reference, decision_sha256, decision_recorded_at from public.agent_work_retention_policy_decisions order by category",
+    );
+    const expectedRetentionDays = {
+      execution_trace: 30,
+      ledger_history: 365,
+      queue_archive: 90,
+    };
+    assert(
+      decisionRows.length === 3,
+      "Retention policy decision catalog must contain three rows.",
+    );
+    for (const row of decisionRows) {
+      assert(
+        row.policy_version === 1 &&
+          row.retention_days === expectedRetentionDays[row.category] &&
+          row.attestation_kind === "solo_maintainer_owner" &&
+          row.decision_reference ===
+            "LINEAR:WIN-275:COMMENT:556735C4-5D1D-4257-8ACA-261D99973992" &&
+          row.decision_sha256 ===
+            "148b3b42e4b5dfb1bf5fb134bc09351409a1181b53e68d2d0e45ee8b36609e34" &&
+          row.decision_recorded_at?.toISOString() ===
+            "2026-08-06T10:54:54.729Z",
+        `Retention policy decision drifted for ${row.category}.`,
+      );
+    }
+
+    await database.query("reset role");
+    let decisionMutationDenied = false;
+    await database.query("savepoint decision_mutation_probe");
+    try {
+      await database.query(
+        "update public.agent_work_retention_policy_decisions set retention_days = retention_days where category = 'ledger_history' and policy_version = 1",
+      );
+    } catch (error) {
+      decisionMutationDenied = error?.code === "55000";
+      await database.query("rollback to savepoint decision_mutation_probe");
+    }
+    assert(
+      decisionMutationDenied,
+      "Retention policy decision mutation did not fail closed.",
+    );
+    await database.query("set local role service_role");
 
     const workItemId = WORK_ITEM_ID;
 
@@ -130,7 +216,10 @@ const main = async () => {
       crossTenantHoldDenied = error?.code === "23503";
       await database.query("rollback to savepoint cross_tenant_hold_probe");
     }
-    assert(crossTenantHoldDenied, "Cross-tenant hold metadata did not fail closed.");
+    assert(
+      crossTenantHoldDenied,
+      "Cross-tenant hold metadata did not fail closed.",
+    );
 
     let crossTenantReceiptDenied = false;
     await database.query("savepoint cross_tenant_receipt_probe");
@@ -143,7 +232,10 @@ const main = async () => {
       crossTenantReceiptDenied = error?.code === "23503";
       await database.query("rollback to savepoint cross_tenant_receipt_probe");
     }
-    assert(crossTenantReceiptDenied, "Cross-tenant receipt metadata did not fail closed.");
+    assert(
+      crossTenantReceiptDenied,
+      "Cross-tenant receipt metadata did not fail closed.",
+    );
 
     await database.query(
       "insert into public.agent_work_retention_holds (organization_id, work_item_id, category, reason_code, provenance_code, approved_by, approved_at) values ($1::uuid, $2::uuid, 'ledger_history', 'legal_hold', 'WIN-271', $3::uuid, now())",
@@ -152,15 +244,35 @@ const main = async () => {
 
     const exportQuery =
       "select public.export_agent_work_retention_manifest($1::uuid, $2::uuid) as result";
-    const first = (await database.query(exportQuery, [ORG_A_ID, workItemId])).rows[0]?.result;
-    const second = (await database.query(exportQuery, [ORG_A_ID, workItemId])).rows[0]?.result;
+    const first = (await database.query(exportQuery, [ORG_A_ID, workItemId]))
+      .rows[0]?.result;
+    const second = (await database.query(exportQuery, [ORG_A_ID, workItemId]))
+      .rows[0]?.result;
 
-    assert(first?.export_schema_version === "agent-work-retention.v1", "Export schema version drifted.");
-    assert(/^[0-9a-f]{64}$/.test(first?.manifest_hash ?? ""), "Export hash was not canonical SHA-256.");
-    assert(first.manifest_hash === second?.manifest_hash, "Repeated export hash was not deterministic.");
-    assert(JSON.stringify(first.manifest) === JSON.stringify(second?.manifest), "Repeated export manifest drifted.");
-    assert(first.manifest?.work_item?.id === workItemId, "Export escaped the exact work item.");
-    assert(Array.isArray(first.manifest?.steps) && first.manifest.steps.length > 0, "Export omitted steps.");
+    assert(
+      first?.export_schema_version === "agent-work-retention.v1",
+      "Export schema version drifted.",
+    );
+    assert(
+      /^[0-9a-f]{64}$/.test(first?.manifest_hash ?? ""),
+      "Export hash was not canonical SHA-256.",
+    );
+    assert(
+      first.manifest_hash === second?.manifest_hash,
+      "Repeated export hash was not deterministic.",
+    );
+    assert(
+      JSON.stringify(first.manifest) === JSON.stringify(second?.manifest),
+      "Repeated export manifest drifted.",
+    );
+    assert(
+      first.manifest?.work_item?.id === workItemId,
+      "Export escaped the exact work item.",
+    );
+    assert(
+      Array.isArray(first.manifest?.steps) && first.manifest.steps.length > 0,
+      "Export omitted steps.",
+    );
     const seededRelationIds = {
       evidence: EVIDENCE_ID,
       approvals: APPROVAL_ID,
@@ -175,16 +287,43 @@ const main = async () => {
         `Export omitted the seeded ${relation} row.`,
       );
     }
-    assert(first.manifest?.holds?.length === 1, "Export omitted the active hold.");
-    assert(/^[0-9a-f]{64}$/.test(first.manifest.attempts[0]?.worker_id_hash ?? ""), "Worker identifier was not hashed.");
-    assert(/^[0-9a-f]{64}$/.test(first.manifest.attempts[0]?.provider_hash ?? ""), "Provider identifier was not hashed.");
-    assert(/^[0-9a-f]{64}$/.test(first.manifest.traces[0]?.step_name_hash ?? ""), "Trace step name was not hashed.");
-    assert(/^[0-9a-f]{64}$/.test(first.manifest.traces[0]?.payload_hash ?? ""), "Trace payload was not hashed.");
-    assert(/^[0-9a-f]{64}$/.test(first.manifest.traces[0]?.replay_hash ?? ""), "Trace replay payload was not hashed.");
-    assert(first.manifest.holds[0]?.reason_code === "legal_hold", "Active hold was omitted from export.");
+    assert(
+      first.manifest?.holds?.length === 1,
+      "Export omitted the active hold.",
+    );
+    assert(
+      /^[0-9a-f]{64}$/.test(first.manifest.attempts[0]?.worker_id_hash ?? ""),
+      "Worker identifier was not hashed.",
+    );
+    assert(
+      /^[0-9a-f]{64}$/.test(first.manifest.attempts[0]?.provider_hash ?? ""),
+      "Provider identifier was not hashed.",
+    );
+    assert(
+      /^[0-9a-f]{64}$/.test(first.manifest.traces[0]?.step_name_hash ?? ""),
+      "Trace step name was not hashed.",
+    );
+    assert(
+      /^[0-9a-f]{64}$/.test(first.manifest.traces[0]?.payload_hash ?? ""),
+      "Trace payload was not hashed.",
+    );
+    assert(
+      /^[0-9a-f]{64}$/.test(first.manifest.traces[0]?.replay_hash ?? ""),
+      "Trace replay payload was not hashed.",
+    );
+    assert(
+      first.manifest.holds[0]?.reason_code === "legal_hold",
+      "Active hold was omitted from export.",
+    );
     const serializedExport = JSON.stringify(first);
-    assert(!serializedExport.includes("Synthetic"), "Export included source-like free-form content.");
-    assert(!serializedExport.includes("secret"), "Export included unhashed sentinel content.");
+    assert(
+      !serializedExport.includes("Synthetic"),
+      "Export included source-like free-form content.",
+    );
+    assert(
+      !serializedExport.includes("secret"),
+      "Export included unhashed sentinel content.",
+    );
 
     let crossTenantDenied = false;
     await database.query("savepoint cross_tenant_export_probe");
@@ -208,26 +347,34 @@ const main = async () => {
       "Machine-coded hold scope drifted.",
     );
 
-    const { rows: pruneRows } = await database.query(
-      "select public.prune_agent_work_retention_category($1::uuid, 'ledger_history', $2::text) as result",
-      [ORG_A_ID, first.manifest_hash],
-    );
-    const prune = pruneRows[0]?.result;
-    assert(
-      prune?.success === false &&
-        prune?.reason_code === "policy_unapproved" &&
-        prune?.deleted_count === 0,
-      "Unapproved prune did not return a fixed zero-delete denial.",
-    );
+    const pruneResults = {};
+    for (const category of Object.keys(expectedRetentionDays)) {
+      const { rows: pruneRows } = await database.query(
+        "select public.prune_agent_work_retention_category($1::uuid, $2::text, $3::text) as result",
+        [ORG_A_ID, category, first.manifest_hash],
+      );
+      const categoryPrune = pruneRows[0]?.result;
+      assert(
+        categoryPrune?.success === false &&
+          categoryPrune?.reason_code === "policy_unapproved" &&
+          categoryPrune?.category === category &&
+          categoryPrune?.deleted_count === 0,
+        `Unapproved ${category} prune did not return a fixed zero-delete denial.`,
+      );
+      pruneResults[category] = categoryPrune;
+    }
+    const prune = pruneResults.ledger_history;
 
     await database.query("reset role");
     const { rows: preservedRows } = await database.query(
-      "select (select count(*)::integer from public.agent_work_items where id = $1::uuid) as work_item_count, (select count(*)::integer from public.assessment_documents where id = $2::uuid) as document_count",
-      [workItemId, DOCUMENT_ID],
+      "select (select count(*)::integer from public.agent_work_items where id = $1::uuid) as work_item_count, (select count(*)::integer from public.assessment_documents where id = $2::uuid) as document_count, (select count(*)::integer from public.agent_execution_traces where id = $3::uuid) as trace_count",
+      [workItemId, DOCUMENT_ID, TRACE_ID],
     );
     assert(
-      preservedRows[0]?.work_item_count === 1 && preservedRows[0]?.document_count === 1,
-      "Prune denial changed ledger or assessment-domain authority.",
+      preservedRows[0]?.work_item_count === 1 &&
+        preservedRows[0]?.document_count === 1 &&
+        preservedRows[0]?.trace_count === 1,
+      "Prune denial changed ledger, execution-trace, or assessment-domain authority.",
     );
 
     console.log(
@@ -240,9 +387,13 @@ const main = async () => {
         crossTenantDenied: true,
         crossTenantMetadataDenied: true,
         nonServiceRoleDenied: true,
+        retentionDecisionsImmutable: true,
+        retentionDays: expectedRetentionDays,
         holdPreserved: true,
         pruneReasonCode: prune.reason_code,
         deletedCount: prune.deleted_count,
+        pruneCategories: Object.keys(pruneResults).sort(),
+        executionTracePreserved: true,
         assessmentDomainPreserved: true,
       }),
     );
@@ -256,6 +407,10 @@ const main = async () => {
 };
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : "Unknown retention contract failure.");
+  console.error(
+    error instanceof Error
+      ? error.message
+      : "Unknown retention contract failure.",
+  );
   process.exit(1);
 });

@@ -45,6 +45,7 @@ Sources of truth:
   - If not, recommend splitting the work before PR submission.
 - Check for a missing change summary:
   - Ensure there is a short summary of what changed and why.
+- For visible UI changes, require declared affected routes and a passing sanitized `responsive-ui-observer` evidence card covering desktop `1440x900` and mobile `390x844`; otherwise mark `pr-ready: no`.
 - Check for verification card completeness:
   - Ensure `verify-change` includes:
     - required checks

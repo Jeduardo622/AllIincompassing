@@ -51,6 +51,15 @@ Domain skills:
 - `supabase-tenant-safety`
 - `playwright-regression-triage`
 - `clinical-data-parity-auditor`
+- `responsive-ui-observer` for mandatory local desktop/mobile evidence on visible UI changes
+- `agent-work-local-operator` for the fixed synthetic local Ledger proof only
+
+## Agent Work Ledger alignment
+
+- Engineering agents continue to track work in Linear and markdown handoffs. The Agent Work Ledger is not an engineering backlog, prompt store, or generic agent queue.
+- The Ledger accepts only the fixed tenant-scoped IEHP assessment-preparation and CalOptima draft-review application workflows through authenticated application callers.
+- Read `docs/ops/agent-work-ledger-caller-adoption.md` before changing or testing any Ledger caller, function, migration, queue, runtime policy, approval, effect, or clinical draft boundary.
+- Ledger implementation work routes `critical` and uses `supabase-tenant-safety`; `active` is forbidden and hosted runtime remains fail-closed unless a separately reviewed rollout explicitly changes the documented state.
 
 ## MCP and secrets
 

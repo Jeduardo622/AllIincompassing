@@ -1176,8 +1176,12 @@ export const runPhase2Harness = async ({
     await writeArtifacts({ artifacts, manifest, summaryLines });
   }
 
+  const phase2Result = { runId, artifacts, manifest };
   if (manifest.exitStatus !== "passed") {
-    throw new Error(manifest.failure?.reasonCode ?? "phase2_harness_failed");
+    throw Object.assign(
+      new Error(manifest.failure?.reasonCode ?? "phase2_harness_failed"),
+      { phase2Result },
+    );
   }
-  return { runId, artifacts, manifest };
+  return phase2Result;
 };

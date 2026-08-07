@@ -3,6 +3,7 @@ import { callEdgeFunctionHttp } from "../api";
 import {
   AGENT_WORKFLOW_KEYS,
   createCalOptimaDraftReviewWorkLedger,
+  createIehpAssessmentPrepWorkLedger,
   createCalOptimaWorkLedgerQueryOptions,
   createAssessmentWorkLedgerQueryOptions,
   decideAgentWorkApproval,
@@ -323,6 +324,65 @@ describe("agent-work-ledger client", () => {
         }),
       }),
     );
+  });
+
+  it("creates IEHP assessment-prep work items through the authenticated fixed POST contract without arbitrary payload fields", async () => {
+    mockedCallEdgeFunctionHttp.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            ...buildEnvelope().data[0],
+            workflowKey: AGENT_WORKFLOW_KEYS.iehpAssessmentPrep,
+            workflowVersion: 1,
+          },
+          meta: {
+            runtimeMode: "advisory",
+          },
+        }),
+        { status: 201 },
+      ),
+    );
+
+    await expect(
+      createIehpAssessmentPrepWorkLedger({
+        assessmentDocumentId: "44444444-4444-4444-8444-444444444444",
+      }),
+    ).resolves.toMatchObject({
+      workflowKey: AGENT_WORKFLOW_KEYS.iehpAssessmentPrep,
+      workflowVersion: 1,
+    });
+
+    expect(mockedCallEdgeFunctionHttp).toHaveBeenCalledWith(
+      "agent-work-items/assessment-prep",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assessmentDocumentId: "44444444-4444-4444-8444-444444444444",
+          workflowVersion: 1,
+        }),
+      }),
+    );
+  });
+
+  it("sanitizes IEHP assessment-prep create failures instead of exposing backend error bodies", async () => {
+    mockedCallEdgeFunctionHttp.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: "Tenant scope mismatch: org-1/client-1/document-9",
+          code: "tenant_scope_mismatch",
+        }),
+        { status: 403 },
+      ),
+    );
+
+    await expect(
+      createIehpAssessmentPrepWorkLedger({
+        assessmentDocumentId: "44444444-4444-4444-8444-444444444444",
+      }),
+    ).rejects.toThrow("Assessment-prep work item creation failed");
   });
 
   it("posts a bounded advisory approval decision and validates the sanitized response", async () => {

@@ -32,6 +32,9 @@ Use for changes limited to `src/components/**`, `src/pages/**`, styling, copy, o
 - `npm run typecheck`
 - Run targeted tests when they exist, otherwise `npm test`
 - `npm run build`
+- `npm run test:ui:responsive -- --base-url=http://127.0.0.1:<port> --route=/affected-route` for every affected route
+
+Responsive observation is mandatory for visible changes under `src/components/**`, `src/pages/**`, and shared styling/config. The command must use an explicit loopback URL and must pass at both fixed viewports: desktop `1440x900` and mobile `390x844`. Record the sanitized evidence-card path and result in the verification card. Computer review of generated screenshots is optional and non-gating.
 
 Browser/auth checks are not required unless the change affects routing, login, guards, session flows, or browser-only regressions.
 
@@ -110,18 +113,19 @@ Use for docs-only or process-only changes with no code or config impact.
 
 Run additional commands only if the doc changes alter required developer workflow or verification guidance.
 
-## Agent Work Ledger Retention Documentation
+## Agent Work Ledger Retention Policy Encoding
 
-Use for Task 14 retention documentation updates in `docs/ops/agent-work-ledger.md` and matching verification guidance in this file.
+Use for the non-destructive retention decision encoding in `docs/ops/agent-work-ledger.md` and matching verification guidance in this file.
 
-- verify the stated local contract against the current scaffold and existing policy blocker
+- verify the stated local contract against the retention foundation and non-destructive policy encoding
 - confirm the doc only describes local-only, PHI-free artifacts and no hosted action
-- confirm the doc does not invent approved retention periods, prune deletions, or domain cascades
+- confirm the exact owner-approved periods are `ledger_history=365`, `queue_archive=90`, and `execution_trace=30` days
+- confirm the immutable decision catalog does not seed the operational policy registry or authorize prune
 - confirm the doc preserves the assessment domain as authoritative for post-restore reconciliation
 
 Required manual checks:
 
-- `npm test -- --run tests/agentWorkLedgerRetentionMigration.test.ts` (current contract: `13/13`)
+- `npm test -- --run tests/agentWorkLedgerRetentionMigration.test.ts tests/agentWorkLedgerRetentionPolicyEncodingMigration.test.ts`
 - `npm run agent-work:retention-contract`
 - fresh local reset or equivalent clean-stack confirmation before relying on retention output
 - security check for service-role-only export, grant scope, and RLS/hold coverage
@@ -134,12 +138,13 @@ Expectation checks:
 - export acquires a database-side share lock across every exported ledger surface before reading, producing one consistent manifest while briefly blocking ledger writes
 - export count is tenant-scoped and consistent with the exact work-item scope
 - holds remain machine-coded and scoped to org, work item, and category
+- the decision catalog contains exactly three immutable, hash-bound, service-role-readable rows with the approved `365/90/30` mapping
+- the operational policy registry remains empty
 - no domain records are deleted by prune
-- prune remains denied with `policy_unapproved` and `deleted_count=0`
-- no approved retention periods are present yet
+- prune remains denied for all three categories with `policy_unapproved` and `deleted_count=0`
 - no queue archive or execution trace deletion is implemented yet
 - no domain cascade is implemented yet
 
 Blocked-state note:
 
-- when retention policy rows are absent, treat the slice as unconfigured and do not claim prune proof, deletion proof, or production readiness
+- while operational retention policy rows are absent, treat deletion as unconfigured and do not claim prune authorization, deletion proof, or production readiness

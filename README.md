@@ -169,6 +169,9 @@ Lighthouse CI currently runs in advisory mode (non-blocking) while preview URL a
 
 ## Reference documentation
 
+- [docs/ops/agent-work-ledger.md](docs/ops/agent-work-ledger.md) – Authoritative Agent Work Ledger runtime, tenant-safety, recovery, and local verification contract.
+- [docs/ops/agent-work-ledger-caller-adoption.md](docs/ops/agent-work-ledger-caller-adoption.md) – Closed caller contract for the bounded IEHP and CalOptima application workflows.
+- [docs/ai/handoffs/agent-work-ledger-adoption-contract.md](docs/ai/handoffs/agent-work-ledger-adoption-contract.md) – Local implementation and verification handoff for caller adoption.
 - [docs/AUTH_ROLES.md](docs/AUTH_ROLES.md) – RBAC hierarchy, permissions, and RLS policies across profiles, sessions, and billing tables.
 - [docs/DATABASE_PIPELINE.md](docs/DATABASE_PIPELINE.md) – Step-by-step ingestion pipeline for Supabase migrations, seeds, and CI validation.
 - [docs/MCP_ROUTING_TROUBLESHOOTING.md](docs/MCP_ROUTING_TROUBLESHOOTING.md) – Troubleshooting guide for multi-channel routing and API backplanes.

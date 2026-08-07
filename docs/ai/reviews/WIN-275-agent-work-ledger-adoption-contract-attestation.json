@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "issue": "WIN-275",
+  "reviewMode": "solo-maintainer-critical-agent-work-ledger-adoption-contract",
+  "repository": "Jeduardo622/AllIincompassing",
+  "createdAt": "2026-08-06T19:34:29Z",
+  "authorization": {
+    "localOnlyImplementation": true,
+    "hostedAction": false,
+    "runtimeActivation": false,
+    "activeMode": false,
+    "genericEngineeringIntake": false,
+    "providerCall": false
+  },
+  "predecessorAttestation": {
+    "path": "docs/ai/reviews/WIN-275-retention-policy-encoding-attestation.json",
+    "sha256": "1f17c47fbd216ef37541cc77ae6dc3141957167cf397457b7206bacccb212f95",
+    "hostedActionAuthorized": false
+  },
+  "specialistReviews": {
+    "code-review-engineer": {
+      "agentId": "019fd88c-289d-7523-8eb5-e5406fbb41f9",
+      "verdict": "PASS"
+    },
+    "security-engineer": {
+      "agentId": "019fd88c-29dd-72a3-be85-702d94a77367",
+      "verdict": "PASS"
+    },
+    "test-engineer": {
+      "agentId": "019fd88c-2b7a-79b0-a88e-4a314230965b",
+      "verdict": "PASS"
+    },
+    "supabase-reviewer": {
+      "agentId": "019fd88c-2dbc-7670-befc-c0e03ee0d200",
+      "verdict": "PASS"
+    },
+    "software-architect": {
+      "agentId": "019fd88c-3126-75f1-868b-029e631775cb",
+      "verdict": "PASS"
+    },
+    "documentation-engineer": {
+      "agentId": "019fd88c-3530-7662-a540-760fc668e41d",
+      "verdict": "PASS"
+    }
+  },
+  "verification": {
+    "result": "local-pass-with-blocked-hosted-auth",
+    "verifyLocal": true,
+    "tier0Routes": "220/220",
+    "hostedAuthBrowser": "BLOCKED_NO_HOSTED_TARGET_OR_CREDENTIALS",
+    "hostedActionAuthorized": false
+  },
+  "invariants": {
+    "engineeringTrackingExternalToLedger": true,
+    "fixedWorkflowKeys": true,
+    "manageCapabilityRequired": true,
+    "serverAuthorityRevalidated": true,
+    "runtimeClosedSet": true,
+    "assessmentDomainAuthoritative": true,
+    "phiFreeEvidence": true
+  },
+  "protectedSurfaceHashes": {
+    "AGENTS.md": "88fc2c13963367cbfe196336f42ab8a3737c949994d9dcfc0863bcd673ec9903",
+    "README.md": "ba0fb1883502ce50904345b9917bafa59f7f189d2ae718d88a940f6e70e61be4",
+    "docs/ai/codex-agent-alignment.md": "f31ed766f24efeb29db239dae4716f1b2f9f26cb1c0f4c0d10afbdcf67b388ce",
+    "docs/ai/repo-tech-agents-skills-workflow-memo.md": "c3765e7082b6fc2f6e6747c8ed675ede57c8826fab6b8a6b48329f6f920d2eb2",
+    "docs/ai/handoffs/agent-work-ledger-adoption-contract.md": "addfc68f0776fd4eef92af2064a1a5c978f7c35ee6b2ce4498c40815822a3e56",
+    "docs/ops/agent-work-ledger-caller-adoption.md": "559378d9e62b507f27e5e0cdc248a7c415947801b3005fdc5b516ce51224f70c",
+    "src/components/ClientDetails/IehpFbaLayoutReview.tsx": "8fe6c210cc1719efce43fad12b2af38815dd75a92b17e4878da12211f0394209",
+    "src/components/ClientDetails/ProgramsGoalsTab.tsx": "fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4",
+    "src/components/__tests__/IehpFbaLayoutReview.test.tsx": "06f5a04b356347fe75bc3bf7f389017f46b381a09af3b4702a440414c759ef2e",
+    "src/lib/__tests__/agent-work-ledger.test.ts": "20850c876406328c2f8a09ee78f70ed83f379e7130b3e30dede8f50af5972814",
+    "src/lib/agent-work-ledger.ts": "77f4eb775c6744bc55588ee3ab126978796470bfae1691ff06fe762aa29ad0a6",
+    "supabase/functions/_shared/agent-work/policy.test.ts": "ec9c937563c03a8a6efd4e87469f7421651116f119625d963bd45515f65138d6",
+    "supabase/functions/_shared/agent-work/policy.ts": "d119b60558cd46beaf2e0724964da007478e39b31424447ef24af25621be59d1",
+    "supabase/functions/_shared/agent-work/repository.ts": "72c52e9cead2a066283f3d158352c3177f5a01d262b1a9b4f9a547c7dcc389b0",
+    "supabase/functions/agent-work-items/index.test.ts": "a0da1a24da71021fdade6219303b406a0cd74cfbee7205d56e04b82014a8ecbd"
+  }
+}

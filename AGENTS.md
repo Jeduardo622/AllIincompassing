@@ -21,6 +21,14 @@ This repository is an AI-assisted engineering lab for a React/Vite app with Supa
 - Route non-trivial work using the lane contract in `docs/ai/cto-lane-contract.md` before implementation.
 - For autonomous PR waiting, use bounded polling with explicit timeout; never allow indefinite hangs.
 
+## Agent Work Ledger Boundary
+
+- Linear, verification cards, and markdown handoffs remain the systems of record for software-engineering work. Do not write source code, issue text, prompts, review notes, or arbitrary engineering tasks into the Agent Work Ledger.
+- The Agent Work Ledger is a tenant-scoped application workflow for the fixed IEHP assessment-preparation and CalOptima draft-review flows. It does not grant engineering agents a generic execution queue or a new authority surface.
+- Application callers may use only the authenticated routes and fixed workflow contracts documented in `docs/ops/agent-work-ledger-caller-adoption.md`. The server derives organization, client, actor, graph, and policy authority; callers must not supply or infer them.
+- Runtime modes are limited to `disabled`, `shadow`, and `advisory`. `active` is forbidden. Runtime-policy failure must fail closed, and model output remains advisory and non-authoritative.
+- Any change to Ledger functions, migrations, runtime policy, tenant scope, RLS, grants, RPCs, queues, effects, approvals, or clinical draft staging is `critical`, requires `supabase-tenant-safety`, and remains human-reviewed.
+
 ## Autonomous Execution Contract
 
 Tracking updates improve operational control, but they do not replace routing, verification, reviewer/tester scrutiny, or protected-path escalation.
@@ -130,6 +138,7 @@ Useful extras:
 - Fast unit run: `npm test`
 - Tier-0 browser gate: `npm run test:routes:tier0`
 - Auth/session browser gate: `npm run ci:playwright`
+- Responsive UI observer: `npm run test:ui:responsive -- --base-url=http://127.0.0.1:<port> --route=/affected-route`
 - Policy checks: `npm run ci:check-focused`
 - Coverage verification: `npm run ci:verify-coverage`
 - Tenant isolation: `npm run validate:tenant`
@@ -187,6 +196,10 @@ Repo-local skill layout:
   - `supabase-tenant-safety` for migrations, functions, RLS, grants, RPC exposure, or tenant-boundary changes
   - `playwright-regression-triage` for browser-only or route-level reproduction and evidence capture
   - `clinical-data-parity-auditor` for redacted browser-only IEHP/FBA source-to-output parity QA; use only with redacted, synthetic, smoke, or test fixtures
+  - `responsive-ui-observer` for every visible change under `src/components/**`, `src/pages/**`, or shared styling/config; declare each affected route and capture both required local viewports before `verify-change`
+  - `agent-work-local-operator` only for the fixed synthetic local Ledger harness; it is verification tooling, not an application caller or engineering-task queue
+
+For visible UI changes, deterministic responsive observation is mandatory. Run the repo-local observer against an explicit loopback URL and every affected route at desktop `1440x900` and mobile `390x844`. A UI verification card is incomplete without its sanitized evidence result. Computer inspection may review the generated local screenshots, but is supplemental and never determines pass/fail.
 
 When the required checks do not need secrets or protected external systems, run `npm run verify:local` before finalizing.
 

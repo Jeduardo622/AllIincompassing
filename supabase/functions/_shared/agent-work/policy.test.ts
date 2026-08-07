@@ -59,21 +59,21 @@ const BASE_WORKFLOW: WorkflowDefinition = {
   version: 1,
   actions: {
     claim_step: {
-      allowedRuntimeModes: ["active"],
+      allowedRuntimeModes: ["advisory"],
       requiredRoles: ["worker"],
       allowedTools: ["claim_step"],
       clinicalEffect: false,
       requiresCurrentApproval: false,
     },
     transition_step: {
-      allowedRuntimeModes: ["active"],
+      allowedRuntimeModes: ["advisory"],
       requiredRoles: ["worker"],
       allowedTools: ["review_snapshot"],
       clinicalEffect: false,
       requiresCurrentApproval: true,
     },
     record_projection: {
-      allowedRuntimeModes: ["shadow", "advisory", "active"],
+      allowedRuntimeModes: ["shadow", "advisory"],
       requiredRoles: ["worker"],
       allowedTools: ["record_projection"],
       clinicalEffect: false,
@@ -160,7 +160,7 @@ function authorize(input: {
       ? input.scopeValidation ?? null
       : buildValidation(),
     action: input.action ?? buildAction(),
-    runtimeMode: "runtimeMode" in input ? input.runtimeMode ?? null : "active",
+    runtimeMode: "runtimeMode" in input ? input.runtimeMode ?? null : "advisory",
     workflow: input.workflow ?? BASE_WORKFLOW,
     killSwitchEnabled: input.killSwitchEnabled ?? false,
   });
@@ -261,7 +261,7 @@ Deno.test("authorizeWorkAction fails closed for authority, membership, approval,
   }
 });
 
-Deno.test("authorizeWorkAction preserves mode semantics and forbids clinical effects", () => {
+Deno.test("authorizeWorkAction preserves disabled and shadow semantics, treats advisory as strongest mode, and forbids clinical effects", () => {
   assertEquals(
     authorize({ runtimeMode: "disabled" }).reasonCode,
     "runtime_mode_disabled",
@@ -271,13 +271,13 @@ Deno.test("authorizeWorkAction preserves mode semantics and forbids clinical eff
     "shadow_mode_projection_only",
   );
   assertEquals(
-    authorize({ runtimeMode: "advisory" }).reasonCode,
-    "advisory_mode_projection_only",
-  );
-  assertEquals(
     authorize({ action: buildAction({ clinicalEffect: true }) }).reasonCode,
     "clinical_effects_forbidden",
   );
+
+  const advisory = authorize({ runtimeMode: "advisory" });
+  assertEquals(advisory.allowed, true);
+  assertEquals(advisory.reasonCode, "allowed");
 
   const projection = authorize({
     runtimeMode: "shadow",
@@ -291,20 +291,7 @@ Deno.test("authorizeWorkAction preserves mode semantics and forbids clinical eff
 });
 
 function buildAdvisoryWorkflow(): WorkflowDefinition {
-  return {
-    ...BASE_WORKFLOW,
-    actions: {
-      ...BASE_WORKFLOW.actions,
-      claim_step: {
-        ...BASE_WORKFLOW.actions.claim_step,
-        allowedRuntimeModes: ["advisory", "active"],
-      },
-      transition_step: {
-        ...BASE_WORKFLOW.actions.transition_step,
-        allowedRuntimeModes: ["advisory", "active"],
-      },
-    },
-  };
+  return BASE_WORKFLOW;
 }
 
 Deno.test("authorizeWorkAction allows advisory claim_step when the server-owned workflow action explicitly permits it", () => {
@@ -375,6 +362,18 @@ Deno.test("authorizeWorkAction keeps advisory fail-closed for shadow, clinical-e
     }).reasonCode,
     "runtime_mode_unavailable",
   );
+  assertEquals(
+    authorize({
+      runtimeMode: "active" as AgentWorkRuntimeMode,
+      workflow: advisoryWorkflow,
+      action: buildAction({
+        action: "claim_step",
+        tool: "claim_step",
+        approval: null,
+      }),
+    }).reasonCode,
+    "runtime_mode_unavailable",
+  );
 });
 
 Deno.test("authorizeWorkAction rejects advisory claim_step for a human/user actor path via role and actor constraints", () => {
@@ -420,7 +419,7 @@ function buildAuthority(
   overrides: Partial<AgentWorkAuthorityContext> = {},
 ): AgentWorkAuthorityContext {
   return {
-    runtimeMode: "active",
+    runtimeMode: "advisory",
     killSwitchEnabled: false,
     workflow: BASE_WORKFLOW,
     action: "transition_step",
@@ -579,6 +578,11 @@ Deno.test("repository enforces loader-owned runtime, workflow, action, tool, app
     [string, Partial<AgentWorkAuthorityContext>, string]
   > = [
     ["runtime", { runtimeMode: null }, "runtime_mode_unavailable"],
+    [
+      "future runtime",
+      { runtimeMode: "active" as AgentWorkRuntimeMode },
+      "runtime_mode_unavailable",
+    ],
     [
       "workflow",
       {

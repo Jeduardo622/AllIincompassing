@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Work Local Operator"
+  short_description: "Run the fixed local-only Phase 2 operator wrapper and fail closed on manifest evidence."
+  default_prompt: "Use $agent-work-local-operator to run or validate the no-argument local Ledger operator wrapper and require exact passed Phase 2 evidence."

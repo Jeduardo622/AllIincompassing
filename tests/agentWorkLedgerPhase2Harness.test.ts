@@ -765,13 +765,25 @@ describe("agent work ledger phase2 harness contracts", () => {
 
   it("fails the run and manifest when the mandatory cleanup audit fails", async () => {
     const fixture = await createHarnessFixture({ failCleanupAudit: true });
-    await expect(fixture.run()).rejects.toThrow(/cleanup_audit_failed/);
+    let failure: unknown;
+    try {
+      await fixture.run();
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toMatch(/cleanup_audit_failed/);
 
     const artifacts = createRunArtifacts({
       projectRoot: fixture.cwd,
       runId: "20260803T010203Z-test",
     });
     const manifest = JSON.parse(await readFile(artifacts.manifestPath, "utf8"));
+    expect((failure as { phase2Result?: unknown }).phase2Result).toEqual({
+      runId: "20260803T010203Z-test",
+      artifacts,
+      manifest,
+    });
     expect(manifest.cleanup.status).toBe("failed");
     expect(manifest.exitStatus).toBe("failed");
     expect(manifest.exitCode).toBe(1);

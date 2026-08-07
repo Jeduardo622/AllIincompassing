@@ -260,6 +260,28 @@ Deno.test("POST assessment-prep fails closed outside shadow or advisory mode", a
   });
 });
 
+Deno.test("POST assessment-prep rejects a cast future active runtime before creation", async () => {
+  const deps = createDeps({
+    getRuntimeMode: () => "active" as never,
+  });
+  const handler = createAgentWorkItemsHandler(deps);
+
+  const response = await handler(
+    createRequest("/agent-work-items/assessment-prep", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assessmentDocumentId: ASSESSMENT_DOCUMENT_ID }),
+    }),
+  );
+
+  assertEquals(response.status, 403);
+  assertObjectMatch(await response.json(), {
+    success: false,
+    code: "runtime_mode_disabled",
+  });
+  assertEquals(deps.calls.createArgs, []);
+});
+
 Deno.test("POST assessment-prep rejects unsupported workflow versions", async () => {
   const deps = createDeps();
   const handler = createAgentWorkItemsHandler(deps);

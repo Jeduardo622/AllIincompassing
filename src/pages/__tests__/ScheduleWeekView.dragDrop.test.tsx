@@ -458,36 +458,54 @@ describe("ScheduleWeekView drag and drop", () => {
       expect(secondDaySlot?.querySelector('[data-session-id="week-fractional"]')).toBeNull();
     });
 
-    it("exposes create semantics only on truly empty week slots and keeps occupied clicks in edit mode", () => {
+    it("keeps occupied clicks in edit mode while exposing a separate create action for overlap clusters", () => {
       const sourceDay = new Date(2025, 6, 7);
       const targetDay = new Date(2025, 6, 8);
-      const session = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
-        id: "week-occupied-contract",
+      const alpha = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "week-occupied-alpha",
         start_time: "2025-07-07T09:00:00",
-        end_time: "2025-07-07T10:00:00",
+        end_time: "2025-07-07T09:30:00",
+        client: { id: "client-alpha", full_name: "Alpha Client" },
+      });
+      const beta = buildSession(new Date(2025, 6, 7, 9, 0, 0, 0), {
+        id: "week-occupied-beta",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T09:45:00",
+        client: { id: "client-beta", full_name: "Beta Client" },
       });
       const onCreateSession = vi.fn();
       const onEditSession = vi.fn();
-      const { container } = render(
+      render(
         <ScheduleWeekView
           weekDays={[sourceDay, targetDay]}
           timeSlots={["09:00", "09:15", "09:30", "09:45", "10:00"]}
           sessionSlotIndex={new Map()}
-          scheduleSessions={[session]}
+          scheduleSessions={[alpha, beta]}
           useImprovedAppointmentLayout
           onCreateSession={onCreateSession}
           onEditSession={onEditSession}
+          allowCreateInOccupiedSlot
         />,
       );
 
-      expect(screen.queryByRole("button", { name: /add session on monday, july 7, 2025 at 9:15 am/i })).toBeNull();
+      const clusterTrigger = screen.getByRole("button", { name: /2 appointments/i });
+      fireEvent.click(clusterTrigger);
+      expect(onCreateSession).not.toHaveBeenCalled();
+      expect(onEditSession).not.toHaveBeenCalled();
+
+      const occupiedCreateButton = screen.getByRole("button", {
+        name: /add session within occupied block on monday, july 7, 2025 at 9:00 am/i,
+      });
       const emptySlot = screen.getByRole("button", { name: /add session on tuesday, july 8, 2025 at 10:00 am/i });
       expect(within(emptySlot).getByText("+ Add session")).toBeTruthy();
-      fireEvent.click(container.querySelector('[data-session-id="week-occupied-contract"]')!);
-      expect(onEditSession).toHaveBeenCalledWith(expect.objectContaining({ id: "week-occupied-contract" }));
-      expect(onCreateSession).not.toHaveBeenCalled();
-      fireEvent.click(emptySlot);
+      fireEvent.click(screen.getByRole("button", { name: /alpha client/i }));
+      expect(onEditSession).toHaveBeenCalledWith(expect.objectContaining({ id: "week-occupied-alpha" }));
+      fireEvent.click(occupiedCreateButton);
       expect(onCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({ time: "09:00", date: expect.any(Date) }),
+      );
+      fireEvent.click(emptySlot);
+      expect(onCreateSession).toHaveBeenLastCalledWith(
         expect.objectContaining({ time: "10:00", date: expect.any(Date) }),
       );
     });
@@ -736,6 +754,45 @@ describe("ScheduleWeekView drag and drop", () => {
     beforeEach(() => {
       installMatchMedia(false);
       installPointerEvent();
+    });
+
+    it("keeps overlap-cluster creation visible and separate from the popover on touch-only devices", () => {
+      const sourceDay = new Date(2025, 6, 7);
+      const alpha = buildSession(new Date(2025, 6, 7, 9, 0), {
+        id: "week-touch-alpha",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T09:30:00",
+      });
+      const beta = buildSession(new Date(2025, 6, 7, 9, 0), {
+        id: "week-touch-beta",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T09:45:00",
+      });
+      const onCreateSession = vi.fn();
+
+      render(
+        <ScheduleWeekView
+          weekDays={[sourceDay]}
+          timeSlots={["09:00", "09:15", "09:30", "09:45"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[alpha, beta]}
+          useImprovedAppointmentLayout
+          onCreateSession={onCreateSession}
+          onEditSession={vi.fn()}
+          allowCreateInOccupiedSlot
+        />,
+      );
+
+      const occupiedCreateButton = screen.getByRole("button", {
+        name: /add session within occupied block on monday, july 7, 2025 at 9:00 am/i,
+      });
+      expect(occupiedCreateButton.parentElement).not.toHaveClass("opacity-0");
+      expect(occupiedCreateButton.parentElement).not.toHaveClass("pointer-events-none");
+
+      fireEvent.click(occupiedCreateButton);
+
+      expect(onCreateSession).toHaveBeenCalledWith(expect.objectContaining({ time: "09:00", date: expect.any(Date) }));
+      expect(screen.queryByRole("dialog", { name: /2 overlapping appointments/i })).toBeNull();
     });
 
     it("long-presses a cluster row for 480ms and reschedules it by slot tap in week view", async () => {

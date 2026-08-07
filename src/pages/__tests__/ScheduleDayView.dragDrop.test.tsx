@@ -361,7 +361,7 @@ describe("ScheduleDayView drag and drop", () => {
       expect(onEditSession).not.toHaveBeenCalled();
     });
 
-    it("exposes create semantics only on truly empty slots and keeps occupied clicks in edit mode", () => {
+    it("lets occupied appointment blocks expose a separate create action without breaking edit mode", () => {
       const selectedDate = new Date(2025, 6, 7);
       const session = buildSession(new Date(2025, 6, 7, 9, 0), {
         id: "occupied-contract",
@@ -379,17 +379,22 @@ describe("ScheduleDayView drag and drop", () => {
           useImprovedAppointmentLayout
           onCreateSession={onCreateSession}
           onEditSession={onEditSession}
+          allowCreateInOccupiedSlot
         />,
       );
 
-      expect(screen.queryByRole("button", { name: /add session.*9:15 am/i })).toBeNull();
+      const occupiedCreateButton = screen.getByRole("button", {
+        name: /add session within occupied block on monday, july 7, 2025 at 9:00 am/i,
+      });
       const emptySlot = screen.getByRole("button", { name: /add session.*10:00 am/i });
       expect(within(emptySlot).getByText("+ Add session")).toBeTruthy();
       fireEvent.click(container.querySelector('[data-session-id="occupied-contract"]')!);
       expect(onEditSession).toHaveBeenCalledWith(expect.objectContaining({ id: "occupied-contract" }));
       expect(onCreateSession).not.toHaveBeenCalled();
+      fireEvent.click(occupiedCreateButton);
+      expect(onCreateSession).toHaveBeenCalledWith(expect.objectContaining({ time: "09:00", date: expect.any(Date) }));
       fireEvent.click(emptySlot);
-      expect(onCreateSession).toHaveBeenCalledWith(expect.objectContaining({ time: "10:00" }));
+      expect(onCreateSession).toHaveBeenLastCalledWith(expect.objectContaining({ time: "10:00" }));
     });
 
     it("keeps a 15-minute appointment inside its visual duration", () => {
@@ -711,6 +716,44 @@ describe("ScheduleDayView drag and drop", () => {
       vi.clearAllTimers();
       vi.useRealTimers();
       vi.restoreAllMocks();
+    });
+
+    it("keeps occupied-block creation visible and separate from edit on touch-only devices", () => {
+      const selectedDate = new Date(2025, 6, 7);
+      const session = buildSession(new Date(2025, 6, 7, 9, 0), {
+        id: "occupied-touch-contract",
+        start_time: "2025-07-07T09:00:00",
+        end_time: "2025-07-07T10:00:00",
+      });
+      const onCreateSession = vi.fn();
+      const onEditSession = vi.fn();
+
+      render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={["09:00", "09:15", "09:30", "09:45", "10:00"]}
+          sessionSlotIndex={new Map()}
+          scheduleSessions={[session]}
+          useImprovedAppointmentLayout
+          onCreateSession={onCreateSession}
+          onEditSession={onEditSession}
+          onRescheduleSession={vi.fn()}
+          allowDragAndDrop
+          allowCreateInOccupiedSlot
+        />,
+      );
+
+      const occupiedCreateButton = screen.getByRole("button", {
+        name: /add session within occupied block on monday, july 7, 2025 at 9:00 am/i,
+      });
+      expect(occupiedCreateButton).toBeVisible();
+      expect(occupiedCreateButton.parentElement).not.toHaveClass("opacity-0");
+      expect(occupiedCreateButton.parentElement).not.toHaveClass("pointer-events-none");
+
+      fireEvent.click(occupiedCreateButton);
+
+      expect(onCreateSession).toHaveBeenCalledWith(expect.objectContaining({ time: "09:00", date: expect.any(Date) }));
+      expect(onEditSession).not.toHaveBeenCalled();
     });
 
     it("short tap still opens edit via onEditSession", () => {

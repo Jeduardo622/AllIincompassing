@@ -3493,7 +3493,7 @@ export function SessionModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 pb-24 sm:p-4 sm:pb-5 max-sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 pb-24 sm:p-4 sm:pb-5 max-sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
           <p id={dialogDescriptionId} className="sr-only">
             Use this form to create or update a therapy session.
           </p>

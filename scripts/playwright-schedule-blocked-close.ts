@@ -18,8 +18,15 @@ import { chromium, type BrowserContext, type Page } from "playwright";
 
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
 import {
+  appendSafeApiProofEntry,
+  captureSafeProofLocatorScreenshot,
+  getPlaywrightMobileContextOptions,
+  shouldUseMobilePlaywrightContext,
+  type SafeApiProofEntry,
+  writeSafeProofArtifact,
+} from "./lib/playwright-mobile-proof";
+import {
   assertRouteAccessible,
-  captureFailureScreenshot,
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
 import { assertNonAiSessionsEnvContract } from "./lib/playwright-nonai-sessions-contract";
@@ -60,6 +67,19 @@ const withStepTimeout = async <T>(
   const result = await Promise.race([operation(), timeout]);
   console.log(`[blocked-close] ok ${label}`);
   return result as T;
+};
+
+const withSuppressedDependencyDiagnostics = async <T>(operation: () => Promise<T>): Promise<T> => {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  console.log = () => undefined;
+  console.warn = () => undefined;
+  try {
+    return await operation();
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
 };
 
 /**
@@ -252,18 +272,27 @@ async function run(): Promise<void> {
   );
 
   const browser = await chromium.launch({ headless });
+  const contextOptions = getPlaywrightMobileContextOptions();
+  const mobileMode = shouldUseMobilePlaywrightContext() ? "mobile" : "desktop";
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let authenticatedCredential: { email: string; password: string } | null = null;
   let capturedAccessToken: string | null = null;
+  const apiProof: SafeApiProofEntry[] = [];
   const bookedIds: Partial<LifecycleIds> = {};
+  let proofArtifactPath: string | null = null;
 
   try {
     for (const candidate of credentialCandidates) {
-      const attemptContext = await browser.newContext();
+      const attemptContext = await browser.newContext(contextOptions);
       const attemptPage = await attemptContext.newPage();
       let candidateToken: string | null = null;
       attemptPage.on("response", async (response) => {
+        appendSafeApiProofEntry(apiProof, {
+          method: response.request().method(),
+          url: response.url(),
+          status: response.status(),
+        });
         if (candidateToken || response.request().method().toUpperCase() !== "POST") {
           return;
         }
@@ -325,13 +354,15 @@ async function run(): Promise<void> {
     let booked: LifecycleIds;
     try {
       booked = await withStepTimeout("book-session", () =>
-        bookSession(activePage, token, strictParityMode, bookOpts), BOOK_SESSION_STEP_TIMEOUT_MS);
+        withSuppressedDependencyDiagnostics(() => bookSession(activePage, token, strictParityMode, bookOpts)),
+      BOOK_SESSION_STEP_TIMEOUT_MS);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (strictParityMode && message.includes("Organization context required") && authenticatedCredential) {
         token = await fetchAccessTokenForCredentials(authenticatedCredential.email, authenticatedCredential.password);
         booked = await withStepTimeout("book-session retry", () =>
-          bookSession(activePage, token, strictParityMode, bookOpts), BOOK_SESSION_STEP_TIMEOUT_MS);
+          withSuppressedDependencyDiagnostics(() => bookSession(activePage, token, strictParityMode, bookOpts)),
+        BOOK_SESSION_STEP_TIMEOUT_MS);
       } else {
         throw error;
       }
@@ -484,10 +515,11 @@ async function run(): Promise<void> {
         );
       }
       await activePage.locator("#status-select").selectOption("completed");
+      const closeSessionButton = activePage.getByRole("button", { name: /^Close Session$/i });
+      await closeSessionButton.waitFor({ state: "visible", timeout: 90_000 });
       await activePage.waitForFunction(() => {
-        const el = document.querySelector<HTMLButtonElement>(
-          'button[type="submit"][form="session-form"]',
-        );
+        const el = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+          .find((button) => button.textContent?.trim() === "Close Session");
         return Boolean(el && !el.disabled);
       }, { timeout: 90_000 });
       activePage.once("dialog", (dialog) => {
@@ -498,10 +530,7 @@ async function run(): Promise<void> {
       const edgeNotesGate = activePage.getByText(/Session notes with goal progress are required/i).first();
       const completedToast = activePage.getByText(/Session marked as completed/i).first();
 
-      const submitButton = activePage
-        .locator('form#session-form button[type="submit"], button[type="submit"][form="session-form"]')
-        .first();
-      await submitButton.click();
+      await closeSessionButton.click();
 
       // Poll: do not Promise.race locators that reject on timeout — a fast reject from one branch
       // can abort before the blocked-close panel (slower) becomes visible.
@@ -558,6 +587,18 @@ async function run(): Promise<void> {
 
       if (outcome.kind === "edge") {
         await edgeNotesGate.waitFor({ state: "visible", timeout: 5_000 });
+        const screenshotPath = await captureSafeProofLocatorScreenshot("playwright-schedule-blocked-close-proof", [
+          { name: "policy-toast", locator: edgeNotesGate },
+          { name: "close-session-button", locator: closeSessionButton },
+        ]);
+        assert.ok(screenshotPath, "A cropped blocked-close proof screenshot is required.");
+        proofArtifactPath = writeSafeProofArtifact("playwright-schedule-blocked-close-proof", {
+          ok: true,
+          mode: mobileMode,
+          script: "playwright-schedule-blocked-close",
+          screenshotPath,
+          api: apiProof,
+        });
         return;
       }
 
@@ -581,6 +622,19 @@ async function run(): Promise<void> {
             "[blocked-close] Policy error toast may have dismissed; modal guidance + next-step button asserted.",
           );
         });
+      const screenshotPath = await captureSafeProofLocatorScreenshot("playwright-schedule-blocked-close-proof", [
+        { name: "retry-heading", locator: retryHeading },
+        { name: "open-client-details", locator: activePage.getByRole("button", { name: "Open Client Details" }) },
+        { name: "close-session-button", locator: closeSessionButton },
+      ]);
+      assert.ok(screenshotPath, "A cropped blocked-close proof screenshot is required.");
+      proofArtifactPath = writeSafeProofArtifact("playwright-schedule-blocked-close-proof", {
+        ok: true,
+        mode: mobileMode,
+        script: "playwright-schedule-blocked-close",
+        screenshotPath,
+        api: apiProof,
+      });
     });
 
     await withStepTimeout("navigate-to-client-session-notes", async () => {
@@ -605,15 +659,24 @@ async function run(): Promise<void> {
       JSON.stringify({
         ok: true,
         message: "Blocked-close guidance regression passed",
-        sessionId: booked.sessionId,
-        clientId: booked.clientId,
+        proofArtifactPath,
       }),
     );
-  } catch (error) {
-    if (page) {
-      await captureFailureScreenshot(page, "playwright-schedule-blocked-close-failure");
-    }
-    throw error;
+  } catch {
+    const screenshotPath = page
+      ? await captureSafeProofLocatorScreenshot("playwright-schedule-blocked-close-failure", [
+          { name: "close-session-button", locator: page.getByRole("button", { name: /^Close Session$/i }) },
+          { name: "save-progress-button", locator: page.getByRole("button", { name: /^Save progress$/i }) },
+        ])
+      : null;
+    writeSafeProofArtifact("playwright-schedule-blocked-close-failure", {
+      ok: false,
+      mode: mobileMode,
+      script: "playwright-schedule-blocked-close",
+      screenshotPath,
+      api: apiProof,
+    });
+    throw new Error("Blocked-close regression failed; inspect the sanitized proof artifact.");
   } finally {
     if (bookedIds.sessionId && authenticatedCredential && page) {
       try {
@@ -622,10 +685,8 @@ async function run(): Promise<void> {
           (await getTokenFromBrowserStorage(page)) ??
           (await fetchAccessTokenForCredentials(authenticatedCredential.email, authenticatedCredential.password));
         await cancelSession(page, t, bookedIds.sessionId, bookedIds);
-      } catch (cleanupError) {
-        console.warn(
-          `[blocked-close] cleanup cancel failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
-        );
+      } catch {
+        console.warn("[blocked-close] cleanup cancel failed; no identifiers were logged.");
       }
     }
     if (context) {
@@ -648,8 +709,8 @@ const isMainModule = (): boolean => {
 };
 
 if (isMainModule()) {
-  run().catch((error) => {
-    console.error(error);
+  run().catch(() => {
+    console.error("Blocked-close regression failed; inspect the sanitized proof artifact.");
     process.exit(1);
   });
 }

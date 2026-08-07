@@ -12,8 +12,15 @@ import { chromium, type BrowserContext, type Page } from "playwright";
 
 import { loadPlaywrightEnv } from "./lib/load-playwright-env";
 import {
+  appendSafeApiProofEntry,
+  captureSafeProofLocatorScreenshot,
+  getPlaywrightMobileContextOptions,
+  shouldUseMobilePlaywrightContext,
+  type SafeApiProofEntry,
+  writeSafeProofArtifact,
+} from "./lib/playwright-mobile-proof";
+import {
   assertRouteAccessible,
-  captureFailureScreenshot,
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
 import { assertNonAiSessionsEnvContract } from "./lib/playwright-nonai-sessions-contract";
@@ -122,18 +129,27 @@ async function run(): Promise<void> {
   );
 
   const browser = await chromium.launch({ headless });
+  const contextOptions = getPlaywrightMobileContextOptions();
+  const mobileMode = shouldUseMobilePlaywrightContext() ? "mobile" : "desktop";
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let authenticatedCredential: { email: string; password: string } | null = null;
   let capturedAccessToken: string | null = null;
+  const apiProof: SafeApiProofEntry[] = [];
   const ids: Partial<LifecycleIds> = {};
+  let proofArtifactPath: string | null = null;
 
   try {
     for (const candidate of credentialCandidates) {
-      const attemptContext = await browser.newContext();
+      const attemptContext = await browser.newContext(contextOptions);
       const attemptPage = await attemptContext.newPage();
       let candidateToken: string | null = null;
       attemptPage.on("response", async (response) => {
+        appendSafeApiProofEntry(apiProof, {
+          method: response.request().method(),
+          url: response.url(),
+          status: response.status(),
+        });
         if (candidateToken || response.request().method().toUpperCase() !== "POST") {
           return;
         }
@@ -327,6 +343,18 @@ async function run(): Promise<void> {
           (body.goal_ids ?? []).some((id) => /^adhoc-skill-/i.test(id)),
           "response.goal_ids must include ad-hoc id",
         );
+        const screenshotPath = await captureSafeProofLocatorScreenshot("playwright-session-capture-adhoc-upsert-proof", [
+          { name: "save-progress-button", locator: editDialog.getByRole("button", { name: /^Save progress$/i }) },
+          { name: "capture-footer", locator: editDialog.locator('button[type="submit"][form="session-form"]') },
+        ]);
+        assert.ok(screenshotPath, "A cropped session-update proof screenshot is required.");
+        proofArtifactPath = writeSafeProofArtifact("playwright-session-capture-adhoc-upsert-proof", {
+          ok: true,
+          mode: mobileMode,
+          script: "playwright-session-capture-adhoc-upsert",
+          screenshotPath,
+          api: apiProof,
+        });
       } finally {
         activePage.off("request", requestListener);
         activePage.off("requestfailed", requestFailedListener);
@@ -341,21 +369,31 @@ async function run(): Promise<void> {
         ok: true,
         message: "Session capture ad-hoc upsert validated",
         marker,
-        ids,
+        proofArtifactPath,
       }),
     );
-  } catch (error) {
-    const shotPath = page ? await captureFailureScreenshot(page, "playwright-session-capture-adhoc-upsert") : "N/A";
+  } catch {
+    const screenshotPath = page
+      ? await captureSafeProofLocatorScreenshot("playwright-session-capture-adhoc-upsert-failure", [
+          { name: "save-progress-button", locator: page.getByRole("button", { name: /^Save progress$/i }) },
+          { name: "close-session-button", locator: page.getByRole("button", { name: /^Close Session$/i }) },
+        ])
+      : null;
+    const failureArtifactPath = writeSafeProofArtifact("playwright-session-capture-adhoc-upsert-failure", {
+      ok: false,
+      mode: mobileMode,
+      script: "playwright-session-capture-adhoc-upsert",
+      screenshotPath,
+      api: apiProof,
+    });
     console.error(
       JSON.stringify({
         ok: false,
         message: "Session capture ad-hoc upsert failed",
-        error: error instanceof Error ? error.message : String(error),
-        screenshot: shotPath,
-        ids,
+        proofArtifactPath: failureArtifactPath,
       }),
     );
-    throw error;
+    throw new Error("Session capture ad-hoc upsert failed; inspect the sanitized proof artifact.");
   } finally {
     if (context) {
       await context.close();
@@ -377,8 +415,8 @@ const isMainModule = (): boolean => {
 };
 
 if (isMainModule()) {
-  run().catch((error) => {
-    console.error(error);
+  run().catch(() => {
+    console.error("Session capture ad-hoc upsert failed; inspect the sanitized proof artifact.");
     process.exit(1);
   });
 }

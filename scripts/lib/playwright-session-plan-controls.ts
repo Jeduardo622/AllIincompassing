@@ -26,6 +26,19 @@ const selectPlanControl = async (
   selector: string,
   timeoutMs: number,
 ): Promise<boolean> => {
+  const rawSelector = selector.replace(/:visible$/, "");
+  const rawControls = page.locator(rawSelector);
+  if ((await rawControls.count()) > 0) {
+    await rawControls.evaluateAll((elements) => {
+      elements.forEach((element) => {
+        const disclosure = element.closest("details");
+        if (disclosure) {
+          disclosure.open = true;
+          disclosure.dispatchEvent(new Event("toggle"));
+        }
+      });
+    });
+  }
   const control = page.locator(selector).first();
   const visible = await control
     .waitFor({ state: "visible", timeout: timeoutMs })

@@ -2,7 +2,7 @@
 
 - Date: 2026-08-01
 - Linear issue: `WIN-271`
-- Plan: `C:\Users\test\Desktop\AllIincompassing\docs\superpowers\plans\2026-08-01-goal-directed-stateful-agent-work-ledger.md`
+- Plan: [Goal-Directed Stateful Agent Work Ledger](../../superpowers/plans/2026-08-01-goal-directed-stateful-agent-work-ledger.md)
 - Finalization plan: `docs/superpowers/plans/2026-08-03-agent-work-ledger-finalization-and-disabled-hosted-rollout.md`
 - Branch: `codex/agent-work-ledger-foundation`
 - Rollout mode: local-only, `disabled` / `shadow` / `advisory` only

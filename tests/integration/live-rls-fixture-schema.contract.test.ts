@@ -1,9 +1,24 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
+
+type WorkflowStep = {
+  name?: string;
+  run?: string;
+};
+
+type Workflow = {
+  jobs?: Record<string, { steps?: WorkflowStep[] }>;
+};
 
 const readRepoFile = (path: string) =>
   readFileSync(resolve(process.cwd(), path), "utf8").replace(/\r\n/g, "\n");
+
+const installsChromiumBrowser = (command: string | undefined) =>
+  /(?:^|[\\/\s])playwright(?:\.cmd)?\s+install(?:\s+--\S+)*\s+chromium(?:\s|$)/.test(
+    command ?? "",
+  );
 
 const therapistInsertBodies = (source: string) =>
   Array.from(
@@ -22,6 +37,37 @@ const assignTherapistRoleBodies = (source: string) =>
   );
 
 describe("live RLS fixture schema contract", () => {
+  it.each([
+    ["./node_modules/.bin/playwright install chromium", true],
+    ["npx playwright install --with-deps chromium", true],
+    ["npx playwright install-deps chromium", false],
+    ["npm install playwright chromium", false],
+  ])("classifies Chromium browser installation commands: %s", (command, expected) => {
+    expect(installsChromiumBrowser(command)).toBe(expected);
+  });
+
+  it("installs Chromium before browser-backed application tests", () => {
+    const workflow = parse(
+      readRepoFile(".github/workflows/supabase-validate.yml"),
+    ) as Workflow;
+    const steps = workflow.jobs?.["test-main"]?.steps;
+
+    expect(steps).toBeDefined();
+    const installDependenciesIndex = steps!.findIndex(
+      (step) => step.run?.trim() === "npm ci",
+    );
+    const installChromiumIndex = steps!.findIndex(
+      (step) => installsChromiumBrowser(step.run),
+    );
+    const runUnitTestsIndex = steps!.findIndex(
+      (step) => /\bnpm (?:run )?test\b/.test(step.run ?? ""),
+    );
+
+    expect(installDependenciesIndex).toBeGreaterThan(-1);
+    expect(installChromiumIndex).toBeGreaterThan(installDependenciesIndex);
+    expect(runUnitTestsIndex).toBeGreaterThan(installChromiumIndex);
+  });
+
   it("runs hosted database validation when live RLS fixtures merge to main", () => {
     const workflow = readRepoFile(".github/workflows/supabase-validate.yml");
     const pullRequestSection = workflow.match(

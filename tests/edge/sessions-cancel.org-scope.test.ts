@@ -452,6 +452,22 @@ describe("sessions-cancel org scoping", () => {
     ).resolves.toBeNull();
   });
 
+  it("treats exact in-org admin_schedule as admin-scoped", async () => {
+    const assertUserHasOrgRoleSpy = vi
+      .spyOn(orgHelpers, "assertUserHasOrgRole")
+      .mockImplementation(async (_db, _orgId, role) => role === "admin_schedule");
+
+    const mockDb: any = {
+      rpc: vi.fn(),
+    };
+
+    await expect(
+      __TESTING__.resolveCancellationRole(mockDb, "org-1", "admin-schedule-user"),
+    ).resolves.toBe("admin");
+
+    expect(assertUserHasOrgRoleSpy).toHaveBeenCalledWith(mockDb, "org-1", "admin_schedule");
+  });
+
   it("treats exact in-org bcba as admin-scoped without granting admin_schedule or midtier", async () => {
     const assertUserHasOrgRoleSpy = vi
       .spyOn(orgHelpers, "assertUserHasOrgRole")

@@ -6,7 +6,7 @@ import { AuthProvider } from './lib/authContext';
 import { appQueryClient } from './lib/queryClient';
 import { useTheme } from './lib/theme';
 import { useAuth } from './lib/authContext';
-import { canAccessStaffDashboard } from './lib/dashboardAccess';
+import { canAccessDashboardRoute } from './lib/dashboardAccess';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PrivateRoute } from './components/PrivateRoute';
 import { RoleGuard } from './components/RoleGuard';
@@ -105,7 +105,11 @@ const DashboardLanding: React.FC = () => {
     return <Navigate to="/family" replace />;
   }
 
-  if (canAccessStaffDashboard(effectiveRole)) {
+  if (effectiveRole === 'admin_schedule') {
+    return <Navigate to="/schedule" replace />;
+  }
+
+  if (canAccessDashboardRoute(effectiveRole)) {
     return <Dashboard />;
   }
 

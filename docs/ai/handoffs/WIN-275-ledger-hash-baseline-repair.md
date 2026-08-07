@@ -78,11 +78,13 @@
 - specification review confirmed the exact one-line restoration scope and prohibited attestation regeneration
 - architecture review approved restoration over hash regeneration because regeneration would cascade across predecessor and supplemental evidence
 - test review selected the focused hash contracts plus the repository verification matrix
-- final code, security, and documentation review must inspect the complete two-file diff before publication
+- code review: no findings on committed `0fb66823`; prior verification-artifact findings resolved
+- security review: approved with no findings; no auth, tenant, secret, runtime, CI, deploy, or hosted-control boundary change
+- documentation review: no remaining inconsistencies after correcting the verification-plan wording
 
 ## PR Hygiene
 
-- pr-ready: `no` pending final review of committed verification evidence
+- pr-ready: `yes`
 - lane: `critical`
 - branch-ready: `yes`; dedicated `codex/` branch in an isolated worktree
 - linear-ready: `yes`; tracked by `WIN-275`, currently `In Review`
@@ -92,9 +94,9 @@
 - protected-path drift: none outside the declared hash-bound evidence artifact
 - change summary: present
 - verification summary: present
-- pr handoff: ready after final reviewer disposition
-- reviewer: pending review of committed verification evidence
-- required follow-up: commit this evidence, obtain final specialist disposition, push, open the critical PR, and stop for owner review
+- pr handoff: ready for branch push and PR creation
+- reviewer: completed; code, security, and documentation reviews found no remaining issues
+- required follow-up: push, open the critical PR, and stop for owner review
 
 ## Human Review Requirement
 

@@ -1300,6 +1300,15 @@ describe('SessionModal', () => {
     expect(screen.queryByRole('region', { name: /Scheduling Conflicts/i })).not.toBeInTheDocument();
   });
 
+  it('keeps the mobile action footer inside the viewport by allowing content to shrink', () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    const dialog = screen.getByRole('dialog');
+    const scrollRegion = dialog.querySelector('.flex-1.overflow-y-auto');
+
+    expect(scrollRegion).toHaveClass('min-h-0');
+  });
+
   it('shows validation errors for required fields', async () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
     

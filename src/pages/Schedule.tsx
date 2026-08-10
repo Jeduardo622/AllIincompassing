@@ -773,6 +773,7 @@ export const Schedule = React.memo(() => {
   }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
 
   const therapistScopedView = effectiveRole === "bt" || effectiveRole === "therapist";
+  const canUseBtSessionCaptureMode = effectiveRole === "bt";
   const useImprovedAppointmentLayout =
     effectiveRole === "admin_schedule" ||
     effectiveRole === "admin" ||
@@ -2108,7 +2109,7 @@ export const Schedule = React.memo(() => {
         clients={visibleClients}
         existingSessions={displayData.sessions}
         timeZone={userTimeZone}
-        dataCollectionOnly={isExactBt && Boolean(selectedSession?.id)}
+        dataCollectionOnly={canUseBtSessionCaptureMode && Boolean(selectedSession?.id)}
         allowStartSession={
           isExactBt &&
           selectedSession?.status === "scheduled" &&

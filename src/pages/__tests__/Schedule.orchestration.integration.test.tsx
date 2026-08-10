@@ -523,13 +523,13 @@ describe("Schedule orchestration integration hardening", () => {
     fireEvent.click(sessionCard);
   };
 
-  it('keeps legacy therapist assignments out of the exact-BT data collection path', async () => {
+  it('preserves legacy BT capture mode without restoring the exact-BT start-session exception', async () => {
     renderWithProviders(<Schedule />, { auth: { role: 'therapist' } });
     await screen.findByRole('heading', { name: /Schedule/i });
     await waitForScheduleGridReady();
     await openExistingSessionForEdit();
 
-    expect(await screen.findByTestId('data-collection-only')).toHaveTextContent('false');
+    expect(await screen.findByTestId('data-collection-only')).toHaveTextContent('true');
     expect(screen.getByTestId('allow-start-session')).toHaveTextContent('false');
   });
 

@@ -524,12 +524,30 @@ describe("Schedule orchestration integration hardening", () => {
   };
 
   it('preserves legacy BT capture mode without restoring the exact-BT start-session exception', async () => {
-    renderWithProviders(<Schedule />, { auth: { role: 'therapist' } });
+    renderWithProviders(<Schedule />, {
+      auth: { role: 'therapist', roleAssignments: ['therapist'] },
+    });
     await screen.findByRole('heading', { name: /Schedule/i });
     await waitForScheduleGridReady();
     await openExistingSessionForEdit();
 
     expect(await screen.findByTestId('data-collection-only')).toHaveTextContent('true');
+    expect(screen.getByTestId('allow-start-session')).toHaveTextContent('false');
+  });
+
+  it.each([
+    ['profile-only legacy therapist', { role: 'therapist' as const }],
+    [
+      'overlapping BT and therapist assignments',
+      { role: 'therapist' as const, roleAssignments: ['bt', 'therapist'] },
+    ],
+  ])('keeps BT capture mode closed for %s', async (_label, auth) => {
+    renderWithProviders(<Schedule />, { auth });
+    await screen.findByRole('heading', { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+
+    expect(await screen.findByTestId('data-collection-only')).toHaveTextContent('false');
     expect(screen.getByTestId('allow-start-session')).toHaveTextContent('false');
   });
 

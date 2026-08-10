@@ -381,7 +381,14 @@ export const Schedule = React.memo(() => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   useCapturePendingScheduleEvent();
-  const { user, profile, effectiveRole, isExactBt, hasCapability } = useAuth();
+  const {
+    user,
+    profile,
+    effectiveRole,
+    isExactBt,
+    canUseBtSessionCaptureMode,
+    hasCapability,
+  } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [view, setView] = useState<"day" | "week">("week");
@@ -773,7 +780,6 @@ export const Schedule = React.memo(() => {
   }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
 
   const therapistScopedView = effectiveRole === "bt" || effectiveRole === "therapist";
-  const canUseBtSessionCaptureMode = effectiveRole === "bt";
   const useImprovedAppointmentLayout =
     effectiveRole === "admin_schedule" ||
     effectiveRole === "admin" ||

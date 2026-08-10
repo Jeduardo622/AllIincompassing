@@ -417,6 +417,7 @@ declare
   unassigned_note_count int;
   cross_org_note_count int;
   optimized_count int;
+  affected_rows int;
   batch_data jsonb;
   dropdown_data jsonb;
 begin
@@ -492,6 +493,30 @@ begin
       || ', batch_sessions=' || jsonb_array_length(batch_data->'sessions')
       || ', batch_clients=' || jsonb_array_length(batch_data->'clients')
       || ', dropdown_clients=' || jsonb_array_length(dropdown_data->'clients'),
+    current_user
+  );
+
+  update public.sessions
+  set notes = notes
+  where id = '00000000-0000-4000-8000-000000000501';
+  get diagnostics affected_rows = row_count;
+  insert into role_smoke_results
+  values (
+    'therapist_assigned_session_update_allowed',
+    affected_rows = 1,
+    'updated_rows=' || affected_rows,
+    current_user
+  );
+
+  update public.sessions
+  set notes = notes
+  where id = '00000000-0000-4000-8000-000000000502';
+  get diagnostics affected_rows = row_count;
+  insert into role_smoke_results
+  values (
+    'therapist_unassigned_session_update_denied',
+    affected_rows = 0,
+    'updated_rows=' || affected_rows,
     current_user
   );
 end

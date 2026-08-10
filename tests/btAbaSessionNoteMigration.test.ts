@@ -85,7 +85,7 @@ describe('BT ABA session note closeout migration', () => {
     expect(reader).toMatch(/jsonb_build_object\([\s\S]*'note_id'[\s\S]*'template_id'[\s\S]*'responses'[\s\S]*'status'/i);
     expect(sql).toMatch(/revoke execute on function public\.get_bt_aba_session_note\(uuid\) from public, anon/i);
     expect(sql).toMatch(/grant execute on function public\.get_bt_aba_session_note\(uuid\) to authenticated, service_role/i);
-    expect(smoke).toMatch(/assigned exact BT read failed[\s\S]*unrelated BT unexpectedly read BT ABA note[\s\S]*non-BT unexpectedly read BT ABA note/i);
+    expect(smoke).toMatch(/assigned exact BT read failed[\s\S]*unrelated BT unexpectedly read BT ABA note[\s\S]*elevated linked BCBA unexpectedly read BT ABA note/i);
   });
 
   it('finalizes atomically in the required order and preserves completion side effects', () => {

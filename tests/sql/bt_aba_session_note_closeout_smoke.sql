@@ -146,7 +146,9 @@ values
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b013', 'authenticated', 'authenticated', 'win221-bcba@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb),
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b014', 'authenticated', 'authenticated', 'win221-bcba-peer@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb),
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b016', 'authenticated', 'authenticated', 'win221-cross-bcba@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b002"}'::jsonb),
-  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b017', 'authenticated', 'authenticated', 'win221-admin@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb);
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b017', 'authenticated', 'authenticated', 'win221-admin@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b018', 'authenticated', 'authenticated', 'win240-unlinked-therapist@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-8000-00000000b019', 'authenticated', 'authenticated', 'win240-legacy-therapist@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"00000000-0000-4000-8000-00000000b001"}'::jsonb);
 
 select set_config('app.bypass_profile_role_guard', 'on', true);
 update public.profiles
@@ -157,7 +159,13 @@ set role = case when id = '00000000-0000-4000-8000-00000000b017'
       '00000000-0000-4000-8000-00000000b014',
       '00000000-0000-4000-8000-00000000b016'
     )
-      then 'bcba'::public.role_type else 'bt'::public.role_type end,
+      then 'bcba'::public.role_type
+    when id in (
+      '00000000-0000-4000-8000-00000000b018',
+      '00000000-0000-4000-8000-00000000b019'
+    )
+      then 'therapist'::public.role_type
+    else 'bt'::public.role_type end,
     organization_id = case when id in (
       '00000000-0000-4000-8000-00000000b012',
       '00000000-0000-4000-8000-00000000b016'
@@ -171,7 +179,9 @@ where id in (
   '00000000-0000-4000-8000-00000000b013',
   '00000000-0000-4000-8000-00000000b014',
   '00000000-0000-4000-8000-00000000b016',
-  '00000000-0000-4000-8000-00000000b017'
+  '00000000-0000-4000-8000-00000000b017',
+  '00000000-0000-4000-8000-00000000b018',
+  '00000000-0000-4000-8000-00000000b019'
 );
 select set_config('app.bypass_profile_role_guard', 'off', true);
 
@@ -204,6 +214,15 @@ select '00000000-0000-4000-8000-00000000b017', roles.id, true
 from public.roles roles
 where roles.name = 'admin';
 
+insert into public.user_roles (user_id, role_id, is_active)
+select users.id, roles.id, true
+from (values
+  ('00000000-0000-4000-8000-00000000b018'::uuid),
+  ('00000000-0000-4000-8000-00000000b019'::uuid)
+) users(id)
+cross join public.roles roles
+where roles.name = 'therapist';
+
 insert into public.therapists (id, email, full_name, first_name, last_name, title, status, organization_id)
 values
   ('00000000-0000-4000-8000-00000000b015', 'win221-bt-profile@example.invalid', 'WIN-221 BT Profile', 'WIN-221', 'BT Profile', 'RBT', 'active', '00000000-0000-4000-8000-00000000b001'),
@@ -214,7 +233,8 @@ insert into public.user_therapist_links (user_id, therapist_id)
 values
   ('00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b015'),
   ('00000000-0000-4000-8000-00000000b012', '00000000-0000-4000-8000-00000000b015'),
-  ('00000000-0000-4000-8000-00000000b013', '00000000-0000-4000-8000-00000000b015');
+  ('00000000-0000-4000-8000-00000000b013', '00000000-0000-4000-8000-00000000b015'),
+  ('00000000-0000-4000-8000-00000000b019', '00000000-0000-4000-8000-00000000b015');
 
 insert into public.clients (id, full_name, status, organization_id, therapist_id, created_by, updated_by)
 values
@@ -257,7 +277,9 @@ values
   ('00000000-0000-4000-8000-00000000b041', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '3 hours', now() - interval '2 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '3 hours'),
   ('00000000-0000-4000-8000-00000000b042', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b012', now() - interval '5 hours', now() - interval '4 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '5 hours'),
   ('00000000-0000-4000-8000-00000000b043', '00000000-0000-4000-8000-00000000b021', '00000000-0000-4000-8000-00000000b015', now() - interval '7 hours', now() - interval '6 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '7 hours'),
-  ('00000000-0000-4000-8000-00000000b044', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '9 hours', now() - interval '8 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '9 hours');
+  ('00000000-0000-4000-8000-00000000b044', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '9 hours', now() - interval '8 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b010', '00000000-0000-4000-8000-00000000b010', current_date, now() - interval '9 hours'),
+  ('00000000-0000-4000-8000-00000000b045', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '11 hours', now() - interval '10 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b019', '00000000-0000-4000-8000-00000000b019', current_date, now() - interval '11 hours'),
+  ('00000000-0000-4000-8000-00000000b046', '00000000-0000-4000-8000-00000000b020', '00000000-0000-4000-8000-00000000b015', now() - interval '13 hours', now() - interval '12 hours', 'in_progress', false, '00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000b019', '00000000-0000-4000-8000-00000000b019', current_date, now() - interval '13 hours');
 
 insert into public.supervision_session_note_requests (
   id, organization_id, session_id, client_id, bt_therapist_id,
@@ -328,6 +350,52 @@ begin
 end
 $drafts$;
 
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b019', true);
+
+do $legacy_therapist_draft$
+declare
+  template_id uuid := '00000000-0000-4000-8000-00000000b005';
+  result jsonb;
+  read_result jsonb;
+begin
+  if not exists (
+    select 1
+    from public.resolve_assigned_bt_session_capture_billing(
+      '00000000-0000-4000-8000-00000000b045'
+    ) billing
+    where billing.session_client_id = '00000000-0000-4000-8000-00000000b020'
+      and billing.session_therapist_id = '00000000-0000-4000-8000-00000000b015'
+  ) then
+    raise exception 'legacy therapist billing resolver failed';
+  end if;
+
+  result := public.save_bt_aba_session_note_draft(
+    '00000000-0000-4000-8000-00000000b045', template_id,
+    '{"goals_addressed":[],"goal_ids":[],"narrative":"Legacy therapist closeout"}'::jsonb,
+    '{"client_status":"legacy therapist draft"}'::jsonb
+  );
+  if result->>'status' <> 'draft' then
+    raise exception 'legacy therapist draft failed: %', result;
+  end if;
+
+  read_result := public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b045');
+  if read_result->>'note_id' is distinct from result->>'note_id'
+     or read_result->>'template_id' is distinct from template_id::text
+     or read_result->>'status' <> 'draft' then
+    raise exception 'legacy therapist read failed: %', read_result;
+  end if;
+
+  result := public.save_bt_aba_session_note_draft(
+    '00000000-0000-4000-8000-00000000b046', template_id,
+    '{"goals_addressed":[],"goal_ids":[],"narrative":"Role overlap denial fixture"}'::jsonb,
+    '{"client_status":"role overlap fixture"}'::jsonb
+  );
+  if result->>'status' <> 'draft' then
+    raise exception 'legacy therapist overlap fixture draft failed: %', result;
+  end if;
+end
+$legacy_therapist_draft$;
+
 reset role;
 do $canonical_billing$
 begin
@@ -367,6 +435,25 @@ begin
 end
 $unrelated$;
 
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b018', true);
+do $unlinked_legacy_therapist$
+declare template_id uuid := '00000000-0000-4000-8000-00000000b005';
+begin
+  begin
+    perform public.resolve_assigned_bt_session_capture_billing('00000000-0000-4000-8000-00000000b040');
+    raise exception 'unlinked legacy therapist unexpectedly resolved billing';
+  exception when sqlstate '42501' then null; end;
+  begin
+    perform public.save_bt_aba_session_note_draft('00000000-0000-4000-8000-00000000b040', template_id, '{}'::jsonb, '{}'::jsonb);
+    raise exception 'unlinked legacy therapist unexpectedly wrote a draft';
+  exception when sqlstate '42501' then null; end;
+  begin
+    perform public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b040');
+    raise exception 'unlinked legacy therapist unexpectedly read BT ABA note';
+  exception when sqlstate '42501' then null; end;
+end
+$unlinked_legacy_therapist$;
+
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b013', true);
 do $elevated_non_bt$
 declare template_id uuid := '00000000-0000-4000-8000-00000000b005';
@@ -377,7 +464,7 @@ begin
   exception when sqlstate '42501' then null; end;
   begin
     perform public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b040');
-    raise exception 'non-BT unexpectedly read BT ABA note';
+    raise exception 'elevated linked BCBA unexpectedly read BT ABA note';
   exception when sqlstate '42501' then null; end;
 end
 $elevated_non_bt$;
@@ -476,6 +563,113 @@ begin
   end if;
 end
 $finalization$;
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b019', true);
+do $legacy_therapist_finalization$
+declare
+  v_note_id uuid;
+  v_request_id uuid;
+  result jsonb;
+  payload jsonb := '{"authorization_id":"00000000-0000-4000-8000-00000000b099","requested_service_code":"CALLER-CONTROLLED","goals_addressed":[],"goal_ids":[],"goal_measurements":{},"goal_notes":{},"narrative":"Legacy therapist finalized closeout"}'::jsonb;
+  valid_responses jsonb := '{
+    "purpose_of_session":["RBT/BT worked on goals as stated in the treatment plan"],
+    "client_status":"Legacy therapist participated",
+    "skill_strategies":["N/A"],
+    "behavior_strategies":["N/A"],
+    "supervisor_support":["Supervisor did not attend this session"],
+    "progress_toward_goals":"Legacy therapist progress observed",
+    "client_response_to_treatment":"Client responded as expected to legacy therapist closeout",
+    "data_point_scope":"linked",
+    "link_unlinked_data":false,
+    "bt_signature":{"method":"typed","value":"Legacy Therapist"}
+  }'::jsonb;
+begin
+  v_note_id := (public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b045')->>'note_id')::uuid;
+  result := public.finalize_bt_aba_session_note(
+    '00000000-0000-4000-8000-00000000b045',
+    v_note_id,
+    payload,
+    valid_responses,
+    '[]'::jsonb,
+    '[]'::jsonb
+  );
+  if result->>'status' <> 'completed' then
+    raise exception 'legacy therapist finalize failed: %', result;
+  end if;
+
+  select request.id
+  into v_request_id
+  from public.supervision_session_note_requests request
+  where request.session_id = '00000000-0000-4000-8000-00000000b045';
+
+  if v_request_id is null then
+    raise exception 'legacy therapist finalization did not create the expected supervision request';
+  end if;
+
+  if public.create_supervision_session_note_request_for_completed_session('00000000-0000-4000-8000-00000000b045')
+     is distinct from v_request_id then
+    raise exception 'legacy therapist creator replay returned a different request';
+  end if;
+end
+$legacy_therapist_finalization$;
+
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b018', true);
+do $unlinked_legacy_therapist_creator_denied$
+begin
+  begin
+    perform public.create_supervision_session_note_request_for_completed_session(
+      '00000000-0000-4000-8000-00000000b045'
+    );
+    raise exception 'unlinked legacy therapist unexpectedly created a supervision request';
+  exception when sqlstate '42501' then null; end;
+end
+$unlinked_legacy_therapist_creator_denied$;
+
+reset role;
+insert into public.user_roles (user_id, role_id, is_active)
+select '00000000-0000-4000-8000-00000000b019', roles.id, true
+from public.roles roles
+where roles.name = 'admin';
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b019', true);
+do $legacy_therapist_role_overlap_denied$
+declare
+  template_id uuid := '00000000-0000-4000-8000-00000000b005';
+  v_note_id uuid;
+begin
+  begin
+    perform public.resolve_assigned_bt_session_capture_billing('00000000-0000-4000-8000-00000000b040');
+    raise exception 'legacy therapist admin overlap unexpectedly resolved billing';
+  exception when sqlstate '42501' then null; end;
+  begin
+    perform public.save_bt_aba_session_note_draft('00000000-0000-4000-8000-00000000b040', template_id, '{}'::jsonb, '{}'::jsonb);
+    raise exception 'legacy therapist admin overlap unexpectedly wrote a draft';
+  exception when sqlstate '42501' then null; end;
+  begin
+    perform public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b040');
+    raise exception 'legacy therapist admin overlap unexpectedly read BT ABA note';
+  exception when sqlstate '42501' then null; end;
+
+  select note.id into v_note_id
+  from public.client_session_notes note
+  where note.session_id = '00000000-0000-4000-8000-00000000b046';
+
+  begin
+    perform public.finalize_bt_aba_session_note(
+      '00000000-0000-4000-8000-00000000b046',
+      v_note_id,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      '[]'::jsonb,
+      '[]'::jsonb
+    );
+    raise exception 'legacy therapist admin overlap unexpectedly finalized a note';
+  exception when sqlstate '42501' then null; end;
+end
+$legacy_therapist_role_overlap_denied$;
 
 reset role;
 do $win224_request_seed$

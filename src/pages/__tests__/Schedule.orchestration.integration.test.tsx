@@ -1427,7 +1427,7 @@ describe("Schedule orchestration integration hardening", () => {
 
   it("allows a BT to start an existing scheduled appointment in data-only mode", async () => {
     renderWithProviders(<Schedule />, {
-      auth: { role: "bt", organizationId: "org-1" },
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
     });
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
@@ -1443,7 +1443,7 @@ describe("Schedule orchestration integration hardening", () => {
     scheduleFixtures.sessions[0].started_at = "2026-07-16T10:00:00.000Z";
 
     renderWithProviders(<Schedule />, {
-      auth: { role: "bt", organizationId: "org-1" },
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
     });
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
@@ -1458,7 +1458,7 @@ describe("Schedule orchestration integration hardening", () => {
       scheduleFixtures.sessions[0].status = status;
 
       renderWithProviders(<Schedule />, {
-        auth: { role: "bt", organizationId: "org-1" },
+        auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
       });
       await screen.findByRole("heading", { name: /Schedule/i });
       await waitForScheduleGridReady();
@@ -1493,7 +1493,7 @@ describe("Schedule orchestration integration hardening", () => {
 
   it("BT scheduled-session capture saves clinical data without updating appointment metadata", async () => {
     renderWithProviders(<Schedule />, {
-      auth: { role: "bt", organizationId: "org-1" },
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
     });
     await screen.findByRole("heading", { name: /Schedule/i });
 
@@ -1523,7 +1523,7 @@ describe("Schedule orchestration integration hardening", () => {
     scheduleFixtures.sessions[0].status = "in_progress";
 
     renderWithProviders(<Schedule />, {
-      auth: { role: "bt", organizationId: "org-1" },
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
     });
     await screen.findByRole("heading", { name: /Schedule/i });
 
@@ -1545,7 +1545,7 @@ describe("Schedule orchestration integration hardening", () => {
     scheduleFixtures.sessions[0].status = "in_progress";
 
     renderWithProviders(<Schedule />, {
-      auth: { role: "bt", organizationId: "org-1" },
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
     });
     await screen.findByRole("heading", { name: /Schedule/i });
 
@@ -1585,7 +1585,7 @@ describe("Schedule orchestration integration hardening", () => {
         <SearchProbe />
       </>,
       {
-        auth: { role: "bt", organizationId: "org-1" },
+        auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
         router: {
           initialEntries: [
             `/?keep=1&scheduleModal=edit&scheduleSessionId=session-1&scheduleExp=${expiresAtMs}`,
@@ -1613,7 +1613,9 @@ describe("Schedule orchestration integration hardening", () => {
 
   it("rejects the legacy BT completed submission path", async () => {
     scheduleFixtures.sessions[0].status = "in_progress";
-    renderWithProviders(<Schedule />, { auth: { role: "bt", organizationId: "org-1" } });
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
+    });
     await screen.findByRole("heading", { name: /Schedule/i });
     await openExistingSessionForEdit();
     fireEvent.click(screen.getByLabelText("submit-terminal-capture"));

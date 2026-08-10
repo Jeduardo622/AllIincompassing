@@ -29,6 +29,7 @@
 - Required checks: focused migration and Schedule regressions; policy; lint; typecheck; full test suite; tenant validation; build; local SQL reset/smoke; exact-head CI; human protected-path review.
 - Focused migration contracts: PASS, 3 files / 22 tests.
 - Focused frontend authority regressions: PASS, 2 files / 22 tests (3 Schedule closeout cases and 19 auth-context/stub cases).
+- Full Schedule orchestration integration file after exact-BT fixture alignment: PASS, 1 file / 74 tests using direct single-worker Vitest; the repo watchdog wrapper timed out before emitting test output.
 - `npm run ci:check-focused`: PASS; DB-backed grant/parity checks skipped because no database URL is configured.
 - `npm run lint`: PASS.
 - `npm run typecheck`: PASS.
@@ -61,3 +62,4 @@
 - Single-purpose diff: yes.
 - Generated artifact drift: none.
 - Current external blocker before this update: hosted `auth-browser-smoke` failed during synthetic admin provisioning with `Database error finding users`; `ci-gate` failed only as a consequence.
+- Exact-head CI at `639726ed` exposed four stale profile-only BT test fixtures in the unit and dedicated tenant workflows; those fixtures now declare authoritative `roleAssignments: ['bt']`. The hosted auth provisioning failure repeated unchanged.

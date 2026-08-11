@@ -27,6 +27,21 @@ npm run test:ui:responsive -- --base-url=http://127.0.0.1:4173 --route=/affected
 
 Pass one `--route` for every affected route. The command accepts only an explicit loopback HTTP URL with an explicit port, blocks mutation and external-origin requests, uses ephemeral Playwright contexts, and writes layout-redacted screenshots plus sanitized machine-readable evidence under `artifacts/responsive-ui-observer/`. Text, carets, media, SVG/canvas content, and background imagery are hidden only after geometry is measured and before capture. Raw route text is replaced by an opaque SHA-256 route ID in filenames, JSON, and command output. It never reads `.env*`, records browser storage/HAR/trace/video, or captures network bodies or DOM text. Computer may be used to inspect those redacted local screenshots after the deterministic run, but is supplemental and non-gating. Auth/session and tenant-sensitive changes still require their existing protected browser gates.
 
+The only built-in synthetic scenario is the PHI-free schedule-overlap proof:
+
+```powershell
+$env:VITE_DEV_DIAGNOSTICS='0'
+npm run dev -- --host 127.0.0.1 --port 4173
+```
+
+In a second terminal:
+
+```powershell
+npm run test:ui:responsive -- --base-url=http://127.0.0.1:4173 --route=/schedule --scenario=schedule-overlap
+```
+
+This enum-only scenario is valid only for exactly one `/schedule` route. It seeds a fixed localhost stub, permits the loopback route shell/static assets, and fulfills only enumerated same-origin synthetic data responses in browser memory; every other application request, external request, and loopback-server mutation fails closed. Unknown scenarios, arbitrary fixture paths, caller-selected identities/data, and unmatched non-read requests fail closed. Overflow and clipped fixed-control checks remain document-wide, while touch-target measurement is scoped to the exact overlap dialog named by the trigger's `aria-controls` so the result describes the activated scenario surface rather than background schedule controls. The evidence card records the scenario ID. This remains layout evidence and does not replace protected auth/session browser gates. Disable the optional development diagnostics overlay as shown so its own controls do not become part of route evidence.
+
 ## Vitest hang watchdog
 
 We wrap Vitest through [`scripts/run-vitest.mjs`](../scripts/run-vitest.mjs) so that hung specs

@@ -3,7 +3,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { promisify } from 'node:util';
 
@@ -30,8 +30,84 @@ const blockedHtml = `<!doctype html>
 <style>body{margin:0}button{width:48px;height:48px}</style></head>
 <body><button>OK</button><script>fetch('/mutate',{method:'POST'}).catch(()=>{});</script></body></html>`;
 
+const undersizedHtml = `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0}button{width:16px;height:16px;padding:0}</style></head>
+<body><button>OK</button></body></html>`;
+
+type ScheduleFixtureMode = 'pass' | 'clipped-control' | 'unexpected-read';
+
+let scheduleFixtureMode: ScheduleFixtureMode = 'pass';
+
+const buildSyntheticScheduleHtml = (mode: ScheduleFixtureMode): string => `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}button{min-width:48px;min-height:48px}</style>
+</head><body>
+${mode === 'clipped-control' ? '<button style="position:fixed;left:-10px;top:500px;width:48px;height:48px">Clipped background</button>' : ''}
+<button style="position:fixed;right:20px;bottom:0;width:16px;height:16px;min-width:0;min-height:0">Background</button>
+<div id="decoy-dialog" role="dialog" style="position:fixed;right:0;top:100px"><button style="width:16px;height:16px;min-width:0;min-height:0">Decoy</button></div>
+<main id="root"></main><script>
+${mode === 'unexpected-read' ? "fetch('/unexpected-read').catch(() => {});" : ''}
+Promise.all([
+  fetch('/api/runtime-config').then((response) => response.json()),
+  fetch('/rest/v1/rpc/get_schedule_data_batch', { method: 'POST' }).then((response) => response.json()),
+  fetch('/rest/v1/rpc/get_dropdown_data', { method: 'POST' }).then((response) => response.json()),
+  fetch('/rest/v1/rpc/get_sessions_optimized', { method: 'POST' }).then((response) => response.json()),
+  fetch('/rest/v1/message_thread_participants').then((response) => response.json()),
+]).then(([runtimeConfig, schedule, dropdowns, optimizedSessions, messageParticipants]) => {
+  const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}');
+  const authIsValid = auth.user?.role === 'admin_schedule'
+    && auth.roleAssignments?.includes('admin_schedule')
+    && typeof (auth.accessToken || auth.access_token) === 'string'
+    && typeof (auth.refreshToken || auth.refresh_token) === 'string';
+  const runtimeConfigIsValid = runtimeConfig.supabaseUrl === location.origin
+    && typeof runtimeConfig.supabaseAnonKey === 'string'
+    && typeof runtimeConfig.defaultOrganizationId === 'string';
+  const scheduleIsValid = schedule.sessions.length === 12
+    && schedule.sessions.every((session) => session.start_time && session.end_time)
+    && schedule.therapists.length === 12
+    && schedule.clients.length === 12;
+  const fallbacksAreValid = dropdowns.therapists.length === 12
+    && dropdowns.clients.length === 12
+    && Array.isArray(optimizedSessions)
+    && Array.isArray(messageParticipants);
+  if (!authIsValid || !runtimeConfigIsValid || !scheduleIsValid || !fallbacksAreValid) {
+    throw new Error('synthetic schedule bootstrap failed');
+  }
+  setTimeout(() => {
+    const root = document.getElementById('root');
+    root.innerHTML = '<div data-layout-kind="cluster"><button aria-haspopup="dialog" aria-expanded="false">12 appointments</button></div>';
+    root.querySelector('button').addEventListener('click', (event) => {
+      event.currentTarget.setAttribute('aria-expanded', 'true');
+      event.currentTarget.setAttribute('aria-controls', 'schedule-cluster-synthetic');
+      const dialog = document.createElement('div');
+      dialog.id = 'schedule-cluster-synthetic';
+      dialog.setAttribute('role', 'dialog');
+      dialog.setAttribute('aria-label', '12 overlapping appointments');
+      dialog.style.position = 'fixed';
+      dialog.style.inset = '8px';
+      dialog.innerHTML = '<button>Open appointment</button>';
+      document.body.append(dialog);
+    });
+  }, 1000);
+});
+</script></body></html>`;
+
+const receivedRequests: string[] = [];
+
 beforeAll(async () => {
   server = http.createServer((request, response) => {
+    receivedRequests.push(`${request.method ?? 'GET'} ${request.url ?? '/'}`);
+    if (request.url === '/schedule') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(buildSyntheticScheduleHtml(scheduleFixtureMode));
+      return;
+    }
+    if (request.url === '/observer-runtime-undersized') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(undersizedHtml);
+      return;
+    }
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(request.url === '/observer-runtime-blocked' ? blockedHtml : passHtml);
   });
@@ -124,6 +200,85 @@ describe('responsive UI observer browser runtime', () => {
       expect(result.result).toBe('fail');
       expect(result.failureCodes).toContain('non-read-method');
       expect(JSON.stringify(result)).not.toContain('/mutate');
+    }
+  }, 60_000);
+
+  it('still fails an uncovered undersized mobile control', async () => {
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/observer-runtime-undersized',
+    ]);
+
+    expect(summary.results).toHaveLength(2);
+    expect(summary.results[0].result).toBe('pass');
+    expect(summary.results[1].result).toBe('fail');
+    expect(summary.results[1].failureCodes).toContain('undersized-mobile-touch-target');
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+    }
+  }, 60_000);
+
+  it('runs the fixed synthetic schedule scenario without sending its synthetic requests to the server', async () => {
+    scheduleFixtureMode = 'pass';
+    const requestStart = receivedRequests.length;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/schedule',
+      '--scenario=schedule-overlap',
+    ]);
+
+    expect(summary.ok).toBe(true);
+    expect(summary.results).toHaveLength(2);
+    expect(receivedRequests.slice(requestStart)).toEqual(['GET /schedule', 'GET /schedule']);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.result).toBe('pass');
+      expect(result.failureCodes).toEqual([]);
+      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
+      expect(evidence.scenarioId).toBe('schedule-overlap');
+      expect(evidence.metricsSummary).toMatchObject({ visibleTouchTargetCount: 1 });
+    }
+  }, 60_000);
+
+  it('keeps clipped fixed-control checks document-wide in the schedule scenario', async () => {
+    scheduleFixtureMode = 'clipped-control';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/schedule',
+      '--scenario=schedule-overlap',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('clipped-fixed-control');
+    }
+  }, 60_000);
+
+  it('blocks unexpected same-origin reads in the schedule scenario', async () => {
+    scheduleFixtureMode = 'unexpected-read';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/schedule',
+      '--scenario=schedule-overlap',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
     }
   }, 60_000);
 

@@ -14,7 +14,7 @@ describe("payroll timekeeping security runner", () => {
         env: {
           ...process.env,
           PAYROLL_LOCAL_DATABASE_URL:
-            "postgresql://postgres:postgres@example.invalid:5432/postgres",
+            "postgresql://postgres@example.invalid:5432/postgres",
         },
       },
     );

@@ -43,7 +43,7 @@
   - `npm run verify:local`
 - executed checks:
   - focused payroll Vitest set: pass, 6 files / 37 tests
-  - `PAYROLL_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres node scripts/payroll-timekeeping-security-contract.mjs`: pass
+  - exact-loopback `PAYROLL_LOCAL_DATABASE_URL` with `node scripts/payroll-timekeeping-security-contract.mjs`: pass
   - `npx supabase db reset --local`: pass; exact-loopback security contract also passed immediately after reset
   - `npm run ci:check-focused`: pass
   - `npm run lint -- --quiet`: pass

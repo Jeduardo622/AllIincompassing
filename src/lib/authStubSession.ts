@@ -153,8 +153,11 @@ const normaliseRoleAssignments = (value: unknown): AppRole[] | null => {
   }
 
   return [...new Set(value.flatMap((candidate) => {
-    const normalized = normalizeRole(candidate);
-    return normalized && VALID_ROLES.has(normalized) ? [normalized] : [];
+    if (typeof candidate !== 'string') {
+      return [];
+    }
+    const exactRole = candidate.trim().toLowerCase().replace(/[\s-]+/g, '_') as AppRole;
+    return VALID_ROLES.has(exactRole) ? [exactRole] : [];
   }))];
 };
 

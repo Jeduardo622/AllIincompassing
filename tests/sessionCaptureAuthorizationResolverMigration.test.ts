@@ -32,11 +32,10 @@ describe('WIN-240 session capture billing resolver migration', () => {
     expect(sql).not.toMatch(/grant execute on function public\.resolve_assigned_bt_session_capture_billing\(uuid\) to authenticated,\s*service_role/i);
   });
 
-  it('enforces exact BT, active therapist, org-scoped assignment, and capture capability checks', () => {
-    expect(functionBody).toMatch(/app\.current_user_has_exact_role_for_org\([\s\S]*array\['bt'\]::text\[\][\s\S]*array\['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'\]::text\[\]/i);
+  it('delegates closeout actor checks to the shared helper while preserving capture capability enforcement', () => {
+    expect(sql).toMatch(/create or replace function app\.current_user_can_act_as_bt_closeout_actor\s*\(/i);
+    expect(functionBody).toMatch(/app\.current_user_can_act_as_bt_closeout_actor\(\s*v_session\.organization_id\s*,\s*v_session\.therapist_id\s*\)/i);
     expect(functionBody).toMatch(/v_session\.organization_id <> app\.current_user_organization_id\(\)/i);
-    expect(functionBody).toMatch(/from public\.therapists therapist[\s\S]*therapist\.organization_id = v_session\.organization_id[\s\S]*therapist\.status = 'active'[\s\S]*therapist\.deleted_at is null[\s\S]*upper\(btrim\(coalesce\(therapist\.title, ''\)\)\) in \('BT', 'RBT'\)/i);
-    expect(functionBody).toMatch(/v_session\.therapist_id = v_actor[\s\S]*from public\.user_therapist_links utl[\s\S]*utl\.user_id = v_actor[\s\S]*utl\.therapist_id = v_session\.therapist_id/i);
     expect(functionBody).toMatch(/current_user_can_capture_trial_event/i);
   });
 

@@ -95,6 +95,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/payroll-time-events"
+  to = "/.netlify/functions/payroll-time-events"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

@@ -72,7 +72,16 @@ vi.mock('../supabaseClient', () => {
 });
 
 const TestConsumer = () => {
-  const { user, loading, profile, authFlow, effectiveRole, isExactBt, signOut } = useAuth();
+  const {
+    user,
+    loading,
+    profile,
+    authFlow,
+    effectiveRole,
+    isExactBt,
+    canUseBtSessionCaptureMode,
+    signOut,
+  } = useAuth();
   return (
     <>
       <div data-testid="loading">{loading ? 'yes' : 'no'}</div>
@@ -80,6 +89,7 @@ const TestConsumer = () => {
       <div data-testid="role">{profile?.role ?? 'none'}</div>
       <div data-testid="effective-role">{effectiveRole}</div>
       <div data-testid="exact-bt">{isExactBt ? 'yes' : 'no'}</div>
+      <div data-testid="bt-capture-mode">{canUseBtSessionCaptureMode ? 'yes' : 'no'}</div>
       <div data-testid="auth-flow">{authFlow}</div>
       <button type="button" data-testid="signout" onClick={() => void signOut()}>
         Sign out
@@ -232,6 +242,40 @@ describe('AuthProvider initializeAuth resilience', () => {
 
     await waitFor(() => expect(screen.getByTestId('effective-role')).toHaveTextContent('bt'));
     expect(screen.getByTestId('exact-bt')).toHaveTextContent('no');
+    expect(screen.getByTestId('bt-capture-mode')).toHaveTextContent('no');
+  });
+
+  it('authorizes BT capture mode for an exclusive legacy therapist assignment', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'user-1', email: 'user@example.com' } } },
+      error: null,
+    });
+    mockProfilesMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: 'user-1',
+        email: 'user@example.com',
+        role: 'therapist',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+    mockRoleRowsEq.mockResolvedValueOnce({
+      data: [{ is_active: true, expires_at: null, roles: { name: 'therapist' } }],
+      error: null,
+      status: 200,
+    });
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('effective-role')).toHaveTextContent('bt'));
+    expect(screen.getByTestId('exact-bt')).toHaveTextContent('no');
+    expect(screen.getByTestId('bt-capture-mode')).toHaveTextContent('yes');
   });
 
   it('preserves an exact BT role assignment separately from normalized role aliases', async () => {
@@ -271,6 +315,7 @@ describe('AuthProvider initializeAuth resilience', () => {
 
     await waitFor(() => expect(screen.getByTestId('effective-role')).toHaveTextContent('bt'));
     expect(screen.getByTestId('exact-bt')).toHaveTextContent('yes');
+    expect(screen.getByTestId('bt-capture-mode')).toHaveTextContent('yes');
   });
 
   it('does not fall back to a stale BT profile after an authoritative empty role assignment read', async () => {
@@ -306,6 +351,7 @@ describe('AuthProvider initializeAuth resilience', () => {
 
     await waitFor(() => expect(screen.getByTestId('effective-role')).toHaveTextContent('bt'));
     expect(screen.getByTestId('exact-bt')).toHaveTextContent('no');
+    expect(screen.getByTestId('bt-capture-mode')).toHaveTextContent('no');
   });
 
   it('keeps the existing profile when refresh-time profile fetch fails for same user', async () => {

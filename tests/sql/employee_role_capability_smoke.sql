@@ -44,7 +44,8 @@ begin
     '00000000-0000-4000-8000-000000000502',
     '00000000-0000-4000-8000-000000000503',
     '00000000-0000-4000-8000-000000000504',
-    '00000000-0000-4000-8000-000000000505'
+    '00000000-0000-4000-8000-000000000505',
+    '00000000-0000-4000-8000-000000000506'
   );
 
   delete from public.authorization_services
@@ -79,7 +80,8 @@ begin
   delete from public.client_therapist_links
   where id in (
     '00000000-0000-4000-8000-000000000901',
-    '00000000-0000-4000-8000-000000000902'
+    '00000000-0000-4000-8000-000000000902',
+    '00000000-0000-4000-8000-000000000903'
   );
 
   delete from public.clients
@@ -89,12 +91,14 @@ begin
     '00000000-0000-4000-8000-000000000103',
     '00000000-0000-4000-8000-000000000104',
     '00000000-0000-4000-8000-000000000105',
-    '00000000-0000-4000-8000-000000000106'
+    '00000000-0000-4000-8000-000000000106',
+    '00000000-0000-4000-8000-000000000107'
   );
 
   delete from public.therapists
   where id in (
     '00000000-0000-4000-8000-000000000013',
+    '00000000-0000-4000-8000-000000000015',
     '00000000-0000-4000-8000-000000000021',
     '00000000-0000-4000-8000-000000000023'
   );
@@ -207,16 +211,20 @@ begin
   insert into public.therapists (id, email, full_name, first_name, last_name, status, organization_id)
   values
     ('00000000-0000-4000-8000-000000000013', 'codex-smoke-bt@example.invalid', 'Codex BT Staff', 'Codex', 'BT', 'active', '00000000-0000-4000-8000-000000000001'),
+    ('00000000-0000-4000-8000-000000000015', 'codex-smoke-therapist@example.invalid', 'Codex Therapist Staff', 'Codex', 'Therapist', 'active', '00000000-0000-4000-8000-000000000001'),
     ('00000000-0000-4000-8000-000000000021', 'codex-smoke-provider@example.invalid', 'Codex Provider', 'Codex', 'Provider', 'active', '00000000-0000-4000-8000-000000000001');
 
   insert into public.clients (id, full_name, status, organization_id, therapist_id, created_by, updated_by)
   values
     ('00000000-0000-4000-8000-000000000101', 'Codex Assigned Client', 'active', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011'),
     ('00000000-0000-4000-8000-000000000102', 'Codex Unassigned Client', 'active', '00000000-0000-4000-8000-000000000001', null, '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011'),
-    ('00000000-0000-4000-8000-000000000103', 'Codex Cross Org Client', 'active', '00000000-0000-4000-8000-000000000002', null, null, null);
+    ('00000000-0000-4000-8000-000000000103', 'Codex Cross Org Client', 'active', '00000000-0000-4000-8000-000000000002', null, null, null),
+    ('00000000-0000-4000-8000-000000000107', 'Codex Historical Only Client', 'active', '00000000-0000-4000-8000-000000000001', null, '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011');
 
   insert into public.client_therapist_links (id, client_id, therapist_id, organization_id, created_by)
-  values ('00000000-0000-4000-8000-000000000901', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011');
+  values
+    ('00000000-0000-4000-8000-000000000901', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011'),
+    ('00000000-0000-4000-8000-000000000903', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000015', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011');
 
   insert into public.programs (id, organization_id, client_id, name, status, created_by, updated_by)
   values
@@ -238,7 +246,8 @@ begin
   insert into public.sessions (id, client_id, therapist_id, start_time, end_time, status, has_transcription_consent, organization_id, created_by, updated_by, session_date, program_id, goal_id)
   values
     ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000013', now() + interval '7 days', now() + interval '7 days 1 hour', 'scheduled', false, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011', current_date + 7, '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000301'),
-    ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000021', now() + interval '8 days', now() + interval '8 days 1 hour', 'scheduled', false, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011', current_date + 8, '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000302');
+    ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000021', now() + interval '8 days', now() + interval '8 days 1 hour', 'scheduled', false, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011', current_date + 8, '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000302'),
+    ('00000000-0000-4000-8000-000000000506', '00000000-0000-4000-8000-000000000107', '00000000-0000-4000-8000-000000000013', now() + interval '12 days', now() + interval '12 days 1 hour', 'completed', false, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011', current_date + 12, null, null);
 
   insert into public.authorizations (id, authorization_number, client_id, provider_id, diagnosis_code, start_date, end_date, status, organization_id, created_by)
   values
@@ -407,6 +416,10 @@ declare
   assigned_note_count int;
   unassigned_note_count int;
   cross_org_note_count int;
+  optimized_count int;
+  affected_rows int;
+  batch_data jsonb;
+  dropdown_data jsonb;
 begin
   insert into role_smoke_results
   values (
@@ -457,6 +470,55 @@ begin
   exception when others then
     insert into role_smoke_results values ('therapist_program_note_write_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
   end;
+
+  select count(*)
+  into optimized_count
+  from public.get_sessions_optimized(now(), now() + interval '30 days');
+  batch_data := public.get_schedule_data_batch(now(), now() + interval '30 days');
+  dropdown_data := public.get_dropdown_data();
+
+  insert into role_smoke_results
+  values (
+    'therapist_schedule_rpc_client_scope',
+    app.current_user_has_active_schedule_client('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101')
+      and not app.current_user_has_active_schedule_client('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102')
+      and optimized_count = 1
+      and jsonb_array_length(batch_data->'sessions') = 1
+      and jsonb_array_length(batch_data->'clients') = 1
+      and batch_data->'clients'->0->>'id' = '00000000-0000-4000-8000-000000000101'
+      and jsonb_array_length(dropdown_data->'clients') = 1
+      and dropdown_data->'clients'->0->>'id' = '00000000-0000-4000-8000-000000000101'
+      and jsonb_array_length(dropdown_data->'locations') = 0,
+    'optimized=' || optimized_count
+      || ', batch_sessions=' || jsonb_array_length(batch_data->'sessions')
+      || ', batch_clients=' || jsonb_array_length(batch_data->'clients')
+      || ', dropdown_clients=' || jsonb_array_length(dropdown_data->'clients'),
+    current_user
+  );
+
+  update public.sessions
+  set notes = notes
+  where id = '00000000-0000-4000-8000-000000000501';
+  get diagnostics affected_rows = row_count;
+  insert into role_smoke_results
+  values (
+    'therapist_assigned_session_update_allowed',
+    affected_rows = 1,
+    'updated_rows=' || affected_rows,
+    current_user
+  );
+
+  update public.sessions
+  set notes = notes
+  where id = '00000000-0000-4000-8000-000000000502';
+  get diagnostics affected_rows = row_count;
+  insert into role_smoke_results
+  values (
+    'therapist_unassigned_session_update_denied',
+    affected_rows = 0,
+    'updated_rows=' || affected_rows,
+    current_user
+  );
 end
 $therapist$;
 
@@ -466,6 +528,10 @@ declare
   assigned_count int;
   unassigned_count int;
   cross_org_count int;
+  historical_count int;
+  optimized_count int;
+  batch_data jsonb;
+  dropdown_data jsonb;
 begin
   insert into role_smoke_results
   values (
@@ -484,6 +550,73 @@ begin
   select count(*) into cross_org_count from public.clients where id = '00000000-0000-4000-8000-000000000103';
   insert into role_smoke_results
   values ('bt_assigned_client_read_only', assigned_count = 1 and unassigned_count = 0 and cross_org_count = 0, 'assigned=' || assigned_count || ', unassigned=' || unassigned_count || ', cross_org=' || cross_org_count, current_user);
+
+  insert into role_smoke_results
+  values (
+    'bt_schedule_assigned_client_allowed',
+    app.current_user_has_active_schedule_client('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101'),
+    'active assignment helper accepted assigned client',
+    current_user
+  );
+  insert into role_smoke_results
+  values (
+    'bt_schedule_unassigned_client_denied',
+    not app.current_user_has_active_schedule_client('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102'),
+    'active assignment helper rejected unassigned client',
+    current_user
+  );
+  insert into role_smoke_results
+  values (
+    'bt_schedule_cross_org_client_denied',
+    not app.current_user_has_active_schedule_client('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000103'),
+    'active assignment helper rejected cross-org client',
+    current_user
+  );
+  insert into role_smoke_results
+  values (
+    'bt_schedule_historical_only_client_denied',
+    not app.current_user_has_active_schedule_client('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000107'),
+    'historical session did not create an active assignment',
+    current_user
+  );
+
+  select count(*) into assigned_count from public.sessions where client_id = '00000000-0000-4000-8000-000000000101';
+  select count(*) into unassigned_count from public.sessions where client_id = '00000000-0000-4000-8000-000000000102';
+  select count(*) into historical_count from public.sessions where client_id = '00000000-0000-4000-8000-000000000107';
+  select count(*)
+  into optimized_count
+  from public.get_sessions_optimized(now(), now() + interval '30 days');
+  batch_data := public.get_schedule_data_batch(now(), now() + interval '30 days');
+  dropdown_data := public.get_dropdown_data();
+
+  insert into role_smoke_results
+  values (
+    'bt_schedule_rpc_client_scope',
+    assigned_count = 1
+      and unassigned_count = 0
+      and historical_count = 0
+      and optimized_count = 1
+      and jsonb_array_length(batch_data->'sessions') = 1
+      and jsonb_array_length(batch_data->'clients') = 1
+      and batch_data->'clients'->0->>'id' = '00000000-0000-4000-8000-000000000101'
+      and batch_data->'clients'->0 ? 'availability_hours'
+      and batch_data->'sessions'->0 ? 'program_id'
+      and batch_data->'sessions'->0 ? 'goal_id'
+      and batch_data->'sessions'->0 ? 'started_at'
+      and jsonb_array_length(dropdown_data->'clients') = 1
+      and dropdown_data->'clients'->0->>'id' = '00000000-0000-4000-8000-000000000101'
+      and dropdown_data->'clients'->0 ? 'availability_hours'
+      and jsonb_array_length(dropdown_data->'locations') = 0,
+    'direct_assigned=' || assigned_count
+      || ', direct_unassigned=' || unassigned_count
+      || ', direct_historical=' || historical_count
+      || ', optimized=' || optimized_count
+      || ', batch_sessions=' || jsonb_array_length(batch_data->'sessions')
+      || ', batch_clients=' || jsonb_array_length(batch_data->'clients')
+      || ', dropdown_clients=' || jsonb_array_length(dropdown_data->'clients')
+      || ', dropdown_locations=' || jsonb_array_length(dropdown_data->'locations'),
+    current_user
+  );
 
   select count(*) into assigned_count from public.program_notes where program_id = '00000000-0000-4000-8000-000000000201';
   select count(*) into unassigned_count from public.program_notes where program_id = '00000000-0000-4000-8000-000000000202';
@@ -639,7 +772,8 @@ begin
     '00000000-0000-4000-8000-000000000502',
     '00000000-0000-4000-8000-000000000503',
     '00000000-0000-4000-8000-000000000504',
-    '00000000-0000-4000-8000-000000000505'
+    '00000000-0000-4000-8000-000000000505',
+    '00000000-0000-4000-8000-000000000506'
   );
 
   delete from public.authorization_services
@@ -673,7 +807,8 @@ begin
   delete from public.client_therapist_links
   where id in (
     '00000000-0000-4000-8000-000000000901',
-    '00000000-0000-4000-8000-000000000902'
+    '00000000-0000-4000-8000-000000000902',
+    '00000000-0000-4000-8000-000000000903'
   );
 
   delete from public.clients
@@ -683,12 +818,14 @@ begin
     '00000000-0000-4000-8000-000000000103',
     '00000000-0000-4000-8000-000000000104',
     '00000000-0000-4000-8000-000000000105',
-    '00000000-0000-4000-8000-000000000106'
+    '00000000-0000-4000-8000-000000000106',
+    '00000000-0000-4000-8000-000000000107'
   );
 
   delete from public.therapists
   where id in (
     '00000000-0000-4000-8000-000000000013',
+    '00000000-0000-4000-8000-000000000015',
     '00000000-0000-4000-8000-000000000021',
     '00000000-0000-4000-8000-000000000023'
   );
@@ -735,12 +872,12 @@ from (
   union all select id from auth.users where id in ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000014', '00000000-0000-4000-8000-000000000015')
   union all select id from public.profiles where id in ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000014', '00000000-0000-4000-8000-000000000015')
   union all select id from public.user_roles where user_id in ('00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000014', '00000000-0000-4000-8000-000000000015')
-  union all select id from public.clients where id in ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000105', '00000000-0000-4000-8000-000000000106')
-  union all select id from public.therapists where id in ('00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000021', '00000000-0000-4000-8000-000000000023')
+  union all select id from public.clients where id in ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000105', '00000000-0000-4000-8000-000000000106', '00000000-0000-4000-8000-000000000107')
+  union all select id from public.therapists where id in ('00000000-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000015', '00000000-0000-4000-8000-000000000021', '00000000-0000-4000-8000-000000000023')
   union all select id from public.programs where id in ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000204', '00000000-0000-4000-8000-000000000205')
   union all select id from public.program_notes where id in ('00000000-0000-4000-8000-000000000801', '00000000-0000-4000-8000-000000000802', '00000000-0000-4000-8000-000000000803', '00000000-0000-4000-8000-000000000804')
   union all select id from public.goals where id in ('00000000-0000-4000-8000-000000000301', '00000000-0000-4000-8000-000000000302', '00000000-0000-4000-8000-000000000303', '00000000-0000-4000-8000-000000000304')
-  union all select id from public.sessions where id in ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000503', '00000000-0000-4000-8000-000000000504', '00000000-0000-4000-8000-000000000505')
+  union all select id from public.sessions where id in ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000503', '00000000-0000-4000-8000-000000000504', '00000000-0000-4000-8000-000000000505', '00000000-0000-4000-8000-000000000506')
   union all select id from public.authorizations where id in ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000404', '00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000406')
   union all select id from public.goal_data_points where id in ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000602')
 ) residue;

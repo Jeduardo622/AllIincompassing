@@ -206,6 +206,7 @@ interface AuthContextType {
   metadataRole: Role | null;
   effectiveRole: Role;
   isExactBt: boolean;
+  canUseBtSessionCaptureMode: boolean;
   roleMismatch: boolean;
   isGuardian?: boolean;
   authFlow: 'normal' | 'password_recovery';
@@ -297,6 +298,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return resolvedExactRoleNames.includes('bt')
       && !resolvedExactRoleNames.some((role) => ['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'].includes(role));
   }, [resolvedExactRoleNames]);
+
+  const canUseBtSessionCaptureMode = useMemo(() => {
+    if (roleAssignmentNames === null) {
+      return false;
+    }
+
+    const exactRoles = new Set(roleAssignmentNames);
+    const isAuthoritativeExactBt = exactRoles.has('bt')
+      && ![...exactRoles].some((role) => ['admin', 'admin_schedule', 'midtier', 'bcba', 'therapist'].includes(role));
+    const isExclusiveLegacyTherapist = exactRoles.size === 1 && exactRoles.has('therapist');
+
+    return isAuthoritativeExactBt || isExclusiveLegacyTherapist;
+  }, [roleAssignmentNames]);
 
   const roleMismatch = useMemo(
     () =>
@@ -1100,6 +1114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     metadataRole,
     effectiveRole,
     isExactBt,
+    canUseBtSessionCaptureMode,
     roleMismatch,
     isGuardian,
     authFlow,

@@ -5334,7 +5334,7 @@ describe('SessionModal', () => {
     });
   }, 15000);
 
-  it('submits configured plan target trials as raw trial events', async () => {
+  it('submits rapid configured-target trial clicks with unique sequential trial numbers', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const targetId = '88888888-8888-4888-8888-888888888888';
     const buildChain = (rows: unknown[], singleRow: unknown = null) => {
@@ -5450,8 +5450,19 @@ describe('SessionModal', () => {
     fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
       target: { value: 'Observed steady progress' },
     });
-    await userEvent.click(screen.getByRole('button', { name: /Increase incorrect or no-response trials for target 1/i }));
-    await userEvent.click(screen.getByRole('button', { name: /Save skills/i }));
+    const incorrectButton = screen.getByRole('button', {
+      name: /Increase incorrect or no-response trials for target 1/i,
+    });
+    const saveSkillsButton = screen.getByRole('button', { name: /Save skills/i });
+    await act(async () => {
+      incorrectButton.click();
+      incorrectButton.click();
+    });
+    expect(incorrectButton.parentElement).toHaveTextContent('+2 · −2');
+    await act(async () => {
+      incorrectButton.click();
+      saveSkillsButton.click();
+    });
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
@@ -5466,6 +5477,18 @@ describe('SessionModal', () => {
           expect.objectContaining({
             target_id: targetId,
             trial_number: 4,
+            response: 'incorrect',
+            expected_progression_version: 7,
+          }),
+          expect.objectContaining({
+            target_id: targetId,
+            trial_number: 5,
+            response: 'incorrect',
+            expected_progression_version: 7,
+          }),
+          expect.objectContaining({
+            target_id: targetId,
+            trial_number: 6,
             response: 'incorrect',
             expected_progression_version: 7,
           }),

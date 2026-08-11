@@ -779,7 +779,19 @@ export function SessionModal({
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
-  const [pendingTrialEvents, setPendingTrialEvents] = useState<SessionCaptureTrialEventInput[]>([]);
+  const [pendingTrialEvents, setPendingTrialEventsState] = useState<SessionCaptureTrialEventInput[]>([]);
+  const pendingTrialEventsRef = useRef<SessionCaptureTrialEventInput[]>([]);
+  const setPendingTrialEvents = useCallback((
+    update:
+      | SessionCaptureTrialEventInput[]
+      | ((current: SessionCaptureTrialEventInput[]) => SessionCaptureTrialEventInput[]),
+  ) => {
+    const next = typeof update === 'function'
+      ? update(pendingTrialEventsRef.current)
+      : update;
+    pendingTrialEventsRef.current = next;
+    setPendingTrialEventsState(next);
+  }, []);
   const [promptOutcomeByTargetId, setPromptOutcomeByTargetId] = useState<Record<string, PromptOutcome>>({});
   const [pendingNumericTrialValues, setPendingNumericTrialValues] = useState<Record<string, string>>({});
   const [progressionNotices, setProgressionNotices] = useState<string[]>([]);
@@ -1950,7 +1962,7 @@ export function SessionModal({
       const mergeGoalIds = options?.captureMergeGoalIds?.filter((id) => id.trim().length > 0) ?? [];
       const isPartialCaptureSave = mergeGoalIds.length > 0;
       const discardedTargetIds = new Set(options?.discardTrialTargetIds ?? []);
-      const trialEventsForSubmit = pendingTrialEvents.filter((event) => {
+      const trialEventsForSubmit = pendingTrialEventsRef.current.filter((event) => {
         if (discardedTargetIds.has(event.target_id)) return false;
         if (!isPartialCaptureSave) {
           return true;
@@ -2704,9 +2716,10 @@ export function SessionModal({
       field: 'metric_value' | 'incorrect_trials',
       scope: 'all' | 'pending' = 'all',
     ) => {
+      const currentPendingTrialEvents = pendingTrialEventsRef.current;
       const sourceEvents = scope === 'pending'
-        ? pendingTrialEvents
-        : [...existingTrialEvents, ...pendingTrialEvents];
+        ? currentPendingTrialEvents
+        : [...existingTrialEvents, ...currentPendingTrialEvents];
       return sourceEvents.filter((event) => {
         if (event.target_id !== targetId) {
           return false;
@@ -2721,14 +2734,15 @@ export function SessionModal({
           : event.value === 0;
       }).length;
     },
-    [existingTrialEvents, pendingTrialEvents],
+    [existingTrialEvents],
   );
 
   const getRawTrialNumericSummary = useCallback(
     (targetId: string, scope: 'all' | 'pending' = 'all') => {
+      const currentPendingTrialEvents = pendingTrialEventsRef.current;
       const sourceEvents = scope === 'pending'
-        ? pendingTrialEvents
-        : [...existingTrialEvents, ...pendingTrialEvents];
+        ? currentPendingTrialEvents
+        : [...existingTrialEvents, ...currentPendingTrialEvents];
       return sourceEvents
         .filter((event) => event.target_id === targetId && typeof event.value === 'number')
         .reduce(
@@ -2739,17 +2753,17 @@ export function SessionModal({
           { count: 0, total: 0 },
         );
     },
-    [existingTrialEvents, pendingTrialEvents],
+    [existingTrialEvents],
   );
 
   const getNextRawTrialNumber = useCallback(
     (targetId: string): number => {
-      const maxTrialNumber = [...existingTrialEvents, ...pendingTrialEvents]
+      const maxTrialNumber = [...existingTrialEvents, ...pendingTrialEventsRef.current]
         .filter((event) => event.target_id === targetId)
         .reduce((max, event) => Math.max(max, Number(event.trial_number) || 0), 0);
       return maxTrialNumber + 1;
     },
-    [existingTrialEvents, pendingTrialEvents],
+    [existingTrialEvents],
   );
 
   const bumpTrialCount = useCallback(

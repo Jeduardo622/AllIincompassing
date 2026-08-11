@@ -381,7 +381,14 @@ export const Schedule = React.memo(() => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   useCapturePendingScheduleEvent();
-  const { user, profile, effectiveRole, isExactBt, hasCapability } = useAuth();
+  const {
+    user,
+    profile,
+    effectiveRole,
+    isExactBt,
+    canUseBtSessionCaptureMode,
+    hasCapability,
+  } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [view, setView] = useState<"day" | "week">("week");
@@ -2108,7 +2115,7 @@ export const Schedule = React.memo(() => {
         clients={visibleClients}
         existingSessions={displayData.sessions}
         timeZone={userTimeZone}
-        dataCollectionOnly={isExactBt && Boolean(selectedSession?.id)}
+        dataCollectionOnly={canUseBtSessionCaptureMode && Boolean(selectedSession?.id)}
         allowStartSession={
           isExactBt &&
           selectedSession?.status === "scheduled" &&

@@ -792,8 +792,11 @@ describe("Dashboard staff dashboard query gate", () => {
     const invalidateSpy = vi.spyOn(client, "invalidateQueries");
 
     await userEvent.click(await screen.findByRole("button", { name: /amend bt note for taylor client/i }));
-    expect(screen.getByLabelText("Discussed domains/progress/data collection")).toBeVisible();
+    const domainSupportOption = screen.getByLabelText("Discussed domains/progress/data collection");
+    expect(domainSupportOption).toBeVisible();
+    expect(domainSupportOption.closest('label')).toHaveClass('min-h-11');
     expect(screen.queryByLabelText("Discussed programs/progress/data collection")).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('min-h-11');
     await userEvent.click(screen.getByRole("radio", { name: /type signature/i }));
     await userEvent.type(screen.getByLabelText(/type behavior technician signature/i), "Jordan BT");
     await userEvent.click(screen.getByRole("button", { name: /re-attest and resubmit/i }));

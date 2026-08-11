@@ -5,7 +5,7 @@
   "successorKey": "clinical-domain-terminology",
   "repository": "Jeduardo622/AllIincompassing",
   "createdAt": "2026-08-11T11:35:27.4621824-07:00",
-  "status": "BLOCKED_RESPONSIVE_EVIDENCE",
+  "status": "PASS_WITH_CI_PENDING",
   "authorization": {
     "uiOnlyEvidence": true,
     "hostedAction": false,
@@ -13,19 +13,30 @@
     "workflowDispatch": false,
     "activeMode": false,
     "providerCall": false,
-    "phiBearingFixture": false
+    "phiBearingFixture": false,
+    "localHarnessOnly": true
   },
   "routeTask": {
     "classification": "high-risk human-reviewed",
     "lane": "critical",
-    "why": "The combined successor branch refreshes hash-bound WIN-275 approval evidence after a protected UI surface changed; the presentation-only implementation does not expand runtime authority.",
+    "why": "The successor changes a hash-bound protected UI surface and adds an isolated local harness that remaps auth and transport dependencies for responsive verification without changing production auth, runtime, Supabase, or deploy behavior.",
     "triggeringPaths": [
-      "docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
-      "docs/ai/handoffs/WIN-275-clinical-domain-terminology-successor.md"
+      "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+      "src/components/AutoScheduleModal.tsx",
+      "tests/fixtures/responsive-harness/**",
+      "vite.responsive-harness.config.ts"
     ],
     "reviewerRequired": true,
     "verifyChangeRequired": true,
     "mandatoryChecks": [
+      "npm run ci:check-focused",
+      "npm run lint",
+      "npm run typecheck",
+      "npm run test:ci",
+      "npm run build",
+      "npm run test:routes:tier0",
+      "npm run ci:playwright",
+      "responsive observer at 1440x900 and 390x844",
       "critical specialist review",
       "exact-head required CI",
       "verify-change",
@@ -34,64 +45,63 @@
   },
   "branchContext": {
     "branch": "codex/win-275-terminology-successor",
-    "baseMergeCommit": "2a2d95def06fb11e172012b9541106b4f354329f",
-    "implementationHeadCommit": "e81bf7eac4673ae283c6b8807d989e95efdf2b65"
+    "baseMergeCommit": "37e7cbfa888ebb3b33cf895cb9638f6b6590bd5f",
+    "implementationHeadCommit": "0df442697d248bf4e2d720c127fa983f2beaf8a6",
+    "mergedVerificationHeadCommit": "394b4ac0c58ea6ae2985495f4e91054b248d2579"
   },
   "successorAgents": {
     "specification-engineer": {
-      "agentId": "019ff210-a818-7343-9346-973dad5b7590",
-      "status": "RECORDED_NO_PASS_CLAIM"
+      "agentId": "019ff23a-54ee-71d0-aa4b-9cdc78df7f69",
+      "status": "PASS_SCOPE_DEFINED"
     },
     "software-architect": {
-      "agentId": "019ff213-6b0e-7cb3-a895-c2cab62ed4d9",
-      "status": "RECORDED_NO_PASS_CLAIM"
+      "agentId": "019ff23e-39ca-7551-850e-bc5cbea525a7",
+      "status": "PASS_ISOLATED_HARNESS_ARCHITECTURE"
+    },
+    "implementation-engineer": {
+      "agentId": "019ff240-9997-74a0-b8a9-073f5304d7d6",
+      "status": "IMPLEMENTATION_STARTED_PARENT_COMPLETED"
     },
     "code-review-engineer": {
-      "agentId": "019ff21d-d034-79f1-891e-d4608b3fb8de",
+      "agentId": "019ff261-adb3-7680-b1df-e7a7a28c7709",
       "status": "PASS"
     },
     "security-engineer": {
-      "agentId": "019ff21d-de29-7f90-a756-66995efe8dd5",
-      "status": "PASS"
-    },
-    "supabase-reviewer": {
-      "agentId": "019ff21d-e767-78e2-a484-ed6eb1113651",
-      "status": "PASS_NO_SUPABASE_DRIFT"
-    },
-    "documentation-engineer": {
-      "agentId": "019ff21d-efca-7e01-97d2-5b3d18c540de",
+      "agentId": "019ff265-5b6d-7313-a7fc-c6432fa90fe4",
       "status": "PASS"
     },
     "test-engineer": {
-      "agentId": "019ff21d-d56a-7c83-9b27-d5e74932a972",
-      "status": "BLOCKED_RESPONSIVE_EVIDENCE"
+      "agentId": "019ff263-3e23-7d70-b098-5e8626b1ed86",
+      "status": "PASS_LOCAL_WITH_SECRET_BACKED_CI_PENDING"
     },
     "responsive-ui-observer": {
-      "agentId": "019ff224-ef29-74a3-b100-91d6a090b22a",
-      "status": "FAIL_AUTH_RUNTIME_SHELL"
+      "status": "PASS_LOCAL_COMMAND",
+      "command": "npm run test:ui:responsive -- --base-url=http://127.0.0.1:4178 --route=/clients/test-client --route=/schedule"
     },
     "devops-engineer": {
-      "agentId": "019ff21d-fb10-7b02-a8cc-9b707c47d5d7",
-      "status": "BLOCKED_NO_PR_OR_EXACT_HEAD_CI"
+      "agentId": "019ff265-5d0d-75e0-855e-d70651484713",
+      "status": "PASS_BUILD_CONFIG_ISOLATION"
     }
   },
   "verification": {
-    "result": "fail",
+    "result": "pass-with-blocked-checks",
     "passed": [
       "npm run lint",
       "npm run typecheck",
-      "seven focused Vitest files: 360 tests",
+      "eight focused Vitest files: 361 tests",
+      "responsive harness contract: 2 tests",
+      "responsive observer: four route and viewport results",
       "npm run build",
-      "npm run ci:check-focused"
+      "npm run ci:check-focused",
+      "npm run test:routes:tier0: 220 tests",
+      "npm run test:ci: 4174 tests across 484 files",
+      "npm run ci:verify-coverage: 92.81 percent line coverage",
+      "npm run verify:local"
     ],
-    "failed": [
-      "npm run test:ci: 4137 passed, 1 stale rolling-manifest hash failure",
-      "responsive observer: authenticated content unreachable; auth/runtime shell failed on both viewports"
-    ],
+    "failed": [],
     "blocked": [
-      "npm run verify:local depends on the stale rolling-manifest test",
-      "rolling manifest refresh requires a passing test-engineer verdict",
-      "exact-head CI requires a pushed PR"
+      "npm run ci:playwright requires PW_ADMIN or PW_SUPERADMIN credentials and stopped at preflight locally",
+      "exact-head CI requires this evidence refresh to be committed and pushed"
     ]
   },
   "predecessorReferences": [
@@ -150,34 +160,25 @@
       "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
       "algorithm": "sha256",
       "canonicalization": "UTF-8 text with CRLF normalized to LF, matching tests/agentWorkLedgerHostedShadowProof.test.ts",
-      "canonicalSha256": "c985272569a74c67c676c31e2f2a6490af2bfcce139e7852364209b3c8a64dc8",
-      "rawWindowsWorkspaceSha256": "88ac7775906c914364b54b4b70223ee39df9f76949c3a134485628ed1cfcb76f"
+      "canonicalSha256": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6"
     }
   },
   "expectedHashDrift": {
     "rollingManifestPath": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
-    "status": "DEFERRED_UNTIL_LATER_REVIEWERS_EXIST",
+    "status": "RESOLVED_BY_THIS_EVIDENCE_REFRESH",
     "driftedProtectedSurfaceHashes": [
       {
         "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
         "manifestSha256": "fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4",
-        "currentBranchCanonicalSha256": "c985272569a74c67c676c31e2f2a6490af2bfcce139e7852364209b3c8a64dc8",
-        "rawWindowsWorkspaceSha256": "88ac7775906c914364b54b4b70223ee39df9f76949c3a134485628ed1cfcb76f"
+        "currentBranchCanonicalSha256": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6"
       }
     ],
-    "noManifestUpdatePerformed": true
+    "noManifestUpdatePerformed": false
   },
   "laterRollingManifestUpdateRequired": {
     "path": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
-    "requiredWhen": [
-      "exact-head successor reviewer IDs and verdict evidence exist for the terminology branch",
-      "the successor head commit to attest is chosen",
-      "the rolling manifest can truthfully reference this supplemental attestation"
-    ],
-    "requiredChanges": [
-      "add a supplemental attestation pointer for docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
-      "refresh protectedSurfaceHashes for any successor-bound protected files, including src/components/ClientDetails/ProgramsGoalsTab.tsx if this head remains the review target",
-      "record only actually completed reviewer evidence; do not infer PASS"
-    ]
+    "status": "COMPLETED_IN_SUCCESSOR_EVIDENCE_COMMIT",
+    "requiredWhen": [],
+    "requiredChanges": []
   }
 }

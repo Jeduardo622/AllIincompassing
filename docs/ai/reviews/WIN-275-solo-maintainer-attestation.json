@@ -62,6 +62,31 @@
     "sha256": "4757b1cf4d71009a30eba9b24ab385d40dc381c3f14abcf0b54a5d879e387c2b",
     "hostedActionAuthorized": false
   },
+  "terminologySuccessorAttestation": {
+    "path": "docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
+    "sha256": "b31e4fb26194343c922644c92699cfc82d9756120f90f9c6e105552ba50627e0",
+    "implementationHeadCommit": "0df442697d248bf4e2d720c127fa983f2beaf8a6",
+    "mergedVerificationHeadCommit": "394b4ac0c58ea6ae2985495f4e91054b248d2579",
+    "hostedActionAuthorized": false
+  },
+  "terminologySuccessorReviews": {
+    "code-review-engineer": {
+      "agentId": "019ff261-adb3-7680-b1df-e7a7a28c7709",
+      "verdict": "PASS"
+    },
+    "security-engineer": {
+      "agentId": "019ff265-5b6d-7313-a7fc-c6432fa90fe4",
+      "verdict": "PASS"
+    },
+    "test-engineer": {
+      "agentId": "019ff263-3e23-7d70-b098-5e8626b1ed86",
+      "verdict": "PASS_LOCAL_WITH_SECRET_BACKED_CI_PENDING"
+    },
+    "software-architect": {
+      "agentId": "019ff23e-39ca-7551-850e-bc5cbea525a7",
+      "verdict": "PASS"
+    }
+  },
   "protectedSurfaceHashes": {
     ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
     "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
@@ -80,7 +105,7 @@
     "docs/ai/handoffs/agent-work-ledger-adoption-contract.md": "d200e34d9516117ea21c10a950de30bc8e3c8870552dff9382ab8fb38664fe62",
     "docs/ops/agent-work-ledger-caller-adoption.md": "85a23906a650b0f8929dbae58096e3d688780fe27c6f25dbe5b3f49b68984a1e",
     "src/components/ClientDetails/IehpFbaLayoutReview.tsx": "8fe6c210cc1719efce43fad12b2af38815dd75a92b17e4878da12211f0394209",
-    "src/components/ClientDetails/ProgramsGoalsTab.tsx": "fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4",
+    "src/components/ClientDetails/ProgramsGoalsTab.tsx": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6",
     "src/components/__tests__/IehpFbaLayoutReview.test.tsx": "06f5a04b356347fe75bc3bf7f389017f46b381a09af3b4702a440414c759ef2e",
     "src/lib/__tests__/agent-work-ledger.test.ts": "20850c876406328c2f8a09ee78f70ed83f379e7130b3e30dede8f50af5972814",
     "src/lib/agent-work-ledger.ts": "77f4eb775c6744bc55588ee3ab126978796470bfae1691ff06fe762aa29ad0a6",

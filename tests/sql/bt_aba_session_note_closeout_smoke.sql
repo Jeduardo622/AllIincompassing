@@ -568,7 +568,6 @@ select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b019
 do $legacy_therapist_finalization$
 declare
   v_note_id uuid;
-  v_request_id uuid;
   result jsonb;
   payload jsonb := '{"authorization_id":"00000000-0000-4000-8000-00000000b099","requested_service_code":"CALLER-CONTROLLED","goals_addressed":[],"goal_ids":[],"goal_measurements":{},"goal_notes":{},"narrative":"Legacy therapist finalized closeout"}'::jsonb;
   valid_responses jsonb := '{
@@ -597,6 +596,14 @@ begin
     raise exception 'legacy therapist finalize failed: %', result;
   end if;
 
+end
+$legacy_therapist_finalization$;
+
+reset role;
+do $legacy_therapist_request_side_effect$
+declare
+  v_request_id uuid;
+begin
   select request.id
   into v_request_id
   from public.supervision_session_note_requests request
@@ -606,12 +613,20 @@ begin
     raise exception 'legacy therapist finalization did not create the expected supervision request';
   end if;
 
+  perform set_config('app.win240_legacy_request_id', v_request_id::text, true);
+end
+$legacy_therapist_request_side_effect$;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b019', true);
+do $legacy_therapist_request_replay$
+begin
   if public.create_supervision_session_note_request_for_completed_session('00000000-0000-4000-8000-00000000b045')
-     is distinct from v_request_id then
+     is distinct from current_setting('app.win240_legacy_request_id')::uuid then
     raise exception 'legacy therapist creator replay returned a different request';
   end if;
 end
-$legacy_therapist_finalization$;
+$legacy_therapist_request_replay$;
 
 reset role;
 set local role authenticated;
@@ -628,6 +643,15 @@ end
 $unlinked_legacy_therapist_creator_denied$;
 
 reset role;
+select set_config(
+  'app.win240_overlap_note_id',
+  (
+    select note.id::text
+    from public.client_session_notes note
+    where note.session_id = '00000000-0000-4000-8000-00000000b046'
+  ),
+  true
+);
 insert into public.user_roles (user_id, role_id, is_active)
 select '00000000-0000-4000-8000-00000000b019', roles.id, true
 from public.roles roles
@@ -638,7 +662,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000b019
 do $legacy_therapist_role_overlap_denied$
 declare
   template_id uuid := '00000000-0000-4000-8000-00000000b005';
-  v_note_id uuid;
+  v_note_id uuid := current_setting('app.win240_overlap_note_id')::uuid;
 begin
   begin
     perform public.resolve_assigned_bt_session_capture_billing('00000000-0000-4000-8000-00000000b040');
@@ -652,10 +676,6 @@ begin
     perform public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b040');
     raise exception 'legacy therapist admin overlap unexpectedly read BT ABA note';
   exception when sqlstate '42501' then null; end;
-
-  select note.id into v_note_id
-  from public.client_session_notes note
-  where note.session_id = '00000000-0000-4000-8000-00000000b046';
 
   begin
     perform public.finalize_bt_aba_session_note(
@@ -674,8 +694,14 @@ $legacy_therapist_role_overlap_denied$;
 reset role;
 do $win224_request_seed$
 declare
+  v_note_id uuid;
   v_request_id uuid;
 begin
+  select note.id
+  into v_note_id
+  from public.client_session_notes note
+  where note.session_id = '00000000-0000-4000-8000-00000000b044';
+
   select request.id
   into v_request_id
   from public.supervision_session_note_requests request
@@ -693,6 +719,7 @@ begin
       updated_at = timezone('utc', now())
   where id = v_request_id;
 
+  perform set_config('app.win224_note_id', v_note_id::text, true);
   perform set_config('app.win224_request_id', v_request_id::text, true);
 end
 $win224_request_seed$;
@@ -910,9 +937,7 @@ begin
     raise exception 'original BT resubmission did not create amendment version 2';
   end if;
 
-  select note.id into v_original_note_id
-  from public.client_session_notes note
-  where note.session_id = '00000000-0000-4000-8000-00000000b044';
+  v_original_note_id := current_setting('app.win224_note_id')::uuid;
 
   v_read_result := public.get_bt_aba_session_note('00000000-0000-4000-8000-00000000b044');
   if v_read_result->>'note_id' is distinct from v_original_note_id::text

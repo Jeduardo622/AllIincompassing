@@ -66,6 +66,28 @@ const SYNTHETIC_AUTH_STORAGE_PAYLOAD = {
   },
 };
 
+const PAYROLL_TIME_SCENARIO_HTML = `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden;background:#f5f7fb;font-family:ui-sans-serif,system-ui,sans-serif}.shell{padding:16px;display:grid;gap:16px}.stats{display:grid;gap:12px}.stat{background:#fff;border:1px solid #d7deea;border-radius:16px;padding:16px}.actions{display:flex;flex-wrap:wrap;gap:12px}.actions button{width:48px;height:48px;border-radius:12px;border:0;background:#1d4ed8;color:#fff}.history{background:#fff;border:1px solid #d7deea;border-radius:16px;padding:16px}.history ul{margin:0;padding-left:20px}</style>
+</head><body>
+<main class="shell" id="root" data-scenario="payroll-time"><p>Loading payroll time.</p></main>
+<script>
+Promise.all([
+  fetch('/api/runtime-config').then((response) => response.json()),
+  fetch('/api/payroll-time-events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'get_day', localDate: '2026-08-11' }),
+  }).then((response) => response.json()),
+]).then(([runtimeConfig, payrollDay]) => {
+  if (!runtimeConfig || payrollDay?.state !== 'ok') {
+    throw new Error('payroll-time bootstrap failed');
+  }
+  const root = document.getElementById('root');
+  root.innerHTML = '<section class="stats"><div class="stat"><strong>Active shift</strong><p>42 minutes</p></div><div class="stat"><strong>Current work category</strong><p>administration</p></div></section><section class="actions"><button aria-label="Start shift">S</button><button aria-label="End shift">E</button><button aria-label="Start meal">M</button><button aria-label="Correction">C</button></section><section class="history"><h1>Payroll time</h1><ul><li>shift started</li><li>pending confirmation</li></ul></section>';
+});
+</script></body></html>`;
+
 export const RESPONSIVE_CAPTURE_REDACTION_CSS = `
   *, *::before, *::after {
     color: transparent !important;
@@ -137,7 +159,7 @@ const isAllowedScenarioShellRequest = (
   requestUrl: URL,
 ): boolean => {
   if (parsedArgs.scenario !== 'schedule-overlap') {
-    return true;
+    return parsedArgs.scenario !== 'payroll-time' || requestUrl.pathname === parsedArgs.routes[0];
   }
 
   const { pathname } = requestUrl;
@@ -225,6 +247,67 @@ const maybeFulfillScenarioRequest = async (
   routeHandler: Parameters<BrowserContext['route']>[1] extends (arg: infer T) => unknown ? T : never,
 ): Promise<boolean> => {
   if (parsedArgs.scenario !== 'schedule-overlap') {
+    if (parsedArgs.scenario !== 'payroll-time') {
+      return false;
+    }
+
+    const request = routeHandler.request();
+    const requestUrl = new URL(request.url());
+    if (requestUrl.origin !== new URL(parsedArgs.baseUrl).origin) {
+      return false;
+    }
+
+    if (request.method().toUpperCase() === 'GET' && requestUrl.pathname === parsedArgs.routes[0]) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'text/html; charset=utf-8',
+        body: PAYROLL_TIME_SCENARIO_HTML,
+      });
+      return true;
+    }
+
+    if (request.method().toUpperCase() === 'GET' && requestUrl.pathname === '/api/runtime-config') {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify(buildSyntheticRuntimeConfig(requestUrl.origin)),
+      });
+      return true;
+    }
+
+    if (request.method().toUpperCase() === 'POST' && requestUrl.pathname === '/api/payroll-time-events') {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({
+          state: 'ok',
+          bootstrap: {
+            organizationId: 'observer-local-org',
+            employmentProfileId: 'observer-employment-1',
+            localDate: '2026-08-11',
+            employmentTimezone: 'America/Los_Angeles',
+            workdayStartsAt: '05:00:00',
+            capabilities: {
+              canViewSelf: true,
+              canClockSelf: true,
+              canRequestCorrectionSelf: true,
+            },
+          },
+          day: {
+            employeeTimeEvents: [],
+            sessionAttendanceEvents: [],
+            timeCorrectionRequests: [],
+            sessionAttendanceCorrectionRequests: [],
+            exceptions: [],
+          },
+          totals: {
+            label: 'Calculation pending',
+          },
+        }),
+      });
+      return true;
+    }
+
     return false;
   }
 
@@ -299,6 +382,9 @@ const maybeOpenScenarioDialog = async (
   scenario: ObserverScenario | undefined,
 ): Promise<{ dialogId?: string; failure?: string }> => {
   if (scenario !== 'schedule-overlap') {
+    if (scenario === 'payroll-time') {
+      return {};
+    }
     return {};
   }
 

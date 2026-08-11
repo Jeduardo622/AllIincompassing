@@ -43,6 +43,10 @@ type UsePayrollTimeOptions = {
   store?: PayrollOutboxStore;
 };
 
+type UsePayrollDayReadOnlyOptions = {
+  enabled?: boolean;
+};
+
 type QueuedTimeEventInput = PayrollScope & {
   idempotencyKey: string;
   event: PayrollTimeEventPayload;
@@ -213,4 +217,15 @@ export function usePayrollTime(
     requestTimeCorrectionMutation,
     requestSessionAttendanceCorrectionMutation,
   };
+}
+
+export function usePayrollDayReadOnly(
+  scope: PayrollScope,
+  options: UsePayrollDayReadOnlyOptions = {},
+) {
+  return useQuery({
+    queryKey: payrollTimeQueryKey(scope.organizationId, scope.userId, scope.localDate),
+    queryFn: () => fetchPayrollDay(scope),
+    enabled: options.enabled ?? true,
+  });
 }

@@ -12,6 +12,7 @@ const mockUseTheme = vi.fn();
 const mockPreloadRouteModule = vi.fn();
 const mockFetchMessageThreads = vi.fn();
 const mockFetchPendingSupervisionSessionNoteCount = vi.fn();
+const mockUsePayrollDayReadOnly = vi.fn();
 
 const capabilityForRole = (role: string) => (capability: string) => {
   const matrix: Record<string, string[]> = {
@@ -37,6 +38,10 @@ vi.mock("../../lib/routeModulePrefetch", () => ({
 
 vi.mock("../../lib/organization", () => ({
   useActiveOrganizationId: () => "org-1",
+}));
+
+vi.mock("../../features/payroll/usePayrollTime", () => ({
+  usePayrollDayReadOnly: (...args: unknown[]) => mockUsePayrollDayReadOnly(...args),
 }));
 
 vi.mock("../../lib/messages/fetchers", () => ({
@@ -106,6 +111,11 @@ describe("Sidebar navigation active styling", () => {
       unreadThreadCount: 0,
     });
     mockFetchPendingSupervisionSessionNoteCount.mockResolvedValue(0);
+    mockUsePayrollDayReadOnly.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+    });
   });
 
   it("keeps the clients link icon highlighted for nested routes", () => {
@@ -360,6 +370,86 @@ describe("Sidebar navigation active styling", () => {
     await userEvent.hover(screen.getByRole("link", { name: /messages/i }));
 
     expect(mockPreloadRouteModule).toHaveBeenCalledWith("/messages");
+  });
+
+  it("shows the Time navigation only when protected payroll bootstrap view capability resolves true", () => {
+    mockUsePayrollDayReadOnly.mockReturnValue({
+      data: {
+        state: "ok",
+        bootstrap: {
+          capabilities: {
+            canViewSelf: true,
+          },
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.getByRole("link", { name: /^time$/i })).toBeInTheDocument();
+  });
+
+  it("keeps the Time navigation hidden during loading, transport errors, and non-ok payroll states", () => {
+    const { rerender } = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/"]}>
+          <Sidebar />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByRole("link", { name: /^time$/i })).not.toBeInTheDocument();
+
+    mockUsePayrollDayReadOnly.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    });
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/"]}>
+          <Sidebar />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole("link", { name: /^time$/i })).not.toBeInTheDocument();
+
+    mockUsePayrollDayReadOnly.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+    });
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/"]}>
+          <Sidebar />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole("link", { name: /^time$/i })).not.toBeInTheDocument();
+
+    mockUsePayrollDayReadOnly.mockReturnValue({
+      data: {
+        state: "feature_disabled",
+        bootstrap: {
+          capabilities: {
+            canViewSelf: false,
+          },
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/"]}>
+          <Sidebar />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole("link", { name: /^time$/i })).not.toBeInTheDocument();
   });
 
   it("hides family navigation for non-guardian clients", () => {

@@ -35,6 +35,12 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
     supabasePolicies: ['public.sessions: sessions_scoped_access'],
   }),
   createGuard({
+    path: '/time',
+    allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['public.get_payroll_day: authenticated_execute'],
+  }),
+  createGuard({
     path: '/clients',
     allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: ['view_clients'],

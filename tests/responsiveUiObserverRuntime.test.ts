@@ -289,6 +289,31 @@ describe('responsive UI observer browser runtime', () => {
     }
   }, 60_000);
 
+  it('runs the fixed payroll-time scenario with loopback-only fulfilled authority data', async () => {
+    const requestStart = receivedRequests.length;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/time',
+      '--scenario=payroll-time',
+    ]);
+
+    expect(summary.ok).toBe(true);
+    expect(summary.results).toHaveLength(2);
+    expect(receivedRequests.slice(requestStart)).toEqual([]);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.result).toBe('pass');
+      expect(result.failureCodes).toEqual([]);
+      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
+      expect(evidence.scenarioId).toBe('payroll-time');
+      expect(JSON.stringify(evidence)).not.toContain('employmentProfileId');
+      expect(JSON.stringify(evidence)).not.toContain('client_site');
+    }
+  }, 60_000);
+
   it('keeps clipped fixed-control checks document-wide in the schedule scenario', async () => {
     scheduleFixtureMode = 'clipped-control';
     const summary = await runResponsiveUiObserver([

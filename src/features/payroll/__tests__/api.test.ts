@@ -50,10 +50,31 @@ describe("payroll api client", () => {
           },
         },
         day: {
-          employeeTimeEvents: [{ id: "event-1", eventType: "shift_started" }],
-          sessionAttendanceEvents: null,
-          timeCorrectionRequests: "bad-shape",
-          sessionAttendanceCorrectionRequests: [{ id: "attendance-correction-1" }],
+          employeeTimeEvents: [
+            {
+              id: "11111111-1111-1111-1111-111111111111",
+              employmentProfileId: "employment-1",
+              eventType: "shift_started",
+              eventAt: "2026-08-11T16:00:00.000Z",
+              sourceTimezone: "America/Los_Angeles",
+              workLocation: "office",
+              workCategory: "direct_service",
+              metadata: {},
+              createdAt: "2026-08-11T16:00:01.000Z",
+            },
+          ],
+          sessionAttendanceEvents: undefined,
+          timeCorrectionRequests: undefined,
+          sessionAttendanceCorrectionRequests: [
+            {
+              id: "attendance-correction-1",
+              employmentProfileId: "employment-1",
+              sessionAttendanceEventId: "22222222-2222-2222-2222-222222222222",
+              reasonCode: "outside_shift",
+              replacementPayload: {},
+              createdAt: "2026-08-11T17:05:00.000Z",
+            },
+          ],
           exceptions: undefined,
         },
         totals: {
@@ -84,10 +105,31 @@ describe("payroll api client", () => {
         },
       },
       day: {
-        employeeTimeEvents: [{ id: "event-1", eventType: "shift_started" }],
+        employeeTimeEvents: [
+          {
+            id: "11111111-1111-1111-1111-111111111111",
+            employmentProfileId: "employment-1",
+            eventType: "shift_started",
+            eventAt: "2026-08-11T16:00:00.000Z",
+            sourceTimezone: "America/Los_Angeles",
+            workLocation: "office",
+            workCategory: "direct_service",
+            metadata: {},
+            createdAt: "2026-08-11T16:00:01.000Z",
+          },
+        ],
         sessionAttendanceEvents: [],
         timeCorrectionRequests: [],
-        sessionAttendanceCorrectionRequests: [{ id: "attendance-correction-1" }],
+        sessionAttendanceCorrectionRequests: [
+          {
+            id: "attendance-correction-1",
+            employmentProfileId: "employment-1",
+            sessionAttendanceEventId: "22222222-2222-2222-2222-222222222222",
+            reasonCode: "outside_shift",
+            replacementPayload: {},
+            createdAt: "2026-08-11T17:05:00.000Z",
+          },
+        ],
         exceptions: [],
       },
       totals: {
@@ -103,6 +145,58 @@ describe("payroll api client", () => {
         body: JSON.stringify({
           action: "get_day",
           localDate: "2026-08-11",
+        }),
+      }),
+    );
+  });
+
+  it("parses explicit non-ok states even when employment bootstrap fields are nullable", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        state: "no_employment_profile",
+        bootstrap: {
+          organizationId: "org-1",
+          employmentProfileId: null,
+          localDate: "2026-08-11",
+          employmentTimezone: null,
+          workdayStartsAt: null,
+          capabilities: {
+            canViewSelf: false,
+            canClockSelf: false,
+            canRequestCorrectionSelf: false,
+          },
+        },
+        day: {
+          employeeTimeEvents: [],
+          sessionAttendanceEvents: [],
+          timeCorrectionRequests: [],
+          sessionAttendanceCorrectionRequests: [],
+          exceptions: [],
+        },
+        totals: {
+          label: "Calculation pending",
+        },
+      }),
+    );
+
+    await expect(
+      fetchPayrollDay({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-11",
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        state: "no_employment_profile",
+        bootstrap: expect.objectContaining({
+          employmentProfileId: null,
+          employmentTimezone: null,
+          workdayStartsAt: null,
+          capabilities: {
+            canViewSelf: false,
+            canClockSelf: false,
+            canRequestCorrectionSelf: false,
+          },
         }),
       }),
     );

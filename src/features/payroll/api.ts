@@ -18,6 +18,7 @@ const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 
 const workLocationSchema = z.enum(["client_site", "office", "home", "community", "other"]);
 const workCategorySchema = z.enum(["direct_service", "administration", "travel", "training"]);
+const correctionReplacementPayloadSchema = z.record(z.string(), z.unknown());
 const payrollDayStateSchema = z.enum([
   "ok",
   "feature_disabled",
@@ -74,8 +75,8 @@ const payrollBootstrapSchema = z.object({
   organizationId: z.string().min(1),
   employmentProfileId: z.string().min(1).nullable(),
   localDate: z.string().date(),
-  employmentTimezone: z.string().min(1),
-  workdayStartsAt: z.string().min(1),
+  employmentTimezone: z.string().min(1).nullable(),
+  workdayStartsAt: z.string().min(1).nullable(),
   capabilities: z.object({
     canViewSelf: z.boolean(),
     canClockSelf: z.boolean(),
@@ -83,15 +84,73 @@ const payrollBootstrapSchema = z.object({
   }),
 });
 
+const employeeTimeEventSchema = z.object({
+  id: z.string().min(1),
+  employmentProfileId: z.string().min(1),
+  eventType: z.enum([
+    "shift_started",
+    "shift_ended",
+    "meal_started",
+    "meal_ended",
+    "work_category_changed",
+  ]),
+  eventAt: z.string().min(1),
+  sourceTimezone: z.string().min(1),
+  workLocation: workLocationSchema.nullable(),
+  workCategory: workCategorySchema.nullable(),
+  metadata: z.unknown(),
+  createdAt: z.string().min(1),
+});
+
+const sessionAttendanceEventSchema = z.object({
+  id: z.string().min(1),
+  employmentProfileId: z.string().min(1),
+  sessionId: z.string().uuid(),
+  employeeTimeEventId: z.string().uuid().nullable(),
+  eventType: z.enum(["session_started", "session_ended"]),
+  eventAt: z.string().min(1),
+  sourceTimezone: z.string().min(1),
+  workLocation: workLocationSchema.nullable(),
+  metadata: z.unknown(),
+  createdAt: z.string().min(1),
+});
+
+const timeCorrectionRequestSchema = z.object({
+  id: z.string().min(1),
+  employmentProfileId: z.string().min(1),
+  originalEventId: z.string().uuid(),
+  reasonCode: z.string().min(1),
+  replacementPayload: correctionReplacementPayloadSchema.nullable(),
+  createdAt: z.string().min(1),
+});
+
+const sessionAttendanceCorrectionRequestSchema = z.object({
+  id: z.string().min(1),
+  employmentProfileId: z.string().min(1),
+  sessionAttendanceEventId: z.string().uuid(),
+  reasonCode: z.string().min(1),
+  replacementPayload: correctionReplacementPayloadSchema.nullable(),
+  createdAt: z.string().min(1),
+});
+
+const timekeepingExceptionSchema = z.object({
+  id: z.string().min(1),
+  employmentProfileId: z.string().min(1),
+  exceptionCode: z.string().min(1),
+  sourceSessionAttendanceEventId: z.string().uuid().nullable(),
+  details: z.unknown(),
+  createdAt: z.string().min(1),
+});
+
 const payrollDayResponseSchema = z.object({
   state: payrollDayStateSchema,
   bootstrap: payrollBootstrapSchema.optional(),
   day: z.object({
-    employeeTimeEvents: z.unknown().optional(),
-    sessionAttendanceEvents: z.unknown().optional(),
-    timeCorrectionRequests: z.unknown().optional(),
-    sessionAttendanceCorrectionRequests: z.unknown().optional(),
-    exceptions: z.unknown().optional(),
+    employeeTimeEvents: z.array(employeeTimeEventSchema).optional(),
+    sessionAttendanceEvents: z.array(sessionAttendanceEventSchema).optional(),
+    timeCorrectionRequests: z.array(timeCorrectionRequestSchema).optional(),
+    sessionAttendanceCorrectionRequests: z.array(sessionAttendanceCorrectionRequestSchema).optional(),
+    exceptions: z.array(timekeepingExceptionSchema).optional(),
   }).optional(),
   totals: z.object({
     label: z.string().min(1),
@@ -114,15 +173,21 @@ export type PayrollTimeCorrectionPayload = z.infer<typeof timeCorrectionPayloadS
 export type PayrollSessionAttendanceCorrectionPayload = z.infer<typeof attendanceCorrectionPayloadSchema>;
 export type PayrollDayState = z.infer<typeof payrollDayStateSchema>;
 export type PayrollMutationSuccess = z.infer<typeof mutationSuccessSchema> & Record<string, unknown>;
+export type PayrollBootstrap = z.infer<typeof payrollBootstrapSchema>;
+export type PayrollEmployeeTimeEvent = z.infer<typeof employeeTimeEventSchema>;
+export type PayrollSessionAttendanceEvent = z.infer<typeof sessionAttendanceEventSchema>;
+export type PayrollTimeCorrectionRequest = z.infer<typeof timeCorrectionRequestSchema>;
+export type PayrollSessionAttendanceCorrectionRequest = z.infer<typeof sessionAttendanceCorrectionRequestSchema>;
+export type PayrollTimekeepingException = z.infer<typeof timekeepingExceptionSchema>;
 export type PayrollDayResponse = {
   state: PayrollDayState;
-  bootstrap?: z.infer<typeof payrollBootstrapSchema>;
+  bootstrap?: PayrollBootstrap;
   day: {
-    employeeTimeEvents: unknown[];
-    sessionAttendanceEvents: unknown[];
-    timeCorrectionRequests: unknown[];
-    sessionAttendanceCorrectionRequests: unknown[];
-    exceptions: unknown[];
+    employeeTimeEvents: PayrollEmployeeTimeEvent[];
+    sessionAttendanceEvents: PayrollSessionAttendanceEvent[];
+    timeCorrectionRequests: PayrollTimeCorrectionRequest[];
+    sessionAttendanceCorrectionRequests: PayrollSessionAttendanceCorrectionRequest[];
+    exceptions: PayrollTimekeepingException[];
   };
   totals?: {
     label: string;
@@ -132,8 +197,6 @@ export type PayrollDayResponse = {
 type ScopedMutationInput<T> = PayrollScope & {
   idempotencyKey: string;
 } & T;
-
-const asSafeArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 const containsForbiddenAuthority = (value: unknown): boolean => {
   if (!value || typeof value !== "object") {
@@ -292,11 +355,11 @@ export async function fetchPayrollDay(scope: PayrollScope): Promise<PayrollDayRe
     state: parsed.state,
     ...(parsed.bootstrap ? { bootstrap: parsed.bootstrap } : {}),
     day: {
-      employeeTimeEvents: asSafeArray(parsed.day?.employeeTimeEvents),
-      sessionAttendanceEvents: asSafeArray(parsed.day?.sessionAttendanceEvents),
-      timeCorrectionRequests: asSafeArray(parsed.day?.timeCorrectionRequests),
-      sessionAttendanceCorrectionRequests: asSafeArray(parsed.day?.sessionAttendanceCorrectionRequests),
-      exceptions: asSafeArray(parsed.day?.exceptions),
+      employeeTimeEvents: parsed.day?.employeeTimeEvents ?? [],
+      sessionAttendanceEvents: parsed.day?.sessionAttendanceEvents ?? [],
+      timeCorrectionRequests: parsed.day?.timeCorrectionRequests ?? [],
+      sessionAttendanceCorrectionRequests: parsed.day?.sessionAttendanceCorrectionRequests ?? [],
+      exceptions: parsed.day?.exceptions ?? [],
     },
     ...(parsed.totals?.label ? { totals: { label: parsed.totals.label } } : {}),
   };

@@ -85,6 +85,7 @@
     "reconcile:therapist-docs:scheduled": "tsx scripts/reconcile-therapist-documents.ts --fail-on-orphans",
     "build:canary": "node scripts/ci/build-canary.mjs",
     "typegen": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/lib/db.types.ts",
+    "typegen:local": "supabase gen types typescript --local > src/lib/generated/database.types.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "ci:secrets": "tsx scripts/check-secrets.ts",
     "ci:check-focused": "node scripts/ci/run-policy-checks.mjs",

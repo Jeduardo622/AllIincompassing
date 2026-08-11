@@ -64,9 +64,9 @@
   },
   "terminologySuccessorAttestation": {
     "path": "docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
-    "sha256": "b31e4fb26194343c922644c92699cfc82d9756120f90f9c6e105552ba50627e0",
-    "implementationHeadCommit": "0df442697d248bf4e2d720c127fa983f2beaf8a6",
-    "mergedVerificationHeadCommit": "394b4ac0c58ea6ae2985495f4e91054b248d2579",
+    "sha256": "74e58de96d29b5a12ef99cec31929d7b0ebe0947a9f9f1728f464a2eb3ed209b",
+    "implementationHeadCommit": "c40d61342f17635c1797677eff0df03e5cf54017",
+    "mergedVerificationHeadCommit": "c40d61342f17635c1797677eff0df03e5cf54017",
     "hostedActionAuthorized": false
   },
   "terminologySuccessorReviews": {
@@ -85,6 +85,18 @@
     "software-architect": {
       "agentId": "019ff23e-39ca-7551-850e-bc5cbea525a7",
       "verdict": "PASS"
+    },
+    "continuation-code-review-engineer": {
+      "agentId": "019ff283-a829-7e11-9d80-1e6247538f09",
+      "verdict": "APPROVE_AFTER_EVIDENCE_REFRESH"
+    },
+    "continuation-test-engineer": {
+      "agentId": "019ff283-a960-7931-977a-18adf298da90",
+      "verdict": "GAPS_ADDRESSED_BY_DIRECT_MAPPING_AND_PAYLOAD_TESTS"
+    },
+    "continuation-security-engineer": {
+      "agentId": "019ff283-ab49-7f23-9d9e-d9f12447434e",
+      "verdict": "APPROVE"
     }
   },
   "protectedSurfaceHashes": {

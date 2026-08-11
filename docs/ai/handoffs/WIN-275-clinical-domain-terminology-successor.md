@@ -6,8 +6,8 @@
 - lane: `critical`
 - branch: `codex/win-275-terminology-successor`
 - base: `37e7cbfa888ebb3b33cf895cb9638f6b6590bd5f`
-- implementation head: `0df442697d248bf4e2d720c127fa983f2beaf8a6`
-- merged verification head before evidence refresh: `394b4ac0c58ea6ae2985495f4e91054b248d2579`
+- implementation head: `c40d61342f17635c1797677eff0df03e5cf54017`
+- merged verification head before evidence refresh: `c40d61342f17635c1797677eff0df03e5cf54017`
 - non-goals: production auth, runtime config, Supabase policy/schema, deployment behavior, hosted action, workflow dispatch, runtime activation, provider/model calls, or PHI-bearing fixtures
 
 ## Why This Exists
@@ -37,6 +37,9 @@ All predecessor attestations remain unchanged in this slice.
 - test review: `019ff263-3e23-7d70-b098-5e8626b1ed86` (`PASS_LOCAL_WITH_SECRET_BACKED_CI_PENDING`)
 - security review: `019ff265-5b6d-7313-a7fc-c6432fa90fe4` (`PASS` after fail-closed mutation fix)
 - build/config review: `019ff265-5d0d-75e0-855e-d70651484713` (`PASS` after artifact-path fix)
+- continuation code review: `019ff283-a829-7e11-9d80-1e6247538f09` (`APPROVE`; stale evidence finding resolved)
+- continuation test review: `019ff283-a960-7931-977a-18adf298da90` (`GAPS_FOUND`; direct mapper and canonical-payload guards added)
+- continuation security review: `019ff283-ab49-7f23-9d9e-d9f12447434e` (`APPROVE`)
 - UI-only branch diff confirmed from `git diff --name-only origin/main...HEAD`
 - internal `program*` contracts unchanged per:
   - `docs/superpowers/plans/2026-08-11-clinical-domain-terminology.md`
@@ -63,20 +66,21 @@ The current terminology branch changes `src/components/ClientDetails/ProgramsGoa
 - Lane: `critical`
 - Change type: UI/component/page plus hash-bound approval evidence
 - Required checks: lint, typecheck, focused tests, build, policy checks, `test:ci`, `verify:local`, responsive observer, critical specialist review, exact-head CI, and `pr-hygiene`
-- Executed checks: lint, typecheck, policy, build, focused Vitest `361/361`, harness contract `2/2`, tier-0 routes `220/220`, and responsive observer `4/4` pass
-- Final full suite: `4,174` passed across `484` files; `5` environment-dependent tests skipped
+- Executed checks: lint, typecheck, policy, build, focused Vitest `77/77`, harness contract `2/2`, tier-0 routes `220/220`, and responsive observer `5/6` pass
+- Final full suite: `npm run verify:local` passed with the full Vitest/coverage suite and all `220/220` tier-0 routes
 - Coverage: `92.81%` line coverage, above the required `86%`
-- Repository hard gate: `npm run verify:local` passed in `408s`
-- Blocked checks: local `npm run ci:playwright` stopped at preflight because PW admin credentials are unavailable; exact-head CI requires the evidence commit to be pushed
-- Result: `pass-with-blocked-checks`
-- Residual risk: the harness proves responsive geometry, not production authentication or hosted data access; those remain covered by exact-head CI and human review
+- Repository hard gate: `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local` passed in `393s`; the first default-heap attempt stopped during coverage with a Node out-of-memory error
+- Failed check: `/dashboard` at `390x844` reported `undersized-mobile-touch-target` for pre-existing 13x13 native correction-modal checkboxes; the other five route/viewport results passed
+- Blocked checks: local `npm run ci:playwright` requires unavailable PW admin credentials; exact-head CI requires this evidence refresh to be pushed
+- Result: `fail` until the Dashboard mobile touch-target issue is separately authorized and corrected or explicitly accepted by the human reviewer
+- Residual risk: terminology behavior and canonical persistence are covered, but the required mobile responsive gate remains red for the existing correction-modal checkbox geometry
 
 Specialist results:
 
-- code review: `PASS`
-- security review: `PASS`
-- test review: `PASS_LOCAL_WITH_SECRET_BACKED_CI_PENDING`
-- responsive observer: `PASS`, both routes at both required viewports
+- code review: `APPROVE` after stale evidence and generated-artifact findings were resolved
+- security review: `APPROVE`
+- test review: requested direct mapping and payload guards; both added and passing
+- responsive observer: `FAIL`, five of six results pass; Dashboard mobile reports `undersized-mobile-touch-target`
 - DevOps review: `PASS_BUILD_CONFIG_ISOLATION`
 
 ## Files Changed
